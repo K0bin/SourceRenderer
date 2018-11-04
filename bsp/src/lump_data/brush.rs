@@ -1,5 +1,6 @@
-use bsp_read::BspRead;
 use std::io::Read;
+use byteorder::{ReadBytesExt, LittleEndian};
+use num_traits::FromPrimitive;
 
 pub struct Brush {
     pub first_side: i32,
@@ -7,6 +8,7 @@ pub struct Brush {
     pub contents: BrushContents
 }
 
+#[derive(FromPrimitive)]
 pub enum BrushContents {
     Empty = 0,
     Solid = 0x1,
@@ -40,4 +42,15 @@ pub enum BrushContents {
     Translucent = 0x10000000,
     Ladder = 0x20000000,
     Hitbox = 0x40000000
+}
+
+trait BrushRead: Read {
+    fn read_struct(&mut self) -> Brush {
+        let brush = Brush {
+            first_side: self.read_i32::<LittleEndian>().unwrap(),
+            sides_count: self.read_i32::<LittleEndian>().unwrap(),
+            contents: FromPrimitive::from_u32(self.read_u32::<LittleEndian>().unwrap()).unwrap()
+        };
+        return brush;
+    }
 }

@@ -4,3 +4,6 @@ version = "0.1.0"
 authors = ["Robin <robin.kertels@outlook.com>"]
 
 [dependencies]
+byteorder = "1.2.7"
+num-traits = "0.2"
+num-derive = "0.2"
