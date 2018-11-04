@@ -4,4 +4,4 @@ version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@outlook.com>"]
 
 [dependencies]
-bsp = { path = "bsp" }
+bsp = { path = "../bsp" }
