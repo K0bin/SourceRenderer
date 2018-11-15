@@ -7,3 +7,4 @@ authors = ["Robin <robin.kertels@outlook.com>"]
 byteorder = "1.2.7"
 num-traits = "0.2"
 num-derive = "0.2"
+bitflags = "1.0.4"
