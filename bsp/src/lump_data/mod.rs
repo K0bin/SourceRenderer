@@ -1,10 +1,13 @@
 pub use self::brush::Brush;
+pub use self::node::Node;
 
 use self::brush::BRUSH_SIZE;
+use self::node::NODE_SIZE;
 
 use std::io::{Read, Error};
 
 mod brush;
+mod node;
 
 #[derive(FromPrimitive, Clone, Copy, Debug)]
 #[repr(u8)]
@@ -76,22 +79,36 @@ pub enum LumpType {
 }
 
 pub enum LumpData {
-    Brushes(Box<Vec<Brush>>)
+    Brushes(Box<Vec<Brush>>),
+    Nodes(Box<Vec<Node>>)
 }
 
-pub fn read_lump_data(reader: &mut Read, lumpType: LumpType, size: i32) -> Result<LumpData, Error> {
-    match lumpType {
+pub fn read_lump_data(reader: &mut Read, lump_type: LumpType, size: i32) -> Result<LumpData, Error> {
+    match lump_type {
         LumpType::Brushes => {
-            let elementCount = size / i32::from(BRUSH_SIZE);
+            let element_count = size / i32::from(BRUSH_SIZE);
             let mut elements: Box<Vec<Brush>> = Box::new(Vec::new());
-            for i in 0..elementCount {
-                let brush = Brush::read(reader);
-                if brush.is_err() {
-                    return Err(brush.err().unwrap());
+            for i in 0..element_count {
+                let element = Brush::read(reader);
+                if element.is_err() {
+                    return Err(element.err().unwrap());
                 }
-                elements.push(brush.unwrap());
+                elements.push(element.unwrap());
             }
             return Ok(LumpData::Brushes(elements));
+        }
+
+        LumpType::Nodes => {
+            let element_count = size / i32::from(NODE_SIZE);
+            let mut elements: Box<Vec<Node>> = Box::new(Vec::new());
+            for i in 0..element_count {
+                let element = Node::read(reader);
+                if element.is_err() {
+                    return Err(element.err().unwrap());
+                }
+                elements.push(element.unwrap());
+            }
+            return Ok(LumpData::Nodes(elements));
         }
         _ => unimplemented!()
     }

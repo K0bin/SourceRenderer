@@ -24,10 +24,10 @@ impl Map {
         });
     }
 
-    pub fn read_lump_data(&mut self, lumpType: LumpType) -> Result<LumpData, Error> {
-        let index = lumpType as usize;
+    pub fn read_lump_data(&mut self, lump_type: LumpType) -> Result<LumpData, Error> {
+        let index = lump_type as usize;
         let lump = self.header.lumps[index];
         let seek_result = self.reader.seek(SeekFrom::Start(lump.file_offset as u64));
-        return seek_result.and_then(|_result| read_lump_data(&mut self.reader, lumpType, lump.file_length));
+        return seek_result.and_then(|_result| read_lump_data(&mut self.reader, lump_type, lump.file_length));
     }
 }
