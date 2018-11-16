@@ -1,7 +1,9 @@
 use std::io::{Read, Error};
 use byteorder::{ReadBytesExt, LittleEndian};
 
-#[derive(Copy, Clone)]
+pub const BRUSH_SIZE: u8 = 12;
+
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Brush {
     pub first_side: i32,
     pub sides_count: i32,
@@ -9,6 +11,7 @@ pub struct Brush {
 }
 
 bitflags! {
+    #[derive(Default)]
     pub struct BrushContents: u32 {
         const Empty = 0;
         const Solid = 0x1;
@@ -45,22 +48,24 @@ bitflags! {
     }
 }
 
-pub fn read_brush(reader: &mut Read) -> Result<Brush, Error> {
-    let first_side = reader.read_i32::<LittleEndian>();
-    if first_side.is_err() {
-        return Err(first_side.err().unwrap());
+impl Brush {
+    pub fn read(reader: &mut Read) -> Result<Brush, Error> {
+        let first_side = reader.read_i32::<LittleEndian>();
+        if first_side.is_err() {
+            return Err(first_side.err().unwrap());
+        }
+        let sides_count = reader.read_i32::<LittleEndian>();
+        if sides_count.is_err() {
+            return Err(sides_count.err().unwrap());
+        }
+        let contents = reader.read_u32::<LittleEndian>();
+        if contents.is_err() {
+            return Err(contents.err().unwrap());
+        }
+        return Ok(Brush {
+            first_side: first_side.unwrap(),
+            sides_count: sides_count.unwrap(),
+            contents: BrushContents { bits: contents.unwrap() }
+        });
     }
-    let sides_count = reader.read_i32::<LittleEndian>();
-    if sides_count.is_err() {
-        return Err(sides_count.err().unwrap());
-    }
-    let contents = reader.read_u32::<LittleEndian>();
-    if contents.is_err() {
-        return Err(contents.err().unwrap());
-    }
-    return Ok(Brush {
-        first_side: first_side.unwrap(),
-        sides_count: sides_count.unwrap(),
-        contents: BrushContents { bits: contents.unwrap() }
-    });
 }

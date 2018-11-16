@@ -1,44 +1,33 @@
-use lump::{Lump, read_lump};
+use map_header::{MapHeader};
+use std::io::{Read, Error, ErrorKind, Seek, SeekFrom, BufReader};
+use std::fs::File;
+use lump_data::{LumpData, LumpType, Brush, read_lump_data};
+use std::ops::DerefMut;
+use std::boxed::{Box};
 
-use std::io::{Read, Error};
-use byteorder::{ReadBytesExt, LittleEndian};
-
-const LUMP_COUNT: usize = 64;
-
-pub struct MapHeader {
-    pub identifier: i32,
-    pub version: i32,
-    pub lumps: [Lump; LUMP_COUNT],
+pub struct Map {
+    pub name: String,
+    header: MapHeader,
+    reader: Box<BufReader<File>>
 }
 
-pub fn read_map(reader: &mut Read) -> Result<MapHeader, Error> {
-    let identifier = reader.read_i32::<LittleEndian>();
-    if identifier.is_err() {
-        return Err(identifier.err().unwrap());
-    }
-    let version = reader.read_i32::<LittleEndian>();
-    if version.is_err() {
-        return Err(version.err().unwrap());
-    }
-    let mut lumps: [Lump; LUMP_COUNT] = [
-        Lump {
-            file_offset: 0,
-            file_length: 0,
-            version: 0,
-            four_cc: 0
-        };
-        LUMP_COUNT
-    ];
-    for i in 0..LUMP_COUNT {
-        let lump = read_lump(reader);
-        if lump.is_err() {
-            return Err(lump.err().unwrap());
+impl Map {
+    pub fn read(name: String, mut reader: Box<BufReader<File>>) -> Result<Map, Error> {
+        let header = MapHeader::read(&mut reader);
+        if (header.is_err()) {
+            return Err(header.err().unwrap());
         }
-        lumps[i] = lump.unwrap();
+        return Ok(Map {
+            name: name,
+            header: header.unwrap(),
+            reader: reader
+        });
     }
-    return Ok(MapHeader {
-        identifier: identifier.unwrap(),
-        version: version.unwrap(),
-        lumps: lumps
-    });
+
+    pub fn read_lump_data(&mut self, lumpType: LumpType) -> Result<LumpData, Error> {
+        let index = lumpType as usize;
+        let lump = self.header.lumps[index];
+        let seek_result = self.reader.seek(SeekFrom::Start(lump.file_offset as u64));
+        return seek_result.and_then(|_result| read_lump_data(&mut self.reader, lumpType, lump.file_length));
+    }
 }

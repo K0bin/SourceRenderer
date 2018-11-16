@@ -1,5 +1,5 @@
 pub use self::lump::Lump;
-pub use self::map::MapHeader;
+pub use self::map_header::MapHeader;
 
 extern crate byteorder;
 extern crate num_traits;
@@ -11,4 +11,5 @@ extern crate bitflags;
 
 mod lump;
 mod lump_data;
+mod map_header;
 mod map;
