@@ -48,6 +48,14 @@ bitflags! {
     }
 }
 
+impl BrushContents {
+    pub fn new(bits: u32) -> BrushContents {
+        return BrushContents {
+            bits: bits
+        };
+    }
+}
+
 impl Brush {
     pub fn read(reader: &mut Read) -> Result<Brush, Error> {
         let first_side = reader.read_i32::<LittleEndian>();

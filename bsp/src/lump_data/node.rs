@@ -1,7 +1,7 @@
 use std::io::{Read, Error};
 use byteorder::{ReadBytesExt, LittleEndian};
 
-pub const NODE_SIZE: u8 = 16;
+pub const NODE_SIZE: u8 = 32;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Node {

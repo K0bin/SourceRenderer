@@ -1,13 +1,17 @@
 pub use self::brush::Brush;
 pub use self::node::Node;
+pub use self::leaf::Leaf;
 
 use self::brush::BRUSH_SIZE;
 use self::node::NODE_SIZE;
+use self::leaf::LEAF_SIZE;
+use self::leaf::LEAF_SIZE_LE19;
 
 use std::io::{Read, Error};
 
 mod brush;
 mod node;
+mod leaf;
 
 #[derive(FromPrimitive, Clone, Copy, Debug)]
 #[repr(u8)]
@@ -80,10 +84,11 @@ pub enum LumpType {
 
 pub enum LumpData {
     Brushes(Box<Vec<Brush>>),
-    Nodes(Box<Vec<Node>>)
+    Nodes(Box<Vec<Node>>),
+    Leafs(Box<Vec<Leaf>>)
 }
 
-pub fn read_lump_data(reader: &mut Read, lump_type: LumpType, size: i32) -> Result<LumpData, Error> {
+pub fn read_lump_data(reader: &mut Read, lump_type: LumpType, size: i32, version: i32) -> Result<LumpData, Error> {
     match lump_type {
         LumpType::Brushes => {
             let element_count = size / i32::from(BRUSH_SIZE);
@@ -110,6 +115,24 @@ pub fn read_lump_data(reader: &mut Read, lump_type: LumpType, size: i32) -> Resu
             }
             return Ok(LumpData::Nodes(elements));
         }
+
+        LumpType::Leafs => {
+            let mut element_size = i32::from(LEAF_SIZE);
+            if version <= 19 {
+                element_size = i32::from(LEAF_SIZE_LE19);
+            }
+            let element_count = size / element_size;
+            let mut elements: Box<Vec<Leaf>> = Box::new(Vec::new());
+            for i in 0..element_count {
+                let element = Leaf::read(reader, version);
+                if element.is_err() {
+                    return Err(element.err().unwrap());
+                }
+                elements.push(element.unwrap());
+            }
+            return Ok(LumpData::Leafs(elements));
+        }
+
         _ => unimplemented!()
     }
 }
