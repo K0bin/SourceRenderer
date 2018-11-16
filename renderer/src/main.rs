@@ -1,6 +1,6 @@
-extern crate bsp;
+extern crate sourcerenderer_bsp;
 
-use bsp::Lump;
+use sourcerenderer_bsp::Lump;
 
 fn main() {
     println!("Hello World");

@@ -1,0 +1,6 @@
+[package]
+name = "sourcerenderer_core"
+version = "0.1.0"
+authors = ["Robin <robin.kertels@outlook.com>"]
+
+[dependencies]
