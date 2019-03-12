@@ -4,3 +4,4 @@ version = "0.1.0"
 authors = ["Robin <robin.kertels@outlook.com>"]
 
 [dependencies]
+cgmath = "0.17.0"

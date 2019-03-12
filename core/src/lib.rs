@@ -1,7 +1,9 @@
-pub use self::platform::Platform;
-pub use self::platform::Window;
-pub use self::platform::PlatformEvent;
-pub use self::engine::Engine;
+extern crate cgmath;
 
-mod platform;
+pub use self::engine::Engine;
+pub use cgmath::{Vector3, Vector4, Matrix4};
+
 mod engine;
+pub mod platform;
+pub mod assets;
+pub mod renderer;
