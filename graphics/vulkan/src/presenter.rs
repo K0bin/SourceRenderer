@@ -1,9 +1,12 @@
 use ash::vk;
 use ash::extensions::khr;
+use ash::version::DeviceV1_0;
 
+// TODO implement drop
 pub struct Presenter {
   surface: vk::SurfaceKHR,
-  swapchain: vk::SwapchainKHR
+  swapchain: vk::SwapchainKHR,
+  swapchain_image_views: Vec<vk::ImageView>
 }
 
 pub const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
@@ -43,10 +46,37 @@ impl Presenter {
     };
 
     let swapchain = swapchain_ext.create_swapchain(&swapchain_create_info, None).unwrap();
+    let swapchain_images = swapchain_ext.get_swapchain_images(swapchain).unwrap();
+    let swapchain_image_views = swapchain_images
+      .iter()
+      .map(|image| {
+        let info = vk::ImageViewCreateInfo {
+          image: *image,
+          view_type: vk::ImageViewType::TYPE_2D,
+          format: format.format,
+          components: vk::ComponentMapping {
+            r: vk::ComponentSwizzle::IDENTITY,
+            g: vk::ComponentSwizzle::IDENTITY,
+            b: vk::ComponentSwizzle::IDENTITY,
+            a: vk::ComponentSwizzle::IDENTITY,
+          },
+          subresource_range: vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1
+          },
+          ..Default::default()
+        };
+        device.create_image_view(&info, None).unwrap()
+      })
+      .collect();
 
     return Presenter {
       surface: surface,
-      swapchain: swapchain
+      swapchain: swapchain,
+      swapchain_image_views: swapchain_image_views
     };
   }
 
