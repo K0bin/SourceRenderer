@@ -1,18 +1,20 @@
+use std::sync::Arc;
+
 use ash::vk;
 use ash::extensions::khr;
 use ash::version::DeviceV1_0;
 
-// TODO implement drop
 pub struct Presenter {
   surface: vk::SurfaceKHR,
   swapchain: vk::SwapchainKHR,
-  swapchain_image_views: Vec<vk::ImageView>
+  swapchain_image_views: Vec<vk::ImageView>,
+  device: Arc<ash::Device>
 }
 
 pub const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
 
 impl Presenter {
-  pub unsafe fn new(physical_device: &vk::PhysicalDevice, device: &ash::Device, surface_ext: khr::Surface, surface: vk::SurfaceKHR, swapchain_ext: khr::Swapchain) -> Presenter {
+  pub unsafe fn new(physical_device: &vk::PhysicalDevice, device: Arc<ash::Device>, surface_ext: khr::Surface, surface: vk::SurfaceKHR, swapchain_ext: khr::Swapchain) -> Presenter {
     let present_modes = surface_ext.get_physical_device_surface_present_modes(*physical_device, surface).unwrap();
     let present_mode = Presenter::pick_present_mode(present_modes);
 
@@ -76,7 +78,8 @@ impl Presenter {
     return Presenter {
       surface: surface,
       swapchain: swapchain,
-      swapchain_image_views: swapchain_image_views
+      swapchain_image_views: swapchain_image_views,
+      device: device
     };
   }
 
@@ -109,4 +112,14 @@ impl Presenter {
     }
   }
 
+}
+
+impl Drop for Presenter {
+  fn drop(&mut self) {
+    for image_view in &self.swapchain_image_views {
+      unsafe {
+        self.device.destroy_image_view(*image_view, None);
+      }
+    }
+  }
 }

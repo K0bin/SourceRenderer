@@ -3,6 +3,7 @@ use crate::presenter::Presenter;
 use crate::presenter::SWAPCHAIN_EXT_NAME;
 use std::error::Error;
 use std::ffi::{CStr, CString};
+use std::sync::Arc;
 use ash::{Entry, Instance, Device, vk };
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::extensions::khr::Surface;
@@ -15,15 +16,16 @@ use ash::extensions::khr;
 use crate::instance;
 
 pub struct Renderer {
+  entry: Entry,
   instance: Instance,
   physical_device: vk::PhysicalDevice,
-  device: Device,
+  device: Arc<Device>,
   graphics_queue: Queue,
   transfer_queue: Queue,
   compute_queue: Queue,
   present_queue: Queue,
   allocator: Allocator,
-  presenter: Presenter,
+  presenter: Presenter
 }
 
 impl Renderer {
@@ -66,7 +68,7 @@ impl Renderer {
         ..Default::default()
       };
 
-      let device = instance.create_device(physical_device, &device_create_info, None)?;
+      let device = Arc::new(instance.create_device(physical_device, &device_create_info, None).unwrap());
 
       let graphics_queue_desc = physical_device_desc.graphics_queue;
       let graphics_queue = Queue::new(device.get_device_queue(graphics_queue_desc.queue_family_index, graphics_queue_desc.queue_index), graphics_queue_desc);
@@ -79,7 +81,7 @@ impl Renderer {
 
       let allocator_info = AllocatorCreateInfo {
         physical_device: physical_device.clone(),
-        device: device.clone(),
+        device: (*device).clone(),
         instance: instance.clone(),
         flags: AllocatorCreateFlags::NONE,
         preferred_large_heap_block_size: 0,
@@ -88,11 +90,11 @@ impl Renderer {
       };
       let allocator = Allocator::new(&allocator_info).unwrap();
 
-      let surface_ext = khr::Surface::new(&entry, &instance);
-      let swapchain_ext = khr::Swapchain::new(&instance, &device);
-      let presenter = Presenter::new(&physical_device, &device, surface_ext, surface, swapchain_ext);
+      let swapchain_ext = khr::Swapchain::new(&instance, &*device);
+      let presenter = Presenter::new(&physical_device, device.clone(), surface_ext, surface, swapchain_ext);
 
       return Ok(Box::new(Renderer {
+        entry: entry,
         instance: instance,
         physical_device: physical_device,
         device: device,
