@@ -41,9 +41,9 @@ impl JobThread {
 
   fn thread_func(scheduler: Arc<Mutex<Scheduler>>, mut contexts: HashMap<String, Box<JobThreadContext + Send>>) {
     let mut context_keys: HashSet<String> = HashSet::new();
-    /*for key in contexts.keys() {
+    for key in contexts.keys() {
       context_keys.insert((*key).clone());
-    }*/
+    }
 
     loop {
       let job_res = {
