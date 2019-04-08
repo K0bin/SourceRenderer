@@ -7,5 +7,4 @@ edition = "2018"
 [dependencies]
 ash = "0.28.0"
 sourcerenderer_core = { path = "../../core" }
-downcast-rs = "1.0.3"
-vk-mem = { path = "../../../vk-mem-rs" }
+vk-mem = "0.1.6"
