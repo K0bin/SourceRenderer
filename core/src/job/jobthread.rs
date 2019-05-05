@@ -6,6 +6,7 @@ use std::thread;
 use std::thread::{JoinHandle, Thread};
 use std::collections::{HashMap, HashSet};
 use std::borrow::BorrowMut;
+use job::job::JobExecution;
 
 pub trait JobThreadContext {}
 
@@ -57,7 +58,10 @@ impl JobThread {
 
       if let Some(mut job) = job_res {
         is_busy.store(true, Ordering::Relaxed);
-        let requested_context = contexts.get_mut(job.requested_context_key()).unwrap();
+        let requested_context = {
+          let mut job_guard = job.write().unwrap();
+          contexts.get_mut(job_guard.requested_context_key()).unwrap()
+        };
         let requested_context_ref: &mut (JobThreadContext + Send + 'static) = requested_context.borrow_mut();
         job.run(requested_context_ref);
       } else {
