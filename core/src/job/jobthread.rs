@@ -1,12 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::error::Error;
 use std::sync::{Arc, Mutex};
 use job::{Scheduler, Job};
 use std::thread;
-use std::thread::{JoinHandle, Thread};
+use std::thread::{JoinHandle};
 use std::collections::{HashMap, HashSet};
 use std::borrow::BorrowMut;
-use job::job::JobExecution;
 
 pub trait JobThreadContext {}
 
@@ -56,16 +54,15 @@ impl JobThread {
         scheduler_guard.get_work(&context_keys)
       };
 
-      if let Some(mut job) = job_res {
-        is_busy.store(true, Ordering::Relaxed);
+      if let Some(job) = job_res {
+        is_busy.store(true, Ordering::SeqCst);
         let requested_context = {
-          let mut job_guard = job.write().unwrap();
-          contexts.get_mut(job_guard.requested_context_key()).unwrap()
+          contexts.get_mut(job.requested_context_key()).unwrap()
         };
-        let requested_context_ref: &mut (JobThreadContext + Send + 'static) = requested_context.borrow_mut();
+        let requested_context_ref: &mut (dyn JobThreadContext + Send + 'static) = requested_context.borrow_mut();
         job.run(requested_context_ref);
       } else {
-        is_busy.store(false, Ordering::Relaxed);
+        is_busy.store(false, Ordering::SeqCst);
       }
     }
   }

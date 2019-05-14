@@ -4,7 +4,7 @@ use job::Job;
 use job::jobthread::{JobThread, JobThreadContext};
 
 pub struct Scheduler {
-  jobs: Vec<Arc<RwLock<Job>>>,
+  jobs: Vec<Arc<Job>>,
   threads: Vec<JobThread>
 }
 
@@ -23,13 +23,12 @@ impl Scheduler {
     return Arc::new(Mutex::new(scheduler));
   }
 
-  pub fn get_work(&mut self, contexts: &HashSet<String>) -> Option<Arc<RwLock<Job>>> {
+  pub fn get_work(&mut self, contexts: &HashSet<String>) -> Option<Arc<Job>> {
     let job_index: Option<usize> = self.jobs
       .iter()
       .enumerate()
       .find(|(_, job)| {
-        let job_guard = job.read().unwrap();
-        contexts.contains(job_guard.requested_context_key()) && job_guard.is_available()
+        contexts.contains(job.requested_context_key()) && job.is_available()
       })
       .map(|(index, _)| index);
 
@@ -37,7 +36,7 @@ impl Scheduler {
   }
 
   pub fn add_work(&mut self, job: Job) {
-    self.jobs.push(Arc::new(RwLock::new(job)));
+    self.jobs.push(Arc::new(job));
   }
 }
 
