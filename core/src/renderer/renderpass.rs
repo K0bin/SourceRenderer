@@ -1,21 +1,17 @@
 use std::collections::HashSet;
 
-pub enum RenderPassOperation {
-
+pub struct RenderPass {
+  inputs: Vec<String>,
+  outputs: Vec<String>,
+  //record: fn(&mut RenderContext) -> ()
 }
 
-pub struct RenderPassDescription {
-  inputs: HashSet<String>,
-  outputs: HashSet<String>,
-  operation: RenderPassOperation
-}
-
-impl RenderPassDescription {
+impl RenderPass {
   pub fn add_attachment_input(&mut self, name: &str) {
-    self.inputs.insert(name.to_string());
+   // self.inputs.insert(name.to_string());
   }
 
   pub fn add_attachment_output(&mut self, name: &str) {
-    self.inputs.insert(name.to_string());
+    //self.inputs.insert(name.to_string());
   }
 }

@@ -1,26 +1,35 @@
+use std::sync::Arc;
+
 use ash::vk;
+use ash::extensions::khr;
+use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 
-pub struct QueueFamily {
-  pub queue_family_index: u32,
-  pub queue_count: u32,
-  pub queue_priorities: Vec<f32>
+use sourcerenderer_core::graphics::Adapter;
+use sourcerenderer_core::graphics::Device;
+use sourcerenderer_core::graphics::AdapterType;
+use sourcerenderer_core::graphics::Queue;
+use crate::device::VkDevice;
+
+#[derive(Clone)]
+pub struct VkQueueInfo {
+  pub queue_family_index: usize,
+  pub queue_index: usize
 }
 
-pub struct QueueDesc {
-  pub queue_family_index: u32,
-  pub queue_index: u32
+pub struct VkQueue {
+  info: VkQueueInfo,
+  queue: vk::Queue
 }
 
-pub struct Queue {
-  queue: vk::Queue,
-  desc: QueueDesc
-}
-
-impl Queue {
-  pub fn new(queue: vk::Queue, desc: QueueDesc) -> Queue {
-    return Queue {
-      queue: queue,
-      desc: desc
+impl VkQueue {
+  pub fn new(info: VkQueueInfo, queue: vk::Queue) -> Self {
+    return VkQueue {
+      info: info,
+      queue: queue
     };
   }
+}
+
+impl Queue for VkQueue {
+
 }

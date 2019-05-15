@@ -1,12 +1,12 @@
 [package]
 name = "sourcerenderer_sdl"
 version = "0.1.0"
-authors = ["Robin <robin.kertels@outlook.com>"]
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 build = "build.rs"
 
 [dependencies]
-sdl2 = "0.32.1"
-ash = "0.28.0"
+sdl2 = "0.32.2"
+ash = "0.29.0"
 sourcerenderer_bsp = { path = "../../bsp" }
 sourcerenderer_core = { path = "../../core" }
 sourcerenderer_vulkan = { path = "../../graphics/vulkan" }

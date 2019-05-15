@@ -67,8 +67,15 @@ impl JobThread {
     }
   }
 
-  pub fn add_arg(&mut self, key: String, context: Box<JobThreadContext + Send>) -> Result<bool, String> {
-    return match self.status {
+  pub fn job_threads_count(&self) -> Result<usize, String> {
+    match self.status {
+      JobThreadStatus::PREPARING(ref contexts) => Ok(contexts.len()),
+      _ => Err("Wrong state".to_string())
+    }
+  }
+
+  pub fn add_context(&mut self, key: String, context: Box<JobThreadContext + Send>) -> Result<bool, String> {
+    match self.status {
       JobThreadStatus::PREPARING(ref mut contexts) => Ok({
           if contexts.contains_key(&key) {
             false

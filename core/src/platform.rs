@@ -1,5 +1,7 @@
-use renderer::{Renderer};
 use std::error::Error;
+use std::sync::Arc;
+
+use crate::graphics::Instance;
 
 #[derive(PartialEq)]
 pub enum PlatformEvent {
@@ -18,7 +20,7 @@ pub enum GraphicsApi {
 pub trait Platform {
   fn window(&mut self) -> &Window;
   fn handle_events(&mut self) -> PlatformEvent;
-  fn create_renderer(&self) -> Result<Box<Renderer>, Box<Error>>;
+  fn create_graphics(&self) -> Result<Arc<dyn Instance>, Box<Error>>;
 }
 
 pub trait Window {

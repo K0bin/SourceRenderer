@@ -1,10 +1,10 @@
 [package]
 name = "sourcerenderer_vulkan"
 version = "0.1.0"
-authors = ["Robin <robin.kertels@outlook.com>"]
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-ash = "0.28.0"
+ash = "0.29.0"
 sourcerenderer_core = { path = "../../core" }
-vk-mem = "0.1.6"
+vk-mem = "0.1.8"
