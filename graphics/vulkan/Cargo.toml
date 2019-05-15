@@ -1,10 +1,11 @@
 [package]
 name = "sourcerenderer_vulkan"
 version = "0.1.0"
-authors = ["Robin <robin.kertels@outlook.com>"]
-edition = "2018"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 
 [dependencies]
-ash = "0.28.0"
-sourcerenderer_core = { path = "../../core" }
-vk-mem = "0.1.6"
+ash = "0.29.0"
+sourcerenderer_base = { path = "../../base" }
+vk-mem = "0.2.0"
+spin = "0.5.2"
+bitflags = "1.2.1"

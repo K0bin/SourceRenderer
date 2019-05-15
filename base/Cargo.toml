@@ -1,0 +1,8 @@
+[package]
+name = "sourcerenderer_base"
+version = "0.1.0"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+
+[dependencies]
+vek = "0.9.11"
+bitflags = "1.2.1"

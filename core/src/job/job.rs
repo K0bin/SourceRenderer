@@ -46,8 +46,8 @@ impl Job {
   }
 
   pub fn child_done(&self) {
-    if !self.is_running.load(Ordering::SeqCst) {
-      panic!("Job is not running");
+    if !self.is_done.load(Ordering::SeqCst) {
+      panic!("Job is already done");
     }
     let children_done_before = self.children_done.fetch_add(1, Ordering::SeqCst);
     if children_done_before == self.children.load(Ordering::SeqCst) - 1 {

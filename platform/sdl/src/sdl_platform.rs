@@ -1,22 +1,32 @@
-use sourcerenderer_core::platform::Platform;
-use sourcerenderer_core::platform::Window;
-use sourcerenderer_core::platform::PlatformEvent;
-use sourcerenderer_core::platform::GraphicsApi;
-use sourcerenderer_core::renderer::Renderer;
-use sourcerenderer_vulkan::Renderer as VkRenderer;
-use sourcerenderer_vulkan::initialize_vulkan;
+use std::error::Error;
+use std::sync::Arc;
+
+use sourcerenderer_base::platform::Platform;
+use sourcerenderer_base::platform::Window;
+use sourcerenderer_base::platform::PlatformEvent;
+use sourcerenderer_base::platform::GraphicsApi;
+use sourcerenderer_base::graphics::Instance;
+use sourcerenderer_base::graphics::Surface;
+use sourcerenderer_base::graphics::Device;
+use sourcerenderer_base::graphics::Swapchain;
+use sourcerenderer_base::graphics::SwapchainInfo;
+use sourcerenderer_base::unsafe_arc_cast;
+
+use sourcerenderer_vulkan::VkInstance;
+use sourcerenderer_vulkan::VkSurface;
+use sourcerenderer_vulkan::VkSwapchain;
+use sourcerenderer_vulkan::VkDevice;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::Sdl;
 use sdl2::VideoSubsystem;
 use sdl2::EventPump;
-use sdl2::video::VkInstance;
+use sdl2::video::VkInstance as SdlVkInstance;
 
 use ash::version::InstanceV1_0;
 use ash::vk::{Handle, SurfaceKHR};
-
-use std::error::Error;
+use ash::extensions::khr::Surface as SurfaceLoader;
 
 pub struct SDLPlatform {
   sdl_context: Sdl,
@@ -64,22 +74,9 @@ impl SDLWindow {
     };
   }
 
-  fn create_renderer(&self) -> Result<Box<dyn Renderer>, Box<Error>> {
-    return match self.graphics_api {
-      GraphicsApi::Vulkan => {
-        unsafe {
-          let extensions = self.window.vulkan_instance_extensions().unwrap();
-          let (entry, instance) = initialize_vulkan(extensions, true).unwrap();
-          let surface = self.window.vulkan_create_surface(instance.handle().as_raw() as VkInstance).unwrap();
-          let renderer = VkRenderer::new(entry, instance, SurfaceKHR::from_raw(surface)).unwrap();
-          Ok(renderer)
-        }
-      }
-
-      GraphicsApi::OpenGLES => {
-        panic!("ogl");
-      }
-    }
+  #[inline]
+  pub fn vulkan_instance_extensions(&self) -> Result<Vec<&str>, String> {
+    return self.window.vulkan_instance_extensions();
   }
 }
 
@@ -101,10 +98,26 @@ impl Platform for SDLPlatform {
     return PlatformEvent::Continue;
   }
 
-  fn create_renderer(&self) -> Result<Box<dyn Renderer>, Box<Error>> {
-    return self.window.create_renderer();
+  fn create_graphics(&self, debug_layers: bool) -> Result<Arc<dyn Instance>, Box<Error>> {
+    let extensions = self.window.vulkan_instance_extensions().unwrap();
+    return Ok(Arc::new(VkInstance::new(extensions, debug_layers)));
   }
 }
 
 impl Window for SDLWindow {
+  fn create_surface(&self, graphics_instance: Arc<Instance>) -> Arc<Surface> {
+    let instance_ptr = Arc::into_raw(graphics_instance);
+    let instance_ref = unsafe { (*(instance_ptr as *const VkInstance)).get_ash_instance() };
+    let entry_ref = unsafe { (*(instance_ptr as *const VkInstance)).get_entry() };
+    unsafe { Arc::from_raw(instance_ptr); };
+    let surface = self.window.vulkan_create_surface(instance_ref.handle().as_raw() as sdl2::video::VkInstance).unwrap();
+    let surface_loader = SurfaceLoader::new(entry_ref, instance_ref);
+    return Arc::new(VkSurface::new(SurfaceKHR::from_raw(surface), surface_loader));
+  }
+
+  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<Device>, surface: Arc<Surface>) -> Arc<Swapchain> {
+    let vk_device: Arc<VkDevice> = unsafe { unsafe_arc_cast(device) };
+    let vk_surface: Arc<VkSurface> = unsafe { unsafe_arc_cast(surface) };
+    return Arc::new(VkSwapchain::new(info, vk_device, vk_surface));
+  }
 }

@@ -8,7 +8,7 @@ use ash::{Entry, Instance, Device, vk };
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::extensions::khr::Surface;
 use ash::vk::SurfaceKHR;
-use sourcerenderer_core::renderer::{Mesh, Texture};
+use sourcerenderer_core::renderer::{Mesh, Texture, Material};
 use sourcerenderer_core::renderer::Renderer as AbstractRenderer;
 use vk_mem::{Allocator, AllocatorCreateInfo, AllocatorCreateFlags};
 use crate::resource::VkMesh;
@@ -115,6 +115,10 @@ impl AbstractRenderer for Renderer {
   }
 
   fn create_mesh(&mut self, vertex_size: u64, index_size: u64) -> Box<Mesh> {
+    unimplemented!();
+  }
+
+  fn create_material(&mut self) -> Box<Material> {
     unimplemented!();
   }
 

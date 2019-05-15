@@ -1,7 +1,10 @@
 [package]
 name = "sourcerenderer_core"
 version = "0.1.0"
-authors = ["Robin <robin.kertels@outlook.com>"]
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 
 [dependencies]
-cgmath = "0.17.0"
+vek = "0.9.11"
+num_cpus = "1.11.1"
+sourcerenderer_base = { path = "../base" }
+sourcerenderer_vulkan = { path = "../graphics/vulkan" }

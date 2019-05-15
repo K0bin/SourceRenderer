@@ -13,13 +13,17 @@ pub trait Run {
 }
 
 impl Scheduler {
-  pub fn new() -> Arc<Mutex<Scheduler>> {
-    let mut scheduler = Scheduler {
-      jobs: Vec::new(),
-      threads: vec![]
-    };
+  pub fn new(thread_count: usize) -> Arc<Mutex<Scheduler>> {
+    let final_thread_count = if thread_count > 0 { thread_count } else { num_cpus::get() };
+    let mut threads: Vec<JobThread> = vec![];
+    for _ in 0..final_thread_count {
+      threads.push(JobThread::new());
+    }
 
-    scheduler.threads = vec![JobThread::new()];
+    let scheduler = Scheduler {
+      jobs: Vec::new(),
+      threads: threads
+    };
     return Arc::new(Mutex::new(scheduler));
   }
 
@@ -37,6 +41,12 @@ impl Scheduler {
 
   pub fn add_work(&mut self, job: Job) {
     self.jobs.push(Arc::new(job));
+  }
+
+  pub fn add_context(&mut self, key: String, context: Box<dyn JobThreadContext + Send>) {
+    self.threads.sort_by(|t1, t2| if t1.job_threads_count().unwrap() < t2.job_threads_count().unwrap() { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater } );
+    let thread = self.threads.first_mut().unwrap();
+    thread.add_context(key, context);
   }
 }
 

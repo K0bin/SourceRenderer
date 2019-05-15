@@ -1,0 +1,7 @@
+[package]
+name = "sourcerenderer_renderer"
+version = "0.1.0"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+
+[dependencies]
+sourcerenderer_core = { path = "../../core" }
