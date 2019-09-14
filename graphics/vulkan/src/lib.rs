@@ -9,12 +9,12 @@ pub use self::instance::VkInstance;
 pub use self::adapter::VkAdapter;
 pub use self::device::VkDevice;
 pub use self::surface::VkSurface;
+pub use self::swapchain::VkSwapchain;
 pub use self::queue::VkQueue;
 
-mod presenter;
 mod instance;
-mod vktest;
 mod adapter;
 mod device;
 mod queue;
 mod surface;
+mod swapchain;

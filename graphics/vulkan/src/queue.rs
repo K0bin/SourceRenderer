@@ -10,7 +10,7 @@ use sourcerenderer_core::graphics::AdapterType;
 use sourcerenderer_core::graphics::Queue;
 use crate::device::VkDevice;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VkQueueInfo {
   pub queue_family_index: usize,
   pub queue_index: usize
@@ -29,6 +29,8 @@ impl VkQueue {
     };
   }
 }
+
+// Vulkan queues are implicitly freed with the logical device
 
 impl Queue for VkQueue {
 

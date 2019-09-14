@@ -12,11 +12,11 @@ use crate::VkAdapter;
 
 pub struct VkInstance {
   instance: ash::Instance,
-  interface: ash::Entry
+  entry: ash::Entry
 }
 
 impl VkInstance {
-  pub fn new() -> Self {
+  pub fn new(instance_extensions: Vec<&str>, debug_layers: bool) -> Self {
     let entry: ash::Entry = ash::Entry::new().unwrap();
 
     let app_name = CString::new("CS:GO").unwrap();
@@ -25,15 +25,14 @@ impl VkInstance {
     let engine_name_ptr = engine_name.as_ptr();
 
     let mut layer_names_c: Vec<CString> = Vec::new();
-    /*if debug {
-      layer_names_c.push(CString::new("VK_LAYER_LUNARG_standard_validation").unwrap());
-    }*/
+    if debug_layers {
+      layer_names_c.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
+    }
     let layer_names_ptr: Vec<*const i8> = layer_names_c
       .iter()
       .map(|raw_name| raw_name.as_ptr())
       .collect();
 
-    let instance_extensions: Vec<&str> = Vec::new();
     let extension_names_c: Vec<CString> = instance_extensions
       .iter()
       .map(|ext| CString::new(*ext).unwrap())
@@ -66,9 +65,19 @@ impl VkInstance {
 
       return VkInstance {
         instance: instance,
-        interface: entry
+        entry: entry
       }
     };
+  }
+
+  #[inline]
+  pub fn get_instance(&self) -> &ash::Instance {
+    return &self.instance;
+  }
+
+  #[inline]
+  pub fn get_entry(&self) -> &ash::Entry {
+    return &self.entry;
   }
 }
 
@@ -85,7 +94,7 @@ impl Instance for VkInstance {
     let physical_devices: Vec<vk::PhysicalDevice> = unsafe { self.instance.enumerate_physical_devices().unwrap() };
     let adapters: Vec<Arc<dyn Adapter>> = physical_devices
       .into_iter()
-      .map(|phys_dev| Arc::new(VkAdapter::new(self.clone(), self.interface.clone(), self.instance.clone(), phys_dev)) as Arc<dyn Adapter>)
+      .map(|phys_dev| Arc::new(VkAdapter::new(self.clone(), phys_dev)) as Arc<dyn Adapter>)
       .collect();
 
     return adapters;

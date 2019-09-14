@@ -2,6 +2,7 @@ use platform::{Platform, PlatformEvent, GraphicsApi};
 use job::{Scheduler, JobThreadContext};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use graphics::SwapchainInfo;
 
 pub struct Engine {
     platform: Box<Platform>,
@@ -13,37 +14,41 @@ pub trait EngineSubsystem {
 }
 
 impl Engine {
-    pub fn new(mut platform: Box<Platform>) -> Engine {
-      return Engine {
-        platform: platform,
-        scheduler: Scheduler::new(0)
-      };
-    }
+  pub fn new(mut platform: Box<Platform>) -> Engine {
+    return Engine {
+      platform: platform,
+      scheduler: Scheduler::new(0)
+    };
+  }
 
-    pub fn run(&mut self) {
-      self.init();
-      //let renderer = self.platform.create_renderer();
-      let graphics = self.platform.create_graphics().unwrap();
-      let adapters = graphics.list_adapters();
+  pub fn run(&mut self) {
+    self.init();
+    //let renderer = self.platform.create_renderer();
+    let graphics = self.platform.create_graphics(true).unwrap();
+    let surface = self.platform.window().create_surface(graphics.clone());
 
-      println!("n devices: {}", adapters.len());
+    let mut adapters = graphics.list_adapters();
+    println!("n devices: {}", adapters.len());
 
-      for device in adapters {
-        println!("Device");
-        println!("device: {:?}", device.adapter_type());
+    let device = adapters.remove(0).create_device(surface.clone());
+    let swapchain_info = SwapchainInfo {
+      width: 1920,
+      height: 1080,
+      vsync: true
+    };
+    let swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
+
+    'main_loop: loop {
+      let event = self.platform.handle_events();
+      if event == PlatformEvent::Quit {
+          break 'main_loop;
       }
-
-      'main_loop: loop {
-        let event = self.platform.handle_events();
-        if event == PlatformEvent::Quit {
-            break 'main_loop;
-        }
-        //renderer.render();
-        std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-      }
+      //renderer.render();
+      std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
+  }
 
-    fn init(&mut self) {
+  fn init(&mut self) {
 
-    }
+  }
 }

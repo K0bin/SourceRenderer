@@ -1,21 +1,29 @@
 use sourcerenderer_core::graphics::Surface;
 
 use ash::vk::SurfaceKHR;
+use ash::extensions::khr::Surface as SurfaceKHRLoader;
 
 pub struct VkSurface {
-  surface: SurfaceKHR
+  surface: SurfaceKHR,
+  surface_loader: SurfaceKHRLoader
 }
 
 impl VkSurface {
-  pub fn new(surface: SurfaceKHR) -> Self{
+  pub fn new(surface: SurfaceKHR, surface_loader: SurfaceKHRLoader) -> Self {
     return VkSurface {
-      surface: surface
+      surface: surface,
+      surface_loader: surface_loader
     };
   }
 
   #[inline]
-  pub fn surface(&self) -> SurfaceKHR {
-    return self.surface;
+  pub fn get_surface_handle(&self) -> &SurfaceKHR {
+    return &self.surface;
+  }
+
+  #[inline]
+  pub fn get_surface_loader(&self) -> &SurfaceKHRLoader {
+    return &self.surface_loader;
   }
 }
 

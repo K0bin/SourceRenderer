@@ -23,34 +23,40 @@ const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
 
 pub struct VkAdapter {
   instance: Arc<VkInstance>,
-  vk_instance: ash::Instance,
-  vk_interface: ash::Entry,
   physical_device: vk::PhysicalDevice,
   properties: vk::PhysicalDeviceProperties
 }
 
 impl VkAdapter {
-  pub fn new(instance: Arc<VkInstance>, vk_interface: ash::Entry, vk_instance: ash::Instance, physical_device: vk::PhysicalDevice) -> Self {
-    let properties = unsafe { vk_instance.get_physical_device_properties(physical_device) };
+  pub fn new(instance: Arc<VkInstance>, physical_device: vk::PhysicalDevice) -> Self {
+    let properties = unsafe { instance.get_instance().get_physical_device_properties(physical_device) };
     return VkAdapter {
       instance: instance,
-      vk_instance: vk_instance,
-      vk_interface: vk_interface,
       physical_device: physical_device,
       properties: properties
     };
   }
+
+  pub fn get_physical_device_handle(&self) -> &vk::PhysicalDevice {
+    return &self.physical_device;
+  }
+
+  pub fn get_instance(&self) -> &VkInstance {
+    return &self.instance;
+  }
 }
+
+// Vulkan physical devices are implicitly freed with the instance
 
 impl Adapter for VkAdapter {
   fn create_device(self: Arc<Self>, surface: Arc<Surface>) -> Arc<dyn Device> {
     return unsafe {
-      let surface_ext = KhrSurface::new(&self.vk_interface, &self.vk_instance);
-      let queue_properties = self.vk_instance.get_physical_device_queue_family_properties(self.physical_device);
+      let surface_loader = KhrSurface::new(self.instance.get_entry(), self.instance.get_instance());
+      let queue_properties = self.instance.get_instance().get_physical_device_queue_family_properties(self.physical_device);
 
       let surface_trait_ptr = Arc::into_raw(surface.clone());
       let vk_surface = surface_trait_ptr as *const VkSurface;
-      let vk_surface_khr = (*vk_surface).surface();
+      let vk_surface_khr = *(*vk_surface).get_surface_handle();
       Arc::from_raw(vk_surface);
 
       let graphics_queue_family_props = queue_properties
@@ -86,7 +92,7 @@ impl Adapter for VkAdapter {
         .enumerate()
         .find(|(index, queue_props)|
           queue_props.queue_count > 0
-          && surface_ext.get_physical_device_surface_support(self.physical_device, *index as u32, vk_surface_khr)
+          && surface_loader.get_physical_device_surface_support(self.physical_device, *index as u32, vk_surface_khr)
           && *index != graphics_queue_family_props.0
           && (compute_queue_family_props.is_none() || *index != compute_queue_family_props.unwrap().0)
           && (transfer_queue_family_props.is_none() || *index != transfer_queue_family_props.unwrap().0)
@@ -118,7 +124,7 @@ impl Adapter for VkAdapter {
         }
       );
 
-      let mut compute_queue_priorities: Vec<f32> = Vec::new();
+      let mut transfer_queue_priority: f32 = f32::NAN;
       let transfer_queue_info = transfer_queue_family_props.map_or_else(||
         //queues have to support transfer operations if they support either graphics or compute
         if graphics_queue_family_props.1.queue_count > 1 {
@@ -139,19 +145,19 @@ impl Adapter for VkAdapter {
             queue_family_index: index,
             queue_index: 0
           };
-          compute_queue_priorities.push(1.0f32);
+          transfer_queue_priority = 1.0f32;
           result
         }
       );
 
-      let mut transfer_queue_priority: f32 = f32::NAN;
+      let mut present_queue_priority: f32 = f32::NAN;
       let present_queue_info = present_queue_family_props.map_or_else(||
         //queues have to support transfer operations if they support either graphics or compute, no need to check it
         if compute_queue_family_props.is_some()
-          && surface_ext.get_physical_device_surface_support(self.physical_device, compute_queue_family_props.unwrap().0 as u32, vk_surface_khr) {
+          && surface_loader.get_physical_device_surface_support(self.physical_device, compute_queue_family_props.unwrap().0 as u32, vk_surface_khr) {
           //Use compute queue
           compute_queue_info.clone()
-        } else if surface_ext.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, vk_surface_khr) {
+        } else if surface_loader.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, vk_surface_khr) {
           //Use graphics queue
           graphics_queue_info.clone()
         } else {
@@ -163,7 +169,7 @@ impl Adapter for VkAdapter {
             queue_family_index: index,
             queue_index: 0
           };
-          transfer_queue_priority = 1.0f32;
+          present_queue_priority = 1.0f32;
           result
         }
       );
@@ -194,6 +200,15 @@ impl Adapter for VkAdapter {
         });
       }
 
+      if !present_queue_priority.is_nan() {
+        queue_create_descs.push(vk::DeviceQueueCreateInfo {
+          queue_family_index: present_queue_info.queue_family_index as u32,
+          queue_count: 1,
+          p_queue_priorities: &present_queue_priority as *const f32,
+          ..Default::default()
+        });
+      }
+
         let enabled_features: vk::PhysicalDeviceFeatures = Default::default();
         let extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
         let extension_names_c: Vec<CString> = extension_names
@@ -213,7 +228,7 @@ impl Adapter for VkAdapter {
         enabled_extension_count: extension_names_c.len() as u32,
         ..Default::default()
       };
-      let device = self.vk_instance.create_device(self.physical_device, &device_create_info, None).unwrap();
+      let device = self.instance.get_instance().create_device(self.physical_device, &device_create_info, None).unwrap();
 
       let vk_graphics_queue = device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32);
       let vk_compute_queue = device.get_device_queue(compute_queue_info.queue_family_index as u32, compute_queue_info.queue_index as u32);
@@ -227,6 +242,7 @@ impl Adapter for VkAdapter {
 
 
       Arc::new(VkDevice::new(
+        self.clone(),
         device,
         Arc::new(graphics_queue),
         Arc::new(present_queue),
