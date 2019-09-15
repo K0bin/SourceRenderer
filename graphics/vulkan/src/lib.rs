@@ -11,6 +11,8 @@ pub use self::device::VkDevice;
 pub use self::surface::VkSurface;
 pub use self::swapchain::VkSwapchain;
 pub use self::queue::VkQueue;
+pub use self::command::VkCommandPool;
+pub use self::command::VkCommandBuffer;
 
 mod instance;
 mod adapter;
@@ -18,3 +20,4 @@ mod device;
 mod queue;
 mod surface;
 mod swapchain;
+mod command;

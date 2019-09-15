@@ -1,8 +1,10 @@
 use std::sync::Arc;
+use std::rc::Rc;
 
 use graphics::Surface;
+use graphics::CommandPool;
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum AdapterType {
   DISCRETE,
   INTEGRATED,
@@ -17,12 +19,18 @@ pub trait Adapter {
 }
 
 pub trait Device {
-  fn graphics_queue(&self) -> Arc<Queue>;
-  fn presentation_queue(&self) -> Arc<Queue>;
-  fn compute_queue(&self) -> Arc<Queue>;
-  fn transfer_queue(&self) -> Arc<Queue>;
+  fn create_queue(self: Arc<Self>, queue_type: QueueType) -> Option<Arc<dyn Queue>>;
+}
+
+#[derive(Clone, Debug, Copy)]
+pub enum QueueType {
+  GRAPHICS,
+  COMPUTE,
+  TRANSFER
 }
 
 pub trait Queue {
-
+  fn create_command_pool(self: Arc<Self>) -> Rc<CommandPool>;
+  fn get_queue_type(&self) -> QueueType;
+  fn supports_presentation(&self) -> bool;
 }

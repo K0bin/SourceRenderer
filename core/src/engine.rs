@@ -3,6 +3,7 @@ use job::{Scheduler, JobThreadContext};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use graphics::SwapchainInfo;
+use graphics::QueueType;
 
 pub struct Engine {
     platform: Box<Platform>,
@@ -37,6 +38,9 @@ impl Engine {
       vsync: true
     };
     let swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
+    let queue = device.create_queue(QueueType::GRAPHICS).unwrap();
+    let command_pool = queue.create_command_pool();
+    let command_buffer = command_pool.create_command_buffer();
 
     'main_loop: loop {
       let event = self.platform.handle_events();
