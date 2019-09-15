@@ -63,7 +63,7 @@ impl VkInstance {
     return unsafe {
       let instance = entry.create_instance(&instance_create_info, None).unwrap();
 
-      return VkInstance {
+      VkInstance {
         instance: instance,
         entry: entry
       }
