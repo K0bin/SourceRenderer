@@ -4,7 +4,7 @@ use std::rc::Rc;
 use graphics::Surface;
 use graphics::CommandPool;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub enum AdapterType {
   DISCRETE,
   INTEGRATED,
@@ -22,7 +22,7 @@ pub trait Device {
   fn create_queue(self: Arc<Self>, queue_type: QueueType) -> Option<Arc<dyn Queue>>;
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub enum QueueType {
   GRAPHICS,
   COMPUTE,

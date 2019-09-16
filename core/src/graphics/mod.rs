@@ -9,6 +9,7 @@ pub use self::surface::Swapchain;
 pub use self::surface::SwapchainInfo;
 pub use self::command::CommandBuffer;
 pub use self::command::CommandPool;
+pub use self::command::CommandBufferType;
 
 mod device;
 mod instance;
