@@ -5,6 +5,8 @@ use std::rc::Weak;
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::cell::Cell;
+use std::mem;
+use std::mem::ManuallyDrop;
 
 use ash::vk;
 use ash::Device;
@@ -18,7 +20,7 @@ use crate::VkDevice;
 use crate::VkQueue;
 
 struct VkCommandPoolState {
-  pub free_buffers: Vec<Rc<VkCommandBuffer>>
+  pub free_buffers: Vec<VkCommandBuffer>
 }
 
 pub struct VkCommandPool {
@@ -33,13 +35,19 @@ struct VkCommandBufferState {
 
 pub struct VkCommandBuffer {
   command_buffer: vk::CommandBuffer,
-  state: RefCell<VkCommandBufferState>
+  device: VkDevice
+}
+
+pub struct VkCommandBufferRecycler {
+  command_buffer: ManuallyDrop<VkCommandBuffer>,
+  pool: Rc<VkCommandPool>
 }
 
 impl VkCommandPool {
   pub fn new(queue: Arc<VkQueue>) -> Self {
     let create_info = vk::CommandPoolCreateInfo {
       queue_family_index: queue.get_queue_family_index(),
+      flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
       ..Default::default()
     };
     let device = queue.get_device();
@@ -55,8 +63,9 @@ impl VkCommandPool {
     };
   }
 
-  pub fn return_free_buffer(&self, cmd_buffer: Rc<VkCommandBuffer>) {
-    self.state.borrow_mut().free_buffers.push(cmd_buffer);
+  pub fn return_free_buffer(&self, cmd_buffer: VkCommandBuffer) {
+    let mut state = self.state.borrow_mut();
+    state.free_buffers.push(cmd_buffer);
   }
 
   pub fn get_pool(&self) -> &vk::CommandPool {
@@ -70,7 +79,10 @@ impl VkCommandPool {
 
 impl Drop for VkCommandPool {
   fn drop(&mut self) {
-    self.reset();
+    let mut state = self.state.borrow_mut();
+    while let Some(mut cmd_buffer) = state.free_buffers.pop() {
+      cmd_buffer.drop_vk(self);
+    }
     unsafe {
       let vk_device = self.queue.get_device().get_device();
       vk_device.destroy_command_pool(self.command_pool, None);
@@ -80,25 +92,29 @@ impl Drop for VkCommandPool {
 
 impl CommandPool for VkCommandPool {
   fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<dyn CommandBuffer> {
-    let free_cmd_buffer_option = self.state.borrow_mut().free_buffers.pop();
+    let mut state = self.state.borrow_mut();
+    let free_cmd_buffer_option = state.free_buffers.pop();
     return match free_cmd_buffer_option {
       Some(free_cmd_buffer) => {
-        free_cmd_buffer.set_pool(self);
-        free_cmd_buffer
+        Rc::from(
+          VkCommandBufferRecycler {
+            pool: self.clone(),
+            command_buffer: ManuallyDrop::new(free_cmd_buffer)
+        })
       }
-      None => Rc::new(VkCommandBuffer::new(self.clone(), command_buffer_type))
+      None => {
+        Rc::new(
+          VkCommandBufferRecycler {
+            pool: self.clone(),
+            command_buffer: ManuallyDrop::new(VkCommandBuffer::new(&self, command_buffer_type))
+        })
+      }
     };
-  }
-
-  fn reset(&mut self) {
-    let vk_device = self.queue.get_device().get_device();
-    let flags: vk::CommandPoolResetFlags = Default::default();
-    unsafe { vk_device.reset_command_pool(self.command_pool, flags); }
   }
 }
 
 impl VkCommandBuffer {
-  pub fn new(pool: Rc<VkCommandPool>, command_buffer_type: CommandBufferType) -> Self {
+  pub fn new(pool: &VkCommandPool, command_buffer_type: CommandBufferType) -> Self {
     let vk_device = pool.get_queue().get_device().get_device();
     let command_pool = pool.get_pool();
     let buffers_create_info = vk::CommandBufferAllocateInfo {
@@ -111,32 +127,34 @@ impl VkCommandBuffer {
     let buffer = buffers.remove(0);
     return VkCommandBuffer {
       command_buffer: buffer,
-      state: RefCell::new(VkCommandBufferState {
-        pool: Some(pool)
-      })
+      device: pool.get_queue().get_device().clone()
     };
   }
 
-  pub fn set_pool(&self, pool: Rc<VkCommandPool>) {
-    self.state.borrow_mut().pool = Some(pool);
+  fn reset(&self) {
   }
-}
 
-impl Drop for VkCommandBuffer {
-  fn drop(&mut self) {
+  fn drop_vk(&mut self, pool: &VkCommandPool) {
     unsafe {
-      let pool = self.state.borrow_mut().pool.clone().expect("Orphaned command buffer");
-      let device = pool.get_queue().get_device().get_device();
+      let device = pool
+        .get_queue()
+        .get_device()
+        .get_device();
       device.free_command_buffers(*pool.get_pool(), &[ self.command_buffer ] );
     }
   }
 }
 
 impl CommandBuffer for VkCommandBuffer {
-  fn return_to_pool(self: Rc<Self>) {
-    // clear pool reference inside the command buffer to avoid ref circle
-    let pool = self.state.borrow_mut().pool.take().expect("Orphaned command buffer");
-    // return it to the pool's free list
-    pool.return_free_buffer(self.clone());
+}
+
+impl CommandBuffer for VkCommandBufferRecycler {
+}
+
+impl Drop for VkCommandBufferRecycler {
+  fn drop(&mut self) {
+    let cmd_buffer_drop = mem::replace(&mut self.command_buffer, unsafe { mem::uninitialized() });
+    let cmd_buffer = ManuallyDrop::into_inner(cmd_buffer_drop);
+    self.pool.return_free_buffer(cmd_buffer);
   }
 }

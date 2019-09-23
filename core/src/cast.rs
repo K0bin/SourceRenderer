@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::rc::Rc;
 
 pub unsafe fn unsafe_arc_cast<A, B>(item: Arc<A>) -> Arc<B>
   where A: ?Sized {
@@ -26,4 +27,12 @@ pub unsafe fn unsafe_mut_cast<A, B>(item: &mut A) -> &mut B
   let ptr: *mut A = item;
   let new_ptr = ptr as *mut B;
   return new_ptr.as_mut().unwrap();
+}
+
+pub fn rc_to_box<A>(mut rc: Rc<A>) -> Option<Box<A>> 
+  where A: ?Sized {
+  return Rc::get_mut(&mut rc)
+    .map(|rc_ref|
+      unsafe { Box::from_raw(rc_ref as *mut A) }
+    );
 }
