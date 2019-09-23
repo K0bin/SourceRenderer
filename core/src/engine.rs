@@ -5,6 +5,8 @@ use std::time::Duration;
 use graphics::SwapchainInfo;
 use graphics::QueueType;
 use graphics::CommandBufferType;
+use graphics::CommandBuffer;
+use std::rc::Rc;
 
 pub struct Engine {
     platform: Box<Platform>,
@@ -39,9 +41,12 @@ impl Engine {
       vsync: true
     };
     let swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
-    let queue = device.create_queue(QueueType::GRAPHICS).unwrap();
+    let queue = device.create_queue(QueueType::Graphics).unwrap();
+    let mut tracker: Vec<Rc<dyn CommandBuffer>> = Vec::new();
+    {
     let command_pool = queue.create_command_pool();
-    let command_buffer = command_pool.create_command_buffer(CommandBufferType::PRIMARY);
+    let command_buffer = command_pool.clone().create_command_buffer(CommandBufferType::PRIMARY);
+    }
 
     'main_loop: loop {
       let event = self.platform.handle_events();
@@ -51,6 +56,7 @@ impl Engine {
       //renderer.render();
       std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
+    tracker.pop();
   }
 
   fn init(&mut self) {

@@ -23,7 +23,7 @@ pub struct VkSwapchain {
 
 impl VkSwapchain {
   pub fn new(info: SwapchainInfo, device: Arc<VkDevice>, surface: Arc<VkSurface>) -> Self {
-    let vk_device = device.get_device();
+    let vk_device = device.get_ash_device();
     let adapter = device.get_adapter();
     let instance = adapter.get_instance();
 
@@ -134,7 +134,7 @@ impl VkSwapchain {
 
 impl Drop for VkSwapchain {
   fn drop(&mut self) {
-    let vk_device = self.device.get_device();
+    let vk_device = self.device.get_ash_device();
     unsafe {
       for image_view in &self.image_views {
           vk_device.destroy_image_view(*image_view, None);

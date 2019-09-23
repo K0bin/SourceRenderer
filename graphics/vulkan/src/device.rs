@@ -36,7 +36,7 @@ impl VkDevice {
     };
   }
 
-  pub fn get_device(&self) -> &ash::Device {
+  pub fn get_ash_device(&self) -> &ash::Device {
     return &self.device;
   }
 

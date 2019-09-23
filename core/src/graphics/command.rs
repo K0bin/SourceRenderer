@@ -8,9 +8,8 @@ pub enum CommandBufferType {
 
 pub trait CommandPool {
   fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<CommandBuffer>;
-  fn reset(&mut self);
+  fn reset(&self);
 }
 
 pub trait CommandBuffer {
-  fn return_to_pool(self: Rc<Self>);
 }
