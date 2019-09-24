@@ -11,7 +11,10 @@ pub struct VkBuffer {
   buffer: vk::Buffer,
   allocation: vk_mem::Allocation,
   allocation_info: vk_mem::AllocationInfo,
-  device: Arc<VkDevice>
+  device: Arc<VkDevice>,
+  map_ptr: Option<*mut u8>,
+  is_coherent: bool,
+  memory_usage: MemoryUsage
 }
 
 impl VkBuffer {
@@ -21,18 +24,35 @@ impl VkBuffer {
       usage: buffer_usage_to_vk(usage),
       ..Default::default()
     };
-
     let allocation_info = vk_mem::AllocationCreateInfo {
       usage: memory_usage_to_vma(memory_usage),
       ..Default::default()
 
     };
     let (buffer, allocation, allocation_info) = allocator.create_buffer(&buffer_info, &allocation_info).expect("Failed to create buffer.");
+
+    let map_ptr: Option<*mut u8> = if memory_usage != MemoryUsage::GpuOnly {
+      Some(allocator.map_memory(&allocation).unwrap())
+    } else {
+      None
+    };
+
+    let is_coherent = if memory_usage != MemoryUsage::GpuOnly {
+      let memory_type = allocation_info.get_memory_type();
+      let memory_properties = allocator.get_memory_type_properties(memory_type).unwrap();
+      memory_properties.intersects(vk::MemoryPropertyFlags::HOST_COHERENT)
+    } else {
+      false
+    };
+
     return VkBuffer {
       buffer: buffer,
       allocation: allocation,
       allocation_info: allocation_info,
-      device: device
+      device: device,
+      map_ptr: map_ptr,
+      is_coherent: is_coherent,
+      memory_usage: memory_usage
     };
   }
 }
@@ -40,12 +60,26 @@ impl VkBuffer {
 impl Drop for VkBuffer {
   fn drop(&mut self) {
     let mut allocator = self.device.get_allocator().lock().unwrap();
+    allocator.unmap_memory(&self.allocation).unwrap();
     allocator.destroy_buffer(self.buffer, &self.allocation).unwrap();
   }
 }
 
 impl Buffer for VkBuffer {
+  fn map(&self) -> Option<*mut u8> {
+    if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
+      let mut allocator = self.device.get_allocator().lock().unwrap();
+      allocator.invalidate_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
+    }
+    return self.map_ptr;
+  }
 
+  fn unmap(&self) {
+    if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
+      let mut allocator = self.device.get_allocator().lock().unwrap();
+      allocator.flush_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
+    }
+  }
 }
 
 pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {

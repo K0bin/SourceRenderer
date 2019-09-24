@@ -15,5 +15,6 @@ bitflags! {
 }
 
 pub trait Buffer {
-
+  fn map(&self) -> Option<*mut u8>;
+  fn unmap(&self);
 }

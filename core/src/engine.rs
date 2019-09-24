@@ -50,7 +50,12 @@ impl Engine {
     let command_buffer = command_pool.clone().create_command_buffer(CommandBufferType::PRIMARY);
     }
 
-    let buffer = device.create_buffer(8096, MemoryUsage::CpuToGpu, BufferUsage::VERTEX);
+    let buffer = device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
+    let ptr = buffer.map().expect("failed to map buffer");
+    unsafe {
+      *ptr = 5;
+    }
+    buffer.unmap();
 
     'main_loop: loop {
       let event = self.platform.handle_events();
