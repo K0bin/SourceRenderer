@@ -3,6 +3,8 @@ use std::ffi::{CStr, CString};
 use std::cmp::Ordering;
 use std::sync::Arc;
 use std::f32;
+use std::slice;
+use std::os::raw::c_char;
 
 use ash::vk;
 use ash::extensions::khr;
@@ -21,20 +23,51 @@ use crate::queue::VkQueueInfo;
 use ash::extensions::khr::Surface as KhrSurface;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
+const GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME: &str = "VK_KHR_get_memory_requirements2";
+const DEDICATED_ALLOCATION_EXT_NAME: &str = "VK_KHR_dedicated_allocation";
+
+
+bitflags! {
+  pub struct VkAdapterExtensionSupport: u32 {
+    const NONE = 0;
+    const SWAPCHAIN = 0b_1;
+    const DEDICATED_ALLOCATION = 0b_10;
+    const GET_MEMORY_PROPERTIES2 = 0b_100;
+  }
+}
 
 pub struct VkAdapter {
   instance: Arc<VkInstance>,
   physical_device: vk::PhysicalDevice,
-  properties: vk::PhysicalDeviceProperties
+  properties: vk::PhysicalDeviceProperties,
+  extensions: VkAdapterExtensionSupport
 }
 
 impl VkAdapter {
   pub fn new(instance: Arc<VkInstance>, physical_device: vk::PhysicalDevice) -> Self {
-    let properties = unsafe { instance.get_instance().get_physical_device_properties(physical_device) };
+    let properties = unsafe { instance.get_ash_instance().get_physical_device_properties(physical_device) };
+
+    let mut extensions = VkAdapterExtensionSupport::NONE;
+
+    let supported_extensions = unsafe { instance.get_ash_instance().enumerate_device_extension_properties(physical_device) }.unwrap();
+    for ref prop in supported_extensions {
+      let name_ptr = &prop.extension_name as *const i8;
+      let c_char_ptr = name_ptr as *const c_char;
+      let name_res = unsafe { CStr::from_ptr(c_char_ptr) }.to_str();
+      let name = name_res.unwrap();
+      extensions |= match name {
+        SWAPCHAIN_EXT_NAME => { VkAdapterExtensionSupport::SWAPCHAIN },
+        DEDICATED_ALLOCATION_EXT_NAME => { VkAdapterExtensionSupport::DEDICATED_ALLOCATION },
+        GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME => { VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2 },
+        _ => VkAdapterExtensionSupport::NONE
+      };
+    }
+
     return VkAdapter {
       instance: instance,
       physical_device: physical_device,
-      properties: properties
+      properties: properties,
+      extensions: extensions
     };
   }
 
@@ -52,8 +85,8 @@ impl VkAdapter {
 impl Adapter for VkAdapter {
   fn create_device(self: Arc<Self>, surface: Arc<Surface>) -> Arc<dyn Device> {
     return unsafe {
-      let surface_loader = KhrSurface::new(self.instance.get_entry(), self.instance.get_instance());
-      let queue_properties = self.instance.get_instance().get_physical_device_queue_family_properties(self.physical_device);
+      let surface_loader = KhrSurface::new(self.instance.get_entry(), self.instance.get_ash_instance());
+      let queue_properties = self.instance.get_ash_instance().get_physical_device_queue_family_properties(self.physical_device);
 
       let surface_trait_ptr = Arc::into_raw(surface.clone());
       let vk_surface = surface_trait_ptr as *const VkSurface;
@@ -88,36 +121,32 @@ impl Adapter for VkAdapter {
           && queue_props.queue_flags & vk::QueueFlags::GRAPHICS != vk::QueueFlags::GRAPHICS
         );
 
-      let mut graphics_queue_priorities: Vec<f32> = Vec::new();
       let graphics_queue_info = VkQueueInfo {
         queue_family_index: graphics_queue_family_props.0,
         queue_index: 0,
-        queue_type: QueueType::GRAPHICS,
+        queue_type: QueueType::Graphics,
         supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, vk_surface_khr)
       };
-      graphics_queue_priorities.push(1.0f32);
 
-      let mut compute_queue_priority = 1.0f32;
       let compute_queue_info = compute_queue_family_props.map(
         |(index, _)| {
           //There is a separate queue family specifically for compute
           VkQueueInfo {
             queue_family_index: index,
             queue_index: 0,
-            queue_type: QueueType::COMPUTE,
+            queue_type: QueueType::Compute,
             supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, vk_surface_khr)
           }
         }
       );
 
-      let mut transfer_queue_priority: f32 = 1.0f32;
       let transfer_queue_info = transfer_queue_family_props.map(
         |(index, _)| {
           //There is a separate queue family specifically for transfers
           VkQueueInfo {
             queue_family_index: index,
             queue_index: 0,
-            queue_type: QueueType::TRANSFER,
+            queue_type: QueueType::Transfer,
             supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, vk_surface_khr)
           }
         }
@@ -126,8 +155,8 @@ impl Adapter for VkAdapter {
       let mut queue_create_descs: Vec<vk::DeviceQueueCreateInfo> = Vec::new();
       queue_create_descs.push(vk::DeviceQueueCreateInfo {
         queue_family_index: graphics_queue_info.queue_family_index as u32,
-        queue_count: graphics_queue_priorities.len() as u32,
-        p_queue_priorities: graphics_queue_priorities.as_ptr(),
+        queue_count: 1,
+        p_queue_priorities: &1.0f32 as *const f32,
         ..Default::default()
       });
 
@@ -135,7 +164,7 @@ impl Adapter for VkAdapter {
         queue_create_descs.push(vk::DeviceQueueCreateInfo {
           queue_family_index: compute_queue_info.unwrap().queue_family_index as u32,
           queue_count: 1,
-          p_queue_priorities: &compute_queue_priority as *const f32,
+          p_queue_priorities: &1.0f32 as *const f32,
           ..Default::default()
         });
       }
@@ -144,13 +173,22 @@ impl Adapter for VkAdapter {
         queue_create_descs.push(vk::DeviceQueueCreateInfo {
           queue_family_index: transfer_queue_info.unwrap().queue_family_index as u32,
           queue_count: 1,
-          p_queue_priorities: &transfer_queue_priority as *const f32,
+          p_queue_priorities: &1.0f32 as *const f32,
           ..Default::default()
         });
       }
 
       let enabled_features: vk::PhysicalDeviceFeatures = Default::default();
-      let extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
+      let mut extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
+
+      if self.extensions.intersects(VkAdapterExtensionSupport::DEDICATED_ALLOCATION) {
+        extension_names.push(DEDICATED_ALLOCATION_EXT_NAME);
+      }
+
+      if self.extensions.intersects(VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2) {
+        extension_names.push(GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME);
+      }
+
       let extension_names_c: Vec<CString> = extension_names
         .iter()
         .map(|ext| CString::new(*ext).unwrap())
@@ -168,7 +206,7 @@ impl Adapter for VkAdapter {
         enabled_extension_count: extension_names_c.len() as u32,
         ..Default::default()
       };
-      let vk_device = self.instance.get_instance().create_device(self.physical_device, &device_create_info, None).unwrap();
+      let vk_device = self.instance.get_ash_instance().create_device(self.physical_device, &device_create_info, None).unwrap();
 
       /*let vk_graphics_queue = vk_device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32);
       let vk_compute_queue = vk_device.get_device_queue(compute_queue_info.queue_family_index as u32, compute_queue_info.queue_index as u32);
@@ -183,17 +221,18 @@ impl Adapter for VkAdapter {
         vk_device,
         graphics_queue_info,
         compute_queue_info,
-        transfer_queue_info))
+        transfer_queue_info,
+        self.extensions))
     };
   }
 
   fn adapter_type(&self) -> AdapterType {
     match self.properties.device_type {
-      vk::PhysicalDeviceType::DISCRETE_GPU => AdapterType::DISCRETE,
-      vk::PhysicalDeviceType::INTEGRATED_GPU => AdapterType::INTEGRATED,
-      vk::PhysicalDeviceType::VIRTUAL_GPU => AdapterType::VIRTUAL,
-      vk::PhysicalDeviceType::CPU => AdapterType::SOFTWARE,
-      _ => AdapterType::OTHER
+      vk::PhysicalDeviceType::DISCRETE_GPU => AdapterType::Discrete,
+      vk::PhysicalDeviceType::INTEGRATED_GPU => AdapterType::Integrated,
+      vk::PhysicalDeviceType::VIRTUAL_GPU => AdapterType::Virtual,
+      vk::PhysicalDeviceType::CPU => AdapterType::Software,
+      _ => AdapterType::Other
     }
   }
 

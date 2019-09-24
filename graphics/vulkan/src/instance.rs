@@ -71,7 +71,7 @@ impl VkInstance {
   }
 
   #[inline]
-  pub fn get_instance(&self) -> &ash::Instance {
+  pub fn get_ash_instance(&self) -> &ash::Instance {
     return &self.instance;
   }
 

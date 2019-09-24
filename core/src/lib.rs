@@ -1,5 +1,7 @@
 extern crate cgmath;
 extern crate num_cpus;
+#[macro_use]
+extern crate bitflags;
 
 pub use self::engine::Engine;
 pub use cgmath::{Vector3, Vector4, Matrix4};

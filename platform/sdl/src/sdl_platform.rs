@@ -107,7 +107,7 @@ impl Platform for SDLPlatform {
 impl Window for SDLWindow {
   fn create_surface(&self, graphics_instance: Arc<Instance>) -> Arc<Surface> {
     let instance_ptr = Arc::into_raw(graphics_instance);
-    let instance_ref = unsafe { (*(instance_ptr as *const VkInstance)).get_instance() };
+    let instance_ref = unsafe { (*(instance_ptr as *const VkInstance)).get_ash_instance() };
     let entry_ref = unsafe { (*(instance_ptr as *const VkInstance)).get_entry() };
     unsafe { Arc::from_raw(instance_ptr); };
     let surface = self.window.vulkan_create_surface(instance_ref.handle().as_raw() as sdl2::video::VkInstance).unwrap();

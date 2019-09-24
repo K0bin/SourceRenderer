@@ -33,7 +33,7 @@ impl VkSwapchain {
       let physical_device = *adapter.get_physical_device_handle();
       let present_modes = surface_loader.get_physical_device_surface_present_modes(physical_device, surface_handle).unwrap();
       let present_mode = VkSwapchain::pick_present_mode(present_modes);
-      let swapchain_loader = SwapchainLoader::new(instance.get_instance(), vk_device);
+      let swapchain_loader = SwapchainLoader::new(instance.get_ash_instance(), vk_device);
 
       let formats = surface_loader.get_physical_device_surface_formats(physical_device, surface_handle).unwrap();
       let format = VkSwapchain::pick_format(formats);

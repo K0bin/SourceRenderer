@@ -127,7 +127,6 @@ impl VkCommandBuffer {
   }
 
   fn drop_vk(&mut self, pool: &VkCommandPool) {
-    println!("print command buffer");
     unsafe {
       let device = pool
         .get_queue()
