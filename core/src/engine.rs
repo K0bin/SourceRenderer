@@ -1,3 +1,4 @@
+use cgmath::Vector3;
 use platform::{Platform, PlatformEvent, GraphicsApi};
 use job::{Scheduler, JobThreadContext};
 use std::sync::{Arc, Mutex};
@@ -17,6 +18,10 @@ pub struct Engine {
 
 pub trait EngineSubsystem {
   fn init_contexts() -> Vec<Box<dyn JobThreadContext>>;
+}
+
+struct Vertex {
+  pub position: Vector3<f32>
 }
 
 impl Engine {
@@ -51,9 +56,32 @@ impl Engine {
     }
 
     let buffer = device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
+    let triangle = [
+      Vertex {
+        position: Vector3 {
+          x: 0.0f32,
+          y: 0.0f32,
+          z: 0.0f32,
+        }
+      },
+      Vertex {
+        position: Vector3 {
+          x: 1.0f32,
+          y: 0.0f32,
+          z: 0.0f32,
+        }
+      },
+      Vertex {
+        position: Vector3 {
+          x: 0.0f32,
+          y: 1.0f32,
+          z: 0.0f32,
+        }
+      }
+    ];
     let ptr = buffer.map().expect("failed to map buffer");
     unsafe {
-      *ptr = 5;
+      std::ptr::copy(triangle.as_ptr(), ptr as *mut Vertex, 3);
     }
     buffer.unmap();
 
