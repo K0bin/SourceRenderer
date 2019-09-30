@@ -13,9 +13,13 @@ pub use self::command::CommandBufferType;
 pub use self::buffer::Buffer;
 pub use self::buffer::BufferUsage;
 pub use self::device::MemoryUsage;
+pub use self::format::Format;
+pub use self::pipeline::*;
 
 mod device;
 mod instance;
 mod surface;
 mod command;
 mod buffer;
+mod format;
+mod pipeline;

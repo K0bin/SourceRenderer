@@ -1,0 +1,350 @@
+use std::sync::Arc;
+
+use graphics::Format;
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum InputRate {
+  PerVertex,
+  PerInstance
+}
+
+pub struct ShaderVertexInput {
+  pub location_vk_mtl: u32,
+  pub semantic_name_d3d: String,
+  pub semantic_index_d3d: u32
+}
+
+pub struct InputElement {
+  pub input_assembler_binding: u32,
+  pub shader_binding: ShaderVertexInput,
+  pub offset: usize,
+  pub stride: usize,
+  pub format: Format,
+  pub input_rate: InputRate
+}
+
+impl Default for InputElement {
+  fn default() -> InputElement {
+    return InputElement {
+      input_assembler_binding: 0,
+      shader_binding: ShaderVertexInput {
+        location_vk_mtl: 0,
+        semantic_name_d3d: String::new(),
+        semantic_index_d3d: 0
+      },
+      offset: 0,
+      stride: 0,
+      format: Format::Unknown,
+      input_rate: InputRate::PerVertex
+    };
+  }
+}
+
+pub struct VertexLayoutInfo {
+  pub elements: Vec<InputElement>
+}
+
+// ignore input assembler for now and always use triangle lists
+
+pub enum FillMode {
+  Fill,
+  Line
+}
+
+pub enum CullMode {
+  None,
+  Front,
+  Back
+}
+
+pub enum FrontFace {
+  CounterClockwise,
+  Clockwise
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum SampleCount {
+  Samples1,
+  Samples2,
+  Samples4,
+  Samples8
+}
+
+pub struct RasterizerInfo {
+  pub fill_mode: FillMode,
+  pub cull_mode: CullMode,
+  pub front_face: FrontFace,
+  pub sample_count: SampleCount
+}
+
+impl Default for RasterizerInfo {
+  fn default() -> Self {
+    return RasterizerInfo {
+      fill_mode: FillMode::Fill,
+      cull_mode: CullMode::Back,
+      front_face: FrontFace::Clockwise,
+      sample_count: SampleCount::Samples1
+    };
+  }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum CompareFunc {
+  Never,
+  Less,
+  LessEqual,
+  Equal,
+  NotEqual,
+  GreaterEqual,
+  Greater,
+  Always
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum StencilOp {
+  Keep,
+  Zero,
+  Replace,
+  IncreaseClamp,
+  DecreaseClamp,
+  Invert,
+  Increase,
+  Decrease
+}
+
+pub struct StencilInfo {
+  pub fail_op: StencilOp,
+  pub depth_fail_op: StencilOp,
+  pub pass_op: StencilOp,
+  pub func: CompareFunc
+}
+
+impl Default for StencilInfo {
+  fn default() -> Self {
+    return StencilInfo {
+        fail_op: StencilOp::Keep,
+        depth_fail_op: StencilOp::Keep,
+        pass_op: StencilOp::Keep,
+        func: CompareFunc::Always
+    };
+  }
+}
+
+pub struct DepthStencilInfo {
+  pub depth_test_enabled: bool,
+  pub depth_write_enabled: bool,
+  pub depth_func: CompareFunc,
+  pub stencil_enable: bool,
+  pub stencil_read_mask: u8,
+  pub stencil_write_mask: u8,
+  pub stencil_front: StencilInfo,
+  pub stencil_back: StencilInfo
+}
+
+impl Default for DepthStencilInfo {
+  fn default() -> Self {
+    return DepthStencilInfo {
+      depth_test_enabled: true,
+      depth_write_enabled: true,
+      depth_func: CompareFunc::Less,
+      stencil_enable: false,
+      stencil_read_mask: 0,
+      stencil_write_mask: 0,
+      stencil_front: StencilInfo::default(),
+      stencil_back: StencilInfo::default()
+    };
+  }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum LogicOp {
+  Clear,
+  Set,
+  Copy,
+  CopyInverted,
+  Noop,
+  Invert,
+  And,
+  Nand,
+  Or,
+  Nor,
+  Xor,
+  Equivalent,
+  AndReversed,
+  AndInverted,
+  OrReverse,
+  OrInverted
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum BlendFactor {
+  Zero,
+  One,
+  SrcColor,
+  OneMinusSrcColor,
+  DstColor,
+  OneMinusDstColor,
+  DstAlpha,
+  OneMinusDstAlpha,
+  ConstantColor,
+  OneMinusConstantColor,
+  SrcAlphaSaturate,
+  Src1Color,
+  OneMinusSrc1Color,
+  Src1Alpha,
+  OneMinusSrc1Alpha
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum BlendOp {
+  Add,
+  Subtract,
+  ReverseSubtract,
+  Min,
+  Max
+}
+
+pub struct BlendInfo {
+  pub alpha_to_coverage_enabled: bool,
+  pub logic_op_enabled: bool,
+  pub logic_op: LogicOp,
+  pub attachments: Vec<AttachmentBlendInfo>,
+  pub constants: [f32; 4]
+}
+
+impl Default for BlendInfo {
+  fn default() -> Self {
+    return BlendInfo {
+      alpha_to_coverage_enabled: false,
+      logic_op_enabled: false,
+      logic_op: LogicOp::And,
+      attachments: Vec::new(),
+      constants: [0f32, 0f32, 0f32, 0f32]
+    };
+  }
+}
+
+bitflags! {
+  pub struct ColorComponents : u8 {
+    const RED   = 0b0001;
+    const GREEN = 0b0010;
+    const BLUE  = 0b0100;
+    const ALPHA = 0b1000;
+  }
+}
+
+pub struct AttachmentBlendInfo {
+  pub blend_enabled: bool,
+  pub src_color_blend_factor: BlendFactor,
+  pub dst_color_blend_factor: BlendFactor,
+  pub color_blend_op: BlendOp,
+  pub src_alpha_blend_factor: BlendFactor,
+  pub dst_alpha_blend_factor: BlendFactor,
+  pub alpha_blend_op: BlendOp,
+  pub write_mask: ColorComponents
+}
+
+impl Default for AttachmentBlendInfo {
+  fn default() -> Self {
+    return AttachmentBlendInfo {
+      blend_enabled: false,
+      src_color_blend_factor: BlendFactor::ConstantColor,
+      dst_color_blend_factor: BlendFactor::ConstantColor,
+      color_blend_op: BlendOp::Add,
+      src_alpha_blend_factor: BlendFactor::ConstantColor,
+      dst_alpha_blend_factor: BlendFactor::ConstantColor,
+      alpha_blend_op: BlendOp::Add,
+      write_mask: ColorComponents::RED | ColorComponents::GREEN | ColorComponents::BLUE | ColorComponents::ALPHA
+    };
+  }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum ShaderType {
+  VertexShader = 0,
+  FragmentShader,
+  GeometryShader,
+  TessellationControlShader,
+  TessellationEvaluationShader,
+  ComputeShader,
+  // TODO add RT shader types
+  // TODO add mesh shaders (?)
+}
+
+pub trait Shader {
+  fn get_shader_type(&self) -> ShaderType;
+}
+
+pub struct PipelineInfo {
+  pub vs: Arc<dyn Shader>,
+  pub fs: Option<Arc<dyn Shader>>,
+  pub gs: Option<Arc<dyn Shader>>,
+  pub tcs: Option<Arc<dyn Shader>>,
+  pub tes: Option<Arc<dyn Shader>>,
+  pub vertex_layout: VertexLayoutInfo,
+  pub rasterizer: RasterizerInfo,
+  pub depth_stencil: DepthStencilInfo,
+  pub blend: BlendInfo,
+  pub renderpass: RenderPassInfo,
+  pub subpass: u32
+  // TODO: pipeline layout
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum LoadOp {
+  Load,
+  Clear,
+  DontCare
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum StoreOp {
+  Store,
+  DontCare
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum ImageLayout {
+  Undefined,
+  Common,
+  RenderTarget,
+  DepthWrite,
+  DepthRead,
+  ShaderResource,
+  CopySrcOptimal,
+  CopyDstOptimal,
+  Present
+}
+
+pub struct Attachment {
+  pub format: Format,
+  pub samples: SampleCount,
+  pub load_op: LoadOp,
+  pub store_op: StoreOp,
+  pub stencil_load_op: LoadOp,
+  pub stencil_store_op: StoreOp,
+  pub initial_layout: ImageLayout,
+  pub final_layout: ImageLayout
+}
+
+pub struct RenderPassInfo {
+  pub attachments: Vec<Attachment>,
+  pub subpasses: Vec<Subpass>
+}
+
+pub struct Subpass {
+  pub input_attachments: Vec<AttachmentRef>,
+  pub output_color_attachments: Vec<AttachmentRef>,
+  pub output_resolve_attachments: Vec<AttachmentRef>,
+  pub depth_stencil_attachment: Option<AttachmentRef>,
+  pub preserve_unused_attachments: Vec<u32>
+}
+
+pub struct AttachmentRef {
+  pub layout: ImageLayout,
+  pub index: u32
+}
+
+pub trait Pipeline {
+
+}

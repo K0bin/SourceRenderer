@@ -102,7 +102,7 @@ impl CommandPool for VkCommandPool {
       state.free_buffers.push(buffer);
     }
     unsafe {
-      self.queue.get_device().get_ash_device().reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::empty());
+      self.queue.get_device().get_ash_device().reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::empty()).unwrap();
     }
   }
 }

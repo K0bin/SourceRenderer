@@ -26,3 +26,5 @@ mod surface;
 mod swapchain;
 mod command;
 mod buffer;
+mod pipeline;
+mod format;

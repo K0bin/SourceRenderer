@@ -3,16 +3,19 @@ use platform::{Platform, PlatformEvent, GraphicsApi};
 use job::{Scheduler, JobThreadContext};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::fs::File;
+use std::io::*;
 use graphics::SwapchainInfo;
 use graphics::QueueType;
 use graphics::CommandBufferType;
 use graphics::CommandBuffer;
 use graphics::MemoryUsage;
 use graphics::BufferUsage;
+use graphics::*;
 use std::rc::Rc;
 
 pub struct Engine {
-    platform: Box<Platform>,
+    platform: Box<dyn Platform>,
     scheduler: Arc<Mutex<Scheduler>>
 }
 
@@ -21,11 +24,12 @@ pub trait EngineSubsystem {
 }
 
 struct Vertex {
-  pub position: Vector3<f32>
+  pub position: Vector3<f32>,
+  pub color: Vector3<f32>
 }
 
 impl Engine {
-  pub fn new(mut platform: Box<Platform>) -> Engine {
+  pub fn new(platform: Box<dyn Platform>) -> Engine {
     return Engine {
       platform: platform,
       scheduler: Scheduler::new(0)
@@ -55,11 +59,16 @@ impl Engine {
     let command_buffer = command_pool.clone().create_command_buffer(CommandBufferType::PRIMARY);
     }
 
-    let buffer = device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
+    let buffer = device.clone().create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
     let triangle = [
       Vertex {
         position: Vector3 {
           x: 0.0f32,
+          y: 0.0f32,
+          z: 0.0f32,
+        },
+        color: Vector3 {
+          x: 1.0f32,
           y: 0.0f32,
           z: 0.0f32,
         }
@@ -69,6 +78,11 @@ impl Engine {
           x: 1.0f32,
           y: 0.0f32,
           z: 0.0f32,
+        },
+        color: Vector3 {
+          x: 0.0f32,
+          y: 1.0f32,
+          z: 1.0f32,
         }
       },
       Vertex {
@@ -76,6 +90,11 @@ impl Engine {
           x: 0.0f32,
           y: 1.0f32,
           z: 0.0f32,
+        },
+        color: Vector3 {
+          x: 1.0f32,
+          y: 0.0f32,
+          z: 1.0f32,
         }
       }
     ];
@@ -84,6 +103,111 @@ impl Engine {
       std::ptr::copy(triangle.as_ptr(), ptr as *mut Vertex, 3);
     }
     buffer.unmap();
+
+    let vertex_shader = {
+      let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.clone().create_shader(ShaderType::VertexShader, &bytes)
+    };
+
+    let fragment_shader = {
+      let mut file = File::open("..\\..\\core\\shaders\\simple.frag.spv").unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.clone().create_shader(ShaderType::FragmentShader, &bytes)
+    };
+
+    let pipeline_info = PipelineInfo {
+      vs: vertex_shader,
+      fs: Some(fragment_shader),
+      gs: None,
+      tcs: None,
+      tes: None,
+      vertex_layout: VertexLayoutInfo {
+        elements: vec![
+          InputElement {
+            input_assembler_binding: 0,
+            shader_binding: ShaderVertexInput {
+              location_vk_mtl: 0,
+              semantic_name_d3d: String::from(""),
+              semantic_index_d3d: 0
+            },
+            offset: 0,
+            stride: 24,
+            input_rate: InputRate::PerVertex,
+            format: Format::RGB32Float
+          },
+          InputElement {
+            input_assembler_binding: 0,
+            shader_binding: ShaderVertexInput {
+              location_vk_mtl: 0,
+              semantic_name_d3d: String::from(""),
+              semantic_index_d3d: 0
+            },
+            offset: 16,
+            stride: 24,
+            input_rate: InputRate::PerVertex,
+            format: Format::RGB32Float
+          }
+        ]
+      },
+      rasterizer: RasterizerInfo {
+        fill_mode: FillMode::Fill,
+        cull_mode: CullMode::None,
+        front_face: FrontFace::CounterClockwise,
+        sample_count: SampleCount::Samples1
+      },
+      depth_stencil: DepthStencilInfo {
+        depth_test_enabled: false,
+        depth_write_enabled: false,
+        depth_func: CompareFunc::Less,
+        stencil_enable: false,
+        stencil_read_mask: 0u8,
+        stencil_write_mask: 0u8,
+        stencil_front: StencilInfo::default(),
+        stencil_back: StencilInfo::default()
+      },
+      blend: BlendInfo {
+        alpha_to_coverage_enabled: false,
+        logic_op_enabled: false,
+        logic_op: LogicOp::And,
+        constants: [0f32, 0f32, 0f32, 0f32],
+        attachments: vec![
+          AttachmentBlendInfo::default()
+        ]
+      },
+      renderpass: RenderPassInfo {
+        attachments: vec![
+          Attachment {
+            format: Format::RGBA8,
+            samples: SampleCount::Samples1,
+            load_op: LoadOp::Clear,
+            store_op: StoreOp::Store,
+            stencil_load_op: LoadOp::DontCare,
+            stencil_store_op: StoreOp::DontCare,
+            initial_layout: ImageLayout::RenderTarget,
+            final_layout: ImageLayout::Present
+          }
+        ],
+        subpasses: vec![
+          Subpass {
+            input_attachments: vec![],
+            output_color_attachments: vec![
+              AttachmentRef {
+                layout: ImageLayout::RenderTarget,
+                index: 0u32
+              },
+            ],
+            output_resolve_attachments: Vec::new(),
+            depth_stencil_attachment: None,
+            preserve_unused_attachments: Vec::new()
+          }
+        ]
+      },
+      subpass: 0u32,
+    };
+    let pipeline = device.clone().create_pipeline(&pipeline_info);
 
     'main_loop: loop {
       let event = self.platform.handle_events();

@@ -6,14 +6,15 @@ use ash::vk;
 use ash::extensions::khr;
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 
-use sourcerenderer_core::graphics::{ Adapter, Device, AdapterType, Queue, QueueType, MemoryUsage, Buffer, BufferUsage };
+use sourcerenderer_core::graphics::{ Adapter, Device, AdapterType, Queue, QueueType, MemoryUsage, Buffer, BufferUsage, PipelineInfo, Pipeline, Shader, ShaderType };
 use crate::queue::VkQueue;
 use crate::queue::VkQueueInfo;
 use crate::adapter::VkAdapter;
 use crate::buffer::VkBuffer;
-
 use crate::buffer::buffer_usage_to_vk;
 use crate::VkAdapterExtensionSupport;
+use crate::pipeline::VkPipeline;
+use crate::pipeline::VkShader;
 
 pub struct VkDevice {
   adapter: Arc<VkAdapter>,
@@ -106,6 +107,14 @@ impl Device for VkDevice {
   fn create_buffer(self: Arc<Self>, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<dyn Buffer> {
     let mut allocator = self.allocator.lock().unwrap();
     return Arc::new(VkBuffer::new(self.clone(), size, memory_usage, &mut allocator, usage));
+  }
+
+  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<dyn Shader> {
+    return Arc::new(VkShader::new(self, shader_type, bytecode));
+  }
+
+  fn create_pipeline(self: Arc<Self>, info: &PipelineInfo) -> Arc<dyn Pipeline> {
+    return Arc::new(VkPipeline::new(self.clone(), info));
   }
 }
 
