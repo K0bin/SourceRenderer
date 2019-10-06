@@ -26,8 +26,9 @@ use sourcerenderer_core::graphics::AttachmentRef;
 
 use crate::VkDevice;
 use crate::format::format_to_vk;
+use crate::VkRenderPassLayout;
 
-fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
+pub fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
   return match input_rate {
     InputRate::PerVertex => vk::VertexInputRate::VERTEX,
     InputRate::PerInstance => vk::VertexInputRate::INSTANCE
@@ -83,7 +84,7 @@ pub struct VkPipeline {
 
 const SHADER_ENTRY_POINT_NAME: &str = "main";
 
-fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
+pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
   return match shader_type {
     ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
     ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
@@ -94,7 +95,7 @@ fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
   };
 }
 
-fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
+pub fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
   return match samples {
     SampleCount::Samples1 => vk::SampleCountFlags::TYPE_1,
     SampleCount::Samples2 => vk::SampleCountFlags::TYPE_2,
@@ -103,7 +104,7 @@ fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
   };
 }
 
-fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
+pub fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
   return match compare_func {
     CompareFunc::Always => vk::CompareOp::ALWAYS,
     CompareFunc::NotEqual => vk::CompareOp::NOT_EQUAL,
@@ -116,7 +117,7 @@ fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
   };
 }
 
-fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
+pub fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
   return match stencil_op {
     StencilOp::Decrease => vk::StencilOp::DECREMENT_AND_WRAP,
     StencilOp::Increase => vk::StencilOp::INCREMENT_AND_WRAP,
@@ -129,7 +130,7 @@ fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
   };
 }
 
-fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
+pub fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
   return match logic_op {
     LogicOp::And => vk::LogicOp::AND,
     LogicOp::AndInverted => vk::LogicOp::AND_INVERTED,
@@ -150,7 +151,7 @@ fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
   };
 }
 
-fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
+pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
   return match blend_factor {
     BlendFactor::ConstantColor => vk::BlendFactor::CONSTANT_COLOR,
     BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
@@ -170,7 +171,7 @@ fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
   };
 }
 
-fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
+pub fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
   return match blend_op {
     BlendOp::Add => vk::BlendOp::ADD,
     BlendOp::Max => vk::BlendOp::MAX,
@@ -180,7 +181,7 @@ fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
   };
 }
 
-fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
+pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
   let components_bits = color_components.bits() as u32;
   let mut colors = 0u32;
   colors |= components_bits.rotate_left(ColorComponents::RED.bits().trailing_zeros() - vk::ColorComponentFlags::R.as_raw().trailing_zeros()) & vk::ColorComponentFlags::R.as_raw();
@@ -188,35 +189,6 @@ fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorCompone
   colors |= components_bits.rotate_left(ColorComponents::BLUE.bits().trailing_zeros() - vk::ColorComponentFlags::B.as_raw().trailing_zeros()) & vk::ColorComponentFlags::B.as_raw();
   colors |= components_bits.rotate_left(ColorComponents::ALPHA.bits().trailing_zeros() - vk::ColorComponentFlags::A.as_raw().trailing_zeros()) & vk::ColorComponentFlags::A.as_raw();
   return vk::ColorComponentFlags::from_raw(colors);
-}
-
-fn store_op_to_vk(store_op: StoreOp) -> vk::AttachmentStoreOp {
-  return match store_op {
-    StoreOp::DontCare => vk::AttachmentStoreOp::DONT_CARE,
-    StoreOp::Store => vk::AttachmentStoreOp::STORE,
-  };
-}
-
-fn load_op_to_vk(load_op: LoadOp) -> vk::AttachmentLoadOp {
-  return match load_op {
-    LoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
-    LoadOp::DontCare => vk::AttachmentLoadOp::DONT_CARE,
-    LoadOp::Load => vk::AttachmentLoadOp::LOAD
-  };
-}
-
-fn image_layout_to_vk(image_layout: ImageLayout) -> vk::ImageLayout {
-  return match image_layout {
-    ImageLayout::Common => vk::ImageLayout::GENERAL,
-    ImageLayout::CopyDstOptimal => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-    ImageLayout::CopySrcOptimal => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-    ImageLayout::DepthRead => vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
-    ImageLayout::DepthWrite => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    ImageLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
-    ImageLayout::RenderTarget => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-    ImageLayout::ShaderResource => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-    ImageLayout::Undefined => vk::ImageLayout::UNDEFINED
-  };
 }
 
 
@@ -403,77 +375,6 @@ impl VkPipeline {
       };
       let layout = vk_device.create_pipeline_layout(&layout_create_info, None).unwrap();
 
-      let mut renderpass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
-      for attachment in &info.renderpass.attachments {
-        renderpass_attachments.push(vk::AttachmentDescription {
-          load_op: load_op_to_vk(attachment.load_op),
-          store_op: store_op_to_vk(attachment.store_op),
-          stencil_load_op: load_op_to_vk(attachment.stencil_load_op),
-          stencil_store_op: store_op_to_vk(attachment.stencil_store_op),
-          samples: samples_to_vk(attachment.samples),
-          format: format_to_vk(attachment.format),
-          initial_layout: image_layout_to_vk(attachment.initial_layout),
-          final_layout: image_layout_to_vk(attachment.final_layout),
-          ..Default::default()
-        });
-      }
-
-      let mut subpasses: Vec<vk::SubpassDescription> = Vec::new();
-      for subpass in &info.renderpass.subpasses  {
-        let mut input_references: Vec<vk::AttachmentReference> = Vec::new();
-        for reference in &subpass.input_attachments {
-          input_references.push(vk::AttachmentReference {
-            attachment: reference.index,
-            layout: image_layout_to_vk(reference.layout)
-          });
-        }
-        let mut output_references: Vec<vk::AttachmentReference> = Vec::new();
-        for reference in &subpass.output_color_attachments {
-          output_references.push(vk::AttachmentReference {
-            attachment: reference.index,
-            layout: image_layout_to_vk(reference.layout)
-          });
-        }
-        let mut resolve_references: Vec<vk::AttachmentReference> = Vec::new();
-        for reference in &subpass.output_resolve_attachments {
-          resolve_references.push(vk::AttachmentReference {
-            attachment: reference.index,
-            layout: image_layout_to_vk(reference.layout)
-          });
-        }
-        let mut preserved_references: Vec<u32> = Vec::new();
-        for reference in &subpass.preserve_unused_attachments {
-          preserved_references.push(*reference);
-        }
-
-        let depth_stencil_reference = subpass.depth_stencil_attachment.as_ref().map(|ref reference| {
-          vk::AttachmentReference {
-            attachment: reference.index,
-            layout: image_layout_to_vk(reference.layout)
-          }
-        });
-
-        subpasses.push(vk::SubpassDescription {
-          p_input_attachments: input_references.as_ptr(),
-          input_attachment_count: input_references.len() as u32,
-          p_color_attachments: output_references.as_ptr(),
-          color_attachment_count: output_references.len() as u32,
-          p_resolve_attachments: if resolve_references.is_empty() { std::ptr::null() } else { resolve_references.as_ptr() },
-          p_preserve_attachments: preserved_references.as_ptr(),
-          preserve_attachment_count: preserved_references.len() as u32,
-          p_depth_stencil_attachment: if let Some(reference) = depth_stencil_reference { &reference } else { std::ptr::null() },
-          ..Default::default()
-        });
-      }
-      let renderpass_create_info = vk::RenderPassCreateInfo {
-        p_attachments: renderpass_attachments.as_ptr(),
-        attachment_count: renderpass_attachments.len() as u32,
-        p_subpasses: subpasses.as_ptr(),
-        subpass_count: subpasses.len() as u32,
-        ..Default::default()
-      };
-      let renderpass = vk_device.create_render_pass(&renderpass_create_info, None).unwrap();
-
       let viewport_info = vk::PipelineViewportStateCreateInfo {
         viewport_count: 1,
         p_viewports: &vk::Viewport {
@@ -498,6 +399,8 @@ impl VkPipeline {
         ..Default::default()
       };
 
+      let vk_renderpass_layout = Arc::from_raw(Arc::into_raw(info.renderpass.clone()) as *const VkRenderPassLayout);
+
       let pipeline_create_info = vk::GraphicsPipelineCreateInfo {
         stage_count: shader_stages.len() as u32,
         p_stages: shader_stages.as_ptr(),
@@ -511,7 +414,7 @@ impl VkPipeline {
         p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
         p_dynamic_state: &dynamic_state_create_info,
         layout: layout,
-        render_pass: renderpass,
+        render_pass: *vk_renderpass_layout.get_handle(),
         subpass: info.subpass,
         base_pipeline_handle: vk::Pipeline::null(),
         base_pipeline_index: 0i32,

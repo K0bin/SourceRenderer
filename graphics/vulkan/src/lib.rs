@@ -17,6 +17,11 @@ pub use self::queue::VkQueue;
 pub use self::command::VkCommandPool;
 pub use self::command::VkCommandBuffer;
 pub use self::buffer::VkBuffer;
+pub use self::texture::VkTexture;
+pub use self::texture::VkRenderTargetView;
+pub use self::sync::VkSemaphore;
+pub use self::renderpass::VkRenderPassLayout;
+pub use self::renderpass::VkRenderPass;
 
 mod instance;
 mod adapter;
@@ -28,3 +33,6 @@ mod command;
 mod buffer;
 mod pipeline;
 mod format;
+mod texture;
+mod sync;
+mod renderpass;

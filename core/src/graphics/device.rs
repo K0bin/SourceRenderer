@@ -9,6 +9,12 @@ use graphics::Pipeline;
 use graphics::PipelineInfo;
 use graphics::Shader;
 use graphics::ShaderType;
+use graphics::RenderPassLayout;
+use graphics::RenderPassLayoutInfo;
+use graphics::RenderPass;
+use graphics::RenderPassInfo;
+use graphics::Texture;
+use graphics::RenderTargetView;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 pub enum AdapterType {
@@ -37,6 +43,9 @@ pub trait Device {
   fn create_buffer(self: Arc<Self>, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<dyn Buffer>;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<dyn Shader>;
   fn create_pipeline(self: Arc<Self>, info: &PipelineInfo) -> Arc<dyn Pipeline>;
+  fn create_renderpass_layout(self: Arc<Self>, info: &RenderPassLayoutInfo) -> Arc<dyn RenderPassLayout>;
+  fn create_renderpass(self: Arc<Self>, info: &RenderPassInfo) -> Arc<dyn RenderPass>;
+  fn create_render_target_view(self: Arc<Self>, texture: Arc<dyn Texture>) -> Arc<dyn RenderTargetView>;
 }
 
 #[derive(Clone, Debug, Copy, PartialEq)]

@@ -8,14 +8,20 @@ use crate::ash::version::DeviceV1_0;
 use sourcerenderer_core::graphics::Swapchain;
 use sourcerenderer_core::graphics::SwapchainInfo;
 use sourcerenderer_core::graphics::Queue;
+use sourcerenderer_core::graphics::Texture;
+use sourcerenderer_core::graphics::Format;
+use sourcerenderer_core::graphics::Semaphore;
 
 use crate::VkInstance;
 use crate::VkSurface;
 use crate::VkDevice;
 use crate::VkAdapter;
+use crate::VkTexture;
+use crate::VkSemaphore;
 
 pub struct VkSwapchain {
-  image_views: Vec<vk::ImageView>,
+  textures: Vec<Arc<VkTexture>>,
+  semaphores: Vec<Arc<VkSemaphore>>,
   swapchain: vk::SwapchainKHR,
   swapchain_loader: SwapchainLoader,
   device: Arc<VkDevice>
@@ -66,7 +72,20 @@ impl VkSwapchain {
 
     let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
     let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
-    let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
+    let textures: Vec<Arc<VkTexture>> = swapchain_images
+      .iter()
+      .map(|image| {
+        Arc::new(VkTexture::from_image(device.clone(), *image, Format::BGRA8UNorm, info.width, info.height, 1u32, 1u32, 1u32))
+      })
+      .collect();
+
+    let semaphores: Vec<Arc<VkSemaphore>> = textures
+      .iter()
+      .map(|image| {
+        Arc::new(VkSemaphore::new(device.clone()))
+      })
+      .collect();
+    /*let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
       .iter()
       .map(|image| {
         let info = vk::ImageViewCreateInfo {
@@ -90,10 +109,11 @@ impl VkSwapchain {
         };
         vk_device.create_image_view(&info, None).unwrap()
       })
-      .collect();
+      .collect();*/
 
       VkSwapchain {
-        image_views: swapchain_image_views,
+        textures: textures,
+        semaphores: semaphores,
         swapchain: swapchain,
         swapchain_loader: swapchain_loader,
         device: device
@@ -136,9 +156,10 @@ impl Drop for VkSwapchain {
   fn drop(&mut self) {
     let vk_device = self.device.get_ash_device();
     unsafe {
-      for image_view in &self.image_views {
+      /*for image_view in &self.image_views {
           vk_device.destroy_image_view(*image_view, None);
-      }
+      }*/
+      println!("DESTORY SC");
       self.swapchain_loader.destroy_swapchain(self.swapchain, None);
     }
   }
@@ -147,6 +168,13 @@ impl Drop for VkSwapchain {
 impl Swapchain for VkSwapchain {
   fn recreate(&mut self, info: SwapchainInfo) {
 
+  }
+
+  fn start_frame(&self, index: u32) -> (Arc<dyn Semaphore>, Arc<dyn Texture>) {
+    let semaphore = self.semaphores[index as usize].clone();
+    unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()); }
+    let back_buffer = self.textures[index as usize].clone();;
+    return (semaphore, back_buffer);
   }
 
   fn present(&self, queue: Arc<dyn Queue>) {

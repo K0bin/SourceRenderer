@@ -47,17 +47,14 @@ impl Engine {
 
     let device = adapters.remove(0).create_device(surface.clone());
     let swapchain_info = SwapchainInfo {
-      width: 1920,
-      height: 1080,
+      width: 1280,
+      height: 720,
       vsync: true
     };
     let swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
     let queue = device.clone().create_queue(QueueType::Graphics).unwrap();
-    let mut tracker: Vec<Rc<dyn CommandBuffer>> = Vec::new();
-    {
     let command_pool = queue.create_command_pool();
     let command_buffer = command_pool.clone().create_command_buffer(CommandBufferType::PRIMARY);
-    }
 
     let buffer = device.clone().create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
     let triangle = [
@@ -118,6 +115,48 @@ impl Engine {
       device.clone().create_shader(ShaderType::FragmentShader, &bytes)
     };
 
+    let render_pass_info = RenderPassLayoutInfo {
+      attachments: vec![
+        Attachment {
+          format: Format::BGRA8UNorm,
+          samples: SampleCount::Samples1,
+          load_op: LoadOp::Clear,
+          store_op: StoreOp::Store,
+          stencil_load_op: LoadOp::DontCare,
+          stencil_store_op: StoreOp::DontCare,
+          initial_layout: ImageLayout::RenderTarget,
+          final_layout: ImageLayout::Present
+        }
+      ],
+      subpasses: vec![
+        Subpass {
+          input_attachments: vec![],
+          output_color_attachments: vec![
+            AttachmentRef {
+              layout: ImageLayout::RenderTarget,
+              index: 0u32
+            },
+          ],
+          output_resolve_attachments: Vec::new(),
+          depth_stencil_attachment: None,
+          preserve_unused_attachments: Vec::new()
+        }
+      ]
+    };
+    let render_pass_layout = device.clone().create_renderpass_layout(&render_pass_info);
+
+    let (semaphore, texture) = swapchain.start_frame(0);
+    let rtv = device.clone().create_render_target_view(texture);
+
+    let render_pass_info = RenderPassInfo {
+      layout: render_pass_layout.clone(),
+      width: 1280u32,
+      height: 720u32,
+      array_length: 1u32,
+      attachments: vec![rtv]
+    };
+    let render_pass = device.clone().create_renderpass(&render_pass_info);
+
     let pipeline_info = PipelineInfo {
       vs: vertex_shader,
       fs: Some(fragment_shader),
@@ -177,34 +216,7 @@ impl Engine {
           AttachmentBlendInfo::default()
         ]
       },
-      renderpass: RenderPassInfo {
-        attachments: vec![
-          Attachment {
-            format: Format::RGBA8,
-            samples: SampleCount::Samples1,
-            load_op: LoadOp::Clear,
-            store_op: StoreOp::Store,
-            stencil_load_op: LoadOp::DontCare,
-            stencil_store_op: StoreOp::DontCare,
-            initial_layout: ImageLayout::RenderTarget,
-            final_layout: ImageLayout::Present
-          }
-        ],
-        subpasses: vec![
-          Subpass {
-            input_attachments: vec![],
-            output_color_attachments: vec![
-              AttachmentRef {
-                layout: ImageLayout::RenderTarget,
-                index: 0u32
-              },
-            ],
-            output_resolve_attachments: Vec::new(),
-            depth_stencil_attachment: None,
-            preserve_unused_attachments: Vec::new()
-          }
-        ]
-      },
+      renderpass: render_pass_layout,
       subpass: 0u32,
     };
     let pipeline = device.clone().create_pipeline(&pipeline_info);
@@ -217,7 +229,6 @@ impl Engine {
       //renderer.render();
       std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
-    tracker.pop();
   }
 
   fn init(&mut self) {

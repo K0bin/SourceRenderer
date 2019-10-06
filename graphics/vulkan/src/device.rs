@@ -6,7 +6,7 @@ use ash::vk;
 use ash::extensions::khr;
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 
-use sourcerenderer_core::graphics::{ Adapter, Device, AdapterType, Queue, QueueType, MemoryUsage, Buffer, BufferUsage, PipelineInfo, Pipeline, Shader, ShaderType };
+use sourcerenderer_core::graphics::*;
 use crate::queue::VkQueue;
 use crate::queue::VkQueueInfo;
 use crate::adapter::VkAdapter;
@@ -15,6 +15,10 @@ use crate::buffer::buffer_usage_to_vk;
 use crate::VkAdapterExtensionSupport;
 use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
+use crate::renderpass::VkRenderPassLayout;
+use crate::renderpass::VkRenderPass;
+use crate::texture::VkTexture;
+use crate::texture::VkRenderTargetView;
 
 pub struct VkDevice {
   adapter: Arc<VkAdapter>,
@@ -115,6 +119,19 @@ impl Device for VkDevice {
 
   fn create_pipeline(self: Arc<Self>, info: &PipelineInfo) -> Arc<dyn Pipeline> {
     return Arc::new(VkPipeline::new(self.clone(), info));
+  }
+
+  fn create_renderpass_layout(self: Arc<Self>, info: &RenderPassLayoutInfo) -> Arc<dyn RenderPassLayout> {
+    return Arc::new(VkRenderPassLayout::new(self.clone(), info));
+  }
+
+  fn create_renderpass(self: Arc<Self>, info: &RenderPassInfo) -> Arc<dyn RenderPass> {
+    return Arc::new(VkRenderPass::new(self.clone(), info));
+  }
+
+  fn create_render_target_view(self: Arc<Self>, texture: Arc<dyn Texture>) -> Arc<dyn RenderTargetView> {
+    let vk_texture = unsafe { Arc::from_raw(Arc::into_raw(texture) as *const VkTexture) };
+    return Arc::new(VkRenderTargetView::new(self.clone(), vk_texture));
   }
 }
 

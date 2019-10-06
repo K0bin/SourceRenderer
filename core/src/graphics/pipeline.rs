@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graphics::Format;
+use graphics::RenderPassLayout;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum InputRate {
@@ -285,64 +286,9 @@ pub struct PipelineInfo {
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
   pub blend: BlendInfo,
-  pub renderpass: RenderPassInfo,
+  pub renderpass: Arc<dyn RenderPassLayout>,
   pub subpass: u32
   // TODO: pipeline layout
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum LoadOp {
-  Load,
-  Clear,
-  DontCare
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum StoreOp {
-  Store,
-  DontCare
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum ImageLayout {
-  Undefined,
-  Common,
-  RenderTarget,
-  DepthWrite,
-  DepthRead,
-  ShaderResource,
-  CopySrcOptimal,
-  CopyDstOptimal,
-  Present
-}
-
-pub struct Attachment {
-  pub format: Format,
-  pub samples: SampleCount,
-  pub load_op: LoadOp,
-  pub store_op: StoreOp,
-  pub stencil_load_op: LoadOp,
-  pub stencil_store_op: StoreOp,
-  pub initial_layout: ImageLayout,
-  pub final_layout: ImageLayout
-}
-
-pub struct RenderPassInfo {
-  pub attachments: Vec<Attachment>,
-  pub subpasses: Vec<Subpass>
-}
-
-pub struct Subpass {
-  pub input_attachments: Vec<AttachmentRef>,
-  pub output_color_attachments: Vec<AttachmentRef>,
-  pub output_resolve_attachments: Vec<AttachmentRef>,
-  pub depth_stencil_attachment: Option<AttachmentRef>,
-  pub preserve_unused_attachments: Vec<u32>
-}
-
-pub struct AttachmentRef {
-  pub layout: ImageLayout,
-  pub index: u32
 }
 
 pub trait Pipeline {
