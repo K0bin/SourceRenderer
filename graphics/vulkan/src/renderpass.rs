@@ -47,7 +47,8 @@ pub struct VkRenderPassLayout {
 pub struct VkRenderPass {
   layout: Arc<VkRenderPassLayout>,
   device: Arc<VkDevice>,
-  framebuffer: vk::Framebuffer
+  framebuffer: vk::Framebuffer,
+  info: RenderPassInfo
 }
 
 impl VkRenderPassLayout {
@@ -172,8 +173,13 @@ impl VkRenderPass {
     return VkRenderPass {
       device: device,
       framebuffer: framebuffer,
-      layout: vk_layout
+      layout: vk_layout,
+      info: info.clone()
     }
+  }
+
+  pub fn get_framebuffer(&self) -> &vk::Framebuffer {
+    return &self.framebuffer;
   }
 }
 
@@ -187,5 +193,11 @@ impl Drop for VkRenderPass {
 }
 
 impl RenderPass for VkRenderPass {
+  fn get_info(&self) -> &RenderPassInfo {
+    return &self.info;
+  }
 
+  fn get_layout(&self) -> Arc<dyn RenderPassLayout> {
+    return self.layout.clone() as Arc<dyn RenderPassLayout>;
+  }
 }

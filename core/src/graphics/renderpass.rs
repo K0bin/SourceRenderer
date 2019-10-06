@@ -69,6 +69,8 @@ pub trait RenderPassLayout {
 
 }
 
+#[derive(Clone)]
+#[repr(C)]
 pub struct RenderPassInfo {
   pub layout: Arc<dyn RenderPassLayout>,
   pub attachments: Vec<Arc<dyn RenderTargetView>>,
@@ -78,5 +80,6 @@ pub struct RenderPassInfo {
 }
 
 pub trait RenderPass {
-
+  fn get_info(&self) -> &RenderPassInfo;
+  fn get_layout(&self) -> Arc<dyn RenderPassLayout>;
 }

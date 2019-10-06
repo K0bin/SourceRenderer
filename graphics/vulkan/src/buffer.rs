@@ -55,6 +55,10 @@ impl VkBuffer {
       memory_usage: memory_usage
     };
   }
+
+  pub fn get_handle(&self) -> &vk::Buffer {
+    return &self.buffer;
+  }
 }
 
 impl Drop for VkBuffer {

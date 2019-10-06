@@ -221,6 +221,15 @@ impl Engine {
     };
     let pipeline = device.clone().create_pipeline(&pipeline_info);
 
+    command_buffer.begin();
+    command_buffer.begin_render_pass(&*render_pass, RenderpassRecordingMode::Commands);
+    command_buffer.set_pipeline(pipeline);
+    command_buffer.draw(6, 0);
+    command_buffer.end_render_pass();
+    command_buffer.end();
+
+    device.wait_for_idle();
+
     'main_loop: loop {
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {

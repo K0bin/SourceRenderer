@@ -46,6 +46,7 @@ pub trait Device {
   fn create_renderpass_layout(self: Arc<Self>, info: &RenderPassLayoutInfo) -> Arc<dyn RenderPassLayout>;
   fn create_renderpass(self: Arc<Self>, info: &RenderPassInfo) -> Arc<dyn RenderPass>;
   fn create_render_target_view(self: Arc<Self>, texture: Arc<dyn Texture>) -> Arc<dyn RenderTargetView>;
+  fn wait_for_idle(&self);
 }
 
 #[derive(Clone, Debug, Copy, PartialEq)]

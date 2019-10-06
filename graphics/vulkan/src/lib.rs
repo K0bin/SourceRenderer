@@ -20,6 +20,7 @@ pub use self::buffer::VkBuffer;
 pub use self::texture::VkTexture;
 pub use self::texture::VkRenderTargetView;
 pub use self::sync::VkSemaphore;
+pub use self::pipeline::VkPipeline;
 pub use self::renderpass::VkRenderPassLayout;
 pub use self::renderpass::VkRenderPass;
 

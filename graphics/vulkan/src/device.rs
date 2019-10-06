@@ -133,6 +133,10 @@ impl Device for VkDevice {
     let vk_texture = unsafe { Arc::from_raw(Arc::into_raw(texture) as *const VkTexture) };
     return Arc::new(VkRenderTargetView::new(self.clone(), vk_texture));
   }
+
+  fn wait_for_idle(&self) {
+    unsafe { self.device.device_wait_idle(); }
+  }
 }
 
 pub fn memory_usage_to_vma(memory_usage: MemoryUsage) -> vk_mem::MemoryUsage {

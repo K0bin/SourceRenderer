@@ -49,8 +49,8 @@ impl VkQueue {
 // Vulkan queues are implicitly freed with the logical device
 
 impl Queue for VkQueue {
-  fn create_command_pool(self: Arc<Self>) -> Rc<CommandPool> {
-    return Rc::new(VkCommandPool::new(self.clone()));
+  fn create_command_pool(self: Arc<Self>) -> Rc<dyn CommandPool> {
+    return Rc::new(VkCommandPool::new(self.device.clone(), self.clone()));
   }
 
   fn get_queue_type(&self) -> QueueType {

@@ -428,10 +428,15 @@ impl VkPipeline {
       device: device
     };
   }
+
+  pub fn get_handle(&self) -> &vk::Pipeline {
+    return &self.pipeline;
+  }
 }
 
 impl Drop for VkPipeline {
   fn drop(&mut self) {
+      println!("drop pipeline");
     unsafe {
       let vk_device = self.device.get_ash_device();
       vk_device.destroy_pipeline(self.pipeline, None);
