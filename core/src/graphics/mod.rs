@@ -21,6 +21,8 @@ pub use self::sync::Fence;
 pub use self::sync::Semaphore;
 pub use self::renderpass::*;
 pub use self::renderpass::RenderPassLayoutInfo;
+pub use self::command::Viewport;
+pub use self::command::Scissor;
 
 mod device;
 mod instance;

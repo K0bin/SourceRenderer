@@ -4,7 +4,11 @@ extern crate num_cpus;
 extern crate bitflags;
 
 pub use self::engine::Engine;
-pub use vek::{Vec3, Vec4};
+pub type Vec2 = vek::Vec2<f32>;
+pub type Vec3 = vek::Vec3<f32>;
+pub type Vec4 = vek::Vec4<f32>;
+pub type Vec2I = vek::Vec2<i32>;
+pub type Vec2UI = vek::Vec2<u32>;
 
 
 pub use self::cast::unsafe_arc_cast;

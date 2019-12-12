@@ -262,21 +262,23 @@ impl VkPipeline {
 
       let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
       let mut binding_descriptions: Vec<vk::VertexInputBindingDescription> = Vec::new();
-      for i in 0..info.vertex_layout.elements.len() {
-        let element = &info.vertex_layout.elements[i];
+      for element in &info.vertex_layout.shader_inputs {
         attribute_descriptions.push(vk::VertexInputAttributeDescription {
-          location: i as u32,
-          binding: i as u32,
+          location: element.location_vk_mtl,
+          binding: element.input_assembler_binding,
           format: format_to_vk(element.format),
           offset: element.offset as u32
         });
+      }
 
+      for element in &info.vertex_layout.input_assembler {
         binding_descriptions.push(vk::VertexInputBindingDescription {
-          binding: i as u32,
+          binding: element.binding,
           stride: element.stride as u32,
           input_rate: input_rate_to_vk(element.input_rate)
         });
       }
+
       let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo {
         vertex_binding_description_count: binding_descriptions.len() as u32,
         p_vertex_binding_descriptions: binding_descriptions.as_ptr(),

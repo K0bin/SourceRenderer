@@ -9,40 +9,47 @@ pub enum InputRate {
   PerInstance
 }
 
-pub struct ShaderVertexInput {
+pub struct ShaderInputElement {
+  pub input_assembler_binding: u32,
   pub location_vk_mtl: u32,
   pub semantic_name_d3d: String,
-  pub semantic_index_d3d: u32
-}
-
-pub struct InputElement {
-  pub input_assembler_binding: u32,
-  pub shader_binding: ShaderVertexInput,
+  pub semantic_index_d3d: u32,
   pub offset: usize,
-  pub stride: usize,
-  pub format: Format,
-  pub input_rate: InputRate
+  pub format: Format
 }
 
-impl Default for InputElement {
-  fn default() -> InputElement {
-    return InputElement {
+pub struct InputAssemblerElement {
+  pub binding: u32,
+  pub input_rate: InputRate,
+  pub stride: usize
+}
+
+impl Default for ShaderInputElement {
+  fn default() -> ShaderInputElement {
+    return ShaderInputElement {
       input_assembler_binding: 0,
-      shader_binding: ShaderVertexInput {
-        location_vk_mtl: 0,
-        semantic_name_d3d: String::new(),
-        semantic_index_d3d: 0
-      },
+      location_vk_mtl: 0,
+      semantic_name_d3d: String::new(),
+      semantic_index_d3d: 0,
       offset: 0,
-      stride: 0,
       format: Format::Unknown,
-      input_rate: InputRate::PerVertex
+    };
+  }
+}
+
+impl Default for InputAssemblerElement {
+  fn default() -> InputAssemblerElement {
+    return InputAssemblerElement {
+      binding: 0,
+      input_rate: InputRate::PerVertex,
+      stride: 0
     };
   }
 }
 
 pub struct VertexLayoutInfo {
-  pub elements: Vec<InputElement>
+  pub shader_inputs: Vec<ShaderInputElement>,
+  pub input_assembler: Vec<InputAssemblerElement>
 }
 
 // ignore input assembler for now and always use triangle lists

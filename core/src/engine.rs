@@ -11,6 +11,9 @@ use graphics::CommandBufferType;
 use graphics::CommandBuffer;
 use graphics::MemoryUsage;
 use graphics::BufferUsage;
+use crate::Vec2;
+use crate::Vec2I;
+use crate::Vec2UI;
 use graphics::*;
 use std::rc::Rc;
 
@@ -164,29 +167,28 @@ impl Engine {
       tcs: None,
       tes: None,
       vertex_layout: VertexLayoutInfo {
-        elements: vec![
-          InputElement {
-            input_assembler_binding: 0,
-            shader_binding: ShaderVertexInput {
-              location_vk_mtl: 0,
-              semantic_name_d3d: String::from(""),
-              semantic_index_d3d: 0
-            },
-            offset: 0,
+        input_assembler: vec![
+          InputAssemblerElement {
+            binding: 0,
             stride: 24,
-            input_rate: InputRate::PerVertex,
+            input_rate: InputRate::PerVertex
+          }
+        ],
+        shader_inputs: vec![
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 0,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 0,
             format: Format::RGB32Float
           },
-          InputElement {
+          ShaderInputElement {
             input_assembler_binding: 0,
-            shader_binding: ShaderVertexInput {
-              location_vk_mtl: 0,
-              semantic_name_d3d: String::from(""),
-              semantic_index_d3d: 0
-            },
-            offset: 16,
-            stride: 24,
-            input_rate: InputRate::PerVertex,
+            location_vk_mtl: 1,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 12,
             format: Format::RGB32Float
           }
         ]
@@ -223,7 +225,18 @@ impl Engine {
 
     command_buffer.begin();
     command_buffer.begin_render_pass(&*render_pass, RenderpassRecordingMode::Commands);
-    command_buffer.set_pipeline(pipeline);
+    command_buffer.set_pipeline(pipeline.clone());
+    command_buffer.set_vertex_buffer(&*buffer);
+    command_buffer.set_viewports(&[Viewport {
+      position: Vec2 { x: 0.0f32, y: 0.0f32 },
+      extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
+      min_depth: 0.0f32,
+      max_depth: 1.0f32
+    }]);
+    command_buffer.set_scissors(&[Scissor {
+      position: Vec2I { x: 0, y: 0 },
+      extent: Vec2UI { x: 9999, y: 9999 },
+    }]);
     command_buffer.draw(6, 0);
     command_buffer.end_render_pass();
     command_buffer.end();

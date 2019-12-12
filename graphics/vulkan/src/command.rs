@@ -16,6 +16,9 @@ use sourcerenderer_core::graphics::RenderPass;
 use sourcerenderer_core::graphics::RenderPassLayout;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
 use sourcerenderer_core::graphics::Pipeline;
+use sourcerenderer_core::graphics::Viewport;
+use sourcerenderer_core::graphics::Scissor;
+use sourcerenderer_core::Vec2;
 
 use crate::VkQueue;
 use crate::VkDevice;
@@ -217,7 +220,40 @@ impl CommandBuffer for VkCommandBuffer {
     unsafe {
       let vk_device = self.device.get_ash_device();
       let vk_buffer = (vertex_buffer as *const Buffer) as *const VkBuffer;
-      vk_device.cmd_bind_vertex_buffers(self.command_buffer, 0, &[*(*vk_buffer).get_handle()], &[0])
+      vk_device.cmd_bind_vertex_buffers(self.command_buffer, 0, &[*(*vk_buffer).get_handle()], &[0]);
+    }
+  }
+
+  fn set_viewports(&self, viewports: &[ Viewport ]) {
+    unsafe {
+      let vk_device = self.device.get_ash_device();
+      for i in 0..viewports.len() {
+        vk_device.cmd_set_viewport(self.command_buffer, i as u32, &[vk::Viewport {
+          x: viewports[i].position.x,
+          y: viewports[i].position.y,
+          width: viewports[i].extent.x,
+          height: viewports[i].extent.y,
+          min_depth: viewports[i].min_depth,
+          max_depth: viewports[i].max_depth
+        }]);
+      }
+    }
+  }
+
+  fn set_scissors(&self, scissors: &[ Scissor ])  {
+    unsafe {
+      let vk_device = self.device.get_ash_device();
+      let vk_scissors: Vec<vk::Rect2D> = scissors.iter().map(|scissor| vk::Rect2D {
+        offset: vk::Offset2D {
+          x: scissor.position.x,
+          y: scissor.position.y
+        },
+        extent: vk::Extent2D {
+          width: scissor.extent.x,
+          height: scissor.extent.y
+        }
+      }).collect();
+      vk_device.cmd_set_scissor(self.command_buffer, 0, &vk_scissors);
     }
   }
 
