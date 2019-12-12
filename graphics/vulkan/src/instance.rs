@@ -43,7 +43,7 @@ impl VkInstance {
       .collect();
 
     let app_info = vk::ApplicationInfo {
-      api_version: vk_make_version!(1, 0, 36),
+      api_version: vk_make_version!(1, 1, 126),
       application_version: vk_make_version!(0, 0, 1),
       engine_version: vk_make_version!(0, 0, 1),
       p_application_name: app_name_ptr,
