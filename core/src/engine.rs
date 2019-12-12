@@ -1,4 +1,4 @@
-use cgmath::Vector3;
+use vek::Vec3;
 use platform::{Platform, PlatformEvent, GraphicsApi};
 use job::{Scheduler, JobThreadContext};
 use std::sync::{Arc, Mutex};
@@ -24,8 +24,8 @@ pub trait EngineSubsystem {
 }
 
 struct Vertex {
-  pub position: Vector3<f32>,
-  pub color: Vector3<f32>
+  pub position: Vec3<f32>,
+  pub color: Vec3<f32>
 }
 
 impl Engine {
@@ -59,36 +59,36 @@ impl Engine {
     let buffer = device.clone().create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
     let triangle = [
       Vertex {
-        position: Vector3 {
+        position: Vec3 {
           x: 0.0f32,
           y: 0.0f32,
           z: 0.0f32,
         },
-        color: Vector3 {
+        color: Vec3 {
           x: 1.0f32,
           y: 0.0f32,
           z: 0.0f32,
         }
       },
       Vertex {
-        position: Vector3 {
+        position: Vec3 {
           x: 1.0f32,
           y: 0.0f32,
           z: 0.0f32,
         },
-        color: Vector3 {
+        color: Vec3 {
           x: 0.0f32,
           y: 1.0f32,
           z: 1.0f32,
         }
       },
       Vertex {
-        position: Vector3 {
+        position: Vec3 {
           x: 0.0f32,
           y: 1.0f32,
           z: 0.0f32,
         },
-        color: Vector3 {
+        color: Vec3 {
           x: 1.0f32,
           y: 0.0f32,
           z: 1.0f32,

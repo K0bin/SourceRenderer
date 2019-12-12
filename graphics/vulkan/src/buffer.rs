@@ -87,7 +87,7 @@ impl Buffer for VkBuffer {
 }
 
 pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
-  use vk::BufferUsageFlags as VkUsage;
+  use self::vk::BufferUsageFlags as VkUsage;
   let usage_bits = usage.bits();
   let mut flags = 0u32;
   flags |= usage_bits.rotate_left(VkUsage::VERTEX_BUFFER.as_raw().trailing_zeros() - BufferUsage::VERTEX.bits().trailing_zeros()) & VkUsage::VERTEX_BUFFER.as_raw();

@@ -4,6 +4,6 @@ version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 
 [dependencies]
-cgmath = "0.17.0"
-num_cpus = "1.10.1"
-bitflags = "1.2.0"
+vek = "0.9.11"
+num_cpus = "1.11.1"
+bitflags = "1.2.1"

@@ -1,10 +1,10 @@
-extern crate cgmath;
+extern crate vek;
 extern crate num_cpus;
 #[macro_use]
 extern crate bitflags;
 
 pub use self::engine::Engine;
-pub use cgmath::{Vector3, Vector4, Matrix4};
+pub use vek::{Vec3, Vec4};
 
 
 pub use self::cast::unsafe_arc_cast;
