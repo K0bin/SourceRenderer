@@ -4,6 +4,8 @@ use crate::graphics::Format;
 use crate::graphics::SampleCount;
 use crate::graphics::RenderTargetView;
 
+use graphics::Backend;
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum LoadOp {
   Load,
@@ -65,21 +67,20 @@ pub struct AttachmentRef {
   pub index: u32
 }
 
-pub trait RenderPassLayout {
+pub trait RenderPassLayout<B: Backend> {
 
 }
 
-#[derive(Clone)]
 #[repr(C)]
-pub struct RenderPassInfo {
-  pub layout: Arc<dyn RenderPassLayout>,
-  pub attachments: Vec<Arc<dyn RenderTargetView>>,
+pub struct RenderPassInfo<B: Backend> {
+  pub layout: Arc<B::RenderPassLayout>,
+  pub attachments: Vec<Arc<B::RenderTargetView>>,
   pub width: u32,
   pub height: u32,
   pub array_length: u32
 }
 
-pub trait RenderPass {
-  fn get_info(&self) -> &RenderPassInfo;
-  fn get_layout(&self) -> Arc<dyn RenderPassLayout>;
+pub trait RenderPass<B: Backend> {
+  fn get_info(&self) -> &RenderPassInfo<B>;
+  fn get_layout(&self) -> Arc<B::RenderPassLayout>;
 }

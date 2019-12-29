@@ -5,10 +5,8 @@ use crate::Vec2;
 use crate::Vec2I;
 use crate::Vec2UI;
 
-use crate::graphics::RenderPass;
-use crate::graphics::Buffer;
 use crate::graphics::RenderpassRecordingMode;
-use crate::graphics::Pipeline;
+use graphics::Backend;
 
 pub struct Viewport {
   pub position: Vec2,
@@ -28,18 +26,18 @@ pub enum CommandBufferType {
   SECONDARY
 }
 
-pub trait CommandPool {
-  fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<dyn CommandBuffer>;
+pub trait CommandPool<B: Backend> {
+  fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<B::CommandBuffer>;
   fn reset(&self);
 }
 
-pub trait CommandBuffer {
+pub trait CommandBuffer<B: Backend> {
   fn begin(&self);
   fn end(&self);
-  fn set_pipeline(&self, pipeline: Arc<dyn Pipeline>);
-  fn begin_render_pass(&self, renderpass: &dyn RenderPass, recording_mode: RenderpassRecordingMode);
+  fn set_pipeline(&self, pipeline: Arc<B::Pipeline>);
+  fn begin_render_pass(&self, renderpass: &B::RenderPass, recording_mode: RenderpassRecordingMode);
   fn end_render_pass(&self);
-  fn set_vertex_buffer(&self, vertex_buffer: &dyn Buffer);
+  fn set_vertex_buffer(&self, vertex_buffer: &B::Buffer);
   fn set_viewports(&self, viewports: &[ Viewport ]);
   fn set_scissors(&self, scissors: &[ Scissor ]);
   fn draw(&self, vertices: u32, offset: u32);

@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-pub trait Texture {
+use graphics::Backend;
+
+pub trait Texture<B: Backend> {
 
 }
 
-pub trait RenderTargetView {
-  fn get_texture(&self) -> Arc<Texture>;
+pub trait RenderTargetView<B: Backend> {
+  fn get_texture(&self) -> Arc<B::Texture>;
 }

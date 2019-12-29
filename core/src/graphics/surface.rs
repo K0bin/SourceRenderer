@@ -4,7 +4,9 @@ use graphics::Queue;
 use graphics::Texture;
 use graphics::Semaphore;
 
-pub trait Surface {
+use graphics::Backend;
+
+pub trait Surface<B: Backend> {
 
 }
 
@@ -14,8 +16,8 @@ pub struct SwapchainInfo {
   pub vsync: bool
 }
 
-pub trait Swapchain {
+pub trait Swapchain<B: Backend> {
   fn recreate(&mut self, info: SwapchainInfo);
-  fn start_frame(&self, index: u32) -> (Arc<dyn Semaphore>, Arc<dyn Texture>);
-  fn present(&self, queue: Arc<dyn Queue>);
+  fn start_frame(&self, index: u32) -> (Arc<dyn Semaphore>, Arc<B::Texture>);
+  fn present(&self, queue: Arc<B::Queue>);
 }

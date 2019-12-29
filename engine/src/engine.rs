@@ -1,24 +1,25 @@
-use vek::Vec3;
-use platform::{Platform, PlatformEvent, GraphicsApi};
+use sourcerenderer_core::platform::{Platform, PlatformEvent, GraphicsApi};
 use job::{Scheduler, JobThreadContext};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::fs::File;
 use std::io::*;
-use graphics::SwapchainInfo;
-use graphics::QueueType;
-use graphics::CommandBufferType;
-use graphics::CommandBuffer;
-use graphics::MemoryUsage;
-use graphics::BufferUsage;
-use crate::Vec2;
-use crate::Vec2I;
-use crate::Vec2UI;
-use graphics::*;
+use sourcerenderer_core::graphics::SwapchainInfo;
+use sourcerenderer_core::graphics::QueueType;
+use sourcerenderer_core::graphics::CommandBufferType;
+use sourcerenderer_core::graphics::CommandBuffer;
+use sourcerenderer_core::graphics::MemoryUsage;
+use sourcerenderer_core::graphics::BufferUsage;
+use sourcerenderer_core::Vec2;
+use sourcerenderer_core::Vec2I;
+use sourcerenderer_core::Vec2UI;
+use sourcerenderer_core::Vec3;
+use sourcerenderer_core::graphics::*;
 use std::rc::Rc;
+use sourcerenderer_core::platform::Window;
 
-pub struct Engine {
-    platform: Box<dyn Platform>,
+pub struct Engine<P: Platform> {
+    platform: Box<P>,
     scheduler: Arc<Mutex<Scheduler>>
 }
 
@@ -27,12 +28,12 @@ pub trait EngineSubsystem {
 }
 
 struct Vertex {
-  pub position: Vec3<f32>,
-  pub color: Vec3<f32>
+  pub position: Vec3,
+  pub color: Vec3
 }
 
-impl Engine {
-  pub fn new(platform: Box<dyn Platform>) -> Engine {
+impl<P: Platform> Engine<P> {
+  pub fn new(platform: Box<P>) -> Engine<P> {
     return Engine {
       platform: platform,
       scheduler: Scheduler::new(0)
@@ -105,14 +106,15 @@ impl Engine {
     buffer.unmap();
 
     let vertex_shader = {
-      let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
+      //let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
+      let mut file = File::open("../../engine/shaders/simple.vert.spv").unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::VertexShader, &bytes)
     };
 
     let fragment_shader = {
-      let mut file = File::open("..\\..\\core\\shaders\\simple.frag.spv").unwrap();
+      let mut file = File::open("../../engine/shaders/simple.frag.spv").unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::FragmentShader, &bytes)

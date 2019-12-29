@@ -3,6 +3,8 @@ use sourcerenderer_core::graphics::Surface;
 use ash::vk::SurfaceKHR;
 use ash::extensions::khr::Surface as SurfaceKHRLoader;
 
+use crate::VkBackend;
+
 pub struct VkSurface {
   surface: SurfaceKHR,
   surface_loader: SurfaceKHRLoader
@@ -27,6 +29,6 @@ impl VkSurface {
   }
 }
 
-impl Surface for VkSurface {
+impl Surface<VkBackend> for VkSurface {
 
 }

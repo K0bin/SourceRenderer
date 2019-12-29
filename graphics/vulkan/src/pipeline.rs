@@ -27,6 +27,7 @@ use sourcerenderer_core::graphics::AttachmentRef;
 use crate::VkDevice;
 use crate::format::format_to_vk;
 use crate::VkRenderPassLayout;
+use crate::VkBackend;
 
 pub fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
   return match input_rate {
@@ -63,7 +64,7 @@ impl VkShader {
   }
 }
 
-impl Shader for VkShader {
+impl Shader<VkBackend> for VkShader {
   fn get_shader_type(&self) -> ShaderType {
     return self.shader_type;
   }
@@ -193,7 +194,7 @@ pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorCom
 
 
 impl VkPipeline {
-  pub fn new(device: Arc<VkDevice>, info: &PipelineInfo) -> Self {
+  pub fn new(device: Arc<VkDevice>, info: &PipelineInfo<VkBackend>) -> Self {
     let vk_device = device.get_ash_device();
 
     let pipeline = unsafe {
@@ -446,6 +447,6 @@ impl Drop for VkPipeline {
   }
 }
 
-impl Pipeline for VkPipeline {
+impl Pipeline<VkBackend> for VkPipeline {
 
 }

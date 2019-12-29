@@ -10,7 +10,6 @@ use sourcerenderer_core::graphics::Surface;
 use sourcerenderer_core::graphics::Device;
 use sourcerenderer_core::graphics::Swapchain;
 use sourcerenderer_core::graphics::SwapchainInfo;
-use sourcerenderer_core::unsafe_arc_cast;
 
 use sourcerenderer_vulkan::VkInstance;
 use sourcerenderer_vulkan::VkSurface;
@@ -81,7 +80,10 @@ impl SDLWindow {
 }
 
 impl Platform for SDLPlatform {
-  fn window(&mut self) -> &Window {
+  type Window = SDLWindow;
+  type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
+
+  fn window(&mut self) -> &SDLWindow {
     return &self.window;
   }
 
@@ -98,26 +100,22 @@ impl Platform for SDLPlatform {
     return PlatformEvent::Continue;
   }
 
-  fn create_graphics(&self, debug_layers: bool) -> Result<Arc<dyn Instance>, Box<Error>> {
+  fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<Error>> {
     let extensions = self.window.vulkan_instance_extensions().unwrap();
     return Ok(Arc::new(VkInstance::new(extensions, debug_layers)));
   }
 }
 
-impl Window for SDLWindow {
-  fn create_surface(&self, graphics_instance: Arc<Instance>) -> Arc<Surface> {
-    let instance_ptr = Arc::into_raw(graphics_instance);
-    let instance_ref = unsafe { (*(instance_ptr as *const VkInstance)).get_ash_instance() };
-    let entry_ref = unsafe { (*(instance_ptr as *const VkInstance)).get_entry() };
-    unsafe { Arc::from_raw(instance_ptr); };
+impl Window<SDLPlatform> for SDLWindow {
+  fn create_surface(&self, graphics_instance: Arc<VkInstance>) -> Arc<VkSurface> {
+    let instance_ref = graphics_instance.get_ash_instance();
+    let entry_ref = graphics_instance.get_entry();
     let surface = self.window.vulkan_create_surface(instance_ref.handle().as_raw() as sdl2::video::VkInstance).unwrap();
     let surface_loader = SurfaceLoader::new(entry_ref, instance_ref);
     return Arc::new(VkSurface::new(SurfaceKHR::from_raw(surface), surface_loader));
   }
 
-  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<Device>, surface: Arc<Surface>) -> Arc<Swapchain> {
-    let vk_device: Arc<VkDevice> = unsafe { unsafe_arc_cast(device) };
-    let vk_surface: Arc<VkSurface> = unsafe { unsafe_arc_cast(surface) };
-    return Arc::new(VkSwapchain::new(info, vk_device, vk_surface));
+  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<VkDevice>, surface: Arc<VkSurface>) -> Arc<VkSwapchain> {
+    return Arc::new(VkSwapchain::new(info, device, surface));
   }
 }

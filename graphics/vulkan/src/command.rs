@@ -26,6 +26,7 @@ use crate::VkRenderPass;
 use crate::VkRenderPassLayout;
 use crate::VkBuffer;
 use crate::VkPipeline;
+use crate::VkBackend;
 
 struct VkCommandPoolState {
   pub free_buffers: Vec<Rc<VkCommandBuffer>>,
@@ -93,8 +94,8 @@ impl Drop for VkCommandPool {
   }
 }
 
-impl CommandPool for VkCommandPool {
-  fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<dyn CommandBuffer> {
+impl CommandPool<VkBackend> for VkCommandPool {
+  fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<VkCommandBuffer> {
     let mut state = self.state.borrow_mut();
     let free_cmd_buffer_option = state.free_buffers.pop();
     return match free_cmd_buffer_option {
@@ -151,7 +152,7 @@ impl VkCommandBuffer {
   }
 }
 
-impl CommandBuffer for VkCommandBuffer {
+impl CommandBuffer<VkBackend> for VkCommandBuffer {
   fn begin(&self) {
     unsafe {
       let vk_device = self.device.get_ash_device();
@@ -169,10 +170,10 @@ impl CommandBuffer for VkCommandBuffer {
     }
   }
 
-  fn begin_render_pass(&self, renderpass: &dyn RenderPass, recording_mode: RenderpassRecordingMode) {
+  fn begin_render_pass(&self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
     unsafe {
       let vk_device = self.device.get_ash_device();
-      let vk_renderpass = (renderpass as *const dyn RenderPass) as *const VkRenderPass;
+      let vk_renderpass = renderpass;
       let vk_renderpass_layout = Arc::from_raw(Arc::into_raw(renderpass.get_layout()) as *const VkRenderPassLayout);
       let begin_info = vk::RenderPassBeginInfo {
         framebuffer: *(*vk_renderpass).get_framebuffer(),
@@ -208,7 +209,7 @@ impl CommandBuffer for VkCommandBuffer {
     }
   }
 
-  fn set_pipeline(&self, pipeline: Arc<dyn Pipeline>) {
+  fn set_pipeline(&self, pipeline: Arc<VkPipeline>) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       let vk_pipeline = Arc::from_raw(Arc::into_raw(pipeline) as *const VkPipeline);
@@ -216,10 +217,10 @@ impl CommandBuffer for VkCommandBuffer {
     }
   }
 
-  fn set_vertex_buffer(&self, vertex_buffer: &dyn Buffer) {
+  fn set_vertex_buffer(&self, vertex_buffer: &VkBuffer) {
     unsafe {
       let vk_device = self.device.get_ash_device();
-      let vk_buffer = (vertex_buffer as *const Buffer) as *const VkBuffer;
+      let vk_buffer = vertex_buffer;
       vk_device.cmd_bind_vertex_buffers(self.command_buffer, 0, &[*(*vk_buffer).get_handle()], &[0]);
     }
   }

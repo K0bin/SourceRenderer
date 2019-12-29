@@ -8,6 +8,7 @@ build = "build.rs"
 sdl2 = "0.32.2"
 ash = "0.29.0"
 sourcerenderer_bsp = { path = "../../bsp" }
+sourcerenderer_engine = { path = "../../engine" }
 sourcerenderer_core = { path = "../../core" }
 sourcerenderer_vulkan = { path = "../../graphics/vulkan" }
 

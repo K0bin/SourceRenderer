@@ -23,7 +23,9 @@ pub use self::sync::VkSemaphore;
 pub use self::pipeline::VkPipeline;
 pub use self::renderpass::VkRenderPassLayout;
 pub use self::renderpass::VkRenderPass;
+pub use self::backend::VkBackend;
 
+mod backend;
 mod instance;
 mod adapter;
 mod device;

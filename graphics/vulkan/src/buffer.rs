@@ -5,6 +5,7 @@ use ash::vk;
 use sourcerenderer_core::graphics::{ Buffer, BufferUsage, MemoryUsage };
 
 use crate::VkDevice;
+use crate::VkBackend;
 use crate::device::memory_usage_to_vma;
 
 pub struct VkBuffer {
@@ -69,7 +70,7 @@ impl Drop for VkBuffer {
   }
 }
 
-impl Buffer for VkBuffer {
+impl Buffer<VkBackend> for VkBuffer {
   fn map(&self) -> Option<*mut u8> {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
       let mut allocator = self.device.get_allocator().lock().unwrap();

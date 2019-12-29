@@ -23,6 +23,7 @@ pub use self::renderpass::*;
 pub use self::renderpass::RenderPassLayoutInfo;
 pub use self::command::Viewport;
 pub use self::command::Scissor;
+pub use self::backend::Backend;
 
 mod device;
 mod instance;
@@ -34,3 +35,4 @@ mod pipeline;
 mod texture;
 mod sync;
 mod renderpass;
+mod backend;

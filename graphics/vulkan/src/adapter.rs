@@ -20,6 +20,7 @@ use crate::VkInstance;
 use crate::VkSurface;
 use crate::VkQueue;
 use crate::queue::VkQueueInfo;
+use crate::VkBackend;
 use ash::extensions::khr::Surface as KhrSurface;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
@@ -82,8 +83,8 @@ impl VkAdapter {
 
 // Vulkan physical devices are implicitly freed with the instance
 
-impl Adapter for VkAdapter {
-  fn create_device(self: Arc<Self>, surface: Arc<Surface>) -> Arc<dyn Device> {
+impl Adapter<VkBackend> for VkAdapter {
+  fn create_device(self: Arc<Self>, surface: Arc<VkSurface>) -> Arc<VkDevice> {
     return unsafe {
       let surface_loader = KhrSurface::new(self.instance.get_entry(), self.instance.get_ash_instance());
       let queue_properties = self.instance.get_ash_instance().get_physical_device_queue_family_properties(self.physical_device);

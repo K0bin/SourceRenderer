@@ -5,5 +5,4 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 
 [dependencies]
 vek = "0.9.11"
-num_cpus = "1.11.1"
 bitflags = "1.2.1"

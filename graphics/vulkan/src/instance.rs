@@ -9,6 +9,7 @@ use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use sourcerenderer_core::graphics::Instance;
 use sourcerenderer_core::graphics::Adapter;
 use crate::VkAdapter;
+use crate::VkBackend;
 
 pub struct VkInstance {
   instance: ash::Instance,
@@ -89,12 +90,12 @@ impl Drop for VkInstance {
   }
 }
 
-impl Instance for VkInstance {
-  fn list_adapters(self: Arc<Self>) -> Vec<Arc<dyn Adapter>> {
+impl Instance<VkBackend> for VkInstance {
+  fn list_adapters(self: Arc<Self>) -> Vec<Arc<VkAdapter>> {
     let physical_devices: Vec<vk::PhysicalDevice> = unsafe { self.instance.enumerate_physical_devices().unwrap() };
-    let adapters: Vec<Arc<dyn Adapter>> = physical_devices
+    let adapters: Vec<Arc<VkAdapter>> = physical_devices
       .into_iter()
-      .map(|phys_dev| Arc::new(VkAdapter::new(self.clone(), phys_dev)) as Arc<dyn Adapter>)
+      .map(|phys_dev| Arc::new(VkAdapter::new(self.clone(), phys_dev)) as Arc<VkAdapter>)
       .collect();
 
     return adapters;

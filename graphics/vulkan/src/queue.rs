@@ -13,6 +13,8 @@ use sourcerenderer_core::graphics::QueueType;
 use sourcerenderer_core::graphics::CommandPool;
 use crate::device::VkDevice;
 use crate::command::VkCommandPool;
+use crate::VkBackend;
+use sourcerenderer_core::graphics::Backend;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -48,8 +50,8 @@ impl VkQueue {
 
 // Vulkan queues are implicitly freed with the logical device
 
-impl Queue for VkQueue {
-  fn create_command_pool(self: Arc<Self>) -> Rc<dyn CommandPool> {
+impl Queue<VkBackend> for VkQueue {
+  fn create_command_pool(self: Arc<Self>) -> Rc<VkCommandPool> {
     return Rc::new(VkCommandPool::new(self.device.clone(), self.clone()));
   }
 

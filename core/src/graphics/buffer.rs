@@ -1,4 +1,4 @@
-
+use graphics::Backend;
 
 bitflags! {
   pub struct BufferUsage: u32 {
@@ -14,7 +14,7 @@ bitflags! {
   }
 }
 
-pub trait Buffer {
+pub trait Buffer<B: Backend> {
   fn map(&self) -> Option<*mut u8>;
   fn unmap(&self);
 }

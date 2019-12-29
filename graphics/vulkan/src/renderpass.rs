@@ -9,6 +9,7 @@ use sourcerenderer_core::graphics::*;
 use crate::VkDevice;
 use crate::pipeline::samples_to_vk;
 use crate::format::format_to_vk;
+use crate::VkBackend;
 
 fn store_op_to_vk(store_op: StoreOp) -> vk::AttachmentStoreOp {
   return match store_op {
@@ -48,7 +49,7 @@ pub struct VkRenderPass {
   layout: Arc<VkRenderPassLayout>,
   device: Arc<VkDevice>,
   framebuffer: vk::Framebuffer,
-  info: RenderPassInfo
+  info: RenderPassInfo<VkBackend>
 }
 
 impl VkRenderPassLayout {
@@ -146,12 +147,12 @@ impl Drop for VkRenderPassLayout {
   }
 }
 
-impl RenderPassLayout for VkRenderPassLayout {
+impl RenderPassLayout<VkBackend> for VkRenderPassLayout {
 
 }
 
 impl VkRenderPass {
-  pub fn new(device: Arc<VkDevice>, info: &RenderPassInfo) -> Self {
+  pub fn new(device: Arc<VkDevice>, info: &RenderPassInfo<VkBackend>) -> Self {
     let vk_device = device.get_ash_device();
     let vk_layout = unsafe { Arc::from_raw(Arc::into_raw(info.layout.clone()) as *const VkRenderPassLayout) };
     let attachments: Vec<vk::ImageView> = info.attachments
@@ -174,7 +175,13 @@ impl VkRenderPass {
       device: device,
       framebuffer: framebuffer,
       layout: vk_layout,
-      info: info.clone()
+      info: RenderPassInfo {
+        layout: info.layout.clone(),
+        attachments: info.attachments.clone(),
+        width: info.width,
+        height: info.height,
+        array_length: info.array_length
+      }
     }
   }
 
@@ -192,12 +199,12 @@ impl Drop for VkRenderPass {
   }
 }
 
-impl RenderPass for VkRenderPass {
-  fn get_info(&self) -> &RenderPassInfo {
+impl RenderPass<VkBackend> for VkRenderPass {
+  fn get_info(&self) -> &RenderPassInfo<VkBackend> {
     return &self.info;
   }
 
-  fn get_layout(&self) -> Arc<dyn RenderPassLayout> {
-    return self.layout.clone() as Arc<dyn RenderPassLayout>;
+  fn get_layout(&self) -> Arc<VkRenderPassLayout> {
+    return self.layout.clone() as Arc<VkRenderPassLayout>;
   }
 }

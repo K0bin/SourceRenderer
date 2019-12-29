@@ -18,6 +18,8 @@ use crate::VkDevice;
 use crate::VkAdapter;
 use crate::VkTexture;
 use crate::VkSemaphore;
+use crate::VkBackend;
+use crate::VkQueue;
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
@@ -165,19 +167,19 @@ impl Drop for VkSwapchain {
   }
 }
 
-impl Swapchain for VkSwapchain {
+impl Swapchain<VkBackend> for VkSwapchain {
   fn recreate(&mut self, info: SwapchainInfo) {
 
   }
 
-  fn start_frame(&self, index: u32) -> (Arc<dyn Semaphore>, Arc<dyn Texture>) {
+  fn start_frame(&self, index: u32) -> (Arc<dyn Semaphore>, Arc<VkTexture>) {
     let semaphore = self.semaphores[index as usize].clone();
     unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()); }
     let back_buffer = self.textures[index as usize].clone();;
     return (semaphore, back_buffer);
   }
 
-  fn present(&self, queue: Arc<dyn Queue>) {
+  fn present(&self, queue: Arc<VkQueue>) {
 
   }
 }

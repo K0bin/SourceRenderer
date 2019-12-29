@@ -10,6 +10,7 @@ use sourcerenderer_core::graphics::*;
 use crate::queue::VkQueue;
 use crate::queue::VkQueueInfo;
 use crate::adapter::VkAdapter;
+use crate::VkBackend;
 use crate::buffer::VkBuffer;
 use crate::buffer::buffer_usage_to_vk;
 use crate::VkAdapterExtensionSupport;
@@ -84,8 +85,8 @@ impl Drop for VkDevice {
   }
 }
 
-impl Device for VkDevice {
-  fn create_queue(self: Arc<Self>, queue_type: QueueType) -> Option<Arc<dyn Queue>> {
+impl Device<VkBackend> for VkDevice {
+  fn create_queue(self: Arc<Self>, queue_type: QueueType) -> Option<Arc<VkQueue>> {
     return match queue_type {
       QueueType::Graphics => {
         let vk_queue = unsafe { self.device.get_device_queue(self.graphics_queue_info.queue_family_index as u32, self.graphics_queue_info.queue_index as u32) };
@@ -94,42 +95,42 @@ impl Device for VkDevice {
       QueueType::Compute => {
         self.compute_queue_info.map(|info| {
             let vk_queue = unsafe { self.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-            Arc::new(VkQueue::new(info.clone(), vk_queue, self.clone())) as Arc<dyn Queue>
+            Arc::new(VkQueue::new(info.clone(), vk_queue, self.clone()))
           }
         )
       }
       QueueType::Transfer => {
         self.transfer_queue_info.map(|info| {
             let vk_queue = unsafe { self.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-            Arc::new(VkQueue::new(info.clone(), vk_queue, self.clone())) as Arc<dyn Queue>
+            Arc::new(VkQueue::new(info.clone(), vk_queue, self.clone()))
           }
         )
       }
     }
   }
 
-  fn create_buffer(self: Arc<Self>, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<dyn Buffer> {
+  fn create_buffer(self: Arc<Self>, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBuffer> {
     let mut allocator = self.allocator.lock().unwrap();
     return Arc::new(VkBuffer::new(self.clone(), size, memory_usage, &mut allocator, usage));
   }
 
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<dyn Shader> {
+  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<VkShader> {
     return Arc::new(VkShader::new(self, shader_type, bytecode));
   }
 
-  fn create_pipeline(self: Arc<Self>, info: &PipelineInfo) -> Arc<dyn Pipeline> {
+  fn create_pipeline(self: Arc<Self>, info: &PipelineInfo<VkBackend>) -> Arc<VkPipeline> {
     return Arc::new(VkPipeline::new(self.clone(), info));
   }
 
-  fn create_renderpass_layout(self: Arc<Self>, info: &RenderPassLayoutInfo) -> Arc<dyn RenderPassLayout> {
+  fn create_renderpass_layout(self: Arc<Self>, info: &RenderPassLayoutInfo) -> Arc<VkRenderPassLayout> {
     return Arc::new(VkRenderPassLayout::new(self.clone(), info));
   }
 
-  fn create_renderpass(self: Arc<Self>, info: &RenderPassInfo) -> Arc<dyn RenderPass> {
+  fn create_renderpass(self: Arc<Self>, info: &RenderPassInfo<VkBackend>) -> Arc<VkRenderPass> {
     return Arc::new(VkRenderPass::new(self.clone(), info));
   }
 
-  fn create_render_target_view(self: Arc<Self>, texture: Arc<dyn Texture>) -> Arc<dyn RenderTargetView> {
+  fn create_render_target_view(self: Arc<Self>, texture: Arc<VkTexture>) -> Arc<VkRenderTargetView> {
     let vk_texture = unsafe { Arc::from_raw(Arc::into_raw(texture) as *const VkTexture) };
     return Arc::new(VkRenderTargetView::new(self.clone(), vk_texture));
   }

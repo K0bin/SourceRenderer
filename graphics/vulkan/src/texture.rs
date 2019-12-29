@@ -9,6 +9,7 @@ use sourcerenderer_core::graphics::RenderTargetView;
 
 use crate::VkDevice;
 use crate::format::format_to_vk;
+use crate::VkBackend;
 
 pub struct VkTexture {
   image: vk::Image,
@@ -68,7 +69,7 @@ impl Drop for VkTexture {
   }
 }
 
-impl Texture for VkTexture {
+impl Texture<VkBackend> for VkTexture {
 
 }
 
@@ -115,8 +116,8 @@ impl Drop for VkRenderTargetView {
   }
 }
 
-impl RenderTargetView for VkRenderTargetView {
-  fn get_texture(&self) -> Arc<dyn Texture> {
+impl RenderTargetView<VkBackend> for VkRenderTargetView {
+  fn get_texture(&self) -> Arc<VkTexture> {
     return self.texture.clone();
   }
 }

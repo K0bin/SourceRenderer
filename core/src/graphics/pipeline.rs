@@ -3,6 +3,8 @@ use std::sync::Arc;
 use graphics::Format;
 use graphics::RenderPassLayout;
 
+use graphics::Backend;
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum InputRate {
   PerVertex,
@@ -279,25 +281,25 @@ pub enum ShaderType {
   // TODO add mesh shaders (?)
 }
 
-pub trait Shader {
+pub trait Shader<B: Backend> {
   fn get_shader_type(&self) -> ShaderType;
 }
 
-pub struct PipelineInfo {
-  pub vs: Arc<dyn Shader>,
-  pub fs: Option<Arc<dyn Shader>>,
-  pub gs: Option<Arc<dyn Shader>>,
-  pub tcs: Option<Arc<dyn Shader>>,
-  pub tes: Option<Arc<dyn Shader>>,
+pub struct PipelineInfo<B: Backend> {
+  pub vs: Arc<B::Shader>,
+  pub fs: Option<Arc<B::Shader>>,
+  pub gs: Option<Arc<B::Shader>>,
+  pub tcs: Option<Arc<B::Shader>>,
+  pub tes: Option<Arc<B::Shader>>,
   pub vertex_layout: VertexLayoutInfo,
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
   pub blend: BlendInfo,
-  pub renderpass: Arc<dyn RenderPassLayout>,
+  pub renderpass: Arc<B::RenderPassLayout>,
   pub subpass: u32
   // TODO: pipeline layout
 }
 
-pub trait Pipeline {
+pub trait Pipeline<B: Backend> {
 
 }

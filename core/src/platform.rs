@@ -1,11 +1,9 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::graphics::Instance;
-use crate::graphics::Surface;
-use crate::graphics::Device;
-use crate::graphics::Swapchain;
 use crate::graphics::SwapchainInfo;
+
+use crate::graphics;
 
 #[derive(PartialEq)]
 pub enum PlatformEvent {
@@ -21,13 +19,16 @@ pub enum GraphicsApi {
   Vulkan
 }
 
-pub trait Platform {
-  fn window(&mut self) -> &dyn Window;
+pub trait Platform: 'static + Sized {
+  type GraphicsBackend: graphics::Backend;
+  type Window: Window<Self>;
+
+  fn window(&mut self) -> &Self::Window;
   fn handle_events(&mut self) -> PlatformEvent;
-  fn create_graphics(&self, debug_layers: bool) -> Result<Arc<dyn Instance>, Box<dyn Error>>;
+  fn create_graphics(&self, debug_layers: bool) -> Result<Arc<<Self::GraphicsBackend as graphics::Backend>::Instance>, Box<dyn Error>>;
 }
 
-pub trait Window {
-  fn create_surface(&self, graphics_instance: Arc<dyn Instance>) -> Arc<dyn Surface>;
-  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<dyn Device>, surface: Arc<dyn Surface>) -> Arc<dyn Swapchain>;
+pub trait Window<P: Platform> {
+  fn create_surface(&self, graphics_instance: Arc<<P::GraphicsBackend as graphics::Backend>::Instance>) -> Arc<<P::GraphicsBackend as graphics::Backend>::Surface>;
+  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>, surface: Arc<<P::GraphicsBackend as graphics::Backend>::Surface>) -> Arc<<P::GraphicsBackend as graphics::Backend>::Swapchain>;
 }
