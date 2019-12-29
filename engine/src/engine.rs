@@ -137,9 +137,10 @@ impl<P: Platform> Engine<P> {
         Subpass {
           input_attachments: vec![],
           output_color_attachments: vec![
-            AttachmentRef {
+            OutputAttachmentRef {
               layout: ImageLayout::RenderTarget,
-              index: 0u32
+              index: 0u32,
+              resolve_attachment_index: None
             },
           ],
           output_resolve_attachments: Vec::new(),

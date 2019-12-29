@@ -56,10 +56,16 @@ pub struct RenderPassLayoutInfo {
 
 pub struct Subpass {
   pub input_attachments: Vec<AttachmentRef>,
-  pub output_color_attachments: Vec<AttachmentRef>,
+  pub output_color_attachments: Vec<OutputAttachmentRef>,
   pub output_resolve_attachments: Vec<AttachmentRef>,
   pub depth_stencil_attachment: Option<AttachmentRef>,
   pub preserve_unused_attachments: Vec<u32>
+}
+
+pub struct OutputAttachmentRef {
+  pub layout: ImageLayout,
+  pub index: u32,
+  pub resolve_attachment_index: Option<u32>
 }
 
 pub struct AttachmentRef {
