@@ -72,29 +72,36 @@ impl VkRenderPassLayout {
     }
 
     let mut subpasses: Vec<vk::SubpassDescription> = Vec::new();
+    let mut input_references: Vec<vk::AttachmentReference> = Vec::new();
+    let mut output_references: Vec<vk::AttachmentReference> = Vec::new();
+    let mut preserved_references: Vec<u32> = Vec::new();
+    let mut depth_stencil_references: Vec<vk::AttachmentReference> = Vec::new();
     for subpass in &info.subpasses  {
-      let mut input_references: Vec<vk::AttachmentReference> = Vec::new();
+      let input_references_len_old = input_references.len();
+      let output_references_len_old = output_references.len();
+      let preserved_references_len_old = preserved_references.len();
+
       for reference in &subpass.input_attachments {
         input_references.push(vk::AttachmentReference {
           attachment: reference.index,
           layout: image_layout_to_vk(reference.layout)
         });
       }
-      let mut output_references: Vec<vk::AttachmentReference> = Vec::new();
+
       for reference in &subpass.output_color_attachments {
         output_references.push(vk::AttachmentReference {
           attachment: reference.index,
           layout: image_layout_to_vk(reference.layout)
         });
       }
-      let mut resolve_references: Vec<vk::AttachmentReference> = Vec::new();
+
       for reference in &subpass.output_resolve_attachments {
         resolve_references.push(vk::AttachmentReference {
           attachment: reference.index,
           layout: image_layout_to_vk(reference.layout)
         });
       }
-      let mut preserved_references: Vec<u32> = Vec::new();
+
       for reference in &subpass.preserve_unused_attachments {
         preserved_references.push(*reference);
       }
@@ -105,15 +112,36 @@ impl VkRenderPassLayout {
           layout: image_layout_to_vk(reference.layout)
         }
       });
+      if let Some(dsr) = depth_stencil_reference {
+        depth_stencil_references.push(dsr);
+      }
+
+      let input_references_len = input_references.len() - input_references_len_old;
+      let input_references_ptr = input_references
+        .get(input_references_len_old)
+        .map(|vk_ref| vk_ref as *const vk::AttachmentReference)
+        .unwrap_or(std::ptr::null());
+
+      let output_references_len = output_references.len() - output_references_len_old;
+      let output_references_ptr = output_references
+        .get(output_references_len_old)
+        .map(|vk_ref| vk_ref as *const vk::AttachmentReference)
+        .unwrap_or(std::ptr::null());
+
+      let preserved_references_len = preserved_references.len() - preserved_references_len_old;
+      let preserved_references_ptr = preserved_references
+        .get(output_references_len_old)
+        .map(|index| index as *const u32)
+        .unwrap_or(std::ptr::null());
 
       subpasses.push(vk::SubpassDescription {
-        p_input_attachments: input_references.as_ptr(),
-        input_attachment_count: input_references.len() as u32,
-        p_color_attachments: output_references.as_ptr(),
-        color_attachment_count: output_references.len() as u32,
-        p_resolve_attachments: if resolve_references.is_empty() { std::ptr::null() } else { resolve_references.as_ptr() },
-        p_preserve_attachments: preserved_references.as_ptr(),
-        preserve_attachment_count: preserved_references.len() as u32,
+        p_input_attachments: input_references_ptr,
+        input_attachment_count: input_references_len as u32,
+        p_color_attachments: output_references_ptr,
+        color_attachment_count: output_references_len as u32,
+        p_resolve_attachments: std::ptr::null(),
+        p_preserve_attachments: preserved_references_ptr,
+        preserve_attachment_count: preserved_references_len as u32,
         p_depth_stencil_attachment: if let Some(reference) = depth_stencil_reference { &reference } else { std::ptr::null() },
         ..Default::default()
       });

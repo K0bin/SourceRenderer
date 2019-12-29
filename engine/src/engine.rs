@@ -139,7 +139,8 @@ impl<P: Platform> Engine<P> {
           output_color_attachments: vec![
             AttachmentRef {
               layout: ImageLayout::RenderTarget,
-              index: 0u32
+              index: 0u32,
+              resolve: false
             },
           ],
           output_resolve_attachments: Vec::new(),
