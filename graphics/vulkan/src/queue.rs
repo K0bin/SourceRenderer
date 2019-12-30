@@ -66,7 +66,7 @@ impl Queue<VkBackend> for VkQueue {
 
   fn submit(&self, command_buffer: &VkCommandBuffer) {
     let info = vk::SubmitInfo {
-      p_command_buffers: &command_buffer.get_handle() as *const vk::CommandBuffer,
+      p_command_buffers: command_buffer.get_handle() as *const vk::CommandBuffer,
       command_buffer_count: 1,
       ..Default::default()
     };

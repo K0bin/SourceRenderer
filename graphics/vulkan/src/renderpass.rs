@@ -193,18 +193,17 @@ impl RenderPassLayout<VkBackend> for VkRenderPassLayout {
 impl VkRenderPass {
   pub fn new(device: Arc<VkDevice>, info: &RenderPassInfo<VkBackend>) -> Self {
     let vk_device = device.get_ash_device();
-    let vk_layout = unsafe { Arc::from_raw(Arc::into_raw(info.layout.clone()) as *const VkRenderPassLayout) };
     let attachments: Vec<vk::ImageView> = info.attachments
       .iter()
       .map(|attachment| {
-        unsafe { *Arc::from_raw(Arc::into_raw(attachment.clone()) as *const VkRenderTargetView).get_handle() }
+        unsafe { *attachment.get_handle() }
       })
       .collect();
     let create_info = vk::FramebufferCreateInfo {
       width: info.width,
       height: info.height,
       layers: info.array_length,
-      render_pass: *vk_layout.get_handle(),
+      render_pass: *info.layout.get_handle(),
       p_attachments: attachments.as_ptr(),
       attachment_count: attachments.len() as u32,
       ..Default::default()
@@ -213,7 +212,7 @@ impl VkRenderPass {
     return VkRenderPass {
       device: device,
       framebuffer: framebuffer,
-      layout: vk_layout,
+      layout: info.layout.clone(),
       info: RenderPassInfo {
         layout: info.layout.clone(),
         attachments: info.attachments.clone(),

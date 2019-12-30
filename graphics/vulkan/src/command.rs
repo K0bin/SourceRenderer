@@ -151,8 +151,8 @@ impl VkCommandBuffer {
     }
   }
 
-  pub fn get_handle(&self) -> vk::CommandBuffer {
-    return self.command_buffer;
+  pub fn get_handle(&self) -> &vk::CommandBuffer {
+    return &self.command_buffer;
   }
 }
 
@@ -177,11 +177,9 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
   fn begin_render_pass(&self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
     unsafe {
       let vk_device = self.device.get_ash_device();
-      let vk_renderpass = renderpass;
-      let vk_renderpass_layout = Arc::from_raw(Arc::into_raw(renderpass.get_layout()) as *const VkRenderPassLayout);
       let begin_info = vk::RenderPassBeginInfo {
-        framebuffer: *(*vk_renderpass).get_framebuffer(),
-        render_pass: *vk_renderpass_layout.get_handle(),
+        framebuffer: *renderpass.get_framebuffer(),
+        render_pass: *renderpass.get_layout().get_handle(),
         render_area: vk::Rect2D {
           offset: vk::Offset2D { x: 0i32, y: 0i32 },
           extent: vk::Extent2D { width: renderpass.get_info().width, height: renderpass.get_info().height }
@@ -216,8 +214,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
   fn set_pipeline(&self, pipeline: Arc<VkPipeline>) {
     unsafe {
       let vk_device = self.device.get_ash_device();
-      let vk_pipeline = Arc::from_raw(Arc::into_raw(pipeline) as *const VkPipeline);
-      vk_device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, *vk_pipeline.get_handle());
+      vk_device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline.get_handle());
     }
   }
 

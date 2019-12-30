@@ -89,11 +89,6 @@ impl Adapter<VkBackend> for VkAdapter {
       let surface_loader = KhrSurface::new(self.instance.get_entry(), self.instance.get_ash_instance());
       let queue_properties = self.instance.get_ash_instance().get_physical_device_queue_family_properties(self.physical_device);
 
-      let surface_trait_ptr = Arc::into_raw(surface.clone());
-      let vk_surface = surface_trait_ptr as *const VkSurface;
-      let vk_surface_khr = *(*vk_surface).get_surface_handle();
-      Arc::from_raw(vk_surface);
-
       let graphics_queue_family_props = queue_properties
         .iter()
         .enumerate()
@@ -126,7 +121,7 @@ impl Adapter<VkBackend> for VkAdapter {
         queue_family_index: graphics_queue_family_props.0,
         queue_index: 0,
         queue_type: QueueType::Graphics,
-        supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, vk_surface_khr)
+        supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, *surface.get_surface_handle())
       };
 
       let compute_queue_info = compute_queue_family_props.map(
@@ -136,7 +131,7 @@ impl Adapter<VkBackend> for VkAdapter {
             queue_family_index: index,
             queue_index: 0,
             queue_type: QueueType::Compute,
-            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, vk_surface_khr)
+            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.get_surface_handle())
           }
         }
       );
@@ -148,7 +143,7 @@ impl Adapter<VkBackend> for VkAdapter {
             queue_family_index: index,
             queue_index: 0,
             queue_type: QueueType::Transfer,
-            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, vk_surface_khr)
+            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.get_surface_handle())
           }
         }
       );

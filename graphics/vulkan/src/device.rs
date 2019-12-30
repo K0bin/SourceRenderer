@@ -114,7 +114,7 @@ impl Device<VkBackend> for VkDevice {
     return Arc::new(VkBuffer::new(self.clone(), size, memory_usage, &mut allocator, usage));
   }
 
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<VkShader> {
+  fn create_shader(self: Arc<Self>, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<VkShader> {
     return Arc::new(VkShader::new(self, shader_type, bytecode));
   }
 
@@ -131,8 +131,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_render_target_view(self: Arc<Self>, texture: Arc<VkTexture>) -> Arc<VkRenderTargetView> {
-    let vk_texture = unsafe { Arc::from_raw(Arc::into_raw(texture) as *const VkTexture) };
-    return Arc::new(VkRenderTargetView::new(self.clone(), vk_texture));
+    return Arc::new(VkRenderTargetView::new(self.clone(), texture));
   }
 
   fn wait_for_idle(&self) {

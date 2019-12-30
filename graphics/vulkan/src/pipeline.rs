@@ -39,23 +39,23 @@ pub fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
 pub struct VkShader {
   shader_type: ShaderType,
   shader_module: vk::ShaderModule,
-  device: ash::Device
+  device: Arc<VkDevice>
 }
 
 impl VkShader {
-  pub fn new(device: &VkDevice, shader_type: ShaderType, bytecode: &Vec<u8>) -> Self {
+  pub fn new(device: Arc<VkDevice>, shader_type: ShaderType, bytecode: &Vec<u8>) -> Self {
     let create_info = vk::ShaderModuleCreateInfo {
       code_size: bytecode.len(),
       p_code: bytecode.as_ptr() as *const u32,
       ..Default::default()
     };
-    let vk_device = device.get_ash_device().clone();
+    let vk_device = device.get_ash_device();
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
 
     return VkShader {
       shader_type: shader_type,
       shader_module: shader_module,
-      device: vk_device
+      device: device
     };
   }
 
@@ -73,7 +73,8 @@ impl Shader<VkBackend> for VkShader {
 impl Drop for VkShader {
   fn drop(&mut self) {
     unsafe {
-      self.device.destroy_shader_module(self.shader_module, None);
+      let vk_device = self.device.get_ash_device();
+      vk_device.destroy_shader_module(self.shader_module, None);
     }
   }
 }
@@ -202,60 +203,50 @@ impl VkPipeline {
 
       {
         let shader = info.vs.clone();
-        let shader_ptr = Arc::into_raw(shader) as *const VkShader;
-        let shader_vk: Arc<VkShader> = Arc::from_raw(shader_ptr);
         let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader_vk.get_shader_module(),
+          module: shader.get_shader_module(),
           p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader_vk.get_shader_type()),
+          stage: shader_type_to_vk(shader.get_shader_type()),
           ..Default::default()
         };
         shader_stages.push(shader_stage);
       }
 
       if let Some(shader) = info.fs.clone() {
-        let shader_ptr = Arc::into_raw(shader) as *const VkShader;
-        let shader_vk: Arc<VkShader> = Arc::from_raw(shader_ptr);
         let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader_vk.get_shader_module(),
+          module: shader.get_shader_module(),
           p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader_vk.get_shader_type()),
+          stage: shader_type_to_vk(shader.get_shader_type()),
           ..Default::default()
         };
         shader_stages.push(shader_stage);
       }
 
       if let Some(shader) = info.gs.clone() {
-        let shader_ptr = Arc::into_raw(shader) as *const VkShader;
-        let shader_vk: Arc<VkShader> = Arc::from_raw(shader_ptr);
         let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader_vk.get_shader_module(),
+          module: shader.get_shader_module(),
           p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader_vk.get_shader_type()),
+          stage: shader_type_to_vk(shader.get_shader_type()),
           ..Default::default()
         };
         shader_stages.push(shader_stage);
       }
 
       if let Some(shader) = info.tes.clone() {
-        let shader_ptr = Arc::into_raw(shader) as *const VkShader;
-        let shader_vk: Arc<VkShader> = Arc::from_raw(shader_ptr);
         let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader_vk.get_shader_module(),
+          module: shader.get_shader_module(),
           p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader_vk.get_shader_type()),
+          stage: shader_type_to_vk(shader.get_shader_type()),
           ..Default::default()
         };
         shader_stages.push(shader_stage);
       }
 
       if let Some(shader) = info.tcs.clone() {
-        let shader_ptr = Arc::into_raw(shader) as *const VkShader;
-        let shader_vk: Arc<VkShader> = Arc::from_raw(shader_ptr);
         let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader_vk.get_shader_module(),
+          module: shader.get_shader_module(),
           p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader_vk.get_shader_type()),
+          stage: shader_type_to_vk(shader.get_shader_type()),
           ..Default::default()
         };
         shader_stages.push(shader_stage);
@@ -402,8 +393,6 @@ impl VkPipeline {
         ..Default::default()
       };
 
-      let vk_renderpass_layout = Arc::from_raw(Arc::into_raw(info.renderpass.clone()) as *const VkRenderPassLayout);
-
       let pipeline_create_info = vk::GraphicsPipelineCreateInfo {
         stage_count: shader_stages.len() as u32,
         p_stages: shader_stages.as_ptr(),
@@ -417,7 +406,7 @@ impl VkPipeline {
         p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
         p_dynamic_state: &dynamic_state_create_info,
         layout: layout,
-        render_pass: *vk_renderpass_layout.get_handle(),
+        render_pass: *info.renderpass.get_handle(),
         subpass: info.subpass,
         base_pipeline_handle: vk::Pipeline::null(),
         base_pipeline_index: 0i32,

@@ -42,7 +42,7 @@ pub trait Adapter<B: Backend> {
 pub trait Device<B: Backend> {
   fn create_queue(self: Arc<Self>, queue_type: QueueType) -> Option<Arc<B::Queue>>;
   fn create_buffer(self: Arc<Self>, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer>;
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<B::Shader>;
+  fn create_shader(self: Arc<Self>, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<B::Shader>;
   fn create_pipeline(self: Arc<Self>, info: &PipelineInfo<B>) -> Arc<B::Pipeline>;
   fn create_renderpass_layout(self: Arc<Self>, info: &RenderPassLayoutInfo) -> Arc<B::RenderPassLayout>;
   fn create_renderpass(self: Arc<Self>, info: &RenderPassInfo<B>) -> Arc<B::RenderPass>;

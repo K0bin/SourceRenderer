@@ -47,7 +47,7 @@ impl VkTexture {
     };
   }
 
-  pub fn get_vk_image(&self) -> &vk::Image {
+  pub fn get_handle(&self) -> &vk::Image {
     return &self.image;
   }
 
@@ -77,7 +77,7 @@ impl VkRenderTargetView {
   pub fn new(device: Arc<VkDevice>, texture: Arc<VkTexture>) -> Self {
     let vk_device = device.get_ash_device();
     let info = vk::ImageViewCreateInfo {
-      image: *texture.get_vk_image(),
+      image: *texture.get_handle(),
       view_type: if texture.depth > 1 { vk::ImageViewType::TYPE_3D } else { vk::ImageViewType::TYPE_2D },
       format: format_to_vk(texture.format),
       components: vk::ComponentMapping {
