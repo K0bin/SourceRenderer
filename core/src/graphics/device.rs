@@ -61,4 +61,5 @@ pub trait Queue<B: Backend> {
   fn create_command_pool(self: Arc<Self>) -> Rc<B::CommandPool>;
   fn get_queue_type(&self) -> QueueType;
   fn supports_presentation(&self) -> bool;
+  fn submit(&self, command_buffer: &B::CommandBuffer);
 }

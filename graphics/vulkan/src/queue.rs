@@ -13,6 +13,7 @@ use sourcerenderer_core::graphics::QueueType;
 use sourcerenderer_core::graphics::CommandPool;
 use crate::device::VkDevice;
 use crate::command::VkCommandPool;
+use crate::command::VkCommandBuffer;
 use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
 
@@ -61,5 +62,17 @@ impl Queue<VkBackend> for VkQueue {
 
   fn supports_presentation(&self) -> bool {
     return self.info.supports_presentation;
+  }
+
+  fn submit(&self, command_buffer: &VkCommandBuffer) {
+    let info = vk::SubmitInfo {
+      p_command_buffers: &command_buffer.get_handle() as *const vk::CommandBuffer,
+      command_buffer_count: 1,
+      ..Default::default()
+    };
+    let vk_queue = self.queue.lock().unwrap();
+    unsafe {
+      self.device.get_ash_device().queue_submit(*vk_queue, &[info], vk::Fence::null());
+    }
   }
 }

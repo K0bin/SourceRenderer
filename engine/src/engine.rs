@@ -57,7 +57,7 @@ impl<P: Platform> Engine<P> {
     };
     let swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
     let queue = device.clone().create_queue(QueueType::Graphics).unwrap();
-    let command_pool = queue.create_command_pool();
+    let command_pool = queue.clone().create_command_pool();
     let command_buffer = command_pool.clone().create_command_buffer(CommandBufferType::PRIMARY);
 
     let buffer = device.clone().create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
@@ -106,15 +106,16 @@ impl<P: Platform> Engine<P> {
     buffer.unmap();
 
     let vertex_shader = {
-      //let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
-      let mut file = File::open("../../engine/shaders/simple.vert.spv").unwrap();
+      let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
+      //let mut file = File::open("../../engine/shaders/simple.vert.spv").unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::VertexShader, &bytes)
     };
 
     let fragment_shader = {
-      let mut file = File::open("../../engine/shaders/simple.frag.spv").unwrap();
+      let mut file = File::open("..\\..\\core\\shaders\\simple.frag.spv").unwrap();
+      //let mut file = File::open("../../engine/shaders/simple.frag.spv").unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::FragmentShader, &bytes)
@@ -243,6 +244,8 @@ impl<P: Platform> Engine<P> {
     command_buffer.draw(6, 0);
     command_buffer.end_render_pass();
     command_buffer.end();
+
+    queue.submit(&command_buffer);
 
     device.wait_for_idle();
 

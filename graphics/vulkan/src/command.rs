@@ -150,6 +150,10 @@ impl VkCommandBuffer {
       device.free_command_buffers(*pool.get_pool(), &[ self.command_buffer ] );
     }
   }
+
+  pub fn get_handle(&self) -> vk::CommandBuffer {
+    return self.command_buffer;
+  }
 }
 
 impl CommandBuffer<VkBackend> for VkCommandBuffer {
