@@ -152,6 +152,14 @@ impl VkSwapchain {
       panic!("No current extent")
     }
   }
+
+  pub fn get_loader(&self) -> &SwapchainLoader {
+    return &self.swapchain_loader;
+  }
+
+  pub fn get_handle(&self) -> &vk::SwapchainKHR {
+    return &self.swapchain;
+  }
 }
 
 impl Drop for VkSwapchain {

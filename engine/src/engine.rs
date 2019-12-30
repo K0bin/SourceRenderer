@@ -16,6 +16,7 @@ use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::graphics::*;
 use std::rc::Rc;
+use std::path::Path;
 use sourcerenderer_core::platform::Window;
 
 pub struct Engine<P: Platform> {
@@ -64,8 +65,8 @@ impl<P: Platform> Engine<P> {
     let triangle = [
       Vertex {
         position: Vec3 {
-          x: 0.0f32,
-          y: 0.0f32,
+          x: -1.0f32,
+          y: 1.0f32,
           z: 0.0f32,
         },
         color: Vec3 {
@@ -76,24 +77,24 @@ impl<P: Platform> Engine<P> {
       },
       Vertex {
         position: Vec3 {
-          x: 1.0f32,
-          y: 0.0f32,
+          x: 0.0f32,
+          y: -1.0f32,
           z: 0.0f32,
         },
         color: Vec3 {
           x: 0.0f32,
           y: 1.0f32,
-          z: 1.0f32,
+          z: 0.0f32,
         }
       },
       Vertex {
         position: Vec3 {
-          x: 0.0f32,
+          x: 1.0f32,
           y: 1.0f32,
           z: 0.0f32,
         },
         color: Vec3 {
-          x: 1.0f32,
+          x: 0.0f32,
           y: 0.0f32,
           z: 1.0f32,
         }
@@ -106,16 +107,16 @@ impl<P: Platform> Engine<P> {
     buffer.unmap();
 
     let vertex_shader = {
-      let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
-      //let mut file = File::open("../../engine/shaders/simple.vert.spv").unwrap();
+      //let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
+      let mut file = File::open(Path::new("../../engine/shaders/simple.vert.spv")).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::VertexShader, &bytes)
     };
 
     let fragment_shader = {
-      let mut file = File::open("..\\..\\core\\shaders\\simple.frag.spv").unwrap();
-      //let mut file = File::open("../../engine/shaders/simple.frag.spv").unwrap();
+      //let mut file = File::open("..\\..\\core\\shaders\\simple.frag.spv")).unwrap();
+      let mut file = File::open(Path::new("../../engine/shaders/simple.frag.spv")).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::FragmentShader, &bytes)
@@ -130,7 +131,7 @@ impl<P: Platform> Engine<P> {
           store_op: StoreOp::Store,
           stencil_load_op: LoadOp::DontCare,
           stencil_store_op: StoreOp::DontCare,
-          initial_layout: ImageLayout::RenderTarget,
+          initial_layout: ImageLayout::Undefined,
           final_layout: ImageLayout::Present
         }
       ],
@@ -246,6 +247,8 @@ impl<P: Platform> Engine<P> {
     command_buffer.end();
 
     queue.submit(&command_buffer);
+
+    queue.present(&swapchain, 0);
 
     device.wait_for_idle();
 

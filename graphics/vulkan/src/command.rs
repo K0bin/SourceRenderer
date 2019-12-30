@@ -188,7 +188,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         p_clear_values: &[
           vk::ClearValue {
             color: vk::ClearColorValue {
-              float32: [1.0f32, 1.0f32, 1.0f32, 1.0f32]
+              float32: [0.0f32, 0.0f32, 0.0f32, 1.0f32]
             }
          },
          vk::ClearValue {

@@ -14,6 +14,7 @@ use sourcerenderer_core::graphics::CommandPool;
 use crate::device::VkDevice;
 use crate::command::VkCommandPool;
 use crate::command::VkCommandBuffer;
+use crate::swapchain::VkSwapchain;
 use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
 
@@ -73,6 +74,19 @@ impl Queue<VkBackend> for VkQueue {
     let vk_queue = self.queue.lock().unwrap();
     unsafe {
       self.device.get_ash_device().queue_submit(*vk_queue, &[info], vk::Fence::null());
+    }
+  }
+
+  fn present(&self, swapchain: &VkSwapchain, image_index: u32) {
+    let present_info = vk::PresentInfoKHR {
+      p_swapchains: swapchain.get_handle() as *const vk::SwapchainKHR,
+      swapchain_count: 1,
+      p_image_indices: &image_index as *const u32,
+      ..Default::default()
+    };
+    let vk_queue = self.queue.lock().unwrap();
+    unsafe {
+      swapchain.get_loader().queue_present(*vk_queue, &present_info);
     }
   }
 }

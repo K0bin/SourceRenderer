@@ -62,4 +62,5 @@ pub trait Queue<B: Backend> {
   fn get_queue_type(&self) -> QueueType;
   fn supports_presentation(&self) -> bool;
   fn submit(&self, command_buffer: &B::CommandBuffer);
+  fn present(&self, swapchain: &B::Swapchain, image_index: u32);
 }
