@@ -1,7 +1,6 @@
 #![feature(optin_builtin_traits)]
 
 use std::rc::Rc;
-use std::rc::Weak;
 use std::sync::Arc;
 use std::cell::RefCell;
 
@@ -11,39 +10,43 @@ use ash::version::DeviceV1_0;
 use sourcerenderer_core::graphics::CommandPool;
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
-use sourcerenderer_core::graphics::Buffer;
 use sourcerenderer_core::graphics::RenderPass;
-use sourcerenderer_core::graphics::RenderPassLayout;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
-use sourcerenderer_core::graphics::Pipeline;
 use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
-use sourcerenderer_core::Vec2;
 
 use crate::VkQueue;
 use crate::VkDevice;
 use crate::VkRenderPass;
-use crate::VkRenderPassLayout;
 use crate::VkBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;
 
-struct VkCommandPoolState {
-  pub free_buffers: Vec<Rc<VkCommandBuffer>>,
-  pub used_buffers: Vec<Rc<VkCommandBuffer>>
+struct VkCommandPoolInner {
+  command_pool: vk::CommandPool,
+  device: Arc<VkDevice>
 }
 
 pub struct VkCommandPool {
-  device: Arc<VkDevice>,
-  command_pool: vk::CommandPool,
   queue: Arc<VkQueue>,
-  state: RefCell<VkCommandPoolState>
+  buffers: Vec<Rc<RefCell<VkCommandBuffer>>>,
+  used_buffers_len: usize,
+  inner: Rc<VkCommandPoolInner>
 }
 
 pub struct VkCommandBuffer {
   device: Arc<VkDevice>,
   command_buffer: vk::CommandBuffer,
-  pool: Weak<VkCommandPool>
+  command_pool_inner: Rc<VkCommandPoolInner>
+}
+
+impl Drop for VkCommandPoolInner {
+  fn drop(&mut self) {
+    let vk_device = self.device.get_ash_device();
+    unsafe {
+      vk_device.destroy_command_pool(self.command_pool, None);
+    }
+  }
 }
 
 impl VkCommandPool {
@@ -57,77 +60,46 @@ impl VkCommandPool {
     let command_pool = unsafe { vk_device.create_command_pool(&create_info, None) }.unwrap();
 
     return VkCommandPool {
-      device: device,
-      command_pool: command_pool,
       queue: queue,
-      state: RefCell::new(VkCommandPoolState {
-        free_buffers: Vec::new(),
-        used_buffers: Vec::new()
-      })
+      inner: Rc::new(VkCommandPoolInner {
+        command_pool: command_pool,
+        device: device
+      }),
+      buffers: Vec::new(),
+      used_buffers_len: 0
     };
   }
 
-  pub fn get_pool(&self) -> &vk::CommandPool {
-    return &self.command_pool;
-  }
-
   pub fn get_queue(&self) -> &VkQueue {
-    return self.queue.as_ref();
-  }
-}
-
-impl Drop for VkCommandPool {
-  fn drop(&mut self) {
-    let mut state = self.state.borrow_mut();
-    while let Some(ref mut cmd_buffer_ref) = state.free_buffers.pop() {
-      let cmd_buffer = Rc::get_mut(cmd_buffer_ref).expect("Dropping command pool that is still in use!");
-      cmd_buffer.drop_vk(self);
-    }
-    while let Some(ref mut cmd_buffer_ref) = state.used_buffers.pop() {
-      let cmd_buffer = Rc::get_mut(cmd_buffer_ref).expect("Dropping command pool that is still in use!");
-      cmd_buffer.drop_vk(self);
-    }
-    unsafe {
-      let vk_device = self.queue.get_device().get_ash_device();
-      vk_device.destroy_command_pool(self.command_pool, None);
-    }
+    return &self.queue;
   }
 }
 
 impl CommandPool<VkBackend> for VkCommandPool {
-  fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<VkCommandBuffer> {
-    let mut state = self.state.borrow_mut();
-    let free_cmd_buffer_option = state.free_buffers.pop();
-    return match free_cmd_buffer_option {
-      Some(free_cmd_buffer) => {
-        free_cmd_buffer
-      }
-      None => {
-        let rc = Rc::new(VkCommandBuffer::new(self.device.clone(), &self, command_buffer_type));
-        state.used_buffers.push(rc.clone());
-        rc
-      }
-    };
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Rc<RefCell<VkCommandBuffer>> {
+    if self.used_buffers_len == self.buffers.len() {
+      let new_buffer = Rc::new(RefCell::new(VkCommandBuffer::new(self.inner.device.clone(), self.inner.clone(), command_buffer_type)));
+      self.buffers.push(new_buffer);
+    }
+    let buffer = self.buffers[self.used_buffers_len].clone();
+    self.used_buffers_len += 1;
+    return buffer;
   }
 
-  fn reset(&self) {
-    let mut state = self.state.borrow_mut();
-    while let Some(buffer) = state.used_buffers.pop()
-    {
-      state.free_buffers.push(buffer);
-    }
+  fn reset(&mut self) {
+    let vk_device = self.inner.device.get_ash_device();
     unsafe {
-      self.queue.get_device().get_ash_device().reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::empty()).unwrap();
+      vk_device.reset_command_pool(self.inner.command_pool, vk::CommandPoolResetFlags::empty()).unwrap();
     }
+    self.used_buffers_len = 0;
   }
 }
 
 impl VkCommandBuffer {
-  pub fn new(device: Arc<VkDevice>, pool: &Rc<VkCommandPool>, command_buffer_type: CommandBufferType) -> Self {
-    let vk_device = pool.get_queue().get_device().get_ash_device();
-    let command_pool = pool.get_pool();
+  fn new(device: Arc<VkDevice>, command_pool_inner: Rc<VkCommandPoolInner>, command_buffer_type: CommandBufferType) -> Self {
+    let vk_device = device.get_ash_device();
     let buffers_create_info = vk::CommandBufferAllocateInfo {
-      command_pool: *command_pool,
+      command_pool: command_pool_inner.command_pool,
       level: if command_buffer_type == CommandBufferType::PRIMARY { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
       command_buffer_count: 1, // TODO: figure out how many buffers per pool (maybe create a new pool once we've run out?)
       ..Default::default()
@@ -137,18 +109,8 @@ impl VkCommandBuffer {
     return VkCommandBuffer {
       command_buffer: buffer,
       device: device,
-      pool: Rc::downgrade(&pool)
+      command_pool_inner: command_pool_inner
     };
-  }
-
-  fn drop_vk(&mut self, pool: &VkCommandPool) {
-    unsafe {
-      let device = pool
-        .get_queue()
-        .get_device()
-        .get_ash_device();
-      device.free_command_buffers(*pool.get_pool(), &[ self.command_buffer ] );
-    }
   }
 
   pub fn get_handle(&self) -> &vk::CommandBuffer {
@@ -156,8 +118,17 @@ impl VkCommandBuffer {
   }
 }
 
+impl Drop for VkCommandBuffer {
+  fn drop(&mut self) {
+    let device = self.device.get_ash_device();
+    unsafe {
+      device.free_command_buffers(self.command_pool_inner.command_pool, &[ self.command_buffer ] );
+    }
+  }
+}
+
 impl CommandBuffer<VkBackend> for VkCommandBuffer {
-  fn begin(&self) {
+  fn begin(&mut self) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       let begin_info = vk::CommandBufferBeginInfo {
@@ -167,14 +138,14 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
-  fn end(&self) {
+  fn end(&mut self) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       vk_device.end_command_buffer(self.command_buffer);
     }
   }
 
-  fn begin_render_pass(&self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
+  fn begin_render_pass(&mut self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       let begin_info = vk::RenderPassBeginInfo {
@@ -204,21 +175,21 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
-  fn end_render_pass(&self) {
+  fn end_render_pass(&mut self) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       vk_device.cmd_end_render_pass(self.command_buffer);
     }
   }
 
-  fn set_pipeline(&self, pipeline: Arc<VkPipeline>) {
+  fn set_pipeline(&mut self, pipeline: Arc<VkPipeline>) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       vk_device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline.get_handle());
     }
   }
 
-  fn set_vertex_buffer(&self, vertex_buffer: &VkBuffer) {
+  fn set_vertex_buffer(&mut self, vertex_buffer: &VkBuffer) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       let vk_buffer = vertex_buffer;
@@ -226,7 +197,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
-  fn set_viewports(&self, viewports: &[ Viewport ]) {
+  fn set_viewports(&mut self, viewports: &[ Viewport ]) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       for i in 0..viewports.len() {
@@ -242,7 +213,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
-  fn set_scissors(&self, scissors: &[ Scissor ])  {
+  fn set_scissors(&mut self, scissors: &[ Scissor ])  {
     unsafe {
       let vk_device = self.device.get_ash_device();
       let vk_scissors: Vec<vk::Rect2D> = scissors.iter().map(|scissor| vk::Rect2D {
@@ -259,7 +230,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
-  fn draw(&self, vertices: u32, offset: u32) {
+  fn draw(&mut self, vertices: u32, offset: u32) {
     unsafe {
       let vk_device = self.device.get_ash_device();
       vk_device.cmd_draw(self.command_buffer, vertices, 1, offset, 0);

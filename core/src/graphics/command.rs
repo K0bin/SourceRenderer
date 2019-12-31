@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
+use std::cell::RefCell;
 
 use crate::Vec2;
 use crate::Vec2I;
@@ -27,18 +28,18 @@ pub enum CommandBufferType {
 }
 
 pub trait CommandPool<B: Backend> {
-  fn create_command_buffer(self: Rc<Self>, command_buffer_type: CommandBufferType) -> Rc<B::CommandBuffer>;
-  fn reset(&self);
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Rc<RefCell<B::CommandBuffer>>;
+  fn reset(&mut self);
 }
 
 pub trait CommandBuffer<B: Backend> {
-  fn begin(&self);
-  fn end(&self);
-  fn set_pipeline(&self, pipeline: Arc<B::Pipeline>);
-  fn begin_render_pass(&self, renderpass: &B::RenderPass, recording_mode: RenderpassRecordingMode);
-  fn end_render_pass(&self);
-  fn set_vertex_buffer(&self, vertex_buffer: &B::Buffer);
-  fn set_viewports(&self, viewports: &[ Viewport ]);
-  fn set_scissors(&self, scissors: &[ Scissor ]);
-  fn draw(&self, vertices: u32, offset: u32);
+  fn begin(&mut self);
+  fn end(&mut self);
+  fn set_pipeline(&mut self, pipeline: Arc<B::Pipeline>);
+  fn begin_render_pass(&mut self, renderpass: &B::RenderPass, recording_mode: RenderpassRecordingMode);
+  fn end_render_pass(&mut self);
+  fn set_vertex_buffer(&mut self, vertex_buffer: &B::Buffer);
+  fn set_viewports(&mut self, viewports: &[ Viewport ]);
+  fn set_scissors(&mut self, scissors: &[ Scissor ]);
+  fn draw(&mut self, vertices: u32, offset: u32);
 }

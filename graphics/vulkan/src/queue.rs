@@ -44,17 +44,13 @@ impl VkQueue {
   pub fn get_queue_family_index(&self) -> u32 {
     return self.info.queue_family_index as u32;
   }
-
-  pub fn get_device(&self) -> &VkDevice {
-    return self.device.as_ref();
-  }
 }
 
 // Vulkan queues are implicitly freed with the logical device
 
 impl Queue<VkBackend> for VkQueue {
-  fn create_command_pool(self: Arc<Self>) -> Rc<VkCommandPool> {
-    return Rc::new(VkCommandPool::new(self.device.clone(), self.clone()));
+  fn create_command_pool(self: Arc<Self>) -> VkCommandPool {
+    return VkCommandPool::new(self.device.clone(), self.clone());
   }
 
   fn get_queue_type(&self) -> QueueType {
