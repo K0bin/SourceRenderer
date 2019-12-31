@@ -154,7 +154,8 @@ impl<P: Platform> Engine<P> {
     };
     let render_pass_layout = device.clone().create_renderpass_layout(&render_pass_info);
 
-    let (semaphore, texture) = swapchain.start_frame(0);
+    let semaphore = device.clone().create_semaphore();
+    let texture = swapchain.get_back_buffer(0, &semaphore);
     let rtv = device.clone().create_render_target_view(texture);
 
     let render_pass_info = RenderPassInfo {

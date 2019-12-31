@@ -20,6 +20,8 @@ use crate::renderpass::VkRenderPassLayout;
 use crate::renderpass::VkRenderPass;
 use crate::texture::VkTexture;
 use crate::texture::VkRenderTargetView;
+use crate::sync::VkSemaphore;
+use crate::sync::VkFence;
 
 pub struct VkDevice {
   adapter: Arc<VkAdapter>,
@@ -132,6 +134,14 @@ impl Device<VkBackend> for VkDevice {
 
   fn create_render_target_view(self: Arc<Self>, texture: Arc<VkTexture>) -> Arc<VkRenderTargetView> {
     return Arc::new(VkRenderTargetView::new(self.clone(), texture));
+  }
+
+  fn create_semaphore(self: Arc<Self>) -> Arc<VkSemaphore> {
+    return Arc::new(VkSemaphore::new(self.clone()));
+  }
+
+  fn create_fence(self: Arc<Self>) -> Arc<VkFence> {
+    return Arc::new(VkFence::new(self.clone()));
   }
 
   fn wait_for_idle(&self) {

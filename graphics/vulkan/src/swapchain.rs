@@ -23,7 +23,6 @@ use crate::VkQueue;
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
-  semaphores: Vec<Arc<VkSemaphore>>,
   swapchain: vk::SwapchainKHR,
   swapchain_loader: SwapchainLoader,
   device: Arc<VkDevice>
@@ -81,12 +80,6 @@ impl VkSwapchain {
       })
       .collect();
 
-    let semaphores: Vec<Arc<VkSemaphore>> = textures
-      .iter()
-      .map(|image| {
-        Arc::new(VkSemaphore::new(device.clone()))
-      })
-      .collect();
     /*let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
       .iter()
       .map(|image| {
@@ -115,7 +108,6 @@ impl VkSwapchain {
 
       VkSwapchain {
         textures: textures,
-        semaphores: semaphores,
         swapchain: swapchain,
         swapchain_loader: swapchain_loader,
         device: device
@@ -180,11 +172,10 @@ impl Swapchain<VkBackend> for VkSwapchain {
 
   }
 
-  fn start_frame(&self, index: u32) -> (Arc<dyn Semaphore>, Arc<VkTexture>) {
-    let semaphore = self.semaphores[index as usize].clone();
+  fn get_back_buffer(&self, index: u32, semaphore: &VkSemaphore) -> Arc<VkTexture> {
     unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()); }
     let back_buffer = self.textures[index as usize].clone();;
-    return (semaphore, back_buffer);
+    return back_buffer;
   }
 
   fn present(&self, queue: Arc<VkQueue>) {

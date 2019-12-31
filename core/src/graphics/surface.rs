@@ -18,6 +18,6 @@ pub struct SwapchainInfo {
 
 pub trait Swapchain<B: Backend> {
   fn recreate(&mut self, info: SwapchainInfo);
-  fn start_frame(&self, index: u32) -> (Arc<dyn Semaphore>, Arc<B::Texture>);
+  fn get_back_buffer(&self, index: u32, semaphore: &B::Semaphore) -> Arc<B::Texture>;
   fn present(&self, queue: Arc<B::Queue>);
 }

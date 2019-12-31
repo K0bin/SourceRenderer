@@ -47,6 +47,8 @@ pub trait Device<B: Backend> {
   fn create_renderpass_layout(self: Arc<Self>, info: &RenderPassLayoutInfo) -> Arc<B::RenderPassLayout>;
   fn create_renderpass(self: Arc<Self>, info: &RenderPassInfo<B>) -> Arc<B::RenderPass>;
   fn create_render_target_view(self: Arc<Self>, texture: Arc<B::Texture>) -> Arc<B::RenderTargetView>;
+  fn create_semaphore(self: Arc<Self>) -> Arc<B::Semaphore>;
+  fn create_fence(self: Arc<Self>) -> Arc<B::Fence>;
   fn wait_for_idle(&self);
 }
 
