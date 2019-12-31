@@ -36,3 +36,8 @@ mod texture;
 mod sync;
 mod renderpass;
 mod backend;
+
+// TODO: find a better place for this
+pub trait Resettable {
+  fn reset(&mut self);
+}

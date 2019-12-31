@@ -29,7 +29,6 @@ pub enum CommandBufferType {
 
 pub trait CommandPool<B: Backend> {
   fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Rc<RefCell<B::CommandBuffer>>;
-  fn reset(&mut self);
 }
 
 pub trait CommandBuffer<B: Backend> {

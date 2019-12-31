@@ -14,6 +14,9 @@ use graphics::RenderPassLayout;
 use graphics::RenderPass;
 use graphics::RenderTargetView;
 use graphics::Swapchain;
+use graphics::Resettable;
+use graphics::Fence;
+use graphics::Semaphore;
 
 pub trait Backend: 'static + Sized {
   type Instance: Instance<Self>;
@@ -21,7 +24,7 @@ pub trait Backend: 'static + Sized {
   type Device: Device<Self>;
   type Surface: Surface<Self>;
   type Swapchain: Swapchain<Self>;
-  type CommandPool: CommandPool<Self>;
+  type CommandPool: CommandPool<Self> + Resettable;
   type CommandBuffer: CommandBuffer<Self>;
   type Queue: Queue<Self>;
   type Texture: Texture<Self>;
@@ -31,4 +34,6 @@ pub trait Backend: 'static + Sized {
   type RenderPassLayout: RenderPassLayout<Self>;
   type RenderPass: RenderPass<Self>;
   type RenderTargetView: RenderTargetView<Self>;
+  type Semaphore: Semaphore + Resettable;
+  type Fence: Fence + Resettable;
 }

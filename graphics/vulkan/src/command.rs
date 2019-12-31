@@ -1,5 +1,3 @@
-#![feature(optin_builtin_traits)]
-
 use std::rc::Rc;
 use std::sync::Arc;
 use std::cell::RefCell;
@@ -14,6 +12,7 @@ use sourcerenderer_core::graphics::RenderPass;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
 use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
+use sourcerenderer_core::graphics::Resettable;
 
 use crate::VkQueue;
 use crate::VkDevice;
@@ -85,7 +84,9 @@ impl CommandPool<VkBackend> for VkCommandPool {
     self.used_buffers_len += 1;
     return buffer;
   }
+}
 
+impl Resettable for VkCommandPool {
   fn reset(&mut self) {
     let vk_device = self.inner.device.get_ash_device();
     unsafe {
