@@ -70,7 +70,7 @@ impl Drop for VkBuffer {
   }
 }
 
-impl Buffer<VkBackend> for VkBuffer {
+impl Buffer for VkBuffer {
   fn map(&self) -> Option<*mut u8> {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
       let mut allocator = self.device.get_allocator().lock().unwrap();

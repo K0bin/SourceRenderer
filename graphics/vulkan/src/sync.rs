@@ -86,7 +86,7 @@ impl Resettable for VkFence {
   fn reset(&mut self) {
     let vk_device = self.device.get_ash_device();
     unsafe {
-      vk_device.reset_fences(&self.fence);
+      vk_device.reset_fences(&[self.fence]);
     }
 
   }

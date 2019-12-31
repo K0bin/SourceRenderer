@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use graphics::Backend;
 
-pub trait Texture<B: Backend> {
+pub trait Texture {
 
 }
 

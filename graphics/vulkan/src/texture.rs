@@ -69,7 +69,7 @@ impl Drop for VkTexture {
   }
 }
 
-impl Texture<VkBackend> for VkTexture {
+impl Texture for VkTexture {
 
 }
 

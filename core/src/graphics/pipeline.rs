@@ -281,7 +281,7 @@ pub enum ShaderType {
   // TODO add mesh shaders (?)
 }
 
-pub trait Shader<B: Backend> {
+pub trait Shader {
   fn get_shader_type(&self) -> ShaderType;
 }
 

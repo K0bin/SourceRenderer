@@ -27,9 +27,9 @@ pub trait Backend: 'static + Sized {
   type CommandPool: CommandPool<Self> + Resettable;
   type CommandBuffer: CommandBuffer<Self>;
   type Queue: Queue<Self>;
-  type Texture: Texture<Self>;
-  type Buffer: Buffer<Self>;
-  type Shader: Shader<Self>;
+  type Texture: Texture;
+  type Buffer: Buffer;
+  type Shader: Shader;
   type Pipeline: Pipeline<Self>;
   type RenderPassLayout: RenderPassLayout<Self>;
   type RenderPass: RenderPass<Self>;

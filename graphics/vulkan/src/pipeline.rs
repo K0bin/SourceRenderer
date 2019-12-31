@@ -64,7 +64,7 @@ impl VkShader {
   }
 }
 
-impl Shader<VkBackend> for VkShader {
+impl Shader for VkShader {
   fn get_shader_type(&self) -> ShaderType {
     return self.shader_type;
   }
