@@ -59,8 +59,6 @@ impl<P: Platform> Engine<P> {
     let swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
     let queue = device.clone().create_queue(QueueType::Graphics).unwrap();
     let mut command_pool = queue.clone().create_command_pool();
-    let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
-    let mut command_buffer_ref = command_buffer.borrow_mut();
 
     let buffer = device.clone().create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
     let triangle = [
@@ -154,19 +152,6 @@ impl<P: Platform> Engine<P> {
     };
     let render_pass_layout = device.clone().create_renderpass_layout(&render_pass_info);
 
-    let backbuffer_semaphore = device.clone().create_semaphore();
-    let texture = swapchain.get_back_buffer(0, &backbuffer_semaphore);
-    let rtv = device.clone().create_render_target_view(texture);
-
-    let render_pass_info = RenderPassInfo {
-      layout: render_pass_layout.clone(),
-      width: 1280u32,
-      height: 720u32,
-      array_length: 1u32,
-      attachments: vec![rtv]
-    };
-    let render_pass = device.clone().create_renderpass(&render_pass_info);
-
     let pipeline_info = PipelineInfo {
       vs: vertex_shader,
       fs: Some(fragment_shader),
@@ -225,41 +210,57 @@ impl<P: Platform> Engine<P> {
           AttachmentBlendInfo::default()
         ]
       },
-      renderpass: render_pass_layout,
+      renderpass: render_pass_layout.clone(),
       subpass: 0u32,
     };
     let pipeline = device.clone().create_pipeline(&pipeline_info);
-
-    command_buffer_ref.begin();
-    command_buffer_ref.begin_render_pass(&*render_pass, RenderpassRecordingMode::Commands);
-    command_buffer_ref.set_pipeline(pipeline.clone());
-    command_buffer_ref.set_vertex_buffer(&*buffer);
-    command_buffer_ref.set_viewports(&[Viewport {
-      position: Vec2 { x: 0.0f32, y: 0.0f32 },
-      extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
-      min_depth: 0.0f32,
-      max_depth: 1.0f32
-    }]);
-    command_buffer_ref.set_scissors(&[Scissor {
-      position: Vec2I { x: 0, y: 0 },
-      extent: Vec2UI { x: 9999, y: 9999 },
-    }]);
-    command_buffer_ref.draw(6, 0);
-    command_buffer_ref.end_render_pass();
-    command_buffer_ref.end();
-
-    let cmd_buffer_semaphore = device.clone().create_semaphore();
-    queue.submit(&command_buffer_ref, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
-
-    queue.present(&swapchain, 0, &[ &cmd_buffer_semaphore ]);
-
-    device.wait_for_idle();
 
     'main_loop: loop {
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {
           break 'main_loop;
       }
+
+      let backbuffer_semaphore = device.clone().create_semaphore();
+      let (backbuffer, swapchain_image_index) = swapchain.prepare_back_buffer(&backbuffer_semaphore);
+      let rtv = device.clone().create_render_target_view(backbuffer);
+
+      let render_pass_info = RenderPassInfo {
+        layout: render_pass_layout.clone(),
+        width: 1280u32,
+        height: 720u32,
+        array_length: 1u32,
+        attachments: vec![rtv]
+      };
+      let render_pass = device.clone().create_renderpass(&render_pass_info);
+
+      let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
+      let mut command_buffer_ref = command_buffer.borrow_mut();
+      command_buffer_ref.begin();
+      command_buffer_ref.begin_render_pass(&*render_pass, RenderpassRecordingMode::Commands);
+      command_buffer_ref.set_pipeline(pipeline.clone());
+      command_buffer_ref.set_vertex_buffer(&*buffer);
+      command_buffer_ref.set_viewports(&[Viewport {
+        position: Vec2 { x: 0.0f32, y: 0.0f32 },
+        extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
+        min_depth: 0.0f32,
+        max_depth: 1.0f32
+      }]);
+      command_buffer_ref.set_scissors(&[Scissor {
+        position: Vec2I { x: 0, y: 0 },
+        extent: Vec2UI { x: 9999, y: 9999 },
+      }]);
+      command_buffer_ref.draw(6, 0);
+      command_buffer_ref.end_render_pass();
+      command_buffer_ref.end();
+
+      let cmd_buffer_semaphore = device.clone().create_semaphore();
+      queue.submit(&command_buffer_ref, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
+
+      queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);
+
+      device.wait_for_idle();
+
       //renderer.render();
       std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }

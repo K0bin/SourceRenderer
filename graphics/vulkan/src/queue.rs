@@ -67,16 +67,16 @@ impl Queue<VkBackend> for VkQueue {
   fn submit(&self, command_buffer: &VkCommandBuffer, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let signal_semaphore_handles = signal_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
-    let stage_masks = signal_semaphores.into_iter().map(|_| vk::PipelineStageFlags::BOTTOM_OF_PIPE).collect::<Vec<vk::PipelineStageFlags>>();
+    let stage_masks = wait_semaphores.into_iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<Vec<vk::PipelineStageFlags>>();
 
     let info = vk::SubmitInfo {
       p_command_buffers: command_buffer.get_handle() as *const vk::CommandBuffer,
       command_buffer_count: 1,
       p_wait_semaphores: if wait_semaphores.len() == 0 { std::ptr::null() } else { wait_semaphore_handles.as_ptr() },
       wait_semaphore_count: wait_semaphores.len() as u32,
+      p_wait_dst_stage_mask: if wait_semaphores.len() == 0 { std::ptr::null() } else { stage_masks.as_ptr() },
       p_signal_semaphores: if signal_semaphores.len() == 0 { std::ptr::null() } else { signal_semaphore_handles.as_ptr() },
       signal_semaphore_count: signal_semaphores.len() as u32,
-      p_wait_dst_stage_mask: if signal_semaphores.len() == 0 { std::ptr::null() } else { stage_masks.as_ptr() },
       ..Default::default()
     };
     let vk_queue = self.queue.lock().unwrap();

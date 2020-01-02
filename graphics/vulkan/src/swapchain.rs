@@ -172,10 +172,10 @@ impl Swapchain<VkBackend> for VkSwapchain {
 
   }
 
-  fn get_back_buffer(&self, index: u32, semaphore: &VkSemaphore) -> Arc<VkTexture> {
-    unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()); }
-    let back_buffer = self.textures[index as usize].clone();;
-    return back_buffer;
+  fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> (Arc<VkTexture>, u32) {
+    let (index, optimal) = unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
+    let back_buffer = self.textures.get(index as usize).unwrap().clone();
+    return (back_buffer, index);
   }
 
   fn present(&self, queue: Arc<VkQueue>) {
