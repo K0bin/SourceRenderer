@@ -154,8 +154,8 @@ impl<P: Platform> Engine<P> {
     };
     let render_pass_layout = device.clone().create_renderpass_layout(&render_pass_info);
 
-    let semaphore = device.clone().create_semaphore();
-    let texture = swapchain.get_back_buffer(0, &semaphore);
+    let backbuffer_semaphore = device.clone().create_semaphore();
+    let texture = swapchain.get_back_buffer(0, &backbuffer_semaphore);
     let rtv = device.clone().create_render_target_view(texture);
 
     let render_pass_info = RenderPassInfo {
@@ -248,9 +248,10 @@ impl<P: Platform> Engine<P> {
     command_buffer_ref.end_render_pass();
     command_buffer_ref.end();
 
-    queue.submit(&command_buffer_ref, None, &[], &[]);
+    let cmd_buffer_semaphore = device.clone().create_semaphore();
+    queue.submit(&command_buffer_ref, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
 
-    queue.present(&swapchain, 0, &[]);
+    queue.present(&swapchain, 0, &[ &cmd_buffer_semaphore ]);
 
     device.wait_for_idle();
 
