@@ -71,6 +71,9 @@ impl VkFence {
       ..Default::default()
     };
     let fence = unsafe { vk_device.create_fence(&info, None).unwrap() };
+    unsafe {
+      vk_device.reset_fences(&[fence]);
+    }
     return VkFence {
       device: device,
       fence: fence
@@ -83,7 +86,19 @@ impl VkFence {
 }
 
 impl Fence for VkFence {
+  fn await(&mut self) {
+    let vk_device = self.device.get_ash_device();
+    unsafe {
+      vk_device.wait_for_fences(&[self.fence], true, std::u64::MAX);
+    }
+  }
 
+  fn is_signaled(&self) -> bool {
+    let vk_device = self.device.get_ash_device();
+    return unsafe {
+      vk_device.wait_for_fences(&[self.fence], true, 0).is_ok()
+    };
+  }
 }
 
 impl Resettable for VkFence {
