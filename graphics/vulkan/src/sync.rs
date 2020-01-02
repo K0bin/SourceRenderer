@@ -76,6 +76,10 @@ impl VkFence {
       fence: fence
     };
   }
+
+  pub fn get_handle(&self) -> &vk::Fence {
+    return &self.fence;
+  }
 }
 
 impl Fence for VkFence {

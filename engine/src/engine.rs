@@ -248,9 +248,9 @@ impl<P: Platform> Engine<P> {
     command_buffer_ref.end_render_pass();
     command_buffer_ref.end();
 
-    queue.submit(&command_buffer_ref);
+    queue.submit(&command_buffer_ref, None, &[], &[]);
 
-    queue.present(&swapchain, 0);
+    queue.present(&swapchain, 0, &[]);
 
     device.wait_for_idle();
 
