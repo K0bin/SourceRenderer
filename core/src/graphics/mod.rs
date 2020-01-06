@@ -36,6 +36,7 @@ mod texture;
 mod sync;
 mod renderpass;
 mod backend;
+pub mod graph;
 
 // TODO: find a better place for this
 pub trait Resettable {

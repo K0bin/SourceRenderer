@@ -56,7 +56,7 @@ impl<P: Platform> Engine<P> {
       height: 720,
       vsync: true
     };
-    let swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
+    let mut swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
     let queue = device.clone().create_queue(QueueType::Graphics).unwrap();
     let mut command_pool = queue.clone().create_command_pool();
 
@@ -258,6 +258,8 @@ impl<P: Platform> Engine<P> {
       queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);
 
       device.wait_for_idle();
+
+      command_pool.reset();
 
       //renderer.render();
       std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));

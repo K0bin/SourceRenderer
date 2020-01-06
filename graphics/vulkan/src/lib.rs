@@ -40,3 +40,4 @@ mod format;
 mod texture;
 mod sync;
 mod renderpass;
+mod graph;

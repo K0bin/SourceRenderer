@@ -22,6 +22,8 @@ use crate::texture::VkTexture;
 use crate::texture::VkRenderTargetView;
 use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
+use crate::graph::VkRenderGraph;
+use crate::swapchain::VkSwapchain;
 
 pub struct VkDevice {
   adapter: Arc<VkAdapter>,
@@ -146,6 +148,10 @@ impl Device<VkBackend> for VkDevice {
 
   fn wait_for_idle(&self) {
     unsafe { self.device.device_wait_idle(); }
+  }
+
+  fn create_render_graph(self: Arc<Self>, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo, swapchain: &VkSwapchain) -> VkRenderGraph {
+    return VkRenderGraph::new(self, graph_info, swapchain);
   }
 }
 

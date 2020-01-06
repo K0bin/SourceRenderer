@@ -23,9 +23,13 @@ use crate::VkQueue;
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
+  images: Vec<vk::Image>,
+  views: Vec<vk::ImageView>,
   swapchain: vk::SwapchainKHR,
   swapchain_loader: SwapchainLoader,
-  device: Arc<VkDevice>
+  device: Arc<VkDevice>,
+  width: u32,
+  height: u32
 }
 
 impl VkSwapchain {
@@ -71,46 +75,50 @@ impl VkSwapchain {
         ..Default::default()
       };
 
-    let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
-    let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
-    let textures: Vec<Arc<VkTexture>> = swapchain_images
-      .iter()
-      .map(|image| {
-        Arc::new(VkTexture::from_image(device.clone(), *image, Format::BGRA8UNorm, info.width, info.height, 1u32, 1u32, 1u32))
-      })
-      .collect();
+      let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
+      let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
+      let textures: Vec<Arc<VkTexture>> = swapchain_images
+        .iter()
+        .map(|image| {
+          Arc::new(VkTexture::from_image(device.clone(), *image, Format::BGRA8UNorm, info.width, info.height, 1u32, 1u32, 1u32))
+        })
+        .collect();
 
-    /*let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
-      .iter()
-      .map(|image| {
-        let info = vk::ImageViewCreateInfo {
-          image: *image,
-          view_type: vk::ImageViewType::TYPE_2D,
-          format: format.format,
-          components: vk::ComponentMapping {
-            r: vk::ComponentSwizzle::IDENTITY,
-            g: vk::ComponentSwizzle::IDENTITY,
-            b: vk::ComponentSwizzle::IDENTITY,
-            a: vk::ComponentSwizzle::IDENTITY,
-          },
-          subresource_range: vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1
-          },
-          ..Default::default()
-        };
-        vk_device.create_image_view(&info, None).unwrap()
-      })
-      .collect();*/
+      let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
+        .iter()
+        .map(|image| {
+          let info = vk::ImageViewCreateInfo {
+            image: *image,
+            view_type: vk::ImageViewType::TYPE_2D,
+            format: format.format,
+            components: vk::ComponentMapping {
+              r: vk::ComponentSwizzle::IDENTITY,
+              g: vk::ComponentSwizzle::IDENTITY,
+              b: vk::ComponentSwizzle::IDENTITY,
+              a: vk::ComponentSwizzle::IDENTITY,
+            },
+            subresource_range: vk::ImageSubresourceRange {
+              aspect_mask: vk::ImageAspectFlags::COLOR,
+              base_mip_level: 0,
+              level_count: 1,
+              base_array_layer: 0,
+              layer_count: 1
+            },
+            ..Default::default()
+          };
+          vk_device.create_image_view(&info, None).unwrap()
+        })
+        .collect();
 
       VkSwapchain {
         textures: textures,
+        images: swapchain_images,
+        views: swapchain_image_views,
         swapchain: swapchain,
         swapchain_loader: swapchain_loader,
-        device: device
+        device: device,
+        width: info.width,
+        height: info.height
       }
     }
   }
@@ -152,15 +160,31 @@ impl VkSwapchain {
   pub fn get_handle(&self) -> &vk::SwapchainKHR {
     return &self.swapchain;
   }
+
+  pub fn get_images(&self) -> &[vk::Image] {
+    return &self.images[..];
+  }
+
+  pub fn get_views(&self) -> &[vk::ImageView] {
+    return &self.views[..];
+  }
+
+  pub fn get_width(&self) -> u32 {
+    return self.width;
+  }
+
+  pub fn get_height(&self) -> u32 {
+    return self.height;
+  }
 }
 
 impl Drop for VkSwapchain {
   fn drop(&mut self) {
     let vk_device = self.device.get_ash_device();
     unsafe {
-      /*for image_view in &self.image_views {
+      for image_view in &self.views {
           vk_device.destroy_image_view(*image_view, None);
-      }*/
+      }
       println!("DESTORY SC");
       self.swapchain_loader.destroy_swapchain(self.swapchain, None);
     }
@@ -168,17 +192,9 @@ impl Drop for VkSwapchain {
 }
 
 impl Swapchain<VkBackend> for VkSwapchain {
-  fn recreate(&mut self, info: SwapchainInfo) {
-
-  }
-
-  fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> (Arc<VkTexture>, u32) {
+  fn prepare_back_buffer(&mut self, semaphore: &VkSemaphore) -> (Arc<VkTexture>, u32) {
     let (index, optimal) = unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
     let back_buffer = self.textures.get(index as usize).unwrap().clone();
     return (back_buffer, index);
-  }
-
-  fn present(&self, queue: Arc<VkQueue>) {
-
   }
 }

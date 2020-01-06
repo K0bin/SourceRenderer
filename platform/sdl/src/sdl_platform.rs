@@ -115,7 +115,7 @@ impl Window<SDLPlatform> for SDLWindow {
     return Arc::new(VkSurface::new(SurfaceKHR::from_raw(surface), surface_loader));
   }
 
-  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<VkDevice>, surface: Arc<VkSurface>) -> Arc<VkSwapchain> {
-    return Arc::new(VkSwapchain::new(info, device, surface));
+  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<VkDevice>, surface: Arc<VkSurface>) -> VkSwapchain {
+    return VkSwapchain::new(info, device, surface);
   }
 }
