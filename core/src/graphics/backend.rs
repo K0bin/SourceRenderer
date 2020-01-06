@@ -17,6 +17,7 @@ use graphics::Swapchain;
 use graphics::Resettable;
 use graphics::Fence;
 use graphics::Semaphore;
+use graphics::graph::RenderGraph;
 
 pub trait Backend: 'static + Sized {
   type Instance: Instance<Self>;
@@ -36,4 +37,5 @@ pub trait Backend: 'static + Sized {
   type RenderTargetView: RenderTargetView<Self>;
   type Semaphore: Semaphore + Resettable;
   type Fence: Fence + Resettable;
+  type RenderGraph: RenderGraph;
 }

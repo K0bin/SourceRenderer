@@ -1,6 +1,7 @@
 use crate::VkDevice;
 use crate::*;
 use crate::pipeline::VkShader;
+use crate::graph::VkRenderGraph;
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum VkBackend {}
@@ -23,4 +24,5 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type Swapchain = VkSwapchain;
   type Semaphore = VkSemaphore;
   type Fence = VkFence;
+  type RenderGraph = VkRenderGraph;
 }

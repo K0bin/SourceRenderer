@@ -50,6 +50,8 @@ pub trait Device<B: Backend> {
   fn create_semaphore(self: Arc<Self>) -> Arc<B::Semaphore>;
   fn create_fence(self: Arc<Self>) -> Arc<B::Fence>;
   fn wait_for_idle(&self);
+
+  fn create_render_graph(self: Arc<Self>, graph_info: &crate::graphics::graph::RenderGraphInfo, swapchin: &B::Swapchain) -> B::RenderGraph;
 }
 
 #[derive(Clone, Debug, Copy, PartialEq)]
