@@ -106,16 +106,14 @@ impl<P: Platform> Engine<P> {
     buffer.unmap();
 
     let vertex_shader = {
-      //let mut file = File::open("..\\..\\core\\shaders\\simple.vert.spv").unwrap();
-      let mut file = File::open(Path::new("../../engine/shaders/simple.vert.spv")).unwrap();
+      let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.vert.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::VertexShader, &bytes)
     };
 
     let fragment_shader = {
-      //let mut file = File::open("..\\..\\core\\shaders\\simple.frag.spv")).unwrap();
-      let mut file = File::open(Path::new("../../engine/shaders/simple.frag.spv")).unwrap();
+      let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.frag.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.clone().create_shader(ShaderType::FragmentShader, &bytes)
