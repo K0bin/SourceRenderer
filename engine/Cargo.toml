@@ -2,6 +2,7 @@
 name = "sourcerenderer_engine"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+build = "build.rs"
 
 [dependencies]
 vek = "0.9.11"
