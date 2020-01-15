@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub use self::lump::Lump;
 pub use self::map_header::MapHeader;
 
