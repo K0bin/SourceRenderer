@@ -1,4 +1,4 @@
-use asset::Asset;
+use crate::asset::Asset;
 
 pub struct Level {
 }
