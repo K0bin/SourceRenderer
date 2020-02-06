@@ -1,7 +1,6 @@
 use sourcerenderer_core::platform::{Platform, PlatformEvent, GraphicsApi};
-use job::{Scheduler, JobThreadContext};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::fs::File;
 use std::io::*;
 use sourcerenderer_core::graphics::SwapchainInfo;
@@ -18,14 +17,15 @@ use sourcerenderer_core::graphics::*;
 use std::rc::Rc;
 use std::path::Path;
 use sourcerenderer_core::platform::Window;
+use async_std::task;
+use async_std::prelude::*;
+use async_std::future;
+use std::thread::{Thread};
+use std::future::Future;
+use async_std::task::JoinHandle;
 
 pub struct Engine<P: Platform> {
-    platform: Box<P>,
-    scheduler: Arc<Mutex<Scheduler>>
-}
-
-pub trait EngineSubsystem {
-  fn init_contexts() -> Vec<Box<dyn JobThreadContext>>;
+    platform: Box<P>
 }
 
 struct Vertex {
@@ -36,13 +36,50 @@ struct Vertex {
 impl<P: Platform> Engine<P> {
   pub fn new(platform: Box<P>) -> Engine<P> {
     return Engine {
-      platform: platform,
-      scheduler: Scheduler::new(0)
+      platform
     };
   }
 
   pub fn run(&mut self) {
     self.init();
+
+
+    //let pool = crossbeam_workstealing_pool::small_pool(n_workers);
+    //pool.execute()
+
+    task::spawn(async {
+
+      let start = Instant::now();
+      let task1 = task::spawn(async {
+        let id = std::thread::current().id();
+        let mut sum = 0f64;
+        for i in 0..100000000  {
+          sum += (i as f64).sqrt();
+        }
+        println!("a - {:?} - thread: {:?}", sum, id);
+      });
+      //task1.await;
+      let task2 = task::spawn(async {
+        let id = std::thread::current().id();
+        let mut sum = 0f64;
+        for i in 0..100000000  {
+          sum += (i as f64).sqrt();
+        }
+        println!("b - {:?} - thread: {:?}", sum, id);
+      });
+      //task2.await;
+      task1.join(task2).await;
+      //task1.await;
+
+      //let result = task::spawn(fib(50)).await;
+      //println!("Fib is {:?}", result);
+
+      let after = Instant::now();
+      let duration = after - start;
+      println!("Took: {:?}", duration);
+      //join!(task1, task2);
+    });
+
     //let renderer = self.platform.create_renderer();
     let graphics = self.platform.create_graphics(true).unwrap();
     let surface = self.platform.window().create_surface(graphics.clone());
