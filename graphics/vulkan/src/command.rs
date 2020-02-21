@@ -1,6 +1,4 @@
-use std::rc::Rc;
-use std::sync::Arc;
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 use ash::vk;
 use ash::version::DeviceV1_0;
@@ -14,6 +12,8 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
+use sourcerenderer_core::pool::{Recycler, Recyclable};
+
 use crate::VkQueue;
 use crate::VkDevice;
 use crate::VkRenderPass;
@@ -21,23 +21,26 @@ use crate::VkBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;
 
-struct VkCommandPoolInner {
+pub struct VkCommandPoolInner {
   command_pool: vk::CommandPool,
+  used_buffers: Mutex<Vec<VkCommandBuffer>>,
   device: Arc<VkDevice>
 }
 
 pub struct VkCommandPool {
   queue: Arc<VkQueue>,
-  buffers: Vec<Rc<RefCell<VkCommandBuffer>>>,
-  used_buffers_len: usize,
-  inner: Rc<VkCommandPoolInner>
+  buffers: Vec<VkCommandBuffer>,
+  inner: Arc<VkCommandPoolInner>
 }
 
 pub struct VkCommandBuffer {
   device: Arc<VkDevice>,
   command_buffer: vk::CommandBuffer,
-  command_pool_inner: Rc<VkCommandPoolInner>
+  command_pool_inner: Arc<VkCommandPoolInner>
 }
+
+pub type CmdBufferRecycler = Arc<VkCommandPoolInner>;
+pub type RecyclableCmdBuffer = Recyclable<VkCommandBuffer, CmdBufferRecycler>;
 
 impl Drop for VkCommandPoolInner {
   fn drop(&mut self) {
@@ -60,12 +63,12 @@ impl VkCommandPool {
 
     return VkCommandPool {
       queue: queue,
-      inner: Rc::new(VkCommandPoolInner {
+      inner: Arc::new(VkCommandPoolInner {
         command_pool: command_pool,
+        used_buffers: Mutex::new(Vec::new()),
         device: device
       }),
-      buffers: Vec::new(),
-      used_buffers_len: 0
+      buffers: Vec::new()
     };
   }
 
@@ -74,15 +77,20 @@ impl VkCommandPool {
   }
 }
 
+impl Recycler<VkCommandBuffer> for Arc<VkCommandPoolInner> {
+  fn recycle(&self, item: VkCommandBuffer) {
+    let mut guard = self.used_buffers.lock().unwrap();
+    guard.push(item);
+  }
+}
+
 impl CommandPool<VkBackend> for VkCommandPool {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Rc<RefCell<VkCommandBuffer>> {
-    if self.used_buffers_len == self.buffers.len() {
-      let new_buffer = Rc::new(RefCell::new(VkCommandBuffer::new(self.inner.device.clone(), self.inner.clone(), command_buffer_type)));
-      self.buffers.push(new_buffer);
-    }
-    let buffer = self.buffers[self.used_buffers_len].clone();
-    self.used_buffers_len += 1;
-    return buffer;
+  type Recycler = CmdBufferRecycler;
+
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> RecyclableCmdBuffer {
+    //println!("get_cmd_buffer with {} buffers remaining", self.buffers.len());
+    let buffer = self.buffers.pop().unwrap_or_else(|| VkCommandBuffer::new(self.inner.device.clone(), self.inner.clone(), command_buffer_type));
+    return Recyclable::new(buffer, self.inner.clone());
   }
 }
 
@@ -92,12 +100,14 @@ impl Resettable for VkCommandPool {
     unsafe {
       vk_device.reset_command_pool(self.inner.command_pool, vk::CommandPoolResetFlags::empty()).unwrap();
     }
-    self.used_buffers_len = 0;
+    //println!("reset with {} buffers used", self.inner.used_buffers.lock().unwrap().len());
+    let mut guard = self.inner.used_buffers.lock().unwrap();
+    std::mem::swap(guard.as_mut(), &mut self.buffers);
   }
 }
 
 impl VkCommandBuffer {
-  fn new(device: Arc<VkDevice>, command_pool_inner: Rc<VkCommandPoolInner>, command_buffer_type: CommandBufferType) -> Self {
+  fn new(device: Arc<VkDevice>, command_pool_inner: Arc<VkCommandPoolInner>, command_buffer_type: CommandBufferType) -> Self {
     let vk_device = device.get_ash_device();
     let buffers_create_info = vk::CommandBufferAllocateInfo {
       command_pool: command_pool_inner.command_pool,

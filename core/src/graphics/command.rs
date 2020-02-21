@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 use std::cell::RefCell;
+use std::sync::Mutex;
 
 use crate::Vec2;
 use crate::Vec2I;
@@ -8,6 +9,7 @@ use crate::Vec2UI;
 
 use crate::graphics::RenderpassRecordingMode;
 use graphics::Backend;
+use pool::{Recyclable, Recycler};
 
 pub struct Viewport {
   pub position: Vec2,
@@ -28,7 +30,9 @@ pub enum CommandBufferType {
 }
 
 pub trait CommandPool<B: Backend> {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Rc<RefCell<B::CommandBuffer>>;
+  type Recycler: Recycler<B::CommandBuffer>;
+
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Recyclable<B::CommandBuffer, Self::Recycler>;
 }
 
 pub trait CommandBuffer<B: Backend> {
