@@ -3,6 +3,7 @@ extern crate bitflags;
 
 pub mod graphics;
 pub mod platform;
+pub mod pool;
 
 pub type Vec2 = vek::Vec2<f32>;
 pub type Vec3 = vek::Vec3<f32>;
