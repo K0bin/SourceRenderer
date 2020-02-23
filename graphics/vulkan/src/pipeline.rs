@@ -25,6 +25,7 @@ use sourcerenderer_core::graphics::ImageLayout;
 use sourcerenderer_core::graphics::AttachmentRef;
 
 use crate::VkDevice;
+use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::VkRenderPassLayout;
 use crate::VkBackend;
@@ -39,23 +40,23 @@ pub fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
 pub struct VkShader {
   shader_type: ShaderType,
   shader_module: vk::ShaderModule,
-  device: Arc<VkDevice>
+  device: Arc<RawVkDevice>
 }
 
 impl VkShader {
-  pub fn new(device: Arc<VkDevice>, shader_type: ShaderType, bytecode: &Vec<u8>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, shader_type: ShaderType, bytecode: &Vec<u8>) -> Self {
     let create_info = vk::ShaderModuleCreateInfo {
       code_size: bytecode.len(),
       p_code: bytecode.as_ptr() as *const u32,
       ..Default::default()
     };
-    let vk_device = device.get_ash_device();
+    let vk_device = &device.device;
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
 
     return VkShader {
-      shader_type: shader_type,
-      shader_module: shader_module,
-      device: device
+      shader_type,
+      shader_module,
+      device: device.clone()
     };
   }
 
@@ -73,7 +74,7 @@ impl Shader for VkShader {
 impl Drop for VkShader {
   fn drop(&mut self) {
     unsafe {
-      let vk_device = self.device.get_ash_device();
+      let vk_device = &self.device.device;
       vk_device.destroy_shader_module(self.shader_module, None);
     }
   }
@@ -81,7 +82,7 @@ impl Drop for VkShader {
 
 pub struct VkPipeline {
   pipeline: vk::Pipeline,
-  device: Arc<VkDevice>
+  device: Arc<RawVkDevice>
 }
 
 const SHADER_ENTRY_POINT_NAME: &str = "main";
@@ -195,8 +196,8 @@ pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorCom
 
 
 impl VkPipeline {
-  pub fn new(device: Arc<VkDevice>, info: &PipelineInfo<VkBackend>) -> Self {
-    let vk_device = device.get_ash_device();
+  pub fn new(device: &Arc<RawVkDevice>, info: &PipelineInfo<VkBackend>) -> Self {
+    let vk_device = &device.device;
 
     let pipeline = unsafe {
       let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
@@ -416,8 +417,8 @@ impl VkPipeline {
       vk_device.create_graphics_pipelines(vk::PipelineCache::null(), &[ pipeline_create_info ], None).unwrap()[0]
     };
     return VkPipeline {
-      pipeline: pipeline,
-      device: device
+      pipeline,
+      device: device.clone()
     };
   }
 
@@ -430,7 +431,7 @@ impl Drop for VkPipeline {
   fn drop(&mut self) {
       println!("drop pipeline");
     unsafe {
-      let vk_device = self.device.get_ash_device();
+      let vk_device = &self.device.device;
       vk_device.destroy_pipeline(self.pipeline, None);
     }
   }

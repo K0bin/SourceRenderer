@@ -5,21 +5,20 @@ use ash::vk;
 use sourcerenderer_core::graphics::{ Buffer, BufferUsage, MemoryUsage };
 
 use crate::VkDevice;
+use crate::raw::*;
 use crate::VkBackend;
 use crate::device::memory_usage_to_vma;
 
 pub struct VkBuffer {
-  buffer: vk::Buffer,
-  allocation: vk_mem::Allocation,
+  raw: RawVkBuffer,
   allocation_info: vk_mem::AllocationInfo,
-  device: Arc<VkDevice>,
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
   memory_usage: MemoryUsage
 }
 
 impl VkBuffer {
-  pub fn new(device: Arc<VkDevice>, size: usize, memory_usage: MemoryUsage, allocator: &mut vk_mem::Allocator, usage: BufferUsage) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, size: usize, memory_usage: MemoryUsage, allocator: &vk_mem::Allocator, usage: BufferUsage) -> Self {
     let buffer_info = vk::BufferCreateInfo {
       size: size as u64,
       usage: buffer_usage_to_vk(usage),
@@ -47,42 +46,36 @@ impl VkBuffer {
     };
 
     return VkBuffer {
-      buffer: buffer,
-      allocation: allocation,
-      allocation_info: allocation_info,
-      device: device,
-      map_ptr: map_ptr,
-      is_coherent: is_coherent,
-      memory_usage: memory_usage
+      raw: RawVkBuffer {
+        buffer,
+        alloc: allocation,
+        device: device.clone()
+      },
+      allocation_info,
+      map_ptr,
+      is_coherent,
+      memory_usage
     };
   }
 
   pub fn get_handle(&self) -> &vk::Buffer {
-    return &self.buffer;
-  }
-}
-
-impl Drop for VkBuffer {
-  fn drop(&mut self) {
-    let mut allocator = self.device.get_allocator().lock().unwrap();
-    allocator.unmap_memory(&self.allocation).unwrap();
-    allocator.destroy_buffer(self.buffer, &self.allocation).unwrap();
+    return &self.raw.buffer;
   }
 }
 
 impl Buffer for VkBuffer {
   fn map(&self) -> Option<*mut u8> {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
-      let mut allocator = self.device.get_allocator().lock().unwrap();
-      allocator.invalidate_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
+      let mut allocator = &self.raw.device.allocator;
+      allocator.invalidate_allocation(&self.raw.alloc, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
     }
     return self.map_ptr;
   }
 
   fn unmap(&self) {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
-      let mut allocator = self.device.get_allocator().lock().unwrap();
-      allocator.flush_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
+      let mut allocator = &self.raw.device.allocator;
+      allocator.flush_allocation(&self.raw.alloc, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
     }
   }
 }

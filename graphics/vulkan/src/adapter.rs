@@ -21,6 +21,7 @@ use crate::VkSurface;
 use crate::VkQueue;
 use crate::queue::VkQueueInfo;
 use crate::VkBackend;
+use crate::raw::*;
 use ash::extensions::khr::Surface as KhrSurface;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
@@ -38,19 +39,19 @@ bitflags! {
 }
 
 pub struct VkAdapter {
-  instance: Arc<VkInstance>,
+  instance: Arc<RawVkInstance>,
   physical_device: vk::PhysicalDevice,
   properties: vk::PhysicalDeviceProperties,
   extensions: VkAdapterExtensionSupport
 }
 
 impl VkAdapter {
-  pub fn new(instance: Arc<VkInstance>, physical_device: vk::PhysicalDevice) -> Self {
-    let properties = unsafe { instance.get_ash_instance().get_physical_device_properties(physical_device) };
+  pub fn new(instance: Arc<RawVkInstance>, physical_device: vk::PhysicalDevice) -> Self {
+    let properties = unsafe { instance.instance.get_physical_device_properties(physical_device) };
 
     let mut extensions = VkAdapterExtensionSupport::NONE;
 
-    let supported_extensions = unsafe { instance.get_ash_instance().enumerate_device_extension_properties(physical_device) }.unwrap();
+    let supported_extensions = unsafe { instance.instance.enumerate_device_extension_properties(physical_device) }.unwrap();
     for ref prop in supported_extensions {
       let name_ptr = &prop.extension_name as *const i8;
       let c_char_ptr = name_ptr as *const c_char;
@@ -65,10 +66,10 @@ impl VkAdapter {
     }
 
     return VkAdapter {
-      instance: instance,
-      physical_device: physical_device,
-      properties: properties,
-      extensions: extensions
+      instance,
+      physical_device,
+      properties,
+      extensions
     };
   }
 
@@ -76,18 +77,16 @@ impl VkAdapter {
     return &self.physical_device;
   }
 
-  pub fn get_instance(&self) -> &VkInstance {
-    return &self.instance;
-  }
+  pub fn get_raw_instance(&self) -> &Arc<RawVkInstance> { return &self.instance; }
 }
 
 // Vulkan physical devices are implicitly freed with the instance
 
 impl Adapter<VkBackend> for VkAdapter {
-  fn create_device(self: Arc<Self>, surface: Arc<VkSurface>) -> Arc<VkDevice> {
+  fn create_device(&self, surface: &VkSurface) -> VkDevice {
     return unsafe {
-      let surface_loader = KhrSurface::new(self.instance.get_entry(), self.instance.get_ash_instance());
-      let queue_properties = self.instance.get_ash_instance().get_physical_device_queue_family_properties(self.physical_device);
+      let surface_loader = KhrSurface::new(&self.instance.entry, &self.instance.instance);
+      let queue_properties = self.instance.instance.get_physical_device_queue_family_properties(self.physical_device);
 
       let graphics_queue_family_props = queue_properties
         .iter()
@@ -202,7 +201,7 @@ impl Adapter<VkBackend> for VkAdapter {
         enabled_extension_count: extension_names_c.len() as u32,
         ..Default::default()
       };
-      let vk_device = self.instance.get_ash_instance().create_device(self.physical_device, &device_create_info, None).unwrap();
+      let vk_device = self.instance.instance.create_device(self.physical_device, &device_create_info, None).unwrap();
 
       /*let vk_graphics_queue = vk_device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32);
       let vk_compute_queue = vk_device.get_device_queue(compute_queue_info.queue_family_index as u32, compute_queue_info.queue_index as u32);
@@ -212,13 +211,14 @@ impl Adapter<VkBackend> for VkAdapter {
       let compute_queue = VkQueue::new(compute_queue_info, vk_compute_queue, device.clone());
       let transfer_queue = VkQueue::new(transfer_queue_info, vk_transfer_queue, device.clone());*/
 
-      Arc::new(VkDevice::new(
-        self.clone(),
+      VkDevice::new(
         vk_device,
+        &self.instance,
+        self.physical_device,
         graphics_queue_info,
         compute_queue_info,
         transfer_queue_info,
-        self.extensions))
+        self.extensions)
     };
   }
 

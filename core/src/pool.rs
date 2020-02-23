@@ -6,100 +6,83 @@ use std::ops::{ Deref, DerefMut };
 use std::fmt::{Debug, Formatter, Display};
 use std::error::Error;
 use graphics::Format;
+use std::sync::mpsc::{ Sender, Receiver, channel };
 
-pub struct Recyclable<T, R : Recycler<T>> {
-  value: MaybeUninit<T>,
-  pool: R
+pub struct Recyclable<T> {
+  item: MaybeUninit<T>,
+  sender: Sender<T>
 }
 
-impl<T, R : Recycler<T>> Drop for Recyclable<T, R> {
+impl<T> Drop for Recyclable<T> {
   fn drop(&mut self) {
-    let value = unsafe {
-      std::mem::replace(&mut self.value, MaybeUninit::uninit()).assume_init()
+    let item = unsafe {
+      std::mem::replace(&mut self.item, MaybeUninit::uninit()).assume_init()
     };
-    self.pool.recycle(value)
+    self.sender.send(item);
   }
 }
 
-pub trait Recycler<T> {
-  fn recycle(&self, item: T);
-}
-
-impl<T, R : Recycler<T>> DerefMut for Recyclable<T, R> {
+impl<T> DerefMut for Recyclable<T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    unsafe { &mut *(self.value.as_mut_ptr()) }
+    unsafe { &mut *(self.item.as_mut_ptr()) }
   }
 }
 
-impl<T, R : Recycler<T>> Deref for Recyclable<T, R> {
+impl<T> Deref for Recyclable<T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
-    unsafe { &*(self.value.as_ptr()) }
+    unsafe { &*(self.item.as_ptr()) }
   }
 }
 
-impl<T: Display, R : Recycler<T>> std::fmt::Display for Recyclable<T, R> {
+impl<T: Display> std::fmt::Display for Recyclable<T> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    self.value.fmt(f)
+    self.item.fmt(f)
   }
 }
 
-impl<T: Debug, R : Recycler<T>> std::fmt::Debug for Recyclable<T, R> {
+impl<T: Debug> std::fmt::Debug for Recyclable<T> {
   fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-    self.value.fmt(f)
+    self.item.fmt(f)
   }
 }
 
 pub struct Pool<T> {
-  inner: Arc<Mutex<PoolInner<T>>>
-}
-
-pub struct PoolInner<T> {
-  items: Vec<T>
+  receiver: Receiver<T>,
+  sender: Sender<T>
 }
 
 impl<T> Pool<T> {
   pub fn new<F>(capacity: usize, initializer: F) -> Self
     where F: Fn() -> T {
-    let mut items = Vec::with_capacity(capacity);
+    let (sender, receiver) = channel();
 
-    for _ in 0..items.capacity() {
-      items.push(initializer());
+    for _ in 0..capacity {
+      sender.send(initializer());
     }
 
     Self {
-      inner: Arc::new(Mutex::new(PoolInner {
-        items: items
-      }))
+      receiver,
+      sender
     }
   }
 
-  pub fn get(&mut self) -> Option<Recyclable<T, Arc<Mutex<PoolInner<T>>>>> {
-    let item = {
-      let mut inner_guard = self.inner.lock().expect("Failed to lock pool");
-      inner_guard.items.pop()
-    };
+  pub fn get(&mut self) -> Option<Recyclable<T>> {
+    let item = self.receiver.try_recv().ok();
 
     return item.map(|i| Recyclable {
-      value: MaybeUninit::new(i),
-      pool: self.inner.clone()
+      item: MaybeUninit::new(i),
+      sender: self.sender.clone()
     });
   }
 }
 
-impl<T> Recycler<T> for Arc<Mutex<PoolInner<T>>> {
-  fn recycle(&self, item: T) {
-    let mut guard = self.lock().unwrap();
-    guard.items.push(item);
-  }
-}
-
-impl<T, R: Recycler<T>> Recyclable<T, R> {
-  pub fn new(value: T, recycler: R) -> Self {
-    return Recyclable {
-      value: MaybeUninit::new(value),
-      pool: recycler
+impl<T> Recyclable<T> {
+  pub fn new(sender: Sender<T>, item: T) -> Self {
+    Self {
+      item: MaybeUninit::new(item),
+      sender
     }
   }
 }

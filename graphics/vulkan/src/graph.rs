@@ -11,7 +11,9 @@ use sourcerenderer_core::graphics::graph::RenderPassInfo;
 use sourcerenderer_core::graphics::graph::RenderGraphAttachmentInfo;
 use sourcerenderer_core::graphics::graph::BACK_BUFFER_ATTACHMENT_NAME;
 
+use crate::VkBackend;
 use crate::VkDevice;
+use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
@@ -22,18 +24,20 @@ pub struct VkAttachment {
 }
 
 pub struct VkRenderGraph {
+  device: Arc<RawVkDevice>,
   passes: Vec<VkRenderGraphPass>,
   attachments: HashMap<String, VkAttachment>
 }
 
 pub struct VkRenderGraphPass { // TODO rename to VkRenderPass
-  device: Arc<VkDevice>,
+  device: Arc<RawVkDevice>,
   render_pass: vk::RenderPass,
-  frame_buffer: Vec<vk::Framebuffer>
+  frame_buffer: Vec<vk::Framebuffer>,
+  callback: Arc<dyn Fn(usize, bool) -> usize>
 }
 
 impl VkRenderGraph {
-  pub fn new(device: Arc<VkDevice>, info: &RenderGraphInfo, swapchain: &VkSwapchain) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, info: &RenderGraphInfo<VkBackend>, swapchain: &VkSwapchain) -> Self {
 
     // SHORTTERM
     // TODO: allocate images & image views
@@ -42,7 +46,9 @@ impl VkRenderGraph {
     // TODO: lazily create frame buffer for swapchain images
 
     // LONGTERM
+    // TODO: integrate with new job system + figure out threading
     // TODO: recreate graph when swapchain changes
+    // TODO: more generic support for external images / one time rendering
     // TODO: sort passes by dependencies
     // TODO: merge passes
     // TODO: async compute
@@ -54,7 +60,7 @@ impl VkRenderGraph {
     let attachments: HashMap<String, VkAttachment> = HashMap::new();
 
     let passes: Vec<VkRenderGraphPass> = info.passes.iter().map(|p| {
-      let vk_device = device.get_ash_device();
+      let vk_device = &device.device;
 
       let mut render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
       let mut attachment_indices: HashMap<&str, u32> = HashMap::new();
@@ -84,7 +90,7 @@ impl VkRenderGraph {
             vk::AttachmentDescription {
               format: format_to_vk(a.format),
               samples: samples_to_vk(a.samples),
-              load_op: vk::AttachmentLoadOp::CLEAR,
+              load_op: vk::AttachmentLoadOp::LOAD,
               store_op: vk::AttachmentStoreOp::STORE,
               stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
               stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
@@ -181,24 +187,31 @@ impl VkRenderGraph {
       VkRenderGraphPass {
         device: device.clone(),
         frame_buffer: frame_buffers,
-        render_pass: render_pass
+        render_pass,
+        callback: p.render.clone()
       }
     }).collect();
 
     return VkRenderGraph {
-      passes: passes,
-      attachments: attachments
+      device: device.clone(),
+      passes,
+      attachments
     };
   }
 }
 
 impl RenderGraph for VkRenderGraph {
-
+  fn render(&mut self) {
+    for pass in &self.passes {
+      //pass.callback();
+    }
+    unimplemented!()
+  }
 }
 
 impl Drop for VkRenderGraphPass {
   fn drop(&mut self) {
-    let vk_device = self.device.get_ash_device();
+    let vk_device = &self.device.device;
     unsafe {
       vk_device.destroy_render_pass(self.render_pass, None);
       self.frame_buffer.iter().for_each(|&f| vk_device.destroy_framebuffer(f, None));

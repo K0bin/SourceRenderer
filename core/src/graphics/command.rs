@@ -9,7 +9,7 @@ use crate::Vec2UI;
 
 use crate::graphics::RenderpassRecordingMode;
 use graphics::Backend;
-use pool::{Recyclable, Recycler};
+use pool::Recyclable;
 
 pub struct Viewport {
   pub position: Vec2,
@@ -30,9 +30,7 @@ pub enum CommandBufferType {
 }
 
 pub trait CommandPool<B: Backend> {
-  type Recycler: Recycler<B::CommandBuffer>;
-
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Recyclable<B::CommandBuffer, Self::Recycler>;
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Recyclable<Box<B::CommandBuffer>>;
 }
 
 pub trait CommandBuffer<B: Backend> {

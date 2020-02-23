@@ -6,23 +6,26 @@ use std::ops::Fn;
 
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
 
-pub struct RenderGraphInfo {
-  pub attachments: HashMap<String, RenderGraphAttachmentInfo>,
+#[derive(Clone)]
+pub struct RenderGraphInfo<B: Backend> {
+  pub attachments: HashMap<String, RenderGraphAttachmentInfo<B>>,
   pub passes: Vec<RenderPassInfo>
 }
 
+#[derive(Clone)]
 pub struct RenderPassInfo {
   pub outputs: Vec<OutputAttachmentReference>,
   pub inputs: Vec<InputAttachmentReference>,
-  pub render: Box<dyn Fn(usize, bool) -> usize>
+  pub render: Arc<dyn Fn(usize, bool) -> usize>
 }
 
+#[derive(Clone)]
 pub enum AttachmentSizeClass {
   Absolute,
   RelativeToSwapchain
 }
 
-pub struct RenderGraphAttachmentInfo {
+pub struct RenderGraphAttachmentInfo<B: Backend> {
   pub format: Format,
   pub size_class: AttachmentSizeClass,
   pub width: f32,
@@ -35,7 +38,6 @@ pub struct RenderGraphAttachmentInfo {
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct InputAttachmentReference {
   pub name: String
-  /* maybe allow resolve/blit here */
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -45,7 +47,9 @@ pub struct OutputAttachmentReference {
 
 pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
-pub trait RenderGraph {
+pub trait RenderGraph<B: Backend> {
+  fn recreate(&mut self, swap_chain: &B::Swapchain);
+  fn render(&mut self);
 }
 
 /*pub struct RenderGraphNode<'a> {

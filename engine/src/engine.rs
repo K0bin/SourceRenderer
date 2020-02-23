@@ -86,17 +86,17 @@ impl<P: Platform> Engine<P> {
     let mut adapters = graphics.list_adapters();
     println!("n devices: {}", adapters.len());
 
-    let device = adapters.remove(0).create_device(surface.clone());
+    let device = adapters.remove(0).create_device(&surface);
     let swapchain_info = SwapchainInfo {
       width: 1280,
       height: 720,
       vsync: true
     };
-    let mut swapchain = self.platform.window().create_swapchain(swapchain_info, device.clone(), surface.clone());
-    let queue = device.clone().create_queue(QueueType::Graphics).unwrap();
-    let mut command_pool = queue.clone().create_command_pool();
+    let mut swapchain = self.platform.window().create_swapchain(swapchain_info, &device, &surface);
+    let queue = device.get_queue(QueueType::Graphics).unwrap();
+    let mut command_pool = queue.create_command_pool();
 
-    let buffer = device.clone().create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX);
+    let buffer = Arc::new(device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX));
     let triangle = [
       Vertex {
         position: Vec3 {
@@ -145,14 +145,14 @@ impl<P: Platform> Engine<P> {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.vert.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      device.clone().create_shader(ShaderType::VertexShader, &bytes)
+      device.create_shader(ShaderType::VertexShader, &bytes)
     };
 
     let fragment_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.frag.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      device.clone().create_shader(ShaderType::FragmentShader, &bytes)
+      device.create_shader(ShaderType::FragmentShader, &bytes)
     };
 
     let render_pass_info = RenderPassLayoutInfo {
@@ -184,11 +184,11 @@ impl<P: Platform> Engine<P> {
         }
       ]
     };
-    let render_pass_layout = device.clone().create_renderpass_layout(&render_pass_info);
+    let render_pass_layout = Arc::new(device.create_renderpass_layout(&render_pass_info));
 
     let pipeline_info = PipelineInfo {
-      vs: vertex_shader,
-      fs: Some(fragment_shader),
+      vs: Arc::new(vertex_shader),
+      fs: Some(Arc::new(fragment_shader)),
       gs: None,
       tcs: None,
       tes: None,
@@ -247,7 +247,7 @@ impl<P: Platform> Engine<P> {
       renderpass: render_pass_layout.clone(),
       subpass: 0u32,
     };
-    let pipeline = device.clone().create_pipeline(&pipeline_info);
+    let pipeline = Arc::new(device.create_pipeline(&pipeline_info));
 
     'main_loop: loop {
       let event = self.platform.handle_events();
@@ -255,22 +255,22 @@ impl<P: Platform> Engine<P> {
           break 'main_loop;
       }
 
-      let backbuffer_semaphore = device.clone().create_semaphore();
+      let backbuffer_semaphore = device.create_semaphore();
       let (backbuffer, swapchain_image_index) = swapchain.prepare_back_buffer(&backbuffer_semaphore);
-      let rtv = device.clone().create_render_target_view(backbuffer);
+      let rtv = device.create_render_target_view(backbuffer);
 
       let render_pass_info = RenderPassInfo {
         layout: render_pass_layout.clone(),
         width: 1280u32,
         height: 720u32,
         array_length: 1u32,
-        attachments: vec![rtv]
+        attachments: vec![Arc::new(rtv)]
       };
-      let render_pass = device.clone().create_renderpass(&render_pass_info);
+      let render_pass = device.create_renderpass(&render_pass_info);
 
       let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
       command_buffer.begin();
-      command_buffer.begin_render_pass(&*render_pass, RenderpassRecordingMode::Commands);
+      command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
       command_buffer.set_pipeline(pipeline.clone());
       command_buffer.set_vertex_buffer(&*buffer);
       command_buffer.set_viewports(&[Viewport {
@@ -287,7 +287,7 @@ impl<P: Platform> Engine<P> {
       command_buffer.end_render_pass();
       command_buffer.end();
 
-      let cmd_buffer_semaphore = device.clone().create_semaphore();
+      let cmd_buffer_semaphore = device.create_semaphore();
       queue.submit(&command_buffer, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
 
       queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);

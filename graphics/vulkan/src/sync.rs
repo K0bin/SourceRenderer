@@ -8,36 +8,26 @@ use sourcerenderer_core::graphics::Fence;
 use sourcerenderer_core::graphics::Resettable;
 
 use crate::VkDevice;
+use crate::raw::RawVkDevice;
+use raw::RawVkSemaphore;
 
 pub struct VkSemaphore {
-  semaphore: vk::Semaphore,
-  device: Arc<VkDevice>
+  semaphore: Arc<RawVkSemaphore>
 }
 
 impl VkSemaphore {
-  pub fn new(device: Arc<VkDevice>) -> Self {
-    let vk_device = device.get_ash_device();
+  pub fn new(device: &Arc<RawVkDevice>) -> Self {
+    let vk_device = &device.device;
     let info = vk::SemaphoreCreateInfo {
       ..Default::default()
     };
-    let semaphore = unsafe { vk_device.create_semaphore(&info, None).unwrap() };
     return VkSemaphore {
-      device: device,
-      semaphore: semaphore
+      semaphore: Arc::new(RawVkSemaphore::new(device, &info).unwrap())
     };
   }
 
   pub fn get_handle(&self) -> &vk::Semaphore {
-    return &self.semaphore;
-  }
-}
-
-impl Drop for VkSemaphore {
-  fn drop(&mut self) {
-    let vk_device = self.device.get_ash_device();
-    unsafe {
-      vk_device.destroy_semaphore(self.semaphore, None);
-    }
+    return &self.semaphore.semaphore;
   }
 }
 
@@ -52,21 +42,12 @@ impl Resettable for VkSemaphore {
 
 pub struct VkFence {
   fence: vk::Fence,
-  device: Arc<VkDevice>
-}
-
-impl Drop for VkFence {
-  fn drop(&mut self) {
-    let vk_device = self.device.get_ash_device();
-    unsafe {
-      vk_device.destroy_fence(self.fence, None);
-    }
-  }
+  device: Arc<RawVkDevice>
 }
 
 impl VkFence {
-  pub fn new(device: Arc<VkDevice>) -> Self {
-    let vk_device = device.get_ash_device();
+  pub fn new(device: &Arc<RawVkDevice>) -> Self {
+    let vk_device = &device.device;
     let info = vk::FenceCreateInfo {
       ..Default::default()
     };
@@ -75,8 +56,8 @@ impl VkFence {
       vk_device.reset_fences(&[fence]);
     }
     return VkFence {
-      device: device,
-      fence: fence
+      device: device.clone(),
+      fence
     };
   }
 
@@ -87,14 +68,14 @@ impl VkFence {
 
 impl Fence for VkFence {
   fn await(&mut self) {
-    let vk_device = self.device.get_ash_device();
+    let vk_device = &self.device.device;
     unsafe {
       vk_device.wait_for_fences(&[self.fence], true, std::u64::MAX);
     }
   }
 
   fn is_signaled(&self) -> bool {
-    let vk_device = self.device.get_ash_device();
+    let vk_device = &self.device.device;
     return unsafe {
       vk_device.wait_for_fences(&[self.fence], true, 0).is_ok()
     };
@@ -103,10 +84,9 @@ impl Fence for VkFence {
 
 impl Resettable for VkFence {
   fn reset(&mut self) {
-    let vk_device = self.device.get_ash_device();
+    let vk_device = &self.device.device;
     unsafe {
       vk_device.reset_fences(&[self.fence]);
     }
-
   }
 }
