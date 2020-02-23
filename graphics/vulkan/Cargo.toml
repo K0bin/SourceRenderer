@@ -9,3 +9,4 @@ sourcerenderer_core = { path = "../../core" }
 vk-mem = "0.2.0"
 spin = "0.5.2"
 bitflags = "1.2.1"
+thread_local = "1.0"

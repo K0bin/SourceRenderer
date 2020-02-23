@@ -6,6 +6,8 @@ extern crate ash;
 extern crate vk_mem;
 #[macro_use]
 extern crate bitflags;
+extern crate thread_local;
+extern crate spin;
 
 pub use self::instance::VkInstance;
 pub use self::adapter::VkAdapter;
@@ -26,6 +28,7 @@ pub use self::renderpass::VkRenderPassLayout;
 pub use self::renderpass::VkRenderPass;
 pub use self::backend::VkBackend;
 
+mod raw;
 mod backend;
 mod instance;
 mod adapter;
@@ -41,3 +44,4 @@ mod texture;
 mod sync;
 mod renderpass;
 mod graph;
+mod context;

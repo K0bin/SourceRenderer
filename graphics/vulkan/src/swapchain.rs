@@ -15,36 +15,38 @@ use sourcerenderer_core::graphics::Semaphore;
 use crate::VkInstance;
 use crate::VkSurface;
 use crate::VkDevice;
+use crate::raw::RawVkDevice;
 use crate::VkAdapter;
 use crate::VkTexture;
 use crate::VkSemaphore;
 use crate::VkBackend;
 use crate::VkQueue;
+use raw::{RawVkSurface, RawVkSwapchain};
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
   images: Vec<vk::Image>,
   views: Vec<vk::ImageView>,
-  swapchain: vk::SwapchainKHR,
-  swapchain_loader: SwapchainLoader,
-  device: Arc<VkDevice>,
+  swap_chain: RawVkSwapchain,
+  surface: Arc<RawVkSurface>,
+  device: Arc<RawVkDevice>,
   width: u32,
   height: u32
 }
 
 impl VkSwapchain {
-  pub fn new(info: SwapchainInfo, device: Arc<VkDevice>, surface: Arc<VkSurface>) -> Self {
-    let vk_device = device.get_ash_device();
-    let adapter = device.get_adapter();
-    let instance = adapter.get_instance();
+  pub fn new(info: SwapchainInfo, device: &VkDevice, surface: &VkSurface) -> Self {
+    let device_inner = device.get_inner().clone();
+    let vk_device = &device_inner.device;
+    let instance = &device_inner.instance;
 
     return unsafe {
       let surface_loader = surface.get_surface_loader();
       let surface_handle = *surface.get_surface_handle();
-      let physical_device = *adapter.get_physical_device_handle();
+      let physical_device = device.get_inner().physical_device;
       let present_modes = surface_loader.get_physical_device_surface_present_modes(physical_device, surface_handle).unwrap();
       let present_mode = VkSwapchain::pick_present_mode(present_modes);
-      let swapchain_loader = SwapchainLoader::new(instance.get_ash_instance(), vk_device);
+      let swap_chain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
       let formats = surface_loader.get_physical_device_surface_formats(physical_device, surface_handle).unwrap();
       let format = VkSwapchain::pick_format(formats);
@@ -58,7 +60,7 @@ impl VkSwapchain {
         capabilities.min_image_count + 1
       };
 
-      let swapchain_create_info = vk::SwapchainCreateInfoKHR {
+      let swap_chain_create_info = vk::SwapchainCreateInfoKHR {
         surface: surface_handle,
         min_image_count: image_count,
         image_format: format.format,
@@ -66,7 +68,7 @@ impl VkSwapchain {
         image_extent: extent,
         image_array_layers: 1,
         image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
-        present_mode: present_mode,
+        present_mode,
         image_sharing_mode: vk::SharingMode::EXCLUSIVE,
         pre_transform: capabilities.current_transform,
         composite_alpha: vk::CompositeAlphaFlagsKHR::OPAQUE,
@@ -75,16 +77,16 @@ impl VkSwapchain {
         ..Default::default()
       };
 
-      let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
-      let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
-      let textures: Vec<Arc<VkTexture>> = swapchain_images
+      let swap_chain = swap_chain_loader.create_swapchain(&swap_chain_create_info, None).unwrap();
+      let swap_chain_images = swap_chain_loader.get_swapchain_images(swap_chain).unwrap();
+      let textures: Vec<Arc<VkTexture>> = swap_chain_images
         .iter()
         .map(|image| {
-          Arc::new(VkTexture::from_image(device.clone(), *image, Format::BGRA8UNorm, info.width, info.height, 1u32, 1u32, 1u32))
+          Arc::new(VkTexture::from_image(&device_inner, *image, Format::BGRA8UNorm, info.width, info.height, 1u32, 1u32, 1u32))
         })
         .collect();
 
-      let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
+      let swap_chain_image_views: Vec<vk::ImageView> = swap_chain_images
         .iter()
         .map(|image| {
           let info = vk::ImageViewCreateInfo {
@@ -111,12 +113,16 @@ impl VkSwapchain {
         .collect();
 
       VkSwapchain {
-        textures: textures,
-        images: swapchain_images,
-        views: swapchain_image_views,
-        swapchain: swapchain,
-        swapchain_loader: swapchain_loader,
-        device: device,
+        textures,
+        images: swap_chain_images,
+        views: swap_chain_image_views,
+        swap_chain: RawVkSwapchain {
+          swap_chain,
+          swap_chain_loader,
+          instance: device.get_inner().instance.clone(),
+        },
+        surface: surface.get_raw().clone(),
+        device: device_inner,
         width: info.width,
         height: info.height
       }
@@ -154,11 +160,11 @@ impl VkSwapchain {
   }
 
   pub fn get_loader(&self) -> &SwapchainLoader {
-    return &self.swapchain_loader;
+    return &self.swap_chain.swap_chain_loader;
   }
 
   pub fn get_handle(&self) -> &vk::SwapchainKHR {
-    return &self.swapchain;
+    return &self.swap_chain.swap_chain;
   }
 
   pub fn get_images(&self) -> &[vk::Image] {
@@ -178,22 +184,9 @@ impl VkSwapchain {
   }
 }
 
-impl Drop for VkSwapchain {
-  fn drop(&mut self) {
-    let vk_device = self.device.get_ash_device();
-    unsafe {
-      for image_view in &self.views {
-          vk_device.destroy_image_view(*image_view, None);
-      }
-      println!("DESTORY SC");
-      self.swapchain_loader.destroy_swapchain(self.swapchain, None);
-    }
-  }
-}
-
 impl Swapchain<VkBackend> for VkSwapchain {
   fn prepare_back_buffer(&mut self, semaphore: &VkSemaphore) -> (Arc<VkTexture>, u32) {
-    let (index, optimal) = unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
+    let (index, optimal) = unsafe { self.swap_chain.swap_chain_loader.acquire_next_image(self.swap_chain.swap_chain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
     let back_buffer = self.textures.get(index as usize).unwrap().clone();
     return (back_buffer, index);
   }

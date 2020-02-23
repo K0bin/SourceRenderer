@@ -10,10 +10,10 @@ use sourcerenderer_core::graphics::Instance;
 use sourcerenderer_core::graphics::Adapter;
 use crate::VkAdapter;
 use crate::VkBackend;
+use raw::RawVkInstance;
 
 pub struct VkInstance {
-  instance: ash::Instance,
-  entry: ash::Entry
+  raw: Arc<RawVkInstance>
 }
 
 impl VkInstance {
@@ -65,37 +65,25 @@ impl VkInstance {
       let instance = entry.create_instance(&instance_create_info, None).unwrap();
 
       VkInstance {
-        instance: instance,
-        entry: entry
+        raw: Arc::new(RawVkInstance {
+          entry,
+          instance
+        })
       }
     };
   }
 
-  #[inline]
-  pub fn get_ash_instance(&self) -> &ash::Instance {
-    return &self.instance;
-  }
-
-  #[inline]
-  pub fn get_entry(&self) -> &ash::Entry {
-    return &self.entry;
-  }
-}
-
-impl Drop for VkInstance {
-  fn drop(&mut self) {
-    unsafe {
-      self.instance.destroy_instance(Option::None);
-    }
+  pub fn get_raw(&self) -> &Arc<RawVkInstance> {
+    return &self.raw;
   }
 }
 
 impl Instance<VkBackend> for VkInstance {
   fn list_adapters(self: Arc<Self>) -> Vec<Arc<VkAdapter>> {
-    let physical_devices: Vec<vk::PhysicalDevice> = unsafe { self.instance.enumerate_physical_devices().unwrap() };
+    let physical_devices: Vec<vk::PhysicalDevice> = unsafe { self.raw.instance.enumerate_physical_devices().unwrap() };
     let adapters: Vec<Arc<VkAdapter>> = physical_devices
       .into_iter()
-      .map(|phys_dev| Arc::new(VkAdapter::new(self.clone(), phys_dev)) as Arc<VkAdapter>)
+      .map(|phys_dev| Arc::new(VkAdapter::new(self.raw.clone(), phys_dev)) as Arc<VkAdapter>)
       .collect();
 
     return adapters;

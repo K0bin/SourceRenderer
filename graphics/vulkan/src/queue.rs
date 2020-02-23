@@ -13,6 +13,7 @@ use sourcerenderer_core::graphics::Queue;
 use sourcerenderer_core::graphics::QueueType;
 use sourcerenderer_core::graphics::CommandPool;
 use crate::device::VkDevice;
+use crate::raw::RawVkDevice;
 use crate::command::VkCommandPool;
 use crate::command::VkCommandBuffer;
 use crate::swapchain::VkSwapchain;
@@ -32,15 +33,15 @@ pub struct VkQueueInfo {
 pub struct VkQueue {
   info: VkQueueInfo,
   queue: Mutex<vk::Queue>,
-  device: Arc<VkDevice>
+  device: Arc<RawVkDevice>
 }
 
 impl VkQueue {
-  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: Arc<VkDevice>) -> Self {
+  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>) -> Self {
     return VkQueue {
-      info: info,
+      info,
       queue: Mutex::new(queue),
-      device: device
+      device: device.clone()
     };
   }
 
@@ -52,8 +53,8 @@ impl VkQueue {
 // Vulkan queues are implicitly freed with the logical device
 
 impl Queue<VkBackend> for VkQueue {
-  fn create_command_pool(self: Arc<Self>) -> VkCommandPool {
-    return VkCommandPool::new(self.device.clone(), self.clone());
+  fn create_command_pool(&self) -> VkCommandPool {
+    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32);
   }
 
   fn get_queue_type(&self) -> QueueType {
@@ -84,7 +85,7 @@ impl Queue<VkBackend> for VkQueue {
     };
     let vk_queue = self.queue.lock().unwrap();
     unsafe {
-      self.device.get_ash_device().queue_submit(*vk_queue, &[info], fence.map_or(vk::Fence::null(), |f| *f.get_handle()));
+      self.device.device.queue_submit(*vk_queue, &[info], fence.map_or(vk::Fence::null(), |f| *f.get_handle()));
     }
   }
 

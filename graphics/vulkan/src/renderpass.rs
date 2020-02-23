@@ -7,6 +7,7 @@ use ash::version::DeviceV1_0;
 use sourcerenderer_core::graphics::*;
 
 use crate::VkDevice;
+use crate::raw::RawVkDevice;
 use crate::pipeline::samples_to_vk;
 use crate::format::format_to_vk;
 use crate::VkBackend;
@@ -42,19 +43,19 @@ fn image_layout_to_vk(image_layout: ImageLayout) -> vk::ImageLayout {
 
 pub struct VkRenderPassLayout {
   renderpass: vk::RenderPass,
-  device: Arc<VkDevice>
+  device: Arc<RawVkDevice>
 }
 
 pub struct VkRenderPass {
   layout: Arc<VkRenderPassLayout>,
-  device: Arc<VkDevice>,
+  device: Arc<RawVkDevice>,
   framebuffer: vk::Framebuffer,
   info: RenderPassInfo<VkBackend>
 }
 
 impl VkRenderPassLayout {
-  pub fn new(device: Arc<VkDevice>, info: &RenderPassLayoutInfo) -> VkRenderPassLayout {
-    let vk_device = device.get_ash_device();
+  pub fn new(device: &Arc<RawVkDevice>, info: &RenderPassLayoutInfo) -> VkRenderPassLayout {
+    let vk_device = &device.device;
 
     let mut renderpass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
     for attachment in &info.attachments {
@@ -167,8 +168,8 @@ impl VkRenderPassLayout {
     let renderpass = unsafe { vk_device.create_render_pass(&renderpass_create_info, None).unwrap() };
 
     return VkRenderPassLayout {
-      renderpass: renderpass,
-      device: device
+      renderpass,
+      device: device.clone()
     };
   }
 
@@ -179,7 +180,7 @@ impl VkRenderPassLayout {
 
 impl Drop for VkRenderPassLayout {
   fn drop(&mut self) {
-    let vk_device = self.device.get_ash_device();
+    let vk_device = &self.device.device;
     unsafe {
       vk_device.destroy_render_pass(self.renderpass, None);
     }
@@ -191,8 +192,8 @@ impl RenderPassLayout<VkBackend> for VkRenderPassLayout {
 }
 
 impl VkRenderPass {
-  pub fn new(device: Arc<VkDevice>, info: &RenderPassInfo<VkBackend>) -> Self {
-    let vk_device = device.get_ash_device();
+  pub fn new(device: &Arc<RawVkDevice>, info: &RenderPassInfo<VkBackend>) -> Self {
+    let vk_device = &device.device;
     let attachments: Vec<vk::ImageView> = info.attachments
       .iter()
       .map(|attachment| {
@@ -210,8 +211,8 @@ impl VkRenderPass {
     };
     let framebuffer = unsafe { vk_device.create_framebuffer(&create_info, None).unwrap() };
     return VkRenderPass {
-      device: device,
-      framebuffer: framebuffer,
+      device: device.clone(),
+      framebuffer,
       layout: info.layout.clone(),
       info: RenderPassInfo {
         layout: info.layout.clone(),
@@ -230,7 +231,7 @@ impl VkRenderPass {
 
 impl Drop for VkRenderPass {
   fn drop(&mut self) {
-    let vk_device = self.device.get_ash_device();
+    let vk_device = &self.device.device;
     unsafe {
       vk_device.destroy_framebuffer(self.framebuffer, None);
     }

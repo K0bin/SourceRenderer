@@ -108,14 +108,13 @@ impl Platform for SDLPlatform {
 
 impl Window<SDLPlatform> for SDLWindow {
   fn create_surface(&self, graphics_instance: Arc<VkInstance>) -> Arc<VkSurface> {
-    let instance_ref = graphics_instance.get_ash_instance();
-    let entry_ref = graphics_instance.get_entry();
-    let surface = self.window.vulkan_create_surface(instance_ref.handle().as_raw() as sdl2::video::VkInstance).unwrap();
-    let surface_loader = SurfaceLoader::new(entry_ref, instance_ref);
-    return Arc::new(VkSurface::new(SurfaceKHR::from_raw(surface), surface_loader));
+    let instance_raw = graphics_instance.get_raw();
+    let surface = self.window.vulkan_create_surface(instance_raw.instance.handle().as_raw() as sdl2::video::VkInstance).unwrap();
+    let surface_loader = SurfaceLoader::new(&instance_raw.entry, &instance_raw.instance);
+    return Arc::new(VkSurface::new(instance_raw, SurfaceKHR::from_raw(surface), surface_loader));
   }
 
-  fn create_swapchain(&self, info: SwapchainInfo, device: Arc<VkDevice>, surface: Arc<VkSurface>) -> VkSwapchain {
+  fn create_swapchain(&self, info: SwapchainInfo, device: &VkDevice, surface: &Arc<VkSurface>) -> VkSwapchain {
     return VkSwapchain::new(info, device, surface);
   }
 }
