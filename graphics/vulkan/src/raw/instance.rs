@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use ash::Device;
+use ash::{Device, InstanceError};
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
@@ -12,6 +12,17 @@ use std::ops::Deref;
 pub struct RawVkInstance {
   pub entry: ash::Entry,
   pub instance: ash::Instance
+}
+
+impl RawVkInstance {
+  pub fn new(entry: ash::Entry, create_info: &vk::InstanceCreateInfo) -> Result<Self, InstanceError> {
+    unsafe {
+      entry.create_instance(create_info, None).map(|instance| Self {
+        entry,
+        instance
+      })
+    }
+  }
 }
 
 impl Deref for RawVkInstance {

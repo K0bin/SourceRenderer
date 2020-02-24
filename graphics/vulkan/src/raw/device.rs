@@ -18,6 +18,21 @@ pub struct RawVkDevice {
   pub instance: Arc<RawVkInstance>
 }
 
+impl RawVkDevice {
+  pub fn new(instance: &Arc<RawVkInstance>, physical_device: vk::PhysicalDevice, create_info: &vk::DeviceCreateInfo, allocator_create_info: &vk_mem::AllocatorCreateInfo) -> VkResult<Self> {
+    unsafe {
+      let device = instance.create_device(physical_device, create_info, None)?;
+      let allocator = vk_mem::Allocator::new(allocator_create_info).unwrap();
+      Ok(Self {
+        device,
+        allocator,
+        physical_device,
+        instance: instance.clone()
+      })
+    }
+  }
+}
+
 impl Deref for RawVkDevice {
   type Target = ash::Device;
 
@@ -30,8 +45,6 @@ impl Drop for RawVkDevice {
   fn drop(&mut self) {
     self.allocator.destroy();
     unsafe {
-      //let guard = self.instance.alloc_callbacks.map(|ref callbacks| callbacks.lock().unwrap());
-      //self.device.destroy_device(guard.map(|callbacks| &*callbacks));
       self.device.destroy_device(None);
     }
   }

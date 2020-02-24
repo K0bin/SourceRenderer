@@ -10,8 +10,10 @@ use crate::VkBackend;
 use crate::device::memory_usage_to_vma;
 
 pub struct VkBuffer {
-  raw: RawVkBuffer,
+  buffer: vk::Buffer,
+  allocation: vk_mem::Allocation,
   allocation_info: vk_mem::AllocationInfo,
+  device: Arc<RawVkDevice>,
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
   memory_usage: MemoryUsage
@@ -46,12 +48,10 @@ impl VkBuffer {
     };
 
     return VkBuffer {
-      raw: RawVkBuffer {
-        buffer,
-        alloc: allocation,
-        device: device.clone()
-      },
+      buffer,
+      allocation,
       allocation_info,
+      device: device.clone(),
       map_ptr,
       is_coherent,
       memory_usage
@@ -59,23 +59,31 @@ impl VkBuffer {
   }
 
   pub fn get_handle(&self) -> &vk::Buffer {
-    return &self.raw.buffer;
+    return &self.buffer;
+  }
+}
+
+impl Drop for VkBuffer {
+  fn drop(&mut self) {
+    unsafe {
+      self.device.allocator.destroy_buffer(self.buffer, &self.allocation).unwrap();
+    }
   }
 }
 
 impl Buffer for VkBuffer {
   fn map(&self) -> Option<*mut u8> {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
-      let mut allocator = &self.raw.device.allocator;
-      allocator.invalidate_allocation(&self.raw.alloc, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
+      let mut allocator = &self.device.allocator;
+      allocator.invalidate_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
     }
     return self.map_ptr;
   }
 
   fn unmap(&self) {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
-      let mut allocator = &self.raw.device.allocator;
-      allocator.flush_allocation(&self.raw.alloc, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
+      let mut allocator = &self.device.allocator;
+      allocator.flush_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
     }
   }
 }

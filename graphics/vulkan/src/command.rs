@@ -45,16 +45,11 @@ impl VkCommandPool {
       flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
       ..Default::default()
     };
-    let vk_device = &device.device;
-    let command_pool = unsafe { vk_device.create_command_pool(&create_info, None) }.unwrap();
 
     let (sender, receiver) = channel();
 
     return Self {
-      raw: Arc::new(RawVkCommandPool {
-        pool: command_pool,
-        device: device.clone()
-      }),
+      raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
       buffers: Vec::new(),
       receiver,
       sender
@@ -89,14 +84,9 @@ impl VkCommandBuffer {
       command_buffer_count: 1, // TODO: figure out how many buffers per pool (maybe create a new pool once we've run out?)
       ..Default::default()
     };
-    let mut buffers = unsafe { device.allocate_command_buffers(&buffers_create_info) }.unwrap();
-    let buffer = buffers.remove(0);
+    let buffers = unsafe { device.allocate_command_buffers(&buffers_create_info) }.unwrap();
     return VkCommandBuffer {
-      raw: RawVkCommandBuffer {
-        buffer,
-        device: device.clone(),
-        pool: pool.clone()
-      }
+      raw: RawVkCommandBuffer::new(pool, &buffers_create_info).unwrap()
     };
   }
 
@@ -162,7 +152,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
-  fn set_vertex_buffer(&mut self, vertex_buffer: &VkBuffer) {
+  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBuffer>) {
     unsafe {
       self.raw.device.cmd_bind_vertex_buffers(*self.raw, 0, &[*(*vertex_buffer).get_handle()], &[0]);
     }

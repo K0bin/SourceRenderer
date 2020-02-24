@@ -272,7 +272,7 @@ impl<P: Platform> Engine<P> {
       command_buffer.begin();
       command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
       command_buffer.set_pipeline(pipeline.clone());
-      command_buffer.set_vertex_buffer(&*buffer);
+      command_buffer.set_vertex_buffer(buffer.clone());
       command_buffer.set_viewports(&[Viewport {
         position: Vec2 { x: 0.0f32, y: 0.0f32 },
         extent: Vec2 { x: 1280.0f32, y: 720.0f32 },

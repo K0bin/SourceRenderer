@@ -16,6 +16,17 @@ pub struct RawVkCommandPool {
   pub device: Arc<RawVkDevice>
 }
 
+impl RawVkCommandPool {
+  pub fn new(device: &Arc<RawVkDevice>, create_info: &vk::CommandPoolCreateInfo) -> VkResult<Self> {
+    unsafe {
+      device.create_command_pool(create_info, None).map(|pool| Self {
+        pool,
+        device: device.clone()
+      })
+    }
+  }
+}
+
 impl Deref for RawVkCommandPool {
   type Target = vk::CommandPool;
 
@@ -34,8 +45,20 @@ impl Drop for RawVkCommandPool {
 
 pub struct RawVkCommandBuffer {
   pub buffer: vk::CommandBuffer,
-  pub device: Arc<RawVkDevice>,
-  pub pool: Arc<RawVkCommandPool>
+  pub pool: Arc<RawVkCommandPool>,
+  pub device: Arc<RawVkDevice>
+}
+
+impl RawVkCommandBuffer {
+  pub fn new(pool: &Arc<RawVkCommandPool>, create_info: &vk::CommandBufferAllocateInfo) -> VkResult<Self> {
+    unsafe {
+      pool.device.allocate_command_buffers(create_info).map(|cmd_buffer| Self {
+        buffer: *cmd_buffer.first().unwrap(),
+        pool: pool.clone(),
+        device: pool.device.clone()
+      })
+    }
+  }
 }
 
 impl Deref for RawVkCommandBuffer {

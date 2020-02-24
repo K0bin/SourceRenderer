@@ -10,9 +10,15 @@ use crate::raw::RawVkDevice;
 use crate::VkCommandPool;
 use sourcerenderer_core::graphics::Device;
 
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct PipelineKey {
+
+}
+
 pub struct VkGraphicsContext {
   device: Arc<RawVkDevice>,
   threads: ThreadLocal<VkThreadContext>
+  //pipelines: Mutex<HashMap<>>
 }
 
 /*

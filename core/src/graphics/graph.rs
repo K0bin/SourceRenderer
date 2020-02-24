@@ -7,8 +7,8 @@ use std::ops::Fn;
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
 
 #[derive(Clone)]
-pub struct RenderGraphInfo<B: Backend> {
-  pub attachments: HashMap<String, RenderGraphAttachmentInfo<B>>,
+pub struct RenderGraphInfo {
+  pub attachments: HashMap<String, RenderGraphAttachmentInfo>,
   pub passes: Vec<RenderPassInfo>
 }
 
@@ -25,7 +25,8 @@ pub enum AttachmentSizeClass {
   RelativeToSwapchain
 }
 
-pub struct RenderGraphAttachmentInfo<B: Backend> {
+#[derive(Clone)]
+pub struct RenderGraphAttachmentInfo<> {
   pub format: Format,
   pub size_class: AttachmentSizeClass,
   pub width: f32,
