@@ -10,33 +10,12 @@ use ash::prelude::VkResult;
 
 mod device;
 mod instance;
-mod surface;
-mod swap_chain;
 mod command;
-mod sync;
 
 pub use crate::raw::device::RawVkDevice;
 pub use crate::raw::instance::RawVkInstance;
-pub use crate::raw::surface::RawVkSurface;
-pub use crate::raw::swap_chain::RawVkSwapchain;
 pub use crate::raw::command::RawVkCommandPool;
 pub use self::command::RawVkCommandBuffer;
-pub use crate::raw::sync::RawVkSemaphore;
-pub use crate::raw::sync::RawVkFence;
-
-pub struct RawVkBuffer {
-  pub buffer: vk::Buffer,
-  pub alloc: vk_mem::Allocation,
-  pub device: Arc<RawVkDevice>,
-}
-
-impl Drop for RawVkBuffer {
-  fn drop(&mut self) {
-    unsafe {
-      self.device.allocator.destroy_buffer(self.buffer, &self.alloc).unwrap();
-    }
-  }
-}
 
 pub struct RawVkImage {
   pub image: vk::Image,

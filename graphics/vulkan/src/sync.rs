@@ -9,10 +9,10 @@ use sourcerenderer_core::graphics::Resettable;
 
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
-use raw::RawVkSemaphore;
 
 pub struct VkSemaphore {
-  semaphore: Arc<RawVkSemaphore>
+  semaphore: vk::Semaphore,
+  device: Arc<RawVkDevice>
 }
 
 impl VkSemaphore {
@@ -21,13 +21,17 @@ impl VkSemaphore {
     let info = vk::SemaphoreCreateInfo {
       ..Default::default()
     };
+    let semaphore = unsafe {
+      device.create_semaphore(&info, None)
+    }.unwrap();
     return VkSemaphore {
-      semaphore: Arc::new(RawVkSemaphore::new(device, &info).unwrap())
+      semaphore,
+      device: device.clone()
     };
   }
 
   pub fn get_handle(&self) -> &vk::Semaphore {
-    return &self.semaphore.semaphore;
+    return &self.semaphore;
   }
 }
 
@@ -37,6 +41,14 @@ impl Semaphore for VkSemaphore {
 
 impl Resettable for VkSemaphore {
   fn reset(&mut self) {
+  }
+}
+
+impl Drop for VkSemaphore {
+  fn drop(&mut self) {
+    unsafe {
+      self.device.destroy_semaphore(self.semaphore, None);
+    }
   }
 }
 

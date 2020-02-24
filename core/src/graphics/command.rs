@@ -39,7 +39,7 @@ pub trait CommandBuffer<B: Backend> {
   fn set_pipeline(&mut self, pipeline: Arc<B::Pipeline>);
   fn begin_render_pass(&mut self, renderpass: &B::RenderPass, recording_mode: RenderpassRecordingMode);
   fn end_render_pass(&mut self);
-  fn set_vertex_buffer(&mut self, vertex_buffer: &B::Buffer);
+  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<B::Buffer>);
   fn set_viewports(&mut self, viewports: &[ Viewport ]);
   fn set_scissors(&mut self, scissors: &[ Scissor ]);
   fn draw(&mut self, vertices: u32, offset: u32);

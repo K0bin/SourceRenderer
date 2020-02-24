@@ -144,7 +144,7 @@ impl Device<VkBackend> for VkDevice {
     unsafe { self.device.device.device_wait_idle(); }
   }
 
-  fn create_render_graph(self: Arc<Self>, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo<VkBackend>, swapchain: &VkSwapchain) -> VkRenderGraph {
+  fn create_render_graph(self: Arc<Self>, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo, swapchain: &VkSwapchain) -> VkRenderGraph {
     return VkRenderGraph::new(&self.device, graph_info, swapchain);
   }
 }

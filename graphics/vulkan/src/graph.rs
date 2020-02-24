@@ -17,6 +17,7 @@ use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
+use sourcerenderer_core::graphics::Backend;
 
 pub struct VkAttachment {
   texture: vk::Image,
@@ -37,7 +38,7 @@ pub struct VkRenderGraphPass { // TODO rename to VkRenderPass
 }
 
 impl VkRenderGraph {
-  pub fn new(device: &Arc<RawVkDevice>, info: &RenderGraphInfo<VkBackend>, swapchain: &VkSwapchain) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, info: &RenderGraphInfo, swapchain: &VkSwapchain) -> Self {
 
     // SHORTTERM
     // TODO: allocate images & image views
@@ -172,12 +173,12 @@ impl VkRenderGraph {
         };
 
         let frame_buffer_info = vk::FramebufferCreateInfo {
-          render_pass: render_pass,
+          render_pass,
           attachment_count: frame_buffer_attachments.len() as u32,
           p_attachments: frame_buffer_attachments.as_ptr(),
           layers: 1,
-          width: width,
-          height: height,
+          width,
+          height,
           ..Default::default()
         };
         let frame_buffer = unsafe { vk_device.create_framebuffer(&frame_buffer_info, None).unwrap() };
@@ -200,7 +201,11 @@ impl VkRenderGraph {
   }
 }
 
-impl RenderGraph for VkRenderGraph {
+impl RenderGraph<VkBackend> for VkRenderGraph {
+  fn recreate(&mut self, swap_chain: &VkSwapchain) {
+
+  }
+
   fn render(&mut self) {
     for pass in &self.passes {
       //pass.callback();
