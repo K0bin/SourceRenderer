@@ -186,7 +186,7 @@ impl<P: Platform> Engine<P> {
     };
     let render_pass_layout = Arc::new(device.create_renderpass_layout(&render_pass_info));
 
-    let pipeline_info = PipelineInfo {
+    let pipeline_info = PipelineInfo2 {
       vs: Arc::new(vertex_shader),
       fs: Some(Arc::new(fragment_shader)),
       gs: None,
@@ -243,11 +243,9 @@ impl<P: Platform> Engine<P> {
         attachments: vec![
           AttachmentBlendInfo::default()
         ]
-      },
-      renderpass: render_pass_layout.clone(),
-      subpass: 0u32,
+      }
     };
-    let pipeline = Arc::new(device.create_pipeline(&pipeline_info));
+    //let pipeline = Arc::new(device.create_pipeline(&pipeline_info));
 
     'main_loop: loop {
       let event = self.platform.handle_events();
@@ -271,7 +269,7 @@ impl<P: Platform> Engine<P> {
       let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
       command_buffer.begin();
       command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
-      command_buffer.set_pipeline(pipeline.clone());
+      command_buffer.set_pipeline2(&pipeline_info);
       command_buffer.set_vertex_buffer(buffer.clone());
       command_buffer.set_viewports(&[Viewport {
         position: Vec2 { x: 0.0f32, y: 0.0f32 },

@@ -8,7 +8,7 @@ use crate::Vec2I;
 use crate::Vec2UI;
 
 use crate::graphics::RenderpassRecordingMode;
-use graphics::Backend;
+use graphics::{Backend, PipelineInfo2};
 use pool::Recyclable;
 
 pub struct Viewport {
@@ -37,6 +37,7 @@ pub trait CommandBuffer<B: Backend> {
   fn begin(&mut self);
   fn end(&mut self);
   fn set_pipeline(&mut self, pipeline: Arc<B::Pipeline>);
+  fn set_pipeline2(&mut self, pipeline: &PipelineInfo2<B>);
   fn begin_render_pass(&mut self, renderpass: &B::RenderPass, recording_mode: RenderpassRecordingMode);
   fn end_render_pass(&mut self);
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<B::Buffer>);

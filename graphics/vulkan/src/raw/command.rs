@@ -42,37 +42,3 @@ impl Drop for RawVkCommandPool {
     }
   }
 }
-
-pub struct RawVkCommandBuffer {
-  pub buffer: vk::CommandBuffer,
-  pub pool: Arc<RawVkCommandPool>,
-  pub device: Arc<RawVkDevice>
-}
-
-impl RawVkCommandBuffer {
-  pub fn new(pool: &Arc<RawVkCommandPool>, create_info: &vk::CommandBufferAllocateInfo) -> VkResult<Self> {
-    unsafe {
-      pool.device.allocate_command_buffers(create_info).map(|cmd_buffer| Self {
-        buffer: *cmd_buffer.first().unwrap(),
-        pool: pool.clone(),
-        device: pool.device.clone()
-      })
-    }
-  }
-}
-
-impl Deref for RawVkCommandBuffer {
-  type Target = vk::CommandBuffer;
-
-  fn deref(&self) -> &Self::Target {
-    &self.buffer
-  }
-}
-
-impl Drop for RawVkCommandBuffer {
-  fn drop(&mut self) {
-    unsafe {
-      self.device.device.free_command_buffers(self.pool.pool, &[ self.buffer ])
-    }
-  }
-}

@@ -4,13 +4,16 @@ use graphics::Format;
 use graphics::RenderPassLayout;
 
 use graphics::Backend;
+use std::hash::Hasher;
+use std::hash::Hash;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Hash, Eq)]
 pub enum InputRate {
   PerVertex,
   PerInstance
 }
 
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct ShaderInputElement {
   pub input_assembler_binding: u32,
   pub location_vk_mtl: u32,
@@ -20,6 +23,7 @@ pub struct ShaderInputElement {
   pub format: Format
 }
 
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct InputAssemblerElement {
   pub binding: u32,
   pub input_rate: InputRate,
@@ -49,30 +53,33 @@ impl Default for InputAssemblerElement {
   }
 }
 
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct VertexLayoutInfo {
   pub shader_inputs: Vec<ShaderInputElement>,
   pub input_assembler: Vec<InputAssemblerElement>
 }
 
 // ignore input assembler for now and always use triangle lists
-
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FillMode {
   Fill,
   Line
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CullMode {
   None,
   Front,
   Back
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrontFace {
   CounterClockwise,
   Clockwise
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SampleCount {
   Samples1,
   Samples2,
@@ -80,6 +87,7 @@ pub enum SampleCount {
   Samples8
 }
 
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct RasterizerInfo {
   pub fill_mode: FillMode,
   pub cull_mode: CullMode,
@@ -98,7 +106,7 @@ impl Default for RasterizerInfo {
   }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompareFunc {
   Never,
   Less,
@@ -110,7 +118,7 @@ pub enum CompareFunc {
   Always
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StencilOp {
   Keep,
   Zero,
@@ -122,6 +130,7 @@ pub enum StencilOp {
   Decrease
 }
 
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct StencilInfo {
   pub fail_op: StencilOp,
   pub depth_fail_op: StencilOp,
@@ -140,6 +149,7 @@ impl Default for StencilInfo {
   }
 }
 
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct DepthStencilInfo {
   pub depth_test_enabled: bool,
   pub depth_write_enabled: bool,
@@ -166,7 +176,7 @@ impl Default for DepthStencilInfo {
   }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LogicOp {
   Clear,
   Set,
@@ -186,7 +196,7 @@ pub enum LogicOp {
   OrInverted
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BlendFactor {
   Zero,
   One,
@@ -205,7 +215,7 @@ pub enum BlendFactor {
   OneMinusSrc1Alpha
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BlendOp {
   Add,
   Subtract,
@@ -214,6 +224,7 @@ pub enum BlendOp {
   Max
 }
 
+#[derive(PartialEq, Clone)]
 pub struct BlendInfo {
   pub alpha_to_coverage_enabled: bool,
   pub logic_op_enabled: bool,
@@ -221,6 +232,19 @@ pub struct BlendInfo {
   pub attachments: Vec<AttachmentBlendInfo>,
   pub constants: [f32; 4]
 }
+
+impl Hash for BlendInfo {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.alpha_to_coverage_enabled.hash(state);
+    self.logic_op_enabled.hash(state);
+    self.logic_op.hash(state);
+    self.attachments.hash(state);
+    let constants_data: &[u32] = unsafe { std::slice::from_raw_parts(self.constants.as_ptr() as *const u32, self.constants.len()) };
+    constants_data.hash(state);
+  }
+}
+
+impl Eq for BlendInfo {}
 
 impl Default for BlendInfo {
   fn default() -> Self {
@@ -243,6 +267,7 @@ bitflags! {
   }
 }
 
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct AttachmentBlendInfo {
   pub blend_enabled: bool,
   pub src_color_blend_factor: BlendFactor,
@@ -283,6 +308,19 @@ pub enum ShaderType {
 
 pub trait Shader {
   fn get_shader_type(&self) -> ShaderType;
+}
+
+#[derive(Hash, Eq, PartialEq, Clone)]
+pub struct PipelineInfo2<B: Backend> {
+  pub vs: Arc<B::Shader>,
+  pub fs: Option<Arc<B::Shader>>,
+  pub gs: Option<Arc<B::Shader>>,
+  pub tcs: Option<Arc<B::Shader>>,
+  pub tes: Option<Arc<B::Shader>>,
+  pub vertex_layout: VertexLayoutInfo,
+  pub rasterizer: RasterizerInfo,
+  pub depth_stencil: DepthStencilInfo,
+  pub blend: BlendInfo
 }
 
 pub struct PipelineInfo<B: Backend> {

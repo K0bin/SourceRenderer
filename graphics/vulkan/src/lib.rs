@@ -7,7 +7,6 @@ extern crate vk_mem;
 #[macro_use]
 extern crate bitflags;
 extern crate thread_local;
-extern crate spin;
 
 pub use self::instance::VkInstance;
 pub use self::adapter::VkAdapter;
