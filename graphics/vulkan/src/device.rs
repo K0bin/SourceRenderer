@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::sync::Weak;
 use std::sync::Mutex;
 
@@ -26,6 +26,8 @@ use crate::graph::VkRenderGraph;
 use crate::swapchain::VkSwapchain;
 use context::VkGraphicsContext;
 use raw::{RawVkDevice, RawVkInstance};
+use std::collections::HashMap;
+use pipeline::VkPipelineInfo;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,
@@ -33,6 +35,11 @@ pub struct VkDevice {
   compute_queue: Option<VkQueue>,
   transfer_queue: Option<VkQueue>,
   extensions: VkAdapterExtensionSupport,
+  caches: Arc<SharedCaches>
+}
+
+pub struct SharedCaches {
+  pub pipelines: RwLock<HashMap<u64, VkPipeline>>
 }
 
 impl VkDevice {
@@ -44,6 +51,10 @@ impl VkDevice {
     compute_queue_info: Option<VkQueueInfo>,
     transfer_queue_info: Option<VkQueueInfo>,
     extensions: VkAdapterExtensionSupport) -> Self {
+
+    let caches = Arc::new(SharedCaches {
+      pipelines: RwLock::new(HashMap::new())
+    });
 
     let allocator_info = vk_mem::AllocatorCreateInfo {
       physical_device,
@@ -65,17 +76,17 @@ impl VkDevice {
 
     let graphics_queue = {
       let vk_queue = unsafe { raw.device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
-      VkQueue::new(graphics_queue_info, vk_queue, &raw)
+      VkQueue::new(graphics_queue_info, vk_queue, &raw, &caches)
     };
 
     let compute_queue = compute_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      VkQueue::new(info.clone(), vk_queue, &raw)
+      VkQueue::new(info.clone(), vk_queue, &raw, &caches)
     });
 
     let transfer_queue = transfer_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      VkQueue::new(info.clone(), vk_queue, &raw)
+      VkQueue::new(info.clone(), vk_queue, &raw, &caches)
     });
 
     return VkDevice {
@@ -83,7 +94,8 @@ impl VkDevice {
       graphics_queue,
       compute_queue,
       transfer_queue,
-      extensions
+      extensions,
+      caches
     };
   }
 

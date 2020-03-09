@@ -18,6 +18,7 @@ use graphics::Resettable;
 use graphics::Fence;
 use graphics::Semaphore;
 use graphics::graph::RenderGraph;
+use std::hash::Hash;
 
 pub trait Backend: 'static + Sized {
   type Instance: Instance<Self>;
@@ -30,7 +31,7 @@ pub trait Backend: 'static + Sized {
   type Queue: Queue<Self>;
   type Texture: Texture;
   type Buffer: Buffer;
-  type Shader: Shader;
+  type Shader: Shader + Hash + Eq + PartialEq;
   type Pipeline: Pipeline<Self>;
   type RenderPassLayout: RenderPassLayout<Self>;
   type RenderPass: RenderPass<Self>;

@@ -11,6 +11,7 @@ use crate::raw::RawVkDevice;
 use crate::pipeline::samples_to_vk;
 use crate::format::format_to_vk;
 use crate::VkBackend;
+use std::hash::{Hash, Hasher};
 
 fn store_op_to_vk(store_op: StoreOp) -> vk::AttachmentStoreOp {
   return match store_op {
@@ -186,6 +187,20 @@ impl Drop for VkRenderPassLayout {
     }
   }
 }
+
+impl Hash for VkRenderPassLayout {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.renderpass.hash(state);
+  }
+}
+
+impl PartialEq for VkRenderPassLayout {
+  fn eq(&self, other: &Self) -> bool {
+    self.renderpass == other.renderpass
+  }
+}
+
+impl Eq for VkRenderPassLayout {}
 
 impl RenderPassLayout<VkBackend> for VkRenderPassLayout {
 

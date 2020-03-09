@@ -21,6 +21,7 @@ use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
+use device::SharedCaches;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -33,15 +34,17 @@ pub struct VkQueueInfo {
 pub struct VkQueue {
   info: VkQueueInfo,
   queue: Mutex<vk::Queue>,
-  device: Arc<RawVkDevice>
+  device: Arc<RawVkDevice>,
+  caches: Arc<SharedCaches>
 }
 
 impl VkQueue {
-  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, caches: &Arc<SharedCaches>) -> Self {
     return VkQueue {
       info,
       queue: Mutex::new(queue),
-      device: device.clone()
+      device: device.clone(),
+      caches: caches.clone()
     };
   }
 
@@ -54,7 +57,7 @@ impl VkQueue {
 
 impl Queue<VkBackend> for VkQueue {
   fn create_command_pool(&self) -> VkCommandPool {
-    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32);
+    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.caches);
   }
 
   fn get_queue_type(&self) -> QueueType {
