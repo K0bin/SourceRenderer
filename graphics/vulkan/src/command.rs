@@ -24,25 +24,25 @@ use crate::VkPipeline;
 use crate::VkBackend;
 
 use crate::raw::*;
-use device::SharedCaches;
 use pipeline::VkPipelineInfo;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use VkRenderPassLayout;
+use context::{VkGraphicsContext, VkSharedCaches};
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,
   buffers: Vec<Box<VkCommandBuffer>>,
   receiver: Receiver<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>,
-  caches: Arc<SharedCaches>
+  caches: Arc<VkSharedCaches>
 }
 
 pub struct VkCommandBuffer {
   buffer: vk::CommandBuffer,
   pool: Arc<RawVkCommandPool>,
   device: Arc<RawVkDevice>,
-  caches: Arc<SharedCaches>,
+  caches: Arc<VkSharedCaches>,
   render_pass: Option<Arc<VkRenderPassLayout>>,
   sub_pass: u32
 }
@@ -50,7 +50,7 @@ pub struct VkCommandBuffer {
 pub type RecyclableCmdBuffer = Recyclable<Box<VkCommandBuffer>>;
 
 impl VkCommandPool {
-  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, caches: &Arc<SharedCaches>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, caches: &Arc<VkSharedCaches>) -> Self {
     let create_info = vk::CommandPoolCreateInfo {
       queue_family_index,
       flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
@@ -89,7 +89,7 @@ impl Resettable for VkCommandPool {
 }
 
 impl VkCommandBuffer {
-  fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, caches: &Arc<SharedCaches>) -> Self {
+  fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, caches: &Arc<VkSharedCaches>) -> Self {
     let buffers_create_info = vk::CommandBufferAllocateInfo {
       command_pool: ***pool,
       level: if command_buffer_type == CommandBufferType::PRIMARY { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
@@ -154,7 +154,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     let hash = hasher.finish();
 
     {
-      let lock = self.caches.pipelines.read().unwrap();
+      let lock = self.caches.get_pipelines().read().unwrap();
       let cached_pipeline = lock.get(&hash);
       if let Some(pipeline) = cached_pipeline {
         let vk_pipeline = *pipeline.get_handle();
@@ -165,7 +165,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
       }
     }
     let pipeline = VkPipeline::new2(&self.device, &info);
-    let mut lock = self.caches.pipelines.write().unwrap();
+    let mut lock = self.caches.get_pipelines().write().unwrap();
     lock.insert(hash, pipeline);
     let stored_pipeline = lock.get(&hash).unwrap();
     let vk_pipeline = *stored_pipeline.get_handle();

@@ -9,16 +9,18 @@ use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::VkCommandPool;
 use sourcerenderer_core::graphics::Device;
+use std::cell::{RefCell, RefMut};
+use VkPipeline;
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-struct PipelineKey {
+pub struct VkSharedCaches {
+  pub pipelines: RwLock<HashMap<u64, VkPipeline>>
 
 }
 
 pub struct VkGraphicsContext {
   device: Arc<RawVkDevice>,
-  threads: ThreadLocal<VkThreadContext>
-  //pipelines: Mutex<HashMap<>>
+  threads: ThreadLocal<RefCell<VkThreadContext>>,
+  caches: Arc<VkSharedCaches>
 }
 
 /*
@@ -38,16 +40,21 @@ pub struct VkFrameContext {
 }
 
 impl VkGraphicsContext {
-  fn new(device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>) -> Self {
     return VkGraphicsContext {
       device: device.clone(),
-      threads: ThreadLocal::new()
+      threads: ThreadLocal::new(),
+      caches: Arc::new(VkSharedCaches::new())
     };
   }
 
-  /*fn get_thread_context(&self) -> &VkThreadContext {
-    self.threads.get_or(|| VkThreadContext::new(&self.device))
-  }*/
+  pub fn get_caches(&self) -> &Arc<VkSharedCaches> {
+    &self.caches
+  }
+
+  pub fn get_thread_context(&self) -> RefMut<VkThreadContext> {
+    self.threads.get_or(|| RefCell::new(VkThreadContext::new(&self.device))).borrow_mut()
+  }
 }
 
 impl VkThreadContext {
@@ -58,3 +65,16 @@ impl VkThreadContext {
     };
   }
 }
+
+impl VkSharedCaches {
+  pub fn new() -> Self {
+    Self {
+      pipelines: RwLock::new(HashMap::new())
+    }
+  }
+
+  pub fn get_pipelines(&self) -> &RwLock<HashMap<u64, VkPipeline>> {
+    &self.pipelines
+  }
+}
+
