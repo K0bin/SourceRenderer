@@ -35,11 +35,7 @@ pub struct VkDevice {
   compute_queue: Option<VkQueue>,
   transfer_queue: Option<VkQueue>,
   extensions: VkAdapterExtensionSupport,
-  caches: Arc<SharedCaches>
-}
-
-pub struct SharedCaches {
-  pub pipelines: RwLock<HashMap<u64, VkPipeline>>
+  context: Arc<VkGraphicsContext>
 }
 
 impl VkDevice {
@@ -51,10 +47,6 @@ impl VkDevice {
     compute_queue_info: Option<VkQueueInfo>,
     transfer_queue_info: Option<VkQueueInfo>,
     extensions: VkAdapterExtensionSupport) -> Self {
-
-    let caches = Arc::new(SharedCaches {
-      pipelines: RwLock::new(HashMap::new())
-    });
 
     let allocator_info = vk_mem::AllocatorCreateInfo {
       physical_device,
@@ -74,19 +66,21 @@ impl VkDevice {
       instance: instance.clone(),
     });
 
+    let context = Arc::new(VkGraphicsContext::new(&raw));
+
     let graphics_queue = {
       let vk_queue = unsafe { raw.device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
-      VkQueue::new(graphics_queue_info, vk_queue, &raw, &caches)
+      VkQueue::new(graphics_queue_info, vk_queue, &raw, context.get_caches())
     };
 
     let compute_queue = compute_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      VkQueue::new(info.clone(), vk_queue, &raw, &caches)
+      VkQueue::new(info.clone(), vk_queue, &raw, context.get_caches())
     });
 
     let transfer_queue = transfer_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      VkQueue::new(info.clone(), vk_queue, &raw, &caches)
+      VkQueue::new(info.clone(), vk_queue, &raw, context.get_caches())
     });
 
     return VkDevice {
@@ -95,7 +89,7 @@ impl VkDevice {
       compute_queue,
       transfer_queue,
       extensions,
-      caches
+      context
     };
   }
 
