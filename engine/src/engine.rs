@@ -250,7 +250,7 @@ impl<P: Platform> Engine<P> {
     'main_loop: loop {
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {
-          break 'main_loop;
+        break 'main_loop;
       }
 
       let backbuffer_semaphore = device.create_semaphore();
@@ -266,29 +266,30 @@ impl<P: Platform> Engine<P> {
       };
       let render_pass = device.create_renderpass(&render_pass_info);
 
-      let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
-      command_buffer.begin();
-      command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
-      command_buffer.set_pipeline2(&pipeline_info);
-      command_buffer.set_vertex_buffer(buffer.clone());
-      command_buffer.set_viewports(&[Viewport {
-        position: Vec2 { x: 0.0f32, y: 0.0f32 },
-        extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
-        min_depth: 0.0f32,
-        max_depth: 1.0f32
-      }]);
-      command_buffer.set_scissors(&[Scissor {
-        position: Vec2I { x: 0, y: 0 },
-        extent: Vec2UI { x: 9999, y: 9999 },
-      }]);
-      command_buffer.draw(6, 0);
-      command_buffer.end_render_pass();
-      command_buffer.end();
-
       let cmd_buffer_semaphore = device.create_semaphore();
-      queue.submit(&command_buffer, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
+      {
+        let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
+        command_buffer.begin();
+        command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
+        command_buffer.set_pipeline2(&pipeline_info);
+        command_buffer.set_vertex_buffer(buffer.clone());
+        command_buffer.set_viewports(&[Viewport {
+          position: Vec2 { x: 0.0f32, y: 0.0f32 },
+          extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
+          min_depth: 0.0f32,
+          max_depth: 1.0f32
+        }]);
+        command_buffer.set_scissors(&[Scissor {
+          position: Vec2I { x: 0, y: 0 },
+          extent: Vec2UI { x: 9999, y: 9999 },
+        }]);
+        command_buffer.draw(6, 0);
+        command_buffer.end_render_pass();
+        command_buffer.end();
 
-      queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);
+        queue.submit(&command_buffer, None, &[&backbuffer_semaphore], &[&cmd_buffer_semaphore]);
+        queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);
+      }
 
       device.wait_for_idle();
 

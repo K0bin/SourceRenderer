@@ -10,11 +10,9 @@ use ash::prelude::VkResult;
 
 mod device;
 mod instance;
-mod command;
 
 pub use crate::raw::device::RawVkDevice;
 pub use crate::raw::instance::RawVkInstance;
-pub use crate::raw::command::RawVkCommandPool;
 
 pub struct RawVkImage {
   pub image: vk::Image,

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::sync::Mutex;
 
 use crate::Vec2;
@@ -30,7 +30,7 @@ pub enum CommandBufferType {
 }
 
 pub trait CommandPool<B: Backend> {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Recyclable<Box<B::CommandBuffer>>;
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> RefMut<B::CommandBuffer>;
 }
 
 pub trait CommandBuffer<B: Backend> {

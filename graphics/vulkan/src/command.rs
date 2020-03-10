@@ -29,25 +29,23 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use VkRenderPassLayout;
 use context::{VkGraphicsContext, VkSharedCaches};
+use std::cell::{RefCell, RefMut};
+use bitflags::_core::cell::Ref;
 
 pub struct VkCommandPool {
-  raw: Arc<RawVkCommandPool>,
-  buffers: Vec<Box<VkCommandBuffer>>,
-  receiver: Receiver<Box<VkCommandBuffer>>,
-  sender: Sender<Box<VkCommandBuffer>>,
+  pool: vk::CommandPool,
+  device: Arc<RawVkDevice>,
+  buffers: Vec<RefCell<VkCommandBuffer>>,
   caches: Arc<VkSharedCaches>
 }
 
 pub struct VkCommandBuffer {
   buffer: vk::CommandBuffer,
-  pool: Arc<RawVkCommandPool>,
   device: Arc<RawVkDevice>,
   caches: Arc<VkSharedCaches>,
   render_pass: Option<Arc<VkRenderPassLayout>>,
   sub_pass: u32
 }
-
-pub type RecyclableCmdBuffer = Recyclable<Box<VkCommandBuffer>>;
 
 impl VkCommandPool {
   pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, caches: &Arc<VkSharedCaches>) -> Self {
@@ -57,41 +55,59 @@ impl VkCommandPool {
       ..Default::default()
     };
 
-    let (sender, receiver) = channel();
-
     return Self {
-      raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
+      pool: unsafe {
+        device.create_command_pool(&create_info, None)
+      }.unwrap(),
+      device: device.clone(),
       buffers: Vec::new(),
-      receiver,
-      sender,
       caches: caches.clone()
     };
   }
 }
 
+impl Drop for VkCommandPool {
+  fn drop(&mut self) {
+    for cmd_buffer in &mut self.buffers.drain(..) {
+      unsafe {
+        self.device.device.free_command_buffers(self.pool, &[ cmd_buffer.borrow().buffer ])
+      }
+    }
+    self.buffers.clear();
+    unsafe {
+      self.device.destroy_command_pool(self.pool, None);
+    }
+  }
+}
+
 impl CommandPool<VkBackend> for VkCommandPool {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> RecyclableCmdBuffer {
-    let buffer = self.buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, &self.caches)));
-    return Recyclable::new(self.sender.clone(), buffer);
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> RefMut<VkCommandBuffer> {
+    let ptr = &self.buffers as *const Vec<RefCell<VkCommandBuffer>>;
+    // the borrow checker is not smart enough to realize that the reference only exists if we return here
+    for cmd_buffer in unsafe { ptr.as_ref().unwrap() } {
+      if let Ok(cmd_buffer_ref) = cmd_buffer.try_borrow_mut() {
+        return cmd_buffer_ref;
+      }
+    }
+
+    let cmd_buffer = RefCell::new(VkCommandBuffer::new(&self.device, &self.pool, command_buffer_type, &self.caches));
+    self.buffers.push(cmd_buffer);
+    return self.buffers.last().unwrap().borrow_mut();
   }
 }
 
 impl Resettable for VkCommandPool {
   fn reset(&mut self) {
     unsafe {
-      self.raw.device.reset_command_pool(**self.raw, vk::CommandPoolResetFlags::empty()).unwrap();
-    }
-
-    for cmd_buf in self.receiver.try_iter() {
-      self.buffers.push(cmd_buf);
+      self.device.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty()).unwrap();
     }
   }
 }
 
 impl VkCommandBuffer {
-  fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, caches: &Arc<VkSharedCaches>) -> Self {
+  fn new(device: &Arc<RawVkDevice>, pool: &vk::CommandPool, command_buffer_type: CommandBufferType, caches: &Arc<VkSharedCaches>) -> Self {
     let buffers_create_info = vk::CommandBufferAllocateInfo {
-      command_pool: ***pool,
+      command_pool: *pool,
       level: if command_buffer_type == CommandBufferType::PRIMARY { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
       command_buffer_count: 1, // TODO: figure out how many buffers per pool (maybe create a new pool once we've run out?)
       ..Default::default()
@@ -99,7 +115,6 @@ impl VkCommandBuffer {
     let mut buffers = unsafe { device.allocate_command_buffers(&buffers_create_info) }.unwrap();
     return VkCommandBuffer {
       buffer: buffers.pop().unwrap(),
-      pool: pool.clone(),
       device: device.clone(),
       render_pass: None,
       sub_pass: 0u32,
@@ -109,14 +124,6 @@ impl VkCommandBuffer {
 
   pub fn get_handle(&self) -> &vk::CommandBuffer {
     return &self.buffer;
-  }
-}
-
-impl Drop for VkCommandBuffer {
-  fn drop(&mut self) {
-    unsafe {
-      self.device.device.free_command_buffers(self.pool.pool, &[ self.buffer ])
-    }
   }
 }
 
