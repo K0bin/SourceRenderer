@@ -1,7 +1,7 @@
 extern crate num_cpus;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_vulkan;
-extern crate async_std;
+extern crate tokio;
 
 pub use self::engine::Engine;
 

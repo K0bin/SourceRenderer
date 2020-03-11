@@ -16,6 +16,6 @@ pub struct SwapchainInfo {
   pub vsync: bool
 }
 
-pub trait Swapchain<B: Backend> {
-  fn prepare_back_buffer(&mut self, semaphore: &B::Semaphore) -> (Arc<B::Texture>, u32);
+pub trait Swapchain<B: Backend> : Send + Sync {
+  fn prepare_back_buffer(&self, semaphore: &B::Semaphore) -> (Arc<B::Texture>, u32);
 }

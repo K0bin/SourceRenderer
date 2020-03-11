@@ -10,6 +10,7 @@ pub use self::surface::SwapchainInfo;
 pub use self::command::CommandBuffer;
 pub use self::command::CommandPool;
 pub use self::command::CommandBufferType;
+pub use self::command::Submission;
 pub use self::buffer::Buffer;
 pub use self::buffer::BufferUsage;
 pub use self::device::MemoryUsage;

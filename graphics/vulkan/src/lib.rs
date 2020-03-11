@@ -17,6 +17,7 @@ pub use self::swapchain::VkSwapchain;
 pub use self::queue::VkQueue;
 pub use self::command::VkCommandPool;
 pub use self::command::VkCommandBuffer;
+pub use self::command::VkSubmission;
 pub use self::buffer::VkBuffer;
 pub use self::texture::VkTexture;
 pub use self::texture::VkRenderTargetView;

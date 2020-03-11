@@ -11,6 +11,7 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type CommandPool = VkCommandPool;
   type Instance = VkInstance;
   type CommandBuffer = VkCommandBuffer;
+  type Submission = VkSubmission;
   type Adapter = VkAdapter;
   type Surface = VkSurface;
   type Queue = VkQueue;

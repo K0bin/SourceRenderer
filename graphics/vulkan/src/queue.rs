@@ -22,6 +22,7 @@ use crate::sync::VkFence;
 use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
 use context::{VkGraphicsContext, VkSharedCaches};
+use VkSubmission;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -68,13 +69,12 @@ impl Queue<VkBackend> for VkQueue {
     return self.info.supports_presentation;
   }
 
-  fn submit(&self, command_buffer: &VkCommandBuffer, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
+  fn submit(&self, command_buffer: &VkSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let signal_semaphore_handles = signal_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let stage_masks = wait_semaphores.into_iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<Vec<vk::PipelineStageFlags>>();
 
-    let cmd_buffer_guard = command_buffer.get_handle();
-    let cmd_buffer = *cmd_buffer_guard;
+    let cmd_buffer = *(command_buffer.get_cmd_buffer());
 
     let info = vk::SubmitInfo {
       p_command_buffers: &cmd_buffer as *const vk::CommandBuffer,
@@ -94,8 +94,9 @@ impl Queue<VkBackend> for VkQueue {
 
   fn present(&self, swapchain: &VkSwapchain, image_index: u32, wait_semaphores: &[ &VkSemaphore ]) {
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
+    let swapchain_lock = swapchain.get_handle().lock().unwrap();
     let present_info = vk::PresentInfoKHR {
-      p_swapchains: swapchain.get_handle() as *const vk::SwapchainKHR,
+      p_swapchains: &*swapchain_lock as *const vk::SwapchainKHR,
       swapchain_count: 1,
       p_image_indices: &image_index as *const u32,
       p_wait_semaphores: if wait_semaphores.len() == 0 { std::ptr::null() } else { wait_semaphore_handles.as_ptr() },

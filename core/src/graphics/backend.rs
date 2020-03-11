@@ -4,6 +4,7 @@ use graphics::Device;
 use graphics::Surface;
 use graphics::CommandPool;
 use graphics::CommandBuffer;
+use graphics::Submission;
 use graphics::Queue;
 use graphics::Shader;
 use graphics::PipelineInfo;
@@ -28,6 +29,7 @@ pub trait Backend: 'static + Sized {
   type Swapchain: Swapchain<Self>;
   type CommandPool: CommandPool<Self> + Resettable;
   type CommandBuffer: CommandBuffer<Self>;
+  type Submission: Submission;
   type Queue: Queue<Self>;
   type Texture: Texture;
   type Buffer: Buffer;

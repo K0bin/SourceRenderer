@@ -10,6 +10,8 @@ use sourcerenderer_core::graphics::Resettable;
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 
+// TODO host synchronization?
+
 pub struct VkSemaphore {
   semaphore: vk::Semaphore,
   device: Arc<RawVkDevice>

@@ -14,7 +14,8 @@ bitflags! {
   }
 }
 
-pub trait Buffer {
+// TODO change map & unmap to require a mutable reference
+pub trait Buffer : Send {
   fn map(&self) -> Option<*mut u8>;
   fn unmap(&self);
 }

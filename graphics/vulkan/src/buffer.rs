@@ -71,6 +71,8 @@ impl Drop for VkBuffer {
   }
 }
 
+unsafe impl Send for VkBuffer {}
+
 impl Buffer for VkBuffer {
   fn map(&self) -> Option<*mut u8> {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {

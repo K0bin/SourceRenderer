@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
@@ -26,7 +26,7 @@ pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
   images: Vec<vk::Image>,
   views: Vec<vk::ImageView>,
-  swap_chain: vk::SwapchainKHR,
+  swap_chain: Mutex<vk::SwapchainKHR>,
   swap_chain_loader: SwapchainLoader,
   instance: Arc<RawVkInstance>,
   surface: Arc<VkSurface>,
@@ -117,7 +117,7 @@ impl VkSwapchain {
         textures,
         images: swap_chain_images,
         views: swap_chain_image_views,
-        swap_chain,
+        swap_chain: Mutex::new(swap_chain),
         swap_chain_loader,
         instance: device.get_inner().instance.clone(),
         surface: surface.clone(),
@@ -162,7 +162,7 @@ impl VkSwapchain {
     return &self.swap_chain_loader;
   }
 
-  pub fn get_handle(&self) -> &vk::SwapchainKHR {
+  pub fn get_handle(&self) -> &Mutex<vk::SwapchainKHR> {
     return &self.swap_chain;
   }
 
@@ -185,15 +185,17 @@ impl VkSwapchain {
 
 impl Drop for VkSwapchain {
   fn drop(&mut self) {
+    let lock = self.swap_chain.lock().unwrap();
     unsafe {
-      self.swap_chain_loader.destroy_swapchain(self.swap_chain, None)
+      self.swap_chain_loader.destroy_swapchain(*lock, None)
     }
   }
 }
 
 impl Swapchain<VkBackend> for VkSwapchain {
-  fn prepare_back_buffer(&mut self, semaphore: &VkSemaphore) -> (Arc<VkTexture>, u32) {
-    let (index, optimal) = unsafe { self.swap_chain_loader.acquire_next_image(self.swap_chain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
+  fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> (Arc<VkTexture>, u32) {
+    let lock = self.swap_chain.lock().unwrap();
+    let (index, optimal) = unsafe { self.swap_chain_loader.acquire_next_image(*lock, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
     let back_buffer = self.textures.get(index as usize).unwrap().clone();
     return (back_buffer, index);
   }

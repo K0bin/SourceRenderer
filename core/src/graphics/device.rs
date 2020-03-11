@@ -34,12 +34,12 @@ pub enum MemoryUsage {
   GpuToCpu
 }
 
-pub trait Adapter<B: Backend> {
+pub trait Adapter<B: Backend> : Send + Sync {
   fn adapter_type(&self) -> AdapterType;
   fn create_device(&self, surface: &B::Surface) -> B::Device;
 }
 
-pub trait Device<B: Backend> {
+pub trait Device<B: Backend> : Send + Sync {
   fn get_queue(&self, queue_type: QueueType) -> Option<&B::Queue>;
   fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> B::Buffer;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> B::Shader;
@@ -61,10 +61,11 @@ pub enum QueueType {
   Transfer
 }
 
-pub trait Queue<B: Backend> {
+// TODO change submit & present to require a mutable reference
+pub trait Queue<B: Backend> : Send + Sync {
   fn create_command_pool(&self) -> B::CommandPool;
   fn get_queue_type(&self) -> QueueType;
   fn supports_presentation(&self) -> bool;
-  fn submit(&self, command_buffer: &B::CommandBuffer, fence: Option<&B::Fence>, wait_semaphore: &[ &B::Semaphore ], signal_semaphore: &[ &B::Semaphore ]);
+  fn submit(&self, submission: &B::Submission, fence: Option<&B::Fence>, wait_semaphore: &[ &B::Semaphore ], signal_semaphore: &[ &B::Semaphore ]);
   fn present(&self, swapchain: &B::Swapchain, image_index: u32, wait_semaphores: &[ &B::Semaphore ]);
 }

@@ -17,12 +17,10 @@ use sourcerenderer_core::graphics::*;
 use std::rc::Rc;
 use std::path::Path;
 use sourcerenderer_core::platform::Window;
-use async_std::task;
-use async_std::prelude::*;
-use async_std::future;
+//use tokio::task;
 use std::thread::{Thread};
 use std::future::Future;
-use async_std::task::JoinHandle;
+use std::thread;
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -46,7 +44,7 @@ impl<P: Platform> Engine<P> {
     //let pool = crossbeam_workstealing_pool::small_pool(n_workers);
     //pool.execute()
 
-    task::spawn(async {
+    /*task::spawn(async {
 
       let start = Instant::now();
       let task1 = task::spawn(async {
@@ -67,7 +65,7 @@ impl<P: Platform> Engine<P> {
         println!("b - {:?} - thread: {:?}", sum, id);
       });
       //task2.await;
-      task1.join(task2).await;
+      //task1.join(task2).await;
       //task1.await;
 
       //let result = task::spawn(fib(50)).await;
@@ -77,7 +75,7 @@ impl<P: Platform> Engine<P> {
       let duration = after - start;
       println!("Took: {:?}", duration);
       //join!(task1, task2);
-    });
+    });*/
 
     //let renderer = self.platform.create_renderer();
     let graphics = self.platform.create_graphics(true).unwrap();
@@ -269,7 +267,7 @@ impl<P: Platform> Engine<P> {
       let cmd_buffer_semaphore = device.create_semaphore();
       {
         let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
-        command_buffer.begin();
+        //command_buffer.begin();
         command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
         command_buffer.set_pipeline2(&pipeline_info);
         command_buffer.set_vertex_buffer(buffer.clone());
@@ -285,10 +283,15 @@ impl<P: Platform> Engine<P> {
         }]);
         command_buffer.draw(6, 0);
         command_buffer.end_render_pass();
-        command_buffer.end();
+        let submission = command_buffer.finish();
+        //command_buffer.end();
 
-        queue.submit(&command_buffer, None, &[&backbuffer_semaphore], &[&cmd_buffer_semaphore]);
-        queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);
+        //task::spawn(async {
+        //thread::spawn(move || {
+          queue.submit(&submission, None, &[&backbuffer_semaphore], &[&cmd_buffer_semaphore]);
+          queue.present(&swapchain, swapchain_image_index, &[&cmd_buffer_semaphore]);
+        //}).join();
+        //});
       }
 
       device.wait_for_idle();

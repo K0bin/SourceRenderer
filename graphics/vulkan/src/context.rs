@@ -19,7 +19,7 @@ pub struct VkSharedCaches {
 
 pub struct VkGraphicsContext {
   device: Arc<RawVkDevice>,
-  threads: ThreadLocal<RefCell<VkThreadContext>>,
+  threads: ThreadLocal<VkThreadContext>,
   caches: Arc<VkSharedCaches>
 }
 
@@ -28,7 +28,7 @@ A thread context manages frame contexts for a thread
 */
 pub struct VkThreadContext {
   device: Arc<RawVkDevice>,
-  frames: Vec<VkFrameContext>
+  frames: Vec<RefCell<VkFrameContext>>
 }
 
 /*
@@ -52,8 +52,8 @@ impl VkGraphicsContext {
     &self.caches
   }
 
-  pub fn get_thread_context(&self) -> RefMut<VkThreadContext> {
-    self.threads.get_or(|| RefCell::new(VkThreadContext::new(&self.device))).borrow_mut()
+  pub fn get_thread_context(&self) -> &VkThreadContext {
+    &self.threads.get_or(|| VkThreadContext::new(&self.device))
   }
 }
 
@@ -63,6 +63,16 @@ impl VkThreadContext {
       device: device.clone(),
       frames: Vec::new()
     };
+  }
+
+  pub fn get_frame_context(&self, index: u64) -> RefMut<VkFrameContext> {
+    self.frames[(index as usize) % self.frames.len()].borrow_mut()
+  }
+}
+
+impl VkFrameContext {
+  pub fn get_command_pool(&mut self) -> &mut VkCommandPool {
+    &mut self.command_pool
   }
 }
 

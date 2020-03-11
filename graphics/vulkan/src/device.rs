@@ -151,7 +151,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_render_graph(self: Arc<Self>, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo, swapchain: &VkSwapchain) -> VkRenderGraph {
-    return VkRenderGraph::new(&self.device, graph_info, swapchain);
+    return VkRenderGraph::new(&self.device, &self.context, graph_info, swapchain);
   }
 }
 

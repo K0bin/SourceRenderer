@@ -17,7 +17,8 @@ use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
-use sourcerenderer_core::graphics::Backend;
+use sourcerenderer_core::graphics::{Backend, CommandPool, CommandBuffer, CommandBufferType, Resettable};
+use context::VkGraphicsContext;
 
 pub struct VkAttachment {
   texture: vk::Image,
@@ -26,6 +27,7 @@ pub struct VkAttachment {
 
 pub struct VkRenderGraph {
   device: Arc<RawVkDevice>,
+  context: Arc<VkGraphicsContext>,
   passes: Vec<VkRenderGraphPass>,
   attachments: HashMap<String, VkAttachment>
 }
@@ -38,7 +40,7 @@ pub struct VkRenderGraphPass { // TODO rename to VkRenderPass
 }
 
 impl VkRenderGraph {
-  pub fn new(device: &Arc<RawVkDevice>, info: &RenderGraphInfo, swapchain: &VkSwapchain) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, context: &Arc<VkGraphicsContext>, info: &RenderGraphInfo, swapchain: &VkSwapchain) -> Self {
 
     // SHORTTERM
     // TODO: allocate images & image views
@@ -195,6 +197,7 @@ impl VkRenderGraph {
 
     return VkRenderGraph {
       device: device.clone(),
+      context: context.clone(),
       passes,
       attachments
     };
@@ -206,9 +209,15 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
   }
 
-  fn render(&mut self) {
+  fn render(&mut self, frame_index: u64) {
+    let thread_context = self.context.get_thread_context();
+    let mut frame_context = thread_context.get_frame_context(frame_index);
+    let pool = frame_context.get_command_pool();
+    let cmd_buffer = pool.get_command_buffer(CommandBufferType::PRIMARY);
+    let secondary = pool.get_command_buffer(CommandBufferType::SECONDARY);
+    pool.reset();
     for pass in &self.passes {
-      //pass.callback();
+      //cmd_buffer.begin_render_pass(pass.render_pass)
     }
     unimplemented!()
   }
