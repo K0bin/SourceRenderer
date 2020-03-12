@@ -213,8 +213,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let thread_context = self.context.get_thread_context();
     let mut frame_context = thread_context.get_frame_context(frame_index);
     let pool = frame_context.get_command_pool();
-    let cmd_buffer = pool.get_command_buffer(CommandBufferType::PRIMARY);
-    let secondary = pool.get_command_buffer(CommandBufferType::SECONDARY);
+    {
+      let cmd_buffer = pool.get_command_buffer(CommandBufferType::PRIMARY);
+      let secondary = pool.get_command_buffer(CommandBufferType::SECONDARY);
+    }
     pool.reset();
     for pass in &self.passes {
       //cmd_buffer.begin_render_pass(pass.render_pass)

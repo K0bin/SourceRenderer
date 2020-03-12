@@ -23,6 +23,7 @@ use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
 use context::{VkGraphicsContext, VkSharedCaches};
 use VkSubmission;
+use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -38,6 +39,8 @@ pub struct VkQueue {
   device: Arc<RawVkDevice>,
   caches: Arc<VkSharedCaches>
 }
+
+unsafe impl Sync for VkQueue {}
 
 impl VkQueue {
   pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, caches: &Arc<VkSharedCaches>) -> Self {

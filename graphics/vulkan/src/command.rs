@@ -30,13 +30,21 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use VkRenderPassLayout;
 use context::{VkGraphicsContext, VkSharedCaches};
-use std::cell::{RefCell, RefMut};
+use std::cell::{RefCell, RefMut, UnsafeCell};
+use bitflags::_core::cell::Ref;
+use std::ops::DerefMut;
+use bitflags::_core::mem::MaybeUninit;
+use bitflags::_core::ops::Deref;
+
+pub struct VkCommandPoolInner {
+  buffers: Vec<RefCell<VkCommandBuffer>>
+}
 
 pub struct VkCommandPool {
-  pool: vk::CommandPool,
+  pool: Arc<RawVkCommandPool>,
   device: Arc<RawVkDevice>,
-  buffers: Vec<VkCommandBuffer>,
-  caches: Arc<VkSharedCaches>
+  caches: Arc<VkSharedCaches>,
+  inner: RefCell<VkCommandPoolInner>
 }
 
 pub struct VkCommandBuffer {
@@ -54,8 +62,14 @@ pub enum VkCommandBufferState {
   Executable
 }
 
+pub struct VkCommandBufferRecorder<'a> {
+  cmd_buffer: *mut VkCommandBuffer,
+  pool_inner: Ref<'a, VkCommandPoolInner>
+}
+
 pub struct VkSubmission {
-  buffer: vk::CommandBuffer
+  buffer: vk::CommandBuffer,
+  pool: Arc<RawVkCommandPool>
 }
 
 impl VkCommandPool {
@@ -67,58 +81,87 @@ impl VkCommandPool {
     };
 
     return Self {
-      pool: unsafe {
-        device.create_command_pool(&create_info, None)
-      }.unwrap(),
+      pool: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
       device: device.clone(),
-      buffers: Vec::new(),
+      inner: RefCell::new(VkCommandPoolInner {
+        buffers: Vec::new(),
+      }),
       caches: caches.clone()
     };
   }
 
-  pub fn test(&mut self) {}
+  fn test(&self, command_buffer_type: CommandBufferType) -> VkCommandBufferHandle {
+    let guard = self.inner.borrow();
+    let refa = Ref::map(guard, |guard| guard.buffers.first().unwrap());
+    let mut handle = VkCommandBufferHandle {
+      cmd_buffer_refcell: refa,
+      cmd_buffer_ref: MaybeUninit::uninit()
+    };
+
+    let refa2 = handle.cmd_buffer_refcell.borrow_mut();
+    handle.cmd_buffer_ref = MaybeUninit::new(refa2);
+    return handle;
+  }
 }
 
 impl Drop for VkCommandPool {
   fn drop(&mut self) {
-    for cmd_buffer in &mut self.buffers.drain(..) {
+    let mut guard = self.inner.borrow_mut();
+    for cmd_buffer in &mut guard.buffers.drain(..) {
+      let cmd_buffer_ref = cmd_buffer.borrow();
       unsafe {
-        self.device.device.free_command_buffers(self.pool, &[ cmd_buffer.buffer ])
+        //self.device.device.free_command_buffers(self.pool, &[ cmd_buffer_ref.buffer ])
       }
     }
-    self.buffers.clear();
-    unsafe {
+    guard.buffers.clear();
+    /*unsafe {
       self.device.destroy_command_pool(self.pool, None);
-    }
+    }*/
   }
 }
 
 impl CommandPool<VkBackend> for VkCommandPool {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> &mut VkCommandBuffer {
-    let ptr = &self.buffers as *const Vec<VkCommandBuffer>;
-    // the borrow checker is not smart enough to realize that the reference only exists if we return here
-    for cmd_buffer in unsafe { ptr.as_ref().unwrap() } {
-      let cmd_buffer_ref = unsafe { ((cmd_buffer as *const VkCommandBuffer) as *mut VkCommandBuffer).as_mut().unwrap() };
-      cmd_buffer_ref.begin();
-      return cmd_buffer_ref;
+  fn get_command_buffer(&self, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
+    {
+      let guard = self.inner.borrow();
     }
 
-    let cmd_buffer = VkCommandBuffer::new(&self.device, &self.pool, command_buffer_type, &self.caches);
-    self.buffers.push(cmd_buffer);
-    let mut cmd_buffer_ref = unsafe { ((self.buffers.last().unwrap() as *const VkCommandBuffer) as *mut VkCommandBuffer).as_mut().unwrap() };
-    cmd_buffer_ref.begin();
-    return cmd_buffer_ref;
+    let cmd_buffer = RefCell::new(VkCommandBuffer::new(&self.device, &self.pool, command_buffer_type, &self.caches));
+    {
+      let mut guard = self.inner.borrow_mut();
+      guard.buffers.push(cmd_buffer);
+    }
+    let guard = self.inner.borrow();
+    let mut cmd_buffer_ref = Ref::map(guard, |guard| guard.buffers.last().unwrap());
+    {
+      let mut cmd_buffer = cmd_buffer_ref.borrow_mut();
+      cmd_buffer.begin();
+    }
+    unreachable!();
+    //return cmd_buffer_ref;
+  }
+}
+
+pub struct CommandBufferRecorder<'a> {
+  command_buffer: Arc<VkCommandBuffer>,
+  pool: &'a VkCommandPool
+}
+
+impl<'a> CommandBufferRecorder<'a> {
+  pub fn finish(self) -> VkSubmission {
+    unimplemented!();
   }
 }
 
 impl Resettable for VkCommandPool {
   fn reset(&mut self) {
     unsafe {
-      self.device.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty()).unwrap();
+      self.device.reset_command_pool(**self.pool, vk::CommandPoolResetFlags::empty()).unwrap();
     }
-    for cmd_buffer_ref in &self.buffers {
-      let mut cmd_buffer = unsafe { ((cmd_buffer_ref as *const VkCommandBuffer) as *mut VkCommandBuffer).as_mut().unwrap() };
-      cmd_buffer.state = VkCommandBufferState::Ready
+    let guard = self.inner.borrow_mut();
+    for cmd_buffer in &guard.buffers {
+      let mut cmd_buffer_ref = cmd_buffer.borrow_mut();
+      cmd_buffer_ref.state = VkCommandBufferState::Ready
     }
   }
 }
@@ -144,6 +187,7 @@ impl VkCommandBuffer {
     };
   }
 
+  #[inline]
   pub fn get_handle(&self) -> &vk::CommandBuffer {
     return &self.buffer;
   }
@@ -165,10 +209,8 @@ impl VkCommandBuffer {
     }
     self.state = VkCommandBufferState::Executable;
   }
-}
 
-impl CommandBuffer<VkBackend> for VkCommandBuffer {
-
+  #[inline]
   fn set_pipeline2(&mut self, pipeline: &PipelineInfo2<VkBackend>) {
     if self.render_pass.is_none() {
       panic!("Cant set pipeline outside of render pass");
@@ -207,6 +249,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
+  #[inline]
   fn begin_render_pass(&mut self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
     unsafe {
       let begin_info = vk::RenderPassBeginInfo {
@@ -238,6 +281,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     self.sub_pass = 0;
   }
 
+  #[inline]
   fn end_render_pass(&mut self) {
     unsafe {
       self.device.cmd_end_render_pass(self.buffer);
@@ -245,18 +289,21 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     self.render_pass = None;
   }
 
+  #[inline]
   fn set_pipeline(&mut self, pipeline: Arc<VkPipeline>) {
     unsafe {
       self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline.get_handle());
     }
   }
 
+  #[inline]
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBuffer>) {
     unsafe {
       self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*(*vertex_buffer).get_handle()], &[0]);
     }
   }
 
+  #[inline]
   fn set_viewports(&mut self, viewports: &[ Viewport ]) {
     unsafe {
       for i in 0..viewports.len() {
@@ -272,6 +319,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
+  #[inline]
   fn set_scissors(&mut self, scissors: &[ Scissor ])  {
     unsafe {
       let vk_scissors: Vec<vk::Rect2D> = scissors.iter().map(|scissor| vk::Rect2D {
@@ -288,6 +336,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
   }
 
+  #[inline]
   fn draw(&mut self, vertices: u32, offset: u32) {
     unsafe {
       self.device.cmd_draw(self.buffer, vertices, 1, offset, 0);
@@ -300,11 +349,51 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
   }
 }
 
+impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
+  fn finish(self) -> VkSubmission {
+    VkSubmission::new(*(self.cmd_buffer).buffer)
+  }
+
+  fn set_pipeline(&mut self, pipeline: Arc<VkPipeline>) {
+    unsafe { *(self.cmd_buffer).set_pipeline(pipeline); }
+  }
+
+  fn set_pipeline2(&mut self, pipeline: &PipelineInfo2<VkBackend>) {
+    unsafe { *(self.cmd_buffer).set_pipeline2(pipeline); }
+  }
+
+  #[inline]
+  fn begin_render_pass(&mut self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
+    unsafe { *(self.cmd_buffer).begin_render_pass(renderpass, recording_mode); }
+  }
+
+  fn end_render_pass(&mut self) {
+    unsafe { *(self.cmd_buffer).end_render_pass(); }
+  }
+
+  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBuffer>) {
+    unsafe { *(self.cmd_buffer).set_vertex_buffer(vertex_buffer); }
+  }
+
+  fn set_viewports(&mut self, viewports: &[Viewport]) {
+    unsafe { *(self.cmd_buffer).set_viewports(viewports); }
+  }
+
+  fn set_scissors(&mut self, scissors: &[Scissor]) {
+    unsafe { *(self.cmd_buffer).set_scissors(scissors); }
+  }
+
+  fn draw(&mut self, vertices: u32, offset: u32) {
+    unsafe { *(self.cmd_buffer).draw(vertices, offset); }
+  }
+}
+
 impl VkSubmission {
   pub fn new(command_buffer: vk::CommandBuffer) -> Self {
-    Self {
+    unimplemented!();
+    /*Self {
       buffer: command_buffer
-    }
+    }*/
   }
 
   pub fn get_cmd_buffer(&self) -> &vk::CommandBuffer {

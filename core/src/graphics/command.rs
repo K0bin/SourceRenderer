@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
-use std::cell::{RefCell, RefMut};
+use std::cell::{RefCell, RefMut, Ref};
 use std::sync::Mutex;
 
 use crate::Vec2;
@@ -10,6 +10,7 @@ use crate::Vec2UI;
 use crate::graphics::RenderpassRecordingMode;
 use graphics::{Backend, PipelineInfo2};
 use pool::Recyclable;
+use std::ops::Deref;
 
 pub struct Viewport {
   pub position: Vec2,
@@ -30,7 +31,7 @@ pub enum CommandBufferType {
 }
 
 pub trait CommandPool<B: Backend> : Send {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> &mut B::CommandBuffer;
+  fn get_command_buffer(&self, command_buffer_type: CommandBufferType) -> B::CommandBuffer;
 }
 
 pub trait Submission : Send {
@@ -38,7 +39,7 @@ pub trait Submission : Send {
 }
 
 pub trait CommandBuffer<B: Backend> {
-  fn finish(&mut self) -> B::Submission;
+  fn finish(self) -> B::Submission;
   fn set_pipeline(&mut self, pipeline: Arc<B::Pipeline>);
   fn set_pipeline2(&mut self, pipeline: &PipelineInfo2<B>);
   fn begin_render_pass(&mut self, renderpass: &B::RenderPass, recording_mode: RenderpassRecordingMode);

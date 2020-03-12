@@ -266,7 +266,8 @@ impl<P: Platform> Engine<P> {
 
       let cmd_buffer_semaphore = device.create_semaphore();
       {
-        let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
+        let mut command_buffer_ref = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
+        let mut command_buffer = command_buffer_ref.borrow_mut();
         //command_buffer.begin();
         command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
         command_buffer.set_pipeline2(&pipeline_info);
