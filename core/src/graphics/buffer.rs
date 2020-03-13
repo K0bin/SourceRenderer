@@ -1,4 +1,5 @@
 use graphics::Backend;
+use std::marker::PhantomData;
 
 bitflags! {
   pub struct BufferUsage: u32 {
@@ -24,7 +25,8 @@ pub trait Buffer {
 pub struct MappedBuffer<'a, B, T>
   where B: Buffer {
   buffer: &'a B,
-  data: &'a mut T
+  data: &'a mut T,
+  phantom: PhantomData<*const u8>
 }
 
 impl<'a, B, T> MappedBuffer<'a, B, T>
@@ -33,7 +35,8 @@ impl<'a, B, T> MappedBuffer<'a, B, T>
     unsafe { buffer.map_unsafe() }.map(move |ptr|
       Self {
         buffer,
-        data: unsafe { (ptr as *mut T).as_mut().unwrap() }
+        data: unsafe { (ptr as *mut T).as_mut().unwrap() },
+        phantom: PhantomData
       }
     )
   }

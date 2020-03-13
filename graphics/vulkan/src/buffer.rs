@@ -8,6 +8,8 @@ use crate::VkDevice;
 use crate::raw::*;
 use crate::VkBackend;
 use crate::device::memory_usage_to_vma;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 pub struct VkBuffer {
   buffer: vk::Buffer,
@@ -16,7 +18,8 @@ pub struct VkBuffer {
   device: Arc<RawVkDevice>,
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
-  memory_usage: MemoryUsage
+  memory_usage: MemoryUsage,
+  is_mapped: AtomicBool
 }
 
 unsafe impl Send for VkBuffer {}
@@ -57,7 +60,8 @@ impl VkBuffer {
       device: device.clone(),
       map_ptr,
       is_coherent,
-      memory_usage
+      memory_usage,
+      is_mapped: AtomicBool::new(false)
     };
   }
 
@@ -81,6 +85,9 @@ impl Buffer for VkBuffer {
   }
 
   unsafe fn map_unsafe(&self) -> Option<*mut u8> {
+    if self.is_mapped.swap(true, Ordering::SeqCst) {
+      return None;
+    }
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
       let mut allocator = &self.device.allocator;
       allocator.invalidate_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
@@ -89,6 +96,7 @@ impl Buffer for VkBuffer {
   }
 
   unsafe fn unmap_unsafe(&self) {
+    self.is_mapped.store(false, Ordering::SeqCst);
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
       let mut allocator = &self.device.allocator;
       allocator.flush_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
