@@ -23,6 +23,7 @@ use async_std::future;
 use std::thread::{Thread};
 use std::future::Future;
 use async_std::task::JoinHandle;
+use std::cell::RefCell;
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -135,11 +136,17 @@ impl<P: Platform> Engine<P> {
         }
       }
     ];
-    let ptr = buffer.map().expect("failed to map buffer");
+    /*let ptr = buffer.map().expect("failed to map buffer");
     unsafe {
       std::ptr::copy(triangle.as_ptr(), ptr as *mut Vertex, 3);
     }
-    buffer.unmap();
+    buffer.unmap();*/
+
+    {
+      let mut map = buffer.map().expect("failed to map buffer");
+      let mut data = map.get_data();
+      std::mem::replace(data, triangle);
+    }
 
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.vert.spv"))).unwrap();

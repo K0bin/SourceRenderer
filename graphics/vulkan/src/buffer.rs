@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use sourcerenderer_core::graphics::{ Buffer, BufferUsage, MemoryUsage };
+use sourcerenderer_core::graphics::{Buffer, BufferUsage, MemoryUsage, MappedBuffer};
 
 use crate::VkDevice;
 use crate::raw::*;
@@ -75,7 +75,12 @@ impl Drop for VkBuffer {
 }
 
 impl Buffer for VkBuffer {
-  fn map(&self) -> Option<*mut u8> {
+  fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
+    where T: Sized {
+    MappedBuffer::new(self)
+  }
+
+  unsafe fn map_unsafe(&self) -> Option<*mut u8> {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
       let mut allocator = &self.device.allocator;
       allocator.invalidate_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
@@ -83,7 +88,7 @@ impl Buffer for VkBuffer {
     return self.map_ptr;
   }
 
-  fn unmap(&self) {
+  unsafe fn unmap_unsafe(&self) {
     if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
       let mut allocator = &self.device.allocator;
       allocator.flush_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();

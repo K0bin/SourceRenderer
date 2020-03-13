@@ -11,6 +11,7 @@ pub use self::command::CommandBuffer;
 pub use self::command::CommandPool;
 pub use self::command::CommandBufferType;
 pub use self::buffer::Buffer;
+pub use self::buffer::MappedBuffer;
 pub use self::buffer::BufferUsage;
 pub use self::device::MemoryUsage;
 pub use self::format::Format;

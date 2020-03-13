@@ -15,6 +15,37 @@ bitflags! {
 }
 
 pub trait Buffer {
-  fn map(&self) -> Option<*mut u8>;
-  fn unmap(&self);
+  fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
+    where Self: Sized, T: Sized;
+  unsafe fn map_unsafe(&self) -> Option<*mut u8>;
+  unsafe fn unmap_unsafe(&self);
+}
+
+pub struct MappedBuffer<'a, B, T>
+  where B: Buffer {
+  buffer: &'a B,
+  data: &'a mut T
+}
+
+impl<'a, B, T> MappedBuffer<'a, B, T>
+  where B: Buffer {
+  pub fn new(buffer: &'a B) -> Option<Self> {
+    unsafe { buffer.map_unsafe() }.map(move |ptr|
+      Self {
+        buffer,
+        data: unsafe { (ptr as *mut T).as_mut().unwrap() }
+      }
+    )
+  }
+
+  pub fn get_data(&mut self) -> &mut T {
+    return self.data;
+  }
+}
+
+impl<B, T> Drop for MappedBuffer<'_, B, T>
+  where B: Buffer {
+  fn drop(&mut self) {
+    unsafe { self.buffer.unmap_unsafe(); }
+  }
 }
