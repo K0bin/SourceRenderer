@@ -65,6 +65,6 @@ pub trait Queue<B: Backend> {
   fn create_command_pool(&self) -> B::CommandPool;
   fn get_queue_type(&self) -> QueueType;
   fn supports_presentation(&self) -> bool;
-  fn submit(&self, command_buffer: &B::CommandBuffer, fence: Option<&B::Fence>, wait_semaphore: &[ &B::Semaphore ], signal_semaphore: &[ &B::Semaphore ]);
+  fn submit(&self, submission: B::CommandBufferSubmission, fence: Option<&B::Fence>, wait_semaphore: &[ &B::Semaphore ], signal_semaphore: &[ &B::Semaphore ]);
   fn present(&self, swapchain: &B::Swapchain, image_index: u32, wait_semaphores: &[ &B::Semaphore ]);
 }

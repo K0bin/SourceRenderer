@@ -85,4 +85,21 @@ impl<T> Recyclable<T> {
       sender
     }
   }
+
+  pub fn from_parts(item: T, sender: Sender<T>) -> Recyclable<T> {
+    Recyclable {
+      item: MaybeUninit::new(item),
+      sender
+    }
+  }
+
+  pub fn into_inner(r: Recyclable<T>) -> T {
+    let mut r_mut = r;
+    unsafe { std::mem::replace(&mut r_mut.item, MaybeUninit::uninit()).assume_init() }
+  }
+
+  pub fn into_parts(r: Recyclable<T>) -> (T, Sender<T>) {
+    let mut r_mut = r;
+    (unsafe { std::mem::replace(&mut r_mut.item, MaybeUninit::uninit()).assume_init() }, r_mut.sender.clone())
+  }
 }

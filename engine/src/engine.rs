@@ -267,7 +267,6 @@ impl<P: Platform> Engine<P> {
       let render_pass = device.create_renderpass(&render_pass_info);
 
       let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
-      command_buffer.begin();
       command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
       command_buffer.set_pipeline2(&pipeline_info);
       command_buffer.set_vertex_buffer(buffer.clone());
@@ -283,10 +282,10 @@ impl<P: Platform> Engine<P> {
       }]);
       command_buffer.draw(6, 0);
       command_buffer.end_render_pass();
-      command_buffer.end();
+      let submission = command_buffer.finish();
 
       let cmd_buffer_semaphore = device.create_semaphore();
-      queue.submit(&command_buffer, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
+      queue.submit(submission, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
 
       queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);
 

@@ -30,12 +30,11 @@ pub enum CommandBufferType {
 }
 
 pub trait CommandPool<B: Backend> {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> Recyclable<Box<B::CommandBuffer>>;
+  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> B::CommandBuffer;
 }
 
 pub trait CommandBuffer<B: Backend> {
-  fn begin(&mut self);
-  fn end(&mut self);
+  fn finish(self) -> B::CommandBufferSubmission;
   fn set_pipeline(&mut self, pipeline: Arc<B::Pipeline>);
   fn set_pipeline2(&mut self, pipeline: &PipelineInfo2<B>);
   fn begin_render_pass(&mut self, renderpass: &B::RenderPass, recording_mode: RenderpassRecordingMode);

@@ -15,13 +15,13 @@ use sourcerenderer_core::graphics::CommandPool;
 use crate::device::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::command::VkCommandPool;
-use crate::command::VkCommandBuffer;
 use crate::swapchain::VkSwapchain;
 use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
 use context::{VkGraphicsContext, VkSharedCaches};
+use VkCommandBufferSubmission;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -68,7 +68,7 @@ impl Queue<VkBackend> for VkQueue {
     return self.info.supports_presentation;
   }
 
-  fn submit(&self, command_buffer: &VkCommandBuffer, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
+  fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let signal_semaphore_handles = signal_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let stage_masks = wait_semaphores.into_iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<Vec<vk::PipelineStageFlags>>();

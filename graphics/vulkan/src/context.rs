@@ -66,6 +66,12 @@ impl VkThreadContext {
   }
 }
 
+impl VkFrameContext {
+  pub fn get_command_pool(&mut self) -> &mut VkCommandPool {
+    &mut self.command_pool
+  }
+}
+
 impl VkSharedCaches {
   pub fn new() -> Self {
     Self {
