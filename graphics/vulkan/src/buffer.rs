@@ -19,6 +19,9 @@ pub struct VkBuffer {
   memory_usage: MemoryUsage
 }
 
+unsafe impl Send for VkBuffer {}
+unsafe impl Sync for VkBuffer {}
+
 impl VkBuffer {
   pub fn new(device: &Arc<RawVkDevice>, size: usize, memory_usage: MemoryUsage, allocator: &vk_mem::Allocator, usage: BufferUsage) -> Self {
     let buffer_info = vk::BufferCreateInfo {

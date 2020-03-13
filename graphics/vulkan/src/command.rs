@@ -90,6 +90,10 @@ pub enum VkCommandBufferState {
   Submitted
 }
 
+struct VkLifetimeTrackers {
+  buffers: Vec<Arc<VkBuffer>>
+}
+
 struct VkCommandBuffer {
   buffer: vk::CommandBuffer,
   pool: Arc<RawVkCommandPool>,
@@ -97,7 +101,8 @@ struct VkCommandBuffer {
   caches: Arc<VkSharedCaches>,
   render_pass: Option<Arc<VkRenderPassLayout>>,
   sub_pass: u32,
-  state: VkCommandBufferState
+  state: VkCommandBufferState,
+  trackers: VkLifetimeTrackers
 }
 
 impl VkCommandBuffer {
@@ -116,7 +121,10 @@ impl VkCommandBuffer {
       render_pass: None,
       sub_pass: 0u32,
       caches: caches.clone(),
-      state: VkCommandBufferState::Ready
+      state: VkCommandBufferState::Ready,
+      trackers: VkLifetimeTrackers {
+        buffers: Vec::new()
+      }
     };
   }
 
@@ -126,6 +134,7 @@ impl VkCommandBuffer {
 
   fn reset(&mut self) {
     self.state = VkCommandBufferState::Ready;
+    self.trackers.buffers.clear();
   }
 
   fn begin(&mut self) {
@@ -235,6 +244,7 @@ impl VkCommandBuffer {
 
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBuffer>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    self.trackers.buffers.push(vertex_buffer.clone());
     unsafe {
       self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*(*vertex_buffer).get_handle()], &[0]);
     }
