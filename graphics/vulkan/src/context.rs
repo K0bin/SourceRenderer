@@ -76,7 +76,7 @@ impl VkGraphicsContext {
 
   pub fn get_thread_context(&self) -> RefMut<VkThreadContext> {
     let mut context = self.threads.get_or(|| RefCell::new(VkThreadContext::new(&self.device, &self.graphics_queue, &self.compute_queue, &self.transfer_queue))).borrow_mut();
-    //context.mark_used(self.cpu_frame_counter.load(Ordering::SeqCst));
+    context.mark_used(self.frame_counter.load(Ordering::SeqCst));
     context
   }
 
@@ -106,7 +106,6 @@ impl VkThreadContext {
   fn mark_used(&mut self, frame: u64) {
     if frame > self.cpu_frame_counter && frame >= self.frames.len() as u64 {
       let mut frame_ref = self.frames[(frame as usize - (self.frames.len() - 1)) % self.frames.len()].borrow_mut();
-      println!("Current frame: {}, resetting frame: {}", frame, (frame as usize - (self.frames.len() - 1)) % self.frames.len());
       frame_ref.reset();
       self.cpu_frame_counter = frame;
     }
