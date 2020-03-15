@@ -16,7 +16,6 @@ use crate::buffer::buffer_usage_to_vk;
 use crate::VkAdapterExtensionSupport;
 use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
-use crate::renderpass::VkRenderPassLayout;
 use crate::renderpass::VkRenderPass;
 use crate::texture::VkTexture;
 use crate::texture::VkRenderTargetView;
@@ -24,16 +23,16 @@ use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::graph::VkRenderGraph;
 use crate::swapchain::VkSwapchain;
-use context::VkGraphicsContext;
+use context::{VkGraphicsContext, VkSharedCaches};
 use raw::{RawVkDevice, RawVkInstance};
 use std::collections::HashMap;
 use pipeline::VkPipelineInfo;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,
-  graphics_queue: VkQueue,
-  compute_queue: Option<VkQueue>,
-  transfer_queue: Option<VkQueue>,
+  graphics_queue: Arc<VkQueue>,
+  compute_queue: Option<Arc<VkQueue>>,
+  transfer_queue: Option<Arc<VkQueue>>,
   extensions: VkAdapterExtensionSupport,
   context: Arc<VkGraphicsContext>
 }
@@ -66,22 +65,24 @@ impl VkDevice {
       instance: instance.clone(),
     });
 
-    let context = Arc::new(VkGraphicsContext::new(&raw));
+    let caches = Arc::new(VkSharedCaches::new(&raw));
 
     let graphics_queue = {
       let vk_queue = unsafe { raw.device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
-      VkQueue::new(graphics_queue_info, vk_queue, &raw, context.get_caches())
+      Arc::new(VkQueue::new(graphics_queue_info, vk_queue, &raw, &caches))
     };
 
     let compute_queue = compute_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      VkQueue::new(info.clone(), vk_queue, &raw, context.get_caches())
+      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &caches))
     });
 
     let transfer_queue = transfer_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      VkQueue::new(info.clone(), vk_queue, &raw, context.get_caches())
+      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &caches))
     });
+
+    let context = Arc::new(VkGraphicsContext::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &caches));
 
     return VkDevice {
       device: raw.clone(),
@@ -100,16 +101,16 @@ impl VkDevice {
 }
 
 impl Device<VkBackend> for VkDevice {
-  fn get_queue(&self, queue_type: QueueType) -> Option<&VkQueue> {
+  fn get_queue(&self, queue_type: QueueType) -> Option<Arc<VkQueue>> {
     return match queue_type {
       QueueType::Graphics => {
-        Some(&self.graphics_queue)
+        Some(self.graphics_queue.clone())
       }
       QueueType::Compute => {
-        self.compute_queue.as_ref()
+        self.compute_queue.clone()
       }
       QueueType::Transfer => {
-        self.transfer_queue.as_ref()
+        self.transfer_queue.clone()
       }
     }
   }
@@ -120,18 +121,6 @@ impl Device<VkBackend> for VkDevice {
 
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> VkShader {
     return VkShader::new(&self.device, shader_type, bytecode);
-  }
-
-  fn create_pipeline(&self, info: &PipelineInfo<VkBackend>) -> VkPipeline {
-    return VkPipeline::new(&self.device, info);
-  }
-
-  fn create_renderpass_layout(&self, info: &RenderPassLayoutInfo) -> VkRenderPassLayout {
-    return VkRenderPassLayout::new(&self.device, info);
-  }
-
-  fn create_renderpass(&self, info: &RenderPassInfo<VkBackend>) -> VkRenderPass {
-    return VkRenderPass::new(&self.device, info);
   }
 
   fn create_render_target_view(&self, texture: Arc<VkTexture>) -> VkRenderTargetView {
@@ -150,8 +139,8 @@ impl Device<VkBackend> for VkDevice {
     unsafe { self.device.device.device_wait_idle(); }
   }
 
-  fn create_render_graph(self: Arc<Self>, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo, swapchain: &VkSwapchain) -> VkRenderGraph {
-    return VkRenderGraph::new(&self.device, graph_info, swapchain);
+  fn create_render_graph(&self, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo<VkBackend>, swapchain: &Arc<VkSwapchain>) -> VkRenderGraph {
+    return VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, graph_info, swapchain);
   }
 }
 

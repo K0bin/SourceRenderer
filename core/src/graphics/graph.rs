@@ -6,17 +6,15 @@ use std::ops::Fn;
 
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
 
-#[derive(Clone)]
-pub struct RenderGraphInfo {
+pub struct RenderGraphInfo<B: Backend> {
   pub attachments: HashMap<String, RenderGraphAttachmentInfo>,
-  pub passes: Vec<RenderPassInfo>
+  pub passes: Vec<RenderPassInfo<B>>
 }
 
-#[derive(Clone)]
-pub struct RenderPassInfo {
+pub struct RenderPassInfo<B: Backend> {
   pub outputs: Vec<OutputAttachmentReference>,
   pub inputs: Vec<InputAttachmentReference>,
-  pub render: Arc<dyn Fn(usize, bool) -> usize>
+  pub render: Arc<dyn Fn(&mut B::CommandBuffer) -> usize>
 }
 
 #[derive(Clone)]
@@ -50,7 +48,7 @@ pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
 pub trait RenderGraph<B: Backend> {
   fn recreate(&mut self, swap_chain: &B::Swapchain);
-  fn render(&mut self);
+  fn render(&mut self, frame_counter: u64);
 }
 
 /*pub struct RenderGraphNode<'a> {

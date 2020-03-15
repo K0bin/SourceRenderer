@@ -3,10 +3,9 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{CommandPool, PipelineInfo, PipelineInfo2, Backend};
+use sourcerenderer_core::graphics::{CommandPool, PipelineInfo, Backend};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
-use sourcerenderer_core::graphics::RenderPass;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
 use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
@@ -19,6 +18,7 @@ use crate::VkQueue;
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::VkRenderPass;
+use crate::VkFrameBuffer;
 use crate::VkBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;
@@ -27,15 +27,14 @@ use crate::raw::*;
 use pipeline::VkPipelineInfo;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use VkRenderPassLayout;
 use context::{VkGraphicsContext, VkSharedCaches};
-use bitflags::_core::ops::{Deref, DerefMut};
 use std::marker::PhantomData;
-use bitflags::_core::mem::MaybeUninit;
+use std::mem::MaybeUninit;
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,
-  buffers: Vec<Box<VkCommandBuffer>>,
+  primary_buffers: Vec<Box<VkCommandBuffer>>,
+  secondary_buffers: Vec<Box<VkCommandBuffer>>,
   receiver: Receiver<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>,
   caches: Arc<VkSharedCaches>
@@ -53,7 +52,8 @@ impl VkCommandPool {
 
     return Self {
       raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
-      buffers: Vec::new(),
+      primary_buffers: Vec::new(),
+      secondary_buffers: Vec::new(),
       receiver,
       sender,
       caches: caches.clone()
@@ -63,7 +63,13 @@ impl VkCommandPool {
 
 impl CommandPool<VkBackend> for VkCommandPool {
   fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
-    let mut buffer = self.buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, &self.caches)));
+    let buffers = if command_buffer_type == CommandBufferType::PRIMARY {
+      &mut self.primary_buffers
+    } else {
+      &mut self.secondary_buffers
+    };
+
+    let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, &self.caches)));
     buffer.begin();
     return VkCommandBufferRecorder::new(buffer, self.sender.clone());
   }
@@ -77,7 +83,12 @@ impl Resettable for VkCommandPool {
 
     for mut cmd_buf in self.receiver.try_iter() {
       cmd_buf.reset();
-      self.buffers.push(cmd_buf);
+      let buffers = if cmd_buf.command_buffer_type == CommandBufferType::PRIMARY {
+        &mut self.primary_buffers
+      } else {
+        &mut self.secondary_buffers
+      };
+      buffers.push(cmd_buf);
     }
   }
 }
@@ -91,17 +102,20 @@ pub enum VkCommandBufferState {
 }
 
 struct VkLifetimeTrackers {
-  buffers: Vec<Arc<VkBuffer>>
+  buffers: Vec<Arc<VkBuffer>>,
+  render_passes: Vec<Arc<VkRenderPass>>,
+  frame_buffers: Vec<Arc<VkFrameBuffer>>
 }
 
 struct VkCommandBuffer {
   buffer: vk::CommandBuffer,
   pool: Arc<RawVkCommandPool>,
   device: Arc<RawVkDevice>,
-  caches: Arc<VkSharedCaches>,
-  render_pass: Option<Arc<VkRenderPassLayout>>,
-  sub_pass: u32,
   state: VkCommandBufferState,
+  command_buffer_type: CommandBufferType,
+  caches: Arc<VkSharedCaches>,
+  render_pass: Option<Arc<VkRenderPass>>,
+  sub_pass: u32,
   trackers: VkLifetimeTrackers
 }
 
@@ -118,12 +132,15 @@ impl VkCommandBuffer {
       buffer: buffers.pop().unwrap(),
       pool: pool.clone(),
       device: device.clone(),
+      command_buffer_type,
       render_pass: None,
       sub_pass: 0u32,
       caches: caches.clone(),
       state: VkCommandBufferState::Ready,
       trackers: VkLifetimeTrackers {
-        buffers: Vec::new()
+        buffers: Vec::new(),
+        render_passes: Vec::new(),
+        frame_buffers: Vec::new()
       }
     };
   }
@@ -132,9 +149,15 @@ impl VkCommandBuffer {
     return &self.buffer;
   }
 
+  pub fn get_type(&self) -> CommandBufferType {
+    self.command_buffer_type
+  }
+
   fn reset(&mut self) {
     self.state = VkCommandBufferState::Ready;
     self.trackers.buffers.clear();
+    self.trackers.render_passes.clear();
+    self.trackers.frame_buffers.clear();
   }
 
   fn begin(&mut self) {
@@ -156,7 +179,7 @@ impl VkCommandBuffer {
     }
   }
 
-  fn set_pipeline2(&mut self, pipeline: &PipelineInfo2<VkBackend>) {
+  fn set_pipeline(&mut self, pipeline: &PipelineInfo<VkBackend>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     if self.render_pass.is_none() {
       panic!("Cant set pipeline outside of render pass");
@@ -185,7 +208,7 @@ impl VkCommandBuffer {
         return;
       }
     }
-    let pipeline = VkPipeline::new2(&self.device, &info);
+    let pipeline = VkPipeline::new(&self.device, &info);
     let mut lock = self.caches.get_pipelines().write().unwrap();
     lock.insert(hash, pipeline);
     let stored_pipeline = lock.get(&hash).unwrap();
@@ -195,15 +218,16 @@ impl VkCommandBuffer {
     }
   }
 
-  fn begin_render_pass(&mut self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
+  fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    // TODO: begin info fields
     unsafe {
       let begin_info = vk::RenderPassBeginInfo {
-        framebuffer: *renderpass.get_framebuffer(),
-        render_pass: *renderpass.get_layout().get_handle(),
+        framebuffer: *frame_buffer.get_handle(),
+        render_pass: *render_pass.get_handle(),
         render_area: vk::Rect2D {
           offset: vk::Offset2D { x: 0i32, y: 0i32 },
-          extent: vk::Extent2D { width: renderpass.get_info().width, height: renderpass.get_info().height }
+          extent: vk::Extent2D { width: 1280, height: 720 }
         },
         clear_value_count: 1,
         p_clear_values: &[
@@ -223,8 +247,10 @@ impl VkCommandBuffer {
       };
       self.device.cmd_begin_render_pass(self.buffer, &begin_info, if recording_mode == RenderpassRecordingMode::Commands { vk::SubpassContents::INLINE } else { vk::SubpassContents::SECONDARY_COMMAND_BUFFERS });
     }
-    self.render_pass = Some(renderpass.get_layout().clone());
+    self.render_pass = Some(render_pass.clone());
     self.sub_pass = 0;
+    self.trackers.frame_buffers.push(frame_buffer.clone());
+    self.trackers.render_passes.push(render_pass.clone());
   }
 
   fn end_render_pass(&mut self) {
@@ -233,13 +259,6 @@ impl VkCommandBuffer {
       self.device.cmd_end_render_pass(self.buffer);
     }
     self.render_pass = None;
-  }
-
-  fn set_pipeline(&mut self, pipeline: Arc<VkPipeline>) {
-    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    unsafe {
-      self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline.get_handle());
-    }
   }
 
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBuffer>) {
@@ -319,6 +338,16 @@ impl VkCommandBufferRecorder {
       phantom: PhantomData
     }
   }
+
+  #[inline(always)]
+  pub fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, recording_mode: RenderpassRecordingMode) {
+    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.begin_render_pass(render_pass, frame_buffer, recording_mode);
+  }
+
+  #[inline(always)]
+  pub fn end_render_pass(&mut self) {
+    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.end_render_pass();
+  }
 }
 
 impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
@@ -334,23 +363,8 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn set_pipeline(&mut self, pipeline: Arc<VkPipeline>) {
+  fn set_pipeline(&mut self, pipeline: &PipelineInfo<VkBackend>) {
     unsafe { (*(self.item.as_mut_ptr())).as_mut() }.set_pipeline(pipeline);
-  }
-
-  #[inline(always)]
-  fn set_pipeline2(&mut self, pipeline: &PipelineInfo2<VkBackend>) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.set_pipeline2(pipeline);
-  }
-
-  #[inline(always)]
-  fn begin_render_pass(&mut self, renderpass: &VkRenderPass, recording_mode: RenderpassRecordingMode) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.begin_render_pass(renderpass, recording_mode);
-  }
-
-  #[inline(always)]
-  fn end_render_pass(&mut self) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.end_render_pass();
   }
 
   #[inline(always)]

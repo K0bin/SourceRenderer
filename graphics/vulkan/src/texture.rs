@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::Texture;
+use sourcerenderer_core::graphics::{Texture, TextureInfo};
 use sourcerenderer_core::graphics::Format;
 use sourcerenderer_core::graphics::RenderTargetView;
 
@@ -15,12 +15,7 @@ use crate::VkBackend;
 pub struct VkTexture {
   image: vk::Image,
   device: Arc<RawVkDevice>,
-  format: Format,
-  width: u32,
-  height: u32,
-  depth: u32,
-  mip_levels: u32,
-  array_length: u32,
+  info: TextureInfo,
   borrowed: bool
 }
 
@@ -35,16 +30,11 @@ impl VkTexture {
     unimplemented!();
   }
 
-  pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, format: Format, width: u32, height: u32, depth: u32, mip_levels: u32, array_length: u32) -> Self {
+  pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, info: TextureInfo) -> Self {
     return VkTexture {
       image,
       device: device.clone(),
-      format,
-      width,
-      height,
-      depth,
-      mip_levels,
-      array_length,
+      info,
       borrowed: true
     };
   }
@@ -55,16 +45,19 @@ impl VkTexture {
 }
 
 impl Texture for VkTexture {
-
+  fn get_info(&self) -> &TextureInfo {
+    &self.info
+  }
 }
 
 impl VkRenderTargetView {
   pub fn new(device: &Arc<RawVkDevice>, texture: Arc<VkTexture>) -> Self {
     let vk_device = &device.device;
-    let info = vk::ImageViewCreateInfo {
+    let info = texture.get_info();
+    let vk_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
-      view_type: if texture.depth > 1 { vk::ImageViewType::TYPE_3D } else { vk::ImageViewType::TYPE_2D },
-      format: format_to_vk(texture.format),
+      view_type: if info.depth > 1 { vk::ImageViewType::TYPE_3D } else { vk::ImageViewType::TYPE_2D },
+      format: format_to_vk(info.format),
       components: vk::ComponentMapping {
         r: vk::ComponentSwizzle::IDENTITY,
         g: vk::ComponentSwizzle::IDENTITY,
@@ -80,7 +73,7 @@ impl VkRenderTargetView {
       },
       ..Default::default()
     };
-    let view = unsafe { vk_device.create_image_view(&info, None).unwrap() };
+    let view = unsafe { vk_device.create_image_view(&vk_info, None).unwrap() };
     return VkRenderTargetView {
       texture,
       view,

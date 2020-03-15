@@ -6,3 +6,4 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 [dependencies]
 vek = "0.9.11"
 bitflags = "1.2.1"
+crossbeam-channel = "0.4.2"

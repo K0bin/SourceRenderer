@@ -9,10 +9,6 @@ use graphics::Pipeline;
 use graphics::PipelineInfo;
 use graphics::Shader;
 use graphics::ShaderType;
-use graphics::RenderPassLayout;
-use graphics::RenderPassLayoutInfo;
-use graphics::RenderPass;
-use graphics::RenderPassInfo;
 use graphics::Texture;
 use graphics::RenderTargetView;
 use graphics::Backend;
@@ -40,18 +36,15 @@ pub trait Adapter<B: Backend> {
 }
 
 pub trait Device<B: Backend> {
-  fn get_queue(&self, queue_type: QueueType) -> Option<&B::Queue>;
+  fn get_queue(&self, queue_type: QueueType) -> Option<Arc<B::Queue>>;
   fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> B::Buffer;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> B::Shader;
-  fn create_pipeline(&self, info: &PipelineInfo<B>) -> B::Pipeline;
-  fn create_renderpass_layout(&self, info: &RenderPassLayoutInfo) -> B::RenderPassLayout;
-  fn create_renderpass(&self, info: &RenderPassInfo<B>) -> B::RenderPass;
   fn create_render_target_view(&self, texture: Arc<B::Texture>) -> B::RenderTargetView;
   fn create_semaphore(&self) -> B::Semaphore;
   fn create_fence(&self) -> B::Fence;
   fn wait_for_idle(&self);
 
-  fn create_render_graph(self: Arc<Self>, graph_info: &crate::graphics::graph::RenderGraphInfo, swapchin: &B::Swapchain) -> B::RenderGraph;
+  fn create_render_graph(&self, graph_info: &crate::graphics::graph::RenderGraphInfo<B>, swapchin: &Arc<B::Swapchain>) -> B::RenderGraph;
 }
 
 #[derive(Clone, Debug, Copy, PartialEq)]

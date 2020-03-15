@@ -24,7 +24,7 @@ pub use self::texture::VkRenderTargetView;
 pub use self::sync::VkSemaphore;
 pub use self::sync::VkFence;
 pub use self::pipeline::VkPipeline;
-pub use self::renderpass::VkRenderPassLayout;
+pub use self::renderpass::VkFrameBuffer;
 pub use self::renderpass::VkRenderPass;
 pub use self::backend::VkBackend;
 

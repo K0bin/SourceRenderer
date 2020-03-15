@@ -24,6 +24,8 @@ use std::thread::{Thread};
 use std::future::Future;
 use async_std::task::JoinHandle;
 use std::cell::RefCell;
+use sourcerenderer_core::graphics::graph::{RenderGraph, RenderGraphInfo, RenderGraphAttachmentInfo, RenderPassInfo, BACK_BUFFER_ATTACHMENT_NAME, OutputAttachmentReference};
+use std::collections::HashMap;
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -93,7 +95,7 @@ impl<P: Platform> Engine<P> {
       height: 720,
       vsync: true
     };
-    let mut swapchain = self.platform.window().create_swapchain(swapchain_info, &device, &surface);
+    let mut swapchain = Arc::new(self.platform.window().create_swapchain(swapchain_info, &device, &surface));
     let queue = device.get_queue(QueueType::Graphics).unwrap();
     let mut command_pool = queue.create_command_pool();
 
@@ -162,38 +164,7 @@ impl<P: Platform> Engine<P> {
       device.create_shader(ShaderType::FragmentShader, &bytes)
     };
 
-    let render_pass_info = RenderPassLayoutInfo {
-      attachments: vec![
-        Attachment {
-          format: Format::BGRA8UNorm,
-          samples: SampleCount::Samples1,
-          load_op: LoadOp::Clear,
-          store_op: StoreOp::Store,
-          stencil_load_op: LoadOp::DontCare,
-          stencil_store_op: StoreOp::DontCare,
-          initial_layout: ImageLayout::Undefined,
-          final_layout: ImageLayout::Present
-        }
-      ],
-      subpasses: vec![
-        Subpass {
-          input_attachments: vec![],
-          output_color_attachments: vec![
-            OutputAttachmentRef {
-              layout: ImageLayout::RenderTarget,
-              index: 0u32,
-              resolve_attachment_index: None
-            },
-          ],
-          output_resolve_attachments: Vec::new(),
-          depth_stencil_attachment: None,
-          preserve_unused_attachments: Vec::new()
-        }
-      ]
-    };
-    let render_pass_layout = Arc::new(device.create_renderpass_layout(&render_pass_info));
-
-    let pipeline_info = PipelineInfo2 {
+    let pipeline_info: PipelineInfo<P::GraphicsBackend> = PipelineInfo {
       vs: Arc::new(vertex_shader),
       fs: Some(Arc::new(fragment_shader)),
       gs: None,
@@ -252,55 +223,50 @@ impl<P: Platform> Engine<P> {
         ]
       }
     };
-    //let pipeline = Arc::new(device.create_pipeline(&pipeline_info));
 
+    let mut passes: Vec<RenderPassInfo<P::GraphicsBackend>> = Vec::new();
+    passes.push(RenderPassInfo {
+      outputs: vec![OutputAttachmentReference {
+        name: BACK_BUFFER_ATTACHMENT_NAME.to_string()
+      }],
+      inputs: Vec::new(),
+      render: Arc::new(move |command_buffer| {
+        command_buffer.set_pipeline(&pipeline_info);
+        command_buffer.set_vertex_buffer(buffer.clone());
+        command_buffer.set_viewports(&[Viewport {
+          position: Vec2 { x: 0.0f32, y: 0.0f32 },
+          extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
+          min_depth: 0.0f32,
+          max_depth: 1.0f32
+        }]);
+        command_buffer.set_scissors(&[Scissor {
+          position: Vec2I { x: 0, y: 0 },
+          extent: Vec2UI { x: 9999, y: 9999 },
+        }]);
+        command_buffer.draw(6, 0);
+
+        0
+      })
+    });
+
+    let mut graph = device.create_render_graph(&RenderGraphInfo {
+      attachments: HashMap::new(),
+      passes
+    }, &swapchain);
+
+    let mut frame_counter = 0;
     'main_loop: loop {
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {
           break 'main_loop;
       }
 
-      let backbuffer_semaphore = device.create_semaphore();
-      let (backbuffer, swapchain_image_index) = swapchain.prepare_back_buffer(&backbuffer_semaphore);
-      let rtv = device.create_render_target_view(backbuffer);
-
-      let render_pass_info = RenderPassInfo {
-        layout: render_pass_layout.clone(),
-        width: 1280u32,
-        height: 720u32,
-        array_length: 1u32,
-        attachments: vec![Arc::new(rtv)]
-      };
-      let render_pass = device.create_renderpass(&render_pass_info);
-
-      let mut command_buffer = command_pool.get_command_buffer(CommandBufferType::PRIMARY);
-      command_buffer.begin_render_pass(&render_pass, RenderpassRecordingMode::Commands);
-      command_buffer.set_pipeline2(&pipeline_info);
-      command_buffer.set_vertex_buffer(buffer.clone());
-      command_buffer.set_viewports(&[Viewport {
-        position: Vec2 { x: 0.0f32, y: 0.0f32 },
-        extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
-        min_depth: 0.0f32,
-        max_depth: 1.0f32
-      }]);
-      command_buffer.set_scissors(&[Scissor {
-        position: Vec2I { x: 0, y: 0 },
-        extent: Vec2UI { x: 9999, y: 9999 },
-      }]);
-      command_buffer.draw(6, 0);
-      command_buffer.end_render_pass();
-      let submission = command_buffer.finish();
-
-      let cmd_buffer_semaphore = device.create_semaphore();
-      queue.submit(submission, None, &[ &backbuffer_semaphore ], &[ &cmd_buffer_semaphore ]);
-
-      queue.present(&swapchain, swapchain_image_index, &[ &cmd_buffer_semaphore ]);
+      graph.render(frame_counter);
+      frame_counter += 1;
 
       device.wait_for_idle();
 
       command_pool.reset();
-
-      //renderer.render();
       std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
   }

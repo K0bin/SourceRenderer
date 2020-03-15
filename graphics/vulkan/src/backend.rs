@@ -20,8 +20,6 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type Shader = VkShader;
   type Pipeline = VkPipeline;
   type RenderTargetView = VkRenderTargetView;
-  type RenderPass = VkRenderPass;
-  type RenderPassLayout = VkRenderPassLayout;
   type Swapchain = VkSwapchain;
   type Semaphore = VkSemaphore;
   type Fence = VkFence;

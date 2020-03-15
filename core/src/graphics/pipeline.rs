@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use graphics::Format;
-use graphics::RenderPassLayout;
 
 use graphics::Backend;
 use std::hash::Hasher;
@@ -311,18 +310,6 @@ pub trait Shader {
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
-pub struct PipelineInfo2<B: Backend> {
-  pub vs: Arc<B::Shader>,
-  pub fs: Option<Arc<B::Shader>>,
-  pub gs: Option<Arc<B::Shader>>,
-  pub tcs: Option<Arc<B::Shader>>,
-  pub tes: Option<Arc<B::Shader>>,
-  pub vertex_layout: VertexLayoutInfo,
-  pub rasterizer: RasterizerInfo,
-  pub depth_stencil: DepthStencilInfo,
-  pub blend: BlendInfo
-}
-
 pub struct PipelineInfo<B: Backend> {
   pub vs: Arc<B::Shader>,
   pub fs: Option<Arc<B::Shader>>,
@@ -332,10 +319,7 @@ pub struct PipelineInfo<B: Backend> {
   pub vertex_layout: VertexLayoutInfo,
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
-  pub blend: BlendInfo,
-  pub renderpass: Arc<B::RenderPassLayout>,
-  pub subpass: u32
-  // TODO: pipeline layout
+  pub blend: BlendInfo
 }
 
 pub trait Pipeline<B: Backend> {

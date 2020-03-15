@@ -10,8 +10,6 @@ use graphics::PipelineInfo;
 use graphics::Pipeline;
 use graphics::Texture;
 use graphics::Buffer;
-use graphics::RenderPassLayout;
-use graphics::RenderPass;
 use graphics::RenderTargetView;
 use graphics::Swapchain;
 use graphics::Resettable;
@@ -34,8 +32,6 @@ pub trait Backend: 'static + Sized {
   type Buffer: Buffer;
   type Shader: Shader + Hash + Eq + PartialEq;
   type Pipeline: Pipeline<Self>;
-  type RenderPassLayout: RenderPassLayout<Self>;
-  type RenderPass: RenderPass<Self>;
   type RenderTargetView: RenderTargetView<Self>;
   type Semaphore: Semaphore + Resettable;
   type Fence: Fence + Resettable;

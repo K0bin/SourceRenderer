@@ -6,7 +6,7 @@ use std::ops::{ Deref, DerefMut };
 use std::fmt::{Debug, Formatter, Display};
 use std::error::Error;
 use graphics::Format;
-use std::sync::mpsc::{ Sender, Receiver, channel };
+use crossbeam_channel::{Sender, Receiver, unbounded};
 
 pub struct Recyclable<T> {
   item: MaybeUninit<T>,
@@ -50,13 +50,13 @@ impl<T: Debug> std::fmt::Debug for Recyclable<T> {
 
 pub struct Pool<T> {
   receiver: Receiver<T>,
-  sender: Sender<T>
+  sender: Sender<T>,
+  initializer: Box<Fn() -> T + Send + Sync>
 }
 
 impl<T> Pool<T> {
-  pub fn new<F>(capacity: usize, initializer: F) -> Self
-    where F: Fn() -> T {
-    let (sender, receiver) = channel();
+  pub fn new(capacity: usize, initializer: Box<Fn() -> T + Send + Sync>) -> Self {
+    let (sender, receiver) = unbounded();
 
     for _ in 0..capacity {
       sender.send(initializer());
@@ -64,14 +64,18 @@ impl<T> Pool<T> {
 
     Self {
       receiver,
-      sender
+      sender,
+      initializer
     }
   }
 
-  pub fn get(&mut self) -> Option<Recyclable<T>> {
+  pub fn get(&self) -> Recyclable<T> {
     let item = self.receiver.try_recv().ok();
 
-    return item.map(|i| Recyclable {
+    return item.map_or_else(|| Recyclable {
+      item: MaybeUninit::new((self.initializer)()),
+      sender: self.sender.clone()
+    }, |i| Recyclable {
       item: MaybeUninit::new(i),
       sender: self.sender.clone()
     });

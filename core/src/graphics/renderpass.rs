@@ -49,11 +49,6 @@ pub struct Attachment {
   pub final_layout: ImageLayout
 }
 
-pub struct RenderPassLayoutInfo {
-  pub attachments: Vec<Attachment>,
-  pub subpasses: Vec<Subpass>
-}
-
 pub struct Subpass {
   pub input_attachments: Vec<AttachmentRef>,
   pub output_color_attachments: Vec<OutputAttachmentRef>,
@@ -71,22 +66,4 @@ pub struct OutputAttachmentRef {
 pub struct AttachmentRef {
   pub layout: ImageLayout,
   pub index: u32
-}
-
-pub trait RenderPassLayout<B: Backend> {
-
-}
-
-#[repr(C)]
-pub struct RenderPassInfo<B: Backend> {
-  pub layout: Arc<B::RenderPassLayout>,
-  pub attachments: Vec<Arc<B::RenderTargetView>>,
-  pub width: u32,
-  pub height: u32,
-  pub array_length: u32
-}
-
-pub trait RenderPass<B: Backend> {
-  fn get_info(&self) -> &RenderPassInfo<B>;
-  fn get_layout(&self) -> Arc<B::RenderPassLayout>;
 }

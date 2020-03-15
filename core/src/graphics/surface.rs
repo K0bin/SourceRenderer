@@ -17,5 +17,5 @@ pub struct SwapchainInfo {
 }
 
 pub trait Swapchain<B: Backend> {
-  fn prepare_back_buffer(&mut self, semaphore: &B::Semaphore) -> (Arc<B::Texture>, u32);
+  fn prepare_back_buffer(&self, semaphore: &B::Semaphore) -> (&Arc<B::Texture>, u32);
 }

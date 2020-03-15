@@ -5,7 +5,7 @@ use ash::extensions::khr::Swapchain as SwapchainLoader;
 use ash::Device;
 use crate::ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::Swapchain;
+use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount};
 use sourcerenderer_core::graphics::SwapchainInfo;
 use sourcerenderer_core::graphics::Queue;
 use sourcerenderer_core::graphics::Texture;
@@ -24,7 +24,6 @@ use crate::VkQueue;
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
-  images: Vec<vk::Image>,
   views: Vec<vk::ImageView>,
   swap_chain: vk::SwapchainKHR,
   swap_chain_loader: SwapchainLoader,
@@ -80,11 +79,18 @@ impl VkSwapchain {
 
       let swap_chain = swap_chain_loader.create_swapchain(&swap_chain_create_info, None).unwrap();
       let swap_chain_images = swap_chain_loader.get_swapchain_images(swap_chain).unwrap();
-      let textures: Vec<Arc<VkTexture>> = swap_chain_images
+      let textures = swap_chain_images
         .iter()
-        .map(|image| {
-          Arc::new(VkTexture::from_image(&device_inner, *image, Format::BGRA8UNorm, info.width, info.height, 1u32, 1u32, 1u32))
-        })
+        .map(|image|
+          Arc::new(VkTexture::from_image(&device_inner, *image, TextureInfo {
+            format: Format::BGRA8UNorm,
+            width: info.width,
+            height: info.height,
+            array_length: 1u32,
+            mip_levels: 1u32,
+            depth: 1u32,
+            samples: SampleCount::Samples1
+          })))
         .collect();
 
       let swap_chain_image_views: Vec<vk::ImageView> = swap_chain_images
@@ -115,7 +121,6 @@ impl VkSwapchain {
 
       VkSwapchain {
         textures,
-        images: swap_chain_images,
         views: swap_chain_image_views,
         swap_chain,
         swap_chain_loader,
@@ -166,8 +171,8 @@ impl VkSwapchain {
     return &self.swap_chain;
   }
 
-  pub fn get_images(&self) -> &[vk::Image] {
-    return &self.images[..];
+  pub fn get_textures(&self) -> &[Arc<VkTexture>] {
+    &self.textures
   }
 
   pub fn get_views(&self) -> &[vk::ImageView] {
@@ -192,9 +197,9 @@ impl Drop for VkSwapchain {
 }
 
 impl Swapchain<VkBackend> for VkSwapchain {
-  fn prepare_back_buffer(&mut self, semaphore: &VkSemaphore) -> (Arc<VkTexture>, u32) {
+  fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> (&Arc<VkTexture>, u32) {
     let (index, optimal) = unsafe { self.swap_chain_loader.acquire_next_image(self.swap_chain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
-    let back_buffer = self.textures.get(index as usize).unwrap().clone();
+    let back_buffer = self.textures.get(index as usize).unwrap();
     return (back_buffer, index);
   }
 }
