@@ -3,10 +3,6 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::Semaphore;
-use sourcerenderer_core::graphics::Fence;
-use sourcerenderer_core::graphics::Resettable;
-
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 
@@ -32,15 +28,6 @@ impl VkSemaphore {
 
   pub fn get_handle(&self) -> &vk::Semaphore {
     return &self.semaphore;
-  }
-}
-
-impl Semaphore for VkSemaphore {
-
-}
-
-impl Resettable for VkSemaphore {
-  fn reset(&mut self) {
   }
 }
 
@@ -83,9 +70,6 @@ impl VkFence {
   pub fn get_handle(&self) -> &vk::Fence {
     return &self.fence;
   }
-}
-
-impl Fence for VkFence {
   fn await(&mut self) {
     let vk_device = &self.device.device;
     unsafe {

@@ -9,8 +9,6 @@ use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 
 use sourcerenderer_core::graphics::Adapter;
 use sourcerenderer_core::graphics::Device;
-use sourcerenderer_core::graphics::Queue;
-use sourcerenderer_core::graphics::QueueType;
 use sourcerenderer_core::graphics::CommandPool;
 use crate::device::VkDevice;
 use crate::raw::RawVkDevice;
@@ -27,7 +25,6 @@ use VkCommandBufferSubmission;
 pub struct VkQueueInfo {
   pub queue_family_index: usize,
   pub queue_index: usize,
-  pub queue_type: QueueType,
   pub supports_presentation: bool
 }
 
@@ -51,24 +48,16 @@ impl VkQueue {
   pub fn get_queue_family_index(&self) -> u32 {
     return self.info.queue_family_index as u32;
   }
-}
 
-// Vulkan queues are implicitly freed with the logical device
-
-impl Queue<VkBackend> for VkQueue {
-  fn create_command_pool(&self) -> VkCommandPool {
+  pub fn create_command_pool(&self) -> VkCommandPool {
     return VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.caches);
   }
 
-  fn get_queue_type(&self) -> QueueType {
-    return self.info.queue_type;
-  }
-
-  fn supports_presentation(&self) -> bool {
+  pub fn supports_presentation(&self) -> bool {
     return self.info.supports_presentation;
   }
 
-  fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
+  pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
     let mut cmd_buffer_mut = command_buffer;
     cmd_buffer_mut.mark_submitted();
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
@@ -93,7 +82,7 @@ impl Queue<VkBackend> for VkQueue {
     }
   }
 
-  fn present(&self, swapchain: &VkSwapchain, image_index: u32, wait_semaphores: &[ &VkSemaphore ]) {
+  pub fn present(&self, swapchain: &VkSwapchain, image_index: u32, wait_semaphores: &[ &VkSemaphore ]) {
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let present_info = vk::PresentInfoKHR {
       p_swapchains: swapchain.get_handle() as *const vk::SwapchainKHR,
@@ -109,3 +98,5 @@ impl Queue<VkBackend> for VkQueue {
     }
   }
 }
+
+// Vulkan queues are implicitly freed with the logical device

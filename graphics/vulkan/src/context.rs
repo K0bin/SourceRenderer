@@ -11,7 +11,7 @@ use crossbeam_queue::SegQueue;
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::VkCommandPool;
-use sourcerenderer_core::graphics::{Device, Queue, Resettable};
+use sourcerenderer_core::graphics::{Device, Resettable};
 use std::cell::{RefCell, RefMut};
 use ::{VkPipeline, VkQueue};
 use ash::version::DeviceV1_0;

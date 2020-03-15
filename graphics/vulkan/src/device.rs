@@ -98,23 +98,24 @@ impl VkDevice {
   pub fn get_inner(&self) -> &Arc<RawVkDevice> {
     return &self.device;
   }
+
+  #[inline]
+  pub fn get_graphics_queue(&self) -> &Arc<VkQueue> {
+    &self.graphics_queue
+  }
+
+  #[inline]
+  pub fn get_compute_queue(&self) -> &Option<Arc<VkQueue>> {
+    &self.compute_queue
+  }
+
+  #[inline]
+  pub fn get_transfer_queue(&self) -> &Option<Arc<VkQueue>> {
+    &self.transfer_queue
+  }
 }
 
 impl Device<VkBackend> for VkDevice {
-  fn get_queue(&self, queue_type: QueueType) -> Option<Arc<VkQueue>> {
-    return match queue_type {
-      QueueType::Graphics => {
-        Some(self.graphics_queue.clone())
-      }
-      QueueType::Compute => {
-        self.compute_queue.clone()
-      }
-      QueueType::Transfer => {
-        self.transfer_queue.clone()
-      }
-    }
-  }
-
   fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> VkBuffer {
     return VkBuffer::new(&self.device, size, memory_usage, &self.device.allocator, usage);
   }
@@ -125,14 +126,6 @@ impl Device<VkBackend> for VkDevice {
 
   fn create_render_target_view(&self, texture: Arc<VkTexture>) -> VkRenderTargetView {
     return VkRenderTargetView::new(&self.device, texture);
-  }
-
-  fn create_semaphore(&self) -> VkSemaphore {
-    return VkSemaphore::new(&self.device);
-  }
-
-  fn create_fence(&self) -> VkFence {
-    return VkFence::new(&self.device);
   }
 
   fn wait_for_idle(&self) {

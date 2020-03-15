@@ -18,7 +18,7 @@ use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
-use sourcerenderer_core::graphics::{Backend, CommandPool, CommandBufferType, CommandBuffer, RenderpassRecordingMode, Queue, Swapchain};
+use sourcerenderer_core::graphics::{Backend, CommandPool, CommandBufferType, CommandBuffer, RenderpassRecordingMode, Swapchain};
 use context::VkGraphicsContext;
 use std::cell::RefCell;
 use ::{VkRenderPass, VkQueue};

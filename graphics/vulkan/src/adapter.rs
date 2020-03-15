@@ -14,7 +14,6 @@ use sourcerenderer_core::graphics::Adapter;
 use sourcerenderer_core::graphics::Device;
 use sourcerenderer_core::graphics::AdapterType;
 use sourcerenderer_core::graphics::Surface;
-use sourcerenderer_core::graphics::QueueType;
 use crate::VkDevice;
 use crate::VkInstance;
 use crate::VkSurface;
@@ -119,7 +118,6 @@ impl Adapter<VkBackend> for VkAdapter {
       let graphics_queue_info = VkQueueInfo {
         queue_family_index: graphics_queue_family_props.0,
         queue_index: 0,
-        queue_type: QueueType::Graphics,
         supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, *surface.get_surface_handle())
       };
 
@@ -129,7 +127,6 @@ impl Adapter<VkBackend> for VkAdapter {
           VkQueueInfo {
             queue_family_index: index,
             queue_index: 0,
-            queue_type: QueueType::Compute,
             supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.get_surface_handle())
           }
         }
@@ -141,7 +138,6 @@ impl Adapter<VkBackend> for VkAdapter {
           VkQueueInfo {
             queue_family_index: index,
             queue_index: 0,
-            queue_type: QueueType::Transfer,
             supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.get_surface_handle())
           }
         }

@@ -41,6 +41,6 @@ impl Drop for VkSurface {
   }
 }
 
-impl Surface<VkBackend> for VkSurface {
+impl Surface for VkSurface {
 
 }

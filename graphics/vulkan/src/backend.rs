@@ -14,14 +14,11 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type CommandBufferSubmission = VkCommandBufferSubmission;
   type Adapter = VkAdapter;
   type Surface = VkSurface;
-  type Queue = VkQueue;
   type Texture = VkTexture;
   type Buffer = VkBuffer;
   type Shader = VkShader;
   type Pipeline = VkPipeline;
   type RenderTargetView = VkRenderTargetView;
   type Swapchain = VkSwapchain;
-  type Semaphore = VkSemaphore;
-  type Fence = VkFence;
   type RenderGraph = VkRenderGraph;
 }

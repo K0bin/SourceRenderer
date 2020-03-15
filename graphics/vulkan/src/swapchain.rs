@@ -7,10 +7,8 @@ use crate::ash::version::DeviceV1_0;
 
 use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount};
 use sourcerenderer_core::graphics::SwapchainInfo;
-use sourcerenderer_core::graphics::Queue;
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
-use sourcerenderer_core::graphics::Semaphore;
 
 use crate::VkInstance;
 use crate::VkSurface;
@@ -191,6 +189,12 @@ impl VkSwapchain {
   pub fn get_height(&self) -> u32 {
     return self.height;
   }
+
+  pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> (&Arc<VkTexture>, u32) {
+    let (index, optimal) = unsafe { self.swap_chain_loader.acquire_next_image(self.swap_chain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
+    let back_buffer = self.textures.get(index as usize).unwrap();
+    return (back_buffer, index);
+  }
 }
 
 impl Drop for VkSwapchain {
@@ -201,10 +205,6 @@ impl Drop for VkSwapchain {
   }
 }
 
-impl Swapchain<VkBackend> for VkSwapchain {
-  fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> (&Arc<VkTexture>, u32) {
-    let (index, optimal) = unsafe { self.swap_chain_loader.acquire_next_image(self.swap_chain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }.unwrap();
-    let back_buffer = self.textures.get(index as usize).unwrap();
-    return (back_buffer, index);
-  }
+impl Swapchain for VkSwapchain {
+
 }
