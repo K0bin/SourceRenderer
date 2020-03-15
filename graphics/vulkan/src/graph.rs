@@ -268,9 +268,3 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     }
   }
 }
-
-impl Drop for VkRenderGraph {
-  fn drop(&mut self) {
-    unsafe { self.device.device_wait_idle(); }
-  }
-}

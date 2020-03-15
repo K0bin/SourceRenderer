@@ -310,6 +310,14 @@ impl VkCommandBuffer {
   }
 }
 
+impl Drop for VkCommandBuffer {
+  fn drop(&mut self) {
+    if self.state == VkCommandBufferState::Submitted {
+      unsafe { self.device.device_wait_idle(); }
+    }
+  }
+}
+
 pub struct VkCommandBufferRecorder {
   item: MaybeUninit<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>,
@@ -356,9 +364,10 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     let mut mut_self = self;
     unsafe { (*(mut_self.item.as_mut_ptr())).as_mut() }.end();
     mut_self.is_submitted = true;
-    let item = unsafe {
+    let mut item = unsafe {
       std::mem::replace(&mut mut_self.item, MaybeUninit::uninit()).assume_init()
     };
+    item.state = VkCommandBufferState::Finished;
     VkCommandBufferSubmission::new(item, mut_self.sender.clone())
   }
 
@@ -403,8 +412,12 @@ impl VkCommandBufferSubmission {
     }
   }
 
+  pub(crate) fn mark_submitted(&mut self) {
+    assert_eq!(self.item.state, VkCommandBufferState::Finished);
+    self.item.state = VkCommandBufferState::Submitted;
+  }
+
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
-    debug_assert_eq!(self.item.state, VkCommandBufferState::Finished);
     &self.item.buffer
   }
 }

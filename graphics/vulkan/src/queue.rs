@@ -69,15 +69,16 @@ impl Queue<VkBackend> for VkQueue {
   }
 
   fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
+    let mut cmd_buffer_mut = command_buffer;
+    cmd_buffer_mut.mark_submitted();
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let signal_semaphore_handles = signal_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let stage_masks = wait_semaphores.into_iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<Vec<vk::PipelineStageFlags>>();
 
-    let cmd_buffer_guard = command_buffer.get_handle();
-    let cmd_buffer = *cmd_buffer_guard;
+    let vk_cmd_buffer = *cmd_buffer_mut.get_handle();
 
     let info = vk::SubmitInfo {
-      p_command_buffers: &cmd_buffer as *const vk::CommandBuffer,
+      p_command_buffers: &vk_cmd_buffer as *const vk::CommandBuffer,
       command_buffer_count: 1,
       p_wait_semaphores: if wait_semaphores.len() == 0 { std::ptr::null() } else { wait_semaphore_handles.as_ptr() },
       wait_semaphore_count: wait_semaphores.len() as u32,
