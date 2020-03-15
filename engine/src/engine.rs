@@ -254,15 +254,13 @@ impl<P: Platform> Engine<P> {
       passes
     }, &swapchain);
 
-    let mut frame_counter = 0;
     'main_loop: loop {
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {
           break 'main_loop;
       }
 
-      graph.render(frame_counter);
-      frame_counter += 1;
+      graph.render();
 
       device.wait_for_idle();
 

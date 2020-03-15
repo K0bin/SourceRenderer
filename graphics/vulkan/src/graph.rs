@@ -222,9 +222,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
   }
 
-  fn render(&mut self, frame_counter: u64) {
+  fn render(&mut self) {
     let thread_context = self.context.get_thread_context();
-    let mut frame_context = thread_context.get_frame_context(frame_counter);
+    let mut frame_context = thread_context.get_frame_context();
 
     let prepare_semaphore = self.context.get_caches().get_semaphore();
     let cmd_semaphore = self.context.get_caches().get_semaphore();
@@ -262,11 +262,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     }
 
     if let Some(index) = swapchain_image_index {
-      if frame_counter > 0 {
-        thread_context.get_frame_context(frame_counter - 1).reset();
-      }
       self.graphics_queue.present(&self.swapchain, index, &[&cmd_semaphore]);
       frame_context.track_semaphore(cmd_semaphore);
+      self.context.inc_frame_counter();
     }
   }
 }

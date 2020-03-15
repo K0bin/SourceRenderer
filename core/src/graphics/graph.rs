@@ -48,7 +48,7 @@ pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
 pub trait RenderGraph<B: Backend> {
   fn recreate(&mut self, swap_chain: &B::Swapchain);
-  fn render(&mut self, frame_counter: u64);
+  fn render(&mut self);
 }
 
 /*pub struct RenderGraphNode<'a> {
