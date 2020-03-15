@@ -21,6 +21,7 @@ use crate::VkTexture;
 use crate::VkSemaphore;
 use crate::VkBackend;
 use crate::VkQueue;
+use std::cmp::{min, max};
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
@@ -54,11 +55,13 @@ impl VkSwapchain {
       let capabilities = surface_loader.get_physical_device_surface_capabilities(physical_device, surface_handle).unwrap();
       let extent = VkSwapchain::pick_swap_extent(&capabilities);
 
-      let image_count = if capabilities.max_image_count > 0 {
+      /*let image_count = if capabilities.max_image_count > 0 {
         capabilities.max_image_count
       } else {
         capabilities.min_image_count + 1
-      };
+      };*/
+
+      let image_count = max(capabilities.min_image_count + 1, min(capabilities.max_image_count, 3));
 
       let swap_chain_create_info = vk::SwapchainCreateInfoKHR {
         surface: surface_handle,
@@ -79,7 +82,7 @@ impl VkSwapchain {
 
       let swap_chain = swap_chain_loader.create_swapchain(&swap_chain_create_info, None).unwrap();
       let swap_chain_images = swap_chain_loader.get_swapchain_images(swap_chain).unwrap();
-      let textures = swap_chain_images
+      let textures: Vec<Arc<VkTexture>> = swap_chain_images
         .iter()
         .map(|image|
           Arc::new(VkTexture::from_image(&device_inner, *image, TextureInfo {
@@ -92,6 +95,8 @@ impl VkSwapchain {
             samples: SampleCount::Samples1
           })))
         .collect();
+
+      println!("image count: {}", textures.len());
 
       let swap_chain_image_views: Vec<vk::ImageView> = swap_chain_images
         .iter()

@@ -34,6 +34,6 @@ pub trait Backend: 'static + Sized {
   type Pipeline: Pipeline<Self>;
   type RenderTargetView: RenderTargetView<Self>;
   type Semaphore: Semaphore + Resettable;
-  type Fence: Fence + Resettable;
+  type Fence: Fence;
   type RenderGraph: RenderGraph<Self>;
 }

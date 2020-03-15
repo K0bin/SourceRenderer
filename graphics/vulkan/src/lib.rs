@@ -7,6 +7,8 @@ extern crate vk_mem;
 #[macro_use]
 extern crate bitflags;
 extern crate thread_local;
+extern crate crossbeam_channel;
+extern crate crossbeam_queue;
 
 pub use self::instance::VkInstance;
 pub use self::adapter::VkAdapter;

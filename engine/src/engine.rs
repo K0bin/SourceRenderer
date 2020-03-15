@@ -96,8 +96,6 @@ impl<P: Platform> Engine<P> {
       vsync: true
     };
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(swapchain_info, &device, &surface));
-    let queue = device.get_queue(QueueType::Graphics).unwrap();
-    let mut command_pool = queue.create_command_pool();
 
     let buffer = Arc::new(device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX));
     let triangle = [
@@ -262,9 +260,6 @@ impl<P: Platform> Engine<P> {
 
       graph.render();
 
-      device.wait_for_idle();
-
-      command_pool.reset();
       std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
   }

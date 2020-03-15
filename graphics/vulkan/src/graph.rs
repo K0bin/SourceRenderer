@@ -237,7 +237,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     let mut cmd_buffer = frame_context.get_command_pool().get_command_buffer(CommandBufferType::PRIMARY);
     for pass in &self.passes {
-      cmd_buffer.begin_render_pass(&pass.render_pass, &pass.frame_buffer[frame_counter as usize % pass.frame_buffer.len()], RenderpassRecordingMode::Commands);
+      cmd_buffer.begin_render_pass(&pass.render_pass, &pass.frame_buffer[self.context.get_frame_counter() as usize % pass.frame_buffer.len()], RenderpassRecordingMode::Commands);
       (pass.callback)(&mut cmd_buffer);
       cmd_buffer.end_render_pass();
     }
@@ -266,5 +266,11 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       frame_context.track_semaphore(cmd_semaphore);
       self.context.inc_frame_counter();
     }
+  }
+}
+
+impl Drop for VkRenderGraph {
+  fn drop(&mut self) {
+    unsafe { self.device.device_wait_idle(); }
   }
 }

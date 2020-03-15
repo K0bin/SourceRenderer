@@ -55,12 +55,8 @@ pub struct Pool<T> {
 }
 
 impl<T> Pool<T> {
-  pub fn new(capacity: usize, initializer: Box<Fn() -> T + Send + Sync>) -> Self {
+  pub fn new(initializer: Box<Fn() -> T + Send + Sync>) -> Self {
     let (sender, receiver) = unbounded();
-
-    for _ in 0..capacity {
-      sender.send(initializer());
-    }
 
     Self {
       receiver,

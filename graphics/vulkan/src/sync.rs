@@ -73,6 +73,13 @@ impl VkFence {
     };
   }
 
+  pub fn reset(&self) {
+    let vk_device = &self.device.device;
+    unsafe {
+      vk_device.reset_fences(&[self.fence]);
+    }
+  }
+
   pub fn get_handle(&self) -> &vk::Fence {
     return &self.fence;
   }
@@ -91,14 +98,5 @@ impl Fence for VkFence {
     return unsafe {
       vk_device.wait_for_fences(&[self.fence], true, 0).is_ok()
     };
-  }
-}
-
-impl Resettable for VkFence {
-  fn reset(&mut self) {
-    let vk_device = &self.device.device;
-    unsafe {
-      vk_device.reset_fences(&[self.fence]);
-    }
   }
 }
