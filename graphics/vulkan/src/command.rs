@@ -30,6 +30,7 @@ use std::hash::{Hash, Hasher};
 use context::{VkGraphicsContext, VkSharedCaches};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
+use buffer::VkBufferSlice;
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,
@@ -102,7 +103,7 @@ pub enum VkCommandBufferState {
 }
 
 struct VkLifetimeTrackers {
-  buffers: Vec<Arc<VkBuffer>>,
+  buffers: Vec<Arc<VkBufferSlice>>,
   render_passes: Vec<Arc<VkRenderPass>>,
   frame_buffers: Vec<Arc<VkFrameBuffer>>
 }
@@ -261,11 +262,11 @@ impl VkCommandBuffer {
     self.render_pass = None;
   }
 
-  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBuffer>) {
+  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.buffers.push(vertex_buffer.clone());
     unsafe {
-      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*(*vertex_buffer).get_handle()], &[0]);
+      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[vertex_buffer.get_offset_and_length().0 as u64]);
     }
   }
 
@@ -377,7 +378,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBuffer>) {
+  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBufferSlice>) {
     unsafe { (*(self.item.as_mut_ptr())).as_mut() }.set_vertex_buffer(vertex_buffer)
   }
 

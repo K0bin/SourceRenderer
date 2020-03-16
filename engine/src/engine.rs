@@ -96,7 +96,7 @@ impl<P: Platform> Engine<P> {
     };
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(swapchain_info, &device, &surface));
 
-    let buffer = Arc::new(device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX));
+    //let buffer = Arc::new(device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX));
     let triangle = [
       Vertex {
         position: Vec3 {
@@ -141,11 +141,13 @@ impl<P: Platform> Engine<P> {
     }
     buffer.unmap();*/
 
-    {
+    /*{
       let mut map = buffer.map().expect("failed to map buffer");
       let mut data = map.get_data();
       std::mem::replace(data, triangle);
-    }
+    }*/
+
+    let buffer = Arc::new(device.upload_data(triangle));
 
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.vert.spv"))).unwrap();

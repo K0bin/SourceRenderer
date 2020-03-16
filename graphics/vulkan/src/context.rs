@@ -18,11 +18,13 @@ use ash::version::DeviceV1_0;
 use sourcerenderer_core::pool::{Pool, Recyclable};
 use ::{VkSemaphore, VkFence};
 use ash::prelude::VkResult;
+use buffer::BufferAllocator;
 
 pub struct VkSharedCaches {
   pub pipelines: RwLock<HashMap<u64, VkPipeline>>,
   pub semaphores: Pool<VkSemaphore>,
-  pub fences: Pool<VkFence>
+  pub fences: Pool<VkFence>,
+  pub buffers: BufferAllocator // consider per thread
 }
 
 pub struct VkGraphicsContext {
@@ -161,7 +163,8 @@ impl VkSharedCaches {
       })),
       fences: Pool::new(Box::new(move || {
         VkFence::new(&fences_device_clone)
-      }))
+      })),
+      buffers: BufferAllocator::new(device)
     }
   }
 

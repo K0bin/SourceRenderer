@@ -13,7 +13,7 @@ use graphics::Texture;
 use graphics::RenderTargetView;
 use graphics::Backend;
 
-#[derive(Clone, Debug, Copy, PartialEq)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
   Discrete,
   Integrated,
@@ -22,7 +22,7 @@ pub enum AdapterType {
   Other
 }
 
-#[derive(Clone, Debug, Copy, PartialEq)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryUsage {
   GpuOnly,
   CpuOnly,
@@ -37,6 +37,7 @@ pub trait Adapter<B: Backend> {
 
 pub trait Device<B: Backend> {
   fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> B::Buffer;
+  fn upload_data<T>(&self, data: T) -> B::Buffer;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> B::Shader;
   fn create_render_target_view(&self, texture: Arc<B::Texture>) -> B::RenderTargetView;
   fn wait_for_idle(&self);

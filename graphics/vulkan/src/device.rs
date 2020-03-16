@@ -27,6 +27,7 @@ use context::{VkGraphicsContext, VkSharedCaches};
 use raw::{RawVkDevice, RawVkInstance};
 use std::collections::HashMap;
 use pipeline::VkPipelineInfo;
+use buffer::VkBufferSlice;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,
@@ -116,8 +117,18 @@ impl VkDevice {
 }
 
 impl Device<VkBackend> for VkDevice {
-  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> VkBuffer {
-    return VkBuffer::new(&self.device, size, memory_usage, &self.device.allocator, usage);
+  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> VkBufferSlice {
+    unimplemented!();
+    //return VkBuffer::new(&self.device, size, memory_usage, &self.device.allocator, usage);
+  }
+
+  fn upload_data<T>(&self, data: T) -> <VkBackend as Backend>::Buffer {
+    let slice = self.context.get_caches().buffers.get_slice(MemoryUsage::CpuToGpu, std::mem::size_of::<T>());
+    {
+      let mut map = slice.map().expect("Mapping failed");
+      std::mem::replace::<T>(map.get_data(), data);
+    }
+    slice
   }
 
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> VkShader {

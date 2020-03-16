@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use ash::vk;
 
@@ -10,6 +10,9 @@ use crate::VkBackend;
 use crate::device::memory_usage_to_vma;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use sourcerenderer_core::pool::Recyclable;
+use std::process::exit;
+use std::collections::HashMap;
 
 pub struct VkBuffer {
   buffer: vk::Buffer,
@@ -19,7 +22,7 @@ pub struct VkBuffer {
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
   memory_usage: MemoryUsage,
-  is_mapped: AtomicBool
+  slices: Mutex<Vec<VkBufferSlice>>
 }
 
 unsafe impl Send for VkBuffer {}
@@ -61,7 +64,7 @@ impl VkBuffer {
       map_ptr,
       is_coherent,
       memory_usage,
-      is_mapped: AtomicBool::new(false)
+      slices: Mutex::new(Vec::new())
     };
   }
 
@@ -78,28 +81,24 @@ impl Drop for VkBuffer {
   }
 }
 
-impl Buffer for VkBuffer {
+impl Buffer for VkBufferSlice {
   fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
     where T: Sized {
     MappedBuffer::new(self)
   }
 
   unsafe fn map_unsafe(&self) -> Option<*mut u8> {
-    if self.is_mapped.swap(true, Ordering::SeqCst) {
-      return None;
+    if !self.buffer.is_coherent && (self.buffer.memory_usage == MemoryUsage::CpuToGpu || self.buffer.memory_usage == MemoryUsage::CpuOnly) {
+      let mut allocator = &self.buffer.device.allocator;
+      allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
-    if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
-      let mut allocator = &self.device.allocator;
-      allocator.invalidate_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
-    }
-    return self.map_ptr;
+    return self.buffer.map_ptr.map(|ptr| ptr.add(self.offset));
   }
 
   unsafe fn unmap_unsafe(&self) {
-    self.is_mapped.store(false, Ordering::SeqCst);
-    if !self.is_coherent && (self.memory_usage == MemoryUsage::CpuToGpu || self.memory_usage == MemoryUsage::CpuOnly) {
-      let mut allocator = &self.device.allocator;
-      allocator.flush_allocation(&self.allocation, self.allocation_info.get_offset(), self.allocation_info.get_size()).unwrap();
+    if !self.buffer.is_coherent && (self.buffer.memory_usage == MemoryUsage::CpuToGpu || self.buffer.memory_usage == MemoryUsage::CpuOnly) {
+      let mut allocator = &self.buffer.device.allocator;
+      allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
   }
 }
@@ -118,4 +117,118 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   flags |= usage_bits.rotate_right(BufferUsage::COPY_SRC.bits().trailing_zeros() - VkUsage::TRANSFER_SRC.as_raw().trailing_zeros()) & VkUsage::TRANSFER_SRC.as_raw();
   flags |= usage_bits.rotate_right(BufferUsage::COPY_DST.bits().trailing_zeros() - VkUsage::TRANSFER_DST.as_raw().trailing_zeros()) & VkUsage::TRANSFER_DST.as_raw();
   return vk::BufferUsageFlags::from_raw(flags);
+}
+
+type VkSlicedBuffer = Arc<Mutex<Vec<VkBufferSlice>>>;
+pub struct VkBufferSlice {
+  buffer: Arc<VkBuffer>,
+  slices: VkSlicedBuffer,
+  offset: usize,
+  length: usize
+}
+
+impl Drop for VkBufferSlice {
+  fn drop(&mut self) {
+    let mut guard = self.slices.lock().unwrap();
+    let end = guard.iter_mut().find(|s| s.offset + s.length == self.offset);
+    if let Some(mut existing_slice) = end {
+      existing_slice.length += self.length;
+      return;
+    }
+    let start = guard.iter_mut().find(|s| s.offset == self.offset + self.length);
+    if let Some(mut existing_slice) = start {
+      existing_slice.offset -= self.length;
+      return;
+    }
+    guard.push(VkBufferSlice {
+      buffer: self.buffer.clone(),
+      slices: self.slices.clone(),
+      offset: self.offset,
+      length: self.length
+    });
+  }
+}
+
+impl VkBufferSlice {
+  pub fn get_buffer(&self) -> &Arc<VkBuffer> {
+    &self.buffer
+  }
+
+  pub fn get_offset_and_length(&self) -> (usize, usize) {
+    (self.offset, self.length)
+  }
+}
+
+fn get_slice(buffer: &VkSlicedBuffer, length: usize) -> Option<VkBufferSlice> {
+  let mut guard = buffer.lock().unwrap();
+  let mut slice_option = guard.iter_mut().enumerate().find(|(index, s)| s.length >= length);
+  if let Some((index, existing_slice)) = slice_option {
+    return if existing_slice.length > length {
+      let new_slice = VkBufferSlice {
+        buffer: existing_slice.buffer.clone(),
+        slices: buffer.clone(),
+        offset: existing_slice.offset,
+        length
+      };
+      existing_slice.length -= length;
+      existing_slice.offset += length;
+      Some(new_slice)
+    } else {
+      Some(guard.remove(index))
+    }
+  }
+  return None;
+}
+
+const UNIQUE_BUFFER_THRESHOLD: usize = 16384;
+pub struct BufferAllocator {
+  device: Arc<RawVkDevice>,
+  buffers: Mutex<HashMap<MemoryUsage, Vec<VkSlicedBuffer>>>
+}
+
+impl BufferAllocator {
+  pub fn new(device: &Arc<RawVkDevice>) -> Self {
+    let mut buffers = HashMap::<MemoryUsage, Vec<VkSlicedBuffer>>::new();
+    buffers.insert(MemoryUsage::CpuToGpu, Vec::new());
+    BufferAllocator {
+      device: device.clone(),
+      buffers: Mutex::new(buffers)
+    }
+  }
+
+  pub fn get_slice(&self, usage: MemoryUsage, length: usize) -> VkBufferSlice {
+    if length > UNIQUE_BUFFER_THRESHOLD {
+      let buffer = Arc::new(VkBuffer::new(&self.device, length, usage, &self.device.allocator, BufferUsage::VERTEX));
+      let sliced: VkSlicedBuffer = Arc::new(Mutex::new(Vec::new()));
+      let mut sliced_guard = sliced.lock().unwrap();
+      sliced_guard.push(VkBufferSlice {
+        buffer,
+        slices: sliced.clone(),
+        offset: 0,
+        length: UNIQUE_BUFFER_THRESHOLD
+      });
+    }
+
+    {
+      let mut guard = self.buffers.lock().unwrap();
+      let matching_buffers = guard.get(&usage).expect("unsupported memory usage");
+      for buffer in matching_buffers {
+        if let Some(slice) = get_slice(buffer, length) {
+          return slice;
+        }
+      }
+    }
+    let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, &self.device.allocator, BufferUsage::VERTEX));
+    let sliced: VkSlicedBuffer = Arc::new(Mutex::new(Vec::new()));
+    {
+      let mut sliced_guard = sliced.lock().unwrap();
+      sliced_guard.push(VkBufferSlice {
+        buffer,
+        slices: sliced.clone(),
+        offset: 0,
+        length: UNIQUE_BUFFER_THRESHOLD
+      });
+    }
+    return get_slice(&sliced, length).expect("Could not find slice in newly allocated buffer");
+  }
 }
