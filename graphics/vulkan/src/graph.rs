@@ -228,6 +228,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     let prepare_semaphore = self.context.get_caches().get_semaphore();
     let cmd_semaphore = self.context.get_caches().get_semaphore();
+    let cmd_fence = self.context.get_caches().get_fence();
     let swapchain_image_index = if self.does_render_to_frame_buffer {
       let (_, index) = self.swapchain.prepare_back_buffer(&prepare_semaphore);
       Some(index)
@@ -256,7 +257,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     } else {
       &[]
     };
-    self.graphics_queue.submit(submission, None, &wait_semaphores, &signal_semaphores);
+    self.graphics_queue.submit(submission, Some(&cmd_fence), &wait_semaphores, &signal_semaphores);
     if swapchain_image_index.is_some() {
       frame_context.track_semaphore(prepare_semaphore);
     }
@@ -264,7 +265,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     if let Some(index) = swapchain_image_index {
       self.graphics_queue.present(&self.swapchain, index, &[&cmd_semaphore]);
       frame_context.track_semaphore(cmd_semaphore);
-      self.context.inc_frame_counter();
+      self.context.inc_frame_counter(cmd_fence);
     }
   }
 }

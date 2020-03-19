@@ -70,14 +70,15 @@ impl VkFence {
   pub fn get_handle(&self) -> &vk::Fence {
     return &self.fence;
   }
-  fn await(&mut self) {
+
+  pub fn await(&self) {
     let vk_device = &self.device.device;
     unsafe {
       vk_device.wait_for_fences(&[self.fence], true, std::u64::MAX);
     }
   }
 
-  fn is_signaled(&self) -> bool {
+  pub fn is_signaled(&self) -> bool {
     let vk_device = &self.device.device;
     return unsafe {
       vk_device.wait_for_fences(&[self.fence], true, 0).is_ok()

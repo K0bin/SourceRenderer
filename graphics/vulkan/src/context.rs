@@ -34,7 +34,9 @@ pub struct VkGraphicsContext {
   transfer_queue: Option<Arc<VkQueue>>,
   threads: ThreadLocal<RefCell<VkThreadContext>>,
   caches: Arc<VkSharedCaches>,
-  frame_counter: AtomicU64
+  max_prepared_frames: u32,
+  frame_counter: AtomicU64,
+  prepared_frames: Mutex<VecDeque<VkFrame>>
 }
 
 /*
@@ -43,7 +45,8 @@ A thread context manages frame contexts for a thread
 pub struct VkThreadContext {
   device: Arc<RawVkDevice>,
   frames: Vec<RefCell<VkFrameContext>>,
-  cpu_frame_counter: u64
+  frame_counter: u64,
+  max_prepared_frames: u32
 }
 
 /*
@@ -55,12 +58,18 @@ pub struct VkFrameContext {
   life_time_trackers: FrameLifeTimeTrackers
 }
 
+pub struct VkFrame {
+  counter: u64,
+  fence: Recyclable<VkFence>
+}
+
 impl VkGraphicsContext {
   pub fn new(device: &Arc<RawVkDevice>,
              graphics_queue: &Arc<VkQueue>,
              compute_queue: &Option<Arc<VkQueue>>,
              transfer_queue: &Option<Arc<VkQueue>>,
-             caches: &Arc<VkSharedCaches>) -> Self {
+             caches: &Arc<VkSharedCaches>,
+             max_prepared_frames: u32) -> Self {
     return VkGraphicsContext {
       device: device.clone(),
       threads: ThreadLocal::new(),
@@ -68,7 +77,9 @@ impl VkGraphicsContext {
       compute_queue: compute_queue.clone(),
       transfer_queue: transfer_queue.clone(),
       caches: caches.clone(),
-      frame_counter: AtomicU64::new(0)
+      max_prepared_frames,
+      frame_counter: AtomicU64::new(0),
+      prepared_frames: Mutex::new(VecDeque::new())
     };
   }
 
@@ -77,13 +88,24 @@ impl VkGraphicsContext {
   }
 
   pub fn get_thread_context(&self) -> RefMut<VkThreadContext> {
-    let mut context = self.threads.get_or(|| RefCell::new(VkThreadContext::new(&self.device, &self.graphics_queue, &self.compute_queue, &self.transfer_queue))).borrow_mut();
+    let mut context = self.threads.get_or(|| RefCell::new(VkThreadContext::new(&self.device, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, self.max_prepared_frames))).borrow_mut();
     context.mark_used(self.frame_counter.load(Ordering::SeqCst));
     context
   }
 
-  pub fn inc_frame_counter(&self) {
-    self.frame_counter.fetch_add(1, Ordering::SeqCst);
+  pub fn inc_frame_counter(&self, fence: Recyclable<VkFence>) {
+    let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst);
+    let mut guard = self.prepared_frames.lock().unwrap();
+    if guard.len() >= self.max_prepared_frames as usize {
+      if let Some(frame) = guard.pop_back() {
+        frame.fence.await();
+        frame.fence.reset();
+      }
+    }
+    guard.push_back(VkFrame {
+      counter,
+      fence
+    });
   }
 
   pub fn get_frame_counter(&self) -> u64 {
@@ -92,29 +114,34 @@ impl VkGraphicsContext {
 }
 
 impl VkThreadContext {
-  fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, compute_queue: &Option<Arc<VkQueue>>, transfer_queue: &Option<Arc<VkQueue>>) -> Self {
+  fn new(device: &Arc<RawVkDevice>,
+         graphics_queue: &Arc<VkQueue>,
+         compute_queue: &Option<Arc<VkQueue>>,
+         transfer_queue: &Option<Arc<VkQueue>>,
+         max_prepared_frames: u32) -> Self {
     let mut frames: Vec<RefCell<VkFrameContext>> = Vec::new();
-    for i in 0..4 {
+    for i in 0..max_prepared_frames {
       frames.push(RefCell::new(VkFrameContext::new(device, graphics_queue, compute_queue, transfer_queue)))
     }
 
     return VkThreadContext {
       device: device.clone(),
       frames,
-      cpu_frame_counter: 0u64
+      frame_counter: 0u64,
+      max_prepared_frames
     };
   }
 
   fn mark_used(&mut self, frame: u64) {
-    if frame > self.cpu_frame_counter && frame >= self.frames.len() as u64 {
+    if frame > self.frame_counter && frame >= self.frames.len() as u64 {
       let mut frame_ref = self.frames[(frame as usize - (self.frames.len() - 1)) % self.frames.len()].borrow_mut();
       frame_ref.reset();
-      self.cpu_frame_counter = frame;
+      self.frame_counter = frame;
     }
   }
 
   pub fn get_frame_context(&self) -> RefMut<VkFrameContext> {
-    self.frames[self.cpu_frame_counter as usize % self.frames.len()].borrow_mut()
+    self.frames[self.frame_counter as usize % self.frames.len()].borrow_mut()
   }
 }
 

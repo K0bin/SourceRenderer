@@ -83,7 +83,7 @@ impl VkDevice {
       Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &caches))
     });
 
-    let context = Arc::new(VkGraphicsContext::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &caches));
+    let context = Arc::new(VkGraphicsContext::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &caches, 1));
 
     return VkDevice {
       device: raw.clone(),
