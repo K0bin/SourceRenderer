@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate bitflags;
-#[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_queue;
 
 pub mod graphics;
 pub mod platform;

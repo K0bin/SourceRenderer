@@ -9,6 +9,7 @@ extern crate bitflags;
 extern crate thread_local;
 extern crate crossbeam_channel;
 extern crate crossbeam_queue;
+extern crate spirv_cross;
 
 pub use self::instance::VkInstance;
 pub use self::adapter::VkAdapter;

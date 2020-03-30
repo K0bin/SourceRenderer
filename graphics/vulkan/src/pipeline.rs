@@ -1,8 +1,10 @@
 use std::sync::Arc;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 
 use ash::vk;
 use ash::version::DeviceV1_0;
+
+use spirv_cross::{spirv, glsl, ErrorCode};
 
 use sourcerenderer_core::graphics::InputRate;
 use sourcerenderer_core::graphics::PipelineInfo;
@@ -30,6 +32,9 @@ use crate::format::format_to_vk;
 use crate::VkBackend;
 use std::hash::{Hasher, Hash};
 use VkRenderPass;
+use spirv_cross::spirv::Decoration;
+use ash::vk::ShaderStageFlags;
+use std::collections::HashMap;
 
 pub fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
   return match input_rate {
@@ -41,7 +46,8 @@ pub fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
 pub struct VkShader {
   shader_type: ShaderType,
   shader_module: vk::ShaderModule,
-  device: Arc<RawVkDevice>
+  device: Arc<RawVkDevice>,
+  descriptor_set_bindings: HashMap<u32, Vec<vk::DescriptorSetLayoutBinding>>
 }
 
 impl PartialEq for VkShader {
@@ -59,7 +65,7 @@ impl Hash for VkShader {
 }
 
 impl VkShader {
-  pub fn new(device: &Arc<RawVkDevice>, shader_type: ShaderType, bytecode: &Vec<u8>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, shader_type: ShaderType, bytecode: &[u8]) -> Self {
     let create_info = vk::ShaderModuleCreateInfo {
       code_size: bytecode.len(),
       p_code: bytecode.as_ptr() as *const u32,
@@ -68,10 +74,52 @@ impl VkShader {
     let vk_device = &device.device;
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
 
+    println!("Bytecode length: {}", bytecode.len());
+
+    let mut module = spirv::Module::from_words(unsafe { std::slice::from_raw_parts(bytecode.as_ptr() as *const u32, bytecode.len() / std::mem::size_of::<u32>()) });
+    let ast = spirv::Ast::<glsl::Target>::parse(&module).expect("Failed to parse shader with SPIR-V Cross");
+    let resources = ast.get_shader_resources().expect("Failed to get resources");
+
+    let mut sets: HashMap<u32, Vec<vk::DescriptorSetLayoutBinding>> = HashMap::new();
+    for resource in resources.sampled_images {
+      let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
+      let mut set = sets.entry(set_index).or_insert(Vec::new());
+      set.push(vk::DescriptorSetLayoutBinding {
+        binding: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+        descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+        descriptor_count: 1,
+        stage_flags: shader_type_to_vk(shader_type), // TODO: determine properly
+        p_immutable_samplers: std::ptr::null()
+      });
+    }
+    for resource in resources.subpass_inputs {
+      let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
+      let mut set = sets.entry(set_index).or_insert(Vec::new());
+      set.push(vk::DescriptorSetLayoutBinding {
+        binding: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+        descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+        descriptor_count: 1,
+        stage_flags: vk::ShaderStageFlags::FRAGMENT, // TODO: determine properly
+        p_immutable_samplers: std::ptr::null()
+      });
+    }
+    for resource in resources.uniform_buffers {
+      let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
+      let mut set = sets.entry(set_index).or_insert(Vec::new());
+      set.push(vk::DescriptorSetLayoutBinding {
+        binding: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+        descriptor_count: 1,
+        stage_flags: vk::ShaderStageFlags::FRAGMENT, // TODO: determine properly
+        p_immutable_samplers: std::ptr::null()
+      });
+    }
+
     return VkShader {
       shader_type,
       shader_module,
-      device: device.clone()
+      device: device.clone(),
+      descriptor_set_bindings: sets
     };
   }
 
@@ -219,222 +267,280 @@ pub struct VkPipelineInfo<'a> {
 impl VkPipeline {
   pub fn new(device: &Arc<RawVkDevice>, info: &VkPipelineInfo) -> Self {
     let vk_device = &device.device;
+    let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
+    let mut descriptor_set_bindings: HashMap<u32, Vec<vk::DescriptorSetLayoutBinding>> = HashMap::new();
+
+    let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
+
+    {
+      let shader = info.info.vs.clone();
+      let shader_stage = vk::PipelineShaderStageCreateInfo {
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const i8,
+        stage: shader_type_to_vk(shader.get_shader_type()),
+        ..Default::default()
+      };
+      shader_stages.push(shader_stage);
+      for shader_set in &shader.descriptor_set_bindings {
+        let mut set = descriptor_set_bindings
+          .entry(*shader_set.0)
+          .or_insert(Vec::new());
+        for binding in shader_set.1 {
+          set.push(binding.clone());
+        }
+      }
+    }
+
+    if let Some(shader) = info.info.fs.clone() {
+      let shader_stage = vk::PipelineShaderStageCreateInfo {
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const i8,
+        stage: shader_type_to_vk(shader.get_shader_type()),
+        ..Default::default()
+      };
+      shader_stages.push(shader_stage);
+      for shader_set in &shader.descriptor_set_bindings {
+        let mut set = descriptor_set_bindings
+          .entry(*shader_set.0)
+          .or_insert(Vec::new());
+        for binding in shader_set.1 {
+          set.push(binding.clone());
+          println!("Found resource: binding: {}", binding.binding);
+        }
+      }
+    }
+
+    if let Some(shader) = info.info.gs.clone() {
+      let shader_stage = vk::PipelineShaderStageCreateInfo {
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const i8,
+        stage: shader_type_to_vk(shader.get_shader_type()),
+        ..Default::default()
+      };
+      shader_stages.push(shader_stage);
+      for shader_set in &shader.descriptor_set_bindings {
+        let mut set = descriptor_set_bindings
+          .entry(*shader_set.0)
+          .or_insert(Vec::new());
+        for binding in shader_set.1 {
+          set.push(binding.clone());
+        }
+      }
+    }
+
+    if let Some(shader) = info.info.tes.clone() {
+      let shader_stage = vk::PipelineShaderStageCreateInfo {
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const i8,
+        stage: shader_type_to_vk(shader.get_shader_type()),
+        ..Default::default()
+      };
+      shader_stages.push(shader_stage);
+      for shader_set in &shader.descriptor_set_bindings {
+        let mut set = descriptor_set_bindings
+          .entry(*shader_set.0)
+          .or_insert(Vec::new());
+        for binding in shader_set.1 {
+          set.push(binding.clone());
+        }
+      }
+    }
+
+    if let Some(shader) = info.info.tcs.clone() {
+      let shader_stage = vk::PipelineShaderStageCreateInfo {
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const i8,
+        stage: shader_type_to_vk(shader.get_shader_type()),
+        ..Default::default()
+      };
+      shader_stages.push(shader_stage);
+      for shader_set in &shader.descriptor_set_bindings {
+        let mut set = descriptor_set_bindings
+          .entry(*shader_set.0)
+          .or_insert(Vec::new());
+        for binding in shader_set.1 {
+          set.push(binding.clone());
+        }
+      }
+    }
+
+    let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
+    let mut binding_descriptions: Vec<vk::VertexInputBindingDescription> = Vec::new();
+    for element in &info.info.vertex_layout.shader_inputs {
+      attribute_descriptions.push(vk::VertexInputAttributeDescription {
+        location: element.location_vk_mtl,
+        binding: element.input_assembler_binding,
+        format: format_to_vk(element.format),
+        offset: element.offset as u32
+      });
+    }
+
+    for element in &info.info.vertex_layout.input_assembler {
+      binding_descriptions.push(vk::VertexInputBindingDescription {
+        binding: element.binding,
+        stride: element.stride as u32,
+        input_rate: input_rate_to_vk(element.input_rate)
+      });
+    }
+
+    let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo {
+      vertex_binding_description_count: binding_descriptions.len() as u32,
+      p_vertex_binding_descriptions: binding_descriptions.as_ptr(),
+      vertex_attribute_description_count: attribute_descriptions.len() as u32,
+      p_vertex_attribute_descriptions: attribute_descriptions.as_ptr(),
+      ..Default::default()
+    };
+
+    let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo {
+      topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+      primitive_restart_enable: false as u32,
+      ..Default::default()
+    };
+
+    let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo {
+      polygon_mode: match &info.info.rasterizer.fill_mode {
+        FillMode::Fill => vk::PolygonMode::FILL,
+        FillMode::Line => vk::PolygonMode::LINE
+      },
+      cull_mode: match &info.info.rasterizer.cull_mode {
+        CullMode::Back => vk::CullModeFlags::BACK,
+        CullMode::Front => vk::CullModeFlags::FRONT,
+        CullMode::None => vk::CullModeFlags::NONE
+      },
+      front_face: match &info.info.rasterizer.front_face {
+        FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
+        FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE
+      },
+      line_width: 1.0f32,
+      ..Default::default()
+    };
+
+    let multisample_create_info = vk::PipelineMultisampleStateCreateInfo {
+      rasterization_samples: samples_to_vk(info.info.rasterizer.sample_count),
+      alpha_to_coverage_enable: info.info.blend.alpha_to_coverage_enabled as u32,
+      ..Default::default()
+    };
+
+    let depth_stencil_create_info = vk::PipelineDepthStencilStateCreateInfo {
+      depth_test_enable: info.info.depth_stencil.depth_test_enabled as u32,
+      depth_write_enable: info.info.depth_stencil.depth_write_enabled as u32,
+      depth_compare_op: compare_func_to_vk(info.info.depth_stencil.depth_func),
+      stencil_test_enable: info.info.depth_stencil.stencil_enable as u32,
+      front: vk::StencilOpState {
+        pass_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.pass_op),
+        fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.fail_op),
+        depth_fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.depth_fail_op),
+        compare_op: compare_func_to_vk(info.info.depth_stencil.stencil_front.func),
+        write_mask: info.info.depth_stencil.stencil_write_mask as u32,
+        compare_mask: info.info.depth_stencil.stencil_read_mask as u32,
+        reference: 0u32
+      },
+      back: vk::StencilOpState {
+        pass_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.pass_op),
+        fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.fail_op),
+        depth_fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.depth_fail_op),
+        compare_op: compare_func_to_vk(info.info.depth_stencil.stencil_back.func),
+        write_mask: info.info.depth_stencil.stencil_write_mask as u32,
+        compare_mask: info.info.depth_stencil.stencil_read_mask as u32,
+        reference: 0u32
+      },
+      ..Default::default()
+    };
+
+    let mut blend_attachments: Vec<vk::PipelineColorBlendAttachmentState> = Vec::new();
+    for blend in &info.info.blend.attachments {
+      blend_attachments.push(vk::PipelineColorBlendAttachmentState {
+        blend_enable: blend.blend_enabled as u32,
+        src_color_blend_factor: blend_factor_to_vk(blend.src_color_blend_factor),
+        dst_color_blend_factor: blend_factor_to_vk(blend.dst_color_blend_factor),
+        color_blend_op: blend_op_to_vk(blend.color_blend_op),
+        src_alpha_blend_factor: blend_factor_to_vk(blend.src_alpha_blend_factor),
+        dst_alpha_blend_factor: blend_factor_to_vk(blend.dst_alpha_blend_factor),
+        alpha_blend_op: blend_op_to_vk(blend.alpha_blend_op),
+        color_write_mask: color_components_to_vk(blend.write_mask)
+      });
+    }
+    let blend_create_info = vk::PipelineColorBlendStateCreateInfo {
+      logic_op_enable: info.info.blend.logic_op_enabled as u32,
+      logic_op: logic_op_to_vk(info.info.blend.logic_op),
+      p_attachments: blend_attachments.as_ptr(),
+      attachment_count: blend_attachments.len() as u32,
+      blend_constants: info.info.blend.constants,
+      ..Default::default()
+    };
+
+    let dynamic_state = [ vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR, vk::DynamicState::STENCIL_REFERENCE ];
+    let dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo {
+      p_dynamic_states: dynamic_state.as_ptr(),
+      dynamic_state_count: dynamic_state.len() as u32,
+      ..Default::default()
+    };
+
+    let mut descriptor_set_layouts: Vec<vk::DescriptorSetLayout> = Vec::new();
+    for descriptor_set_layout_bindings in descriptor_set_bindings {
+      let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo {
+        p_bindings: descriptor_set_layout_bindings.1.as_ptr(),
+        binding_count: descriptor_set_layout_bindings.1.len() as u32,
+        flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+        ..Default::default()
+      };
+      let descriptor_set_layout = unsafe { vk_device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }.unwrap();
+      descriptor_set_layouts.push(descriptor_set_layout);
+    }
+
+    let layout_create_info = vk::PipelineLayoutCreateInfo {
+      p_set_layouts: descriptor_set_layouts.as_ptr(),
+      set_layout_count: descriptor_set_layouts.len() as u32,
+      flags: vk::PipelineLayoutCreateFlags::empty(),
+      ..Default::default()
+    };
+    let layout = unsafe { vk_device.create_pipeline_layout(&layout_create_info, None).unwrap() };
+
+    let viewport_info = vk::PipelineViewportStateCreateInfo {
+      viewport_count: 1,
+      p_viewports: &vk::Viewport {
+        x: 0f32,
+        y: 0f32,
+        width: 0f32,
+        height: 0f32,
+        min_depth: 0f32,
+        max_depth: 1f32
+      },
+      scissor_count: 1,
+      p_scissors: &vk::Rect2D {
+        offset: vk::Offset2D {
+          x: 0i32,
+          y: 0i32
+        },
+        extent: vk::Extent2D {
+          width: 0u32,
+          height: 0u32
+        }
+      },
+      ..Default::default()
+    };
+
+    let pipeline_create_info = vk::GraphicsPipelineCreateInfo {
+      stage_count: shader_stages.len() as u32,
+      p_stages: shader_stages.as_ptr(),
+      p_vertex_input_state: &vertex_input_create_info,
+      p_input_assembly_state: &input_assembly_info,
+      p_rasterization_state: &rasterizer_create_info,
+      p_multisample_state: &multisample_create_info,
+      p_depth_stencil_state: &depth_stencil_create_info,
+      p_color_blend_state: &blend_create_info,
+      p_viewport_state: &viewport_info,
+      p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
+      p_dynamic_state: &dynamic_state_create_info,
+      layout,
+      render_pass: *info.render_pass.get_handle(),
+      subpass: info.sub_pass,
+      base_pipeline_handle: vk::Pipeline::null(),
+      base_pipeline_index: 0i32,
+      ..Default::default()
+    };
 
     let pipeline = unsafe {
-      let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
-
-      {
-        let shader = info.info.vs.clone();
-        let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader.get_shader_module(),
-          p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader.get_shader_type()),
-          ..Default::default()
-        };
-        shader_stages.push(shader_stage);
-      }
-
-      if let Some(shader) = info.info.fs.clone() {
-        let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader.get_shader_module(),
-          p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader.get_shader_type()),
-          ..Default::default()
-        };
-        shader_stages.push(shader_stage);
-      }
-
-      if let Some(shader) = info.info.gs.clone() {
-        let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader.get_shader_module(),
-          p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader.get_shader_type()),
-          ..Default::default()
-        };
-        shader_stages.push(shader_stage);
-      }
-
-      if let Some(shader) = info.info.tes.clone() {
-        let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader.get_shader_module(),
-          p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader.get_shader_type()),
-          ..Default::default()
-        };
-        shader_stages.push(shader_stage);
-      }
-
-      if let Some(shader) = info.info.tcs.clone() {
-        let shader_stage = vk::PipelineShaderStageCreateInfo {
-          module: shader.get_shader_module(),
-          p_name: SHADER_ENTRY_POINT_NAME.as_ptr() as *const i8,
-          stage: shader_type_to_vk(shader.get_shader_type()),
-          ..Default::default()
-        };
-        shader_stages.push(shader_stage);
-      }
-
-      let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
-      let mut binding_descriptions: Vec<vk::VertexInputBindingDescription> = Vec::new();
-      for element in &info.info.vertex_layout.shader_inputs {
-        attribute_descriptions.push(vk::VertexInputAttributeDescription {
-          location: element.location_vk_mtl,
-          binding: element.input_assembler_binding,
-          format: format_to_vk(element.format),
-          offset: element.offset as u32
-        });
-      }
-
-      for element in &info.info.vertex_layout.input_assembler {
-        binding_descriptions.push(vk::VertexInputBindingDescription {
-          binding: element.binding,
-          stride: element.stride as u32,
-          input_rate: input_rate_to_vk(element.input_rate)
-        });
-      }
-
-      let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo {
-        vertex_binding_description_count: binding_descriptions.len() as u32,
-        p_vertex_binding_descriptions: binding_descriptions.as_ptr(),
-        vertex_attribute_description_count: attribute_descriptions.len() as u32,
-        p_vertex_attribute_descriptions: attribute_descriptions.as_ptr(),
-        ..Default::default()
-      };
-
-      let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo {
-        topology: vk::PrimitiveTopology::TRIANGLE_LIST,
-        primitive_restart_enable: false as u32,
-        ..Default::default()
-      };
-
-      let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo {
-        polygon_mode: match &info.info.rasterizer.fill_mode {
-          FillMode::Fill => vk::PolygonMode::FILL,
-          FillMode::Line => vk::PolygonMode::LINE
-        },
-        cull_mode: match &info.info.rasterizer.cull_mode {
-          CullMode::Back => vk::CullModeFlags::BACK,
-          CullMode::Front => vk::CullModeFlags::FRONT,
-          CullMode::None => vk::CullModeFlags::NONE
-        },
-        front_face: match &info.info.rasterizer.front_face {
-          FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
-          FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE
-        },
-        line_width: 1.0f32,
-        ..Default::default()
-      };
-
-      let multisample_create_info = vk::PipelineMultisampleStateCreateInfo {
-        rasterization_samples: samples_to_vk(info.info.rasterizer.sample_count),
-        alpha_to_coverage_enable: info.info.blend.alpha_to_coverage_enabled as u32,
-        ..Default::default()
-      };
-
-      let depth_stencil_create_info = vk::PipelineDepthStencilStateCreateInfo {
-        depth_test_enable: info.info.depth_stencil.depth_test_enabled as u32,
-        depth_write_enable: info.info.depth_stencil.depth_write_enabled as u32,
-        depth_compare_op: compare_func_to_vk(info.info.depth_stencil.depth_func),
-        stencil_test_enable: info.info.depth_stencil.stencil_enable as u32,
-        front: vk::StencilOpState {
-          pass_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.pass_op),
-          fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.fail_op),
-          depth_fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.depth_fail_op),
-          compare_op: compare_func_to_vk(info.info.depth_stencil.stencil_front.func),
-          write_mask: info.info.depth_stencil.stencil_write_mask as u32,
-          compare_mask: info.info.depth_stencil.stencil_read_mask as u32,
-          reference: 0u32
-        },
-        back: vk::StencilOpState {
-          pass_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.pass_op),
-          fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.fail_op),
-          depth_fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.depth_fail_op),
-          compare_op: compare_func_to_vk(info.info.depth_stencil.stencil_back.func),
-          write_mask: info.info.depth_stencil.stencil_write_mask as u32,
-          compare_mask: info.info.depth_stencil.stencil_read_mask as u32,
-          reference: 0u32
-        },
-        ..Default::default()
-      };
-
-      let mut blend_attachments: Vec<vk::PipelineColorBlendAttachmentState> = Vec::new();
-      for blend in &info.info.blend.attachments {
-        blend_attachments.push(vk::PipelineColorBlendAttachmentState {
-          blend_enable: blend.blend_enabled as u32,
-          src_color_blend_factor: blend_factor_to_vk(blend.src_color_blend_factor),
-          dst_color_blend_factor: blend_factor_to_vk(blend.dst_color_blend_factor),
-          color_blend_op: blend_op_to_vk(blend.color_blend_op),
-          src_alpha_blend_factor: blend_factor_to_vk(blend.src_alpha_blend_factor),
-          dst_alpha_blend_factor: blend_factor_to_vk(blend.dst_alpha_blend_factor),
-          alpha_blend_op: blend_op_to_vk(blend.alpha_blend_op),
-          color_write_mask: color_components_to_vk(blend.write_mask)
-        });
-      }
-      let blend_create_info = vk::PipelineColorBlendStateCreateInfo {
-        logic_op_enable: info.info.blend.logic_op_enabled as u32,
-        logic_op: logic_op_to_vk(info.info.blend.logic_op),
-        p_attachments: blend_attachments.as_ptr(),
-        attachment_count: blend_attachments.len() as u32,
-        blend_constants: info.info.blend.constants,
-        ..Default::default()
-      };
-
-      let dynamic_state = [ vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR, vk::DynamicState::STENCIL_REFERENCE ];
-      let dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo {
-        p_dynamic_states: dynamic_state.as_ptr(),
-        dynamic_state_count: dynamic_state.len() as u32,
-        ..Default::default()
-      };
-
-      let layout_create_info = vk::PipelineLayoutCreateInfo {
-        ..Default::default()
-      };
-      let layout = vk_device.create_pipeline_layout(&layout_create_info, None).unwrap();
-
-      let viewport_info = vk::PipelineViewportStateCreateInfo {
-        viewport_count: 1,
-        p_viewports: &vk::Viewport {
-          x: 0f32,
-          y: 0f32,
-          width: 0f32,
-          height: 0f32,
-          min_depth: 0f32,
-          max_depth: 1f32
-        },
-        scissor_count: 1,
-        p_scissors: &vk::Rect2D {
-          offset: vk::Offset2D {
-            x: 0i32,
-            y: 0i32
-          },
-          extent: vk::Extent2D {
-            width: 0u32,
-            height: 0u32
-          }
-        },
-        ..Default::default()
-      };
-
-      let pipeline_create_info = vk::GraphicsPipelineCreateInfo {
-        stage_count: shader_stages.len() as u32,
-        p_stages: shader_stages.as_ptr(),
-        p_vertex_input_state: &vertex_input_create_info,
-        p_input_assembly_state: &input_assembly_info,
-        p_rasterization_state: &rasterizer_create_info,
-        p_multisample_state: &multisample_create_info,
-        p_depth_stencil_state: &depth_stencil_create_info,
-        p_color_blend_state: &blend_create_info,
-        p_viewport_state: &viewport_info,
-        p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
-        p_dynamic_state: &dynamic_state_create_info,
-        layout,
-        render_pass: *info.render_pass.get_handle(),
-        subpass: info.sub_pass,
-        base_pipeline_handle: vk::Pipeline::null(),
-        base_pipeline_index: 0i32,
-        ..Default::default()
-      };
-
       vk_device.create_graphics_pipelines(vk::PipelineCache::null(), &[ pipeline_create_info ], None).unwrap()[0]
     };
     return VkPipeline {
@@ -450,7 +556,7 @@ impl VkPipeline {
 
 impl Drop for VkPipeline {
   fn drop(&mut self) {
-      println!("drop pipeline");
+    println!("drop pipeline");
     unsafe {
       let vk_device = &self.device.device;
       vk_device.destroy_pipeline(self.pipeline, None);

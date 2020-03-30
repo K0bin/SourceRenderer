@@ -27,7 +27,7 @@ use crate::raw::*;
 use pipeline::VkPipelineInfo;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use context::{VkGraphicsContext, VkSharedCaches};
+use context::{VkGraphicsContext, VkShared};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use buffer::VkBufferSlice;
@@ -38,11 +38,11 @@ pub struct VkCommandPool {
   secondary_buffers: Vec<Box<VkCommandBuffer>>,
   receiver: Receiver<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>,
-  caches: Arc<VkSharedCaches>
+  shared: Arc<VkShared>
 }
 
 impl VkCommandPool {
-  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, caches: &Arc<VkSharedCaches>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>) -> Self {
     let create_info = vk::CommandPoolCreateInfo {
       queue_family_index,
       flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
@@ -57,7 +57,7 @@ impl VkCommandPool {
       secondary_buffers: Vec::new(),
       receiver,
       sender,
-      caches: caches.clone()
+      shared: shared.clone()
     };
   }
 }
@@ -70,7 +70,7 @@ impl CommandPool<VkBackend> for VkCommandPool {
       &mut self.secondary_buffers
     };
 
-    let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, &self.caches)));
+    let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, &self.shared)));
     buffer.begin();
     return VkCommandBufferRecorder::new(buffer, self.sender.clone());
   }
@@ -114,14 +114,14 @@ struct VkCommandBuffer {
   device: Arc<RawVkDevice>,
   state: VkCommandBufferState,
   command_buffer_type: CommandBufferType,
-  caches: Arc<VkSharedCaches>,
+  shared: Arc<VkShared>,
   render_pass: Option<Arc<VkRenderPass>>,
   sub_pass: u32,
   trackers: VkLifetimeTrackers
 }
 
 impl VkCommandBuffer {
-  fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, caches: &Arc<VkSharedCaches>) -> Self {
+  fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, shared: &Arc<VkShared>) -> Self {
     let buffers_create_info = vk::CommandBufferAllocateInfo {
       command_pool: ***pool,
       level: if command_buffer_type == CommandBufferType::PRIMARY { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
@@ -136,7 +136,7 @@ impl VkCommandBuffer {
       command_buffer_type,
       render_pass: None,
       sub_pass: 0u32,
-      caches: caches.clone(),
+      shared: shared.clone(),
       state: VkCommandBufferState::Ready,
       trackers: VkLifetimeTrackers {
         buffers: Vec::new(),
@@ -199,7 +199,7 @@ impl VkCommandBuffer {
     let hash = hasher.finish();
 
     {
-      let lock = self.caches.get_pipelines().read().unwrap();
+      let lock = self.shared.get_pipelines().read().unwrap();
       let cached_pipeline = lock.get(&hash);
       if let Some(pipeline) = cached_pipeline {
         let vk_pipeline = *pipeline.get_handle();
@@ -210,7 +210,7 @@ impl VkCommandBuffer {
       }
     }
     let pipeline = VkPipeline::new(&self.device, &info);
-    let mut lock = self.caches.get_pipelines().write().unwrap();
+    let mut lock = self.shared.get_pipelines().write().unwrap();
     lock.insert(hash, pipeline);
     let stored_pipeline = lock.get(&hash).unwrap();
     let vk_pipeline = *stored_pipeline.get_handle();
@@ -270,6 +270,14 @@ impl VkCommandBuffer {
     }
   }
 
+  fn set_index_buffer(&mut self, index_buffer: Arc<VkBufferSlice>) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    self.trackers.buffers.push(index_buffer.clone());
+    unsafe {
+      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), index_buffer.get_offset_and_length().0 as u64, vk::IndexType::UINT32);
+    }
+  }
+
   fn set_viewports(&mut self, viewports: &[ Viewport ]) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     unsafe {
@@ -309,6 +317,13 @@ impl VkCommandBuffer {
       self.device.cmd_draw(self.buffer, vertices, 1, offset, 0);
     }
   }
+
+  fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    unsafe {
+      self.device.cmd_draw_indexed(self.buffer, indices, instances, first_index, vertex_offset, first_instance);
+    }
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -320,20 +335,17 @@ impl Drop for VkCommandBuffer {
 }
 
 pub struct VkCommandBufferRecorder {
-  item: MaybeUninit<Box<VkCommandBuffer>>,
+  item: Option<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>,
-  is_submitted: bool,
   phantom: PhantomData<*const u8>
 }
 
 impl Drop for VkCommandBufferRecorder {
   fn drop(&mut self) {
-    if self.is_submitted {
+    if self.item.is_none() {
       return;
     }
-    let item = unsafe {
-      std::mem::replace(&mut self.item, MaybeUninit::uninit()).assume_init()
-    };
+    let item = std::mem::replace(&mut self.item, Option::None).unwrap();
     self.sender.send(item);
   }
 }
@@ -341,60 +353,63 @@ impl Drop for VkCommandBufferRecorder {
 impl VkCommandBufferRecorder {
   fn new(item: Box<VkCommandBuffer>, sender: Sender<Box<VkCommandBuffer>>) -> Self {
     Self {
-      item: MaybeUninit::new(item),
+      item: Some(item),
       sender,
-      is_submitted: false,
       phantom: PhantomData
     }
   }
 
   #[inline(always)]
   pub fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, recording_mode: RenderpassRecordingMode) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.begin_render_pass(render_pass, frame_buffer, recording_mode);
+    self.item.as_mut().unwrap().begin_render_pass(render_pass, frame_buffer, recording_mode);
   }
 
   #[inline(always)]
   pub fn end_render_pass(&mut self) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.end_render_pass();
+    self.item.as_mut().unwrap().end_render_pass();
   }
 }
 
 impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   fn finish(self) -> VkCommandBufferSubmission {
-    assert_eq!(unsafe { (*(self.item.as_ptr())).state }, VkCommandBufferState::Recording);
+    assert_eq!(self.item.as_ref().unwrap().state, VkCommandBufferState::Recording);
     let mut mut_self = self;
-    unsafe { (*(mut_self.item.as_mut_ptr())).as_mut() }.end();
-    mut_self.is_submitted = true;
-    let mut item = unsafe {
-      std::mem::replace(&mut mut_self.item, MaybeUninit::uninit()).assume_init()
-    };
-    item.state = VkCommandBufferState::Finished;
+    let mut item = std::mem::replace(&mut mut_self.item, None).unwrap();
+    item.end();
     VkCommandBufferSubmission::new(item, mut_self.sender.clone())
   }
 
   #[inline(always)]
   fn set_pipeline(&mut self, pipeline: &PipelineInfo<VkBackend>) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.set_pipeline(pipeline);
+    self.item.as_mut().unwrap().set_pipeline(pipeline);
   }
 
   #[inline(always)]
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBufferSlice>) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.set_vertex_buffer(vertex_buffer)
+    self.item.as_mut().unwrap().set_vertex_buffer(vertex_buffer)
+  }
+
+  #[inline(always)]
+  fn set_index_buffer(&mut self, index_buffer: Arc<VkBufferSlice>) {
+    self.item.as_mut().unwrap().set_index_buffer(index_buffer)
   }
 
   #[inline(always)]
   fn set_viewports(&mut self, viewports: &[Viewport]) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.set_viewports(viewports);
+    self.item.as_mut().unwrap().set_viewports(viewports);
   }
 
   #[inline(always)]
   fn set_scissors(&mut self, scissors: &[Scissor]) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.set_scissors(scissors);
+    self.item.as_mut().unwrap().set_scissors(scissors);
   }
 
   #[inline(always)]
   fn draw(&mut self, vertices: u32, offset: u32) {
-    unsafe { (*(self.item.as_mut_ptr())).as_mut() }.draw(vertices, offset);
+    self.item.as_mut().unwrap().draw(vertices, offset);
+  }
+  fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
+    self.item.as_mut().unwrap().draw_indexed(instances, first_instance, indices, first_index, vertex_offset);
   }
 }
 
@@ -420,5 +435,45 @@ impl VkCommandBufferSubmission {
 
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
     &self.item.buffer
+  }
+}
+
+pub struct VkTransfer {
+  pool: Arc<RawVkCommandPool>,
+  receiver: Receiver<Box<VkCommandBuffer>>,
+  sender: Sender<Box<VkCommandBuffer>>,
+  current_buffer: VkCommandBufferTransferRecorder
+}
+
+pub struct VkCommandBufferTransferRecorder {
+  item: Option<Box<VkCommandBuffer>>,
+  sender: Sender<Box<VkCommandBuffer>>,
+  phantom: PhantomData<*const u8>
+}
+
+impl VkTransfer {
+  pub fn new(device: &Arc<RawVkDevice>, transfer_queue_family_index: u32, shared: &Arc<VkShared>) -> Self {
+    let pool_info = vk::CommandPoolCreateInfo {
+      queue_family_index: transfer_queue_family_index,
+      flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER | vk::CommandPoolCreateFlags::TRANSIENT,
+      ..Default::default()
+    };
+    let (sender, receiver) = channel();
+    let pool = Arc::new(RawVkCommandPool::new(device, &pool_info).unwrap());
+    let buffer = VkCommandBufferTransferRecorder {
+      item: Some(Box::new(VkCommandBuffer::new(device, &pool, CommandBufferType::PRIMARY, shared))),
+      sender: sender.clone(),
+      phantom: PhantomData
+    };
+    Self {
+      pool,
+      receiver,
+      sender,
+      current_buffer: buffer
+    }
+  }
+
+  pub fn get_command_buffer(&mut self) -> &mut VkCommandBufferTransferRecorder {
+    &mut self.current_buffer
   }
 }

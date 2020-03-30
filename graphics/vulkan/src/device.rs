@@ -23,7 +23,7 @@ use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::graph::VkRenderGraph;
 use crate::swapchain::VkSwapchain;
-use context::{VkGraphicsContext, VkSharedCaches};
+use context::{VkGraphicsContext, VkShared};
 use raw::{RawVkDevice, RawVkInstance};
 use std::collections::HashMap;
 use pipeline::VkPipelineInfo;
@@ -66,24 +66,24 @@ impl VkDevice {
       instance: instance.clone(),
     });
 
-    let caches = Arc::new(VkSharedCaches::new(&raw));
+    let shared = Arc::new(VkShared::new(&raw));
 
     let graphics_queue = {
       let vk_queue = unsafe { raw.device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
-      Arc::new(VkQueue::new(graphics_queue_info, vk_queue, &raw, &caches))
+      Arc::new(VkQueue::new(graphics_queue_info, vk_queue, &raw, &shared))
     };
 
     let compute_queue = compute_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &caches))
+      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
     });
 
     let transfer_queue = transfer_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &caches))
+      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
     });
 
-    let context = Arc::new(VkGraphicsContext::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &caches, 1));
+    let context = Arc::new(VkGraphicsContext::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 1));
 
     return VkDevice {
       device: raw.clone(),
@@ -123,7 +123,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn upload_data<T>(&self, data: T) -> <VkBackend as Backend>::Buffer {
-    let slice = self.context.get_caches().buffers.get_slice(MemoryUsage::CpuToGpu, std::mem::size_of::<T>());
+    let slice = self.context.get_shared().buffers.get_slice(MemoryUsage::CpuToGpu, std::mem::size_of::<T>());
     {
       let mut map = slice.map().expect("Mapping failed");
       std::mem::replace::<T>(map.get_data(), data);

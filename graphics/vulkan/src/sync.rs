@@ -5,6 +5,9 @@ use ash::version::DeviceV1_0;
 
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Poll, Context};
 
 pub struct VkSemaphore {
   semaphore: vk::Semaphore,
@@ -83,5 +86,18 @@ impl VkFence {
     return unsafe {
       vk_device.wait_for_fences(&[self.fence], true, 0).is_ok()
     };
+  }
+}
+
+impl Future for VkFence {
+  type Output = ();
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let result = unsafe { self.device.wait_for_fences(&[self.fence], true, 0u64) };
+    if result.is_ok() {
+      Poll::Ready(())
+    } else {
+      Poll::Pending
+    }
   }
 }

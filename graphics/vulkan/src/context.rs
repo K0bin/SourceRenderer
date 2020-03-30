@@ -19,8 +19,9 @@ use sourcerenderer_core::pool::{Pool, Recyclable};
 use ::{VkSemaphore, VkFence};
 use ash::prelude::VkResult;
 use buffer::BufferAllocator;
+use command::VkTransfer;
 
-pub struct VkSharedCaches {
+pub struct VkShared {
   pub pipelines: RwLock<HashMap<u64, VkPipeline>>,
   pub semaphores: Pool<VkSemaphore>,
   pub fences: Pool<VkFence>,
@@ -33,7 +34,7 @@ pub struct VkGraphicsContext {
   compute_queue: Option<Arc<VkQueue>>,
   transfer_queue: Option<Arc<VkQueue>>,
   threads: ThreadLocal<RefCell<VkThreadContext>>,
-  caches: Arc<VkSharedCaches>,
+  shared: Arc<VkShared>,
   max_prepared_frames: u32,
   frame_counter: AtomicU64,
   prepared_frames: Mutex<VecDeque<VkFrame>>
@@ -68,7 +69,7 @@ impl VkGraphicsContext {
              graphics_queue: &Arc<VkQueue>,
              compute_queue: &Option<Arc<VkQueue>>,
              transfer_queue: &Option<Arc<VkQueue>>,
-             caches: &Arc<VkSharedCaches>,
+             shared: &Arc<VkShared>,
              max_prepared_frames: u32) -> Self {
     return VkGraphicsContext {
       device: device.clone(),
@@ -76,15 +77,15 @@ impl VkGraphicsContext {
       graphics_queue: graphics_queue.clone(),
       compute_queue: compute_queue.clone(),
       transfer_queue: transfer_queue.clone(),
-      caches: caches.clone(),
+      shared: shared.clone(),
       max_prepared_frames,
       frame_counter: AtomicU64::new(0),
       prepared_frames: Mutex::new(VecDeque::new())
     };
   }
 
-  pub fn get_caches(&self) -> &Arc<VkSharedCaches> {
-    &self.caches
+  pub fn get_shared(&self) -> &Arc<VkShared> {
+    &self.shared
   }
 
   pub fn get_thread_context(&self) -> RefMut<VkThreadContext> {
@@ -179,7 +180,7 @@ impl VkFrameContext {
   }
 }
 
-impl VkSharedCaches {
+impl VkShared {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
     let semaphores_device_clone = device.clone();
     let fences_device_clone = device.clone();

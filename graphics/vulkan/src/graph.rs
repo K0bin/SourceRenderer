@@ -226,9 +226,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let thread_context = self.context.get_thread_context();
     let mut frame_context = thread_context.get_frame_context();
 
-    let prepare_semaphore = self.context.get_caches().get_semaphore();
-    let cmd_semaphore = self.context.get_caches().get_semaphore();
-    let cmd_fence = self.context.get_caches().get_fence();
+    let prepare_semaphore = self.context.get_shared().get_semaphore();
+    let cmd_semaphore = self.context.get_shared().get_semaphore();
+    let cmd_fence = self.context.get_shared().get_fence();
     let swapchain_image_index = if self.does_render_to_frame_buffer {
       let (_, index) = self.swapchain.prepare_back_buffer(&prepare_semaphore);
       Some(index)

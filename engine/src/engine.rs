@@ -32,7 +32,8 @@ pub struct Engine<P: Platform> {
 
 struct Vertex {
   pub position: Vec3,
-  pub color: Vec3
+  pub color: Vec3,
+  pub uv: Vec2
 }
 
 impl<P: Platform> Engine<P> {
@@ -101,18 +102,22 @@ impl<P: Platform> Engine<P> {
       Vertex {
         position: Vec3 {
           x: -1.0f32,
-          y: 1.0f32,
+          y: -1.0f32,
           z: 0.0f32,
         },
         color: Vec3 {
           x: 1.0f32,
           y: 0.0f32,
           z: 0.0f32,
+        },
+        uv: Vec2 {
+          x: 0.0f32,
+          y: 0.0f32
         }
       },
       Vertex {
         position: Vec3 {
-          x: 0.0f32,
+          x: 1.0f32,
           y: -1.0f32,
           z: 0.0f32,
         },
@@ -120,6 +125,10 @@ impl<P: Platform> Engine<P> {
           x: 0.0f32,
           y: 1.0f32,
           z: 0.0f32,
+        },
+        uv: Vec2 {
+          x: 0.0f32,
+          y: 0.0f32
         }
       },
       Vertex {
@@ -132,9 +141,30 @@ impl<P: Platform> Engine<P> {
           x: 0.0f32,
           y: 0.0f32,
           z: 1.0f32,
+        },
+        uv: Vec2 {
+          x: 0.0f32,
+          y: 0.0f32
+        }
+      },
+      Vertex {
+        position: Vec3 {
+          x: -1.0f32,
+          y: 1.0f32,
+          z: 0.0f32,
+        },
+        color: Vec3 {
+          x: 1.0f32,
+          y: 1.0f32,
+          z: 1.0f32,
+        },
+        uv: Vec2 {
+          x: 0.0f32,
+          y: 0.0f32
         }
       }
     ];
+    let indices = [0u32, 1u32, 2u32, 2u32, 3u32, 0u32];
     /*let ptr = buffer.map().expect("failed to map buffer");
     unsafe {
       std::ptr::copy(triangle.as_ptr(), ptr as *mut Vertex, 3);
@@ -147,17 +177,18 @@ impl<P: Platform> Engine<P> {
       std::mem::replace(data, triangle);
     }*/
 
-    let buffer = Arc::new(device.upload_data(triangle));
+    let vertex_buffer = Arc::new(device.upload_data(triangle));
+    let index_buffer = Arc::new(device.upload_data(indices));
 
     let vertex_shader = {
-      let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.vert.spv"))).unwrap();
+      let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::VertexShader, &bytes)
     };
 
     let fragment_shader = {
-      let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("core")).join(Path::new("shaders")).join(Path::new("simple.frag.spv"))).unwrap();
+      let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.frag.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::FragmentShader, &bytes)
@@ -173,7 +204,7 @@ impl<P: Platform> Engine<P> {
         input_assembler: vec![
           InputAssemblerElement {
             binding: 0,
-            stride: 24,
+            stride: 32,
             input_rate: InputRate::PerVertex
           }
         ],
@@ -193,6 +224,14 @@ impl<P: Platform> Engine<P> {
             semantic_index_d3d: 0,
             offset: 12,
             format: Format::RGB32Float
+          },
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 2,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 24,
+            format: Format::RG32Float
           }
         ]
       },
@@ -231,7 +270,8 @@ impl<P: Platform> Engine<P> {
       inputs: Vec::new(),
       render: Arc::new(move |command_buffer| {
         command_buffer.set_pipeline(&pipeline_info);
-        command_buffer.set_vertex_buffer(buffer.clone());
+        command_buffer.set_vertex_buffer(vertex_buffer.clone());
+        command_buffer.set_index_buffer(index_buffer.clone());
         command_buffer.set_viewports(&[Viewport {
           position: Vec2 { x: 0.0f32, y: 0.0f32 },
           extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
@@ -243,6 +283,7 @@ impl<P: Platform> Engine<P> {
           extent: Vec2UI { x: 9999, y: 9999 },
         }]);
         command_buffer.draw(6, 0);
+        command_buffer.draw_indexed(1, 0, 6, 0, 0);
 
         0
       })

@@ -7,7 +7,6 @@ fn main() {
   let pkg_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
   let shader_dir = Path::join(Path::new(&pkg_dir), Path::new("shaders"));
 
-  File::create(Path::join(&shader_dir, Path::new("test")));
   let contents = read_dir(&shader_dir).expect("Shader directory couldn't be opened.");
   contents
     .filter(|file_result| file_result.is_ok())

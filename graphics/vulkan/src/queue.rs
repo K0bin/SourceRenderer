@@ -18,7 +18,7 @@ use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
-use context::{VkGraphicsContext, VkSharedCaches};
+use context::{VkGraphicsContext, VkShared};
 use VkCommandBufferSubmission;
 
 #[derive(Clone, Debug, Copy)]
@@ -32,16 +32,16 @@ pub struct VkQueue {
   info: VkQueueInfo,
   queue: Mutex<vk::Queue>,
   device: Arc<RawVkDevice>,
-  caches: Arc<VkSharedCaches>
+  shared: Arc<VkShared>
 }
 
 impl VkQueue {
-  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, caches: &Arc<VkSharedCaches>) -> Self {
+  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, shared: &Arc<VkShared>) -> Self {
     return VkQueue {
       info,
       queue: Mutex::new(queue),
       device: device.clone(),
-      caches: caches.clone()
+      shared: shared.clone()
     };
   }
 
@@ -50,7 +50,7 @@ impl VkQueue {
   }
 
   pub fn create_command_pool(&self) -> VkCommandPool {
-    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.caches);
+    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.shared);
   }
 
   pub fn supports_presentation(&self) -> bool {

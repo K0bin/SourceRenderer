@@ -13,6 +13,7 @@ use std::sync::atomic::Ordering;
 use sourcerenderer_core::pool::Recyclable;
 use std::process::exit;
 use std::collections::HashMap;
+use ash::vk::BufferUsageFlags;
 
 pub struct VkBuffer {
   buffer: vk::Buffer,
@@ -29,16 +30,19 @@ unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, size: usize, memory_usage: MemoryUsage, allocator: &vk_mem::Allocator, usage: BufferUsage) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, size: usize, memory_usage: MemoryUsage, allocator: &vk_mem::Allocator) -> Self {
     let buffer_info = vk::BufferCreateInfo {
       size: size as u64,
-      usage: buffer_usage_to_vk(usage),
+      usage: BufferUsageFlags::INDEX_BUFFER
+        | BufferUsageFlags::VERTEX_BUFFER
+        | BufferUsageFlags::UNIFORM_BUFFER
+        | BufferUsageFlags::TRANSFER_SRC
+        | BufferUsageFlags::TRANSFER_DST,
       ..Default::default()
     };
     let allocation_info = vk_mem::AllocationCreateInfo {
       usage: memory_usage_to_vma(memory_usage),
       ..Default::default()
-
     };
     let (buffer, allocation, allocation_info) = allocator.create_buffer(&buffer_info, &allocation_info).expect("Failed to create buffer.");
 
@@ -198,7 +202,7 @@ impl BufferAllocator {
 
   pub fn get_slice(&self, usage: MemoryUsage, length: usize) -> VkBufferSlice {
     if length > UNIQUE_BUFFER_THRESHOLD {
-      let buffer = Arc::new(VkBuffer::new(&self.device, length, usage, &self.device.allocator, BufferUsage::VERTEX));
+      let buffer = Arc::new(VkBuffer::new(&self.device, length, usage, &self.device.allocator));
       let sliced: VkSlicedBuffer = Arc::new(Mutex::new(Vec::new()));
       let mut sliced_guard = sliced.lock().unwrap();
       sliced_guard.push(VkBufferSlice {
@@ -218,7 +222,7 @@ impl BufferAllocator {
         }
       }
     }
-    let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, &self.device.allocator, BufferUsage::VERTEX));
+    let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, &self.device.allocator));
     let sliced: VkSlicedBuffer = Arc::new(Mutex::new(Vec::new()));
     {
       let mut sliced_guard = sliced.lock().unwrap();

@@ -37,7 +37,9 @@ pub trait CommandBuffer<B: Backend> {
   fn finish(self) -> B::CommandBufferSubmission;
   fn set_pipeline(&mut self, info: &PipelineInfo<B>);
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<B::Buffer>);
+  fn set_index_buffer(&mut self, index_buffer: Arc<B::Buffer>);
   fn set_viewports(&mut self, viewports: &[ Viewport ]);
   fn set_scissors(&mut self, scissors: &[ Scissor ]);
   fn draw(&mut self, vertices: u32, offset: u32);
+  fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
 }
