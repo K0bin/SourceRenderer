@@ -23,13 +23,14 @@ use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::graph::VkRenderGraph;
 use crate::swapchain::VkSwapchain;
-use context::{VkGraphicsContext, VkShared};
+use context::{VkThreadContextManager, VkShared};
 use raw::{RawVkDevice, RawVkInstance};
 use std::collections::HashMap;
 use pipeline::VkPipelineInfo;
 use buffer::VkBufferSlice;
 use std::cmp::min;
 use texture::VkTextureShaderResourceView;
+use transfer::VkTransfer;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,
@@ -37,7 +38,8 @@ pub struct VkDevice {
   compute_queue: Option<Arc<VkQueue>>,
   transfer_queue: Option<Arc<VkQueue>>,
   extensions: VkAdapterExtensionSupport,
-  context: Arc<VkGraphicsContext>
+  context: Arc<VkThreadContextManager>,
+  transfer: VkTransfer
 }
 
 impl VkDevice {
@@ -85,7 +87,9 @@ impl VkDevice {
       Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
     });
 
-    let context = Arc::new(VkGraphicsContext::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 1));
+    let context = Arc::new(VkThreadContextManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 1));
+
+    let transfer = VkTransfer::new(&raw, &graphics_queue, &transfer_queue, &shared);
 
     return VkDevice {
       device: raw.clone(),
@@ -93,7 +97,8 @@ impl VkDevice {
       compute_queue,
       transfer_queue,
       extensions,
-      context
+      context,
+      transfer
     };
   }
 
@@ -168,11 +173,11 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn init_texture(&self, texture: &VkTexture, buffer: &VkBufferSlice, mip_level: u32, array_layer: u32) {
-    self.context.get_transfer().init_texture(texture, buffer, mip_level, array_layer);
+    self.transfer.init_texture(texture, buffer, mip_level, array_layer);
   }
 
   fn flush_transfers(&self) {
-    self.context.get_transfer().flush();
+    self.transfer.flush();
   }
 }
 

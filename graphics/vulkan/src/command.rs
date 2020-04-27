@@ -27,7 +27,7 @@ use crate::raw::*;
 use pipeline::VkPipelineInfo;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use context::{VkGraphicsContext, VkShared};
+use context::{VkThreadContextManager, VkShared};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use buffer::VkBufferSlice;

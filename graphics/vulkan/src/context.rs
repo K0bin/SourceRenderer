@@ -32,7 +32,7 @@ pub struct VkShared {
   pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>
 }
 
-pub struct VkGraphicsContext {
+pub struct VkThreadContextManager {
   device: Arc<RawVkDevice>,
   graphics_queue: Arc<VkQueue>,
   compute_queue: Option<Arc<VkQueue>>,
@@ -41,8 +41,7 @@ pub struct VkGraphicsContext {
   shared: Arc<VkShared>,
   max_prepared_frames: u32,
   frame_counter: AtomicU64,
-  prepared_frames: Mutex<VecDeque<VkFrame>>,
-  transfer: VkTransfer
+  prepared_frames: Mutex<VecDeque<VkFrame>>
 }
 
 /*
@@ -69,14 +68,14 @@ pub struct VkFrame {
   fence: Recyclable<VkFence>
 }
 
-impl VkGraphicsContext {
+impl VkThreadContextManager {
   pub fn new(device: &Arc<RawVkDevice>,
              graphics_queue: &Arc<VkQueue>,
              compute_queue: &Option<Arc<VkQueue>>,
              transfer_queue: &Option<Arc<VkQueue>>,
              shared: &Arc<VkShared>,
              max_prepared_frames: u32) -> Self {
-    return VkGraphicsContext {
+    return VkThreadContextManager {
       device: device.clone(),
       threads: ThreadLocal::new(),
       graphics_queue: graphics_queue.clone(),
@@ -85,8 +84,7 @@ impl VkGraphicsContext {
       shared: shared.clone(),
       max_prepared_frames,
       frame_counter: AtomicU64::new(0),
-      prepared_frames: Mutex::new(VecDeque::new()),
-      transfer: VkTransfer::new(device, graphics_queue, transfer_queue, shared)
+      prepared_frames: Mutex::new(VecDeque::new())
     };
   }
 
@@ -118,11 +116,6 @@ impl VkGraphicsContext {
   #[inline]
   pub fn get_frame_counter(&self) -> u64 {
     self.frame_counter.load(Ordering::SeqCst)
-  }
-
-  #[inline]
-  pub(crate) fn get_transfer(&self) -> &VkTransfer {
-    &self.transfer
   }
 }
 

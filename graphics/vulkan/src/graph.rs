@@ -19,7 +19,7 @@ use crate::VkSwapchain;
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
 use sourcerenderer_core::graphics::{Backend, CommandPool, CommandBufferType, CommandBuffer, RenderpassRecordingMode, Swapchain};
-use context::VkGraphicsContext;
+use context::VkThreadContextManager;
 use std::cell::RefCell;
 use ::{VkRenderPass, VkQueue};
 use ::{VkFrameBuffer, VkSemaphore};
@@ -34,7 +34,7 @@ pub struct VkRenderGraph {
   device: Arc<RawVkDevice>,
   passes: Vec<VkRenderGraphPass>,
   attachments: HashMap<String, VkAttachment>,
-  context: Arc<VkGraphicsContext>,
+  context: Arc<VkThreadContextManager>,
   swapchain: Arc<VkSwapchain>,
   does_render_to_frame_buffer: bool,
   graphics_queue: Arc<VkQueue>,
@@ -52,7 +52,7 @@ pub struct VkRenderGraphPass { // TODO rename to VkRenderPass
 
 impl VkRenderGraph {
   pub fn new(device: &Arc<RawVkDevice>,
-             context: &Arc<VkGraphicsContext>,
+             context: &Arc<VkThreadContextManager>,
              graphics_queue: &Arc<VkQueue>,
              compute_queue: &Option<Arc<VkQueue>>,
              transfer_queue: &Option<Arc<VkQueue>>,

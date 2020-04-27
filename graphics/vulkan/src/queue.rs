@@ -18,7 +18,7 @@ use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
-use context::{VkGraphicsContext, VkShared};
+use context::{VkThreadContextManager, VkShared};
 use VkCommandBufferSubmission;
 
 #[derive(Clone, Debug, Copy)]
