@@ -10,6 +10,7 @@ vek = "0.9.11"
 num_cpus = "1.11.1"
 sourcerenderer_core = { path = "../core" }
 sourcerenderer_vulkan = { path = "../graphics/vulkan" }
+image = "0.23.2"
 
 [dependencies.async-std]
 version = "1.5.0"

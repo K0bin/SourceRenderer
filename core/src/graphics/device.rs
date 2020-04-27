@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::rc::Rc;
 
-use graphics::Surface;
+use graphics::{Surface, TextureInfo, TextureShaderResourceViewInfo};
 use graphics::CommandPool;
 use graphics::Buffer;
 use graphics::BufferUsage;
@@ -10,7 +10,6 @@ use graphics::PipelineInfo;
 use graphics::Shader;
 use graphics::ShaderType;
 use graphics::Texture;
-use graphics::RenderTargetView;
 use graphics::Backend;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
@@ -38,9 +37,13 @@ pub trait Adapter<B: Backend> {
 pub trait Device<B: Backend> {
   fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> B::Buffer;
   fn upload_data<T>(&self, data: T) -> B::Buffer;
+  fn upload_data_raw(&self, data: &[u8]) -> B::Buffer;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> B::Shader;
-  fn create_render_target_view(&self, texture: Arc<B::Texture>) -> B::RenderTargetView;
+  fn create_texture(&self, info: &TextureInfo) -> B::Texture;
+  fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> B::TextureShaderResourceView;
   fn wait_for_idle(&self);
 
   fn create_render_graph(&self, graph_info: &crate::graphics::graph::RenderGraphInfo<B>, swapchin: &Arc<B::Swapchain>) -> B::RenderGraph;
+  fn init_texture(&self, texture: &B::Texture, buffer: &B::Buffer, mip_level: u32, array_layer: u32);
+  fn flush_transfers(&self);
 }

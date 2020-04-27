@@ -15,12 +15,13 @@ pub use self::device::MemoryUsage;
 pub use self::format::Format;
 pub use self::pipeline::*;
 pub use self::texture::Texture;
-pub use self::texture::RenderTargetView;
 pub use self::texture::TextureInfo;
 pub use self::renderpass::*;
 pub use self::command::Viewport;
 pub use self::command::Scissor;
 pub use self::backend::Backend;
+pub use self::command::BindingFrequency;
+pub use self::texture::{TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode};
 
 mod device;
 mod instance;

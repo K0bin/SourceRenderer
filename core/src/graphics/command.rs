@@ -40,6 +40,17 @@ pub trait CommandBuffer<B: Backend> {
   fn set_index_buffer(&mut self, index_buffer: Arc<B::Buffer>);
   fn set_viewports(&mut self, viewports: &[ Viewport ]);
   fn set_scissors(&mut self, scissors: &[ Scissor ]);
+  fn init_texture_mip_level(&mut self, src_buffer: &Arc<B::Buffer>, texture: &Arc<B::Texture>, mip_level: u32, array_layer: u32);
   fn draw(&mut self, vertices: u32, offset: u32);
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureShaderResourceView);
+  fn finish_binding(&mut self);
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub enum BindingFrequency {
+  PerDraw,
+  PerMaterial,
+  PerModel,
+  Rarely
 }

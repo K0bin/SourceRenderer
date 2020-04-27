@@ -3,20 +3,23 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{Texture, TextureInfo};
+use sourcerenderer_core::graphics::{Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode};
 use sourcerenderer_core::graphics::Format;
-use sourcerenderer_core::graphics::RenderTargetView;
 
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::VkBackend;
+use pipeline::{samples_to_vk, compare_func_to_vk};
+use vk_mem::MemoryUsage;
+use std::cmp::max;
+
 
 pub struct VkTexture {
   image: vk::Image,
+  allocation: Option<vk_mem::Allocation>,
   device: Arc<RawVkDevice>,
   info: TextureInfo,
-  borrowed: bool
 }
 
 pub struct VkRenderTargetView {
@@ -26,8 +29,36 @@ pub struct VkRenderTargetView {
 }
 
 impl VkTexture {
-  pub fn new(device: Arc<RawVkDevice>) -> Self {
-    unimplemented!();
+  pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo) -> Self {
+    let create_info = vk::ImageCreateInfo {
+      flags: vk::ImageCreateFlags::empty(),
+      tiling: vk::ImageTiling::OPTIMAL,
+      initial_layout: vk::ImageLayout::UNDEFINED,
+      sharing_mode: vk::SharingMode::EXCLUSIVE,
+      usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+      image_type: if info.height == 0 { vk::ImageType::TYPE_1D } else if info.depth == 0 { vk::ImageType::TYPE_2D } else { vk::ImageType::TYPE_3D},
+      extent: vk::Extent3D {
+        width: max(1, info.width),
+        height: max(1, info.height),
+        depth: max(1, info.depth)
+      },
+      format: format_to_vk(info.format),
+      mip_levels: info.mip_levels,
+      array_layers: info.array_length,
+      samples: samples_to_vk(info.samples),
+      ..Default::default()
+    };
+    let alloc_info = vk_mem::AllocationCreateInfo {
+      usage: MemoryUsage::GpuOnly,
+      ..Default::default()
+    };
+    let (image, allocation, allocation_info) = device.allocator.create_image(&create_info, &alloc_info).unwrap();
+    Self {
+      image,
+      allocation: Some(allocation),
+      device: device.clone(),
+      info: info.clone(),
+    }
   }
 
   pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, info: TextureInfo) -> Self {
@@ -35,12 +66,20 @@ impl VkTexture {
       image,
       device: device.clone(),
       info,
-      borrowed: true
+      allocation: None
     };
   }
 
   pub fn get_handle(&self) -> &vk::Image {
     return &self.image;
+  }
+}
+
+impl Drop for VkTexture {
+  fn drop(&mut self) {
+    if let Some(alloc) = &self.allocation {
+      self.device.allocator.destroy_image(self.image, alloc);
+    }
   }
 }
 
@@ -84,10 +123,114 @@ impl VkRenderTargetView {
   pub fn get_handle(&self) -> &vk::ImageView {
     return &self.view;
   }
-}
 
-impl RenderTargetView<VkBackend> for VkRenderTargetView {
-  fn get_texture(&self) -> Arc<VkTexture> {
+  pub fn get_texture(&self) -> Arc<VkTexture> {
     return self.texture.clone();
   }
 }
+
+fn filter_to_vk(filter: Filter) -> vk::Filter {
+  match filter {
+    Filter::Linear => vk::Filter::LINEAR,
+    Filter::Nearest => vk::Filter::NEAREST
+  }
+}
+fn filter_to_vk_mip(filter: Filter) -> vk::SamplerMipmapMode {
+  match filter {
+    Filter::Linear => vk::SamplerMipmapMode::LINEAR,
+    Filter::Nearest => vk::SamplerMipmapMode::NEAREST
+  }
+}
+
+fn address_mode_to_vk(address_mode: AddressMode) -> vk::SamplerAddressMode {
+  match address_mode {
+    AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
+    AddressMode::ClampToBorder => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+    AddressMode::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+    AddressMode::MirroredRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
+  }
+}
+
+pub struct VkTextureShaderResourceView {
+  view: vk::ImageView,
+  sampler: vk::Sampler,
+  texture: Arc<VkTexture>,
+  device: Arc<RawVkDevice>
+}
+
+impl VkTextureShaderResourceView {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Self {
+    let view_create_info = vk::ImageViewCreateInfo {
+      image: *texture.get_handle(),
+      view_type: if texture.get_info().height == 0 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth == 0 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
+      format: format_to_vk(texture.info.format),
+      components: vk::ComponentMapping {
+        r: vk::ComponentSwizzle::IDENTITY,
+        g: vk::ComponentSwizzle::IDENTITY,
+        b: vk::ComponentSwizzle::IDENTITY,
+        a: vk::ComponentSwizzle::IDENTITY,
+      },
+      subresource_range: vk::ImageSubresourceRange {
+        aspect_mask: vk::ImageAspectFlags::COLOR,
+        base_mip_level: info.base_mip_level,
+        level_count: info.mip_level_length,
+        base_array_layer: info.base_array_level,
+        layer_count: info.array_level_length
+      },
+      ..Default::default()
+    };
+    let view = unsafe {
+      device.create_image_view(&view_create_info, None)
+    }.unwrap();
+
+    let sampler_create_info = vk::SamplerCreateInfo {
+      mag_filter: filter_to_vk(info.mag_filter),
+      min_filter: filter_to_vk(info.mag_filter),
+      mipmap_mode: filter_to_vk_mip(info.mip_filter),
+      address_mode_u: address_mode_to_vk(info.address_mode_u),
+      address_mode_v: address_mode_to_vk(info.address_mode_v),
+      address_mode_w: address_mode_to_vk(info.address_mode_u),
+      mip_lod_bias: info.mip_bias,
+      anisotropy_enable: (info.max_anisotropy.abs() < 0.01f32) as u32,
+      max_anisotropy: info.max_anisotropy,
+      compare_enable: info.compare_op.is_some() as u32,
+      compare_op: info.compare_op.map_or(vk::CompareOp::ALWAYS, |comp| compare_func_to_vk(comp)),
+      min_lod: info.min_lod,
+      max_lod: info.max_lod,
+      border_color: vk::BorderColor::INT_OPAQUE_BLACK,
+      unnormalized_coordinates: 0,
+      ..Default::default()
+    };
+    let sampler = unsafe {
+      device.create_sampler(&sampler_create_info, None)
+    }.unwrap();
+
+    Self {
+      view,
+      sampler,
+      texture: texture.clone(),
+      device: device.clone()
+    }
+  }
+
+  #[inline]
+  pub(crate) fn get_view_handle(&self) -> &vk::ImageView {
+    &self.view
+  }
+
+  #[inline]
+  pub(crate) fn get_sampler_handle(&self) -> &vk::Sampler {
+    &self.sampler
+  }
+}
+
+impl Drop for VkTextureShaderResourceView {
+  fn drop(&mut self) {
+    unsafe {
+      self.device.destroy_image_view(self.view, None);
+      self.device.destroy_sampler(self.sampler, None);
+    }
+  }
+}
+
+impl TextureShaderResourceView for VkTextureShaderResourceView {}

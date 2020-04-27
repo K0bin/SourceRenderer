@@ -48,3 +48,5 @@ mod sync;
 mod renderpass;
 mod graph;
 mod context;
+mod descriptor;
+mod transfer;

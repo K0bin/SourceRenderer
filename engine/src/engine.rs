@@ -25,6 +25,7 @@ use async_std::task::JoinHandle;
 use std::cell::RefCell;
 use sourcerenderer_core::graphics::graph::{RenderGraph, RenderGraphInfo, RenderGraphAttachmentInfo, RenderPassInfo, BACK_BUFFER_ATTACHMENT_NAME, OutputAttachmentReference};
 use std::collections::HashMap;
+use image::{GenericImage, GenericImageView};
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -82,6 +83,12 @@ impl<P: Platform> Engine<P> {
       //join!(task1, task2);
     });
 
+    println!("bla {}", Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("texture.png")).to_str().unwrap());
+
+    //let image = image::open("texture.png").unwrap();
+    //println!("img {}", image);
+
+
     //let renderer = self.platform.create_renderer();
     let graphics = self.platform.create_graphics(true).unwrap();
     let surface = self.platform.window().create_surface(graphics.clone());
@@ -96,6 +103,39 @@ impl<P: Platform> Engine<P> {
       vsync: true
     };
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(swapchain_info, &device, &surface));
+
+    let (texture_buffer, texture) = {
+      let image = image::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("texture.png"))).expect("Failed to open texture");
+      let data = image.to_rgba();
+      let buffer = device.upload_data_raw(&data);
+      let texture = device.create_texture(&TextureInfo {
+        format: Format::RGBA8,
+        width: image.width(),
+        height: image.height(),
+        depth: 0,
+        mip_levels: 1,
+        array_length: 1,
+        samples: SampleCount::Samples1
+      });
+      (Arc::new(buffer), Arc::new(texture))
+    };
+    let texture_view = device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1,
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
+      address_mode_u: AddressMode::Repeat,
+      address_mode_v: AddressMode::Repeat,
+      address_mode_w: AddressMode::Repeat,
+      mip_bias: 0.0,
+      max_anisotropy: 1.0,
+      compare_op: None,
+      min_lod: 0.0,
+      max_lod: 0.0
+    });
 
     //let buffer = Arc::new(device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX));
     let triangle = [
@@ -127,7 +167,7 @@ impl<P: Platform> Engine<P> {
           z: 0.0f32,
         },
         uv: Vec2 {
-          x: 0.0f32,
+          x: 1.0f32,
           y: 0.0f32
         }
       },
@@ -143,8 +183,8 @@ impl<P: Platform> Engine<P> {
           z: 1.0f32,
         },
         uv: Vec2 {
-          x: 0.0f32,
-          y: 0.0f32
+          x: 1.0f32,
+          y: 1.0f32
         }
       },
       Vertex {
@@ -160,7 +200,7 @@ impl<P: Platform> Engine<P> {
         },
         uv: Vec2 {
           x: 0.0f32,
-          y: 0.0f32
+          y: 1.0f32
         }
       }
     ];
@@ -269,6 +309,8 @@ impl<P: Platform> Engine<P> {
       }],
       inputs: Vec::new(),
       render: Arc::new(move |command_buffer| {
+        //command_buffer.init_texture_mip_level(&texture_buffer, &texture, 0, 0);
+
         command_buffer.set_pipeline(&pipeline_info);
         command_buffer.set_vertex_buffer(vertex_buffer.clone());
         command_buffer.set_index_buffer(index_buffer.clone());
@@ -282,7 +324,9 @@ impl<P: Platform> Engine<P> {
           position: Vec2I { x: 0, y: 0 },
           extent: Vec2UI { x: 9999, y: 9999 },
         }]);
-        command_buffer.draw(6, 0);
+        command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, &texture_view);
+        command_buffer.finish_binding();
+        //command_buffer.draw(6, 0);
         command_buffer.draw_indexed(1, 0, 6, 0, 0);
 
         0
@@ -293,6 +337,9 @@ impl<P: Platform> Engine<P> {
       attachments: HashMap::new(),
       passes
     }, &swapchain);
+
+    device.init_texture(&texture, &texture_buffer, 0, 0);
+    device.flush_transfers();
 
     'main_loop: loop {
       let event = self.platform.handle_events();

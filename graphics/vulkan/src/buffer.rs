@@ -203,14 +203,12 @@ impl BufferAllocator {
   pub fn get_slice(&self, usage: MemoryUsage, length: usize) -> VkBufferSlice {
     if length > UNIQUE_BUFFER_THRESHOLD {
       let buffer = Arc::new(VkBuffer::new(&self.device, length, usage, &self.device.allocator));
-      let sliced: VkSlicedBuffer = Arc::new(Mutex::new(Vec::new()));
-      let mut sliced_guard = sliced.lock().unwrap();
-      sliced_guard.push(VkBufferSlice {
+      return VkBufferSlice {
         buffer,
-        slices: sliced.clone(),
+        slices: Arc::new(Mutex::new(Vec::new())),
         offset: 0,
-        length: UNIQUE_BUFFER_THRESHOLD
-      });
+        length
+      };
     }
 
     {
@@ -223,16 +221,11 @@ impl BufferAllocator {
       }
     }
     let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, &self.device.allocator));
-    let sliced: VkSlicedBuffer = Arc::new(Mutex::new(Vec::new()));
-    {
-      let mut sliced_guard = sliced.lock().unwrap();
-      sliced_guard.push(VkBufferSlice {
-        buffer,
-        slices: sliced.clone(),
-        offset: 0,
-        length: UNIQUE_BUFFER_THRESHOLD
-      });
-    }
-    return get_slice(&sliced, length).expect("Could not find slice in newly allocated buffer");
+    return VkBufferSlice {
+      buffer,
+      slices: Arc::new(Mutex::new(Vec::new())),
+      offset: 0,
+      length: UNIQUE_BUFFER_THRESHOLD
+    };
   }
 }

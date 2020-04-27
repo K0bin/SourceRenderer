@@ -19,13 +19,17 @@ use sourcerenderer_core::pool::{Pool, Recyclable};
 use ::{VkSemaphore, VkFence};
 use ash::prelude::VkResult;
 use buffer::BufferAllocator;
-use command::VkTransfer;
+use descriptor::VkDescriptorSetLayout;
+use pipeline::VkPipelineLayout;
+use transfer::VkTransfer;
 
 pub struct VkShared {
-  pub pipelines: RwLock<HashMap<u64, VkPipeline>>,
-  pub semaphores: Pool<VkSemaphore>,
-  pub fences: Pool<VkFence>,
-  pub buffers: BufferAllocator // consider per thread
+  pipelines: RwLock<HashMap<u64, Arc<VkPipeline>>>,
+  semaphores: Pool<VkSemaphore>,
+  fences: Pool<VkFence>,
+  buffers: BufferAllocator, // consider per thread
+  descriptor_set_layouts: RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>>,
+  pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>
 }
 
 pub struct VkGraphicsContext {
@@ -37,7 +41,8 @@ pub struct VkGraphicsContext {
   shared: Arc<VkShared>,
   max_prepared_frames: u32,
   frame_counter: AtomicU64,
-  prepared_frames: Mutex<VecDeque<VkFrame>>
+  prepared_frames: Mutex<VecDeque<VkFrame>>,
+  transfer: VkTransfer
 }
 
 /*
@@ -80,7 +85,8 @@ impl VkGraphicsContext {
       shared: shared.clone(),
       max_prepared_frames,
       frame_counter: AtomicU64::new(0),
-      prepared_frames: Mutex::new(VecDeque::new())
+      prepared_frames: Mutex::new(VecDeque::new()),
+      transfer: VkTransfer::new(device, graphics_queue, transfer_queue, shared)
     };
   }
 
@@ -109,8 +115,14 @@ impl VkGraphicsContext {
     });
   }
 
+  #[inline]
   pub fn get_frame_counter(&self) -> u64 {
     self.frame_counter.load(Ordering::SeqCst)
+  }
+
+  #[inline]
+  pub(crate) fn get_transfer(&self) -> &VkTransfer {
+    &self.transfer
   }
 }
 
@@ -192,20 +204,40 @@ impl VkShared {
       fences: Pool::new(Box::new(move || {
         VkFence::new(&fences_device_clone)
       })),
-      buffers: BufferAllocator::new(device)
+      buffers: BufferAllocator::new(device),
+      descriptor_set_layouts: RwLock::new(HashMap::new()),
+      pipeline_layouts: RwLock::new(HashMap::new())
     }
   }
 
-  pub fn get_pipelines(&self) -> &RwLock<HashMap<u64, VkPipeline>> {
+  #[inline]
+  pub(crate) fn get_pipelines(&self) -> &RwLock<HashMap<u64, Arc<VkPipeline>>> {
     &self.pipelines
   }
 
-  pub fn get_semaphore(&self) -> Recyclable<VkSemaphore> {
+  #[inline]
+  pub(crate) fn get_semaphore(&self) -> Recyclable<VkSemaphore> {
     self.semaphores.get()
   }
 
-  pub fn get_fence(&self) -> Recyclable<VkFence> {
+  #[inline]
+  pub(crate) fn get_fence(&self) -> Recyclable<VkFence> {
     self.fences.get()
+  }
+
+  #[inline]
+  pub(crate) fn get_descriptor_set_layouts(&self) -> &RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>> {
+    &self.descriptor_set_layouts
+  }
+
+  #[inline]
+  pub(crate) fn get_pipeline_layouts(&self) -> &RwLock<HashMap<u64, Arc<VkPipelineLayout>>> {
+    &self.pipeline_layouts
+  }
+
+  #[inline]
+  pub(crate) fn get_buffer_allocator(&self) -> &BufferAllocator {
+    &self.buffers
   }
 }
 

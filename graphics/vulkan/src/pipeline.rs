@@ -35,8 +35,12 @@ use VkRenderPass;
 use spirv_cross::spirv::Decoration;
 use ash::vk::ShaderStageFlags;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
+use context::VkShared;
 
-pub fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
+#[inline]
+pub(crate) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
   return match input_rate {
     InputRate::PerVertex => vk::VertexInputRate::VERTEX,
     InputRate::PerInstance => vk::VertexInputRate::INSTANCE
@@ -47,7 +51,7 @@ pub struct VkShader {
   shader_type: ShaderType,
   shader_module: vk::ShaderModule,
   device: Arc<RawVkDevice>,
-  descriptor_set_bindings: HashMap<u32, Vec<vk::DescriptorSetLayoutBinding>>
+  descriptor_set_bindings: HashMap<u32, Vec<VkDescriptorSetBindingInfo>>
 }
 
 impl PartialEq for VkShader {
@@ -80,38 +84,32 @@ impl VkShader {
     let ast = spirv::Ast::<glsl::Target>::parse(&module).expect("Failed to parse shader with SPIR-V Cross");
     let resources = ast.get_shader_resources().expect("Failed to get resources");
 
-    let mut sets: HashMap<u32, Vec<vk::DescriptorSetLayoutBinding>> = HashMap::new();
+    let mut sets: HashMap<u32, Vec<VkDescriptorSetBindingInfo>> = HashMap::new();
     for resource in resources.sampled_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let mut set = sets.entry(set_index).or_insert(Vec::new());
-      set.push(vk::DescriptorSetLayoutBinding {
-        binding: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+      set.push(VkDescriptorSetBindingInfo {
+        index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        descriptor_count: 1,
-        stage_flags: shader_type_to_vk(shader_type), // TODO: determine properly
-        p_immutable_samplers: std::ptr::null()
+        shader_stage: shader_type_to_vk(shader_type)
       });
     }
     for resource in resources.subpass_inputs {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let mut set = sets.entry(set_index).or_insert(Vec::new());
-      set.push(vk::DescriptorSetLayoutBinding {
-        binding: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+      set.push(VkDescriptorSetBindingInfo {
+        index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        descriptor_count: 1,
-        stage_flags: vk::ShaderStageFlags::FRAGMENT, // TODO: determine properly
-        p_immutable_samplers: std::ptr::null()
+        shader_stage: shader_type_to_vk(shader_type)
       });
     }
     for resource in resources.uniform_buffers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let mut set = sets.entry(set_index).or_insert(Vec::new());
-      set.push(vk::DescriptorSetLayoutBinding {
-        binding: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+      set.push(VkDescriptorSetBindingInfo {
+        index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-        descriptor_count: 1,
-        stage_flags: vk::ShaderStageFlags::FRAGMENT, // TODO: determine properly
-        p_immutable_samplers: std::ptr::null()
+        shader_stage: shader_type_to_vk(shader_type)
       });
     }
 
@@ -145,6 +143,7 @@ impl Drop for VkShader {
 
 pub struct VkPipeline {
   pipeline: vk::Pipeline,
+  layout: Arc<VkPipelineLayout>,
   device: Arc<RawVkDevice>
 }
 
@@ -265,10 +264,10 @@ pub struct VkPipelineInfo<'a> {
 }
 
 impl VkPipeline {
-  pub fn new(device: &Arc<RawVkDevice>, info: &VkPipelineInfo) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, info: &VkPipelineInfo, shared: &VkShared) -> Self {
     let vk_device = &device.device;
     let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
-    let mut descriptor_set_bindings: HashMap<u32, Vec<vk::DescriptorSetLayoutBinding>> = HashMap::new();
+    let mut descriptor_set_layout_bindings: HashMap<u32, Vec<VkDescriptorSetBindingInfo>> = HashMap::new();
 
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -282,7 +281,7 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_bindings
+        let mut set = descriptor_set_layout_bindings
           .entry(*shader_set.0)
           .or_insert(Vec::new());
         for binding in shader_set.1 {
@@ -300,12 +299,11 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_bindings
+        let mut set = descriptor_set_layout_bindings
           .entry(*shader_set.0)
           .or_insert(Vec::new());
         for binding in shader_set.1 {
           set.push(binding.clone());
-          println!("Found resource: binding: {}", binding.binding);
         }
       }
     }
@@ -319,7 +317,7 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_bindings
+        let mut set = descriptor_set_layout_bindings
           .entry(*shader_set.0)
           .or_insert(Vec::new());
         for binding in shader_set.1 {
@@ -337,7 +335,7 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_bindings
+        let mut set = descriptor_set_layout_bindings
           .entry(*shader_set.0)
           .or_insert(Vec::new());
         for binding in shader_set.1 {
@@ -355,7 +353,7 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_bindings
+        let mut set = descriptor_set_layout_bindings
           .entry(*shader_set.0)
           .or_insert(Vec::new());
         for binding in shader_set.1 {
@@ -476,25 +474,41 @@ impl VkPipeline {
       ..Default::default()
     };
 
-    let mut descriptor_set_layouts: Vec<vk::DescriptorSetLayout> = Vec::new();
-    for descriptor_set_layout_bindings in descriptor_set_bindings {
-      let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo {
-        p_bindings: descriptor_set_layout_bindings.1.as_ptr(),
-        binding_count: descriptor_set_layout_bindings.1.len() as u32,
-        flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-        ..Default::default()
+    let mut descriptor_set_layouts: HashMap<u32, Arc<VkDescriptorSetLayout>> = HashMap::new();
+    for (index, bindings) in &descriptor_set_layout_bindings {
+      let mut hasher = DefaultHasher::new();
+      bindings.hash(&mut hasher);
+      let hash = hasher.finish();
+
+      let cache_lock = shared.get_descriptor_set_layouts();
+      let existing_set_layout = {
+        let cache = cache_lock.read().unwrap();
+        cache.get(&hash).map(|entry| entry.clone())
       };
-      let descriptor_set_layout = unsafe { vk_device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }.unwrap();
-      descriptor_set_layouts.push(descriptor_set_layout);
+      let set_layout = existing_set_layout.unwrap_or_else(|| {
+        let mut cache = cache_lock.write().unwrap();
+        cache.insert(hash, Arc::new(VkDescriptorSetLayout::new(&bindings, device)));
+        cache.get(&hash).unwrap().clone()
+      });
+      descriptor_set_layouts.insert(*index, set_layout);
     }
 
-    let layout_create_info = vk::PipelineLayoutCreateInfo {
-      p_set_layouts: descriptor_set_layouts.as_ptr(),
-      set_layout_count: descriptor_set_layouts.len() as u32,
-      flags: vk::PipelineLayoutCreateFlags::empty(),
-      ..Default::default()
+    let mut hasher = DefaultHasher::new();
+    for (index, bindings) in descriptor_set_layout_bindings {
+      index.hash(&mut hasher);
+      bindings.hash(&mut hasher);
+    }
+    let hash = hasher.finish();
+    let cache_lock = shared.get_pipeline_layouts();
+    let existing_handle = {
+      let cache = cache_lock.read().unwrap();
+      cache.get(&hash).map(|entry| entry.clone())
     };
-    let layout = unsafe { vk_device.create_pipeline_layout(&layout_create_info, None).unwrap() };
+    let layout = existing_handle.unwrap_or_else(|| {
+      let mut cache = cache_lock.write().unwrap();
+      cache.insert(hash, Arc::new(VkPipelineLayout::new(&descriptor_set_layouts, device)));
+      cache.get(&hash).unwrap().clone()
+    });
 
     let viewport_info = vk::PipelineViewportStateCreateInfo {
       viewport_count: 1,
@@ -532,7 +546,7 @@ impl VkPipeline {
       p_viewport_state: &viewport_info,
       p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
       p_dynamic_state: &dynamic_state_create_info,
-      layout,
+      layout: *layout.get_handle(),
       render_pass: *info.render_pass.get_handle(),
       subpass: info.sub_pass,
       base_pipeline_handle: vk::Pipeline::null(),
@@ -545,12 +559,18 @@ impl VkPipeline {
     };
     return VkPipeline {
       pipeline,
-      device: device.clone()
+      device: device.clone(),
+      layout
     };
   }
 
-  pub fn get_handle(&self) -> &vk::Pipeline {
+  pub(crate) fn get_handle(&self) -> &vk::Pipeline {
     return &self.pipeline;
+  }
+
+  #[inline]
+  pub(crate) fn get_layout(&self) -> &VkPipelineLayout {
+    &self.layout
   }
 }
 
@@ -566,4 +586,51 @@ impl Drop for VkPipeline {
 
 impl Pipeline<VkBackend> for VkPipeline {
 
+}
+
+pub(crate) struct VkPipelineLayout {
+  device: Arc<RawVkDevice>,
+  layout: vk::PipelineLayout,
+  descriptor_set_layouts: HashMap<u32, Arc<VkDescriptorSetLayout>>
+}
+
+impl VkPipelineLayout {
+  pub fn new(descriptor_set_layouts: &HashMap<u32, Arc<VkDescriptorSetLayout>>, device: &Arc<RawVkDevice>) -> Self {
+    let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts.iter()
+      .map(|(_, descriptor_set_layout)| {
+        *descriptor_set_layout.get_handle()
+      })
+      .collect();
+    let info = vk::PipelineLayoutCreateInfo {
+      p_set_layouts: layouts.as_ptr(),
+      set_layout_count: layouts.len() as u32,
+      ..Default::default()
+    };
+    let layout = unsafe {
+      device.create_pipeline_layout(&info, None)
+    }.unwrap();
+    Self {
+      device: device.clone(),
+      layout,
+      descriptor_set_layouts: descriptor_set_layouts.clone()
+    }
+  }
+
+  #[inline]
+  pub(crate) fn get_handle(&self) -> &vk::PipelineLayout {
+    &self.layout
+  }
+
+  #[inline]
+  pub(crate) fn get_descriptor_set_layout(&self, index: u32) -> Option<&Arc<VkDescriptorSetLayout>> {
+    self.descriptor_set_layouts.get(&index)
+  }
+}
+
+impl Drop for VkPipelineLayout {
+  fn drop(&mut self) {
+    unsafe {
+      self.device.destroy_pipeline_layout(self.layout, None);
+    }
+  }
 }

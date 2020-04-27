@@ -1,4 +1,4 @@
-use graphics::Instance;
+use graphics::{Instance, TextureShaderResourceView};
 use graphics::Adapter;
 use graphics::Device;
 use graphics::Surface;
@@ -9,7 +9,6 @@ use graphics::PipelineInfo;
 use graphics::Pipeline;
 use graphics::Texture;
 use graphics::Buffer;
-use graphics::RenderTargetView;
 use graphics::Swapchain;
 use graphics::Resettable;
 use graphics::graph::RenderGraph;
@@ -25,9 +24,9 @@ pub trait Backend: 'static + Sized {
   type CommandBuffer: CommandBuffer<Self>;
   type CommandBufferSubmission;
   type Texture: Texture;
+  type TextureShaderResourceView: TextureShaderResourceView;
   type Buffer: Buffer;
   type Shader: Shader + Hash + Eq + PartialEq;
   type Pipeline: Pipeline<Self>;
-  type RenderTargetView: RenderTargetView<Self>;
   type RenderGraph: RenderGraph<Self>;
 }

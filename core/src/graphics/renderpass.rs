@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::graphics::Format;
 use crate::graphics::SampleCount;
-use crate::graphics::RenderTargetView;
 
 use graphics::Backend;
 

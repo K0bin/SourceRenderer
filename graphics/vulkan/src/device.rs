@@ -28,6 +28,8 @@ use raw::{RawVkDevice, RawVkInstance};
 use std::collections::HashMap;
 use pipeline::VkPipelineInfo;
 use buffer::VkBufferSlice;
+use std::cmp::min;
+use texture::VkTextureShaderResourceView;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,
@@ -123,10 +125,20 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn upload_data<T>(&self, data: T) -> <VkBackend as Backend>::Buffer {
-    let slice = self.context.get_shared().buffers.get_slice(MemoryUsage::CpuToGpu, std::mem::size_of::<T>());
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, std::mem::size_of::<T>());
     {
       let mut map = slice.map().expect("Mapping failed");
       std::mem::replace::<T>(map.get_data(), data);
+    }
+    slice
+  }
+
+  fn upload_data_raw(&self, data: &[u8]) -> <VkBackend as Backend>::Buffer {
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, data.len());
+    unsafe {
+      let ptr = slice.map_unsafe().expect("Failed to map buffer slice");
+      std::ptr::copy(data.as_ptr(), ptr, min(data.len(), slice.get_offset_and_length().1));
+      slice.unmap_unsafe();
     }
     slice
   }
@@ -135,9 +147,17 @@ impl Device<VkBackend> for VkDevice {
     return VkShader::new(&self.device, shader_type, bytecode);
   }
 
-  fn create_render_target_view(&self, texture: Arc<VkTexture>) -> VkRenderTargetView {
-    return VkRenderTargetView::new(&self.device, texture);
+  fn create_texture(&self, info: &TextureInfo) -> VkTexture {
+    return VkTexture::new(&self.device, info);
   }
+
+  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> VkTextureShaderResourceView {
+    return VkTextureShaderResourceView::new(&self.device, texture, info);
+  }
+
+  /*fn create_render_target_view(&self, texture: Arc<VkTexture>) -> VkRenderTargetView {
+    return VkRenderTargetView::new(&self.device, texture);
+  }*/
 
   fn wait_for_idle(&self) {
     unsafe { self.device.device.device_wait_idle(); }
@@ -145,6 +165,14 @@ impl Device<VkBackend> for VkDevice {
 
   fn create_render_graph(&self, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo<VkBackend>, swapchain: &Arc<VkSwapchain>) -> VkRenderGraph {
     return VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, graph_info, swapchain);
+  }
+
+  fn init_texture(&self, texture: &VkTexture, buffer: &VkBufferSlice, mip_level: u32, array_layer: u32) {
+    self.context.get_transfer().init_texture(texture, buffer, mip_level, array_layer);
+  }
+
+  fn flush_transfers(&self) {
+    self.context.get_transfer().flush();
   }
 }
 
