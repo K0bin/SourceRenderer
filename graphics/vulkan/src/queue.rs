@@ -58,6 +58,8 @@ impl VkQueue {
   }
 
   pub fn submit_transfer(&self, command_buffer: &VkTransferCommandBuffer) {
+    debug_assert!(!command_buffer.get_fence().is_signaled());
+
     let vk_cmd_buffer = *command_buffer.get_handle();
     let info = vk::SubmitInfo {
       p_command_buffers: &vk_cmd_buffer as *const vk::CommandBuffer,
@@ -76,6 +78,8 @@ impl VkQueue {
   }
 
   pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
+    debug_assert!(fence.is_none() || !fence.unwrap().is_signaled());
+
     let mut cmd_buffer_mut = command_buffer;
     cmd_buffer_mut.mark_submitted();
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
