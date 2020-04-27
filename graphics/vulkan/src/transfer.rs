@@ -195,7 +195,11 @@ impl VkTransfer {
 
   pub fn try_free_used_buffers(&self) {
     let mut guard = self.inner.lock().unwrap();
-    guard.used_graphics_buffers.retain(|cmd_buffer| !cmd_buffer.fence.is_signaled());
+    for cmd_buffer in &mut guard.used_graphics_buffers {
+      if cmd_buffer.fence.is_signaled() {
+        cmd_buffer.reset();
+      }
+    }
   }
 
   pub fn flush(&self) {
@@ -203,7 +207,9 @@ impl VkTransfer {
 
     let reuse_first_graphics_buffer = guard.used_graphics_buffers.front().map(|cmd_buffer| cmd_buffer.fence.is_signaled()).unwrap_or(false);
     let new_cmd_buffer = if reuse_first_graphics_buffer {
-      guard.used_graphics_buffers.pop_front().unwrap()
+      let mut cmd_buffer= guard.used_graphics_buffers.pop_front().unwrap();
+      cmd_buffer.reset();
+      cmd_buffer
     } else {
       Box::new({
         let buffer_info = vk::CommandBufferAllocateInfo {
@@ -248,8 +254,20 @@ impl VkTransferCommandBuffer {
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
     &self.cmd_buffer
   }
+
   #[inline]
   pub(crate) fn get_fence(&self) -> &VkFence {
     &self.fence
+  }
+
+  fn reset(&mut self) {
+    self.fence.reset();
+    unsafe {
+      self.device.reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES);
+    }
+    self.trackers.buffers.clear();
+    self.trackers.textures.clear();
+    self.trackers.render_passes.clear();
+    self.trackers.frame_buffers.clear();
   }
 }
