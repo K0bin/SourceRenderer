@@ -20,6 +20,7 @@ use crate::VkBackend;
 use sourcerenderer_core::graphics::Backend;
 use context::{VkThreadContextManager, VkShared};
 use VkCommandBufferSubmission;
+use transfer::VkTransferCommandBuffer;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -55,6 +56,24 @@ impl VkQueue {
 
   pub fn supports_presentation(&self) -> bool {
     return self.info.supports_presentation;
+  }
+
+  pub fn submit_transfer(&self, command_buffer: &VkTransferCommandBuffer) {
+    let vk_cmd_buffer = *command_buffer.get_handle();
+    let info = vk::SubmitInfo {
+      p_command_buffers: &vk_cmd_buffer as *const vk::CommandBuffer,
+      command_buffer_count: 1,
+      p_wait_semaphores: std::ptr::null(),
+      wait_semaphore_count: 0,
+      p_wait_dst_stage_mask: std::ptr::null(),
+      p_signal_semaphores: std::ptr::null(),
+      signal_semaphore_count: 0,
+      ..Default::default()
+    };
+    let vk_queue = self.queue.lock().unwrap();
+    unsafe {
+      self.device.device.queue_submit(*vk_queue, &[info], *command_buffer.get_fence().get_handle());
+    }
   }
 
   pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {

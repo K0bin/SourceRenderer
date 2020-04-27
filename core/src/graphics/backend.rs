@@ -22,7 +22,6 @@ pub trait Backend: 'static + Sized {
   type Swapchain: Swapchain;
   type CommandPool: CommandPool<Self> + Resettable;
   type CommandBuffer: CommandBuffer<Self>;
-  type CommandBufferSubmission;
   type Texture: Texture;
   type TextureShaderResourceView: TextureShaderResourceView;
   type Buffer: Buffer;

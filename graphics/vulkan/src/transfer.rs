@@ -4,13 +4,15 @@ use raw::{RawVkDevice, RawVkCommandPool};
 use std::sync::{Arc, Mutex};
 use ash::version::DeviceV1_0;
 use buffer::VkBufferSlice;
-use VkCommandBufferSubmission;
+use ::{VkCommandBufferSubmission, VkFence};
 use crossbeam_channel::{Sender, Receiver, unbounded};
-use command::VkCommandBuffer;
+use command::{VkCommandBuffer, VkLifetimeTrackers};
 use sourcerenderer_core::graphics::CommandBufferType;
 use context::VkShared;
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::max;
+use sourcerenderer_core::pool::Recyclable;
+use std::collections::VecDeque;
 
 pub(crate) struct VkTransfer {
   inner: Mutex<VkTransferInner>,
@@ -26,7 +28,8 @@ pub(crate) struct VkTransfer {
 
 struct VkTransferInner {
   current_transfer_buffer: Option<Box<VkTransferCommandBuffer>>,
-  current_graphics_buffer: Box<VkTransferCommandBuffer>
+  current_graphics_buffer: Box<VkTransferCommandBuffer>,
+  used_graphics_buffers: VecDeque<Box<VkTransferCommandBuffer>>
 }
 
 impl VkTransfer {
@@ -37,8 +40,33 @@ impl VkTransfer {
       ..Default::default()
     };
     let graphics_pool = Arc::new(RawVkCommandPool::new(device, &graphics_pool_info).unwrap());
-    let mut graphics_buffer = Box::new(VkTransferCommandBuffer::new(device, &graphics_pool));
-    graphics_buffer.begin();
+    let mut graphics_buffer = Box::new({
+      let buffer_info = vk::CommandBufferAllocateInfo {
+        command_pool: **graphics_pool,
+        level: vk::CommandBufferLevel::PRIMARY,
+        command_buffer_count: 1,
+        ..Default::default()
+      };
+      let cmd_buffer = unsafe { device.allocate_command_buffers(&buffer_info) }.unwrap().pop().unwrap();
+      let fence = shared.get_fence();
+      VkTransferCommandBuffer {
+        cmd_buffer,
+        device: device.clone(),
+        trackers: VkLifetimeTrackers {
+          buffers: Vec::new(),
+          textures: Vec::new(),
+          render_passes: Vec::new(),
+          frame_buffers: Vec::new()
+        },
+        fence
+      }
+    });
+    let begin_info = vk::CommandBufferBeginInfo {
+      ..Default::default()
+    };
+    unsafe {
+      device.begin_command_buffer(graphics_buffer.cmd_buffer, &begin_info);
+    }
 
     let (transfer_pool, transfer_buffer) = if let Some(queue) = transfer_queue {
       let transfer_pool_info = vk::CommandPoolCreateInfo {
@@ -47,8 +75,31 @@ impl VkTransfer {
         ..Default::default()
       };
       let transfer_pool = Arc::new(RawVkCommandPool::new(device, &transfer_pool_info).unwrap());
-      let mut transfer_buffer = Box::new(VkTransferCommandBuffer::new(device, &transfer_pool));
-      transfer_buffer.begin();
+      let mut transfer_buffer = Box::new(
+        {
+          let buffer_info = vk::CommandBufferAllocateInfo {
+            command_pool: **transfer_pool,
+            level: vk::CommandBufferLevel::PRIMARY,
+            command_buffer_count: 1,
+            ..Default::default()
+          };
+          let cmd_buffer = unsafe { device.allocate_command_buffers(&buffer_info) }.unwrap().pop().unwrap();
+          let fence = shared.get_fence();
+          VkTransferCommandBuffer {
+            cmd_buffer,
+            device: device.clone(),
+            trackers: VkLifetimeTrackers {
+              buffers: Vec::new(),
+              textures: Vec::new(),
+              render_passes: Vec::new(),
+              frame_buffers: Vec::new()
+            },
+            fence
+          }
+        });
+      unsafe {
+        device.begin_command_buffer(transfer_buffer.cmd_buffer, &begin_info);
+      }
       (Some(transfer_pool), Some(transfer_buffer))
     } else {
       (None, None)
@@ -56,10 +107,13 @@ impl VkTransfer {
 
     let (sender, receiver) = unbounded();
 
+    let current_fence = shared.get_fence();
+
     Self {
       inner: Mutex::new(VkTransferInner {
         current_graphics_buffer: graphics_buffer,
-        current_transfer_buffer: transfer_buffer
+        current_transfer_buffer: transfer_buffer,
+        used_graphics_buffers: VecDeque::new()
       }),
       graphics_pool,
       transfer_pool,
@@ -72,7 +126,7 @@ impl VkTransfer {
     }
   }
 
-  pub fn init_texture(&self, texture: &VkTexture, src_buffer: &VkBufferSlice, mip_level: u32, array_layer: u32) {
+  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
     let mut guard = self.inner.lock().unwrap();
     unsafe {
       self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], &[
@@ -133,58 +187,69 @@ impl VkTransfer {
           image: *texture.get_handle(),
           ..Default::default()
       }]);
+
+      guard.current_graphics_buffer.trackers.buffers.push(src_buffer.clone());
+      guard.current_graphics_buffer.trackers.textures.push(texture.clone());
     }
+  }
+
+  pub fn try_free_used_buffers(&self) {
+    let mut guard = self.inner.lock().unwrap();
+    guard.used_graphics_buffers.retain(|cmd_buffer| !cmd_buffer.fence.is_signaled());
   }
 
   pub fn flush(&self) {
     let mut guard = self.inner.lock().unwrap();
-    let new_cmd_buffer= Box::new(VkTransferCommandBuffer::new(&self.device, &self.graphics_pool));
-    let mut cmd_buffer = std::mem::replace(&mut guard.current_graphics_buffer, new_cmd_buffer);
-    cmd_buffer.finish();
-    let submission = VkCommandBufferSubmission::Transfer {
-      item: cmd_buffer
+
+    let reuse_first_graphics_buffer = guard.used_graphics_buffers.front().map(|cmd_buffer| cmd_buffer.fence.is_signaled()).unwrap_or(false);
+    let new_cmd_buffer = if reuse_first_graphics_buffer {
+      guard.used_graphics_buffers.pop_front().unwrap()
+    } else {
+      Box::new({
+        let buffer_info = vk::CommandBufferAllocateInfo {
+          command_pool: **self.graphics_pool,
+          level: vk::CommandBufferLevel::PRIMARY,
+          command_buffer_count: 1,
+          ..Default::default()
+        };
+        let cmd_buffer = unsafe { self.device.allocate_command_buffers(&buffer_info) }.unwrap().pop().unwrap();
+        let new_fence = self.shared.get_fence();
+        VkTransferCommandBuffer {
+          cmd_buffer,
+          device: self.device.clone(),
+          trackers: VkLifetimeTrackers {
+            buffers: Vec::new(),
+            textures: Vec::new(),
+            render_passes: Vec::new(),
+            frame_buffers: Vec::new()
+          },
+          fence: new_fence
+        }
+      })
     };
-    self.graphics_queue.submit(submission, None, &[], &[]);
+    let mut cmd_buffer = std::mem::replace(&mut guard.current_graphics_buffer, new_cmd_buffer);
+    unsafe {
+      self.device.end_command_buffer(cmd_buffer.cmd_buffer);
+    }
+    self.graphics_queue.submit_transfer(&cmd_buffer);
+    guard.used_graphics_buffers.push_back(cmd_buffer);
   }
 }
 
 pub struct VkTransferCommandBuffer {
   cmd_buffer: vk::CommandBuffer,
-  device: Arc<RawVkDevice>
+  device: Arc<RawVkDevice>,
+  trackers: VkLifetimeTrackers,
+  fence: Recyclable<VkFence>
 }
 
 impl VkTransferCommandBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, pool: &vk::CommandPool) -> Self {
-    let buffer_info = vk::CommandBufferAllocateInfo {
-      command_pool: *pool,
-      level: vk::CommandBufferLevel::PRIMARY,
-      command_buffer_count: 1,
-      ..Default::default()
-    };
-    let cmd_buffer = unsafe { device.allocate_command_buffers(&buffer_info) }.unwrap().pop().unwrap();
-    Self {
-      cmd_buffer,
-      device: device.clone()
-    }
-  }
-
-  pub fn begin(&mut self) {
-    let begin_info = vk::CommandBufferBeginInfo {
-      ..Default::default()
-    };
-    unsafe {
-      self.device.begin_command_buffer(self.cmd_buffer, &begin_info);
-    }
-  }
-  
-  pub fn finish(&mut self) {
-    unsafe {
-      self.device.end_command_buffer(self.cmd_buffer);
-    }
-  }
-
   #[inline]
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
     &self.cmd_buffer
+  }
+  #[inline]
+  pub(crate) fn get_fence(&self) -> &VkFence {
+    &self.fence
   }
 }

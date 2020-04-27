@@ -172,12 +172,16 @@ impl Device<VkBackend> for VkDevice {
     return VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, graph_info, swapchain);
   }
 
-  fn init_texture(&self, texture: &VkTexture, buffer: &VkBufferSlice, mip_level: u32, array_layer: u32) {
+  fn init_texture(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
     self.transfer.init_texture(texture, buffer, mip_level, array_layer);
   }
 
   fn flush_transfers(&self) {
     self.transfer.flush();
+  }
+
+  fn free_completed_transfers(&self) {
+    self.transfer.try_free_used_buffers();
   }
 }
 

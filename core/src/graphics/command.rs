@@ -34,7 +34,6 @@ pub trait CommandPool<B: Backend> {
 }
 
 pub trait CommandBuffer<B: Backend> {
-  fn finish(self) -> B::CommandBufferSubmission;
   fn set_pipeline(&mut self, info: &PipelineInfo<B>);
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<B::Buffer>);
   fn set_index_buffer(&mut self, index_buffer: Arc<B::Buffer>);

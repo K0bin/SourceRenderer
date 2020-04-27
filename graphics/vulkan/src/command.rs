@@ -109,11 +109,11 @@ pub enum VkCommandBufferState {
   Submitted
 }
 
-struct VkLifetimeTrackers {
-  buffers: Vec<Arc<VkBufferSlice>>,
-  textures: Vec<Arc<VkTexture>>,
-  render_passes: Vec<Arc<VkRenderPass>>,
-  frame_buffers: Vec<Arc<VkFrameBuffer>>
+pub(crate) struct VkLifetimeTrackers {
+  pub(crate) buffers: Vec<Arc<VkBufferSlice>>,
+  pub(crate) textures: Vec<Arc<VkTexture>>,
+  pub(crate) render_passes: Vec<Arc<VkRenderPass>>,
+  pub(crate) frame_buffers: Vec<Arc<VkFrameBuffer>>
 }
 
 pub struct VkCommandBuffer {
@@ -510,17 +510,17 @@ impl VkCommandBufferRecorder {
   pub fn end_render_pass(&mut self) {
     self.item.as_mut().unwrap().end_render_pass();
   }
-}
 
-impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
-  fn finish(self) -> VkCommandBufferSubmission {
+  pub fn finish(self) -> VkCommandBufferSubmission {
     assert_eq!(self.item.as_ref().unwrap().state, VkCommandBufferState::Recording);
     let mut mut_self = self;
     let mut item = std::mem::replace(&mut mut_self.item, None).unwrap();
     item.end();
-    VkCommandBufferSubmission::new_general(item, mut_self.sender.clone())
+    VkCommandBufferSubmission::new(item, mut_self.sender.clone())
   }
+}
 
+impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn set_pipeline(&mut self, pipeline: &PipelineInfo<VkBackend>) {
     self.item.as_mut().unwrap().set_pipeline(pipeline);
@@ -572,50 +572,27 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 }
 
-pub enum VkCommandBufferSubmission {
-  General {
-    item: Box<VkCommandBuffer>,
-    sender: Sender<Box<VkCommandBuffer>>
-  },
-  Transfer {
-    item: Box<VkTransferCommandBuffer>
-  }
+pub struct VkCommandBufferSubmission {
+  item: Box<VkCommandBuffer>,
+  sender: Sender<Box<VkCommandBuffer>>
 }
 
 unsafe impl Send for VkCommandBufferSubmission {}
 
 impl VkCommandBufferSubmission {
-  fn new_general(item: Box<VkCommandBuffer>, sender: Sender<Box<VkCommandBuffer>>) -> Self {
-    VkCommandBufferSubmission::General {
+  fn new(item: Box<VkCommandBuffer>, sender: Sender<Box<VkCommandBuffer>>) -> Self {
+    Self {
       item,
       sender
     }
   }
 
   pub(crate) fn mark_submitted(&mut self) {
-    match self {
-      VkCommandBufferSubmission::General {
-        item, sender
-      } => {
-        assert_eq!(item.state, VkCommandBufferState::Finished);
-        item.state = VkCommandBufferState::Submitted;
-      },
-      VkCommandBufferSubmission::Transfer {
-        item
-      } => {
-
-      }
-    }
+    assert_eq!(self.item.state, VkCommandBufferState::Finished);
+    self.item.state = VkCommandBufferState::Submitted;
   }
 
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
-    match self {
-      VkCommandBufferSubmission::General {
-        item, sender
-      } => &item.buffer,
-      VkCommandBufferSubmission::Transfer {
-        item
-      } => &item.get_handle()
-    }
+    &self.item.buffer
   }
 }
