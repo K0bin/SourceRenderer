@@ -29,10 +29,6 @@ pub enum CommandBufferType {
   SECONDARY
 }
 
-pub trait CommandPool<B: Backend> {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> B::CommandBuffer;
-}
-
 pub trait CommandBuffer<B: Backend> {
   fn set_pipeline(&mut self, info: &PipelineInfo<B>);
   fn set_vertex_buffer(&mut self, vertex_buffer: Arc<B::Buffer>);

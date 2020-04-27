@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{CommandPool, PipelineInfo, Backend, Texture, BindingFrequency};
+use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -67,10 +67,8 @@ impl VkCommandPool {
       queue_family_index
     };
   }
-}
 
-impl CommandPool<VkBackend> for VkCommandPool {
-  fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
+  pub fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
     let buffers = if command_buffer_type == CommandBufferType::PRIMARY {
       &mut self.primary_buffers
     } else {

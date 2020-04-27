@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::rc::Rc;
 
 use graphics::{Surface, TextureInfo, TextureShaderResourceViewInfo};
-use graphics::CommandPool;
 use graphics::Buffer;
 use graphics::BufferUsage;
 use graphics::Pipeline;

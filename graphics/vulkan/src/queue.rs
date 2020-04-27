@@ -9,7 +9,6 @@ use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 
 use sourcerenderer_core::graphics::Adapter;
 use sourcerenderer_core::graphics::Device;
-use sourcerenderer_core::graphics::CommandPool;
 use crate::device::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::command::VkCommandPool;

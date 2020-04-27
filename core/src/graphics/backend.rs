@@ -2,7 +2,6 @@ use graphics::{Instance, TextureShaderResourceView};
 use graphics::Adapter;
 use graphics::Device;
 use graphics::Surface;
-use graphics::CommandPool;
 use graphics::CommandBuffer;
 use graphics::Shader;
 use graphics::PipelineInfo;
@@ -20,7 +19,6 @@ pub trait Backend: 'static + Sized {
   type Device: Device<Self>;
   type Surface: Surface;
   type Swapchain: Swapchain;
-  type CommandPool: CommandPool<Self> + Resettable;
   type CommandBuffer: CommandBuffer<Self>;
   type Texture: Texture;
   type TextureShaderResourceView: TextureShaderResourceView;
