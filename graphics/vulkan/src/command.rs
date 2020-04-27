@@ -51,7 +51,7 @@ impl VkCommandPool {
   pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>) -> Self {
     let create_info = vk::CommandPoolCreateInfo {
       queue_family_index,
-      flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
+      flags: vk::CommandPoolCreateFlags::empty(),
       ..Default::default()
     };
 
