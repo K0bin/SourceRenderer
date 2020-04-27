@@ -14,16 +14,16 @@ use graphics::graph::RenderGraph;
 use std::hash::Hash;
 
 pub trait Backend: 'static + Sized {
-  type Instance: Instance<Self>;
-  type Adapter: Adapter<Self>;
-  type Device: Device<Self>;
-  type Surface: Surface;
-  type Swapchain: Swapchain;
+  type Instance: Instance<Self> + Send + Sync;
+  type Adapter: Adapter<Self> + Send + Sync;
+  type Device: Device<Self> + Send + Sync;
+  type Surface: Surface + Send + Sync;
+  type Swapchain: Swapchain + Send + Sync;
   type CommandBuffer: CommandBuffer<Self>;
-  type Texture: Texture;
-  type TextureShaderResourceView: TextureShaderResourceView;
-  type Buffer: Buffer;
-  type Shader: Shader + Hash + Eq + PartialEq;
-  type Pipeline: Pipeline<Self>;
-  type RenderGraph: RenderGraph<Self>;
+  type Texture: Texture + Send + Sync;
+  type TextureShaderResourceView: TextureShaderResourceView + Send + Sync;
+  type Buffer: Buffer + Send + Sync;
+  type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
+  type Pipeline: Pipeline<Self> + Send + Sync;
+  type RenderGraph: RenderGraph<Self> + Send + Sync;
 }

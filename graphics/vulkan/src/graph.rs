@@ -46,7 +46,7 @@ pub struct VkRenderGraphPass { // TODO rename to VkRenderPass
   device: Arc<RawVkDevice>,
   render_pass: Arc<VkRenderPass>,
   frame_buffer: Vec<Arc<VkFrameBuffer>>,
-  callback: Arc<dyn Fn(&mut VkCommandBufferRecorder) -> usize>,
+  callback: Arc<dyn (Fn(&mut VkCommandBufferRecorder) -> usize) + Send + Sync>,
   is_rendering_to_swap_chain: bool
 }
 

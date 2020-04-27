@@ -20,7 +20,7 @@ pub enum GraphicsApi {
 }
 
 pub trait Platform: 'static + Sized {
-  type GraphicsBackend: graphics::Backend;
+  type GraphicsBackend: graphics::Backend + Send + Sync;
   type Window: Window<Self>;
 
   fn window(&mut self) -> &Self::Window;

@@ -14,7 +14,7 @@ pub struct RenderGraphInfo<B: Backend> {
 pub struct RenderPassInfo<B: Backend> {
   pub outputs: Vec<OutputAttachmentReference>,
   pub inputs: Vec<InputAttachmentReference>,
-  pub render: Arc<dyn Fn(&mut B::CommandBuffer) -> usize>
+  pub render: Arc<dyn (Fn(&mut B::CommandBuffer) -> usize) + Send + Sync>
 }
 
 #[derive(Clone)]
