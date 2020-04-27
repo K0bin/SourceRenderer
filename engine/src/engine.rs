@@ -341,17 +341,32 @@ impl<P: Platform> Engine<P> {
     device.init_texture(&texture, &texture_buffer, 0, 0);
     device.flush_transfers();
 
+    task::spawn(async move {
+      'main_loop: loop {
+        graph.render();
+        let task1 = task::spawn(async {
+          let id = std::thread::current().id();
+          let mut sum = 0f64;
+          for i in 0..100000000  {
+            sum += (i as f64).sqrt();
+          }
+          println!("a - {:?} - thread: {:?}", sum, id);
+        });
+        task1.await;
+        device.free_completed_transfers();
+
+        std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+      }
+    });
+
     'main_loop: loop {
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {
-          break 'main_loop;
+        break 'main_loop;
       }
-
-      graph.render();
-      device.free_completed_transfers();
-
       std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
+
   }
 
   fn init(&mut self) {
