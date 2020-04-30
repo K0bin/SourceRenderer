@@ -13,6 +13,7 @@ use graphics::Resettable;
 use graphics::graph::RenderGraph;
 use std::hash::Hash;
 
+// WANT https://github.com/rust-lang/rust/issues/44265
 pub trait Backend: 'static + Sized {
   type Instance: Instance<Self> + Send + Sync;
   type Adapter: Adapter<Self> + Send + Sync;

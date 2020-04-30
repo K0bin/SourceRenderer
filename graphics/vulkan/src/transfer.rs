@@ -6,9 +6,9 @@ use ash::version::DeviceV1_0;
 use buffer::VkBufferSlice;
 use ::{VkCommandBufferSubmission, VkFence};
 use crossbeam_channel::{Sender, Receiver, unbounded};
-use command::{VkCommandBuffer, VkLifetimeTrackers};
+use command::VkCommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
-use context::VkShared;
+use context::{VkShared, VkLifetimeTrackers};
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::max;
 use sourcerenderer_core::pool::Recyclable;
@@ -52,12 +52,7 @@ impl VkTransfer {
       VkTransferCommandBuffer {
         cmd_buffer,
         device: device.clone(),
-        trackers: VkLifetimeTrackers {
-          buffers: Vec::new(),
-          textures: Vec::new(),
-          render_passes: Vec::new(),
-          frame_buffers: Vec::new()
-        },
+        trackers: VkLifetimeTrackers::new(),
         fence
       }
     });
@@ -88,12 +83,7 @@ impl VkTransfer {
           VkTransferCommandBuffer {
             cmd_buffer,
             device: device.clone(),
-            trackers: VkLifetimeTrackers {
-              buffers: Vec::new(),
-              textures: Vec::new(),
-              render_passes: Vec::new(),
-              frame_buffers: Vec::new()
-            },
+            trackers: VkLifetimeTrackers::new(),
             fence
           }
         });
@@ -188,8 +178,8 @@ impl VkTransfer {
           ..Default::default()
       }]);
 
-      guard.current_graphics_buffer.trackers.buffers.push(src_buffer.clone());
-      guard.current_graphics_buffer.trackers.textures.push(texture.clone());
+      guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
+      guard.current_graphics_buffer.trackers.track_texture(texture);
     }
   }
 
@@ -223,12 +213,7 @@ impl VkTransfer {
         VkTransferCommandBuffer {
           cmd_buffer,
           device: self.device.clone(),
-          trackers: VkLifetimeTrackers {
-            buffers: Vec::new(),
-            textures: Vec::new(),
-            render_passes: Vec::new(),
-            frame_buffers: Vec::new()
-          },
+          trackers: VkLifetimeTrackers::new(),
           fence: new_fence
         }
       })
@@ -265,9 +250,6 @@ impl VkTransferCommandBuffer {
     unsafe {
       self.device.reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES);
     }
-    self.trackers.buffers.clear();
-    self.trackers.textures.clear();
-    self.trackers.render_passes.clear();
-    self.trackers.frame_buffers.clear();
+    self.trackers.reset();
   }
 }

@@ -27,10 +27,10 @@ use crate::raw::*;
 use pipeline::VkPipelineInfo;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use context::{VkThreadContextManager, VkShared};
+use context::{VkThreadContextManager, VkShared, VkLifetimeTrackers};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use buffer::VkBufferSlice;
+use buffer::{VkBufferSlice, BufferAllocator};
 use VkTexture;
 use std::cmp::max;
 use descriptor::VkBindingManager;
@@ -44,11 +44,12 @@ pub struct VkCommandPool {
   receiver: Receiver<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>,
   shared: Arc<VkShared>,
-  queue_family_index: u32
+  queue_family_index: u32,
+  buffer_allocator: Arc<BufferAllocator>
 }
 
 impl VkCommandPool {
-  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
     let create_info = vk::CommandPoolCreateInfo {
       queue_family_index,
       flags: vk::CommandPoolCreateFlags::empty(),
@@ -64,7 +65,8 @@ impl VkCommandPool {
       receiver,
       sender,
       shared: shared.clone(),
-      queue_family_index
+      queue_family_index,
+      buffer_allocator: buffer_allocator.clone()
     };
   }
 
@@ -75,7 +77,7 @@ impl VkCommandPool {
       &mut self.secondary_buffers
     };
 
-    let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, self.queue_family_index, &self.shared)));
+    let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, self.queue_family_index, &self.shared, &self.buffer_allocator)));
     buffer.begin();
     return VkCommandBufferRecorder::new(buffer, self.sender.clone());
   }
@@ -107,13 +109,6 @@ pub enum VkCommandBufferState {
   Submitted
 }
 
-pub(crate) struct VkLifetimeTrackers {
-  pub(crate) buffers: Vec<Arc<VkBufferSlice>>,
-  pub(crate) textures: Vec<Arc<VkTexture>>,
-  pub(crate) render_passes: Vec<Arc<VkRenderPass>>,
-  pub(crate) frame_buffers: Vec<Arc<VkFrameBuffer>>
-}
-
 pub struct VkCommandBuffer {
   buffer: vk::CommandBuffer,
   pool: Arc<RawVkCommandPool>,
@@ -126,11 +121,12 @@ pub struct VkCommandBuffer {
   sub_pass: u32,
   trackers: VkLifetimeTrackers,
   queue_family_index: u32,
-  descriptor_manager: VkBindingManager
+  descriptor_manager: VkBindingManager,
+  buffer_allocator: Arc<BufferAllocator>
 }
 
 impl VkCommandBuffer {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, queue_family_index: u32, shared: &Arc<VkShared>) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
     let buffers_create_info = vk::CommandBufferAllocateInfo {
       command_pool: ***pool,
       level: if command_buffer_type == CommandBufferType::PRIMARY { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
@@ -148,14 +144,10 @@ impl VkCommandBuffer {
       sub_pass: 0u32,
       shared: shared.clone(),
       state: VkCommandBufferState::Ready,
-      trackers: VkLifetimeTrackers {
-        buffers: Vec::new(),
-        textures: Vec::new(),
-        render_passes: Vec::new(),
-        frame_buffers: Vec::new()
-      },
+      trackers: VkLifetimeTrackers::new(),
       queue_family_index,
-      descriptor_manager: VkBindingManager::new(device)
+      descriptor_manager: VkBindingManager::new(device),
+      buffer_allocator: buffer_allocator.clone()
     };
   }
 
@@ -169,9 +161,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn reset(&mut self) {
     self.state = VkCommandBufferState::Ready;
-    self.trackers.buffers.clear();
-    self.trackers.render_passes.clear();
-    self.trackers.frame_buffers.clear();
+    self.trackers.reset();
   }
 
   pub(crate) fn begin(&mut self) {
@@ -265,8 +255,8 @@ impl VkCommandBuffer {
     }
     self.render_pass = Some(render_pass.clone());
     self.sub_pass = 0;
-    self.trackers.frame_buffers.push(frame_buffer.clone());
-    self.trackers.render_passes.push(render_pass.clone());
+    self.trackers.track_frame_buffer(frame_buffer);
+    self.trackers.track_render_pass(render_pass);
   }
 
   pub(crate) fn end_render_pass(&mut self) {
@@ -279,7 +269,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.trackers.buffers.push(vertex_buffer.clone());
+    self.trackers.track_buffer(&vertex_buffer);
     unsafe {
       self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[vertex_buffer.get_offset_and_length().0 as u64]);
     }
@@ -287,7 +277,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn set_index_buffer(&mut self, index_buffer: Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.trackers.buffers.push(index_buffer.clone());
+    self.trackers.track_buffer(&index_buffer);
     unsafe {
       self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), index_buffer.get_offset_and_length().0 as u64, vk::IndexType::UINT32);
     }
@@ -402,8 +392,8 @@ impl VkCommandBuffer {
           ..Default::default()
         }]);
     }
-    self.trackers.buffers.push(src_buffer.clone());
-    self.trackers.textures.push(texture.clone());
+    self.trackers.track_buffer(src_buffer);
+    self.trackers.track_texture(texture);
   }
 
   pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureShaderResourceView) {

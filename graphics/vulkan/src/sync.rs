@@ -93,8 +93,7 @@ impl Future for VkFence {
   type Output = ();
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let result = unsafe { self.device.wait_for_fences(&[self.fence], true, 0u64) };
-    if result.is_ok() {
+    if self.is_signaled() {
       Poll::Ready(())
     } else {
       Poll::Pending

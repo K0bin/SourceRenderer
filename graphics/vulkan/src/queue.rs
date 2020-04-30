@@ -20,6 +20,7 @@ use sourcerenderer_core::graphics::Backend;
 use context::{VkThreadContextManager, VkShared};
 use VkCommandBufferSubmission;
 use transfer::VkTransferCommandBuffer;
+use buffer::BufferAllocator;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -49,8 +50,8 @@ impl VkQueue {
     return self.info.queue_family_index as u32;
   }
 
-  pub fn create_command_pool(&self) -> VkCommandPool {
-    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.shared);
+  pub fn create_command_pool(&self, buffer_allocator: &Arc<BufferAllocator>) -> VkCommandPool {
+    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.shared, buffer_allocator);
   }
 
   pub fn supports_presentation(&self) -> bool {
