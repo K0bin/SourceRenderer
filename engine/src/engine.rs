@@ -26,6 +26,9 @@ use std::cell::RefCell;
 use sourcerenderer_core::graphics::graph::{RenderGraph, RenderGraphInfo, RenderGraphAttachmentInfo, RenderPassInfo, BACK_BUFFER_ATTACHMENT_NAME, OutputAttachmentReference};
 use std::collections::HashMap;
 use image::{GenericImage, GenericImageView};
+use nalgebra::{Matrix4, Point3, Vector3, Rotation3};
+use std::sync::atomic::Ordering;
+use std::sync::atomic::AtomicUsize;
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -119,7 +122,7 @@ impl<P: Platform> Engine<P> {
       });
       (Arc::new(buffer), Arc::new(texture))
     };
-    let texture_view = device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
+    let texture_view = Arc::new(device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
@@ -135,7 +138,7 @@ impl<P: Platform> Engine<P> {
       compare_op: None,
       min_lod: 0.0,
       max_lod: 0.0
-    });
+    }));
 
     //let buffer = Arc::new(device.create_buffer(8096, MemoryUsage::CpuOnly, BufferUsage::VERTEX));
     let triangle = [
@@ -143,7 +146,7 @@ impl<P: Platform> Engine<P> {
         position: Vec3 {
           x: -1.0f32,
           y: -1.0f32,
-          z: 0.0f32,
+          z: -1.0f32,
         },
         color: Vec3 {
           x: 1.0f32,
@@ -159,7 +162,7 @@ impl<P: Platform> Engine<P> {
         position: Vec3 {
           x: 1.0f32,
           y: -1.0f32,
-          z: 0.0f32,
+          z: -1.0f32,
         },
         color: Vec3 {
           x: 0.0f32,
@@ -175,7 +178,7 @@ impl<P: Platform> Engine<P> {
         position: Vec3 {
           x: 1.0f32,
           y: 1.0f32,
-          z: 0.0f32,
+          z: -1.0f32,
         },
         color: Vec3 {
           x: 0.0f32,
@@ -191,7 +194,72 @@ impl<P: Platform> Engine<P> {
         position: Vec3 {
           x: -1.0f32,
           y: 1.0f32,
+          z: -1.0f32,
+        },
+        color: Vec3 {
+          x: 1.0f32,
+          y: 1.0f32,
+          z: 1.0f32,
+        },
+        uv: Vec2 {
+          x: 0.0f32,
+          y: 1.0f32
+        }
+      },
+      // face 2
+      Vertex {
+        position: Vec3 {
+          x: -1.0f32,
+          y: -1.0f32,
+          z: 1.0f32,
+        },
+        color: Vec3 {
+          x: 1.0f32,
+          y: 0.0f32,
           z: 0.0f32,
+        },
+        uv: Vec2 {
+          x: 0.0f32,
+          y: 0.0f32
+        }
+      },
+      Vertex {
+        position: Vec3 {
+          x: 1.0f32,
+          y: -1.0f32,
+          z: 1.0f32,
+        },
+        color: Vec3 {
+          x: 0.0f32,
+          y: 1.0f32,
+          z: 0.0f32,
+        },
+        uv: Vec2 {
+          x: 1.0f32,
+          y: 0.0f32
+        }
+      },
+      Vertex {
+        position: Vec3 {
+          x: 1.0f32,
+          y: 1.0f32,
+          z: 1.0f32,
+        },
+        color: Vec3 {
+          x: 0.0f32,
+          y: 0.0f32,
+          z: 1.0f32,
+        },
+        uv: Vec2 {
+          x: 1.0f32,
+          y: 1.0f32
+        }
+      },
+      Vertex {
+        position: Vec3 {
+          x: -1.0f32,
+          y: 1.0f32,
+          z: 1.0f32,
         },
         color: Vec3 {
           x: 1.0f32,
@@ -204,7 +272,12 @@ impl<P: Platform> Engine<P> {
         }
       }
     ];
-    let indices = [0u32, 1u32, 2u32, 2u32, 3u32, 0u32];
+    let indices = [0u32, 1u32, 2u32, 2u32, 3u32, 0u32, // front
+                            6u32, 5u32, 4u32, 4u32, 7u32, 6u32, // back
+                            5u32, 1u32, 0u32, 0u32, 4u32, 5u32, // top
+                            3u32, 2u32, 6u32, 6u32, 7u32, 3u32, // bottom
+                            7u32, 4u32, 0u32, 0u32, 3u32, 7u32, // left
+                            1u32, 5u32, 6u32, 6u32, 2u32, 1u32]; // right
     /*let ptr = buffer.map().expect("failed to map buffer");
     unsafe {
       std::ptr::copy(triangle.as_ptr(), ptr as *mut Vertex, 3);
@@ -277,7 +350,7 @@ impl<P: Platform> Engine<P> {
       },
       rasterizer: RasterizerInfo {
         fill_mode: FillMode::Fill,
-        cull_mode: CullMode::None,
+        cull_mode: CullMode::Back,
         front_face: FrontFace::CounterClockwise,
         sample_count: SampleCount::Samples1
       },
@@ -302,6 +375,9 @@ impl<P: Platform> Engine<P> {
       }
     };
 
+    let camera: Arc<Mutex<Matrix4<f32>>> = Arc::new(Mutex::new(Matrix4::identity()));
+    let pass_camera = camera.clone();
+
     let mut passes: Vec<RenderPassInfo<P::GraphicsBackend>> = Vec::new();
     passes.push(RenderPassInfo {
       outputs: vec![OutputAttachmentReference {
@@ -311,6 +387,12 @@ impl<P: Platform> Engine<P> {
       render: Arc::new(move |command_buffer| {
         //command_buffer.init_texture_mip_level(&texture_buffer, &texture, 0, 0);
 
+        let matrix = {
+          let guard = pass_camera.lock().unwrap();
+          guard.clone()
+        };
+
+        let constant_buffer = Arc::new(command_buffer.upload_data(matrix));
         command_buffer.set_pipeline(&pipeline_info);
         command_buffer.set_vertex_buffer(vertex_buffer.clone());
         command_buffer.set_index_buffer(index_buffer.clone());
@@ -324,10 +406,11 @@ impl<P: Platform> Engine<P> {
           position: Vec2I { x: 0, y: 0 },
           extent: Vec2UI { x: 9999, y: 9999 },
         }]);
+        command_buffer.bind_buffer(BindingFrequency::PerDraw, 1, &constant_buffer);
         command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, &texture_view);
         command_buffer.finish_binding();
         //command_buffer.draw(6, 0);
-        command_buffer.draw_indexed(1, 0, 6, 0, 0);
+        command_buffer.draw_indexed(1, 0, 6 * 6, 0, 0);
 
         0
       })
@@ -341,18 +424,26 @@ impl<P: Platform> Engine<P> {
     device.init_texture(&texture, &texture_buffer, 0, 0);
     device.flush_transfers();
 
+    let counter = AtomicUsize::new(0);
     task::spawn(async move {
       'main_loop: loop {
+        counter.fetch_add(1, Ordering::SeqCst);
+        {
+          let mut cam = camera.lock().unwrap();
+          let new_mat =
+            Matrix4::new_perspective(16f32 / 9f32, 1.02974f32, 0.001f32, 20.0f32)
+                *
+                Matrix4::look_at_rh(
+                  &Point3::new(0.0f32, 2.0f32, -5.0f32),
+                  &Point3::new(0.0f32, 0.0f32, 0.0f32),
+                  &Vector3::new(0.0f32, 1.0f32, 0.0f32)
+                )
+              *
+          Matrix4::from(Rotation3::from_axis_angle(&Vector3::y_axis(), (counter.load(Ordering::SeqCst) as f32) / 300.0f32));
+          std::mem::replace(&mut *cam, new_mat);
+        }
+
         graph.render();
-        let task1 = task::spawn(async {
-          let id = std::thread::current().id();
-          let mut sum = 0f64;
-          for i in 0..100000000  {
-            sum += (i as f64).sqrt();
-          }
-          println!("a - {:?} - thread: {:?}", sum, id);
-        });
-        task1.await;
         device.free_completed_transfers();
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
