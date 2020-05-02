@@ -36,9 +36,11 @@ pub trait CommandBuffer<B: Backend> {
   fn set_viewports(&mut self, viewports: &[ Viewport ]);
   fn set_scissors(&mut self, scissors: &[ Scissor ]);
   fn init_texture_mip_level(&mut self, src_buffer: &Arc<B::Buffer>, texture: &Arc<B::Texture>, mip_level: u32, array_layer: u32);
+  fn upload_data<T>(&mut self, data: T) -> B::Buffer;
   fn draw(&mut self, vertices: u32, offset: u32);
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureShaderResourceView);
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureShaderResourceView>);
+  fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
   fn finish_binding(&mut self);
 }
 

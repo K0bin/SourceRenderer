@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency};
+use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -32,7 +32,7 @@ use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use buffer::{VkBufferSlice, BufferAllocator};
 use VkTexture;
-use std::cmp::max;
+use std::cmp::{max, min};
 use descriptor::VkBindingManager;
 use texture::VkTextureShaderResourceView;
 use transfer::VkTransferCommandBuffer;
@@ -396,12 +396,22 @@ impl VkCommandBuffer {
     self.trackers.track_texture(texture);
   }
 
-  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureShaderResourceView) {
+  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureShaderResourceView>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
     let pipeline_layout = pipeline.get_layout();
     let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
     self.descriptor_manager.bind_texture_view(frequency, descriptor_layout, binding, texture);
+    self.trackers.track_texture_view(texture);
+  }
+
+  pub(crate) fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
+    let pipeline_layout = pipeline.get_layout();
+    let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
+    self.descriptor_manager.bind_buffer(frequency, descriptor_layout, binding, buffer);
+    self.trackers.track_buffer(buffer);
   }
 
   pub(crate) fn finish_binding(&mut self) {
@@ -453,6 +463,15 @@ impl VkCommandBuffer {
         base_index = 4;
       }
     }
+  }
+
+  pub(crate) fn upload_data<T>(&self, data: T) -> VkBufferSlice {
+    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuOnly, std::mem::size_of::<T>());
+    unsafe {
+      let mut map = slice.map().expect("Mapping failed");
+      std::mem::replace::<T>(map.get_data(), data);
+    }
+    slice
   }
 }
 
@@ -550,13 +569,21 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureShaderResourceView) {
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureShaderResourceView>) {
     self.item.as_mut().unwrap().bind_texture_view(frequency, binding, texture);
   }
 
   #[inline(always)]
   fn finish_binding(&mut self) {
     self.item.as_mut().unwrap().finish_binding();
+  }
+
+  fn upload_data<T>(&mut self, data: T) -> VkBufferSlice {
+    self.item.as_mut().unwrap().upload_data(data)
+  }
+
+  fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+    self.item.as_mut().unwrap().bind_buffer(frequency, binding, buffer);
   }
 }
 

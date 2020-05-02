@@ -194,6 +194,7 @@ impl BufferAllocator {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
     let mut buffers = HashMap::<MemoryUsage, Vec<VkSlicedBuffer>>::new();
     buffers.insert(MemoryUsage::CpuToGpu, Vec::new());
+    buffers.insert(MemoryUsage::CpuOnly, Vec::new());
     BufferAllocator {
       device: device.clone(),
       buffers: Mutex::new(buffers)

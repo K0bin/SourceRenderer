@@ -24,6 +24,7 @@ use pipeline::VkPipelineLayout;
 use transfer::VkTransfer;
 use ::{VkTexture, VkRenderPass};
 use VkFrameBuffer;
+use texture::VkTextureShaderResourceView;
 
 pub struct VkShared {
   pipelines: RwLock<HashMap<u64, Arc<VkPipeline>>>,
@@ -240,6 +241,7 @@ pub struct VkLifetimeTrackers {
   fences: Vec<Recyclable<VkFence>>,
   buffers: Vec<Arc<VkBufferSlice>>,
   textures: Vec<Arc<VkTexture>>,
+  texture_views: Vec<Arc<VkTextureShaderResourceView>>,
   render_passes: Vec<Arc<VkRenderPass>>,
   frame_buffers: Vec<Arc<VkFrameBuffer>>
 }
@@ -251,6 +253,7 @@ impl VkLifetimeTrackers {
       fences: Vec::new(),
       buffers: Vec::new(),
       textures: Vec::new(),
+      texture_views: Vec::new(),
       render_passes: Vec::new(),
       frame_buffers: Vec::new()
     }
@@ -264,6 +267,7 @@ impl VkLifetimeTrackers {
     self.fences.clear();
     self.buffers.clear();
     self.textures.clear();
+    self.texture_views.clear();
     self.render_passes.clear();
     self.frame_buffers.clear();
   }
@@ -290,6 +294,10 @@ impl VkLifetimeTrackers {
 
   pub(crate) fn track_frame_buffer(&mut self, frame_buffer: &Arc<VkFrameBuffer>) {
     self.frame_buffers.push(frame_buffer.clone());
+  }
+
+  pub(crate) fn track_texture_view(&mut self, texture_view: &Arc<VkTextureShaderResourceView>) {
+    self.texture_views.push(texture_view.clone());
   }
 }
 
