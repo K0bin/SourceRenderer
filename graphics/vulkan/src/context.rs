@@ -54,8 +54,7 @@ pub struct VkThreadContext {
   device: Arc<RawVkDevice>,
   frames: Vec<RefCell<VkFrameContext>>,
   buffer_allocator: Arc<BufferAllocator>,
-  frame_counter: u64,
-  max_prepared_frames: u32
+  frame_counter: u64
 }
 
 /*
@@ -104,10 +103,10 @@ impl VkThreadContextManager {
   }
 
   pub fn inc_frame_counter(&self, fence: Recyclable<VkFence>) {
-    let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst);
+    let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst) + 1;
     let mut guard = self.prepared_frames.lock().unwrap();
     if guard.len() >= self.max_prepared_frames as usize {
-      if let Some(frame) = guard.pop_back() {
+      if let Some(frame) = guard.pop_front() {
         frame.fence.await();
         frame.fence.reset();
       }
@@ -133,7 +132,7 @@ impl VkThreadContext {
     let buffer_allocator = Arc::new(BufferAllocator::new(device));
 
     let mut frames: Vec<RefCell<VkFrameContext>> = Vec::new();
-    for i in 0..max_prepared_frames {
+    for _ in 0..max_prepared_frames {
       frames.push(RefCell::new(VkFrameContext::new(device, graphics_queue, compute_queue, transfer_queue, &buffer_allocator)))
     }
 
@@ -141,7 +140,6 @@ impl VkThreadContext {
       device: device.clone(),
       frames,
       frame_counter: 0u64,
-      max_prepared_frames,
       buffer_allocator
     };
   }

@@ -87,7 +87,7 @@ impl VkDevice {
       Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
     });
 
-    let context = Arc::new(VkThreadContextManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 1));
+    let context = Arc::new(VkThreadContextManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 3));
 
     let transfer = VkTransfer::new(&raw, &graphics_queue, &transfer_queue, &shared);
 
@@ -130,7 +130,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn upload_data<T>(&self, data: T) -> <VkBackend as Backend>::Buffer {
-    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, std::mem::size_of::<T>());
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::VERTEX | BufferUsage::INDEX, std::mem::size_of::<T>());
     {
       let mut map = slice.map().expect("Mapping failed");
       std::mem::replace::<T>(map.get_data(), data);
@@ -139,7 +139,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn upload_data_raw(&self, data: &[u8]) -> <VkBackend as Backend>::Buffer {
-    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, data.len());
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::VERTEX | BufferUsage::INDEX, data.len());
     unsafe {
       let ptr = slice.map_unsafe().expect("Failed to map buffer slice");
       std::ptr::copy(data.as_ptr(), ptr, min(data.len(), slice.get_offset_and_length().1));

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer};
+use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -162,6 +162,7 @@ impl VkCommandBuffer {
   pub(crate) fn reset(&mut self) {
     self.state = VkCommandBufferState::Ready;
     self.trackers.reset();
+    self.descriptor_manager.reset();
   }
 
   pub(crate) fn begin(&mut self) {
@@ -466,7 +467,7 @@ impl VkCommandBuffer {
   }
 
   pub(crate) fn upload_data<T>(&self, data: T) -> VkBufferSlice {
-    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuOnly, std::mem::size_of::<T>());
+    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuOnly, BufferUsage::CONSTANT, std::mem::size_of::<T>());
     unsafe {
       let mut map = slice.map().expect("Mapping failed");
       std::mem::replace::<T>(map.get_data(), data);
@@ -588,7 +589,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 }
 
 pub struct VkCommandBufferSubmission {
-  item: Box<VkCommandBuffer>,
+  item: MaybeUninit<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>
 }
 
@@ -597,17 +598,29 @@ unsafe impl Send for VkCommandBufferSubmission {}
 impl VkCommandBufferSubmission {
   fn new(item: Box<VkCommandBuffer>, sender: Sender<Box<VkCommandBuffer>>) -> Self {
     Self {
-      item,
+      item: MaybeUninit::new(item),
       sender
     }
   }
 
   pub(crate) fn mark_submitted(&mut self) {
-    assert_eq!(self.item.state, VkCommandBufferState::Finished);
-    self.item.state = VkCommandBufferState::Submitted;
+    unsafe {
+      assert_eq!((*(self.item.as_mut_ptr())).state, VkCommandBufferState::Finished);
+      (*(self.item.as_mut_ptr())).state = VkCommandBufferState::Submitted;
+    }
   }
 
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
-    &self.item.buffer
+    unsafe {
+      (*(self.item.as_ptr())).get_handle()
+    }
+  }
+}
+
+impl Drop for VkCommandBufferSubmission {
+  fn drop(&mut self) {
+    let maybe_item = std::mem::replace(&mut self.item, MaybeUninit::uninit());
+    let item = unsafe { maybe_item.assume_init() };
+    self.sender.send(item);
   }
 }

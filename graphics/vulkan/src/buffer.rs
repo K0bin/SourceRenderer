@@ -14,6 +14,11 @@ use sourcerenderer_core::pool::Recyclable;
 use std::process::exit;
 use std::collections::HashMap;
 use ash::vk::BufferUsageFlags;
+use std::fmt::{Debug, Display};
+use bitflags::_core::fmt::Formatter;
+use ash::version::{InstanceV1_0, InstanceV1_1};
+use std::cmp::max;
+use bitflags::_core::mem::ManuallyDrop;
 
 pub struct VkBuffer {
   buffer: vk::Buffer,
@@ -22,22 +27,17 @@ pub struct VkBuffer {
   device: Arc<RawVkDevice>,
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
-  memory_usage: MemoryUsage,
-  slices: Mutex<Vec<VkBufferSlice>>
+  memory_usage: MemoryUsage
 }
 
 unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, size: usize, memory_usage: MemoryUsage, allocator: &vk_mem::Allocator) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, size: usize, memory_usage: MemoryUsage, buffer_usage: BufferUsage, allocator: &vk_mem::Allocator) -> Self {
     let buffer_info = vk::BufferCreateInfo {
       size: size as u64,
-      usage: BufferUsageFlags::INDEX_BUFFER
-        | BufferUsageFlags::VERTEX_BUFFER
-        | BufferUsageFlags::UNIFORM_BUFFER
-        | BufferUsageFlags::TRANSFER_SRC
-        | BufferUsageFlags::TRANSFER_DST,
+      usage: buffer_usage_to_vk(buffer_usage),
       ..Default::default()
     };
     let allocation_info = vk_mem::AllocationCreateInfo {
@@ -67,8 +67,7 @@ impl VkBuffer {
       device: device.clone(),
       map_ptr,
       is_coherent,
-      memory_usage,
-      slices: Mutex::new(Vec::new())
+      memory_usage
     };
   }
 
@@ -123,6 +122,54 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   return vk::BufferUsageFlags::from_raw(flags);
 }
 
+fn align_up(value: usize, alignment: usize) -> usize {
+  if alignment == 0 {
+    return value
+  }
+  if value == 0 {
+    return 0
+  }
+  (value + alignment - 1) & !(alignment - 1)
+}
+
+fn align_down(value: usize, alignment: usize) -> usize {
+  if alignment == 0 {
+    return value
+  }
+  (value / alignment) * alignment
+}
+
+fn align_up_32(value: u32, alignment: u32) -> u32 {
+  if alignment == 0 {
+    return value
+  }
+  if value == 0 {
+    return 0
+  }
+  (value + alignment - 1) & (alignment - 1)
+}
+
+fn align_down_32(value: u32, alignment: u32) -> u32 {
+  if alignment == 0 {
+    return value
+  }
+  (value / alignment) * alignment
+}
+
+fn align_up_64(value: u64, alignment: u64) -> u64 {
+  if alignment == 0 {
+    return value
+  }
+  (value + alignment - 1) & (alignment - 1)
+}
+
+fn align_down_64(value: u64, alignment: u64) -> u64 {
+  if alignment == 0 {
+    return value
+  }
+  (value / alignment) * alignment
+}
+
 type VkSlicedBuffer = Arc<Mutex<Vec<VkBufferSlice>>>;
 pub struct VkBufferSlice {
   buffer: Arc<VkBuffer>,
@@ -142,6 +189,7 @@ impl Drop for VkBufferSlice {
     let start = guard.iter_mut().find(|s| s.offset == self.offset + self.length);
     if let Some(mut existing_slice) = start {
       existing_slice.offset -= self.length;
+      existing_slice.length += self.length;
       return;
     }
     guard.push(VkBufferSlice {
@@ -150,6 +198,12 @@ impl Drop for VkBufferSlice {
       offset: self.offset,
       length: self.length
     });
+  }
+}
+
+impl Debug for VkBufferSlice {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "(Buffer Slice: {}-{} (length: {}))", self.offset, self.offset + self.length, self.length)
   }
 }
 
@@ -163,19 +217,27 @@ impl VkBufferSlice {
   }
 }
 
-fn get_slice(buffer: &VkSlicedBuffer, length: usize) -> Option<VkBufferSlice> {
+fn get_slice(buffer: &VkSlicedBuffer, length: usize, offset_alignment: usize) -> Option<VkBufferSlice> {
   let mut guard = buffer.lock().unwrap();
-  let mut slice_option = guard.iter_mut().enumerate().find(|(index, s)| s.length >= length);
+
+  let mut slice_option = guard
+      .iter_mut()
+      .enumerate()
+      .find(|(index, s)| s.length - (align_up(s.offset, offset_alignment) - s.offset) >= length);
   if let Some((index, existing_slice)) = slice_option {
     return if existing_slice.length > length {
+      let offset = existing_slice.length - length;
+      let aligned_offset = align_down(offset, offset_alignment);
+      debug_assert!(aligned_offset >= existing_slice.offset);
+      let alignment_delta = offset - aligned_offset;
+
       let new_slice = VkBufferSlice {
         buffer: existing_slice.buffer.clone(),
         slices: buffer.clone(),
-        offset: existing_slice.offset,
-        length
+        offset: aligned_offset,
+        length: length + alignment_delta
       };
-      existing_slice.length -= length;
-      existing_slice.offset += length;
+      existing_slice.length -= length + alignment_delta;
       Some(new_slice)
     } else {
       Some(guard.remove(index))
@@ -187,23 +249,31 @@ fn get_slice(buffer: &VkSlicedBuffer, length: usize) -> Option<VkBufferSlice> {
 const UNIQUE_BUFFER_THRESHOLD: usize = 16384;
 pub struct BufferAllocator {
   device: Arc<RawVkDevice>,
-  buffers: Mutex<HashMap<MemoryUsage, Vec<VkSlicedBuffer>>>
+  buffers: Mutex<HashMap<(MemoryUsage, BufferUsage), Vec<VkSlicedBuffer>>>,
+  device_limits: vk::PhysicalDeviceLimits
 }
 
 impl BufferAllocator {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
-    let mut buffers = HashMap::<MemoryUsage, Vec<VkSlicedBuffer>>::new();
-    buffers.insert(MemoryUsage::CpuToGpu, Vec::new());
-    buffers.insert(MemoryUsage::CpuOnly, Vec::new());
+    let buffers = HashMap::<(MemoryUsage, BufferUsage), Vec<VkSlicedBuffer>>::new();
+    let mut limits2 = vk::PhysicalDeviceProperties2 {
+      ..Default::default()
+    };
+
+    unsafe {
+      device.instance.get_physical_device_properties2(device.physical_device, &mut limits2)
+    }
+
     BufferAllocator {
       device: device.clone(),
-      buffers: Mutex::new(buffers)
+      buffers: Mutex::new(buffers),
+      device_limits: limits2.properties.limits.clone()
     }
   }
 
-  pub fn get_slice(&self, usage: MemoryUsage, length: usize) -> VkBufferSlice {
+  pub fn get_slice(&self, usage: MemoryUsage, buffer_usage: BufferUsage, length: usize) -> VkBufferSlice {
     if length > UNIQUE_BUFFER_THRESHOLD {
-      let buffer = Arc::new(VkBuffer::new(&self.device, length, usage, &self.device.allocator));
+      let buffer = Arc::new(VkBuffer::new(&self.device, length, usage, buffer_usage, &self.device.allocator));
       return VkBufferSlice {
         buffer,
         slices: Arc::new(Mutex::new(Vec::new())),
@@ -212,21 +282,41 @@ impl BufferAllocator {
       };
     }
 
+    let mut alignment: usize = 0;
+    if (buffer_usage & BufferUsage::CONSTANT) == BufferUsage::CONSTANT {
+      // TODO max doesnt guarantee both alignments
+      alignment = max(alignment, self.device_limits.min_uniform_buffer_offset_alignment as usize);
+    }
+
     {
       let mut guard = self.buffers.lock().unwrap();
-      let matching_buffers = guard.get(&usage).expect("unsupported memory usage");
-      for buffer in matching_buffers {
-        if let Some(slice) = get_slice(buffer, length) {
+      let mut matching_buffers = guard.entry((usage, buffer_usage)).or_default();
+      for buffer in matching_buffers.iter() {
+        if let Some(slice) = get_slice(buffer, length, alignment) {
           return slice;
         }
       }
+
+      let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, buffer_usage, &self.device.allocator));
+      let mut slices = Arc::new(Mutex::new(Vec::new()));
+
+      if length != UNIQUE_BUFFER_THRESHOLD {
+        let mut slices_guard = slices.lock().unwrap();
+        slices_guard.push(VkBufferSlice {
+          buffer: buffer.clone(),
+          slices: slices.clone(),
+          offset: length,
+          length: UNIQUE_BUFFER_THRESHOLD - length
+        });
+      }
+
+      matching_buffers.push(slices.clone());
+      return VkBufferSlice {
+        buffer,
+        slices,
+        offset: 0,
+        length
+      };
     }
-    let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, &self.device.allocator));
-    return VkBufferSlice {
-      buffer,
-      slices: Arc::new(Mutex::new(Vec::new())),
-      offset: 0,
-      length: UNIQUE_BUFFER_THRESHOLD
-    };
   }
 }

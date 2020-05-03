@@ -182,7 +182,7 @@ impl VkBindingManager {
 
   pub fn finish(&self, frequency: BindingFrequency) -> Option<vk::DescriptorSet> {
     let mut sets_ref = self.current_sets.borrow_mut();
-    sets_ref.get_mut(&frequency).map(|vk_set| *vk_set)
+    sets_ref.remove(&frequency)
   }
 }
 
