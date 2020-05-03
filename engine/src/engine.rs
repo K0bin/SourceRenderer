@@ -219,7 +219,7 @@ impl<P: Platform> Engine<P> {
           z: 0.0f32,
         },
         uv: Vec2 {
-          x: 0.0f32,
+          x: 1.0f32,
           y: 0.0f32
         }
       },
@@ -232,10 +232,10 @@ impl<P: Platform> Engine<P> {
         color: Vec3 {
           x: 0.0f32,
           y: 1.0f32,
-          z: 0.0f32,
+          z: 1.0f32,
         },
         uv: Vec2 {
-          x: 1.0f32,
+          x: 0.0f32,
           y: 0.0f32
         }
       },
@@ -246,12 +246,12 @@ impl<P: Platform> Engine<P> {
           z: 1.0f32,
         },
         color: Vec3 {
-          x: 0.0f32,
+          x: 1.0f32,
           y: 0.0f32,
           z: 1.0f32,
         },
         uv: Vec2 {
-          x: 1.0f32,
+          x: 0.0f32,
           y: 1.0f32
         }
       },
@@ -262,12 +262,12 @@ impl<P: Platform> Engine<P> {
           z: 1.0f32,
         },
         color: Vec3 {
-          x: 1.0f32,
+          x: 0.0f32,
           y: 1.0f32,
           z: 1.0f32,
         },
         uv: Vec2 {
-          x: 0.0f32,
+          x: 1.0f32,
           y: 1.0f32
         }
       }
@@ -385,8 +385,6 @@ impl<P: Platform> Engine<P> {
       }],
       inputs: Vec::new(),
       render: Arc::new(move |command_buffer| {
-        //command_buffer.init_texture_mip_level(&texture_buffer, &texture, 0, 0);
-
         let matrix = {
           let guard = pass_camera.lock().unwrap();
           guard.clone()
@@ -409,9 +407,7 @@ impl<P: Platform> Engine<P> {
         command_buffer.bind_buffer(BindingFrequency::PerDraw, 1, &constant_buffer);
         command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, &texture_view);
         command_buffer.finish_binding();
-        //command_buffer.draw(6, 0);
         command_buffer.draw_indexed(1, 0, 6 * 6, 0, 0);
-
         0
       })
     });
