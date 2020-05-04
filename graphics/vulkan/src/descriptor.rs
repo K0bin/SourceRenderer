@@ -11,6 +11,7 @@ use ::{VkPipeline, VkTexture};
 use bitflags::_core::cell::RefMut;
 use texture::VkTextureShaderResourceView;
 use buffer::VkBufferSlice;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub(crate) enum VkDescriptorType {
@@ -20,18 +21,29 @@ pub(crate) enum VkDescriptorType {
   CombinedTextureSampler
 }
 
-/*bitflags! {
-    struct DirtyDescriptorSets: u32 {
-        const PER_DRAW = BindingFrequency::PerDraw;
-        const PER_MATERIAL = BindingFrequency::PerMaterial;
-        const PER_MODEL = BindingFrequency::PerModel;
-        const RARELY = BindingFrequency::Rarely;
+bitflags! {
+    pub struct DirtyDescriptorSets: u32 {
+        const PER_DRAW = 0b0001;
+        const PER_MATERIAL = 0b0010;
+        const PER_MODEL = 0b0100;
+        const RARELY = 0b1000;
     }
-}*/
+}
+
+impl From<BindingFrequency> for DirtyDescriptorSets {
+  fn from(value: BindingFrequency) -> Self {
+    match value {
+      BindingFrequency::PerDraw => DirtyDescriptorSets::PER_DRAW,
+      BindingFrequency::PerMaterial => DirtyDescriptorSets::PER_MATERIAL,
+      BindingFrequency::PerModel => DirtyDescriptorSets::PER_MODEL,
+      BindingFrequency::Rarely => DirtyDescriptorSets::RARELY
+    }
+  }
+}
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub(crate) struct VkDescriptorSetBindingInfo {
-  pub(crate) shader_stage: vk::ShaderStageFlags,
+  pub(crate) shader_stage: vk::ShaderStageFlags,h
   pub(crate) index: u32,
   pub(crate) descriptor_type: vk::DescriptorType
 }
@@ -79,11 +91,18 @@ impl Drop for VkDescriptorSetLayout {
   }
 }
 
+impl Hash for VkDescriptorSetLayout {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.layout.hash(state);
+  }
+}
+
 pub(crate) struct VkBindingManager {
   transient_pool: vk::DescriptorPool,
   //permanent_pool: vk::DescriptorPool,
   device: Arc<RawVkDevice>,
-  current_sets: RefCell<HashMap<BindingFrequency, vk::DescriptorSet>>
+  current_sets: HashMap<BindingFrequency, vk::DescriptorSet>,
+  dirty: DirtyDescriptorSets
 }
 
 impl VkBindingManager {
@@ -112,33 +131,37 @@ impl VkBindingManager {
     Self {
       transient_pool,
       device: device.clone(),
-      current_sets: RefCell::new(HashMap::new())
+      current_sets: HashMap::new(),
+      dirty: DirtyDescriptorSets::empty(),
     }
   }
 
-  pub(crate) fn reset(&self) {
+  pub(crate) fn reset(&mut self) {
+    self.dirty = DirtyDescriptorSets::empty();
     unsafe {
       self.device.reset_descriptor_pool(self.transient_pool, vk::DescriptorPoolResetFlags::empty());
     }
   }
 
   #[inline]
-  fn get_set_or_create(&self, frequency: BindingFrequency, layout: &VkDescriptorSetLayout) -> vk::DescriptorSet {
-    let mut sets_ref = self.current_sets.borrow_mut();
-    *sets_ref.entry(frequency).or_insert_with(|| {
+  fn get_set_or_create(&mut self, frequency: BindingFrequency, layout: &VkDescriptorSetLayout) -> vk::DescriptorSet {
+    let pool = self.transient_pool;
+    let device = &self.device;
+    *self.current_sets.entry(frequency).or_insert_with(move || {
       let set_create_info = vk::DescriptorSetAllocateInfo {
-        descriptor_pool: self.transient_pool,
+        descriptor_pool: pool,
         descriptor_set_count: 1,
         p_set_layouts: layout.get_handle() as *const vk::DescriptorSetLayout,
         ..Default::default()
       };
       unsafe {
-        self.device.allocate_descriptor_sets(&set_create_info)
+        device.allocate_descriptor_sets(&set_create_info)
       }.unwrap().pop().unwrap()
     })
   }
 
-  pub(crate) fn bind_texture_view(&self, frequency: BindingFrequency, layout: &VkDescriptorSetLayout, binding: u32, texture: &VkTextureShaderResourceView) {
+  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, layout: &VkDescriptorSetLayout, binding: u32, texture: &VkTextureShaderResourceView) {
+    self.dirty.insert(DirtyDescriptorSets::from(frequency));
     let set = self.get_set_or_create(frequency, layout);
 
     let image_info = vk::DescriptorImageInfo {
@@ -159,7 +182,8 @@ impl VkBindingManager {
     unsafe { self.device.update_descriptor_sets(&write, &[]); }
   }
 
-  pub(crate) fn bind_buffer(&self, frequency: BindingFrequency, layout: &VkDescriptorSetLayout, binding: u32, buffer: &VkBufferSlice) {
+  pub(crate) fn bind_buffer(&mut self, frequency: BindingFrequency, layout: &VkDescriptorSetLayout, binding: u32, buffer: &VkBufferSlice) {
+    self.dirty.insert(DirtyDescriptorSets::from(frequency));
     let set = self.get_set_or_create(frequency, layout);
 
     let buffer_info = vk::DescriptorBufferInfo {
@@ -180,9 +204,11 @@ impl VkBindingManager {
     unsafe { self.device.update_descriptor_sets(&write, &[]); }
   }
 
-  pub fn finish(&self, frequency: BindingFrequency) -> Option<vk::DescriptorSet> {
-    let mut sets_ref = self.current_sets.borrow_mut();
-    sets_ref.remove(&frequency)
+  pub fn finish(&mut self, frequency: BindingFrequency) -> Option<vk::DescriptorSet> {
+    if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) {
+      return None;
+    }
+    self.current_sets.remove(&frequency)
   }
 }
 

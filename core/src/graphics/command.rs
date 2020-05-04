@@ -44,7 +44,7 @@ pub trait CommandBuffer<B: Backend> {
   fn finish_binding(&mut self);
 }
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]
 pub enum BindingFrequency {
   PerDraw,
   PerMaterial,
