@@ -92,6 +92,16 @@ impl VkThreadContextManager {
     };
   }
 
+  pub fn begin_frame(&self) {
+    let mut guard = self.prepared_frames.lock().unwrap();
+    if guard.len() >= self.max_prepared_frames as usize {
+      if let Some(frame) = guard.pop_front() {
+        frame.fence.await();
+        frame.fence.reset();
+      }
+    }
+  }
+
   pub fn get_shared(&self) -> &Arc<VkShared> {
     &self.shared
   }
@@ -102,15 +112,9 @@ impl VkThreadContextManager {
     context
   }
 
-  pub fn inc_frame_counter(&self, fence: Recyclable<VkFence>) {
-    let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst) + 1;
+  pub fn end_frame(&self, fence: Recyclable<VkFence>) {
+    let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst);
     let mut guard = self.prepared_frames.lock().unwrap();
-    if guard.len() >= self.max_prepared_frames as usize {
-      if let Some(frame) = guard.pop_front() {
-        frame.fence.await();
-        frame.fence.reset();
-      }
-    }
     guard.push_back(VkFrame {
       counter,
       fence
@@ -145,11 +149,12 @@ impl VkThreadContext {
   }
 
   fn mark_used(&mut self, frame: u64) {
+    debug_assert!(frame >= self.frame_counter);
     if frame > self.frame_counter && frame >= self.frames.len() as u64 {
-      let mut frame_ref = self.frames[(frame as usize - (self.frames.len() - 1)) % self.frames.len()].borrow_mut();
+      let mut frame_ref = self.frames[frame as usize % self.frames.len()].borrow_mut();
       frame_ref.reset();
-      self.frame_counter = frame;
     }
+    self.frame_counter = frame;
   }
 
   pub fn get_frame_context(&self) -> RefMut<VkFrameContext> {
