@@ -1,4 +1,4 @@
-use crate::texture::VkRenderTargetView;
+use crate::texture::VkTextureView;
 use std::sync::Arc;
 
 use ash::vk;

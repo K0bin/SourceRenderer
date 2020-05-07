@@ -18,7 +18,6 @@ use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
 use crate::renderpass::VkRenderPass;
 use crate::texture::VkTexture;
-use crate::texture::VkRenderTargetView;
 use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::graph::VkRenderGraph;
@@ -29,7 +28,7 @@ use std::collections::HashMap;
 use pipeline::VkPipelineInfo;
 use buffer::VkBufferSlice;
 use std::cmp::min;
-use texture::VkTextureShaderResourceView;
+use texture::VkTextureView;
 use transfer::VkTransfer;
 
 pub struct VkDevice {
@@ -156,13 +155,9 @@ impl Device<VkBackend> for VkDevice {
     return VkTexture::new(&self.device, info);
   }
 
-  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> VkTextureShaderResourceView {
-    return VkTextureShaderResourceView::new(&self.device, texture, info);
+  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> VkTextureView {
+    return VkTextureView::new_shader_resource_view(&self.device, texture, info);
   }
-
-  /*fn create_render_target_view(&self, texture: Arc<VkTexture>) -> VkRenderTargetView {
-    return VkRenderTargetView::new(&self.device, texture);
-  }*/
 
   fn wait_for_idle(&self) {
     unsafe { self.device.device.device_wait_idle(); }

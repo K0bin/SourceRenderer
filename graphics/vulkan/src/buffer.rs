@@ -19,6 +19,7 @@ use bitflags::_core::fmt::Formatter;
 use ash::version::{InstanceV1_0, InstanceV1_1};
 use std::cmp::max;
 use bitflags::_core::mem::ManuallyDrop;
+use std::hash::{Hash, Hasher};
 
 pub struct VkBuffer {
   buffer: vk::Buffer,
@@ -83,6 +84,20 @@ impl Drop for VkBuffer {
     }
   }
 }
+
+impl Hash for VkBuffer {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.buffer.hash(state);
+  }
+}
+
+impl PartialEq for VkBuffer {
+  fn eq(&self, other: &Self) -> bool {
+    self.buffer == other.buffer
+  }
+}
+
+impl Eq for VkBuffer {}
 
 impl Buffer for VkBufferSlice {
   fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
@@ -207,6 +222,24 @@ impl Debug for VkBufferSlice {
   }
 }
 
+impl Hash for VkBufferSlice {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.buffer.hash(state);
+    self.offset.hash(state);
+    self.length.hash(state);
+  }
+}
+
+impl PartialEq for VkBufferSlice {
+  fn eq(&self, other: &Self) -> bool {
+    self.buffer == other.buffer
+      && self.length == other.length
+      && self.offset == other.offset
+  }
+}
+
+impl Eq for VkBufferSlice {}
+
 impl VkBufferSlice {
   pub fn get_buffer(&self) -> &Arc<VkBuffer> {
     &self.buffer
@@ -214,6 +247,14 @@ impl VkBufferSlice {
 
   pub fn get_offset_and_length(&self) -> (usize, usize) {
     (self.offset, self.length)
+  }
+
+  pub fn get_offset(&self) -> usize {
+    self.offset
+  }
+
+  pub fn get_length(&self) -> usize {
+    self.length
   }
 }
 
@@ -223,12 +264,14 @@ fn get_slice(buffer: &VkSlicedBuffer, length: usize, offset_alignment: usize) ->
   let mut slice_option = guard
       .iter_mut()
       .enumerate()
-      .find(|(index, s)| s.length - (align_up(s.offset, offset_alignment) - s.offset) >= length);
+      .find(|(index, s)|
+          s.length > length &&
+          s.length - ((s.offset + s.length - length) - align_down(s.offset + s.length - length, offset_alignment)) >= length);
   if let Some((index, existing_slice)) = slice_option {
     return if existing_slice.length > length {
       let offset = existing_slice.length - length;
       let aligned_offset = align_down(offset, offset_alignment);
-      debug_assert!(aligned_offset >= existing_slice.offset);
+      debug_assert!(aligned_offset <= offset);
       let alignment_delta = offset - aligned_offset;
 
       let new_slice = VkBufferSlice {

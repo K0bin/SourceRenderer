@@ -6,7 +6,7 @@ use ash::version::DeviceV1_0;
 
 use spirv_cross::{spirv, glsl, ErrorCode};
 
-use sourcerenderer_core::graphics::InputRate;
+use sourcerenderer_core::graphics::{InputRate, BindingFrequency};
 use sourcerenderer_core::graphics::PipelineInfo;
 use sourcerenderer_core::graphics::Pipeline;
 use sourcerenderer_core::graphics::ShaderType;
@@ -108,7 +108,7 @@ impl VkShader {
       let mut set = sets.entry(set_index).or_insert(Vec::new());
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
-        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+        descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
         shader_stage: shader_type_to_vk(shader_type)
       });
     }
@@ -576,7 +576,6 @@ impl VkPipeline {
 
 impl Drop for VkPipeline {
   fn drop(&mut self) {
-    println!("drop pipeline");
     unsafe {
       let vk_device = &self.device.device;
       vk_device.destroy_pipeline(self.pipeline, None);

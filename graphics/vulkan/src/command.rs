@@ -33,8 +33,8 @@ use std::mem::MaybeUninit;
 use buffer::{VkBufferSlice, BufferAllocator};
 use VkTexture;
 use std::cmp::{max, min};
-use descriptor::VkBindingManager;
-use texture::VkTextureShaderResourceView;
+use descriptor::{VkBindingManager, VkBoundResource};
+use texture::VkTextureView;
 use transfer::VkTransferCommandBuffer;
 
 pub struct VkCommandPool {
@@ -397,12 +397,13 @@ impl VkCommandBuffer {
     self.trackers.track_texture(texture);
   }
 
-  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureShaderResourceView>) {
+  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
     let pipeline_layout = pipeline.get_layout();
     let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
-    self.descriptor_manager.bind_texture_view(frequency, descriptor_layout, binding, texture);
+    //self.descriptor_manager.bind_texture_view(frequency, descriptor_layout, binding, texture);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::Texture(texture.clone()));
     self.trackers.track_texture_view(texture);
   }
 
@@ -411,57 +412,51 @@ impl VkCommandBuffer {
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
     let pipeline_layout = pipeline.get_layout();
     let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
-    self.descriptor_manager.bind_buffer(frequency, descriptor_layout, binding, buffer);
+    //self.descriptor_manager.bind_buffer(frequency, descriptor_layout, binding, buffer);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::Buffer(buffer.clone()));
     self.trackers.track_buffer(buffer);
   }
 
   pub(crate) fn finish_binding(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-    let pipeline_layout = pipeline.get_layout();
-    let mut descriptor_sets: Vec<vk::DescriptorSet> = Vec::new();
+    let mut offsets: [u32; 16] = Default::default();
+    let mut offsets_count = 0;
+    let mut descriptor_sets: [vk::DescriptorSet; 4] = Default::default();
+    let mut descriptor_sets_count = 0;
     let mut base_index = 0;
 
-    {
-      let set_option = self.descriptor_manager.finish(BindingFrequency::PerDraw);
-      if let Some(set) = set_option {
-        descriptor_sets.push(set);
+    let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
+    let pipeline_layout = pipeline.get_layout();
+
+    let finished_sets = self.descriptor_manager.finish(pipeline_layout);
+    for (index, set_option) in finished_sets.iter().enumerate() {
+      match set_option {
+        None => {
+          if descriptor_sets_count != 0 {
+            unsafe {
+              self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
+              base_index = index as u32 + 1;
+              offsets_count = 0;
+              descriptor_sets_count = 0;
+            }
+          }
+        },
+        Some(set_binding) => {
+          descriptor_sets[descriptor_sets_count] = *set_binding.set.get_handle();
+          descriptor_sets_count += 1;
+          for i in 0..set_binding.dynamic_offset_count as usize {
+            offsets[offsets_count] = set_binding.dynamic_offsets[i] as u32;
+            offsets_count += 1;
+          }
+        }
       }
     }
-    {
-      let set_option = self.descriptor_manager.finish(BindingFrequency::PerMaterial);
-      if let Some(set) = set_option {
-        descriptor_sets.push(set);
-      } else if descriptor_sets.len() > 0 {
-        unsafe {
-          self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &[]);
-        }
-        base_index = 2;
-        descriptor_sets.clear();
-      }
-    }
-    {
-      let set_option = self.descriptor_manager.finish(BindingFrequency::PerModel);
-      if let Some(set) = set_option {
-        descriptor_sets.push(set);
-      } else if descriptor_sets.len() > 0 {
-        unsafe {
-          self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &[]);
-        }
-        base_index = 3;
-        descriptor_sets.clear();
-      }
-    }
-    {
-      let set_option = self.descriptor_manager.finish(BindingFrequency::Rarely);
-      if let Some(set) = set_option {
-        descriptor_sets.push(set);
-      } else if descriptor_sets.len() > 0 {
-        unsafe {
-          self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &[]);
-        }
-        descriptor_sets.clear();
-        base_index = 4;
+
+    if descriptor_sets_count != 0 {
+      unsafe {
+        self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
+        offsets_count = 0;
+        descriptor_sets_count = 0;
       }
     }
   }
@@ -484,6 +479,9 @@ impl Drop for VkCommandBuffer {
   }
 }
 
+///Small wrapper around VkCommandBuffer to
+// disable Send + Sync because sending VkCommandBuffers across threads
+// is only safe after recording is done
 pub struct VkCommandBufferRecorder {
   item: Option<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>,
@@ -555,6 +553,15 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
+  fn init_texture_mip_level(&mut self, src_buffer: &Arc<VkBufferSlice>, texture: &Arc<VkTexture>, mip_level: u32, array_layer: u32) {
+    self.item.as_mut().unwrap().init_texture_mip_level(src_buffer, texture, mip_level, array_layer);
+  }
+
+  fn upload_data<T>(&mut self, data: T) -> VkBufferSlice {
+    self.item.as_mut().unwrap().upload_data(data)
+  }
+
+  #[inline(always)]
   fn draw(&mut self, vertices: u32, offset: u32) {
     self.item.as_mut().unwrap().draw(vertices, offset);
   }
@@ -565,26 +572,17 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn init_texture_mip_level(&mut self, src_buffer: &Arc<VkBufferSlice>, texture: &Arc<VkTexture>, mip_level: u32, array_layer: u32) {
-    self.item.as_mut().unwrap().init_texture_mip_level(src_buffer, texture, mip_level, array_layer);
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+    self.item.as_mut().unwrap().bind_texture_view(frequency, binding, texture);
   }
 
-  #[inline(always)]
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureShaderResourceView>) {
-    self.item.as_mut().unwrap().bind_texture_view(frequency, binding, texture);
+  fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+    self.item.as_mut().unwrap().bind_buffer(frequency, binding, buffer);
   }
 
   #[inline(always)]
   fn finish_binding(&mut self) {
     self.item.as_mut().unwrap().finish_binding();
-  }
-
-  fn upload_data<T>(&mut self, data: T) -> VkBufferSlice {
-    self.item.as_mut().unwrap().upload_data(data)
-  }
-
-  fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
-    self.item.as_mut().unwrap().bind_buffer(frequency, binding, buffer);
   }
 }
 

@@ -13,6 +13,7 @@ use crate::VkBackend;
 use pipeline::{samples_to_vk, compare_func_to_vk};
 use vk_mem::MemoryUsage;
 use std::cmp::max;
+use std::hash::{Hash, Hasher};
 
 
 pub struct VkTexture {
@@ -20,12 +21,6 @@ pub struct VkTexture {
   allocation: Option<vk_mem::Allocation>,
   device: Arc<RawVkDevice>,
   info: TextureInfo,
-}
-
-pub struct VkRenderTargetView {
-  texture: Arc<VkTexture>,
-  view: vk::ImageView,
-  device: Arc<RawVkDevice>
 }
 
 impl VkTexture {
@@ -89,45 +84,19 @@ impl Texture for VkTexture {
   }
 }
 
-impl VkRenderTargetView {
-  pub fn new(device: &Arc<RawVkDevice>, texture: Arc<VkTexture>) -> Self {
-    let vk_device = &device.device;
-    let info = texture.get_info();
-    let vk_info = vk::ImageViewCreateInfo {
-      image: *texture.get_handle(),
-      view_type: if info.depth > 1 { vk::ImageViewType::TYPE_3D } else { vk::ImageViewType::TYPE_2D },
-      format: format_to_vk(info.format),
-      components: vk::ComponentMapping {
-        r: vk::ComponentSwizzle::IDENTITY,
-        g: vk::ComponentSwizzle::IDENTITY,
-        b: vk::ComponentSwizzle::IDENTITY,
-        a: vk::ComponentSwizzle::IDENTITY,
-      },
-      subresource_range: vk::ImageSubresourceRange {
-        aspect_mask: vk::ImageAspectFlags::COLOR,
-        base_mip_level: 0,
-        level_count: 1,
-        base_array_layer: 0,
-        layer_count: 1
-      },
-      ..Default::default()
-    };
-    let view = unsafe { vk_device.create_image_view(&vk_info, None).unwrap() };
-    return VkRenderTargetView {
-      texture,
-      view,
-      device: device.clone()
-    };
-  }
-
-  pub fn get_handle(&self) -> &vk::ImageView {
-    return &self.view;
-  }
-
-  pub fn get_texture(&self) -> Arc<VkTexture> {
-    return self.texture.clone();
+impl Hash for VkTexture {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.image.hash(state);
   }
 }
+
+impl PartialEq for VkTexture {
+  fn eq(&self, other: &Self) -> bool {
+    self.image == other.image
+  }
+}
+
+impl Eq for VkTexture {}
 
 fn filter_to_vk(filter: Filter) -> vk::Filter {
   match filter {
@@ -151,15 +120,15 @@ fn address_mode_to_vk(address_mode: AddressMode) -> vk::SamplerAddressMode {
   }
 }
 
-pub struct VkTextureShaderResourceView {
+pub struct VkTextureView {
   view: vk::ImageView,
-  sampler: vk::Sampler,
+  sampler: Option<vk::Sampler>,
   texture: Arc<VkTexture>,
   device: Arc<RawVkDevice>
 }
 
-impl VkTextureShaderResourceView {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Self {
+impl VkTextureView {
+  pub(crate) fn new_shader_resource_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
       view_type: if texture.get_info().height == 0 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth == 0 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
@@ -207,10 +176,40 @@ impl VkTextureShaderResourceView {
 
     Self {
       view,
-      sampler,
+      sampler: Some(sampler),
       texture: texture.clone(),
       device: device.clone()
     }
+  }
+
+  pub(crate) fn new_render_target_view(device: &Arc<RawVkDevice>, texture: Arc<VkTexture>) -> Self {
+    let info = texture.get_info();
+    let vk_info = vk::ImageViewCreateInfo {
+      image: *texture.get_handle(),
+      view_type: if info.depth > 1 { vk::ImageViewType::TYPE_3D } else { vk::ImageViewType::TYPE_2D },
+      format: format_to_vk(info.format),
+      components: vk::ComponentMapping {
+        r: vk::ComponentSwizzle::IDENTITY,
+        g: vk::ComponentSwizzle::IDENTITY,
+        b: vk::ComponentSwizzle::IDENTITY,
+        a: vk::ComponentSwizzle::IDENTITY,
+      },
+      subresource_range: vk::ImageSubresourceRange {
+        aspect_mask: vk::ImageAspectFlags::COLOR,
+        base_mip_level: 0,
+        level_count: 1,
+        base_array_layer: 0,
+        layer_count: 1
+      },
+      ..Default::default()
+    };
+    let view = unsafe { device.create_image_view(&vk_info, None).unwrap() };
+    return VkTextureView {
+      texture,
+      view,
+      sampler: None,
+      device: device.clone()
+    };
   }
 
   #[inline]
@@ -219,18 +218,38 @@ impl VkTextureShaderResourceView {
   }
 
   #[inline]
-  pub(crate) fn get_sampler_handle(&self) -> &vk::Sampler {
-    &self.sampler
+  pub(crate) fn get_sampler_handle(&self) -> Option<&vk::Sampler> {
+    self.sampler.as_ref()
   }
 }
 
-impl Drop for VkTextureShaderResourceView {
+impl Drop for VkTextureView {
   fn drop(&mut self) {
     unsafe {
       self.device.destroy_image_view(self.view, None);
-      self.device.destroy_sampler(self.sampler, None);
+      if let Some(sampler) = self.sampler {
+        self.device.destroy_sampler(sampler, None);
+      }
     }
   }
 }
 
-impl TextureShaderResourceView for VkTextureShaderResourceView {}
+impl TextureShaderResourceView for VkTextureView {}
+
+impl Hash for VkTextureView {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.texture.hash(state);
+    self.view.hash(state);
+    self.sampler.hash(state);
+  }
+}
+
+impl PartialEq for VkTextureView {
+  fn eq(&self, other: &Self) -> bool {
+    self.texture == other.texture
+    && self.view == other.view
+    && self.sampler == other.sampler
+  }
+}
+
+impl Eq for VkTextureView {}

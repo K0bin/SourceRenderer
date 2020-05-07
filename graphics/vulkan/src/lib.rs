@@ -23,7 +23,6 @@ pub use self::command::VkCommandBufferSubmission;
 pub use self::command::VkCommandBufferRecorder;
 pub use self::buffer::VkBuffer;
 pub use self::texture::VkTexture;
-pub use self::texture::VkRenderTargetView;
 pub use self::sync::VkSemaphore;
 pub use self::sync::VkFence;
 pub use self::pipeline::VkPipeline;
