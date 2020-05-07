@@ -268,19 +268,19 @@ impl VkCommandBuffer {
     self.render_pass = None;
   }
 
-  pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBufferSlice>) {
+  pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.trackers.track_buffer(&vertex_buffer);
+    self.trackers.track_buffer(vertex_buffer);
     unsafe {
-      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[vertex_buffer.get_offset_and_length().0 as u64]);
+      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[vertex_buffer.get_offset() as u64]);
     }
   }
 
-  pub(crate) fn set_index_buffer(&mut self, index_buffer: Arc<VkBufferSlice>) {
+  pub(crate) fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.trackers.track_buffer(&index_buffer);
+    self.trackers.track_buffer(index_buffer);
     unsafe {
-      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), index_buffer.get_offset_and_length().0 as u64, vk::IndexType::UINT32);
+      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), index_buffer.get_offset() as u64, vk::IndexType::UINT32);
     }
   }
 
@@ -402,7 +402,6 @@ impl VkCommandBuffer {
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
     let pipeline_layout = pipeline.get_layout();
     let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
-    //self.descriptor_manager.bind_texture_view(frequency, descriptor_layout, binding, texture);
     self.descriptor_manager.bind(frequency, binding, VkBoundResource::Texture(texture.clone()));
     self.trackers.track_texture_view(texture);
   }
@@ -412,7 +411,6 @@ impl VkCommandBuffer {
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
     let pipeline_layout = pipeline.get_layout();
     let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
-    //self.descriptor_manager.bind_buffer(frequency, descriptor_layout, binding, buffer);
     self.descriptor_manager.bind(frequency, binding, VkBoundResource::Buffer(buffer.clone()));
     self.trackers.track_buffer(buffer);
   }
@@ -533,12 +531,12 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<VkBufferSlice>) {
+  fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>) {
     self.item.as_mut().unwrap().set_vertex_buffer(vertex_buffer)
   }
 
   #[inline(always)]
-  fn set_index_buffer(&mut self, index_buffer: Arc<VkBufferSlice>) {
+  fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>) {
     self.item.as_mut().unwrap().set_index_buffer(index_buffer)
   }
 

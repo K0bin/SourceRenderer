@@ -392,8 +392,8 @@ impl<P: Platform> Engine<P> {
 
         let constant_buffer = Arc::new(command_buffer.upload_data(matrix));
         command_buffer.set_pipeline(&pipeline_info);
-        command_buffer.set_vertex_buffer(vertex_buffer.clone());
-        command_buffer.set_index_buffer(index_buffer.clone());
+        command_buffer.set_vertex_buffer(&vertex_buffer);
+        command_buffer.set_index_buffer(&index_buffer);
         command_buffer.set_viewports(&[Viewport {
           position: Vec2 { x: 0.0f32, y: 0.0f32 },
           extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
@@ -404,8 +404,8 @@ impl<P: Platform> Engine<P> {
           position: Vec2I { x: 0, y: 0 },
           extent: Vec2UI { x: 9999, y: 9999 },
         }]);
-        command_buffer.bind_buffer(BindingFrequency::PerDraw, 1, &constant_buffer);
-        command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, &texture_view);
+        command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &constant_buffer);
+        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &texture_view);
         command_buffer.finish_binding();
         command_buffer.draw_indexed(1, 0, 6 * 6, 0, 0);
         0

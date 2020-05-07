@@ -31,8 +31,8 @@ pub enum CommandBufferType {
 
 pub trait CommandBuffer<B: Backend> {
   fn set_pipeline(&mut self, info: &PipelineInfo<B>);
-  fn set_vertex_buffer(&mut self, vertex_buffer: Arc<B::Buffer>);
-  fn set_index_buffer(&mut self, index_buffer: Arc<B::Buffer>);
+  fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<B::Buffer>);
+  fn set_index_buffer(&mut self, index_buffer: &Arc<B::Buffer>);
   fn set_viewports(&mut self, viewports: &[ Viewport ]);
   fn set_scissors(&mut self, scissors: &[ Scissor ]);
   fn init_texture_mip_level(&mut self, src_buffer: &Arc<B::Buffer>, texture: &Arc<B::Texture>, mip_level: u32, array_layer: u32);
@@ -46,8 +46,8 @@ pub trait CommandBuffer<B: Backend> {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]
 pub enum BindingFrequency {
-  PerDraw,
-  PerMaterial,
-  PerModel,
-  Rarely
+  PerDraw = 0,
+  PerMaterial = 1,
+  PerModel = 2,
+  Rarely = 3
 }

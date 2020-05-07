@@ -8,7 +8,7 @@ layout(location = 2) in vec2 in_uv;
 layout(location = 0) out vec3 out_color;
 layout(location = 1) out vec2 out_uv;
 
-layout(set = 0, binding = 1) uniform HighFrequencyUbo {
+layout(set = 0, binding = 0) uniform HighFrequencyUbo {
     mat4 mvp;
 };
 

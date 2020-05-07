@@ -196,9 +196,6 @@ impl VkDescriptorSet {
       device.allocate_descriptor_sets(&set_create_info)
     }.unwrap().pop().unwrap();
 
-    let mut buffer_info = vk::DescriptorBufferInfo::default();
-    let mut texture_info = vk::DescriptorImageInfo::default();
-
     for (binding, resource) in bindings.iter().enumerate() {
       let mut write = vk::WriteDescriptorSet {
         dst_set: set,

@@ -267,7 +267,7 @@ impl VkPipeline {
   pub fn new(device: &Arc<RawVkDevice>, info: &VkPipelineInfo, shared: &VkShared) -> Self {
     let vk_device = &device.device;
     let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
-    let mut descriptor_set_layout_bindings: HashMap<u32, Vec<VkDescriptorSetBindingInfo>> = HashMap::new();
+    let mut descriptor_set_layout_bindings: [Vec<VkDescriptorSetBindingInfo>; 4] = Default::default();
 
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -280,12 +280,16 @@ impl VkPipeline {
         ..Default::default()
       };
       shader_stages.push(shader_stage);
-      for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_layout_bindings
-          .entry(*shader_set.0)
-          .or_insert(Vec::new());
-        for binding in shader_set.1 {
-          set.push(binding.clone());
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        for binding in shader_set {
+          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.push(binding.clone());
+          }
         }
       }
     }
@@ -298,12 +302,16 @@ impl VkPipeline {
         ..Default::default()
       };
       shader_stages.push(shader_stage);
-      for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_layout_bindings
-          .entry(*shader_set.0)
-          .or_insert(Vec::new());
-        for binding in shader_set.1 {
-          set.push(binding.clone());
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        for binding in shader_set {
+          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.push(binding.clone());
+          }
         }
       }
     }
@@ -316,12 +324,16 @@ impl VkPipeline {
         ..Default::default()
       };
       shader_stages.push(shader_stage);
-      for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_layout_bindings
-          .entry(*shader_set.0)
-          .or_insert(Vec::new());
-        for binding in shader_set.1 {
-          set.push(binding.clone());
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        for binding in shader_set {
+          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.push(binding.clone());
+          }
         }
       }
     }
@@ -334,12 +346,16 @@ impl VkPipeline {
         ..Default::default()
       };
       shader_stages.push(shader_stage);
-      for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_layout_bindings
-          .entry(*shader_set.0)
-          .or_insert(Vec::new());
-        for binding in shader_set.1 {
-          set.push(binding.clone());
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        for binding in shader_set {
+          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.push(binding.clone());
+          }
         }
       }
     }
@@ -352,12 +368,16 @@ impl VkPipeline {
         ..Default::default()
       };
       shader_stages.push(shader_stage);
-      for shader_set in &shader.descriptor_set_bindings {
-        let mut set = descriptor_set_layout_bindings
-          .entry(*shader_set.0)
-          .or_insert(Vec::new());
-        for binding in shader_set.1 {
-          set.push(binding.clone());
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        for binding in shader_set {
+          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.push(binding.clone());
+          }
         }
       }
     }
@@ -474,8 +494,8 @@ impl VkPipeline {
       ..Default::default()
     };
 
-    let mut descriptor_set_layouts: HashMap<u32, Arc<VkDescriptorSetLayout>> = HashMap::new();
-    for (index, bindings) in &descriptor_set_layout_bindings {
+    let mut descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 4] = Default::default();
+    for (index, bindings) in descriptor_set_layout_bindings.iter().enumerate() {
       let mut hasher = DefaultHasher::new();
       bindings.hash(&mut hasher);
       let hash = hasher.finish();
@@ -490,11 +510,14 @@ impl VkPipeline {
         cache.insert(hash, Arc::new(VkDescriptorSetLayout::new(&bindings, device)));
         cache.get(&hash).unwrap().clone()
       });
-      descriptor_set_layouts.insert(*index, set_layout);
+      descriptor_set_layouts[index] = Some(set_layout);
+      if index > 0 && descriptor_set_layouts[index - 1].is_none() {
+        panic!("Non continous descriptor set ranges are unsupported.");
+      }
     }
 
     let mut hasher = DefaultHasher::new();
-    for (index, bindings) in descriptor_set_layout_bindings {
+    for (index, bindings) in descriptor_set_layout_bindings.iter().enumerate() {
       index.hash(&mut hasher);
       bindings.hash(&mut hasher);
     }
@@ -590,14 +613,15 @@ impl Pipeline<VkBackend> for VkPipeline {
 pub(crate) struct VkPipelineLayout {
   device: Arc<RawVkDevice>,
   layout: vk::PipelineLayout,
-  descriptor_set_layouts: HashMap<u32, Arc<VkDescriptorSetLayout>>
+  descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 4]
 }
 
 impl VkPipelineLayout {
-  pub fn new(descriptor_set_layouts: &HashMap<u32, Arc<VkDescriptorSetLayout>>, device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 4], device: &Arc<RawVkDevice>) -> Self {
     let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts.iter()
-      .map(|(_, descriptor_set_layout)| {
-        *descriptor_set_layout.get_handle()
+      .filter(|descriptor_set_layout| descriptor_set_layout.is_some())
+      .map(|descriptor_set_layout| {
+        *descriptor_set_layout.as_ref().unwrap().get_handle()
       })
       .collect();
     let info = vk::PipelineLayoutCreateInfo {
@@ -622,7 +646,7 @@ impl VkPipelineLayout {
 
   #[inline]
   pub(crate) fn get_descriptor_set_layout(&self, index: u32) -> Option<&Arc<VkDescriptorSetLayout>> {
-    self.descriptor_set_layouts.get(&index)
+    self.descriptor_set_layouts[index as usize].as_ref()
   }
 }
 
