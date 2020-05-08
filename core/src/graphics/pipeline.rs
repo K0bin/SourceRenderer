@@ -321,7 +321,3 @@ pub struct PipelineInfo<B: Backend> {
   pub depth_stencil: DepthStencilInfo,
   pub blend: BlendInfo
 }
-
-pub trait Pipeline<B: Backend> {
-
-}

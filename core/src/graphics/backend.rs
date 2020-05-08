@@ -5,7 +5,6 @@ use graphics::Surface;
 use graphics::CommandBuffer;
 use graphics::Shader;
 use graphics::PipelineInfo;
-use graphics::Pipeline;
 use graphics::Texture;
 use graphics::Buffer;
 use graphics::Swapchain;
@@ -25,6 +24,5 @@ pub trait Backend: 'static + Sized {
   type TextureShaderResourceView: TextureShaderResourceView + Send + Sync;
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
-  type Pipeline: Pipeline<Self> + Send + Sync;
   type RenderGraph: RenderGraph<Self> + Send + Sync;
 }

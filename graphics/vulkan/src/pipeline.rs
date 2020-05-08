@@ -8,7 +8,6 @@ use spirv_cross::{spirv, glsl, ErrorCode};
 
 use sourcerenderer_core::graphics::{InputRate, BindingFrequency};
 use sourcerenderer_core::graphics::PipelineInfo;
-use sourcerenderer_core::graphics::Pipeline;
 use sourcerenderer_core::graphics::ShaderType;
 use sourcerenderer_core::graphics::Shader;
 use sourcerenderer_core::graphics::FillMode;
@@ -604,10 +603,6 @@ impl Drop for VkPipeline {
       vk_device.destroy_pipeline(self.pipeline, None);
     }
   }
-}
-
-impl Pipeline<VkBackend> for VkPipeline {
-
 }
 
 pub(crate) struct VkPipelineLayout {

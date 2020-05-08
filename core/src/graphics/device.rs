@@ -4,7 +4,6 @@ use std::rc::Rc;
 use graphics::{Surface, TextureInfo, TextureShaderResourceViewInfo};
 use graphics::Buffer;
 use graphics::BufferUsage;
-use graphics::Pipeline;
 use graphics::PipelineInfo;
 use graphics::Shader;
 use graphics::ShaderType;
