@@ -77,8 +77,6 @@ impl VkShader {
     let vk_device = &device.device;
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
 
-    println!("Bytecode length: {}", bytecode.len());
-
     let mut module = spirv::Module::from_words(unsafe { std::slice::from_raw_parts(bytecode.as_ptr() as *const u32, bytecode.len() / std::mem::size_of::<u32>()) });
     let ast = spirv::Ast::<glsl::Target>::parse(&module).expect("Failed to parse shader with SPIR-V Cross");
     let resources = ast.get_shader_resources().expect("Failed to get resources");

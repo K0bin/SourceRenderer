@@ -33,12 +33,12 @@ pub trait Adapter<B: Backend> {
 }
 
 pub trait Device<B: Backend> {
-  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> B::Buffer;
-  fn upload_data<T>(&self, data: T) -> B::Buffer;
-  fn upload_data_raw(&self, data: &[u8]) -> B::Buffer;
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> B::Shader;
-  fn create_texture(&self, info: &TextureInfo) -> B::Texture;
-  fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> B::TextureShaderResourceView;
+  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer>;
+  fn upload_data<T>(&self, data: T) -> Arc<B::Buffer>;
+  fn upload_data_raw(&self, data: &[u8]) -> Arc<B::Buffer>;
+  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<B::Shader>;
+  fn create_texture(&self, info: &TextureInfo) -> Arc<B::Texture>;
+  fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> Arc<B::TextureShaderResourceView>;
   fn wait_for_idle(&self);
 
   fn create_render_graph(&self, graph_info: &crate::graphics::graph::RenderGraphInfo<B>, swapchin: &Arc<B::Swapchain>) -> B::RenderGraph;

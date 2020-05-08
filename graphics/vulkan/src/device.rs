@@ -123,40 +123,40 @@ impl VkDevice {
 }
 
 impl Device<VkBackend> for VkDevice {
-  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> VkBufferSlice {
+  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> {
     unimplemented!();
     //return VkBuffer::new(&self.device, size, memory_usage, &self.device.allocator, usage);
   }
 
-  fn upload_data<T>(&self, data: T) -> <VkBackend as Backend>::Buffer {
+  fn upload_data<T>(&self, data: T) -> Arc<VkBufferSlice> {
     let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::VERTEX | BufferUsage::INDEX, std::mem::size_of::<T>());
     {
       let mut map = slice.map().expect("Mapping failed");
       std::mem::replace::<T>(map.get_data(), data);
     }
-    slice
+    Arc::new(slice)
   }
 
-  fn upload_data_raw(&self, data: &[u8]) -> <VkBackend as Backend>::Buffer {
+  fn upload_data_raw(&self, data: &[u8]) -> Arc<VkBufferSlice> {
     let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::VERTEX | BufferUsage::INDEX, data.len());
     unsafe {
       let ptr = slice.map_unsafe().expect("Failed to map buffer slice");
       std::ptr::copy(data.as_ptr(), ptr, min(data.len(), slice.get_offset_and_length().1));
       slice.unmap_unsafe();
     }
-    slice
+    Arc::new(slice)
   }
 
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> VkShader {
-    return VkShader::new(&self.device, shader_type, bytecode);
+  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<VkShader> {
+    return Arc::new(VkShader::new(&self.device, shader_type, bytecode));
   }
 
-  fn create_texture(&self, info: &TextureInfo) -> VkTexture {
-    return VkTexture::new(&self.device, info);
+  fn create_texture(&self, info: &TextureInfo) -> Arc<VkTexture> {
+    return Arc::new(VkTexture::new(&self.device, info));
   }
 
-  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> VkTextureView {
-    return VkTextureView::new_shader_resource_view(&self.device, texture, info);
+  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Arc<VkTextureView> {
+    return Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, info));
   }
 
   fn wait_for_idle(&self) {
