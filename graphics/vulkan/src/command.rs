@@ -459,8 +459,8 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn upload_data<T>(&self, data: T) -> Arc<VkBufferSlice> {
-    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuOnly, BufferUsage::CONSTANT, std::mem::size_of::<T>());
+  pub(crate) fn upload_dynamic_data<T>(&self, data: T, usage: BufferUsage) -> Arc<VkBufferSlice> {
+    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of::<T>());
     unsafe {
       let mut map = slice.map().expect("Mapping failed");
       std::mem::replace::<T>(map.get_data(), data);
@@ -555,8 +555,8 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     self.item.as_mut().unwrap().init_texture_mip_level(src_buffer, texture, mip_level, array_layer);
   }
 
-  fn upload_data<T>(&mut self, data: T) -> Arc<VkBufferSlice> {
-    self.item.as_mut().unwrap().upload_data(data)
+  fn upload_dynamic_data<T>(&mut self, data: T, usage: BufferUsage) -> Arc<VkBufferSlice> {
+    self.item.as_mut().unwrap().upload_dynamic_data(data, usage)
   }
 
   #[inline(always)]

@@ -110,7 +110,7 @@ impl<P: Platform> Engine<P> {
     let (texture_buffer, texture) = {
       let image = image::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("texture.png"))).expect("Failed to open texture");
       let data = image.to_rgba();
-      let buffer = device.upload_data_raw(&data);
+      let buffer = device.upload_data_raw(&data, MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
       let texture = device.create_texture(&TextureInfo {
         format: Format::RGBA8,
         width: image.width(),
@@ -290,8 +290,8 @@ impl<P: Platform> Engine<P> {
       std::mem::replace(data, triangle);
     }*/
 
-    let vertex_buffer = device.upload_data(triangle);
-    let index_buffer = device.upload_data(indices);
+    let vertex_buffer = device.upload_data(triangle, MemoryUsage::CpuToGpu, BufferUsage::VERTEX);
+    let index_buffer = device.upload_data(indices, MemoryUsage::CpuToGpu, BufferUsage::INDEX);
 
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
@@ -390,7 +390,7 @@ impl<P: Platform> Engine<P> {
           guard.clone()
         };
 
-        let constant_buffer = command_buffer.upload_data(matrix);
+        let constant_buffer = command_buffer.upload_dynamic_data(matrix, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(&pipeline_info);
         command_buffer.set_vertex_buffer(&vertex_buffer);
         command_buffer.set_index_buffer(&index_buffer);

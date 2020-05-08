@@ -128,8 +128,9 @@ impl Device<VkBackend> for VkDevice {
     //return VkBuffer::new(&self.device, size, memory_usage, &self.device.allocator, usage);
   }
 
-  fn upload_data<T>(&self, data: T) -> Arc<VkBufferSlice> {
-    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::VERTEX | BufferUsage::INDEX, std::mem::size_of::<T>());
+  fn upload_data<T>(&self, data: T, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> {
+    assert_ne!(memory_usage, MemoryUsage::GpuOnly);
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, std::mem::size_of::<T>());
     {
       let mut map = slice.map().expect("Mapping failed");
       std::mem::replace::<T>(map.get_data(), data);
@@ -137,8 +138,9 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(slice)
   }
 
-  fn upload_data_raw(&self, data: &[u8]) -> Arc<VkBufferSlice> {
-    let slice = self.context.get_shared().get_buffer_allocator().get_slice(MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::VERTEX | BufferUsage::INDEX, data.len());
+  fn upload_data_raw(&self, data: &[u8], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> {
+    assert_ne!(memory_usage, MemoryUsage::GpuOnly);
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, data.len());
     unsafe {
       let ptr = slice.map_unsafe().expect("Failed to map buffer slice");
       std::ptr::copy(data.as_ptr(), ptr, min(data.len(), slice.get_offset_and_length().1));
