@@ -119,6 +119,10 @@ impl Buffer for VkBufferSlice {
       allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
   }
+
+  fn get_length(&self) -> usize {
+    self.length
+  }
 }
 
 pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {

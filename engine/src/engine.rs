@@ -290,8 +290,13 @@ impl<P: Platform> Engine<P> {
       std::mem::replace(data, triangle);
     }*/
 
-    let vertex_buffer = device.upload_data(triangle, MemoryUsage::CpuToGpu, BufferUsage::VERTEX);
-    let index_buffer = device.upload_data(indices, MemoryUsage::CpuToGpu, BufferUsage::INDEX);
+    let vertex_buffer_temp = device.upload_data(triangle, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::VERTEX);
+    let index_buffer_temp = device.upload_data(indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC | BufferUsage::INDEX);
+    let vertex_buffer = device.create_buffer(vertex_buffer_temp.get_length(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
+    let index_buffer = device.create_buffer(index_buffer_temp.get_length(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
+
+    device.init_buffer(&vertex_buffer_temp, &vertex_buffer);
+    device.init_buffer(&index_buffer_temp, &index_buffer);
 
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();

@@ -20,6 +20,8 @@ pub trait Buffer {
     where Self: Sized, T: Sized;
   unsafe fn map_unsafe(&self) -> Option<*mut u8>;
   unsafe fn unmap_unsafe(&self);
+
+  fn get_length(&self) -> usize;
 }
 
 pub struct MappedBuffer<'a, B, T>

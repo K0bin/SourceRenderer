@@ -10,7 +10,7 @@ use command::VkCommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use context::{VkShared, VkLifetimeTrackers};
 use sourcerenderer_core::graphics::Texture;
-use std::cmp::max;
+use std::cmp::{max, min};
 use sourcerenderer_core::pool::Recyclable;
 use std::collections::VecDeque;
 
@@ -180,6 +180,35 @@ impl VkTransfer {
 
       guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
       guard.current_graphics_buffer.trackers.track_texture(texture);
+    }
+  }
+
+  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
+    let mut guard = self.inner.lock().unwrap();
+    unsafe {
+      self.device.cmd_copy_buffer(*guard.current_graphics_buffer.get_handle(), *src_buffer.get_buffer().get_handle(), *dst_buffer.get_buffer().get_handle(), &[
+        vk::BufferCopy {
+          src_offset: src_buffer.get_offset() as u64,
+          dst_offset: dst_buffer.get_offset() as u64,
+          size: min(src_buffer.get_length(), dst_buffer.get_length()) as u64
+        }]);
+      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::VERTEX_INPUT, vk::DependencyFlags::empty(), &[], &[
+        vk::BufferMemoryBarrier {
+          src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+          dst_access_mask: vk::AccessFlags::SHADER_READ
+              | vk::AccessFlags::INDEX_READ
+              | vk::AccessFlags::VERTEX_ATTRIBUTE_READ
+              | vk::AccessFlags::MEMORY_READ,
+          src_queue_family_index: self.graphics_queue.get_queue_family_index(),
+          dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
+          buffer: *dst_buffer.get_buffer().get_handle(),
+          offset: dst_buffer.get_offset() as u64,
+          size: dst_buffer.get_length() as u64,
+          ..Default::default()
+        }], &[]);
+
+      guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
+      guard.current_graphics_buffer.trackers.track_buffer(dst_buffer);
     }
   }
 
