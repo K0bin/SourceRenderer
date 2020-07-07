@@ -139,7 +139,7 @@ impl VkSwapchain {
   unsafe fn pick_present_mode(present_modes: Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
     return *present_modes
       .iter()
-      .filter(|&&mode| mode == vk::PresentModeKHR::FIFO)
+      .filter(|&&mode| mode == vk::PresentModeKHR::IMMEDIATE)
       .nth(0).expect("No compatible present mode found");
   }
 
