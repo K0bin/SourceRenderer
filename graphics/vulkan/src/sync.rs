@@ -8,6 +8,7 @@ use crate::raw::RawVkDevice;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Poll, Context};
+use ash::prelude::VkResult;
 
 pub struct VkSemaphore {
   semaphore: vk::Semaphore,
@@ -84,7 +85,7 @@ impl VkFence {
   pub fn is_signaled(&self) -> bool {
     let vk_device = &self.device.device;
     return unsafe {
-      vk_device.wait_for_fences(&[self.fence], true, 0).is_ok()
+      vk_device.get_fence_status(self.fence).is_ok()
     };
   }
 }
