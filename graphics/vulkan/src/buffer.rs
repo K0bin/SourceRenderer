@@ -189,6 +189,8 @@ fn align_down_64(value: u64, alignment: u64) -> u64 {
   (value / alignment) * alignment
 }
 
+// TODO: rewrite buffer allocator from scratch
+
 type VkSlicedBuffer = Arc<Mutex<Vec<VkBufferSlice>>>;
 pub struct VkBufferSlice {
   buffer: Arc<VkBuffer>,
@@ -294,6 +296,9 @@ fn get_slice(buffer: &VkSlicedBuffer, length: usize, offset_alignment: usize) ->
 }
 
 const UNIQUE_BUFFER_THRESHOLD: usize = 16384;
+const BUFFER_SLAB_SIZE: usize = 1024;
+const SMALL_BUFFER_SLAB_SIZE: usize = 128;
+
 pub struct BufferAllocator {
   device: Arc<RawVkDevice>,
   buffers: Mutex<HashMap<(MemoryUsage, BufferUsage), Vec<VkSlicedBuffer>>>,
@@ -346,24 +351,17 @@ impl BufferAllocator {
 
       let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, buffer_usage, &self.device.allocator));
       let mut slices = Arc::new(Mutex::new(Vec::new()));
-
-      if length != UNIQUE_BUFFER_THRESHOLD {
-        let mut slices_guard = slices.lock().unwrap();
-        slices_guard.push(VkBufferSlice {
+      {
+        let mut guard = slices.lock().unwrap();
+        guard.push(VkBufferSlice {
           buffer: buffer.clone(),
           slices: slices.clone(),
-          offset: length,
-          length: UNIQUE_BUFFER_THRESHOLD - length
+          offset: 0,
+          length: UNIQUE_BUFFER_THRESHOLD
         });
       }
 
-      matching_buffers.push(slices.clone());
-      return VkBufferSlice {
-        buffer,
-        slices,
-        offset: 0,
-        length
-      };
+      return get_slice(&slices, length, alignment).unwrap();
     }
   }
 }
