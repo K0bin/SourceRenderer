@@ -25,6 +25,7 @@ use transfer::VkTransfer;
 use ::{VkTexture, VkRenderPass};
 use VkFrameBuffer;
 use texture::VkTextureView;
+use std::marker::PhantomData;
 
 pub struct VkShared {
   pipelines: RwLock<HashMap<u64, Arc<VkPipeline>>>,
@@ -54,7 +55,8 @@ pub struct VkThreadContext {
   device: Arc<RawVkDevice>,
   frames: Vec<RefCell<VkFrameContext>>,
   buffer_allocator: Arc<BufferAllocator>,
-  frame_counter: u64
+  frame_counter: u64,
+  disable_send_sync: PhantomData<u32>
 }
 
 /*
@@ -144,7 +146,8 @@ impl VkThreadContext {
       device: device.clone(),
       frames,
       frame_counter: 0u64,
-      buffer_allocator
+      buffer_allocator,
+      disable_send_sync: PhantomData
     };
   }
 

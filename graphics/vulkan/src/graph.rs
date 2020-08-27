@@ -23,7 +23,7 @@ use context::VkThreadContextManager;
 use std::cell::RefCell;
 use ::{VkRenderPass, VkQueue};
 use ::{VkFrameBuffer, VkSemaphore};
-use VkCommandBufferRecorder;
+use ::{VkCommandBufferRecorder, VkFence};
 
 pub struct VkAttachment {
   texture: vk::Image,
@@ -239,7 +239,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     let mut cmd_buffer = frame_context.get_command_pool().get_command_buffer(CommandBufferType::PRIMARY);
     for pass in &self.passes {
-      cmd_buffer.begin_render_pass(&pass.render_pass, &pass.frame_buffer[self.context.get_frame_counter() as usize % pass.frame_buffer.len()], RenderpassRecordingMode::Commands);
+      cmd_buffer.begin_render_pass(&pass.render_pass, &pass.frame_buffer[swapchain_image_index.unwrap() as usize], RenderpassRecordingMode::Commands);
       (pass.callback)(&mut cmd_buffer);
       cmd_buffer.end_render_pass();
     }
@@ -264,7 +264,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     }
 
     if let Some(index) = swapchain_image_index {
-      self.graphics_queue.present(&self.swapchain, index, &[&cmd_semaphore]);
+      self.graphics_queue.present(&self.swapchain, index, &cmd_semaphores);
       frame_context.track_semaphore(cmd_semaphore);
       self.context.end_frame(cmd_fence);
     }
