@@ -18,3 +18,6 @@ crossbeam-queue = "0.2.1"
 [dependencies.async-std]
 version = "1.6.1"
 features = ["unstable"]
+
+[features]
+async_closure = []

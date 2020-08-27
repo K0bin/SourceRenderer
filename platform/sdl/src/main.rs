@@ -18,6 +18,6 @@ mod sdl_platform;
 
 fn main() {
   let mut platform: Box<SDLPlatform> = Box::new(SDLPlatform::new(GraphicsApi::Vulkan));
-  let mut engine = Box::new(EngineOld::new(platform));
+  let mut engine = Box::new(Engine::new(platform));
   engine.run();
 }

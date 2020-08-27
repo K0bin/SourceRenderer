@@ -12,3 +12,7 @@ thread_local = "1.0"
 crossbeam-channel = "0.4.2"
 crossbeam-queue = "0.2.1"
 spirv_cross = { version = "0.18.0", features = ["hlsl", "msl", "glsl"] }
+
+[dependencies.async-std]
+version = "1.6.1"
+features = ["unstable"]
