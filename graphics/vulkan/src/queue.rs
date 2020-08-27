@@ -74,7 +74,10 @@ impl VkQueue {
     };
     let vk_queue = self.queue.lock().unwrap();
     unsafe {
-      self.device.device.queue_submit(*vk_queue, &[info], *command_buffer.get_fence().get_handle());
+      let result = self.device.device.queue_submit(*vk_queue, &[info], *command_buffer.get_fence().get_handle());
+      if result.is_err() {
+        println!("Transfer submit failed: {:?}", result);
+      }
     }
   }
 
@@ -101,7 +104,10 @@ impl VkQueue {
     };
     let vk_queue = self.queue.lock().unwrap();
     unsafe {
-      self.device.device.queue_submit(*vk_queue, &[info], fence.map_or(vk::Fence::null(), |f| *f.get_handle()));
+      let result = self.device.device.queue_submit(*vk_queue, &[info], fence.map_or(vk::Fence::null(), |f| *f.get_handle()));
+      if result.is_err() {
+        println!("Submit failed: {:?}", result);
+      }
     }
   }
 
@@ -117,7 +123,10 @@ impl VkQueue {
     };
     let vk_queue = self.queue.lock().unwrap();
     unsafe {
-      swapchain.get_loader().queue_present(*vk_queue, &present_info);
+      let result = swapchain.get_loader().queue_present(*vk_queue, &present_info);
+      if result.is_err() {
+        println!("Present failed: {:?}", result);
+      }
     }
   }
 }
