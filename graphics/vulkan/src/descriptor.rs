@@ -16,6 +16,8 @@ use pipeline::VkPipelineLayout;
 use spirv_cross::spirv::Decoration::Index;
 use sourcerenderer_core::graphics::LogicOp::Set;
 
+// TODO: clean up descriptor management
+
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub(crate) enum VkDescriptorType {
   UniformBuffer,
@@ -333,7 +335,7 @@ impl VkBindingManager {
     }
   }
 
-  fn find_compatible_set(&self, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResource; 8], use_permanent_cache: bool) -> Option<Arc<VkDescriptorSet>> {
+  fn find_compatible_set(&self, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResource; 8], use_permanent_cache: bool, use_dynamic_offsets: bool) -> Option<Arc<VkDescriptorSet>> {
     let cache = if use_permanent_cache { &self.permanent_cache } else { &self.transient_cache };
 
     cache
@@ -342,7 +344,8 @@ impl VkBindingManager {
           sets
               .iter()
               .find(|set|
-                  set.bindings.iter().enumerate().all(|(index, binding)|
+                  set.is_using_dynamic_buffer_offsets == use_dynamic_offsets
+                  && set.bindings.iter().enumerate().all(|(index, binding)|
                       if !set.is_using_dynamic_buffer_offsets {
                         binding == &bindings[index]
                       } else {
@@ -365,12 +368,12 @@ impl VkBindingManager {
     if self.dirty.contains(DirtyDescriptorSets::from(frequency)) && layout_option.is_some() {
       let layout = layout_option.unwrap();
       let bindings = bindings_option.unwrap();
-      let cached_set = self.find_compatible_set(layout, bindings, frequency == BindingFrequency::Rarely);
+      let cached_set = self.find_compatible_set(layout, bindings, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
 
       let mut is_new = false;
       let set = cached_set.unwrap_or_else(|| {
         let pool = if frequency == BindingFrequency::Rarely { &self.permanent_pool } else { &self.transient_pool };
-        let new_set = Arc::new(VkDescriptorSet::new(pool, &self.device, layout, true, true, bindings));
+        let new_set = Arc::new(VkDescriptorSet::new(pool, &self.device, layout, frequency != BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw, bindings));
         is_new = true;
         new_set
       });
