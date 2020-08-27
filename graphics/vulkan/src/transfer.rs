@@ -18,8 +18,8 @@ pub(crate) struct VkTransfer {
   inner: Mutex<VkTransferInner>,
   transfer_queue: Option<Arc<VkQueue>>,
   graphics_queue: Arc<VkQueue>,
-  graphics_pool: Arc<RawVkCommandPool>,
-  transfer_pool: Option<Arc<RawVkCommandPool>>,
+  graphics_pool: Arc<RawVkCommandPool>, // TODO synchronize
+  transfer_pool: Option<Arc<RawVkCommandPool>>, // TODO synchronize
   device: Arc<RawVkDevice>,
   sender: Sender<Box<VkTransferCommandBuffer>>,
   receiver: Receiver<Box<VkTransferCommandBuffer>>,
@@ -53,7 +53,8 @@ impl VkTransfer {
         cmd_buffer,
         device: device.clone(),
         trackers: VkLifetimeTrackers::new(),
-        fence
+        fence,
+        is_empty: true
       }
     });
     let begin_info = vk::CommandBufferBeginInfo {
@@ -84,7 +85,8 @@ impl VkTransfer {
             cmd_buffer,
             device: device.clone(),
             trackers: VkLifetimeTrackers::new(),
-            fence
+            fence,
+            is_empty: true
           }
         });
       unsafe {
@@ -180,6 +182,7 @@ impl VkTransfer {
 
       guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
       guard.current_graphics_buffer.trackers.track_texture(texture);
+      guard.current_graphics_buffer.is_empty = false;
     }
   }
 
@@ -192,7 +195,7 @@ impl VkTransfer {
           dst_offset: dst_buffer.get_offset() as u64,
           size: min(src_buffer.get_length(), dst_buffer.get_length()) as u64
         }]);
-      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::VERTEX_INPUT, vk::DependencyFlags::empty(), &[], &[
+      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::TOP_OF_PIPE, vk::DependencyFlags::empty(), &[], &[
         vk::BufferMemoryBarrier {
           src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
           dst_access_mask: vk::AccessFlags::SHADER_READ
@@ -209,6 +212,7 @@ impl VkTransfer {
 
       guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
       guard.current_graphics_buffer.trackers.track_buffer(dst_buffer);
+      guard.current_graphics_buffer.is_empty = false;
     }
   }
 
@@ -223,6 +227,10 @@ impl VkTransfer {
 
   pub fn flush(&self) {
     let mut guard = self.inner.lock().unwrap();
+
+    if guard.current_graphics_buffer.is_empty {
+      return;
+    }
 
     let reuse_first_graphics_buffer = guard.used_graphics_buffers.front().map(|cmd_buffer| cmd_buffer.fence.is_signaled()).unwrap_or(false);
     let new_cmd_buffer = if reuse_first_graphics_buffer {
@@ -243,13 +251,17 @@ impl VkTransfer {
           cmd_buffer,
           device: self.device.clone(),
           trackers: VkLifetimeTrackers::new(),
-          fence: new_fence
+          fence: new_fence,
+          is_empty: true
         }
       })
     };
     let mut cmd_buffer = std::mem::replace(&mut guard.current_graphics_buffer, new_cmd_buffer);
     unsafe {
       self.device.end_command_buffer(cmd_buffer.cmd_buffer);
+      self.device.begin_command_buffer(guard.current_graphics_buffer.cmd_buffer, &vk::CommandBufferBeginInfo {
+        ..Default::default()
+      });
     }
     self.graphics_queue.submit_transfer(&cmd_buffer);
     guard.used_graphics_buffers.push_back(cmd_buffer);
@@ -260,7 +272,8 @@ pub struct VkTransferCommandBuffer {
   cmd_buffer: vk::CommandBuffer,
   device: Arc<RawVkDevice>,
   trackers: VkLifetimeTrackers,
-  fence: Recyclable<VkFence>
+  fence: Recyclable<VkFence>,
+  is_empty: bool
 }
 
 impl VkTransferCommandBuffer {
