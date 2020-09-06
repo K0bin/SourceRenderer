@@ -18,6 +18,8 @@ use crate::AssetManager;
 use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, RenderableAndTransform};
 
 use async_std::task;
+use sourcerenderer_core::job::{SystemJob, JobScheduler, JobCounterWait, JobQueue};
+use std::sync::atomic::Ordering;
 
 pub struct Renderer<P: Platform> {
   sender: Sender<Renderables<P>>,
@@ -32,12 +34,15 @@ impl<P: Platform> Renderer<P> {
     }
   }
 
-  pub fn run(device: &Arc<<P::GraphicsBackend as Backend>::Device>, swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
+  pub fn run(job_scheduler: &JobScheduler, device: &Arc<<P::GraphicsBackend as Backend>::Device>, swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
     let (sender, receiver) = bounded::<Renderables<P>>(1);
     let renderer = Arc::new(Renderer::new(sender, &device));
     let mut internal = RendererInternal::new(&device, &swap_chain, asset_manager, receiver);
 
-    task::spawn(internal.render_loop());
+    job_scheduler.enqueue_system_job(Box::new(move |queue| {
+      internal.render(queue)
+    }));
+    //task::spawn(internal.render_loop());
     renderer
   }
 
@@ -59,12 +64,6 @@ impl<P: Platform> RendererInternal<P> {
     let graph = RendererInternal::<P>::build_graph(device, swap_chain, asset_manager, receiver);
     Self {
       graph
-    }
-  }
-
-  async fn render_loop(mut self) {
-    'render_loop: loop {
-      self.graph.render();
     }
   }
 
@@ -224,8 +223,8 @@ impl<P: Platform> RendererInternal<P> {
     graph
   }
 
-  fn render(&mut self) {
-    self.graph.render();
+  fn render(&mut self, queue: &dyn JobQueue) -> JobCounterWait {
+    self.graph.render(queue)
   }
 }
 

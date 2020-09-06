@@ -2,10 +2,14 @@
 extern crate bitflags;
 extern crate crossbeam_channel;
 extern crate crossbeam_queue;
+extern crate crossbeam_deque;
+extern crate crossbeam_utils;
 
 pub mod graphics;
 pub mod platform;
 pub mod pool;
+
+pub mod job;
 
 pub use crate::platform::Platform;
 

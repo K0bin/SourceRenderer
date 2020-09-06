@@ -34,6 +34,7 @@ use crate::renderer::Renderer;
 use crate::scene::Scene;
 use async_std::sync::{channel, Sender, Receiver};
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
+use sourcerenderer_core::job::*;
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -53,6 +54,8 @@ impl<P: Platform> Engine<P> {
   }
 
   pub fn run(&mut self) {
+    let scheduler = JobScheduler::new();
+
     let instance = self.platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = self.platform.window().create_surface(instance.clone());
 
@@ -67,7 +70,7 @@ impl<P: Platform> Engine<P> {
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(swapchain_info, &device, &surface));
 
     let asset_manager = Arc::new(AssetManager::<P>::new(&device));
-    let renderer = Renderer::<P>::run(&device, &swapchain, &asset_manager);
+    let renderer = Renderer::<P>::run(&scheduler, &device, &swapchain, &asset_manager);
     let scene = Scene::run::<P>(&renderer, &asset_manager);
 
     'event_loop: loop {

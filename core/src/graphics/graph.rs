@@ -5,6 +5,7 @@ use std::cmp::Eq;
 use std::ops::Fn;
 
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
+use job::{JobQueue, JobCounterWait};
 
 pub struct RenderGraphInfo<B: Backend> {
   pub attachments: HashMap<String, RenderGraphAttachmentInfo>,
@@ -48,7 +49,7 @@ pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
 pub trait RenderGraph<B: Backend> {
   fn recreate(&mut self, swap_chain: &B::Swapchain);
-  fn render(&mut self);
+  fn render(&mut self, job_queue: &dyn JobQueue) -> JobCounterWait;
 }
 
 /*pub struct RenderGraphNode<'a> {

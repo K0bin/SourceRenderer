@@ -24,6 +24,8 @@ use std::cell::RefCell;
 use ::{VkRenderPass, VkQueue};
 use ::{VkFrameBuffer, VkSemaphore};
 use ::{VkCommandBufferRecorder, VkFence};
+use sourcerenderer_core::job::{JobQueue, JobScheduler, JobCounterWait};
+use std::sync::atomic::Ordering;
 
 pub struct VkAttachment {
   texture: vk::Image,
@@ -32,7 +34,7 @@ pub struct VkAttachment {
 
 pub struct VkRenderGraph {
   device: Arc<RawVkDevice>,
-  passes: Vec<VkRenderGraphPass>,
+  passes: Vec<Arc<VkRenderGraphPass>>,
   attachments: HashMap<String, VkAttachment>,
   context: Arc<VkThreadContextManager>,
   swapchain: Arc<VkSwapchain>,
@@ -79,7 +81,7 @@ impl VkRenderGraph {
 
     let mut did_render_to_backbuffer = false;
 
-    let passes: Vec<VkRenderGraphPass> = info.passes.iter().map(|p| {
+    let passes: Vec<Arc<VkRenderGraphPass>> = info.passes.iter().map(|p| {
       let vk_device = &device.device;
       let pass_renders_to_backbuffer = p.outputs.iter().any(|output| &output.name == BACK_BUFFER_ATTACHMENT_NAME);
       did_render_to_backbuffer |= pass_renders_to_backbuffer;
@@ -194,13 +196,13 @@ impl VkRenderGraph {
         frame_buffers.push(frame_buffer);
       }
 
-      VkRenderGraphPass {
+      Arc::new(VkRenderGraphPass {
         device: device.clone(),
         frame_buffer: frame_buffers,
         render_pass,
         callback: p.render.clone(),
         is_rendering_to_swap_chain: pass_renders_to_backbuffer
-      }
+      })
     }).collect();
 
     return VkRenderGraph {
@@ -222,14 +224,14 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
   }
 
-  fn render(&mut self) {
-    self.context.begin_frame();
-    let thread_context = self.context.get_thread_context();
-    let mut frame_context = thread_context.get_frame_context();
+  fn render(&mut self, job_queue: &dyn JobQueue) -> JobCounterWait {
+    let counter = JobScheduler::new_counter();
 
-    let prepare_semaphore = self.context.get_shared().get_semaphore();
-    let cmd_semaphore = self.context.get_shared().get_semaphore();
-    let cmd_fence = self.context.get_shared().get_fence();
+    self.context.begin_frame();
+
+    let prepare_semaphore = Arc::new(self.context.get_shared().get_semaphore());
+    let cmd_semaphore = Arc::new(self.context.get_shared().get_semaphore());
+    let cmd_fence = Arc::new(self.context.get_shared().get_fence());
     let swapchain_image_index = if self.does_render_to_frame_buffer {
       let (_, index) = self.swapchain.prepare_back_buffer(&prepare_semaphore);
       Some(index)
@@ -237,36 +239,102 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       None
     };
 
-    let mut cmd_buffer = frame_context.get_command_pool().get_command_buffer(CommandBufferType::PRIMARY);
+    let mut expected_counter = 0usize;
     for pass in &self.passes {
-      cmd_buffer.begin_render_pass(&pass.render_pass, &pass.frame_buffer[swapchain_image_index.unwrap() as usize], RenderpassRecordingMode::Commands);
-      (pass.callback)(&mut cmd_buffer);
-      cmd_buffer.end_render_pass();
+      let context_clone = self.context.clone();
+      let pass_clone = pass.clone();
+      let queue_clone = self.graphics_queue.clone();
+      let prepare_semaphore_clone = prepare_semaphore.clone();
+      let cmd_semaphore_clone = cmd_semaphore.clone();
+      let counter_clone = counter.clone();
+      let wait_counter_clone = counter.clone();
+      let cmd_fence_clone = cmd_fence.clone();
+      job_queue.enqueue_job(
+        Box::new(move || {
+          let frame_buffer_index = if pass_clone.is_rendering_to_swap_chain { swapchain_image_index.unwrap() as usize } else { 0 };
+
+          let thread_context = context_clone.get_thread_context();
+          let mut frame_context = thread_context.get_frame_context();
+          let mut cmd_buffer = frame_context.get_command_pool().get_command_buffer(CommandBufferType::PRIMARY);
+          cmd_buffer.begin_render_pass(&pass_clone.render_pass, &pass_clone.frame_buffer[frame_buffer_index], RenderpassRecordingMode::Commands);
+          (pass_clone.callback)(&mut cmd_buffer);
+          cmd_buffer.end_render_pass();
+          let submission = cmd_buffer.finish();
+
+          let prepare_semaphores = [&**prepare_semaphore_clone];
+          let cmd_semaphores = [&**cmd_semaphore_clone];
+
+          let wait_semaphores: &[&VkSemaphore] = if pass_clone.is_rendering_to_swap_chain {
+            &prepare_semaphores
+          } else {
+            &[]
+          };
+          let signal_semaphores: &[&VkSemaphore] = if pass_clone.is_rendering_to_swap_chain {
+            &cmd_semaphores
+          } else {
+            &[]
+          };
+
+          let fence = if pass_clone.is_rendering_to_swap_chain {
+            Some(&cmd_fence_clone as &VkFence)
+          } else {
+            None
+          };
+
+          queue_clone.submit(submission, fence, &wait_semaphores, &signal_semaphores);
+
+          if pass_clone.is_rendering_to_swap_chain {
+            if let Ok(semaphore) = Arc::try_unwrap(prepare_semaphore_clone) {
+              frame_context.track_semaphore(semaphore);
+            } else {
+              panic!("Something still kept a reference to the semaphore");
+            }
+          }
+
+          counter_clone.fetch_add(1, Ordering::SeqCst);
+        }),
+        Some(&JobCounterWait {
+          counter: wait_counter_clone,
+          value: expected_counter
+        })
+      );
+      expected_counter += 1;
     }
-    let submission = cmd_buffer.finish();
 
-    let prepare_semaphores = [&*prepare_semaphore];
-    let cmd_semaphores = [&*cmd_semaphore];
+    let cmd_semaphore_clone = cmd_semaphore.clone();
+    let context_clone = self.context.clone();
+    let queue_clone = self.graphics_queue.clone();
+    let swapchain_clone = self.swapchain.clone();
+    let cmd_fence_clone = cmd_fence.clone();
+    let counter_clone = counter.clone();
+    let wait_counter_clone = counter.clone();
+    job_queue.enqueue_job(Box::new(move || {
+        let thread_context = context_clone.get_thread_context();
+        let mut frame_context = thread_context.get_frame_context();
 
-    let wait_semaphores: &[&VkSemaphore] = if swapchain_image_index.is_some() {
-      &prepare_semaphores
-    } else {
-      &[]
-    };
-    let signal_semaphores: &[&VkSemaphore] = if swapchain_image_index.is_some() {
-      &cmd_semaphores
-    } else {
-      &[]
-    };
-    self.graphics_queue.submit(submission, Some(&cmd_fence), &wait_semaphores, &signal_semaphores);
-    if swapchain_image_index.is_some() {
-      frame_context.track_semaphore(prepare_semaphore);
-    }
+        if let Some(index) = swapchain_image_index {
+          queue_clone.present(&swapchain_clone, index, &[&cmd_semaphore_clone]);
+          if let Ok(semaphore) = Arc::try_unwrap(cmd_semaphore_clone) {
+            frame_context.track_semaphore(semaphore);
+          } else {
+            panic!("Something still kept a reference to the semaphore");
+          }
+        }
 
-    if let Some(index) = swapchain_image_index {
-      self.graphics_queue.present(&self.swapchain, index, &cmd_semaphores);
-      frame_context.track_semaphore(cmd_semaphore);
-      self.context.end_frame(cmd_fence);
+        if let Ok(fence) = Arc::try_unwrap(cmd_fence_clone) {
+          context_clone.end_frame(fence);
+        } else {
+          panic!("Something still kept a reference to the fence");
+        }
+        counter_clone.store(100, Ordering::SeqCst);
+      }), Some(&JobCounterWait {
+        counter: wait_counter_clone,
+        value: expected_counter
+    }));
+
+    JobCounterWait {
+      counter,
+      value: 100
     }
   }
 }
