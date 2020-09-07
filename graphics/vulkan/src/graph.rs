@@ -229,9 +229,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     self.context.begin_frame();
 
-    let prepare_semaphore = Arc::new(self.context.get_shared().get_semaphore());
-    let cmd_semaphore = Arc::new(self.context.get_shared().get_semaphore());
-    let cmd_fence = Arc::new(self.context.get_shared().get_fence());
+    let prepare_semaphore = self.context.get_shared().get_semaphore();
+    let cmd_semaphore = self.context.get_shared().get_semaphore();
+    let cmd_fence = self.context.get_shared().get_fence();
     let swapchain_image_index = if self.does_render_to_frame_buffer {
       let (_, index) = self.swapchain.prepare_back_buffer(&prepare_semaphore);
       Some(index)
@@ -284,11 +284,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           queue_clone.submit(submission, fence, &wait_semaphores, &signal_semaphores);
 
           if pass_clone.is_rendering_to_swap_chain {
-            if let Ok(semaphore) = Arc::try_unwrap(prepare_semaphore_clone) {
-              frame_context.track_semaphore(semaphore);
-            } else {
-              panic!("Something still kept a reference to the semaphore");
-            }
+            frame_context.track_semaphore(&prepare_semaphore_clone);
           }
 
           counter_clone.fetch_add(1, Ordering::SeqCst);
@@ -314,18 +310,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
         if let Some(index) = swapchain_image_index {
           queue_clone.present(&swapchain_clone, index, &[&cmd_semaphore_clone]);
-          if let Ok(semaphore) = Arc::try_unwrap(cmd_semaphore_clone) {
-            frame_context.track_semaphore(semaphore);
-          } else {
-            panic!("Something still kept a reference to the semaphore");
-          }
+          frame_context.track_semaphore(&cmd_semaphore_clone);
         }
 
-        if let Ok(fence) = Arc::try_unwrap(cmd_fence_clone) {
-          context_clone.end_frame(fence);
-        } else {
-          panic!("Something still kept a reference to the fence");
-        }
+        context_clone.end_frame(&cmd_fence_clone);
         counter_clone.store(100, Ordering::SeqCst);
       }), Some(&JobCounterWait {
         counter: wait_counter_clone,

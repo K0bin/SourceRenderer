@@ -272,7 +272,7 @@ pub struct VkTransferCommandBuffer {
   cmd_buffer: vk::CommandBuffer,
   device: Arc<RawVkDevice>,
   trackers: VkLifetimeTrackers,
-  fence: Recyclable<VkFence>,
+  fence: Arc<Recyclable<VkFence>>,
   is_empty: bool
 }
 
