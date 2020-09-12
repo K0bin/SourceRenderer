@@ -87,8 +87,7 @@ impl VkRenderGraph {
     let mut passes: Vec<Arc<VkRenderGraphPass>> = Vec::new();
 
     let mut pass_opt = reordered_passes_queue.pop_front();
-    while pass_opt.is_some()
-    {
+    while pass_opt.is_some() {
       let pass = pass_opt.unwrap();
 
       let mut merged_passes: Vec<RenderPassInfo<VkBackend>> = vec![pass];
@@ -299,6 +298,7 @@ impl VkRenderGraph {
 
     let mut width = 0.0f32;
     let mut height = 0.0f32;
+    let mut size_class = AttachmentSizeClass::RelativeToSwapchain;
     if !reordered_pass_infos.is_empty() {
       let last_pass = reordered_pass_infos.last().unwrap();
       let last_pass_output = last_pass.outputs.first().expect("Pass has no outputs");
@@ -306,9 +306,11 @@ impl VkRenderGraph {
         let attachment = attachments.get(&last_pass_output.name).expect("Invalid attachment reference");
         width = attachment.width;
         height = attachment.height;
+        size_class = attachment.size_class;
       } else {
         width = 1.0f32;
         height = 1.0f32;
+        size_class = AttachmentSizeClass::RelativeToSwapchain;
       };
     }
 
@@ -320,7 +322,7 @@ impl VkRenderGraph {
 
       for input in &pass.inputs {
         let input_attachment = attachments.get(&input.name).expect("Invalid attachment reference");
-        can_be_merged |= input.is_local && (input_attachment.width - width).abs() < 0.01f32 && (input_attachment.height - height).abs() < 0.01f32;
+        can_be_merged &= input.is_local && input_attachment.size_class == size_class && (input_attachment.width - width).abs() < 0.01f32 && (input_attachment.height - height).abs() < 0.01f32;
         let index_opt = attachment_indices.get(&input.name);
         if let Some(index) = index_opt {
           passes_since_ready = min(*index, passes_since_ready);
@@ -330,21 +332,21 @@ impl VkRenderGraph {
       }
 
       let first_output = pass.outputs.first().expect("Pass has no outputs");
-      let (output_width, output_height) = if &first_output.name != &BACK_BUFFER_ATTACHMENT_NAME {
+      let (output_width, output_height, output_size_class) = if &first_output.name != &BACK_BUFFER_ATTACHMENT_NAME {
         let first_output_attachment = attachments.get(&first_output.name).expect("Invalid attachment reference");
-        (first_output_attachment.width, first_output_attachment.height)
+        (first_output_attachment.width, first_output_attachment.height, first_output_attachment.size_class)
       } else {
-        (1.0f32, 1.0f32)
+        (1.0f32, 1.0f32, AttachmentSizeClass::Relative)
       };
 
       for output in &pass.outputs {
-        let (width, height) = if &output.name == &BACK_BUFFER_ATTACHMENT_NAME {
-          (1.0f32, 1.0f32)
+        let (width, height, size_class) = if &output.name == &BACK_BUFFER_ATTACHMENT_NAME {
+          (1.0f32, 1.0f32, AttachmentSizeClass::Relative)
         } else {
           let attachment = attachments.get(&output.name).expect("Invalid attachment reference");
-          (attachment.width, attachment.height)
+          (attachment.width, attachment.height, attachment.size_class)
         };
-        if (output_width - width).abs() > 0.01f32 || (output_height - height).abs() > 0.01f32 {
+        if size_class != output_size_class || (output_width - width).abs() > 0.01f32 || (output_height - height).abs() > 0.01f32 {
           panic!("All outputs must have the same size");
         }
       }
