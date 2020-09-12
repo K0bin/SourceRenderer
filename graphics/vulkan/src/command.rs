@@ -268,6 +268,13 @@ impl VkCommandBuffer {
     self.render_pass = None;
   }
 
+  pub(crate) fn advance_subpass(&mut self) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    unsafe {
+      self.device.cmd_next_subpass(self.buffer, vk::SubpassContents::INLINE);
+    }
+  }
+
   pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(vertex_buffer);
@@ -513,6 +520,10 @@ impl VkCommandBufferRecorder {
   #[inline(always)]
   pub fn end_render_pass(&mut self) {
     self.item.as_mut().unwrap().end_render_pass();
+  }
+
+  pub fn advance_subpass(&mut self) {
+    self.item.as_mut().unwrap().advance_subpass();
   }
 
   pub fn finish(self) -> VkCommandBufferSubmission {

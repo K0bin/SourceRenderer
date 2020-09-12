@@ -7,6 +7,7 @@ use std::ops::Fn;
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
 use job::{JobQueue, JobCounterWait};
 
+#[derive(Clone)]
 pub struct RenderGraphInfo<B: Backend> {
   pub attachments: HashMap<String, RenderGraphAttachmentInfo>,
   pub passes: Vec<RenderPassInfo<B>>
@@ -18,6 +19,16 @@ pub struct RenderPassInfo<B: Backend> {
   pub render: Arc<dyn (Fn(&mut B::CommandBuffer) -> usize) + Send + Sync>
 }
 
+impl<B: Backend> Clone for RenderPassInfo<B> {
+  fn clone(&self) -> Self {
+    Self {
+      outputs: self.outputs.clone(),
+      inputs: self.inputs.clone(),
+      render: self.render.clone()
+    }
+  }
+}
+
 #[derive(Clone)]
 pub enum AttachmentSizeClass {
   Absolute,
@@ -25,7 +36,7 @@ pub enum AttachmentSizeClass {
 }
 
 #[derive(Clone)]
-pub struct RenderGraphAttachmentInfo<> {
+pub struct RenderGraphAttachmentInfo {
   pub format: Format,
   pub size_class: AttachmentSizeClass,
   pub width: f32,
@@ -37,12 +48,28 @@ pub struct RenderGraphAttachmentInfo<> {
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct InputAttachmentReference {
-  pub name: String
+  pub name: String,
+  pub is_local: bool,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct OutputAttachmentReference {
-  pub name: String
+  pub name: String,
+  pub load_action: LoadAction,
+  pub store_action: StoreAction
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub enum StoreAction {
+  Store,
+  DontCare
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub enum LoadAction {
+  Load,
+  Clear,
+  DontCare
 }
 
 pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
