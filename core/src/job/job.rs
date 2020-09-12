@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use crossbeam_deque::{Steal, Worker, Injector, Stealer};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH, Duration};
 use std::collections::VecDeque;
 
 // TODO: optimize orderings
@@ -96,7 +96,7 @@ impl JobScheduler {
   }
 
   pub fn new() -> Self {
-    let thread_count = 2;
+    let thread_count = 8;
     let global = Injector::new();
     let mut workers = Vec::new();
     let mut stealers = Vec::new();
@@ -151,6 +151,9 @@ impl JobQueue for JobScheduler {
 }
 
 const IDLE_SPINS_YIELD_THRESHOLD: u32 = 128;
+const IDLE_SPINS_SLEEP_SHORT_THRESHOLD: u32 = 256;
+const IDLE_SPINS_SLEEP_LONG_THRESHOLD: u32 = 1024;
+const IDLE_SPINS_SLEEP_AGES_THRESHOLD: u32 = 16384;
 fn job_thread(local: Worker<Job>, scheduler: Arc<JobSchedulerInner>) {
   let others_refs: Vec<&Stealer<Job>> = scheduler.stealers.iter().map(|other| other).collect();
   let mut idle_spins = 0;
@@ -172,7 +175,13 @@ fn job_thread(local: Worker<Job>, scheduler: Arc<JobSchedulerInner>) {
       job.run();
     } else {
       idle_spins += 1;
-      if idle_spins > IDLE_SPINS_YIELD_THRESHOLD {
+      if idle_spins > IDLE_SPINS_SLEEP_AGES_THRESHOLD {
+        std::thread::sleep(Duration::new(4, 0));
+      } else if idle_spins > IDLE_SPINS_SLEEP_LONG_THRESHOLD {
+        std::thread::sleep(Duration::new(1, 0));
+      } else if idle_spins > IDLE_SPINS_SLEEP_SHORT_THRESHOLD {
+        std::thread::sleep(Duration::new(0, 250));
+      } else if idle_spins > IDLE_SPINS_YIELD_THRESHOLD {
         std::thread::yield_now();
       }
     }
