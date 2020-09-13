@@ -182,7 +182,7 @@ impl VkTextureView {
     }
   }
 
-  pub(crate) fn new_render_target_view(device: &Arc<RawVkDevice>, texture: Arc<VkTexture>) -> Self {
+  pub(crate) fn new_render_target_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>) -> Self {
     let info = texture.get_info();
     let vk_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
@@ -205,7 +205,7 @@ impl VkTextureView {
     };
     let view = unsafe { device.create_image_view(&vk_info, None).unwrap() };
     return VkTextureView {
-      texture,
+      texture: texture.clone(),
       view,
       sampler: None,
       device: device.clone()

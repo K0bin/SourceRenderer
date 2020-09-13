@@ -20,10 +20,11 @@ use crate::VkSemaphore;
 use crate::VkBackend;
 use crate::VkQueue;
 use std::cmp::{min, max};
+use texture::VkTextureView;
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
-  views: Vec<vk::ImageView>,
+  views: Vec<Arc<VkTextureView>>,
   swap_chain: vk::SwapchainKHR,
   swap_chain_loader: SwapchainLoader,
   instance: Arc<RawVkInstance>,
@@ -96,29 +97,10 @@ impl VkSwapchain {
 
       println!("image count: {}", textures.len());
 
-      let swap_chain_image_views: Vec<vk::ImageView> = swap_chain_images
+      let swap_chain_image_views: Vec<Arc<VkTextureView>> = textures
         .iter()
-        .map(|image| {
-          let info = vk::ImageViewCreateInfo {
-            image: *image,
-            view_type: vk::ImageViewType::TYPE_2D,
-            format: format.format,
-            components: vk::ComponentMapping {
-              r: vk::ComponentSwizzle::IDENTITY,
-              g: vk::ComponentSwizzle::IDENTITY,
-              b: vk::ComponentSwizzle::IDENTITY,
-              a: vk::ComponentSwizzle::IDENTITY,
-            },
-            subresource_range: vk::ImageSubresourceRange {
-              aspect_mask: vk::ImageAspectFlags::COLOR,
-              base_mip_level: 0,
-              level_count: 1,
-              base_array_layer: 0,
-              layer_count: 1
-            },
-            ..Default::default()
-          };
-          vk_device.create_image_view(&info, None).unwrap()
+        .map(|texture| {
+          Arc::new(VkTextureView::new_render_target_view(&device_inner, texture))
         })
         .collect();
 
@@ -178,7 +160,7 @@ impl VkSwapchain {
     &self.textures
   }
 
-  pub fn get_views(&self) -> &[vk::ImageView] {
+  pub fn get_views(&self) -> &[Arc<VkTextureView>] {
     return &self.views[..];
   }
 

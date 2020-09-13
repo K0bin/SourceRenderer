@@ -29,7 +29,7 @@ impl<B: Backend> Clone for RenderPassInfo<B> {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum AttachmentSizeClass {
   Absolute,
   RelativeToSwapchain

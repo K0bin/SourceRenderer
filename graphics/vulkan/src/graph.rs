@@ -5,12 +5,12 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::graph::{RenderGraph, StoreAction, LoadAction};
+use sourcerenderer_core::graphics::graph::{RenderGraph, StoreAction, LoadAction, AttachmentSizeClass};
 use sourcerenderer_core::graphics::graph::RenderGraphInfo;
 use sourcerenderer_core::graphics::graph::RenderPassInfo;
 use sourcerenderer_core::graphics::graph::RenderGraphAttachmentInfo;
 use sourcerenderer_core::graphics::graph::BACK_BUFFER_ATTACHMENT_NAME;
-use sourcerenderer_core::graphics::Texture;
+use sourcerenderer_core::graphics::{Texture, TextureInfo};
 
 use crate::VkBackend;
 use crate::VkDevice;
@@ -28,10 +28,12 @@ use sourcerenderer_core::job::{JobQueue, JobScheduler, JobCounterWait};
 use std::sync::atomic::Ordering;
 use std::cmp::{max, min};
 use std::iter::FromIterator;
+use VkTexture;
+use texture::VkTextureView;
 
 pub struct VkAttachment {
-  texture: vk::Image,
-  view: vk::ImageView
+  texture: Arc<VkTexture>,
+  view: Arc<VkTextureView>
 }
 
 pub struct VkRenderGraph {
@@ -63,20 +65,44 @@ impl VkRenderGraph {
              info: &RenderGraphInfo<VkBackend>,
              swapchain: &Arc<VkSwapchain>) -> Self {
 
-    // SHORTTERM
-    // TODO: allocate images & image views
-    // TODO: allocate command pool & buffers
-    // TODO: lazily create frame buffer for swapchain images
-    // TODO: integrate with new job system + figure out threading
+    // TODO: figure out threading
     // TODO: recreate graph when swapchain changes
     // TODO: more generic support for external images / one time rendering
     // TODO: (async) compute
-    // TODO: transient resources
 
     let mut layouts: HashMap<String, vk::ImageLayout> = HashMap::new();
     layouts.insert(BACK_BUFFER_ATTACHMENT_NAME.to_owned(), vk::ImageLayout::UNDEFINED);
-    let attachments: HashMap<String, VkAttachment> = HashMap::new(); // TODO fill
+    let mut attachments: HashMap<String, VkAttachment> = HashMap::new(); // TODO fill
     let swapchain_views = swapchain.get_views();
+
+    for (name, attachment) in &info.attachments {
+      // TODO: aliasing
+      // TODO: transient
+
+      let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
+        format: attachment.format,
+        width: if attachment.size_class == AttachmentSizeClass::RelativeToSwapchain {
+          (swapchain.get_width() as f32 * attachment.width) as u32
+        } else {
+          attachment.width as u32
+        },
+        height: if attachment.size_class == AttachmentSizeClass::RelativeToSwapchain {
+          (swapchain.get_height() as f32 * attachment.height) as u32
+        } else {
+          attachment.height as u32
+        },
+        depth: 1,
+        mip_levels: attachment.levels,
+        array_length: 1,
+        samples: attachment.samples
+      }));
+
+      let view = Arc::new(VkTextureView::new_render_target_view(device, &texture));
+      attachments.insert(name.clone(), VkAttachment {
+        texture,
+        view
+      });
+    }
 
     let mut did_render_to_backbuffer = false;
 
@@ -184,9 +210,9 @@ impl VkRenderGraph {
           for i in 0..frame_buffer_count {
             frame_buffer_attachments.get_mut(i).unwrap().push(
               if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
-                swapchain_views[i]
+                *swapchain_views[i].get_view_handle()
               } else {
-                attachments[&output.name].view
+                *attachments[&output.name].view.get_view_handle()
               }
             );
           }
@@ -336,12 +362,12 @@ impl VkRenderGraph {
         let first_output_attachment = attachments.get(&first_output.name).expect("Invalid attachment reference");
         (first_output_attachment.width, first_output_attachment.height, first_output_attachment.size_class)
       } else {
-        (1.0f32, 1.0f32, AttachmentSizeClass::Relative)
+        (1.0f32, 1.0f32, AttachmentSizeClass::RelativeToSwapchain)
       };
 
       for output in &pass.outputs {
         let (width, height, size_class) = if &output.name == &BACK_BUFFER_ATTACHMENT_NAME {
-          (1.0f32, 1.0f32, AttachmentSizeClass::Relative)
+          (1.0f32, 1.0f32, AttachmentSizeClass::RelativeToSwapchain)
         } else {
           let attachment = attachments.get(&output.name).expect("Invalid attachment reference");
           (attachment.width, attachment.height, attachment.size_class)
