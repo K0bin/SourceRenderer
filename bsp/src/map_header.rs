@@ -13,14 +13,8 @@ pub struct MapHeader {
 
 impl MapHeader {
     pub fn read(reader: &mut Read) -> Result<MapHeader, Error> {
-        let identifier = reader.read_i32::<LittleEndian>();
-        if identifier.is_err() {
-            return Err(identifier.err().unwrap());
-        }
-        let version = reader.read_i32::<LittleEndian>();
-        if version.is_err() {
-            return Err(version.err().unwrap());
-        }
+        let identifier = reader.read_i32::<LittleEndian>()?;
+        let version = reader.read_i32::<LittleEndian>()?;
         let mut lumps: [Lump; LUMP_COUNT] = [
             Lump {
                 file_offset: 0,
@@ -31,16 +25,13 @@ impl MapHeader {
             LUMP_COUNT
         ];
         for i in 0..LUMP_COUNT {
-            let lump = Lump::read(reader);
-            if lump.is_err() {
-                return Err(lump.err().unwrap());
-            }
-            lumps[i] = lump.unwrap();
+            let lump = Lump::read(reader)?;
+            lumps[i] = lump;
         }
         return Ok(MapHeader {
-            identifier: identifier.unwrap(),
-            version: version.unwrap(),
-            lumps: lumps
+            identifier,
+            version,
+            lumps
         });
     }
 }

@@ -13,14 +13,11 @@ pub struct Map {
 
 impl Map {
     pub fn read(name: String, mut reader: Box<BufReader<File>>) -> Result<Map, Error> {
-        let header = MapHeader::read(&mut reader);
-        if (header.is_err()) {
-            return Err(header.err().unwrap());
-        }
+        let header = MapHeader::read(&mut reader)?;
         return Ok(Map {
-            name: name,
-            header: header.unwrap(),
-            reader: reader
+            name,
+            header,
+            reader
         });
     }
 

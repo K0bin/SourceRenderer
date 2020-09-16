@@ -93,12 +93,9 @@ pub fn read_lump_data(reader: &mut Read, lump_type: LumpType, size: i32, version
         LumpType::Brushes => {
             let element_count = size / i32::from(BRUSH_SIZE);
             let mut elements: Box<Vec<Brush>> = Box::new(Vec::new());
-            for i in 0..element_count {
-                let element = Brush::read(reader);
-                if element.is_err() {
-                    return Err(element.err().unwrap());
-                }
-                elements.push(element.unwrap());
+            for _ in 0..element_count {
+                let element = Brush::read(reader)?;
+                elements.push(element);
             }
             return Ok(LumpData::Brushes(elements));
         }
@@ -106,12 +103,9 @@ pub fn read_lump_data(reader: &mut Read, lump_type: LumpType, size: i32, version
         LumpType::Nodes => {
             let element_count = size / i32::from(NODE_SIZE);
             let mut elements: Box<Vec<Node>> = Box::new(Vec::new());
-            for i in 0..element_count {
-                let element = Node::read(reader);
-                if element.is_err() {
-                    return Err(element.err().unwrap());
-                }
-                elements.push(element.unwrap());
+            for _ in 0..element_count {
+                let element = Node::read(reader)?;
+                elements.push(element);
             }
             return Ok(LumpData::Nodes(elements));
         }
@@ -123,12 +117,9 @@ pub fn read_lump_data(reader: &mut Read, lump_type: LumpType, size: i32, version
             }
             let element_count = size / element_size;
             let mut elements: Box<Vec<Leaf>> = Box::new(Vec::new());
-            for i in 0..element_count {
-                let element = Leaf::read(reader, version);
-                if element.is_err() {
-                    return Err(element.err().unwrap());
-                }
-                elements.push(element.unwrap());
+            for _ in 0..element_count {
+                let element = Leaf::read(reader, version)?;
+                elements.push(element);
             }
             return Ok(LumpData::Leafs(elements));
         }

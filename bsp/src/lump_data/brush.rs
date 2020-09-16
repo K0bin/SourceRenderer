@@ -51,29 +51,20 @@ bitflags! {
 impl BrushContents {
     pub fn new(bits: u32) -> BrushContents {
         return BrushContents {
-            bits: bits
+            bits
         };
     }
 }
 
 impl Brush {
     pub fn read(reader: &mut Read) -> Result<Brush, Error> {
-        let first_side = reader.read_i32::<LittleEndian>();
-        if first_side.is_err() {
-            return Err(first_side.err().unwrap());
-        }
-        let sides_count = reader.read_i32::<LittleEndian>();
-        if sides_count.is_err() {
-            return Err(sides_count.err().unwrap());
-        }
-        let contents = reader.read_u32::<LittleEndian>();
-        if contents.is_err() {
-            return Err(contents.err().unwrap());
-        }
+        let first_side = reader.read_i32::<LittleEndian>()?;
+        let sides_count = reader.read_i32::<LittleEndian>()?;
+        let contents = reader.read_u32::<LittleEndian>()?;
         return Ok(Brush {
-            first_side: first_side.unwrap(),
-            sides_count: sides_count.unwrap(),
-            contents: BrushContents { bits: contents.unwrap() }
+            first_side,
+            sides_count,
+            contents: BrushContents { bits: contents }
         });
     }
 }

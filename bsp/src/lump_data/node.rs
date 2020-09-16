@@ -17,67 +17,37 @@ pub struct Node {
 
 impl Node {
     pub fn read(reader: &mut Read) -> Result<Node, Error> {
-        let plane_number = reader.read_i32::<LittleEndian>();
-        if plane_number.is_err() {
-            return Err(plane_number.err().unwrap());
-        }
-
+        let plane_number = reader.read_i32::<LittleEndian>()?;
         let mut children: [i32; 2] = [0; 2];
         for i in 0..children.len() {
-            let child = reader.read_i32::<LittleEndian>();
-            if child.is_err() {
-                return Err(child.err().unwrap());
-            }
-            children[i] = child.unwrap();
+            let child = reader.read_i32::<LittleEndian>()?;
+            children[i] = child;
         }
 
         let mut mins: [i16; 3] = [0; 3];
         for i in 0..mins.len() {
-            let min = reader.read_i16::<LittleEndian>();
-            if min.is_err() {
-                return Err(min.err().unwrap());
-            }
-            mins[i] = min.unwrap();
+            mins[i] = reader.read_i16::<LittleEndian>()?;
         }
 
         let mut maxs: [i16; 3] = [0; 3];
         for i in 0..maxs.len() {
-            let max = reader.read_i16::<LittleEndian>();
-            if max.is_err() {
-                return Err(max.err().unwrap());
-            }
-            maxs[i] = max.unwrap();
+            maxs[i] = reader.read_i16::<LittleEndian>()?;
         }
 
-        let first_face = reader.read_u16::<LittleEndian>();
-        if first_face.is_err() {
-            return Err(first_face.err().unwrap());
-        }
-
-        let faces_count = reader.read_u16::<LittleEndian>();
-        if faces_count.is_err() {
-            return Err(faces_count.err().unwrap());
-        }
-
-        let area = reader.read_u16::<LittleEndian>();
-        if area.is_err() {
-            return Err(area.err().unwrap());
-        }
-
-        let padding = reader.read_u16::<LittleEndian>();
-        if padding.is_err() {
-            return Err(padding.err().unwrap());
-        }
+        let first_face = reader.read_u16::<LittleEndian>()?;
+        let faces_count = reader.read_u16::<LittleEndian>()?;
+        let area = reader.read_u16::<LittleEndian>()?;
+        let padding = reader.read_u16::<LittleEndian>()?;
 
         return Ok(Node {
-            plane_number: plane_number.unwrap(),
-            children: children,
-            mins: mins,
-            maxs: maxs,
-            first_face: first_face.unwrap(),
-            faces_count: faces_count.unwrap(),
-            area: area.unwrap(),
-            padding: padding.unwrap()
+            plane_number,
+            children,
+            mins,
+            maxs,
+            first_face,
+            faces_count,
+            area,
+            padding
         });
     }
 }

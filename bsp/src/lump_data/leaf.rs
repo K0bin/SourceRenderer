@@ -37,28 +37,16 @@ pub struct Leaf {
 
 impl ColorRGBExp32 {
     pub fn read(reader: &mut Read) -> Result<ColorRGBExp32, Error> {
-        let r = reader.read_u8();
-        if r.is_err() {
-            return Err(r.err().unwrap());
-        }
-        let g = reader.read_u8();
-        if g.is_err() {
-            return Err(g.err().unwrap());
-        }
-        let b = reader.read_u8();
+        let r = reader.read_u8()?;
+        let g = reader.read_u8()?;
+        let b = reader.read_u8()?;
         reader.read_u8();
-        if b.is_err() {
-            return Err(b.err().unwrap());
-        }
-        let exponent = reader.read_i8();
-        if exponent.is_err() {
-            return Err(exponent.err().unwrap());
-        }
+        let exponent = reader.read_i8()?;
         return Ok(ColorRGBExp32 {
-            r: r.unwrap(),
-            g: g.unwrap(),
-            b: b.unwrap(),
-            exponent: exponent.unwrap()
+            r,
+            g,
+            b,
+            exponent
         });
     }
 }
@@ -67,11 +55,8 @@ impl CompressedLightCube {
     pub fn read(reader: &mut Read) -> Result<CompressedLightCube, Error> {
         let mut colors: [ColorRGBExp32; 6] = [Default::default(); 6];
         for i in 0..6 {
-            let color = ColorRGBExp32::read(reader);
-            if (color.is_err()) {
-                return Err(color.err().unwrap());
-            }
-            colors[i] = color.unwrap();
+            let color = ColorRGBExp32::read(reader)?;
+            colors[i] = color;
         }
         return Ok(CompressedLightCube {
             color: colors
@@ -81,95 +66,52 @@ impl CompressedLightCube {
 
 impl Leaf {
     pub fn read(reader: &mut Read, version: i32) -> Result<Leaf, Error> {
-        let contents = reader.read_u32::<LittleEndian>();
-        if contents.is_err() {
-            return Err(contents.err().unwrap());
-        }
-        let cluster = reader.read_i16::<LittleEndian>();
-        if cluster.is_err() {
-            return Err(cluster.err().unwrap());
-        }
-        let area_flags_res = reader.read_u16::<LittleEndian>();
-        if area_flags_res.is_err() {
-            return Err(area_flags_res.err().unwrap());
-        }
-        let area_flags = area_flags_res.unwrap();
+        let contents = reader.read_u32::<LittleEndian>()?;
+        let cluster = reader.read_i16::<LittleEndian>()?;
+        let area_flags = reader.read_u16::<LittleEndian>()?;
         let area: i16 = ((area_flags & 0b1111_1111_1000_0000) >> 7) as i16;
         let flags: i16 = (area_flags & 0b0000_0000_0111_1111) as i16;
 
         let mut mins: [i16; 3] = [0; 3];
         for i in 0..mins.len() {
-            let min = reader.read_i16::<LittleEndian>();
-            if min.is_err() {
-                return Err(min.err().unwrap());
-            }
-            mins[i] = min.unwrap();
+            let min = reader.read_i16::<LittleEndian>()?;
+            mins[i] = min;
         }
 
         let mut maxs: [i16; 3] = [0; 3];
         for i in 0..maxs.len() {
-            let max = reader.read_i16::<LittleEndian>();
-            if max.is_err() {
-                return Err(max.err().unwrap());
-            }
-            maxs[i] = max.unwrap();
+            let max = reader.read_i16::<LittleEndian>()?;
+            maxs[i] = max;
         }
 
-        let first_leaf_face = reader.read_u16::<LittleEndian>();
-        if first_leaf_face.is_err() {
-            return Err(first_leaf_face.err().unwrap());
-        }
-
-        let leaf_faces_count = reader.read_u16::<LittleEndian>();
-        if leaf_faces_count.is_err() {
-            return Err(leaf_faces_count.err().unwrap());
-        }
-
-        let first_leaf_brush = reader.read_u16::<LittleEndian>();
-        if first_leaf_brush.is_err() {
-            return Err(first_leaf_brush.err().unwrap());
-        }
-
-        let leaf_brushes_count = reader.read_u16::<LittleEndian>();
-        if leaf_brushes_count.is_err() {
-            return Err(leaf_brushes_count.err().unwrap());
-        }
-
-        let leaf_water_data_id = reader.read_i16::<LittleEndian>();
-        if leaf_water_data_id.is_err() {
-            return Err(leaf_water_data_id.err().unwrap());
-        }
-
+        let first_leaf_face = reader.read_u16::<LittleEndian>()?;
+        let leaf_faces_count = reader.read_u16::<LittleEndian>()?;
+        let first_leaf_brush = reader.read_u16::<LittleEndian>()?;
+        let leaf_brushes_count = reader.read_u16::<LittleEndian>()?;
+        let leaf_water_data_id = reader.read_i16::<LittleEndian>()?;
         let mut padding: i16 = 0;
         let mut ambient_lighting: CompressedLightCube = Default::default();
         if version <= 19 {
-            let ambient_lighting_res = CompressedLightCube::read(reader);
-            if ambient_lighting_res.is_err() {
-                return Err(ambient_lighting_res.err().unwrap());
-            }
-            ambient_lighting = ambient_lighting_res.unwrap();
-
-            let padding_res = reader.read_i16::<LittleEndian>();
-            if padding_res.is_err() {
-                return Err(padding_res.err().unwrap());
-            }
-            padding = padding_res.unwrap();
+            let ambient_lighting_res = CompressedLightCube::read(reader)?;
+            ambient_lighting = ambient_lighting_res;
+            let padding_res = reader.read_i16::<LittleEndian>()?;
+            padding = padding_res;
         }
 
         return Ok(Leaf {            
-            contents: BrushContents::new(contents.unwrap()),
-            cluster: cluster.unwrap(),
-            area: area,
-            flags: flags,
-            mins: mins,
-            maxs: maxs,
-            first_leaf_face: first_leaf_face.unwrap(),
-            leaf_faces_count: leaf_faces_count.unwrap(),
-            first_leaf_brush: first_leaf_brush.unwrap(),
-            leaf_brushes_count: leaf_brushes_count.unwrap(),
-            leaf_water_data_id: leaf_water_data_id.unwrap(),
-            ambient_lighting: ambient_lighting,
-            padding: padding
+            contents: BrushContents::new(contents),
+            cluster,
+            area,
+            flags,
+            mins,
+            maxs,
+            first_leaf_face,
+            leaf_faces_count,
+            first_leaf_brush,
+            leaf_brushes_count,
+            leaf_water_data_id,
+            ambient_lighting,
+            padding
         });
     }
 }
