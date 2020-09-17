@@ -22,15 +22,15 @@ use buffer::{BufferAllocator, VkBufferSlice};
 use descriptor::VkDescriptorSetLayout;
 use pipeline::VkPipelineLayout;
 use transfer::VkTransfer;
-use ::{VkTexture, VkRenderPass};
-use VkFrameBuffer;
+use ::{VkTexture, VkRenderPass, VkFrameBuffer};
 use texture::VkTextureView;
 use std::marker::PhantomData;
+use VkFenceInner;
 
 pub struct VkShared {
   pipelines: RwLock<HashMap<u64, Arc<VkPipeline>>>,
   semaphores: Pool<VkSemaphore>,
-  fences: Pool<VkFence>,
+  fences: Pool<VkFenceInner>,
   buffers: BufferAllocator, // consider per thread
   descriptor_set_layouts: RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>>,
   pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>
@@ -71,7 +71,7 @@ pub struct VkFrameContext {
 
 pub struct VkFrame {
   counter: u64,
-  fence: Arc<Recyclable<VkFence>>
+  fence: Arc<VkFence>
 }
 
 impl VkThreadContextManager {
@@ -114,7 +114,7 @@ impl VkThreadContextManager {
     context
   }
 
-  pub fn end_frame(&self, fence: &Arc<Recyclable<VkFence>>) {
+  pub fn end_frame(&self, fence: &Arc<VkFence>) {
     let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst);
     let mut guard = self.prepared_frames.lock().unwrap();
     guard.push_back(VkFrame {
@@ -203,7 +203,7 @@ impl VkShared {
         VkSemaphore::new(&semaphores_device_clone)
       )),
       fences: Pool::new(Box::new(move ||
-        VkFence::new(&fences_device_clone)
+        VkFenceInner::new(&fences_device_clone)
       )),
       buffers: BufferAllocator::new(device),
       descriptor_set_layouts: RwLock::new(HashMap::new()),
@@ -222,8 +222,8 @@ impl VkShared {
   }
 
   #[inline]
-  pub(crate) fn get_fence(&self) -> Arc<Recyclable<VkFence>> {
-    Arc::new(self.fences.get())
+  pub(crate) fn get_fence(&self) -> Arc<VkFence> {
+    Arc::new(VkFence::new(self.fences.get()))
   }
 
   #[inline]

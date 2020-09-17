@@ -21,6 +21,7 @@ pub use self::command::Scissor;
 pub use self::backend::Backend;
 pub use self::command::BindingFrequency;
 pub use self::texture::{TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode};
+pub use self::sync::Fence;
 
 mod device;
 mod instance;
@@ -32,6 +33,7 @@ mod pipeline;
 mod texture;
 mod renderpass;
 mod backend;
+mod sync;
 pub mod graph;
 
 // TODO: find a better place for this

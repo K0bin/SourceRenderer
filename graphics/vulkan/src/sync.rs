@@ -9,6 +9,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Poll, Context};
 use ash::prelude::VkResult;
+use sourcerenderer_core::graphics::Fence;
+use sourcerenderer_core::pool::{Recyclable, Pool};
+use std::ops::Deref;
 
 pub struct VkSemaphore {
   semaphore: vk::Semaphore,
@@ -43,12 +46,12 @@ impl Drop for VkSemaphore {
   }
 }
 
-pub struct VkFence {
+pub struct VkFenceInner {
   fence: vk::Fence,
   device: Arc<RawVkDevice>
 }
 
-impl VkFence {
+impl VkFenceInner {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
     let vk_device = &device.device;
     let info = vk::FenceCreateInfo {
@@ -58,7 +61,7 @@ impl VkFence {
     unsafe {
       vk_device.reset_fences(&[fence]);
     }
-    return VkFence {
+    return Self {
       device: device.clone(),
       fence
     };
@@ -99,5 +102,36 @@ impl Future for VkFence {
     } else {
       Poll::Pending
     }
+  }
+}
+
+// wrapper type to implement Fence
+pub struct VkFence {
+  inner: Recyclable<VkFenceInner>
+}
+
+impl VkFence {
+  pub fn new(inner: Recyclable<VkFenceInner>) -> Self {
+    Self {
+      inner
+    }
+  }
+}
+
+impl Deref for VkFence {
+  type Target = VkFenceInner;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+impl Fence for VkFence {
+  fn is_signaled(&self) -> bool {
+    self.is_signaled()
+  }
+
+  fn await(&self) {
+    self.await();
   }
 }

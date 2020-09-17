@@ -1,4 +1,4 @@
-use graphics::{Instance, TextureShaderResourceView};
+use graphics::{Instance, TextureShaderResourceView, Fence};
 use graphics::Adapter;
 use graphics::Device;
 use graphics::Surface;
@@ -25,4 +25,5 @@ pub trait Backend: 'static + Sized {
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
   type RenderGraph: RenderGraph<Self> + Send + Sync;
+  type Fence : Fence + Send + Sync;
 }

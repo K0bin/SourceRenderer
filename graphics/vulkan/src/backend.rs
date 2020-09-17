@@ -20,4 +20,5 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type Swapchain = VkSwapchain;
   type RenderGraph = VkRenderGraph;
   type TextureShaderResourceView = VkTextureView;
+  type Fence = VkFence;
 }

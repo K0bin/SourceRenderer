@@ -29,7 +29,8 @@ pub(crate) struct VkTransfer {
 struct VkTransferInner {
   current_transfer_buffer: Option<Box<VkTransferCommandBuffer>>,
   current_graphics_buffer: Box<VkTransferCommandBuffer>,
-  used_graphics_buffers: VecDeque<Box<VkTransferCommandBuffer>>
+  used_graphics_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
+  current_fence: Arc<VkFence>
 }
 
 impl VkTransfer {
@@ -99,13 +100,14 @@ impl VkTransfer {
 
     let (sender, receiver) = unbounded();
 
-    let current_fence = shared.get_fence();
+    let fence = shared.get_fence();
 
     Self {
       inner: Mutex::new(VkTransferInner {
         current_graphics_buffer: graphics_buffer,
         current_transfer_buffer: transfer_buffer,
-        used_graphics_buffers: VecDeque::new()
+        used_graphics_buffers: VecDeque::new(),
+        current_fence: fence
       }),
       graphics_pool,
       transfer_pool,
@@ -118,7 +120,7 @@ impl VkTransfer {
     }
   }
 
-  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
+  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {
     let mut guard = self.inner.lock().unwrap();
     unsafe {
       self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], &[
@@ -183,10 +185,12 @@ impl VkTransfer {
       guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
       guard.current_graphics_buffer.trackers.track_texture(texture);
       guard.current_graphics_buffer.is_empty = false;
+
+      guard.current_fence.clone()
     }
   }
 
-  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
+  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) -> Arc<VkFence> {
     let mut guard = self.inner.lock().unwrap();
     unsafe {
       self.device.cmd_copy_buffer(*guard.current_graphics_buffer.get_handle(), *src_buffer.get_buffer().get_handle(), *dst_buffer.get_buffer().get_handle(), &[
@@ -213,6 +217,8 @@ impl VkTransfer {
       guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
       guard.current_graphics_buffer.trackers.track_buffer(dst_buffer);
       guard.current_graphics_buffer.is_empty = false;
+
+      guard.current_fence.clone()
     }
   }
 
@@ -272,7 +278,7 @@ pub struct VkTransferCommandBuffer {
   cmd_buffer: vk::CommandBuffer,
   device: Arc<RawVkDevice>,
   trackers: VkLifetimeTrackers,
-  fence: Arc<Recyclable<VkFence>>,
+  fence: Arc<VkFence>,
   is_empty: bool
 }
 
