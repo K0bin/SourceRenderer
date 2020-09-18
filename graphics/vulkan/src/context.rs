@@ -183,7 +183,7 @@ impl VkFrameContext {
     self.life_time_trackers.track_semaphore(semaphore);
   }
 
-  pub fn track_fence(&mut self, fence: &Arc<Recyclable<VkFence>>) {
+  pub fn track_fence(&mut self, fence: &Arc<VkFence>) {
     self.life_time_trackers.track_fence(fence);
   }
 
@@ -223,7 +223,11 @@ impl VkShared {
 
   #[inline]
   pub(crate) fn get_fence(&self) -> Arc<VkFence> {
-    Arc::new(VkFence::new(self.fences.get()))
+    let inner = self.fences.get();
+    if inner.is_signaled() {
+      inner.reset();
+    }
+    Arc::new(VkFence::new(inner))
   }
 
   #[inline]
@@ -244,7 +248,7 @@ impl VkShared {
 
 pub struct VkLifetimeTrackers {
   semaphores: Vec<Arc<Recyclable<VkSemaphore>>>,
-  fences: Vec<Arc<Recyclable<VkFence>>>,
+  fences: Vec<Arc<VkFence>>,
   buffers: Vec<Arc<VkBufferSlice>>,
   textures: Vec<Arc<VkTexture>>,
   texture_views: Vec<Arc<VkTextureView>>,
@@ -267,9 +271,6 @@ impl VkLifetimeTrackers {
 
   pub(crate) fn reset(&mut self) {
     self.semaphores.clear();
-    for fence in &self.fences {
-      fence.reset();
-    }
     self.fences.clear();
     self.buffers.clear();
     self.textures.clear();
@@ -282,7 +283,7 @@ impl VkLifetimeTrackers {
     self.semaphores.push(semaphore.clone());
   }
 
-  pub(crate) fn track_fence(&mut self, fence: &Arc<Recyclable<VkFence>>) {
+  pub(crate) fn track_fence(&mut self, fence: &Arc<VkFence>) {
     self.fences.push(fence.clone());
   }
 
