@@ -204,12 +204,12 @@ impl Scene {
         let cube_transform = Matrix4::from(Rotation3::from_axis_angle(&Vector3::y_axis(), cube_rotation / 300.0f32));
 
         let message = Renderables::<P> {
-          elements: vec![RenderableAndTransform::<P> {
+          elements: vec![TransformedRenderable::<P> {
             renderable: Renderable::Static(StaticModelRenderable {
               model: model_key.clone(),
               receive_shadows: false,
               cast_shadows: false,
-              movability: Movability::Static
+              can_move: false
             }),
             transform: cube_transform,
             old_transform: old_cube_transform

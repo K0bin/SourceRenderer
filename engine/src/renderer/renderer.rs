@@ -15,7 +15,7 @@ use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
 use crate::asset_manager::AssetKey;
 use crate::AssetManager;
-use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, RenderableAndTransform};
+use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, TransformedRenderable};
 
 use async_std::task;
 use sourcerenderer_core::job::{SystemJob, JobScheduler, JobCounterWait, JobQueue};
