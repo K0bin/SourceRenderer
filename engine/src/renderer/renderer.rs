@@ -13,8 +13,8 @@ use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderTy
 use sourcerenderer_core::graphics::graph::{RenderPassInfo, OutputAttachmentReference, BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
-use crate::asset_manager::AssetKey;
-use crate::AssetManager;
+use crate::asset::AssetKey;
+use crate::asset::AssetManager;
 use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, TransformedRenderable};
 
 use async_std::task;
@@ -22,12 +22,12 @@ use sourcerenderer_core::job::{SystemJob, JobScheduler, JobCounterWait, JobQueue
 use std::sync::atomic::Ordering;
 
 pub struct Renderer<P: Platform> {
-  sender: Sender<Renderables<P>>,
+  sender: Sender<Renderables>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>
 }
 
 impl<P: Platform> Renderer<P> {
-  fn new(sender: Sender<Renderables<P>>, device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
+  fn new(sender: Sender<Renderables>, device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
     Self {
       sender,
       device: device.clone()
@@ -35,7 +35,7 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn run(job_scheduler: &JobScheduler, device: &Arc<<P::GraphicsBackend as Backend>::Device>, swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
-    let (sender, receiver) = bounded::<Renderables<P>>(1);
+    let (sender, receiver) = bounded::<Renderables>(1);
     let renderer = Arc::new(Renderer::new(sender, &device));
     let mut internal = RendererInternal::new(&device, &swap_chain, asset_manager, receiver);
 
@@ -46,7 +46,7 @@ impl<P: Platform> Renderer<P> {
     renderer
   }
 
-  pub fn render(&self, renderables: Renderables<P>) {
+  pub fn render(&self, renderables: Renderables) {
     self.sender.send(renderables);
   }
 }
@@ -60,7 +60,7 @@ impl<P: Platform> RendererInternal<P> {
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
-    receiver: Receiver<Renderables<P>>) -> Self {
+    receiver: Receiver<Renderables>) -> Self {
     let graph = RendererInternal::<P>::build_graph(device, swap_chain, asset_manager, receiver);
     Self {
       graph
@@ -71,7 +71,7 @@ impl<P: Platform> RendererInternal<P> {
     device: &<P::GraphicsBackend as Backend>::Device,
     swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
-    receiver: Receiver<Renderables<P>>)
+    receiver: Receiver<Renderables>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();

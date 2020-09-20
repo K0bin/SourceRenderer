@@ -29,7 +29,7 @@ use image::{GenericImage, GenericImageView};
 use nalgebra::{Matrix4, Point3, Vector3, Rotation3};
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicUsize;
-use crate::AssetManager;
+use crate::asset::AssetManager;
 use crate::renderer::Renderer;
 use crate::scene::Scene;
 use async_std::sync::{channel, Sender, Receiver};
@@ -62,12 +62,7 @@ impl<P: Platform> Engine<P> {
     let mut adapters = instance.list_adapters();
     println!("n devices: {}", adapters.len());
     let device = Arc::new(adapters.remove(0).create_device(&surface));
-    let swapchain_info = SwapchainInfo {
-      width: 1280,
-      height: 720,
-      vsync: true
-    };
-    let mut swapchain = Arc::new(self.platform.window().create_swapchain(swapchain_info, &device, &surface));
+    let mut swapchain = Arc::new(self.platform.window().create_swapchain(true, &device, &surface));
 
     let asset_manager = Arc::new(AssetManager::<P>::new(&device));
     let renderer = Renderer::<P>::run(&scheduler, &device, &swapchain, &asset_manager);

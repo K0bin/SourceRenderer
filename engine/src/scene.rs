@@ -1,4 +1,4 @@
-use crate::{Renderer, AssetManager, Vertex};
+use crate::{Renderer, Vertex};
 use std::sync::{Arc, Mutex};
 use sourcerenderer_core::{Platform, Vec3, Vec2};
 use crossbeam_channel::bounded;
@@ -10,6 +10,7 @@ use nalgebra::{Point3, Matrix4, Rotation3, Vector3};
 use crate::renderer::*;
 use std::thread::Thread;
 use std::time::Duration;
+use crate::asset::AssetManager;
 
 pub struct Scene {
   entities: Mutex<Vec<Entity>>
@@ -182,8 +183,8 @@ impl Scene {
 
       let mesh_key = asset_manager_ref.add_mesh("mesh", &triangle, &indices);
       let texture_key = asset_manager_ref.add_texture("texture", &texture_info, &data);
-      let material_key = asset_manager_ref.add_material("material", &texture_key);
-      let model_key = asset_manager_ref.add_model("model", &mesh_key, &[&material_key]);
+      let material_key = asset_manager_ref.add_material("material", texture_key);
+      let model_key = asset_manager_ref.add_model("model", mesh_key, &[material_key]);
       asset_manager_ref.flush();
 
       let mut camera = Matrix4::identity();
@@ -203,8 +204,8 @@ impl Scene {
         cube_rotation += 1f32;
         let cube_transform = Matrix4::from(Rotation3::from_axis_angle(&Vector3::y_axis(), cube_rotation / 300.0f32));
 
-        let message = Renderables::<P> {
-          elements: vec![TransformedRenderable::<P> {
+        let message = Renderables {
+          elements: vec![TransformedRenderable {
             renderable: Renderable::Static(StaticModelRenderable {
               model: model_key.clone(),
               receive_shadows: false,

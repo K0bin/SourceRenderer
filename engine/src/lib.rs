@@ -7,7 +7,6 @@ extern crate crossbeam_channel;
 
 pub use self::engine::Engine;
 pub use self::renderer::Renderer;
-pub use self::asset_manager::AssetManager;
 use sourcerenderer_core::{Vec3, Vec2};
 
 // TODO move somewhere else
@@ -20,8 +19,7 @@ pub struct Vertex {
 }
 
 mod engine;
-pub mod asset;
-mod asset_manager;
+mod asset;
 
 mod renderer;
 mod scene;
