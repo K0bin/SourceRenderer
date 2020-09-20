@@ -1,13 +1,17 @@
 use std::sync::atomic::{AtomicUsize, AtomicU32};
 use std::cmp::Ordering;
-use std::sync::{Arc, MutexGuard, RwLock, RwLockReadGuard};
-use std::collections::HashMap;
+use std::sync::{Arc, MutexGuard, RwLock, RwLockReadGuard, Mutex};
+use std::collections::{HashMap, VecDeque};
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{graphics, Vec3};
 use sourcerenderer_core::graphics::{Backend, Texture, Buffer, Device, MemoryUsage, BufferUsage, TextureInfo, Format, SampleCount, TextureShaderResourceViewInfo, Filter, AddressMode};
 use nalgebra::{Vector3, Vector4};
 use std::hash::{Hash, Hasher};
 use crate::Vertex;
+use std::thread::{Thread, JoinHandle};
+use std::sync::Weak;
+use std::thread;
+use std::time::Duration;
 
 pub struct AssetKey<P: Platform> {
   name: String,
@@ -47,7 +51,9 @@ pub enum AssetType {
   Model,
   Mesh,
   Material,
-  Sound
+  Sound,
+  Level,
+  Chunk
 }
 
 #[derive(Clone)]
@@ -83,7 +89,8 @@ enum AssetContent<P: Platform> {
 }
 
 pub struct AssetManager<P: Platform> {
-  graphics: RwLock<AssetManagerGraphics<P>>
+  graphics: RwLock<AssetManagerGraphics<P>>,
+  load_queue: Mutex<VecDeque<Arc<AssetKey<P>>>>
 }
 
 impl<P: Platform> AssetManager<P> {
@@ -95,7 +102,8 @@ impl<P: Platform> AssetManager<P> {
         models: HashMap::new(),
         materials: HashMap::new(),
         textures: HashMap::new()
-      })
+      }),
+      load_queue: Mutex::new(VecDeque::new())
     });
 
     let zero_buffer = device.upload_data(&Vector4::<u8>::new(0u8, 0u8, 0u8, 0u8), MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
@@ -137,6 +145,12 @@ impl<P: Platform> AssetManager<P> {
       graphics.textures.insert(texture_key.clone(), zero_view);
       let material_key = manager.make_asset_key(PLACEHOLDER_MATERIAL_NAME, AssetType::Material);
       graphics.materials.insert(material_key.clone(), material);
+    }
+
+    let thread_count = 1;
+    for _ in 0..thread_count {
+      let c_manager = Arc::downgrade(&manager);
+      thread::spawn(move || asset_manager_thread_fn(c_manager));
     }
 
     manager
@@ -221,9 +235,12 @@ impl<P: Platform> AssetManager<P> {
     key
   }
 
-  pub fn load_texture(self: &Arc<AssetManager<P>>, name: &str) -> Arc<AssetKey<P>> {
-    //task::spawn()
-    unimplemented!();
+  pub fn load(self: &Arc<AssetManager<P>>, name: &str, asset_type: AssetType) -> Arc<AssetKey<P>> {
+    let key = self.make_asset_key(name, asset_type);
+    let mut queue_guard = self.load_queue.lock().unwrap();
+    queue_guard.push_back(key.clone());
+
+    key
   }
 
   pub fn flush(&self) {
@@ -268,4 +285,29 @@ impl<P: Platform> AssetManagerGraphics<P> {
     // TODO return placeholder if not ready
     self.textures.get(key).unwrap()
   }
+}
+
+fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
+  'asset_loop: loop {
+    let asset_key_opt = {
+      let mgr_opt = asset_manager.upgrade();
+      if mgr_opt.is_none() {
+        break;
+      }
+      let mgr = mgr_opt.unwrap();
+      let mut queue = mgr.load_queue.lock().unwrap();
+      queue.pop_front()
+    };
+    if asset_key_opt.is_none() {
+      thread::sleep(Duration::new(3, 0));
+      continue;
+    }
+    let asset_key = asset_key_opt.unwrap();
+
+    thread::sleep(Duration::new(0, 10_000_000)); // 10ms
+  }
+}
+
+pub trait AssetLoader {
+
 }
