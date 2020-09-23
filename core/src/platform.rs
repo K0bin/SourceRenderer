@@ -1,8 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::graphics::SwapchainInfo;
-
 use crate::graphics;
 
 #[derive(PartialEq)]
@@ -30,5 +28,5 @@ pub trait Platform: 'static + Sized {
 
 pub trait Window<P: Platform> {
   fn create_surface(&self, graphics_instance: Arc<<P::GraphicsBackend as graphics::Backend>::Instance>) -> Arc<<P::GraphicsBackend as graphics::Backend>::Surface>;
-  fn create_swapchain(&self, info: SwapchainInfo, device: &<P::GraphicsBackend as graphics::Backend>::Device, surface: &Arc<<P::GraphicsBackend as graphics::Backend>::Surface>) -> <P::GraphicsBackend as graphics::Backend>::Swapchain;
+  fn create_swapchain(&self, vsync: bool, device: &<P::GraphicsBackend as graphics::Backend>::Device, surface: &Arc<<P::GraphicsBackend as graphics::Backend>::Surface>) -> <P::GraphicsBackend as graphics::Backend>::Swapchain;
 }

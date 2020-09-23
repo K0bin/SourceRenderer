@@ -9,7 +9,6 @@ use sourcerenderer_core::graphics::Instance;
 use sourcerenderer_core::graphics::Surface;
 use sourcerenderer_core::graphics::Device;
 use sourcerenderer_core::graphics::Swapchain;
-use sourcerenderer_core::graphics::SwapchainInfo;
 
 use sourcerenderer_vulkan::VkInstance;
 use sourcerenderer_vulkan::VkSurface;
@@ -114,7 +113,10 @@ impl Window<SDLPlatform> for SDLWindow {
     return Arc::new(VkSurface::new(instance_raw, SurfaceKHR::from_raw(surface), surface_loader));
   }
 
-  fn create_swapchain(&self, info: SwapchainInfo, device: &VkDevice, surface: &Arc<VkSurface>) -> VkSwapchain {
-    return VkSwapchain::new(info, device, surface);
+  fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> VkSwapchain {
+    let device_inner = device.get_inner();
+    let (window_width, window_height) = self.window.drawable_size();
+    let (width, height) = surface.get_extent(device_inner, window_width, window_height);
+    return VkSwapchain::new(vsync, width, height, device_inner, surface);
   }
 }

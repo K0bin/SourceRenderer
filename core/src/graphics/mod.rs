@@ -4,7 +4,6 @@ pub use self::device::AdapterType;
 pub use self::instance::Instance;
 pub use self::surface::Surface;
 pub use self::surface::Swapchain;
-pub use self::surface::SwapchainInfo;
 pub use self::command::CommandBuffer;
 pub use self::command::CommandBufferType;
 pub use self::buffer::Buffer;

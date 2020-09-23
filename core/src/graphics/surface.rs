@@ -8,11 +8,5 @@ pub trait Surface {
 
 }
 
-pub struct SwapchainInfo {
-  pub width: u32,
-  pub height: u32,
-  pub vsync: bool
-}
-
 pub trait Swapchain {
 }

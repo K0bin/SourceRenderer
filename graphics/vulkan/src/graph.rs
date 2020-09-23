@@ -395,15 +395,24 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     self.context.begin_frame();
 
-    let prepare_semaphore = self.context.get_shared().get_semaphore();
+    let mut prepare_semaphore = self.context.get_shared().get_semaphore();
     let cmd_semaphore = self.context.get_shared().get_semaphore();
     let cmd_fence = self.context.get_shared().get_fence();
-    let swapchain_image_index = if self.does_render_to_frame_buffer {
-      let (_, index) = self.swapchain.prepare_back_buffer(&prepare_semaphore);
-      Some(index)
-    } else {
-      None
-    };
+    let mut image_index: u32 = 0;
+
+    let mut recreate = false;
+    if self.does_render_to_frame_buffer {
+      let mut result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
+      if false && (result.is_err() || !result.unwrap().1) {
+        let new_swapchain = Arc::new(self.swapchain.recreate());
+        std::mem::replace(&mut self.swapchain, new_swapchain);
+        prepare_semaphore = self.context.get_shared().get_semaphore();
+        result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
+        recreate = true;
+      }
+      let (index, _) = result.unwrap();
+      image_index = index
+    }
 
     let mut expected_counter = 0usize;
     for pass in &self.passes {
@@ -415,9 +424,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       let c_counter = counter.clone();
       let c_wait_counter = counter.clone();
       let c_cmd_fence = cmd_fence.clone();
+      let frame_buffer_index = image_index as usize;
       job_queue.enqueue_job(
         Box::new(move || {
-          let frame_buffer_index = if c_pass.is_rendering_to_swap_chain { swapchain_image_index.unwrap() as usize } else { 0 };
 
           let thread_context = c_context.get_thread_context();
           let mut frame_context = thread_context.get_frame_context();
@@ -476,12 +485,13 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let c_cmd_fence = cmd_fence.clone();
     let c_counter = counter.clone();
     let c_wait_counter = counter.clone();
+    let c_does_render_to_frame_buffer = self.does_render_to_frame_buffer;
     job_queue.enqueue_job(Box::new(move || {
         let thread_context = c_context.get_thread_context();
         let mut frame_context = thread_context.get_frame_context();
 
-        if let Some(index) = swapchain_image_index {
-          c_queue.present(&c_swapchain, index, &[&c_cmd_semaphore]);
+        if c_does_render_to_frame_buffer {
+          c_queue.present(&c_swapchain, image_index, &[&c_cmd_semaphore]);
           frame_context.track_semaphore(&c_cmd_semaphore);
         }
 

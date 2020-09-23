@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::fs::File;
 use std::io::*;
-use sourcerenderer_core::graphics::SwapchainInfo;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::MemoryUsage;
