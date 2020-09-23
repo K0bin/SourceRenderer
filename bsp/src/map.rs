@@ -8,11 +8,11 @@ use std::boxed::{Box};
 pub struct Map {
     pub name: String,
     header: MapHeader,
-    reader: Box<BufReader<File>>
+    reader: BufReader<File>
 }
 
 impl Map {
-    pub fn read(name: String, mut reader: Box<BufReader<File>>) -> Result<Map, Error> {
+    pub fn read(name: String, mut reader: BufReader<File>) -> Result<Map, Error> {
         let header = MapHeader::read(&mut reader)?;
         return Ok(Map {
             name,
