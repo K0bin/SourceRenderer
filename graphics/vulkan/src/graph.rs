@@ -33,7 +33,8 @@ use texture::VkTextureView;
 
 pub struct VkAttachment {
   texture: Arc<VkTexture>,
-  view: Arc<VkTextureView>
+  view: Arc<VkTextureView>,
+  info: RenderGraphAttachmentInfo
 }
 
 pub struct VkRenderGraph {
@@ -48,12 +49,12 @@ pub struct VkRenderGraph {
   transfer_queue: Option<Arc<VkQueue>>
 }
 
-pub struct VkRenderGraphPass { // TODO rename to VkRenderPass
+pub struct VkRenderGraphPass {
   device: Arc<RawVkDevice>,
   render_pass: Arc<VkRenderPass>,
   frame_buffer: Vec<Arc<VkFrameBuffer>>,
-  callbacks: Vec<Arc<dyn (Fn(&mut VkCommandBufferRecorder) -> usize) + Send + Sync>>,
-  is_rendering_to_swap_chain: bool
+  is_rendering_to_swap_chain: bool,
+  infos: Vec<RenderPassInfo<VkBackend>>
 }
 
 impl VkRenderGraph {
@@ -72,8 +73,7 @@ impl VkRenderGraph {
 
     let mut layouts: HashMap<String, vk::ImageLayout> = HashMap::new();
     layouts.insert(BACK_BUFFER_ATTACHMENT_NAME.to_owned(), vk::ImageLayout::UNDEFINED);
-    let mut attachments: HashMap<String, VkAttachment> = HashMap::new(); // TODO fill
-    let swapchain_views = swapchain.get_views();
+    let mut attachments: HashMap<String, VkAttachment> = HashMap::new();
 
     for (name, attachment) in &info.attachments {
       // TODO: aliasing
@@ -100,7 +100,8 @@ impl VkRenderGraph {
       let view = Arc::new(VkTextureView::new_render_target_view(device, &texture));
       attachments.insert(name.clone(), VkAttachment {
         texture,
-        view
+        view,
+        info: attachment.clone()
       });
     }
 
@@ -118,175 +119,16 @@ impl VkRenderGraph {
 
       let mut merged_passes: Vec<RenderPassInfo<VkBackend>> = vec![pass];
       let mut next_pass = reordered_passes_queue.get(0);
-      let is_next_pass_mergable = next_pass.is_some() && next_pass.unwrap().inputs.iter().all(|input| input.is_local);
-      while is_next_pass_mergable {
+      let is_next_pass_mergeable = next_pass.is_some() && next_pass.unwrap().inputs.iter().all(|input| input.is_local);
+      while is_next_pass_mergeable {
         merged_passes.push(reordered_passes_queue.pop_front().unwrap());
       }
 
-      let mut render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
-      let mut attachment_indices: HashMap<&str, u32> = HashMap::new();
-      let mut dependencies: Vec<vk::SubpassDependency> = Vec::new();
-      let mut pass_renders_to_backbuffer = false;
-      let mut subpasses: Vec<vk::SubpassDescription> = Vec::new();
-      let mut attachment_refs: Vec<vk::AttachmentReference> = Vec::new();
-      let mut frame_buffer_attachments: Vec<Vec<vk::ImageView>> = Vec::new();
-
-      // Prepare attachments
-      for merged_pass in &merged_passes {
-        for output in &merged_pass.outputs {
-          let index = render_pass_attachments.len() as u32;
-
-          if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
-            let info = swapchain.get_textures().first().unwrap().get_info();
-            if output.load_action == LoadAction::Load {
-              panic!("cant load back buffer");
-            }
-            if output.store_action != StoreAction::Store {
-              panic!("cant discard back buffer");
-            }
-            pass_renders_to_backbuffer = true;
-            render_pass_attachments.push(
-              vk::AttachmentDescription {
-                format: format_to_vk(info.format),
-                samples: samples_to_vk(info.samples),
-                load_op: load_action_to_vk(output.load_action),
-                store_op: store_action_to_vk(output.store_action),
-                stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-                stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-                initial_layout: *(layouts.get(&output.name).unwrap_or(&vk::ImageLayout::UNDEFINED)),
-                final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-                ..Default::default()
-              }
-            );
-            layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
-            attachment_indices.insert(&output.name as &str, index);
-          } else {
-            let attachment = info.attachments.get(&output.name).expect("Output not attachment not declared.");
-            render_pass_attachments.push(
-              vk::AttachmentDescription {
-                format: format_to_vk(attachment.format),
-                samples: samples_to_vk(attachment.samples),
-                load_op: load_action_to_vk(output.load_action),
-                store_op: store_action_to_vk(output.store_action),
-                stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-                stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-                initial_layout:  *layouts.get(&output.name as &str).unwrap_or(&vk::ImageLayout::UNDEFINED),
-                final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                ..Default::default()
-              }
-            );
-            layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
-            attachment_indices.insert(&output.name as &str, index);
-          }
-        }
-      }
-
-      let frame_buffer_count = if pass_renders_to_backbuffer { swapchain_views.len() } else { 1 };
-      let mut callbacks: Vec<Arc<dyn (Fn(&mut VkCommandBufferRecorder) -> usize) + Send + Sync>> = Vec::new();
-
-      for _ in 0..frame_buffer_count {
-        frame_buffer_attachments.push(Vec::new());
-      }
-
       // build subpasses, requires the attachment indices populated before
-      for merged_pass in &merged_passes {
-        let inputs_start = attachment_refs.len() as isize;
-        let inputs_len = merged_pass.inputs.len() as u32;
-        for input in &merged_pass.inputs {
-          attachment_refs.push(vk::AttachmentReference {
-            attachment: (*attachment_indices.get(&input.name as &str).expect(format!("Couldn't find index for {}", &input.name).as_str())) as u32,
-            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-          });
-        }
+      let render_graph_pass = VkRenderGraph::build_render_pass(merged_passes, device, &attachments, &swapchain, &mut layouts);
+      did_render_to_backbuffer |= render_graph_pass.is_rendering_to_swap_chain;
+      passes.push(Arc::new(render_graph_pass));
 
-        let outputs_start = attachment_refs.len() as isize;
-        let outputs_len = merged_pass.outputs.len() as u32;
-        for output in &merged_pass.outputs {
-          attachment_refs.push(vk::AttachmentReference {
-            attachment: (*attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())) as u32,
-            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
-          });
-
-          for i in 0..frame_buffer_count {
-            frame_buffer_attachments.get_mut(i).unwrap().push(
-              if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
-                *swapchain_views[i].get_view_handle()
-              } else {
-                *attachments[&output.name].view.get_view_handle()
-              }
-            );
-          }
-        }
-        unsafe {
-          subpasses.push(vk::SubpassDescription {
-            p_input_attachments: attachment_refs.as_ptr().offset(inputs_start),
-            input_attachment_count: inputs_len,
-            p_color_attachments: attachment_refs.as_ptr().offset(outputs_start),
-            color_attachment_count: outputs_len,
-            ..Default::default()
-          });
-        }
-
-        callbacks.push(merged_pass.render.clone());
-      }
-
-      let render_pass_create_info = vk::RenderPassCreateInfo {
-        p_attachments: render_pass_attachments.as_ptr(),
-        attachment_count: render_pass_attachments.len() as u32,
-        p_subpasses: subpasses.as_ptr(),
-        subpass_count: subpasses.len() as u32,
-        p_dependencies: dependencies.as_ptr(),
-        dependency_count: dependencies.len() as u32,
-        ..Default::default()
-      };
-      let render_pass = Arc::new(VkRenderPass::new(device, &render_pass_create_info));
-
-
-      let (width, height) = if pass_renders_to_backbuffer {
-        (swapchain.get_width(), swapchain.get_height())
-      } else {
-        let attachment = attachments.get(
-          &merged_passes
-            .iter()
-            .find_map(|pass|
-              pass.outputs
-                .iter()
-                .find_map(|output| if &output.name != BACK_BUFFER_ATTACHMENT_NAME {
-                  Some(output)
-                } else {
-                  None
-                })
-            )
-            .unwrap()
-            .name
-          )
-          .unwrap();
-        (0, 0)
-      };
-      let mut frame_buffers: Vec<Arc<VkFrameBuffer>> = Vec::with_capacity(frame_buffer_count);
-      for fb_attachments in frame_buffer_attachments {
-        let frame_buffer_info = vk::FramebufferCreateInfo {
-          render_pass: *render_pass.get_handle(),
-          attachment_count: fb_attachments.len() as u32,
-          p_attachments: fb_attachments.as_ptr(),
-          layers: 1,
-          width,
-          height,
-          ..Default::default()
-        };
-        let frame_buffer = Arc::new(VkFrameBuffer::new(device, &frame_buffer_info));
-        frame_buffers.push(frame_buffer);
-      }
-
-      passes.push(Arc::new(VkRenderGraphPass {
-        device: device.clone(),
-        frame_buffer: frame_buffers,
-        render_pass,
-        callbacks,
-        is_rendering_to_swap_chain: pass_renders_to_backbuffer
-      }));
-
-      did_render_to_backbuffer |= pass_renders_to_backbuffer;
       pass_opt = reordered_passes_queue.pop_front();
     }
 
@@ -312,6 +154,173 @@ impl VkRenderGraph {
       reordered_passes.push(pass);
     }
     return reordered_passes;
+  }
+
+  fn build_render_pass(passes: Vec<RenderPassInfo<VkBackend>>,
+                       device: &Arc<RawVkDevice>,
+                       attachments: &HashMap<String, VkAttachment>,
+                       swapchain: &VkSwapchain,
+                       layouts: &mut HashMap<String, vk::ImageLayout>) -> VkRenderGraphPass {
+    let mut render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
+    let mut attachment_indices: HashMap<&str, u32> = HashMap::new();
+    let mut dependencies: Vec<vk::SubpassDependency> = Vec::new();
+    let mut pass_renders_to_backbuffer = false;
+    let mut subpasses: Vec<vk::SubpassDescription> = Vec::new();
+    let mut attachment_refs: Vec<vk::AttachmentReference> = Vec::new();
+    let mut frame_buffer_attachments: Vec<Vec<vk::ImageView>> = Vec::new();
+    let swapchain_views = swapchain.get_views();
+
+    // Prepare attachments
+    for merged_pass in &passes {
+      for output in &merged_pass.outputs {
+        let index = render_pass_attachments.len() as u32;
+
+        if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
+          let info = swapchain.get_textures().first().unwrap().get_info();
+          if output.load_action == LoadAction::Load {
+            panic!("cant load back buffer");
+          }
+          if output.store_action != StoreAction::Store {
+            panic!("cant discard back buffer");
+          }
+          pass_renders_to_backbuffer = true;
+          render_pass_attachments.push(
+            vk::AttachmentDescription {
+              format: format_to_vk(info.format),
+              samples: samples_to_vk(info.samples),
+              load_op: load_action_to_vk(output.load_action),
+              store_op: store_action_to_vk(output.store_action),
+              stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+              stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+              initial_layout: *(layouts.get(&output.name).unwrap_or(&vk::ImageLayout::UNDEFINED)),
+              final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+              ..Default::default()
+            }
+          );
+          layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
+          attachment_indices.insert(&output.name as &str, index);
+        } else {
+          let attachment = attachments.get(&output.name).expect("Output not attachment not declared.");
+          render_pass_attachments.push(
+            vk::AttachmentDescription {
+              format: format_to_vk(attachment.info.format),
+              samples: samples_to_vk(attachment.info.samples),
+              load_op: load_action_to_vk(output.load_action),
+              store_op: store_action_to_vk(output.store_action),
+              stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+              stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+              initial_layout:  *layouts.get(&output.name as &str).unwrap_or(&vk::ImageLayout::UNDEFINED),
+              final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+              ..Default::default()
+            }
+          );
+          layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
+          attachment_indices.insert(&output.name as &str, index);
+        }
+      }
+    }
+
+    let frame_buffer_count = if pass_renders_to_backbuffer { swapchain_views.len() } else { 1 };
+    for _ in 0..frame_buffer_count {
+      frame_buffer_attachments.push(Vec::new());
+    }
+
+    for merged_pass in &passes {
+      let inputs_start = attachment_refs.len() as isize;
+      let inputs_len = merged_pass.inputs.len() as u32;
+      for input in &merged_pass.inputs {
+        attachment_refs.push(vk::AttachmentReference {
+          attachment: (*attachment_indices.get(&input.name as &str).expect(format!("Couldn't find index for {}", &input.name).as_str())) as u32,
+          layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        });
+      }
+
+      let outputs_start = attachment_refs.len() as isize;
+      let outputs_len = merged_pass.outputs.len() as u32;
+      for output in &merged_pass.outputs {
+        attachment_refs.push(vk::AttachmentReference {
+          attachment: (*attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())) as u32,
+          layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+        });
+
+        for i in 0..frame_buffer_count {
+          frame_buffer_attachments.get_mut(i).unwrap().push(
+            if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
+              *swapchain_views[i].get_view_handle()
+            } else {
+              *attachments[&output.name].view.get_view_handle()
+            }
+          );
+        }
+      }
+      unsafe {
+        subpasses.push(vk::SubpassDescription {
+          p_input_attachments: attachment_refs.as_ptr().offset(inputs_start),
+          input_attachment_count: inputs_len,
+          p_color_attachments: attachment_refs.as_ptr().offset(outputs_start),
+          color_attachment_count: outputs_len,
+          ..Default::default()
+        });
+      }
+    }
+
+
+    let render_pass_create_info = vk::RenderPassCreateInfo {
+      p_attachments: render_pass_attachments.as_ptr(),
+      attachment_count: render_pass_attachments.len() as u32,
+      p_subpasses: subpasses.as_ptr(),
+      subpass_count: subpasses.len() as u32,
+      p_dependencies: dependencies.as_ptr(),
+      dependency_count: dependencies.len() as u32,
+      ..Default::default()
+    };
+    let render_pass = Arc::new(VkRenderPass::new(device, &render_pass_create_info));
+
+
+    let (width, height) = if pass_renders_to_backbuffer {
+      (swapchain.get_width(), swapchain.get_height())
+    } else {
+      let attachment = attachments.get(
+        &passes
+          .iter()
+          .find_map(|pass|
+            pass.outputs
+              .iter()
+              .find_map(|output| if &output.name != BACK_BUFFER_ATTACHMENT_NAME {
+                Some(output)
+              } else {
+                None
+              })
+          )
+          .unwrap()
+          .name
+      )
+        .unwrap();
+      (0, 0)
+    };
+
+    let mut frame_buffers: Vec<Arc<VkFrameBuffer>> = Vec::with_capacity(frame_buffer_count);
+    for fb_attachments in frame_buffer_attachments {
+      let frame_buffer_info = vk::FramebufferCreateInfo {
+        render_pass: *render_pass.get_handle(),
+        attachment_count: fb_attachments.len() as u32,
+        p_attachments: fb_attachments.as_ptr(),
+        layers: 1,
+        width,
+        height,
+        ..Default::default()
+      };
+      let frame_buffer = Arc::new(VkFrameBuffer::new(device, &frame_buffer_info));
+      frame_buffers.push(frame_buffer);
+    }
+
+    VkRenderGraphPass {
+      device: device.clone(),
+      frame_buffer: frame_buffers,
+      render_pass,
+      is_rendering_to_swap_chain: pass_renders_to_backbuffer,
+      infos: passes
+    }
   }
 
   fn find_next_suitable_pass(attachments: &HashMap<String, RenderGraphAttachmentInfo>, reordered_pass_infos: &[RenderPassInfo<VkBackend>], pass_infos: &mut Vec<RenderPassInfo<VkBackend>>) -> RenderPassInfo<VkBackend> {
@@ -432,11 +441,11 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let mut frame_context = thread_context.get_frame_context();
           let mut cmd_buffer = frame_context.get_command_pool().get_command_buffer(CommandBufferType::PRIMARY);
           cmd_buffer.begin_render_pass(&c_pass.render_pass, &c_pass.frame_buffer[frame_buffer_index], RenderpassRecordingMode::Commands);
-          for i in 0..c_pass.callbacks.len() {
+          for i in 0..c_pass.infos.len() {
             if i != 0 {
               cmd_buffer.advance_subpass();
             }
-            let callback = c_pass.callbacks.get(i).unwrap();
+            let callback = &c_pass.infos.get(i).unwrap().render;
             (callback)(&mut cmd_buffer);
           }
           cmd_buffer.end_render_pass();
