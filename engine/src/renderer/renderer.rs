@@ -10,7 +10,7 @@ use nalgebra::Matrix4;
 
 use sourcerenderer_core::platform::{Platform, Window};
 use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency};
-use sourcerenderer_core::graphics::graph::{RenderPassInfo, OutputAttachmentReference, BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction};
+use sourcerenderer_core::graphics::graph::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, GraphicsPassInfo, OutputTextureAttachmentReference};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
 use crate::asset::AssetKey;
@@ -156,9 +156,9 @@ impl<P: Platform> RendererInternal<P> {
     };
 
     let asset_manager_ref = asset_manager.clone();
-    let mut passes: Vec<RenderPassInfo<P::GraphicsBackend>> = Vec::new();
-    passes.push(RenderPassInfo {
-      outputs: vec![OutputAttachmentReference {
+    let mut passes: Vec<PassInfo<P::GraphicsBackend>> = Vec::new();
+    passes.push(PassInfo::Graphics(GraphicsPassInfo {
+      outputs: vec![OutputTextureAttachmentReference {
         name: BACK_BUFFER_ATTACHMENT_NAME.to_owned(),
         load_action: LoadAction::Clear,
         store_action: StoreAction::Store
@@ -215,7 +215,7 @@ impl<P: Platform> RendererInternal<P> {
         }
         0
       })
-    });
+    }));
 
     let graph = device.create_render_graph(&RenderGraphInfo {
       attachments: HashMap::new(),

@@ -9,17 +9,17 @@ use job::{JobQueue, JobCounterWait};
 
 #[derive(Clone)]
 pub struct RenderGraphInfo<B: Backend> {
-  pub attachments: HashMap<String, RenderGraphAttachmentInfo>,
-  pub passes: Vec<RenderPassInfo<B>>
+  pub attachments: HashMap<String, AttachmentInfo>,
+  pub passes: Vec<PassInfo<B>>
 }
 
-pub struct RenderPassInfo<B: Backend> {
-  pub outputs: Vec<OutputAttachmentReference>,
+pub struct GraphicsPassInfo<B: Backend> {
+  pub outputs: Vec<OutputTextureAttachmentReference>,
   pub inputs: Vec<InputAttachmentReference>,
   pub render: Arc<dyn (Fn(&mut B::CommandBuffer) -> usize) + Send + Sync>
 }
 
-impl<B: Backend> Clone for RenderPassInfo<B> {
+impl<B: Backend> Clone for GraphicsPassInfo<B> {
   fn clone(&self) -> Self {
     Self {
       outputs: self.outputs.clone(),
@@ -29,6 +29,13 @@ impl<B: Backend> Clone for RenderPassInfo<B> {
   }
 }
 
+#[derive(Clone)]
+pub enum PassInfo<B: Backend> {
+  Graphics(GraphicsPassInfo<B>),
+  Compute,
+  Transfer,
+}
+
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum AttachmentSizeClass {
   Absolute,
@@ -36,7 +43,13 @@ pub enum AttachmentSizeClass {
 }
 
 #[derive(Clone)]
-pub struct RenderGraphAttachmentInfo {
+pub enum AttachmentInfo {
+  Texture(TextureAttachmentInfo),
+  Buffer(BufferAttachmentInfo)
+}
+
+#[derive(Clone)]
+pub struct TextureAttachmentInfo {
   pub format: Format,
   pub size_class: AttachmentSizeClass,
   pub width: f32,
@@ -46,17 +59,28 @@ pub struct RenderGraphAttachmentInfo {
   pub external: bool
 }
 
+#[derive(Clone)]
+pub struct BufferAttachmentInfo {
+  pub size: u32
+}
+
 #[derive(PartialEq, Eq, Hash, Clone)]
-pub struct InputAttachmentReference {
+pub struct InputTextureAttachmentReference {
   pub name: String,
   pub is_local: bool,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
-pub struct OutputAttachmentReference {
+pub struct OutputTextureAttachmentReference {
   pub name: String,
   pub load_action: LoadAction,
   pub store_action: StoreAction
+}
+
+#[derive(Clone)]
+pub enum InputAttachmentReference {
+  Texture(InputTextureAttachmentReference),
+  Buffer
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
