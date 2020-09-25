@@ -72,6 +72,7 @@ impl<P: Platform> Engine<P> {
       if event == PlatformEvent::Quit {
         break 'event_loop;
       }
+      std::thread::sleep(Duration::new(0, 4_000_000)); // 4ms
     }
   }
 }
