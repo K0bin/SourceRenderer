@@ -16,13 +16,13 @@ pub struct JobCounterWait {
 
 pub struct Job {
   wait_counter: Option<JobCounterWait>,
-  work: Box<FnOnce() -> () + Send>
+  work: Box<dyn FnOnce() -> () + Send>
 }
 
 impl Job {
   pub fn is_ready(&self) -> bool {
     self.wait_counter.as_ref().map_or(true, |wait_counter|
-      wait_counter.counter.load(Ordering::SeqCst) == wait_counter.value
+      wait_counter.counter.load(Ordering::SeqCst) >= wait_counter.value
     )
   }
 
@@ -34,7 +34,7 @@ impl Job {
 pub struct SystemJob {
   frequency_per_seconds: u32,
   last_iteration: Option<SystemJobIteration>,
-  work: Box<FnMut(&dyn JobQueue) -> JobCounterWait + Send>
+  work: Box<dyn FnMut(&dyn JobQueue) -> JobCounterWait + Send>
 }
 
 pub struct SystemJobIteration {
@@ -45,7 +45,7 @@ pub struct SystemJobIteration {
 impl SystemJob {
   pub fn is_ready(&self, time: &SystemTime) -> bool {
     self.last_iteration.as_ref().map_or(true, |iteration| {
-      iteration.wait_counter.counter.load(Ordering::SeqCst) == iteration.wait_counter.value
+      iteration.wait_counter.counter.load(Ordering::SeqCst) >= iteration.wait_counter.value
         && (self.frequency_per_seconds == 0 || time.duration_since(iteration.timestamp).unwrap().as_micros() as u32 >= 1_000_000 / self.frequency_per_seconds)
     })
   }
@@ -66,7 +66,7 @@ impl SystemJob {
 unsafe impl Sync for SystemJob {}
 
 pub trait JobQueue {
-  fn enqueue_job(&self, work: Box<FnOnce() -> () + Send>, wait: Option<&JobCounterWait>);
+  fn enqueue_job(&self, work: Box<dyn FnOnce() -> () + Send>, wait: Option<&JobCounterWait>);
   fn busy_wait(&self, wait: &JobCounterWait);
 }
 
@@ -82,7 +82,7 @@ pub struct JobSchedulerInner {
 }
 
 impl JobQueue for JobSchedulerInner {
-  fn enqueue_job(&self, work: Box<FnOnce() -> () + Send>, wait: Option<&JobCounterWait>) {
+  fn enqueue_job(&self, work: Box<dyn FnOnce() -> () + Send>, wait: Option<&JobCounterWait>) {
     let job = Job {
       wait_counter: wait.map(|wait_ref| wait_ref.clone()),
       work
@@ -148,6 +148,7 @@ impl JobQueue for JobSchedulerInner {
       }
 
       if let Some(job) = job_opt {
+        println!("doing busy wait job");
         job.run();
       }
     }
@@ -160,7 +161,7 @@ impl JobScheduler {
   }
 
   pub fn new() -> Self {
-    let thread_count = 8;
+    let thread_count = 1;
     let global = Injector::new();
     let mut workers = Vec::new();
     let mut stealers = Vec::new();
@@ -189,7 +190,7 @@ impl JobScheduler {
     }
   }
 
-  pub fn enqueue_system_job(&self, work: Box<FnMut(&dyn JobQueue) -> JobCounterWait + Send>) {
+  pub fn enqueue_system_job(&self, work: Box<dyn FnMut(&dyn JobQueue) -> JobCounterWait + Send>) {
     let mut system_jobs = self.inner.system_jobs.write().unwrap();
     system_jobs.push(RwLock::new(SystemJob {
       frequency_per_seconds: 0,
@@ -198,7 +199,7 @@ impl JobScheduler {
     }));
   }
 
-  pub fn enqueue_system_job_fixed_frequency(&self, work: Box<FnMut(&dyn JobQueue) -> JobCounterWait + Send>, frequency: u32) {
+  pub fn enqueue_system_job_fixed_frequency(&self, work: Box<dyn FnMut(&dyn JobQueue) -> JobCounterWait + Send>, frequency: u32) {
     let mut system_jobs = self.inner.system_jobs.write().unwrap();
     system_jobs.push(RwLock::new(SystemJob {
       frequency_per_seconds: frequency,
@@ -209,7 +210,7 @@ impl JobScheduler {
 }
 
 impl JobQueue for JobScheduler {
-  fn enqueue_job(&self, work: Box<FnOnce() -> () + Send>, wait: Option<&JobCounterWait>) {
+  fn enqueue_job(&self, work: Box<dyn FnOnce() -> () + Send>, wait: Option<&JobCounterWait>) {
     self.inner.enqueue_job(work, wait)
   }
 
@@ -233,6 +234,7 @@ fn job_thread(local: Worker<Job>, scheduler: Arc<JobSchedulerInner>) {
       if let Some(job) = job_opt {
         let mut lock = job.write().unwrap();
         let res = lock.run(scheduler.as_ref(), &now);
+        idle_spins = 0;
         res
       }
     }
