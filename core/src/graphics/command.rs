@@ -8,8 +8,8 @@ use crate::Vec2I;
 use crate::Vec2UI;
 
 use crate::graphics::RenderpassRecordingMode;
-use graphics::{Backend, PipelineInfo, BufferUsage};
-use pool::Recyclable;
+use crate::graphics::{Backend, PipelineInfo, BufferUsage};
+use crate::pool::Recyclable;
 
 pub struct Viewport {
   pub position: Vec2,

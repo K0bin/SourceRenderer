@@ -1,4 +1,4 @@
-use graphics::Backend;
+use crate::graphics::Backend;
 use std::marker::PhantomData;
 
 bitflags! {

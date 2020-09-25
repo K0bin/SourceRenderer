@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::ops::{ Deref, DerefMut };
 use std::fmt::{Debug, Formatter, Display};
 use std::error::Error;
-use graphics::Format;
+use crate::graphics::Format;
 use crossbeam_channel::{Sender, Receiver, unbounded};
 
 pub struct Recyclable<T> {

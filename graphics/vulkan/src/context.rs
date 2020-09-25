@@ -98,7 +98,7 @@ impl VkThreadContextManager {
     let mut guard = self.prepared_frames.lock().unwrap();
     if guard.len() >= self.max_prepared_frames as usize {
       if let Some(frame) = guard.pop_front() {
-        frame.fence.await();
+        frame.fence.await_signal();
         frame.fence.reset();
       }
     }

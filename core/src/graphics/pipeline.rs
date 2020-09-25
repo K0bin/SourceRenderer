@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use graphics::Format;
+use crate::graphics::Format;
 
-use graphics::Backend;
+use crate::graphics::Backend;
 use std::hash::Hasher;
 use std::hash::Hash;
 

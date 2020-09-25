@@ -78,7 +78,7 @@ impl VkFenceInner {
     return &self.fence;
   }
 
-  pub fn await(&self) {
+  pub fn await_signal(&self) {
     let vk_device = &self.device.device;
     unsafe {
       vk_device.wait_for_fences(&[self.fence], true, std::u64::MAX);
@@ -131,7 +131,7 @@ impl Fence for VkFence {
     self.is_signaled()
   }
 
-  fn await(&self) {
-    self.await();
+  fn await_signal(&self) {
+    self.await_signal();
   }
 }

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use graphics::Texture;
+use crate::graphics::Texture;
 
-use graphics::Backend;
+use crate::graphics::Backend;
 
 pub trait Surface {
 

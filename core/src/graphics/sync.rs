@@ -1,4 +1,4 @@
 pub trait Fence {
   fn is_signaled(&self) -> bool;
-  fn await(&self);
+  fn await_signal(&self);
 }

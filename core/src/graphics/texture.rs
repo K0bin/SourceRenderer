@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use graphics::{Backend, Format, SampleCount, CompareFunc};
+use crate::graphics::{Backend, Format, SampleCount, CompareFunc};
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
