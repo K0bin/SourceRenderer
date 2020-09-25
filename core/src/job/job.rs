@@ -67,6 +67,7 @@ unsafe impl Sync for SystemJob {}
 
 pub trait JobQueue {
   fn enqueue_job(&self, work: Box<FnOnce() -> () + Send>, wait: Option<&JobCounterWait>);
+  fn busy_wait(&self, wait: &JobCounterWait);
 }
 
 pub struct JobScheduler {
@@ -87,6 +88,69 @@ impl JobQueue for JobSchedulerInner {
       work
     };
     self.queue.push(job);
+  }
+
+  fn busy_wait(&self, wait: &JobCounterWait) {
+    let mut temp_jobs: [Option<Job>; 16] = Default::default();
+    let mut temp_jobs_count = 0;
+
+    while wait.counter.load(Ordering::SeqCst) < wait.value {
+      let mut job_opt: Option<Job> = None;
+      'stealers: for stealer in &self.stealers {
+        let mut continue_stealing = true;
+        while continue_stealing {
+          match stealer.steal() {
+            Steal::Success(job) => {
+              if job.is_ready() {
+                job_opt = Some(job);
+                continue_stealing = false;
+              } else {
+                temp_jobs[temp_jobs_count] = Some(job);
+                temp_jobs_count += 1;
+                continue_stealing = true;
+              }
+            },
+            Steal::Retry => { continue_stealing = true; },
+            Steal::Empty => { continue_stealing = false; }
+          }
+        }
+
+        for i in 0..temp_jobs_count {
+          self.queue.push(std::mem::replace(&mut temp_jobs[i], None).unwrap());
+        }
+        temp_jobs_count = 0;
+        if job_opt.is_some() {
+          break 'stealers;
+        }
+      }
+
+      if job_opt.is_none() {
+        let mut continue_stealing = true;
+        while continue_stealing {
+          match self.queue.steal() {
+            Steal::Success(job) => {
+              if job.is_ready() {
+                job_opt = Some(job);
+                continue_stealing = false;
+              } else {
+                temp_jobs[temp_jobs_count] = Some(job);
+                temp_jobs_count += 1;
+                continue_stealing = true;
+              }
+            },
+            Steal::Retry => { continue_stealing = true; },
+            Steal::Empty => { continue_stealing = false; }
+          }
+        }
+        for i in 0..temp_jobs_count {
+          self.queue.push(std::mem::replace(&mut temp_jobs[i], None).unwrap());
+        }
+      }
+
+      if let Some(job) = job_opt {
+        job.run();
+      }
+    }
   }
 }
 
@@ -147,6 +211,10 @@ impl JobScheduler {
 impl JobQueue for JobScheduler {
   fn enqueue_job(&self, work: Box<FnOnce() -> () + Send>, wait: Option<&JobCounterWait>) {
     self.inner.enqueue_job(work, wait)
+  }
+
+  fn busy_wait(&self, wait: &JobCounterWait) {
+    self.inner.busy_wait(wait)
   }
 }
 

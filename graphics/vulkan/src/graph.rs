@@ -154,7 +154,7 @@ impl VkRenderGraph {
 
           let mut next_pass = reordered_passes_queue.get(0);
           if let Some(pass) = next_pass {
-            can_be_merged = VkRenderGraph::can_pass_be_merged(pass, width, height, size_class);
+            can_be_merged = VkRenderGraph::can_pass_be_merged(pass,  &info.attachments, width, height, size_class);
           }
 
           while can_be_merged {
@@ -167,7 +167,7 @@ impl VkRenderGraph {
 
             next_pass = reordered_passes_queue.get(0);
             if let Some(pass) = next_pass {
-              can_be_merged = VkRenderGraph::can_pass_be_merged(pass, width, height, size_class);
+              can_be_merged = VkRenderGraph::can_pass_be_merged(pass, &info.attachments, width, height, size_class);
             }
           }
 
@@ -379,7 +379,7 @@ impl VkRenderGraph {
     }
   }
 
-  fn can_pass_be_merged<B: Backend>(pass: &PassInfo<B>, base_width: f32, base_height: f32, base_size_class: AttachmentSizeClass) -> bool {
+  fn can_pass_be_merged<B: Backend>(pass: &PassInfo<B>, attachments: &HashMap<String, AttachmentInfo>, base_width: f32, base_height: f32, base_size_class: AttachmentSizeClass) -> bool {
     match pass {
       PassInfo::Graphics(graphics_pass) => {
         let mut can_be_merged = true;
@@ -393,7 +393,7 @@ impl VkRenderGraph {
                 panic!("Attachment type does not match reference type")
               };
 
-              can_be_merged &= texture_info.is_local && texture_attachment.size_class == size_class && (texture_attachment.width - width).abs() < 0.01f32 && (texture_attachment.height - height).abs() < 0.01f32;
+              can_be_merged &= texture_info.is_local && texture_attachment.size_class == base_size_class && (texture_attachment.width - base_width).abs() < 0.01f32 && (texture_attachment.height - base_height).abs() < 0.01f32;
             },
             _ => {}
           }
@@ -605,29 +605,21 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       expected_counter += 1;
     }
 
-    let c_cmd_semaphore = cmd_semaphore.clone();
-    let c_context = self.context.clone();
-    let c_queue = self.graphics_queue.clone();
-    let c_swapchain = self.swapchain.clone();
-    let c_cmd_fence = cmd_fence.clone();
-    let c_counter = counter.clone();
-    let c_wait_counter = counter.clone();
-    let c_does_render_to_frame_buffer = self.does_render_to_frame_buffer;
-    job_queue.enqueue_job(Box::new(move || {
-        let thread_context = c_context.get_thread_context();
-        let mut frame_context = thread_context.get_frame_context();
+    job_queue.busy_wait(&JobCounterWait {
+      counter: counter.clone(),
+      value: expected_counter
+    });
 
-        if c_does_render_to_frame_buffer {
-          c_queue.present(&c_swapchain, image_index, &[&c_cmd_semaphore]);
-          frame_context.track_semaphore(&c_cmd_semaphore);
-        }
+    let thread_context = self.context.get_thread_context();
+    let mut frame_context = thread_context.get_frame_context();
 
-        c_context.end_frame(&c_cmd_fence);
-        c_counter.store(100, Ordering::SeqCst);
-      }), Some(&JobCounterWait {
-        counter: c_wait_counter,
-        value: expected_counter
-    }));
+    if self.does_render_to_frame_buffer {
+      self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
+      frame_context.track_semaphore(&cmd_semaphore);
+    }
+
+    self.context.end_frame(&cmd_fence);
+    counter.store(100, Ordering::SeqCst);
 
     JobCounterWait {
       counter,

@@ -3,10 +3,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::cmp::Eq;
 use std::ops::Fn;
-use bevy_tasks::TaskPool;
 
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
-use crate::job::{JobQueue, JobCounterWait};
+use crate::job::{JobQueue, JobCounterWait, JobScheduler};
 
 #[derive(Clone)]
 pub struct RenderGraphInfo<B: Backend> {
