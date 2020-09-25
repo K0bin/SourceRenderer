@@ -6,7 +6,24 @@ use std::collections::VecDeque;
 
 // TODO: optimize orderings
 
-pub type JobCounter = Arc<AtomicUsize>;
+pub type JobCounter = Arc<JobCounterInner>;
+pub struct JobCounterInner {
+  counter: AtomicUsize
+}
+
+impl JobCounterInner {
+  pub fn load(&self) -> usize {
+    self.counter.load(Ordering::SeqCst)
+  }
+
+  pub fn inc(&self) -> usize {
+    self.counter.fetch_add(1, Ordering::SeqCst) + 1
+  }
+
+  pub fn set(&self, value: usize) {
+    self.counter.store(value, Ordering::SeqCst);
+  }
+}
 
 #[derive(Clone)]
 pub struct JobCounterWait {
@@ -22,7 +39,7 @@ pub struct Job {
 impl Job {
   pub fn is_ready(&self) -> bool {
     self.wait_counter.as_ref().map_or(true, |wait_counter|
-      wait_counter.counter.load(Ordering::SeqCst) >= wait_counter.value
+      wait_counter.counter.load() >= wait_counter.value
     )
   }
 
@@ -45,7 +62,7 @@ pub struct SystemJobIteration {
 impl SystemJob {
   pub fn is_ready(&self, time: &SystemTime) -> bool {
     self.last_iteration.as_ref().map_or(true, |iteration| {
-      iteration.wait_counter.counter.load(Ordering::SeqCst) >= iteration.wait_counter.value
+      iteration.wait_counter.counter.load() >= iteration.wait_counter.value
         && (self.frequency_per_seconds == 0 || time.duration_since(iteration.timestamp).unwrap().as_micros() as u32 >= 1_000_000 / self.frequency_per_seconds)
     })
   }
@@ -94,7 +111,7 @@ impl JobQueue for JobSchedulerInner {
     let mut temp_jobs: [Option<Job>; 16] = Default::default();
     let mut temp_jobs_count = 0;
 
-    while wait.counter.load(Ordering::SeqCst) < wait.value {
+    while wait.counter.load() < wait.value {
       let mut job_opt: Option<Job> = None;
       'stealers: for stealer in &self.stealers {
         let mut continue_stealing = true;
@@ -148,7 +165,6 @@ impl JobQueue for JobSchedulerInner {
       }
 
       if let Some(job) = job_opt {
-        println!("doing busy wait job");
         job.run();
       }
     }
@@ -157,7 +173,9 @@ impl JobQueue for JobSchedulerInner {
 
 impl JobScheduler {
   pub fn new_counter() -> JobCounter {
-    Arc::new(AtomicUsize::new(0usize))
+    Arc::new(JobCounterInner {
+      counter: AtomicUsize::new(0)
+    })
   }
 
   pub fn new() -> Self {

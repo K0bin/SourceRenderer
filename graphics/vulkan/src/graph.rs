@@ -595,7 +595,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             _ => unimplemented!()
           }
 
-          c_counter.fetch_add(1, Ordering::SeqCst);
+          c_counter.inc();
         }),
         Some(&JobCounterWait {
           counter: c_wait_counter,
@@ -619,7 +619,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     }
 
     self.context.end_frame(&cmd_fence);
-    counter.store(100, Ordering::SeqCst);
+    counter.set(100);
 
     JobCounterWait {
       counter,
