@@ -124,17 +124,37 @@ impl VkRenderGraph {
     let mut pass_opt = reordered_passes_queue.pop_front();
     while pass_opt.is_some() {
       let pass = pass_opt.unwrap();
-
       match pass {
         PassInfo::Graphics(graphics_pass) => {
+          let mut width = 0.0f32;
+          let mut height = 0.0f32;
+          let mut size_class = AttachmentSizeClass::RelativeToSwapchain;
+
+          'first_texture_input: for input in &graphics_pass.inputs {
+            match input {
+              InputAttachmentReference::Texture(input_texture_ref) => {
+                let input_attachment = attachments.get(&input_texture_ref.name).expect("Invalid attachment reference");
+                let texture_attachment = if let AttachmentInfo::Texture(texture_attachment) = &input_attachment.info {
+                  texture_attachment
+                } else {
+                  panic!("Attachment type does not match reference type")
+                };
+
+                width = texture_attachment.width;
+                height = texture_attachment.height;
+                size_class = texture_attachment.size_class;
+                break 'first_texture_input;
+              },
+              _ => {}
+            }
+          }
+
           let mut merged_passes: Vec<GraphicsPassInfo<VkBackend>> = vec![graphics_pass];
           let mut can_be_merged = false;
 
           let mut next_pass = reordered_passes_queue.get(0);
           if let Some(pass) = next_pass {
-            if let PassInfo::Graphics(_) = pass {
-              can_be_merged = true;
-            }
+            can_be_merged = VkRenderGraph::can_pass_be_merged(pass, width, height, size_class);
           }
 
           while can_be_merged {
@@ -147,9 +167,7 @@ impl VkRenderGraph {
 
             next_pass = reordered_passes_queue.get(0);
             if let Some(pass) = next_pass {
-              if let PassInfo::Graphics(_) = pass {
-                can_be_merged = true;
-              }
+              can_be_merged = VkRenderGraph::can_pass_be_merged(pass, width, height, size_class);
             }
           }
 
@@ -358,6 +376,31 @@ impl VkRenderGraph {
       render_pass,
       is_rendering_to_swap_chain: pass_renders_to_backbuffer,
       infos: passes
+    }
+  }
+
+  fn can_pass_be_merged<B: Backend>(pass: &PassInfo<B>, base_width: f32, base_height: f32, base_size_class: AttachmentSizeClass) -> bool {
+    match pass {
+      PassInfo::Graphics(graphics_pass) => {
+        let mut can_be_merged = true;
+        for input in &graphics_pass.inputs {
+          match input {
+            InputAttachmentReference::Texture(texture_info) => {
+              let input_attachment = attachments.get(&texture_info.name).expect("Invalid attachment reference");
+              let texture_attachment = if let AttachmentInfo::Texture(texture_attachment) = input_attachment {
+                texture_attachment
+              } else {
+                panic!("Attachment type does not match reference type")
+              };
+
+              can_be_merged &= texture_info.is_local && texture_attachment.size_class == size_class && (texture_attachment.width - width).abs() < 0.01f32 && (texture_attachment.height - height).abs() < 0.01f32;
+            },
+            _ => {}
+          }
+        }
+        can_be_merged
+      },
+      _ => false
     }
   }
 
