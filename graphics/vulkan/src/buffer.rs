@@ -12,7 +12,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use sourcerenderer_core::pool::Recyclable;
 use std::process::exit;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use ash::vk::BufferUsageFlags;
 use std::fmt::{Debug, Display};
 use bitflags::_core::fmt::Formatter;
@@ -28,16 +28,19 @@ pub struct VkBuffer {
   device: Arc<RawVkDevice>,
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
-  memory_usage: MemoryUsage
+  memory_usage: MemoryUsage,
+  buffer_usage: BufferUsage,
+  slice_size: usize,
+  slices: Mutex<VecDeque<VkBufferSlice>>
 }
 
 unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, size: usize, memory_usage: MemoryUsage, buffer_usage: BufferUsage, allocator: &vk_mem::Allocator) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, slice_size: usize, slices: usize, memory_usage: MemoryUsage, buffer_usage: BufferUsage, allocator: &vk_mem::Allocator) -> Arc<Self> {
     let buffer_info = vk::BufferCreateInfo {
-      size: size as u64,
+      size: (slice_size * slices) as u64,
       usage: buffer_usage_to_vk(buffer_usage),
       ..Default::default()
     };
@@ -61,19 +64,40 @@ impl VkBuffer {
       false
     };
 
-    return VkBuffer {
+    let buffer = Arc::new(VkBuffer {
       buffer,
       allocation,
       allocation_info,
       device: device.clone(),
       map_ptr,
       is_coherent,
-      memory_usage
-    };
+      memory_usage,
+      buffer_usage,
+      slice_size,
+      slices: Mutex::new(VecDeque::with_capacity(slices))
+    });
+
+    {
+      let mut slices_guard = buffer.slices.lock().unwrap();
+      for i in 0..slices {
+        slices_guard.push_back(VkBufferSlice {
+          buffer: buffer.clone(),
+          offset: i * slice_size,
+          length: slice_size
+        });
+      }
+    }
+
+    buffer
   }
 
   pub fn get_handle(&self) -> &vk::Buffer {
     return &self.buffer;
+  }
+
+  fn return_slice(&self, slice: VkBufferSlice) {
+    let mut guard = self.slices.lock().unwrap();
+    guard.push_back(slice);
   }
 }
 
@@ -189,33 +213,16 @@ fn align_down_64(value: u64, alignment: u64) -> u64 {
   (value / alignment) * alignment
 }
 
-// TODO: rewrite buffer allocator from scratch
-
-type VkSlicedBuffer = Arc<Mutex<Vec<VkBufferSlice>>>;
 pub struct VkBufferSlice {
   buffer: Arc<VkBuffer>,
-  slices: VkSlicedBuffer,
   offset: usize,
   length: usize
 }
 
 impl Drop for VkBufferSlice {
   fn drop(&mut self) {
-    let mut guard = self.slices.lock().unwrap();
-    let end = guard.iter_mut().find(|s| s.offset + s.length == self.offset);
-    if let Some(mut existing_slice) = end {
-      existing_slice.length += self.length;
-      return;
-    }
-    let start = guard.iter_mut().find(|s| s.offset == self.offset + self.length);
-    if let Some(mut existing_slice) = start {
-      existing_slice.offset -= self.length;
-      existing_slice.length += self.length;
-      return;
-    }
-    guard.push(VkBufferSlice {
+    self.buffer.return_slice(VkBufferSlice {
       buffer: self.buffer.clone(),
-      slices: self.slices.clone(),
       offset: self.offset,
       length: self.length
     });
@@ -264,50 +271,21 @@ impl VkBufferSlice {
   }
 }
 
-fn get_slice(buffer: &VkSlicedBuffer, length: usize, offset_alignment: usize) -> Option<VkBufferSlice> {
-  let mut guard = buffer.lock().unwrap();
-
-  let mut slice_option = guard
-      .iter_mut()
-      .enumerate()
-      .find(|(index, s)|
-          s.length > length &&
-          s.length - ((s.offset + s.length - length) - align_down(s.offset + s.length - length, offset_alignment)) >= length);
-  if let Some((index, existing_slice)) = slice_option {
-    return if existing_slice.length > length {
-      let offset = existing_slice.length - length;
-      let aligned_offset = align_down(offset, offset_alignment);
-      debug_assert!(aligned_offset <= offset);
-      let alignment_delta = offset - aligned_offset;
-
-      let new_slice = VkBufferSlice {
-        buffer: existing_slice.buffer.clone(),
-        slices: buffer.clone(),
-        offset: aligned_offset,
-        length: length + alignment_delta
-      };
-      existing_slice.length -= length + alignment_delta;
-      Some(new_slice)
-    } else {
-      Some(guard.remove(index))
-    }
-  }
-  return None;
-}
-
 const UNIQUE_BUFFER_THRESHOLD: usize = 16384;
+const BIG_BUFFER_SLAB_SIZE: usize = 4096;
 const BUFFER_SLAB_SIZE: usize = 1024;
-const SMALL_BUFFER_SLAB_SIZE: usize = 128;
+const SMALL_BUFFER_SLAB_SIZE: usize = 512;
+const TINY_BUFFER_SLAB_SIZE: usize = 256;
 
 pub struct BufferAllocator {
   device: Arc<RawVkDevice>,
-  buffers: Mutex<HashMap<(MemoryUsage, BufferUsage), Vec<VkSlicedBuffer>>>,
+  buffers: Mutex<HashMap<(MemoryUsage, BufferUsage), Vec<Arc<VkBuffer>>>>,
   device_limits: vk::PhysicalDeviceLimits
 }
 
 impl BufferAllocator {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
-    let buffers = HashMap::<(MemoryUsage, BufferUsage), Vec<VkSlicedBuffer>>::new();
+    let buffers = HashMap::<(MemoryUsage, BufferUsage), Vec<Arc<VkBuffer>>>::new();
     let mut limits2 = vk::PhysicalDeviceProperties2 {
       ..Default::default()
     };
@@ -325,13 +303,10 @@ impl BufferAllocator {
 
   pub fn get_slice(&self, usage: MemoryUsage, buffer_usage: BufferUsage, length: usize) -> VkBufferSlice {
     if length > UNIQUE_BUFFER_THRESHOLD {
-      let buffer = Arc::new(VkBuffer::new(&self.device, length, usage, buffer_usage, &self.device.allocator));
-      return VkBufferSlice {
-        buffer,
-        slices: Arc::new(Mutex::new(Vec::new())),
-        offset: 0,
-        length
-      };
+      let buffer = VkBuffer::new(&self.device, length, 1, usage, buffer_usage, &self.device.allocator);
+      let mut guard = buffer.slices.lock().unwrap();
+      let slice = guard.pop_front().unwrap();
+      return slice;
     }
 
     let mut alignment: usize = 0;
@@ -340,28 +315,34 @@ impl BufferAllocator {
       alignment = max(alignment, self.device_limits.min_uniform_buffer_offset_alignment as usize);
     }
 
-    {
-      let mut guard = self.buffers.lock().unwrap();
-      let mut matching_buffers = guard.entry((usage, buffer_usage)).or_default();
-      for buffer in matching_buffers.iter() {
-        if let Some(slice) = get_slice(buffer, length, alignment) {
+    let mut guard = self.buffers.lock().unwrap();
+    let mut matching_buffers = guard.entry((usage, buffer_usage)).or_default();
+    for buffer in matching_buffers.iter() {
+      if buffer.slice_size % alignment == 0 && buffer.slice_size > length {
+        let mut slices = buffer.slices.lock().unwrap();
+        if let Some(slice) = slices.pop_front() {
           return slice;
         }
       }
-
-      let buffer = Arc::new(VkBuffer::new(&self.device, UNIQUE_BUFFER_THRESHOLD, usage, buffer_usage, &self.device.allocator));
-      let mut slices = Arc::new(Mutex::new(Vec::new()));
-      {
-        let mut guard = slices.lock().unwrap();
-        guard.push(VkBufferSlice {
-          buffer: buffer.clone(),
-          slices: slices.clone(),
-          offset: 0,
-          length: UNIQUE_BUFFER_THRESHOLD
-        });
-      }
-
-      return get_slice(&slices, length, alignment).unwrap();
     }
+
+    let mut slice_size = max(length, alignment);
+    slice_size = if slice_size <= TINY_BUFFER_SLAB_SIZE {
+      TINY_BUFFER_SLAB_SIZE
+    } else if length <= SMALL_BUFFER_SLAB_SIZE {
+      SMALL_BUFFER_SLAB_SIZE
+    } else if length <= BUFFER_SLAB_SIZE {
+      BUFFER_SLAB_SIZE
+    } else {
+      BIG_BUFFER_SLAB_SIZE
+    };
+
+    let buffer = VkBuffer::new(&self.device, slice_size, 16, usage, buffer_usage, &self.device.allocator);
+    let slice = {
+      let mut buffer_guard = buffer.slices.lock().unwrap();
+      buffer_guard.pop_front().unwrap()
+    };
+    guard.insert((usage, buffer_usage), vec![buffer]);
+    slice
   }
 }
