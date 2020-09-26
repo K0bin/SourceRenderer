@@ -62,24 +62,20 @@ pub struct VkGraphicsPass {
 }
 
 impl VkRenderGraph {
-  pub fn new(device: &Arc<RawVkDevice>,
-             context: &Arc<VkThreadContextManager>,
-             graphics_queue: &Arc<VkQueue>,
-             compute_queue: &Option<Arc<VkQueue>>,
-             transfer_queue: &Option<Arc<VkQueue>>,
-             info: &RenderGraphInfo<VkBackend>,
-             swapchain: &Arc<VkSwapchain>) -> Self {
-
-    // TODO: figure out threading
-    // TODO: recreate graph when swapchain changes
-    // TODO: more generic support for external images / one time rendering
-    // TODO: (async) compute
-
+  fn new_internal(device: &Arc<RawVkDevice>,
+                  context: &Arc<VkThreadContextManager>,
+                  graphics_queue: &Arc<VkQueue>,
+                  compute_queue: &Option<Arc<VkQueue>>,
+                  transfer_queue: &Option<Arc<VkQueue>>,
+                  swapchain: &Arc<VkSwapchain>,
+                  attachment_infos: &HashMap<String, AttachmentInfo>,
+                  merged_sorted_pass_infos: &[ Vec<PassInfo<VkBackend>> ]) -> Self {
+    let mut did_render_to_backbuffer = false;
     let mut layouts: HashMap<String, vk::ImageLayout> = HashMap::new();
     layouts.insert(BACK_BUFFER_ATTACHMENT_NAME.to_owned(), vk::ImageLayout::UNDEFINED);
     let mut attachments: HashMap<String, VkAttachment> = HashMap::new();
 
-    for (name, attachment) in &info.attachments {
+    for (name, attachment) in attachment_infos {
       // TODO: aliasing
       match attachment {
         // TODO: transient
@@ -113,77 +109,29 @@ impl VkRenderGraph {
       }
     }
 
-    let mut did_render_to_backbuffer = false;
-
-    let mut pass_infos = info.passes.clone();
-    let mut reordered_passes = VkRenderGraph::reorder_passes(&info.attachments, &mut pass_infos);
-    let mut reordered_passes_queue: VecDeque<PassInfo<VkBackend>> = VecDeque::from_iter(reordered_passes);
-
     let mut passes: Vec<Arc<VkPass>> = Vec::new();
+    for merged_passes in merged_sorted_pass_infos {
+      let mut is_graphics_pass = merged_passes.len() > 1;
+      if let PassInfo::Graphics(_) = merged_passes.first().expect("Invalid merged empty pass") {
+        is_graphics_pass = true;
+      }
 
-    let mut pass_opt = reordered_passes_queue.pop_front();
-    while pass_opt.is_some() {
-      let pass = pass_opt.unwrap();
-      match pass {
-        PassInfo::Graphics(graphics_pass) => {
-          let mut width = 0.0f32;
-          let mut height = 0.0f32;
-          let mut size_class = AttachmentSizeClass::RelativeToSwapchain;
+      if is_graphics_pass {
+        let graphics_passes = merged_passes.iter()
+          .map(|p|
+            if let PassInfo::Graphics(graphics_pass) = p { graphics_pass.clone() } else { unreachable!() }
+          ).collect();
 
-          'first_texture_input: for input in &graphics_pass.inputs {
-            match input {
-              InputAttachmentReference::Texture(input_texture_ref) => {
-                let input_attachment = attachments.get(&input_texture_ref.name).expect("Invalid attachment reference");
-                let texture_attachment = if let AttachmentInfo::Texture(texture_attachment) = &input_attachment.info {
-                  texture_attachment
-                } else {
-                  panic!("Attachment type does not match reference type")
-                };
-
-                width = texture_attachment.width;
-                height = texture_attachment.height;
-                size_class = texture_attachment.size_class;
-                break 'first_texture_input;
-              },
-              _ => {}
-            }
-          }
-
-          let mut merged_passes: Vec<GraphicsPassInfo<VkBackend>> = vec![graphics_pass];
-          let mut can_be_merged = false;
-
-          let mut next_pass = reordered_passes_queue.get(0);
-          if let Some(pass) = next_pass {
-            can_be_merged = VkRenderGraph::can_pass_be_merged(pass,  &info.attachments, width, height, size_class);
-          }
-
-          while can_be_merged {
-            let next_graphics_pass = if let PassInfo::Graphics(next_graphics_pass) = reordered_passes_queue.pop_front().unwrap() {
-              next_graphics_pass
-            } else {
-              unreachable!()
-            };
-            merged_passes.push(next_graphics_pass);
-
-            next_pass = reordered_passes_queue.get(0);
-            if let Some(pass) = next_pass {
-              can_be_merged = VkRenderGraph::can_pass_be_merged(pass, &info.attachments, width, height, size_class);
-            }
-          }
-
-
-          // build subpasses, requires the attachment indices populated before
-          let render_graph_pass = VkRenderGraph::build_render_pass(merged_passes, device, &attachments, &swapchain, &mut layouts);
-          did_render_to_backbuffer |= render_graph_pass.is_rendering_to_swap_chain;
-          passes.push(Arc::new(VkPass::Graphics(render_graph_pass)));
-
-          pass_opt = reordered_passes_queue.pop_front();
-        },
-        _ => unimplemented!()
+        // build subpasses, requires the attachment indices populated before
+        let render_graph_pass = VkRenderGraph::build_render_pass(graphics_passes, device, &attachments, &swapchain, &mut layouts);
+        did_render_to_backbuffer |= render_graph_pass.is_rendering_to_swap_chain;
+        passes.push(Arc::new(VkPass::Graphics(render_graph_pass)));
+      } else {
+        unimplemented!();
       }
     }
 
-    return VkRenderGraph {
+    VkRenderGraph {
       device: device.clone(),
       context: context.clone(),
       passes,
@@ -193,7 +141,84 @@ impl VkRenderGraph {
       transfer_queue: transfer_queue.clone(),
       swapchain: swapchain.clone(),
       does_render_to_frame_buffer: did_render_to_backbuffer
-    };
+    }
+  }
+
+  pub fn new(device: &Arc<RawVkDevice>,
+             context: &Arc<VkThreadContextManager>,
+             graphics_queue: &Arc<VkQueue>,
+             compute_queue: &Option<Arc<VkQueue>>,
+             transfer_queue: &Option<Arc<VkQueue>>,
+             info: &RenderGraphInfo<VkBackend>,
+             swapchain: &Arc<VkSwapchain>) -> Self {
+
+    // TODO: figure out threading
+    // TODO: recreate graph when swapchain changes
+    // TODO: more generic support for external images / one time rendering
+    // TODO: (async) compute
+
+    let mut pass_infos = info.passes.clone();
+    let mut reordered_passes = VkRenderGraph::reorder_passes(&info.attachments, &mut pass_infos);
+    let mut reordered_passes_queue: VecDeque<PassInfo<VkBackend>> = VecDeque::from_iter(reordered_passes);
+
+    let mut pass_opt = reordered_passes_queue.pop_front();
+    let mut merged_passes: Vec<Vec<PassInfo<VkBackend>>> = Vec::new();
+    let mut merged_pass: Vec<PassInfo<VkBackend>> = Vec::new();
+    while pass_opt.is_some() {
+      let pass = pass_opt.unwrap();
+      let previous_pass = merged_pass.last();
+      let can_be_merged = if let Some(previous_pass) = previous_pass {
+        match previous_pass {
+          PassInfo::Graphics(graphics_pass) => {
+            let mut width = 0.0f32;
+            let mut height = 0.0f32;
+            let mut size_class = AttachmentSizeClass::RelativeToSwapchain;
+
+            'first_texture_input: for input in &graphics_pass.inputs {
+              match input {
+                InputAttachmentReference::Texture(input_texture_ref) => {
+                  let input_attachment = info.attachments.get(&input_texture_ref.name).expect("Invalid attachment reference");
+                  let texture_attachment = if let AttachmentInfo::Texture(texture_attachment) = input_attachment {
+                    texture_attachment
+                  } else {
+                    panic!("Attachment type does not match reference type")
+                  };
+
+                  width = texture_attachment.width;
+                  height = texture_attachment.height;
+                  size_class = texture_attachment.size_class;
+                  break 'first_texture_input;
+                },
+                _ => {}
+              }
+            }
+
+            VkRenderGraph::can_pass_be_merged(&pass,  &info.attachments, width, height, size_class)
+          },
+          _ => {
+            false
+          }
+        }
+      } else {
+        false
+      };
+
+      if can_be_merged || merged_pass.is_empty() {
+        merged_pass.push(pass);
+      } else {
+        let finalized_merged_pass = std::mem::replace(&mut merged_pass, Vec::new());
+        merged_passes.push(finalized_merged_pass);
+      }
+
+      pass_opt = reordered_passes_queue.pop_front();
+    }
+
+    if !merged_pass.is_empty() {
+      let finalized_merged_pass = std::mem::replace(&mut merged_pass, Vec::new());
+      merged_passes.push(finalized_merged_pass);
+    }
+
+    VkRenderGraph::new_internal(device, context, graphics_queue, compute_queue, transfer_queue, swapchain, &info.attachments, &merged_passes)
   }
 
   fn reorder_passes(attachments: &HashMap<String, AttachmentInfo>, passes: &Vec<PassInfo<VkBackend>>) -> Vec<PassInfo<VkBackend>> {
@@ -614,7 +639,11 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let mut frame_context = thread_context.get_frame_context();
 
     if self.does_render_to_frame_buffer {
-      self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
+      let result = self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
+      if false && (result.is_err() || !result.unwrap()) {
+
+      }
+
       frame_context.track_semaphore(&cmd_semaphore);
     }
 

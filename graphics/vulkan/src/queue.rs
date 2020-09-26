@@ -21,6 +21,7 @@ use context::{VkThreadContextManager, VkShared};
 use VkCommandBufferSubmission;
 use transfer::VkTransferCommandBuffer;
 use buffer::BufferAllocator;
+use ash::prelude::VkResult;
 
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
@@ -111,7 +112,7 @@ impl VkQueue {
     }
   }
 
-  pub fn present(&self, swapchain: &VkSwapchain, image_index: u32, wait_semaphores: &[ &VkSemaphore ]) {
+  pub fn present(&self, swapchain: &VkSwapchain, image_index: u32, wait_semaphores: &[ &VkSemaphore ]) -> VkResult<bool> {
     let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<Vec<vk::Semaphore>>();
     let present_info = vk::PresentInfoKHR {
       p_swapchains: swapchain.get_handle() as *const vk::SwapchainKHR,
@@ -127,6 +128,7 @@ impl VkQueue {
       if result.is_err() {
         println!("Present failed: {:?}", result);
       }
+      result
     }
   }
 }
