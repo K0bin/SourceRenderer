@@ -271,14 +271,11 @@ impl VkBufferSlice {
   }
 }
 
-const UNIQUE_BUFFER_THRESHOLD: usize = 16384;
+const SLICED_BUFFER_SIZE: usize = 16384;
 const BIG_BUFFER_SLAB_SIZE: usize = 4096;
 const BUFFER_SLAB_SIZE: usize = 1024;
 const SMALL_BUFFER_SLAB_SIZE: usize = 512;
 const TINY_BUFFER_SLAB_SIZE: usize = 256;
-
-const BUFFER_SLICE_COUNT: usize = 16;
-
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 struct BufferKey {
@@ -311,7 +308,7 @@ impl BufferAllocator {
   }
 
   pub fn get_slice(&self, memory_usage: MemoryUsage, buffer_usage: BufferUsage, length: usize) -> VkBufferSlice {
-    if length > UNIQUE_BUFFER_THRESHOLD {
+    if length > BIG_BUFFER_SLAB_SIZE {
       let buffer = VkBuffer::new(&self.device, length, 1, memory_usage, buffer_usage, &self.device.allocator);
       let mut guard = buffer.slices.lock().unwrap();
       let slice = guard.pop_front().unwrap();
@@ -346,7 +343,7 @@ impl BufferAllocator {
       BIG_BUFFER_SLAB_SIZE
     };
 
-    let buffer = VkBuffer::new(&self.device, slice_size, BUFFER_SLICE_COUNT, memory_usage, buffer_usage, &self.device.allocator);
+    let buffer = VkBuffer::new(&self.device, slice_size, SLICED_BUFFER_SIZE / slice_size, memory_usage, buffer_usage, &self.device.allocator);
     let slice = {
       let mut buffer_guard = buffer.slices.lock().unwrap();
       buffer_guard.pop_front().unwrap()
