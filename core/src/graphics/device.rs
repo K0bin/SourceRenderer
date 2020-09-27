@@ -19,7 +19,7 @@ pub enum AdapterType {
   Other
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemoryUsage {
   GpuOnly,
   CpuOnly,

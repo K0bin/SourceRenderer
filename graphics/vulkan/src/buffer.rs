@@ -12,7 +12,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use sourcerenderer_core::pool::Recyclable;
 use std::process::exit;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque, BTreeMap};
 use ash::vk::BufferUsageFlags;
 use std::fmt::{Debug, Display};
 use bitflags::_core::fmt::Formatter;
@@ -277,15 +277,24 @@ const BUFFER_SLAB_SIZE: usize = 1024;
 const SMALL_BUFFER_SLAB_SIZE: usize = 512;
 const TINY_BUFFER_SLAB_SIZE: usize = 256;
 
+const BUFFER_SLICE_COUNT: usize = 16;
+
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+struct BufferKey {
+  memory_usage: MemoryUsage,
+  buffer_usage: BufferUsage
+}
+
 pub struct BufferAllocator {
   device: Arc<RawVkDevice>,
-  buffers: Mutex<HashMap<(MemoryUsage, BufferUsage), Vec<Arc<VkBuffer>>>>,
+  buffers: Mutex<BTreeMap<BufferKey, Vec<Arc<VkBuffer>>>>,
   device_limits: vk::PhysicalDeviceLimits
 }
 
 impl BufferAllocator {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
-    let buffers = HashMap::<(MemoryUsage, BufferUsage), Vec<Arc<VkBuffer>>>::new();
+    let buffers: BTreeMap<BufferKey, Vec<Arc<VkBuffer>>> = BTreeMap::new();
     let mut limits2 = vk::PhysicalDeviceProperties2 {
       ..Default::default()
     };
@@ -301,9 +310,9 @@ impl BufferAllocator {
     }
   }
 
-  pub fn get_slice(&self, usage: MemoryUsage, buffer_usage: BufferUsage, length: usize) -> VkBufferSlice {
+  pub fn get_slice(&self, memory_usage: MemoryUsage, buffer_usage: BufferUsage, length: usize) -> VkBufferSlice {
     if length > UNIQUE_BUFFER_THRESHOLD {
-      let buffer = VkBuffer::new(&self.device, length, 1, usage, buffer_usage, &self.device.allocator);
+      let buffer = VkBuffer::new(&self.device, length, 1, memory_usage, buffer_usage, &self.device.allocator);
       let mut guard = buffer.slices.lock().unwrap();
       let slice = guard.pop_front().unwrap();
       return slice;
@@ -316,7 +325,7 @@ impl BufferAllocator {
     }
 
     let mut guard = self.buffers.lock().unwrap();
-    let mut matching_buffers = guard.entry((usage, buffer_usage)).or_default();
+    let mut matching_buffers = guard.entry(BufferKey { memory_usage, buffer_usage }).or_default();
     for buffer in matching_buffers.iter() {
       if buffer.slice_size % alignment == 0 && buffer.slice_size > length {
         let mut slices = buffer.slices.lock().unwrap();
@@ -337,12 +346,12 @@ impl BufferAllocator {
       BIG_BUFFER_SLAB_SIZE
     };
 
-    let buffer = VkBuffer::new(&self.device, slice_size, 16, usage, buffer_usage, &self.device.allocator);
+    let buffer = VkBuffer::new(&self.device, slice_size, BUFFER_SLICE_COUNT, memory_usage, buffer_usage, &self.device.allocator);
     let slice = {
       let mut buffer_guard = buffer.slices.lock().unwrap();
       buffer_guard.pop_front().unwrap()
     };
-    guard.insert((usage, buffer_usage), vec![buffer]);
+    guard.insert(BufferKey { memory_usage, buffer_usage }, vec![buffer]);
     slice
   }
 }
