@@ -59,12 +59,11 @@ impl<P: Platform> Engine<P> {
     let surface = self.platform.window().create_surface(instance.clone());
 
     let mut adapters = instance.list_adapters();
-    println!("n devices: {}", adapters.len());
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(true, &device, &surface));
 
     let asset_manager = Arc::new(AssetManager::<P>::new(&device));
-    let renderer = Renderer::<P>::run(&scheduler, &device, &swapchain, &asset_manager);
+    let renderer = Renderer::<P>::run(&scheduler, self.platform.window(), &device, &swapchain, &asset_manager);
     let scene = Scene::run::<P>(&renderer, &asset_manager);
 
     'event_loop: loop {
@@ -72,6 +71,7 @@ impl<P: Platform> Engine<P> {
       if event == PlatformEvent::Quit {
         break 'event_loop;
       }
+      renderer.set_window_state(self.platform.window().state());
       std::thread::sleep(Duration::new(0, 4_000_000)); // 4ms
     }
   }

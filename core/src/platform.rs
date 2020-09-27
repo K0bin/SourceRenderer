@@ -26,7 +26,22 @@ pub trait Platform: 'static + Sized {
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<<Self::GraphicsBackend as graphics::Backend>::Instance>, Box<dyn Error>>;
 }
 
+#[derive(Clone)]
+pub enum WindowState {
+  Minimized,
+  Visible {
+    width: u32,
+    height: u32,
+    focussed: bool
+  },
+  FullScreen {
+    width: u32,
+    height: u32
+  }
+}
+
 pub trait Window<P: Platform> {
   fn create_surface(&self, graphics_instance: Arc<<P::GraphicsBackend as graphics::Backend>::Instance>) -> Arc<<P::GraphicsBackend as graphics::Backend>::Surface>;
-  fn create_swapchain(&self, vsync: bool, device: &<P::GraphicsBackend as graphics::Backend>::Device, surface: &Arc<<P::GraphicsBackend as graphics::Backend>::Surface>) -> <P::GraphicsBackend as graphics::Backend>::Swapchain;
+  fn create_swapchain(&self, vsync: bool, device: &<P::GraphicsBackend as graphics::Backend>::Device, surface: &Arc<<P::GraphicsBackend as graphics::Backend>::Surface>) -> Arc<<P::GraphicsBackend as graphics::Backend>::Swapchain>;
+  fn state(&self) -> WindowState;
 }

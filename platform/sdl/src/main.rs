@@ -1,4 +1,5 @@
 extern crate sdl2;
+extern crate sdl2_sys;
 extern crate ash;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;

@@ -5,7 +5,8 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 build = "build.rs"
 
 [dependencies]
-sdl2 = "0.32.2"
+sdl2 = "0.34.2"
+sdl2-sys = "0.34.2"
 ash = "0.29.0"
 sourcerenderer_bsp = { path = "../../bsp" }
 sourcerenderer_engine = { path = "../../engine" }

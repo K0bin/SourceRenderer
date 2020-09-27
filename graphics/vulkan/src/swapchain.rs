@@ -5,7 +5,7 @@ use ash::extensions::khr::Swapchain as SwapchainLoader;
 use ash::Device;
 use crate::ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount};
+use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError};
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
 
@@ -22,12 +22,13 @@ use std::cmp::{min, max};
 use texture::VkTextureView;
 use vk_mem::ffi::VkResult_VK_ERROR_OUT_OF_DATE_KHR;
 use ash::prelude::VkResult;
+use swapchain::VkSwapchainAcquireResult::Success;
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
   views: Vec<Arc<VkTextureView>>,
-  swap_chain: vk::SwapchainKHR,
-  swap_chain_loader: SwapchainLoader,
+  swapchain: vk::SwapchainKHR,
+  swapchain_loader: SwapchainLoader,
   instance: Arc<RawVkInstance>,
   surface: Arc<VkSurface>,
   device: Arc<RawVkDevice>,
@@ -37,7 +38,7 @@ pub struct VkSwapchain {
 }
 
 impl VkSwapchain {
-  fn new_internal(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>, old_swapchain: Option<&vk::SwapchainKHR>) -> Self {
+  fn new_internal(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>, old_swapchain: Option<&vk::SwapchainKHR>) -> Result<Arc<Self>, SwapchainError> {
     let vk_device = &device.device;
     let instance = &device.instance;
 
@@ -45,7 +46,7 @@ impl VkSwapchain {
       let physical_device = device.physical_device;
       let present_modes = surface.get_present_modes(&physical_device);
       let present_mode = VkSwapchain::pick_present_mode(present_modes);
-      let swap_chain_loader = SwapchainLoader::new(&instance.instance, vk_device);
+      let swapchain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
       let capabilities = surface.get_capabilities(&physical_device);
       let formats = surface.get_formats(&physical_device);
@@ -57,9 +58,17 @@ impl VkSwapchain {
         height
       };
 
+      if width == 0 || height == 0 {
+        return Err(SwapchainError::ZeroExtents);
+      }
+
+      if !capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT) {
+        panic!("Rendering to the surface is not supported.");
+      }
+
       let image_count = VkSwapchain::pick_image_count(&capabilities, 3);
 
-      let swap_chain_create_info = vk::SwapchainCreateInfoKHR {
+      let swapchain_create_info = vk::SwapchainCreateInfoKHR {
         surface: *surface.get_surface_handle(),
         min_image_count: image_count,
         image_format: format.format,
@@ -72,13 +81,13 @@ impl VkSwapchain {
         pre_transform: capabilities.current_transform,
         composite_alpha: vk::CompositeAlphaFlagsKHR::OPAQUE,
         clipped: vk::TRUE,
-        old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |swap_chain| *swap_chain),
+        old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |swapchain| *swapchain),
         ..Default::default()
       };
 
-      let swap_chain = swap_chain_loader.create_swapchain(&swap_chain_create_info, None).unwrap();
-      let swap_chain_images = swap_chain_loader.get_swapchain_images(swap_chain).unwrap();
-      let textures: Vec<Arc<VkTexture>> = swap_chain_images
+      let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
+      let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
+      let textures: Vec<Arc<VkTexture>> = swapchain_images
         .iter()
         .map(|image|
           Arc::new(VkTexture::from_image(device, *image, TextureInfo {
@@ -92,29 +101,29 @@ impl VkSwapchain {
           })))
         .collect();
 
-      let swap_chain_image_views: Vec<Arc<VkTextureView>> = textures
+      let swapchain_image_views: Vec<Arc<VkTextureView>> = textures
         .iter()
         .map(|texture| {
           Arc::new(VkTextureView::new_render_target_view(device, texture))
         })
         .collect();
 
-      VkSwapchain {
+      Ok(Arc::new(VkSwapchain {
         textures,
-        views: swap_chain_image_views,
-        swap_chain,
-        swap_chain_loader,
+        views: swapchain_image_views,
+        swapchain,
+        swapchain_loader,
         instance: device.instance.clone(),
         surface: surface.clone(),
         device: device.clone(),
         width,
         height,
         vsync
-      }
+      }))
     }
   }
 
-  pub fn new(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>) -> Self {
+  pub fn new(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>) -> Result<Arc<Self>, SwapchainError> {
     VkSwapchain::new_internal(vsync, width, height, device, surface, None)
   }
 
@@ -140,8 +149,8 @@ impl VkSwapchain {
     } else {
       *formats
         .iter()
-        .filter(|&format| format.format == vk::Format::B8G8R8A8_UNORM && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
-        .nth(0).expect("No compatible format found")
+        .find(|&format| format.format == vk::Format::B8G8R8A8_UNORM && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+        .expect("No compatible format found")
     }
   }
 
@@ -161,11 +170,11 @@ impl VkSwapchain {
   }
 
   pub fn get_loader(&self) -> &SwapchainLoader {
-    return &self.swap_chain_loader;
+    return &self.swapchain_loader;
   }
 
   pub fn get_handle(&self) -> &vk::SwapchainKHR {
-    return &self.swap_chain;
+    return &self.swapchain;
   }
 
   pub fn get_textures(&self) -> &[Arc<VkTexture>] {
@@ -185,21 +194,21 @@ impl VkSwapchain {
   }
 
   pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
-    unsafe { self.swap_chain_loader.acquire_next_image(self.swap_chain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }
+    unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }
   }
 }
 
 impl Drop for VkSwapchain {
   fn drop(&mut self) {
     unsafe {
-      self.swap_chain_loader.destroy_swapchain(self.swap_chain, None)
+      self.swapchain_loader.destroy_swapchain(self.swapchain, None)
     }
   }
 }
 
 impl Swapchain for VkSwapchain {
-  fn recreate(old: &Self) -> Self {
-    VkSwapchain::new_internal(old.vsync, old.width, old.height, &old.device, &old.surface, Some(&old.swap_chain))
+  fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
+    VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(&old.swapchain))
   }
 }
 

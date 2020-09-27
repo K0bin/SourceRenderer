@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::fs::File;
 use std::path::Path;
 use std::collections::HashMap;
@@ -8,8 +8,8 @@ use crossbeam_channel::{Sender, bounded, Receiver};
 
 use nalgebra::Matrix4;
 
-use sourcerenderer_core::platform::{Platform, Window};
-use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency};
+use sourcerenderer_core::platform::{Platform, Window, WindowState};
+use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain};
 use sourcerenderer_core::graphics::graph::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, GraphicsPassInfo, OutputTextureAttachmentReference};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
@@ -20,24 +20,27 @@ use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable
 use async_std::task;
 use sourcerenderer_core::job::{SystemJob, JobScheduler, JobCounterWait, JobQueue};
 use std::sync::atomic::Ordering;
+use sourcerenderer_vulkan::VkSwapchain;
 
 pub struct Renderer<P: Platform> {
   sender: Sender<Renderables>,
-  device: Arc<<P::GraphicsBackend as Backend>::Device>
+  device: Arc<<P::GraphicsBackend as Backend>::Device>,
+  window_state: Mutex<WindowState>
 }
 
 impl<P: Platform> Renderer<P> {
-  fn new(sender: Sender<Renderables>, device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
+  fn new(sender: Sender<Renderables>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window) -> Self {
     Self {
       sender,
-      device: device.clone()
+      device: device.clone(),
+      window_state: Mutex::new(window.state())
     }
   }
 
-  pub fn run(job_scheduler: &JobScheduler, device: &Arc<<P::GraphicsBackend as Backend>::Device>, swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
+  pub fn run(job_scheduler: &JobScheduler, window: &P::Window, device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
     let (sender, receiver) = bounded::<Renderables>(1);
-    let renderer = Arc::new(Renderer::new(sender, &device));
-    let mut internal = RendererInternal::new(&device, &swap_chain, asset_manager, receiver);
+    let renderer = Arc::new(Renderer::new(sender, device, window));
+    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, receiver);
 
     job_scheduler.enqueue_system_job(Box::new(move |queue| {
       internal.render(queue)
@@ -49,27 +52,39 @@ impl<P: Platform> Renderer<P> {
   pub fn render(&self, renderables: Renderables) {
     self.sender.send(renderables);
   }
+
+  pub fn set_window_state(&self, window_state: WindowState) {
+    let mut guard = self.window_state.lock().unwrap();
+    std::mem::replace(&mut *guard, window_state);
+  }
 }
 
 struct RendererInternal<P: Platform> {
-  graph: <P::GraphicsBackend as Backend>::RenderGraph
+  renderer: Arc<Renderer<P>>,
+  device: Arc<<P::GraphicsBackend as Backend>::Device>,
+  graph: <P::GraphicsBackend as Backend>::RenderGraph,
+  swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
 }
 
 impl<P: Platform> RendererInternal<P> {
   fn new(
+    renderer: &Arc<Renderer<P>>,
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-    swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
     receiver: Receiver<Renderables>) -> Self {
-    let graph = RendererInternal::<P>::build_graph(device, swap_chain, asset_manager, receiver);
+    let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, receiver);
     Self {
-      graph
+      renderer: renderer.clone(),
+      device: device.clone(),
+      graph,
+      swapchain: swapchain.clone()
     }
   }
 
   fn build_graph(
     device: &<P::GraphicsBackend as Backend>::Device,
-    swap_chain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
     receiver: Receiver<Renderables>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
@@ -220,13 +235,63 @@ impl<P: Platform> RendererInternal<P> {
     let graph = device.create_render_graph(&RenderGraphInfo {
       attachments: HashMap::new(),
       passes
-    }, swap_chain);
+    }, swapchain);
 
     graph
   }
 
   fn render(&mut self, queue: &dyn JobQueue) -> JobCounterWait {
-    self.graph.render(queue)
+    let state = {
+      let state_guard = self.renderer.window_state.lock().unwrap();
+      state_guard.clone()
+    };
+
+    let mut swapchain_width = 0u32;
+    let mut swapchain_height = 0u32;
+
+    match state {
+      WindowState::Minimized => {
+        let counter = JobScheduler::new_counter();
+        counter.inc();
+        return JobCounterWait {
+          counter,
+          value: 1
+        };
+      },
+      WindowState::FullScreen {
+        width, height
+      } => {
+        swapchain_width = width;
+        swapchain_height = height;
+      },
+      WindowState::Visible {
+        width, height, focussed: _focussed
+      } => {
+        swapchain_width = width;
+        swapchain_height = height;
+      }
+    }
+
+    let result = self.graph.render(queue);
+    if result.is_err() {
+      self.device.wait_for_idle();
+
+      let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, swapchain_width, swapchain_height);
+      if new_swapchain_result.is_err() {
+        let counter = JobScheduler::new_counter();
+        counter.inc();
+        return JobCounterWait {
+          counter,
+          value: 1
+        };
+      }
+      let new_swapchain = new_swapchain_result.unwrap();
+      let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
+      std::mem::replace(&mut self.swapchain, new_swapchain);
+      std::mem::replace(&mut self.graph, new_graph);
+      return self.graph.render(queue).unwrap();
+    }
+    return result.unwrap();
   }
 }
 

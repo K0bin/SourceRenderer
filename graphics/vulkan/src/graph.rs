@@ -57,7 +57,7 @@ pub struct VkGraphicsPass {
   device: Arc<RawVkDevice>,
   render_pass: Arc<VkRenderPass>,
   frame_buffer: Vec<Arc<VkFrameBuffer>>,
-  is_rendering_to_swap_chain: bool,
+  is_rendering_to_swapchain: bool,
   infos: Vec<GraphicsPassInfo<VkBackend>>
 }
 
@@ -124,7 +124,7 @@ impl VkRenderGraph {
 
         // build subpasses, requires the attachment indices populated before
         let render_graph_pass = VkRenderGraph::build_render_pass(graphics_passes, device, &attachments, &swapchain, &mut layouts);
-        did_render_to_backbuffer |= render_graph_pass.is_rendering_to_swap_chain;
+        did_render_to_backbuffer |= render_graph_pass.is_rendering_to_swapchain;
         passes.push(Arc::new(VkPass::Graphics(render_graph_pass)));
       } else {
         unimplemented!();
@@ -153,7 +153,7 @@ impl VkRenderGraph {
              swapchain: &Arc<VkSwapchain>) -> Self {
 
     // TODO: figure out threading
-    // TODO: recreate graph when swapchain changes
+    // TODO: recreate graph when swap chain changes
     // TODO: more generic support for external images / one time rendering
     // TODO: (async) compute
 
@@ -357,7 +357,6 @@ impl VkRenderGraph {
     };
     let render_pass = Arc::new(VkRenderPass::new(device, &render_pass_create_info));
 
-
     let (width, height) = if pass_renders_to_backbuffer {
       (swapchain.get_width(), swapchain.get_height())
     } else {
@@ -399,7 +398,7 @@ impl VkRenderGraph {
       device: device.clone(),
       frame_buffer: frame_buffers,
       render_pass,
-      is_rendering_to_swap_chain: pass_renders_to_backbuffer,
+      is_rendering_to_swapchain: pass_renders_to_backbuffer,
       infos: passes
     }
   }
@@ -532,11 +531,21 @@ impl VkRenderGraph {
 }
 
 impl RenderGraph<VkBackend> for VkRenderGraph {
-  fn recreate(&mut self, swap_chain: &VkSwapchain) {
-
+  fn recreate(old: &Self, swapchain: &Arc<VkSwapchain>) -> Self {
+    let pass_infos: Vec<Vec<PassInfo<VkBackend>>> = old.passes.iter().map(|pass| match pass as &VkPass {
+      VkPass::Graphics(graphics_info) => {
+        graphics_info.infos.iter().map(|info| PassInfo::Graphics(info.clone())).collect()
+      },
+      _ => unimplemented!()
+    }).collect();
+    let mut attachment_infos: HashMap<String, AttachmentInfo> = HashMap::new();
+    for (key, value) in &old.attachments {
+      attachment_infos.insert(key.clone(), value.info.clone());
+    }
+    VkRenderGraph::new_internal(&old.device, &old.context, &old.graphics_queue, &old.compute_queue, &old.transfer_queue, swapchain, &attachment_infos, &pass_infos)
   }
 
-  fn render(&mut self, job_queue: &dyn JobQueue) -> JobCounterWait {
+  fn render(&mut self, job_queue: &dyn JobQueue) -> Result<JobCounterWait, ()> {
     let counter = JobScheduler::new_counter();
 
     self.context.begin_frame();
@@ -546,15 +555,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let cmd_fence = self.context.get_shared().get_fence();
     let mut image_index: u32 = 0;
 
-    let mut recreate = false;
     if self.does_render_to_frame_buffer {
       let mut result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
-      if false && (result.is_err() || !result.unwrap().1) {
-        let new_swapchain = Arc::new(self.swapchain.recreate());
-        std::mem::replace(&mut self.swapchain, new_swapchain);
-        prepare_semaphore = self.context.get_shared().get_semaphore();
-        result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
-        recreate = true;
+      if result.is_err() || !result.unwrap().1 && false {
+        return Err(())
       }
       let (index, _) = result.unwrap();
       image_index = index
@@ -593,18 +597,18 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             let prepare_semaphores = [&**c_prepare_semaphore];
             let cmd_semaphores = [&**c_cmd_semaphore];
 
-            let wait_semaphores: &[&VkSemaphore] = if graphics_pass.is_rendering_to_swap_chain {
+            let wait_semaphores: &[&VkSemaphore] = if graphics_pass.is_rendering_to_swapchain {
               &prepare_semaphores
             } else {
               &[]
             };
-            let signal_semaphores: &[&VkSemaphore] = if graphics_pass.is_rendering_to_swap_chain {
+            let signal_semaphores: &[&VkSemaphore] = if graphics_pass.is_rendering_to_swapchain {
               &cmd_semaphores
             } else {
               &[]
             };
 
-            let fence = if graphics_pass.is_rendering_to_swap_chain {
+            let fence = if graphics_pass.is_rendering_to_swapchain {
               Some(&c_cmd_fence as &VkFence)
             } else {
               None
@@ -612,7 +616,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
             c_queue.submit(submission, fence, &wait_semaphores, &signal_semaphores);
 
-            if graphics_pass.is_rendering_to_swap_chain {
+            if graphics_pass.is_rendering_to_swapchain {
               frame_context.track_semaphore(&c_prepare_semaphore);
             }
 
@@ -640,8 +644,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     if self.does_render_to_frame_buffer {
       let result = self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
-      if false && (result.is_err() || !result.unwrap()) {
-
+      if result.is_err() || !result.unwrap() && false {
+        return Err(());
       }
 
       frame_context.track_semaphore(&cmd_semaphore);
@@ -650,10 +654,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     self.context.end_frame(&cmd_fence);
     counter.set(100);
 
-    JobCounterWait {
+    Ok(JobCounterWait {
       counter,
       value: 100
-    }
+    })
   }
 }
 

@@ -5,6 +5,7 @@ use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_core::platform::PlatformEvent;
 use sourcerenderer_core::platform::GraphicsApi;
+use sourcerenderer_core::platform::WindowState;
 use sourcerenderer_core::graphics::Instance;
 use sourcerenderer_core::graphics::Surface;
 use sourcerenderer_core::graphics::Device;
@@ -21,6 +22,7 @@ use sdl2::Sdl;
 use sdl2::VideoSubsystem;
 use sdl2::EventPump;
 use sdl2::video::VkInstance as SdlVkInstance;
+use sdl2_sys::SDL_WindowFlags;
 
 use ash::version::InstanceV1_0;
 use ash::vk::{Handle, SurfaceKHR};
@@ -47,10 +49,10 @@ impl SDLPlatform {
     let window = SDLWindow::new(&sdl_context, &video_subsystem, graphics_api);
 
     return SDLPlatform {
-      sdl_context: sdl_context,
-      video_subsystem: video_subsystem,
-      event_pump: event_pump,
-      window: window
+      sdl_context,
+      video_subsystem,
+      event_pump,
+      window
     };
   }
 }
@@ -67,8 +69,8 @@ impl SDLWindow {
 
     let window = window_builder.build().unwrap();
     return SDLWindow {
-      graphics_api: graphics_api,
-      window: window
+      graphics_api,
+      window
     };
   }
 
@@ -113,9 +115,31 @@ impl Window<SDLPlatform> for SDLWindow {
     return Arc::new(VkSurface::new(instance_raw, SurfaceKHR::from_raw(surface), surface_loader));
   }
 
-  fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> VkSwapchain {
+  fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> Arc<VkSwapchain> {
     let device_inner = device.get_inner();
     let (width, height) = self.window.drawable_size();
-    return VkSwapchain::new(vsync, width, height, device_inner, surface);
+    return VkSwapchain::new(vsync, width, height, device_inner, surface).unwrap();
+  }
+
+  fn state(&self) -> WindowState {
+    let (width, height) = self.window.drawable_size();
+    let flags = self.window.window_flags();
+    let fullscreen = (flags & SDL_WindowFlags::SDL_WINDOW_FULLSCREEN as u32) != 0 || (flags & SDL_WindowFlags::SDL_WINDOW_FULLSCREEN_DESKTOP as u32) != 0;
+    let minimized = width == 0 || height == 0 || (flags & SDL_WindowFlags::SDL_WINDOW_MINIMIZED as u32) != 0 || (flags & SDL_WindowFlags::SDL_WINDOW_HIDDEN as u32) != 0;
+    let focussed = (flags & SDL_WindowFlags::SDL_WINDOW_INPUT_FOCUS as u32) != 0 || (flags & SDL_WindowFlags::SDL_WINDOW_INPUT_GRABBED as u32) != 0;
+    if minimized {
+      WindowState::Minimized
+    } else if fullscreen {
+      WindowState::FullScreen {
+        width,
+        height
+      }
+    } else {
+      WindowState::Visible {
+        width,
+        height,
+        focussed
+      }
+    }
   }
 }

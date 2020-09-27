@@ -99,8 +99,8 @@ pub enum LoadAction {
 pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
 pub trait RenderGraph<B: Backend> {
-  fn recreate(&mut self, swap_chain: &B::Swapchain);
-  fn render(&mut self, job_queue: &dyn JobQueue) -> JobCounterWait;
+  fn recreate(old: &Self, swapchain: &Arc<B::Swapchain>) -> Self;
+  fn render(&mut self, job_queue: &dyn JobQueue) -> Result<JobCounterWait, ()>;
 }
 
 /*pub struct RenderGraphNode<'a> {
