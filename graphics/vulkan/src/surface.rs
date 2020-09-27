@@ -33,19 +33,22 @@ impl VkSurface {
     return &self.surface_loader;
   }
 
-  pub fn get_extent(&self, device: &Arc<RawVkDevice>, preferred_width: u32, preferred_height: u32) -> (u32, u32) {
-    let capabilities = unsafe {
-      self.surface_loader.get_physical_device_surface_capabilities(device.physical_device, self.surface)
-    }.unwrap();
+  pub(crate) fn get_capabilities(&self, physical_device: &vk::PhysicalDevice) -> vk::SurfaceCapabilitiesKHR {
+    unsafe {
+      self.surface_loader.get_physical_device_surface_capabilities(*physical_device, self.surface)
+    }.unwrap()
+  }
 
-    if capabilities.current_extent.width != u32::MAX && capabilities.current_extent.height != u32::MAX {
-      (capabilities.current_extent.width, capabilities.current_extent.height)
-    } else {
-      (
-        min(max(preferred_width, capabilities.min_image_extent.width), capabilities.max_image_extent.width),
-        min(max(preferred_height, capabilities.min_image_extent.height), capabilities.max_image_extent.height)
-      )
-    }
+  pub(crate) fn get_formats(&self, physical_device: &vk::PhysicalDevice) -> Vec<vk::SurfaceFormatKHR> {
+    unsafe {
+      self.surface_loader.get_physical_device_surface_formats(*physical_device, self.surface)
+    }.unwrap()
+  }
+
+  pub(crate) fn get_present_modes(&self, physical_device: &vk::PhysicalDevice) -> Vec<vk::PresentModeKHR> {
+    unsafe {
+      self.surface_loader.get_physical_device_surface_present_modes(*physical_device, self.surface)
+    }.unwrap()
   }
 }
 

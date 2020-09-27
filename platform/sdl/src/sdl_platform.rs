@@ -115,8 +115,7 @@ impl Window<SDLPlatform> for SDLWindow {
 
   fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> VkSwapchain {
     let device_inner = device.get_inner();
-    let (window_width, window_height) = self.window.drawable_size();
-    let (width, height) = surface.get_extent(device_inner, window_width, window_height);
+    let (width, height) = self.window.drawable_size();
     return VkSwapchain::new(vsync, width, height, device_inner, surface);
   }
 }

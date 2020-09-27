@@ -9,4 +9,5 @@ pub trait Surface {
 }
 
 pub trait Swapchain {
+  fn recreate(old: &Self) -> Self;
 }

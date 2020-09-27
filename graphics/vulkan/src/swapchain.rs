@@ -42,23 +42,25 @@ impl VkSwapchain {
     let instance = &device.instance;
 
     return unsafe {
-      let surface_loader = surface.get_surface_loader();
-      let surface_handle = *surface.get_surface_handle();
       let physical_device = device.physical_device;
-      let present_modes = surface_loader.get_physical_device_surface_present_modes(physical_device, surface_handle).unwrap();
+      let present_modes = surface.get_present_modes(&physical_device);
       let present_mode = VkSwapchain::pick_present_mode(present_modes);
       let swap_chain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
-      let formats = surface_loader.get_physical_device_surface_formats(physical_device, surface_handle).unwrap();
-      let format = VkSwapchain::pick_format(formats);
+      let capabilities = surface.get_capabilities(&physical_device);
+      let formats = surface.get_formats(&physical_device);
+      let format = VkSwapchain::pick_format(&formats);
 
-      let capabilities = surface_loader.get_physical_device_surface_capabilities(physical_device, surface_handle).unwrap();
-      let extent = VkSwapchain::pick_swap_extent(&capabilities);
+      let (width, height) = VkSwapchain::pick_extent(&capabilities, width, height);
+      let extent = vk::Extent2D {
+        width,
+        height
+      };
 
-      let image_count = max(capabilities.min_image_count + 1, min(capabilities.max_image_count, 3));
+      let image_count = VkSwapchain::pick_image_count(&capabilities, 3);
 
       let swap_chain_create_info = vk::SwapchainCreateInfoKHR {
-        surface: surface_handle,
+        surface: *surface.get_surface_handle(),
         min_image_count: image_count,
         image_format: format.format,
         image_color_space: format.color_space,
@@ -90,8 +92,6 @@ impl VkSwapchain {
           })))
         .collect();
 
-      println!("image count: {}", textures.len());
-
       let swap_chain_image_views: Vec<Arc<VkTextureView>> = textures
         .iter()
         .map(|texture| {
@@ -118,20 +118,20 @@ impl VkSwapchain {
     VkSwapchain::new_internal(vsync, width, height, device, surface, None)
   }
 
-  pub(crate) fn recreate(&self) -> VkSwapchain {
-    let (width, height) = self.surface.get_extent(&self.device, self.width, self.height);
 
-    VkSwapchain::new_internal(self.vsync, width, height, &self.device, &self.surface, Some(&self.swap_chain))
+
+  pub fn pick_extent(capabilities: &vk::SurfaceCapabilitiesKHR, preferred_width: u32, preferred_height: u32) -> (u32, u32) {
+    if capabilities.current_extent.width != u32::MAX && capabilities.current_extent.height != u32::MAX {
+      (capabilities.current_extent.width, capabilities.current_extent.height)
+    } else {
+      (
+        min(max(preferred_width, capabilities.min_image_extent.width), capabilities.max_image_extent.width),
+        min(max(preferred_height, capabilities.min_image_extent.height), capabilities.max_image_extent.height)
+      )
+    }
   }
 
-  unsafe fn pick_present_mode(present_modes: Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
-    return *present_modes
-      .iter()
-      .filter(|&&mode| mode == vk::PresentModeKHR::FIFO)
-      .nth(0).expect("No compatible present mode found");
-  }
-
-  unsafe fn pick_format(formats: Vec<vk::SurfaceFormatKHR>) -> vk::SurfaceFormatKHR {
+  pub fn pick_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
     return if formats.len() == 1 && formats[0].format == vk::Format::UNDEFINED {
       vk::SurfaceFormatKHR {
         format: vk::Format::B8G8R8A8_UNORM,
@@ -145,13 +145,19 @@ impl VkSwapchain {
     }
   }
 
-  unsafe fn pick_swap_extent(capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
-    return if capabilities.current_extent.width != u32::max_value() {
-      capabilities.current_extent
-    } else {
-      // TODO: pick an extent and check min/max
-      panic!("No current extent")
+  pub fn pick_image_count(capabilities: &vk::SurfaceCapabilitiesKHR, preferred: u32) -> u32 {
+    let mut image_count = max(capabilities.min_image_count + 1, preferred);
+    if capabilities.max_image_count != 0 {
+      image_count = min(capabilities.max_image_count, image_count);
     }
+    image_count
+  }
+
+  unsafe fn pick_present_mode(present_modes: Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
+    return *present_modes
+      .iter()
+      .filter(|&&mode| mode == vk::PresentModeKHR::FIFO)
+      .nth(0).expect("No compatible present mode found");
   }
 
   pub fn get_loader(&self) -> &SwapchainLoader {
@@ -192,7 +198,9 @@ impl Drop for VkSwapchain {
 }
 
 impl Swapchain for VkSwapchain {
-
+  fn recreate(old: &Self) -> Self {
+    VkSwapchain::new_internal(old.vsync, old.width, old.height, &old.device, &old.surface, Some(&old.swap_chain))
+  }
 }
 
 pub(crate) enum VkSwapchainAcquireResult<'a> {
