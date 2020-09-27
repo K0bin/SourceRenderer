@@ -376,7 +376,7 @@ impl VkRenderGraph {
           .name
       )
         .unwrap();
-      (0, 0)
+      (attachment.info.width, attachment.info.height)
     };
 
     let mut frame_buffers: Vec<Arc<VkFrameBuffer>> = Vec::with_capacity(frame_buffer_count);
