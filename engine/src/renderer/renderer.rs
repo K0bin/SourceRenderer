@@ -293,6 +293,10 @@ impl<P: Platform> RendererInternal<P> {
         };
       }
       let new_swapchain = new_swapchain_result.unwrap();
+      if new_swapchain.format() != self.swapchain.format() || new_swapchain.sample_count() != self.swapchain.sample_count() {
+        panic!("Swapchain format or sample count changed. Can not recreate render graph.");
+      }
+
       let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
       std::mem::replace(&mut self.swapchain, new_swapchain);
       std::mem::replace(&mut self.graph, new_graph);
