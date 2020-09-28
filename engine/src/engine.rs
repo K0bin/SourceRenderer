@@ -22,7 +22,7 @@ use std::thread::{Thread};
 use std::future::Future;
 use async_std::task::JoinHandle;
 use std::cell::RefCell;
-use sourcerenderer_core::graphics::graph::{RenderGraph, RenderGraphInfo, BACK_BUFFER_ATTACHMENT_NAME};
+use sourcerenderer_core::graphics::{RenderGraph, RenderGraphInfo, BACK_BUFFER_ATTACHMENT_NAME};
 use std::collections::HashMap;
 use image::{GenericImage, GenericImageView};
 use nalgebra::{Matrix4, Point3, Vector3, Rotation3};

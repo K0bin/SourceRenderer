@@ -30,6 +30,7 @@ use buffer::VkBufferSlice;
 use std::cmp::min;
 use texture::VkTextureView;
 use transfer::VkTransfer;
+use graph_template::VkRenderGraphTemplate;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,
@@ -176,8 +177,12 @@ impl Device<VkBackend> for VkDevice {
     unsafe { self.device.device.device_wait_idle(); }
   }
 
-  fn create_render_graph(&self, graph_info: &sourcerenderer_core::graphics::graph::RenderGraphInfo<VkBackend>, swapchain: &Arc<VkSwapchain>) -> VkRenderGraph {
-    return VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, graph_info, swapchain);
+  fn create_render_graph_template(&self, graph_info: &RenderGraphTemplateInfo) -> <VkBackend as Backend>::RenderGraphTemplate {
+    VkRenderGraphTemplate::new(&self.device, graph_info)
+  }
+
+  fn create_render_graph(&self, template: &Arc<<VkBackend as Backend>::RenderGraphTemplate>, info: &RenderGraphInfo<VkBackend>, swapchain: &Arc<<VkBackend as Backend>::Swapchain>) -> <VkBackend as Backend>::RenderGraph {
+    VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, template, info, swapchain)
   }
 
   fn init_texture(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {

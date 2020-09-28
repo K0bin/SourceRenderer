@@ -32,8 +32,6 @@ pub struct VkSwapchain {
   instance: Arc<RawVkInstance>,
   surface: Arc<VkSurface>,
   device: Arc<RawVkDevice>,
-  width: u32,
-  height: u32,
   vsync: bool
 }
 
@@ -116,8 +114,6 @@ impl VkSwapchain {
         instance: device.instance.clone(),
         surface: surface.clone(),
         device: device.clone(),
-        width,
-        height,
         vsync
       }))
     }
@@ -186,11 +182,11 @@ impl VkSwapchain {
   }
 
   pub fn get_width(&self) -> u32 {
-    return self.width;
+     self.textures.first().unwrap().get_info().width
   }
 
   pub fn get_height(&self) -> u32 {
-    return self.height;
+    self.textures.first().unwrap().get_info().height
   }
 
   pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
@@ -209,6 +205,14 @@ impl Drop for VkSwapchain {
 impl Swapchain for VkSwapchain {
   fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
     VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(&old.swapchain))
+  }
+
+  fn sample_count(&self) -> SampleCount {
+    self.textures.first().unwrap().get_info().samples
+  }
+
+  fn format(&self) -> Format {
+    self.textures.first().unwrap().get_info().format
   }
 }
 

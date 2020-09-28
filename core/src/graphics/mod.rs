@@ -22,6 +22,8 @@ pub use self::backend::Backend;
 pub use self::command::BindingFrequency;
 pub use self::texture::{TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode};
 pub use self::sync::Fence;
+pub use self::graph_template::*;
+pub use self::graph::*;
 
 mod device;
 mod instance;
@@ -34,7 +36,8 @@ mod texture;
 mod renderpass;
 mod backend;
 mod sync;
-pub mod graph;
+mod graph;
+mod graph_template;
 
 // TODO: find a better place for this
 pub trait Resettable {

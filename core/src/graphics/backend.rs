@@ -9,7 +9,7 @@ use crate::graphics::Texture;
 use crate::graphics::Buffer;
 use crate::graphics::Swapchain;
 use crate::graphics::Resettable;
-use crate::graphics::graph::RenderGraph;
+use crate::graphics::{RenderGraph, RenderGraphTemplate};
 use std::hash::Hash;
 
 // WANT https://github.com/rust-lang/rust/issues/44265
@@ -24,6 +24,7 @@ pub trait Backend: 'static + Sized {
   type TextureShaderResourceView: TextureShaderResourceView + Send + Sync;
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
+  type RenderGraphTemplate: RenderGraphTemplate + Send + Sync;
   type RenderGraph: RenderGraph<Self> + Send + Sync;
   type Fence : Fence + Send + Sync;
 }

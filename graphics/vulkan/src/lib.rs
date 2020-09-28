@@ -47,6 +47,7 @@ mod texture;
 mod sync;
 mod renderpass;
 mod graph;
+mod graph_template;
 mod context;
 mod descriptor;
 mod transfer;
