@@ -18,12 +18,12 @@ use std::os::raw::{c_char, c_void};
 
 pub struct VkInstance {
   raw: ManuallyDrop<Arc<RawVkInstance>>,
-  debug_report_loader: ManuallyDrop<ash::extensions::ext::DebugReport>,
-  debug_report_callback: vk::DebugReportCallbackEXT
+  debug_utils_loader: ManuallyDrop<ash::extensions::ext::DebugUtils>,
+  debug_messenger: vk::DebugUtilsMessengerEXT
 }
 
 impl VkInstance {
-  pub fn new(instance_extensions: Vec<&str>, debug_layers: bool) -> Self {
+  pub fn new(instance_extensions: &[&str], debug_layers: bool) -> Self {
     let entry: ash::Entry = ash::Entry::new().unwrap();
 
     let app_name = CString::new("CS:GO").unwrap();
@@ -44,7 +44,7 @@ impl VkInstance {
       .iter()
       .map(|ext| CString::new(*ext).unwrap())
       .collect();
-    extension_names_c.push(CString::from(ash::extensions::ext::DebugReport::name()));
+    extension_names_c.push(CString::from(ash::extensions::ext::DebugUtils::name()));
     let extension_names_ptr: Vec<*const i8> = extension_names_c
       .iter()
       .map(|ext_c| ext_c.as_ptr())
@@ -71,20 +71,19 @@ impl VkInstance {
     return unsafe {
       let instance = entry.create_instance(&instance_create_info, None).unwrap();
 
-      let debug_report_loader = ash::extensions::ext::DebugReport::new(&entry, &instance); // TODO switch to debug utils
-      let debug_report_callback = debug_report_loader.create_debug_report_callback(&vk::DebugReportCallbackCreateInfoEXT {
-        flags: vk::DebugReportFlagsEXT::ERROR
-          | vk::DebugReportFlagsEXT::WARNING
-          | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-          | vk::DebugReportFlagsEXT::INFORMATION
-          | vk::DebugReportFlagsEXT::DEBUG,
-        pfn_callback: Some(VkInstance::debug_callback),
+      let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+      let debug_messenger = debug_utils_loader.create_debug_utils_messenger(&vk::DebugUtilsMessengerCreateInfoEXT {
+        flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+        message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::all(),
+        message_type: vk::DebugUtilsMessageTypeFlagsEXT::all(),
+        pfn_user_callback: Some(VkInstance::debug_callback),
+        p_user_data: std::ptr::null_mut(),
         ..Default::default()
       }, None).unwrap();
 
       VkInstance {
-        debug_report_loader: ManuallyDrop::new(debug_report_loader),
-        debug_report_callback,
+        debug_utils_loader: ManuallyDrop::new(debug_utils_loader),
+        debug_messenger,
         raw: ManuallyDrop::new(Arc::new(RawVkInstance {
           entry,
           instance
@@ -97,15 +96,21 @@ impl VkInstance {
     return &self.raw;
   }
 
-  unsafe extern "system" fn debug_callback(flags: vk::DebugReportFlagsEXT,
-                    object_type: vk::DebugReportObjectTypeEXT,
-                    object: u64,
-                    location: usize,
-                    message_code: i32,
-                    p_layer_prefix: *const c_char,
-                    p_message: *const c_char,
-                    p_user_data: *mut c_void) -> vk::Bool32 {
-    println!("{:?}", CStr::from_ptr(p_message));
+  unsafe extern "system" fn debug_callback(
+                    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+                    message_types: vk::DebugUtilsMessageTypeFlagsEXT,
+                    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+                    p_user_data: *mut c_void,
+                    ) -> vk::Bool32 {
+    let callback_data_opt = unsafe {
+       p_callback_data.as_ref()
+    };
+    if callback_data_opt.is_none() {
+      return vk::FALSE;
+    }
+    let callback_data = callback_data_opt.unwrap();
+
+    println!("VK DEBUG: {:?}", CStr::from_ptr(callback_data.p_message));
     vk::FALSE
   }
 }
@@ -113,8 +118,8 @@ impl VkInstance {
 impl Drop for VkInstance {
   fn drop(&mut self) {
     unsafe {
-      self.debug_report_loader.destroy_debug_report_callback(self.debug_report_callback, None);
-      ManuallyDrop::drop(&mut self.debug_report_loader);
+      self.debug_utils_loader.destroy_debug_utils_messenger(self.debug_messenger, None);
+      ManuallyDrop::drop(&mut self.debug_utils_loader);
       ManuallyDrop::drop(&mut self.raw);
     }
   }
