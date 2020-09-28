@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{RenderGraph, StoreAction, LoadAction, AttachmentSizeClass, AttachmentInfo, GraphicsPassInfo, PassInfo, InputAttachmentReference, RenderGraphTemplate, RenderPassCallback};
+use sourcerenderer_core::graphics::{RenderGraph, StoreAction, LoadAction, AttachmentSizeClass, AttachmentInfo, PassInfo, InputAttachmentReference, RenderGraphTemplate, RenderPassCallback};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
@@ -77,23 +77,25 @@ impl VkRenderGraph {
       // TODO: aliasing
       match attachment_info {
         // TODO: transient
-        AttachmentInfo::Texture(texture_info) => {
+        AttachmentInfo::Texture {
+          format, size_class, width, height, samples, levels, ..
+        } => {
           let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
-            format: texture_info.format,
-            width: if texture_info.size_class == AttachmentSizeClass::RelativeToSwapchain {
-              (swapchain.get_width() as f32 * texture_info.width) as u32
+            format: *format,
+            width: if *size_class == AttachmentSizeClass::RelativeToSwapchain {
+              (swapchain.get_width() as f32 * *width) as u32
             } else {
-              texture_info.width as u32
+              *width as u32
             },
-            height: if texture_info.size_class == AttachmentSizeClass::RelativeToSwapchain {
-              (swapchain.get_height() as f32 * texture_info.height) as u32
+            height: if *size_class == AttachmentSizeClass::RelativeToSwapchain {
+              (swapchain.get_height() as f32 * *height) as u32
             } else {
-              texture_info.height as u32
+              *height as u32
             },
             depth: 1,
-            mip_levels: texture_info.levels,
+            mip_levels: *levels,
             array_length: 1,
-            samples: texture_info.samples
+            samples: *samples
           }));
 
           let view = Arc::new(VkTextureView::new_render_target_view(device, &texture));

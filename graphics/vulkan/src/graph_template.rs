@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{RenderGraph, AttachmentSizeClass, AttachmentInfo, StoreAction, LoadAction, PassInfo, GraphicsPassInfo, InputAttachmentReference, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount};
+use sourcerenderer_core::graphics::{RenderGraph, AttachmentSizeClass, AttachmentInfo, StoreAction, LoadAction, PassInfo, InputAttachmentReference, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
@@ -75,25 +75,30 @@ impl VkRenderGraphTemplate {
       let previous_pass = merged_pass.last();
       let can_be_merged = if let Some(previous_pass) = previous_pass {
         match previous_pass {
-          PassInfo::Graphics(graphics_pass) => {
+          PassInfo::Graphics {
+            outputs: _, inputs
+          } => {
             let mut width = 0.0f32;
             let mut height = 0.0f32;
             let mut size_class = AttachmentSizeClass::RelativeToSwapchain;
 
-            'first_texture_input: for input in &graphics_pass.inputs {
+            'first_texture_input: for input in inputs {
               match input {
-                InputAttachmentReference::Texture(input_texture_ref) => {
-                  let input_attachment = info.attachments.get(&input_texture_ref.name).expect("Invalid attachment reference");
-                  let texture_attachment = if let AttachmentInfo::Texture(texture_attachment) = input_attachment {
-                    texture_attachment
-                  } else {
-                    panic!("Attachment type does not match reference type")
-                  };
-
-                  width = texture_attachment.width;
-                  height = texture_attachment.height;
-                  size_class = texture_attachment.size_class;
-                  break 'first_texture_input;
+                InputAttachmentReference::Texture {
+                  name, is_local
+                } => {
+                  let input_attachment = info.attachments.get(name).expect("Invalid attachment reference");
+                  match input_attachment {
+                    AttachmentInfo::Texture {
+                      width: texture_width, height: texture_height, size_class: texture_size_class, ..
+                    } => {
+                      width = *texture_width;
+                      height = *texture_height;
+                      size_class = *texture_size_class;
+                      break 'first_texture_input;
+                    },
+                    _ => unreachable!("Attachment type does not match reference type")
+                  }
                 },
                 _ => {}
               }
@@ -114,57 +119,44 @@ impl VkRenderGraphTemplate {
         pass_indices.push(pass_index);
       } else {
         if !merged_pass.is_empty() {
-          let mut is_graphics_pass = merged_pass.len() > 1;
-          if let PassInfo::Graphics(_) = merged_pass.first().expect("Invalid merged empty pass") {
-            is_graphics_pass = true;
+          match merged_pass.first().unwrap() {
+            PassInfo::Graphics {
+              ..
+            } => {
+              // build subpasses, requires the attachment indices populated before
+              let render_graph_pass = Self::build_render_pass(&merged_pass, device, &info.attachments, &mut layouts, &pass_indices, info.swapchain_format, info.swapchain_sample_count);
+              did_render_to_backbuffer |= if let VkPassTemplate::Graphics { renders_to_swapchain, .. } = render_graph_pass { renders_to_swapchain } else { false };
+              passes.push(render_graph_pass);
+            },
+            _ => unimplemented!()
           }
 
-          if is_graphics_pass {
-            let graphics_passes = merged_pass.iter()
-              .map(|p|
-                if let PassInfo::Graphics(graphics_pass) = p { graphics_pass.clone() } else { unreachable!() }
-              ).collect();
-
-            // build subpasses, requires the attachment indices populated before
-            let render_graph_pass = Self::build_render_pass(graphics_passes, device, &info.attachments, &mut layouts, &pass_indices, info.swapchain_format, info.swapchain_sample_count);
-            did_render_to_backbuffer |= if let VkPassTemplate::Graphics { renders_to_swapchain, .. } = render_graph_pass { renders_to_swapchain } else { false };
-            passes.push(render_graph_pass);
-          } else {
-            unimplemented!();
-          }
+          merged_pass.clear();
+          pass_indices.clear();
         }
-
-        merged_pass.clear();
-        pass_indices.clear();
 
         merged_pass.push(pass);
         pass_indices.push(pass_index);
       }
 
-      // insert last pass
-      if !merged_pass.is_empty() {
-        let mut is_graphics_pass = merged_pass.len() > 1;
-        if let PassInfo::Graphics(_) = merged_pass.first().expect("Invalid merged empty pass") {
-          is_graphics_pass = true;
-        }
-
-        if is_graphics_pass {
-          let graphics_passes = merged_pass.iter()
-            .map(|p|
-              if let PassInfo::Graphics(graphics_pass) = p { graphics_pass.clone() } else { unreachable!() }
-            ).collect();
-
-          // build subpasses, requires the attachment indices populated before
-          let render_graph_pass = Self::build_render_pass(graphics_passes, device, &info.attachments, &mut layouts, &pass_indices, info.swapchain_format, info.swapchain_sample_count);
-          did_render_to_backbuffer |= if let VkPassTemplate::Graphics { renders_to_swapchain, .. } = render_graph_pass { renders_to_swapchain } else { false };
-          passes.push(render_graph_pass);
-        } else {
-          unimplemented!();
-        }
-      }
-
       pass_opt = reordered_passes_queue.pop_front();
       pass_index += 1;
+    }
+
+    // insert last pass
+    if !merged_pass.is_empty() {
+      match &merged_pass.first().unwrap() {
+        PassInfo::Graphics {
+          ..
+        } => {
+
+          // build subpasses, requires the attachment indices populated before
+          let render_graph_pass = Self::build_render_pass(&merged_pass, device, &info.attachments, &mut layouts, &pass_indices, info.swapchain_format, info.swapchain_sample_count);
+          did_render_to_backbuffer |= if let VkPassTemplate::Graphics { renders_to_swapchain, .. } = render_graph_pass { renders_to_swapchain } else { false };
+          passes.push(render_graph_pass);
+        },
+        _ => unimplemented!()
+      }
     }
 
     Self {
@@ -198,7 +190,7 @@ impl VkRenderGraphTemplate {
     return reordered_passes;
   }
 
-  fn build_render_pass(passes: Vec<GraphicsPassInfo>,
+  fn build_render_pass(passes: &Vec<PassInfo>,
                        device: &Arc<RawVkDevice>,
                        attachments: &HashMap<String, AttachmentInfo>,
                        layouts: &mut HashMap<String, vk::ImageLayout>,
@@ -214,56 +206,69 @@ impl VkRenderGraphTemplate {
 
     // Prepare attachments
     let mut pass_index = 0;
-    for merged_pass in &passes {
-      for output in &merged_pass.outputs {
-        let index = render_pass_attachments.len() as u32;
-        if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
-          if output.load_action == LoadAction::Load {
-            panic!("cant load back buffer");
-          }
-          if output.store_action != StoreAction::Store {
-            panic!("cant discard back buffer");
-          }
-          pass_renders_to_backbuffer = true;
-          render_pass_attachments.push(
-            vk::AttachmentDescription {
-              format: format_to_vk(swapchain_format),
-              samples: samples_to_vk(swapchain_samples),
-              load_op: load_action_to_vk(output.load_action),
-              store_op: store_action_to_vk(output.store_action),
-              stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-              stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-              initial_layout: *(layouts.get(&output.name).unwrap_or(&vk::ImageLayout::UNDEFINED)),
-              final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-              ..Default::default()
+    for merged_pass in passes {
+      match merged_pass {
+        PassInfo::Graphics {
+          outputs, ..
+        } => {
+          for output in outputs {
+            let index = render_pass_attachments.len() as u32;
+            if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
+              if output.load_action == LoadAction::Load {
+                panic!("cant load back buffer");
+              }
+              if output.store_action != StoreAction::Store {
+                panic!("cant discard back buffer");
+              }
+              pass_renders_to_backbuffer = true;
+              render_pass_attachments.push(
+                vk::AttachmentDescription {
+                  format: format_to_vk(swapchain_format),
+                  samples: samples_to_vk(swapchain_samples),
+                  load_op: load_action_to_vk(output.load_action),
+                  store_op: store_action_to_vk(output.store_action),
+                  stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+                  stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+                  initial_layout: *(layouts.get(&output.name).unwrap_or(&vk::ImageLayout::UNDEFINED)),
+                  final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+                  ..Default::default()
+                }
+              );
+              layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
+            } else {
+              let attachment = attachments.get(&output.name).expect("Output not attachment not declared.");
+              match attachment {
+                AttachmentInfo::Texture {
+                  format: texture_attachment_format, samples: texture_attachment_samples, ..
+                } => {
+                  render_pass_attachments.push(
+                    vk::AttachmentDescription {
+                      format: format_to_vk(*texture_attachment_format),
+                      samples: samples_to_vk(*texture_attachment_samples),
+                      load_op: load_action_to_vk(output.load_action),
+                      store_op: store_action_to_vk(output.store_action),
+                      stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+                      stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+                      initial_layout: *layouts.get(&output.name as &str).unwrap_or(&vk::ImageLayout::UNDEFINED),
+                      final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                      ..Default::default()
+                    }
+                  );
+                  layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
+                },
+                _ => unreachable!()
+              }
             }
-          );
-          layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
-        } else {
-          let attachment = attachments.get(&output.name).expect("Output not attachment not declared.");
-          let texture_attachment = if let AttachmentInfo::Texture(attachment_texture) = &attachment { attachment_texture } else { unreachable!() };
-          render_pass_attachments.push(
-            vk::AttachmentDescription {
-              format: format_to_vk(texture_attachment.format),
-              samples: samples_to_vk(texture_attachment.samples),
-              load_op: load_action_to_vk(output.load_action),
-              store_op: store_action_to_vk(output.store_action),
-              stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-              stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-              initial_layout:  *layouts.get(&output.name as &str).unwrap_or(&vk::ImageLayout::UNDEFINED),
-              final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-              ..Default::default()
-            }
-          );
-          layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
-        }
 
-        used_attachments.push(output.name.clone());
-        attachment_indices.insert(&output.name as &str, index);
-        attachment_producer_pass_index.insert(&output.name as &str, pass_index);
-        attachment_last_user_pass_index.entry(&output.name).and_modify(|attachment_pass_index| if pass_index > *attachment_pass_index {
-          *attachment_pass_index = pass_index;
-        }).or_insert(pass_index);
+            used_attachments.push(output.name.clone());
+            attachment_indices.insert(&output.name as &str, index);
+            attachment_producer_pass_index.insert(&output.name as &str, pass_index);
+            attachment_last_user_pass_index.entry(&output.name).and_modify(|attachment_pass_index| if pass_index > *attachment_pass_index {
+              *attachment_pass_index = pass_index;
+            }).or_insert(pass_index);
+          }
+        },
+        _ => unreachable!()
       }
       pass_index += 1;
     }
@@ -273,57 +278,65 @@ impl VkRenderGraphTemplate {
     let mut attachment_refs: Vec<vk::AttachmentReference> = Vec::new();
     let mut preserve_attachments: Vec<u32> = Vec::new();
     pass_index = 0;
-    for merged_pass in &passes {
-      let inputs_start = attachment_refs.len() as isize;
-      let inputs_len = merged_pass.inputs.len() as u32;
-      for input in &merged_pass.inputs {
-        match input {
-          InputAttachmentReference::Texture(texture_attachment) => {
+    for merged_pass in passes {
+      match merged_pass {
+        PassInfo::Graphics {
+          inputs, outputs
+        } => {
+          let inputs_start = attachment_refs.len() as isize;
+          let inputs_len = inputs.len() as u32;
+          for input in inputs {
+            match input {
+              InputAttachmentReference::Texture {
+                is_local, name
+              } => {
+                attachment_refs.push(vk::AttachmentReference {
+                  attachment: (*attachment_indices.get(name as &str).expect(format!("Couldn't find index for {}", name).as_str())) as u32,
+                  layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+                });
+                dependencies.push(vk::SubpassDependency {
+                  src_subpass: *(attachment_producer_pass_index.get(name as &str).unwrap()),
+                  dst_subpass: pass_index,
+                  src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                  dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+                  src_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                  dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ,
+                  dependency_flags: if *is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
+                });
+              },
+              _ => unimplemented!()
+            }
+          }
+
+          let outputs_start = attachment_refs.len() as isize;
+          let outputs_len = outputs.len() as u32;
+          for output in outputs {
             attachment_refs.push(vk::AttachmentReference {
-              attachment: (*attachment_indices.get(&texture_attachment.name as &str).expect(format!("Couldn't find index for {}", &texture_attachment.name).as_str())) as u32,
-              layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+              attachment: (*attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())),
+              layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
             });
-            dependencies.push(vk::SubpassDependency {
-              src_subpass: *(attachment_producer_pass_index.get(&texture_attachment.name as &str).unwrap()),
-              dst_subpass: pass_index,
-              src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-              dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
-              src_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-              dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ,
-              dependency_flags: if texture_attachment.is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
+          }
+
+          for attachment in &used_attachments {
+            if *(attachment_last_user_pass_index.get(attachment as &str).unwrap()) > pass_index {
+              preserve_attachments.push(*(attachment_indices.get(&attachment as &str).expect(format!("Couldn't find index for {}", attachment).as_str())));
+            }
+          }
+
+          unsafe {
+            subpasses.push(vk::SubpassDescription {
+              p_input_attachments: attachment_refs.as_ptr().offset(inputs_start),
+              input_attachment_count: inputs_len,
+              p_color_attachments: attachment_refs.as_ptr().offset(outputs_start),
+              color_attachment_count: outputs_len,
+              p_preserve_attachments: preserve_attachments.as_ptr(),
+              preserve_attachment_count: preserve_attachments.len() as u32,
+              ..Default::default()
             });
-          },
-          _ => unimplemented!()
-        }
+          }
+        },
+        _ => unreachable!()
       }
-
-      let outputs_start = attachment_refs.len() as isize;
-      let outputs_len = merged_pass.outputs.len() as u32;
-      for output in &merged_pass.outputs {
-        attachment_refs.push(vk::AttachmentReference {
-          attachment: (*attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())),
-          layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
-        });
-      }
-
-      for attachment in &used_attachments {
-        if *(attachment_last_user_pass_index.get(attachment as &str).unwrap()) > pass_index {
-          preserve_attachments.push(*(attachment_indices.get(&attachment as &str).expect(format!("Couldn't find index for {}", attachment).as_str())));
-        }
-      }
-
-      unsafe {
-        subpasses.push(vk::SubpassDescription {
-          p_input_attachments: attachment_refs.as_ptr().offset(inputs_start),
-          input_attachment_count: inputs_len,
-          p_color_attachments: attachment_refs.as_ptr().offset(outputs_start),
-          color_attachment_count: outputs_len,
-          p_preserve_attachments: preserve_attachments.as_ptr(),
-          preserve_attachment_count: preserve_attachments.len() as u32,
-          ..Default::default()
-        });
-      }
-
       pass_index += 1;
     }
 
@@ -349,19 +362,24 @@ impl VkRenderGraphTemplate {
 
   fn can_pass_be_merged(pass: &PassInfo, attachments: &HashMap<String, AttachmentInfo>, base_width: f32, base_height: f32, base_size_class: AttachmentSizeClass) -> bool {
     match pass {
-      PassInfo::Graphics(graphics_pass) => {
+      PassInfo::Graphics {
+        inputs, ..
+      } => {
         let mut can_be_merged = true;
-        for input in &graphics_pass.inputs {
+        for input in inputs {
           match input {
-            InputAttachmentReference::Texture(texture_info) => {
-              let input_attachment = attachments.get(&texture_info.name).expect("Invalid attachment reference");
-              let texture_attachment = if let AttachmentInfo::Texture(texture_attachment) = input_attachment {
-                texture_attachment
-              } else {
-                panic!("Attachment type does not match reference type")
-              };
-
-              can_be_merged &= texture_info.is_local && texture_attachment.size_class == base_size_class && (texture_attachment.width - base_width).abs() < 0.01f32 && (texture_attachment.height - base_height).abs() < 0.01f32;
+            InputAttachmentReference::Texture {
+              is_local, name
+            } => {
+              let input_attachment = attachments.get(name).expect("Invalid attachment reference");
+              match input_attachment {
+                AttachmentInfo::Texture {
+                  size_class, width, height, ..
+                } => {
+                  can_be_merged &= *is_local && *size_class == base_size_class && (*width - base_width).abs() < 0.01f32 && (*height - base_height).abs() < 0.01f32;
+                },
+                _ => panic!("Attachment type does not match reference type")
+              }
             },
             _ => {}
           }
@@ -376,8 +394,10 @@ impl VkRenderGraphTemplate {
     let mut attachment_indices: HashMap<String, usize> = HashMap::new();
     for (index, pass) in reordered_pass_infos.iter().enumerate() {
       match pass {
-        PassInfo::Graphics(graphics_pass) => {
-          for output in &graphics_pass.outputs {
+        PassInfo::Graphics{
+          outputs, ..
+        } => {
+          for output in outputs {
             attachment_indices.insert(output.name.clone(), index);
           }
         },
@@ -391,14 +411,23 @@ impl VkRenderGraphTemplate {
     if !reordered_pass_infos.is_empty() {
       let last_pass = reordered_pass_infos.last().unwrap();
       match last_pass {
-        PassInfo::Graphics(last_graphics_pass) => {
-          let last_pass_output = last_graphics_pass.outputs.first().expect("Pass has no outputs");
+        PassInfo::Graphics {
+          outputs: last_graphics_pass_outputs, ..
+        } => {
+          let last_pass_output = last_graphics_pass_outputs.first().expect("Pass has no outputs");
           if &last_pass_output.name != &BACK_BUFFER_ATTACHMENT_NAME {
             let attachment = attachments.get(&last_pass_output.name).expect("Invalid attachment reference");
-            let texture_attachment = if let AttachmentInfo::Texture(texture_info) = attachment { texture_info } else { unreachable!() };
-            width = texture_attachment.width;
-            height = texture_attachment.height;
-            size_class = texture_attachment.size_class;
+
+            match attachment {
+              AttachmentInfo::Texture {
+                width: texture_attachment_width, height: texture_attachment_height, size_class: texture_attachment_size_class, ..
+              } => {
+                width = *texture_attachment_width;
+                height = *texture_attachment_height;
+                size_class = *texture_attachment_size_class;
+              }
+              _ => unreachable!()
+            }
           } else {
             width = 1.0f32;
             height = 1.0f32;
@@ -416,23 +445,28 @@ impl VkRenderGraphTemplate {
       let mut can_be_merged = true;
 
       match pass {
-        PassInfo::Graphics(graphics_info) => {
-          for input in &graphics_info.inputs {
+        PassInfo::Graphics {
+          inputs, outputs, ..
+        } => {
+          for input in inputs {
             match input {
-              InputAttachmentReference::Texture(texture_info) => {
-                let input_attachment = attachments.get(&texture_info.name).expect("Invalid attachment reference");
-                let texture_attachment = if let AttachmentInfo::Texture(texture_attachment) = input_attachment{
-                  texture_attachment
-                } else {
-                  panic!("Attachment type does not match reference type")
-                };
-
-                can_be_merged &= texture_info.is_local && texture_attachment.size_class == size_class && (texture_attachment.width - width).abs() < 0.01f32 && (texture_attachment.height - height).abs() < 0.01f32;
-                let index_opt = attachment_indices.get(&texture_info.name);
-                if let Some(index) = index_opt {
-                  passes_since_ready = min(*index, passes_since_ready);
-                } else {
-                  is_ready = false;
+              InputAttachmentReference::Texture {
+                is_local, name
+              } => {
+                let input_attachment = attachments.get(name).expect("Invalid attachment reference");
+                match input_attachment {
+                  AttachmentInfo::Texture {
+                    size_class: texture_attachment_size_class, width: texture_attachment_width, height: texture_attachment_height, ..
+                  } => {
+                    can_be_merged &= *is_local && *texture_attachment_size_class == size_class && (*texture_attachment_width - width).abs() < 0.01f32 && (*texture_attachment_height - height).abs() < 0.01f32;
+                    let index_opt = attachment_indices.get(name);
+                    if let Some(index) = index_opt {
+                      passes_since_ready = min(*index, passes_since_ready);
+                    } else {
+                      is_ready = false;
+                    }
+                  },
+                  _ => panic!("Mismatching attachment types")
                 }
               },
               _ => {
@@ -441,22 +475,34 @@ impl VkRenderGraphTemplate {
             }
           }
 
-          let first_output = graphics_info.outputs.first().expect("Pass has no outputs");
+          let first_output = outputs.first().expect("Pass has no outputs");
           let (output_width, output_height, output_size_class) = if &first_output.name != &BACK_BUFFER_ATTACHMENT_NAME {
             let first_output_attachment = attachments.get(&first_output.name).expect("Invalid attachment reference");
-            let first_output_texture = if let AttachmentInfo::Texture(texture_attachment) = first_output_attachment { texture_attachment } else { unreachable!() };
-            (first_output_texture.width, first_output_texture.height, first_output_texture.size_class)
+            match first_output_attachment {
+              AttachmentInfo::Texture {
+                width: first_output_texture_width, height: first_output_texture_height, size_class: first_output_texture_size_class, ..
+              } => {
+                (*first_output_texture_width, *first_output_texture_height, *first_output_texture_size_class)
+              },
+              _ => unreachable!()
+            }
           } else {
             (1.0f32, 1.0f32, AttachmentSizeClass::RelativeToSwapchain)
           };
 
-          for output in &graphics_info.outputs {
+          for output in outputs {
             let (width, height, size_class) = if &output.name == &BACK_BUFFER_ATTACHMENT_NAME {
               (1.0f32, 1.0f32, AttachmentSizeClass::RelativeToSwapchain)
             } else {
               let attachment = attachments.get(&output.name).expect("Invalid attachment reference");
-              let output_texture = if let AttachmentInfo::Texture(texture_attachment) = attachment { texture_attachment } else { unreachable!() };
-              (output_texture.width, output_texture.height, output_texture.size_class)
+              match attachment {
+                AttachmentInfo::Texture {
+                  width: output_texture_width, height: output_texture_height, size_class: output_texture_size_class, ..
+                } => {
+                  (*output_texture_width, *output_texture_height, *output_texture_size_class)
+                },
+                _ => unreachable!()
+              }
             };
             if size_class != output_size_class || (output_width - width).abs() > 0.01f32 || (output_height - height).abs() > 0.01f32 {
               panic!("All outputs must have the same size");

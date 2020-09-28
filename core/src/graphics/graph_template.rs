@@ -4,7 +4,15 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub enum AttachmentInfo {
-  Texture(TextureAttachmentInfo),
+  Texture {
+    format: Format,
+    samples: SampleCount,
+    size_class: AttachmentSizeClass,
+    width: f32,
+    height: f32,
+    levels: u32,
+    external: bool
+  },
   Buffer
 }
 
@@ -15,19 +23,11 @@ pub enum AttachmentSizeClass {
 }
 
 #[derive(Clone)]
-pub struct TextureAttachmentInfo {
-  pub format: Format,
-  pub samples: SampleCount,
-  pub size_class: AttachmentSizeClass,
-  pub width: f32,
-  pub height: f32,
-  pub levels: u32,
-  pub external: bool
-}
-
-#[derive(Clone)]
 pub enum PassInfo {
-  Graphics(GraphicsPassInfo),
+  Graphics {
+    outputs: Vec<OutputTextureAttachmentReference>,
+    inputs: Vec<InputAttachmentReference>
+  },
   Compute,
   Transfer,
 }
@@ -39,15 +39,12 @@ pub struct OutputTextureAttachmentReference {
   pub store_action: StoreAction
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct InputTextureAttachmentReference {
-  pub name: String,
-  pub is_local: bool,
-}
-
 #[derive(Clone)]
 pub enum InputAttachmentReference {
-  Texture(InputTextureAttachmentReference),
+  Texture {
+    name: String,
+    is_local: bool,
+  },
   Buffer
 }
 
@@ -62,12 +59,6 @@ pub enum LoadAction {
   Load,
   Clear,
   DontCare
-}
-
-#[derive(Clone)]
-pub struct GraphicsPassInfo {
-  pub outputs: Vec<OutputTextureAttachmentReference>,
-  pub inputs: Vec<InputAttachmentReference>
 }
 
 #[derive(Clone)]
