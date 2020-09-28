@@ -208,12 +208,12 @@ impl VkRenderGraphTemplate {
     let mut render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
     let mut attachment_indices: HashMap<&str, u32> = HashMap::new();
     let mut used_attachments: Vec<String> = Vec::new();
-    let mut dependencies: Vec<vk::SubpassDependency> = Vec::new();
     let mut pass_renders_to_backbuffer = false;
-    let mut subpasses: Vec<vk::SubpassDescription> = Vec::new();
-    let mut attachment_refs: Vec<vk::AttachmentReference> = Vec::new();
+    let mut attachment_last_user_pass_index: HashMap<&str, u32> = HashMap::new();
+    let mut attachment_producer_pass_index: HashMap<&str, u32> = HashMap::new();
 
     // Prepare attachments
+    let mut pass_index = 0;
     for merged_pass in &passes {
       for output in &merged_pass.outputs {
         let index = render_pass_attachments.len() as u32;
@@ -225,7 +225,6 @@ impl VkRenderGraphTemplate {
             panic!("cant discard back buffer");
           }
           pass_renders_to_backbuffer = true;
-          used_attachments.push(output.name.clone());
           render_pass_attachments.push(
             vk::AttachmentDescription {
               format: format_to_vk(swapchain_format),
@@ -240,11 +239,9 @@ impl VkRenderGraphTemplate {
             }
           );
           layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
-          attachment_indices.insert(&output.name as &str, index);
         } else {
           let attachment = attachments.get(&output.name).expect("Output not attachment not declared.");
           let texture_attachment = if let AttachmentInfo::Texture(attachment_texture) = &attachment { attachment_texture } else { unreachable!() };
-          used_attachments.push(output.name.clone());
           render_pass_attachments.push(
             vk::AttachmentDescription {
               format: format_to_vk(texture_attachment.format),
@@ -259,11 +256,23 @@ impl VkRenderGraphTemplate {
             }
           );
           layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
-          attachment_indices.insert(&output.name as &str, index);
         }
+
+        used_attachments.push(output.name.clone());
+        attachment_indices.insert(&output.name as &str, index);
+        attachment_producer_pass_index.insert(&output.name as &str, pass_index);
+        attachment_last_user_pass_index.entry(&output.name).and_modify(|attachment_pass_index| if pass_index > *attachment_pass_index {
+          *attachment_pass_index = pass_index;
+        }).or_insert(pass_index);
       }
+      pass_index += 1;
     }
 
+    let mut dependencies: Vec<vk::SubpassDependency> = Vec::new(); // todo
+    let mut subpasses: Vec<vk::SubpassDescription> = Vec::new();
+    let mut attachment_refs: Vec<vk::AttachmentReference> = Vec::new();
+    let mut preserve_attachments: Vec<u32> = Vec::new();
+    pass_index = 0;
     for merged_pass in &passes {
       let inputs_start = attachment_refs.len() as isize;
       let inputs_len = merged_pass.inputs.len() as u32;
@@ -274,6 +283,15 @@ impl VkRenderGraphTemplate {
               attachment: (*attachment_indices.get(&texture_attachment.name as &str).expect(format!("Couldn't find index for {}", &texture_attachment.name).as_str())) as u32,
               layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
             });
+            dependencies.push(vk::SubpassDependency {
+              src_subpass: *(attachment_producer_pass_index.get(&texture_attachment.name as &str).unwrap()),
+              dst_subpass: pass_index,
+              src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+              dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+              src_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+              dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ,
+              dependency_flags: if texture_attachment.is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
+            });
           },
           _ => unimplemented!()
         }
@@ -283,19 +301,30 @@ impl VkRenderGraphTemplate {
       let outputs_len = merged_pass.outputs.len() as u32;
       for output in &merged_pass.outputs {
         attachment_refs.push(vk::AttachmentReference {
-          attachment: (*attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())) as u32,
+          attachment: (*attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())),
           layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
         });
       }
+
+      for attachment in &used_attachments {
+        if *(attachment_last_user_pass_index.get(attachment as &str).unwrap()) > pass_index {
+          preserve_attachments.push(*(attachment_indices.get(&attachment as &str).expect(format!("Couldn't find index for {}", attachment).as_str())));
+        }
+      }
+
       unsafe {
         subpasses.push(vk::SubpassDescription {
           p_input_attachments: attachment_refs.as_ptr().offset(inputs_start),
           input_attachment_count: inputs_len,
           p_color_attachments: attachment_refs.as_ptr().offset(outputs_start),
           color_attachment_count: outputs_len,
+          p_preserve_attachments: preserve_attachments.as_ptr(),
+          preserve_attachment_count: preserve_attachments.len() as u32,
           ..Default::default()
         });
       }
+
+      pass_index += 1;
     }
 
 
