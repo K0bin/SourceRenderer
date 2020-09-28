@@ -228,25 +228,23 @@ impl VkRenderGraphTemplate {
                        attachment_pass_indices: &HashMap<&str, AttachmentPassIndices>,
                        swapchain_format: Format,
                        swapchain_samples: SampleCount) -> VkPassTemplate {
-    let mut render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
-    let mut attachment_indices: HashMap<&str, u32> = HashMap::new();
+    let mut vk_render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
+    let mut vk_attachment_indices: HashMap<&str, u32> = HashMap::new();
     let mut used_attachments: Vec<String> = Vec::new();
     let mut pass_renders_to_backbuffer = false;
-    let mut pass_indices: Vec<u32> = Vec::new();
-    let mut global_pass_indices: Vec<u32> = Vec::new(); // pass indices in the original unordered render graph description
-    let mut attachment_last_user_pass_index: HashMap<&str, u32> = HashMap::new();
-    let mut attachment_producer_pass_index: HashMap<&str, u32> = HashMap::new();
+    let mut graph_pass_indices: Vec<u32> = Vec::new(); // pass indices in the original unordered render graph description
+    let mut attachment_producer_subpass_index: HashMap<&str, u32> = HashMap::new();
 
     // Prepare attachments
     let mut pass_index = 0;
     for merged_pass in passes {
-      let mut global_pass_index = 0;
+      let mut graph_pass_index = 0;
       match merged_pass {
         PassInfo::Graphics {
           outputs, ..
         } => {
           for output in outputs {
-            let index = render_pass_attachments.len() as u32;
+            let index = vk_render_pass_attachments.len() as u32;
             if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
               if output.load_action == LoadAction::Load {
                 panic!("cant load back buffer");
@@ -255,7 +253,7 @@ impl VkRenderGraphTemplate {
                 panic!("cant discard back buffer");
               }
               pass_renders_to_backbuffer = true;
-              render_pass_attachments.push(
+              vk_render_pass_attachments.push(
                 vk::AttachmentDescription {
                   format: format_to_vk(swapchain_format),
                   samples: samples_to_vk(swapchain_samples),
@@ -275,7 +273,7 @@ impl VkRenderGraphTemplate {
                 AttachmentInfo::Texture {
                   format: texture_attachment_format, samples: texture_attachment_samples, ..
                 } => {
-                  render_pass_attachments.push(
+                  vk_render_pass_attachments.push(
                     vk::AttachmentDescription {
                       format: format_to_vk(*texture_attachment_format),
                       samples: samples_to_vk(*texture_attachment_samples),
@@ -295,20 +293,16 @@ impl VkRenderGraphTemplate {
             }
 
             used_attachments.push(output.name.clone());
-            attachment_indices.insert(&output.name as &str, index);
+            vk_attachment_indices.insert(&output.name as &str, index);
 
-            global_pass_index = attachment_pass_indices.get(output.name.as_str()).unwrap().produced_in_pass_index;
-            attachment_producer_pass_index.insert(&output.name as &str, pass_index);
-            attachment_last_user_pass_index.entry(&output.name).and_modify(|attachment_pass_index| if pass_index > *attachment_pass_index {
-              *attachment_pass_index = pass_index;
-            }).or_insert(pass_index);
+            graph_pass_index = attachment_pass_indices.get(output.name.as_str()).unwrap().produced_in_pass_index;
+            attachment_producer_subpass_index.insert(&output.name as &str, pass_index);
           }
         },
         _ => unreachable!()
       }
 
-      global_pass_indices.push(global_pass_index);
-      pass_indices.push(pass_index);
+      graph_pass_indices.push(graph_pass_index);
       pass_index += 1;
     }
 
@@ -318,7 +312,7 @@ impl VkRenderGraphTemplate {
     let mut preserve_attachments: Vec<u32> = Vec::new();
     pass_index = 0;
     for merged_pass in passes {
-      let mut global_pass_index = 0;
+      let mut graph_pass_index = 0;
 
       match merged_pass {
         PassInfo::Graphics {
@@ -332,11 +326,11 @@ impl VkRenderGraphTemplate {
                 is_local, name
               } => {
                 attachment_refs.push(vk::AttachmentReference {
-                  attachment: (*attachment_indices.get(name as &str).expect(format!("Couldn't find index for {}", name).as_str())) as u32,
+                  attachment: (*vk_attachment_indices.get(name as &str).expect(format!("Couldn't find index for {}", name).as_str())) as u32,
                   layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                 });
                 dependencies.push(vk::SubpassDependency {
-                  src_subpass: *(attachment_producer_pass_index.get(name as &str).unwrap()),
+                  src_subpass: *(attachment_producer_subpass_index.get(name as &str).unwrap()),
                   dst_subpass: pass_index,
                   src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                   dst_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
@@ -352,17 +346,17 @@ impl VkRenderGraphTemplate {
           let outputs_start = attachment_refs.len() as isize;
           let outputs_len = outputs.len() as u32;
           for output in outputs {
-            global_pass_index = attachment_pass_indices.get(output.name.as_str()).unwrap().produced_in_pass_index;
+            graph_pass_index = attachment_pass_indices.get(output.name.as_str()).unwrap().produced_in_pass_index;
 
             attachment_refs.push(vk::AttachmentReference {
-              attachment: (*attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())),
+              attachment: (*vk_attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())),
               layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
             });
           }
 
           for attachment in &used_attachments {
-            if attachment_pass_indices.get(attachment.as_str()).unwrap().last_used_in_pass_index > global_pass_index {
-              preserve_attachments.push(*(attachment_indices.get(attachment.as_str()).expect(format!("Couldn't find index for {}", attachment).as_str())));
+            if attachment_pass_indices.get(attachment.as_str()).unwrap().last_used_in_pass_index > graph_pass_index {
+              preserve_attachments.push(*(vk_attachment_indices.get(attachment.as_str()).expect(format!("Couldn't find index for {}", attachment).as_str())));
             }
           }
 
@@ -385,8 +379,8 @@ impl VkRenderGraphTemplate {
 
 
     let render_pass_create_info = vk::RenderPassCreateInfo {
-      p_attachments: render_pass_attachments.as_ptr(),
-      attachment_count: render_pass_attachments.len() as u32,
+      p_attachments: vk_render_pass_attachments.as_ptr(),
+      attachment_count: vk_render_pass_attachments.len() as u32,
       p_subpasses: subpasses.as_ptr(),
       subpass_count: subpasses.len() as u32,
       p_dependencies: dependencies.as_ptr(),
@@ -399,7 +393,7 @@ impl VkRenderGraphTemplate {
       render_pass,
       renders_to_swapchain: pass_renders_to_backbuffer,
       attachments: used_attachments,
-      pass_indices: global_pass_indices
+      pass_indices: graph_pass_indices
     }
   }
 
