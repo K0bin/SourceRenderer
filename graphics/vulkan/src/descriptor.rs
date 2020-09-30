@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use ash::vk;
 use raw::RawVkDevice;
-use ash::version::DeviceV1_0;
+use ash::version::{DeviceV1_0, DeviceV1_1};
 use std::ops::Deref;
 use ash::prelude::VkResult;
 use sourcerenderer_core::graphics::{ShaderType, BindingFrequency};
@@ -15,10 +15,11 @@ use std::hash::{Hash, Hasher};
 use pipeline::VkPipelineLayout;
 use spirv_cross::spirv::Decoration::Index;
 use sourcerenderer_core::graphics::LogicOp::Set;
+use std::ffi::c_void;
+use VkAdapterExtensionSupport;
 
 // TODO: clean up descriptor management
 // TODO: determine descriptor and set counts
-// TODO: use templates
 
 bitflags! {
     pub struct DirtyDescriptorSets: u32 {
@@ -50,12 +51,14 @@ pub(crate) struct VkDescriptorSetBindingInfo {
 pub(crate) struct VkDescriptorSetLayout {
   pub device: Arc<RawVkDevice>,
   layout: vk::DescriptorSetLayout,
-  binding_infos: [Option<VkDescriptorSetBindingInfo>; 16]
+  binding_infos: [Option<VkDescriptorSetBindingInfo>; 16],
+  template: Option<vk::DescriptorUpdateTemplate>
 }
 
 impl VkDescriptorSetLayout {
   pub fn new(bindings: &[VkDescriptorSetBindingInfo], device: &Arc<RawVkDevice>) -> Self {
     let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
+    let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
     let mut binding_infos: [Option<VkDescriptorSetBindingInfo>; 16] = Default::default();
 
     for (index, binding) in bindings.iter().enumerate() {
@@ -68,6 +71,15 @@ impl VkDescriptorSetLayout {
         stage_flags: binding.shader_stage,
         p_immutable_samplers: std::ptr::null()
       });
+
+      vk_template_entries.push(vk::DescriptorUpdateTemplateEntry {
+        dst_binding: binding.index,
+        dst_array_element: 0,
+        descriptor_count: 1,
+        descriptor_type: binding.descriptor_type,
+        offset: index * std::mem::size_of::<VkDescriptorEntry>(),
+        stride: std::mem::size_of::<VkDescriptorEntry>()
+      });
     }
 
     let info = vk::DescriptorSetLayoutCreateInfo {
@@ -78,10 +90,33 @@ impl VkDescriptorSetLayout {
     let layout = unsafe {
       device.create_descriptor_set_layout(&info, None)
     }.unwrap();
+
+    let template_info = vk::DescriptorUpdateTemplateCreateInfo {
+      s_type: vk::StructureType::DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO,
+      p_next: std::ptr::null(),
+      flags: vk::DescriptorUpdateTemplateCreateFlags::empty(),
+      descriptor_update_entry_count: vk_template_entries.len() as u32,
+      p_descriptor_update_entries: vk_template_entries.as_ptr(),
+      template_type: vk::DescriptorUpdateTemplateType::DESCRIPTOR_SET,
+      descriptor_set_layout: layout,
+      // the following are irrelevant because we're not updating push descriptors
+      pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+      pipeline_layout: vk::PipelineLayout::null(),
+      set: 0
+    };
+    let template = if device.extensions.contains(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE) {
+      Some(unsafe {
+        device.create_descriptor_update_template(&template_info, None)
+      }.unwrap())
+    } else {
+      None
+    };
+
     Self {
       device: device.clone(),
       layout,
-      binding_infos
+      binding_infos,
+      template
     }
   }
 
@@ -93,6 +128,9 @@ impl VkDescriptorSetLayout {
 impl Drop for VkDescriptorSetLayout {
   fn drop(&mut self) {
     unsafe {
+      if let Some(template) = self.template {
+        self.device.destroy_descriptor_update_template(template, None);
+      }
       self.device.destroy_descriptor_set_layout(self.layout, None);
     }
   }
@@ -177,6 +215,21 @@ impl Drop for VkDescriptorPool {
   }
 }
 
+#[repr(C)]
+union VkDescriptorEntry {
+  image: vk::DescriptorImageInfo,
+  buffer: vk::DescriptorBufferInfo,
+  buffer_view: vk::BufferView
+}
+
+impl Default for VkDescriptorEntry {
+  fn default() -> Self {
+    Self {
+      buffer: vk::DescriptorBufferInfo::default()
+    }
+  }
+}
+
 pub(crate) struct VkDescriptorSet {
   descriptor_set: vk::DescriptorSet,
   pool: Arc<VkDescriptorPool>,
@@ -200,47 +253,81 @@ impl VkDescriptorSet {
       device.allocate_descriptor_sets(&set_create_info)
     }.unwrap().pop().unwrap();
 
-    let mut writes: Vec<vk::WriteDescriptorSet> = Vec::new();
-    for (binding, resource) in bindings.iter().enumerate() {
-      if layout.binding_infos[binding].is_none() {
-        continue;
+    match layout.template {
+      None => {
+        let mut writes: [vk::WriteDescriptorSet; 16] = Default::default();
+        let mut writes_len = 0usize;
+        for (binding, resource) in bindings.iter().enumerate() {
+          if layout.binding_infos[binding].is_none() {
+            continue;
+          }
+
+          let mut write = &mut writes[writes_len];
+          write.dst_set = set;
+          write.dst_binding = binding as u32;
+          write.dst_array_element = 0;
+          write.descriptor_count = 1;
+
+          match resource {
+            VkBoundResource::Buffer(buffer) => {
+              let buffer_info = vk::DescriptorBufferInfo {
+                buffer: *buffer.get_buffer().get_handle(),
+                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
+                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+              };
+              write.p_buffer_info = &buffer_info;
+              write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER };
+            },
+            VkBoundResource::Texture(texture) => {
+              let texture_info = vk::DescriptorImageInfo {
+                image_view: *texture.get_view_handle(),
+                sampler: *texture.get_sampler_handle().unwrap(),
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+              };
+              write.p_image_info = &texture_info;
+              write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
+            },
+            _ => {}
+          }
+          assert_eq!(layout.binding_infos[binding].as_ref().unwrap().descriptor_type, write.descriptor_type);
+          writes_len += 1;
+        }
+        unsafe {
+          device.update_descriptor_sets(&writes[0..writes_len], &[]);
+        }
+      },
+      Some(template) => {
+        let mut entries: [VkDescriptorEntry; 16] = Default::default();
+        let mut entries_len = 0usize;
+
+        for (binding, resource) in bindings.iter().enumerate() {
+          if layout.binding_infos[binding].is_none() {
+            continue;
+          }
+          let mut entry = &mut entries[entries_len];
+          match resource {
+            VkBoundResource::Buffer(buffer) => {
+              entry.buffer = vk::DescriptorBufferInfo {
+                buffer: *buffer.get_buffer().get_handle(),
+                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
+                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+              };
+            },
+            VkBoundResource::Texture(texture) => {
+              entry.image = vk::DescriptorImageInfo {
+                image_view: *texture.get_view_handle(),
+                sampler: *texture.get_sampler_handle().unwrap(),
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+              };
+            },
+            _ => {}
+          }
+          entries_len += 1;
+        }
+        unsafe {
+          device.update_descriptor_set_with_template(set, template, (&entries as *const VkDescriptorEntry) as *const c_void);
+        }
       }
-
-      let mut write = vk::WriteDescriptorSet {
-        dst_set: set,
-        dst_binding: binding as u32,
-        dst_array_element: 0,
-        descriptor_count: 1,
-        ..Default::default()
-      };
-
-      match resource {
-        VkBoundResource::Buffer(buffer) => {
-
-          let buffer_info = vk::DescriptorBufferInfo {
-            buffer: *buffer.get_buffer().get_handle(),
-            offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
-            range:  buffer.get_offset_and_length().1 as vk::DeviceSize
-          };
-          write.p_buffer_info = &buffer_info;
-          write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER };
-        },
-        VkBoundResource::Texture(texture) => {
-          let texture_info = vk::DescriptorImageInfo {
-            image_view: *texture.get_view_handle(),
-            sampler: *texture.get_sampler_handle().unwrap(),
-            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-          };
-          write.p_image_info = &texture_info;
-          write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
-        },
-        _ => {}
-      }
-      assert_eq!(layout.binding_infos[binding].as_ref().unwrap().descriptor_type, write.descriptor_type);
-      writes.push(write);
-    }
-    unsafe {
-      device.update_descriptor_sets(&writes, &[]);
     }
 
     Self {

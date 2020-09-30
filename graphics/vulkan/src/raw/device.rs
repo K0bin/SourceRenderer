@@ -10,27 +10,14 @@ use ash::prelude::VkResult;
 use std::ops::Deref;
 
 use crate::raw::RawVkInstance;
+use VkAdapterExtensionSupport;
 
 pub struct RawVkDevice {
   pub device: ash::Device,
   pub allocator: vk_mem::Allocator,
   pub physical_device: vk::PhysicalDevice,
-  pub instance: Arc<RawVkInstance>
-}
-
-impl RawVkDevice {
-  pub fn new(instance: &Arc<RawVkInstance>, physical_device: vk::PhysicalDevice, create_info: &vk::DeviceCreateInfo, allocator_create_info: &vk_mem::AllocatorCreateInfo) -> VkResult<Self> {
-    unsafe {
-      let device = instance.create_device(physical_device, create_info, None)?;
-      let allocator = vk_mem::Allocator::new(allocator_create_info).unwrap();
-      Ok(Self {
-        device,
-        allocator,
-        physical_device,
-        instance: instance.clone()
-      })
-    }
-  }
+  pub instance: Arc<RawVkInstance>,
+  pub extensions: VkAdapterExtensionSupport
 }
 
 impl Deref for RawVkDevice {

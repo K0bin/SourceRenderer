@@ -26,6 +26,7 @@ use ash::extensions::khr::Surface as KhrSurface;
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
 const GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME: &str = "VK_KHR_get_memory_requirements2";
 const DEDICATED_ALLOCATION_EXT_NAME: &str = "VK_KHR_dedicated_allocation";
+const DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME: &str = "VK_KHR_descriptor_update_template";
 
 
 bitflags! {
@@ -34,6 +35,7 @@ bitflags! {
     const SWAPCHAIN = 0b_1;
     const DEDICATED_ALLOCATION = 0b_10;
     const GET_MEMORY_PROPERTIES2 = 0b_100;
+    const DESCRIPTOR_UPDATE_TEMPLATE = 0b1000;
   }
 }
 
@@ -60,6 +62,7 @@ impl VkAdapter {
         SWAPCHAIN_EXT_NAME => { VkAdapterExtensionSupport::SWAPCHAIN },
         DEDICATED_ALLOCATION_EXT_NAME => { VkAdapterExtensionSupport::DEDICATED_ALLOCATION },
         GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME => { VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2 },
+        DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME => { VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -178,6 +181,10 @@ impl Adapter<VkBackend> for VkAdapter {
 
       if self.extensions.intersects(VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2) {
         extension_names.push(GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME);
+      }
+
+      if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE) {
+        extension_names.push(DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME);
       }
 
       let extension_names_c: Vec<CString> = extension_names
