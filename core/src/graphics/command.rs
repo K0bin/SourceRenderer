@@ -48,6 +48,6 @@ pub trait CommandBuffer<B: Backend> {
 pub enum BindingFrequency {
   PerDraw = 0,
   PerMaterial = 1,
-  PerModel = 2,
+  PerFrame = 2,
   Rarely = 3
 }

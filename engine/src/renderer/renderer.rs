@@ -208,7 +208,7 @@ impl<P: Platform> RendererInternal<P> {
             extent: Vec2UI { x: 9999, y: 9999 },
           }]);
 
-          command_buffer.bind_buffer(BindingFrequency::PerModel, 0, &camera_constant_buffer);
+          command_buffer.bind_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
           for renderable in state.elements {
             let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.transform, BufferUsage::CONSTANT);
             command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);

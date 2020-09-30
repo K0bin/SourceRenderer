@@ -17,20 +17,15 @@ use spirv_cross::spirv::Decoration::Index;
 use sourcerenderer_core::graphics::LogicOp::Set;
 
 // TODO: clean up descriptor management
-
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub(crate) enum VkDescriptorType {
-  UniformBuffer,
-  Sampler,
-  Texture,
-  CombinedTextureSampler
-}
+// TODO: remove old permanent entries
+// TODO: determine descriptor and set counts
+// TODO: use templates
 
 bitflags! {
     pub struct DirtyDescriptorSets: u32 {
         const PER_DRAW = 0b0001;
         const PER_MATERIAL = 0b0010;
-        const PER_MODEL = 0b0100;
+        const PER_FRAME = 0b0100;
         const RARELY = 0b1000;
     }
 }
@@ -40,7 +35,7 @@ impl From<BindingFrequency> for DirtyDescriptorSets {
     match value {
       BindingFrequency::PerDraw => DirtyDescriptorSets::PER_DRAW,
       BindingFrequency::PerMaterial => DirtyDescriptorSets::PER_MATERIAL,
-      BindingFrequency::PerModel => DirtyDescriptorSets::PER_MODEL,
+      BindingFrequency::PerFrame => DirtyDescriptorSets::PER_FRAME,
       BindingFrequency::Rarely => DirtyDescriptorSets::RARELY
     }
   }
@@ -55,19 +50,26 @@ pub(crate) struct VkDescriptorSetBindingInfo {
 
 pub(crate) struct VkDescriptorSetLayout {
   pub device: Arc<RawVkDevice>,
-  layout: vk::DescriptorSetLayout
+  layout: vk::DescriptorSetLayout,
+  binding_infos: [Option<VkDescriptorSetBindingInfo>; 16]
 }
 
 impl VkDescriptorSetLayout {
   pub fn new(bindings: &[VkDescriptorSetBindingInfo], device: &Arc<RawVkDevice>) -> Self {
-    let vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = bindings.iter()
-      .map(|binding| vk::DescriptorSetLayoutBinding {
+    let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
+    let mut binding_infos: [Option<VkDescriptorSetBindingInfo>; 16] = [None; 16];
+
+    for (index, binding) in bindings.iter().enumerate() {
+      binding_infos[index] = Some(binding.clone());
+
+      vk_bindings.push(vk::DescriptorSetLayoutBinding {
         binding: binding.index,
         descriptor_count: 1,
         descriptor_type: binding.descriptor_type,
         stage_flags: binding.shader_stage,
         p_immutable_samplers: std::ptr::null()
-      }).collect();
+      });
+    }
 
     let info = vk::DescriptorSetLayoutCreateInfo {
       p_bindings: vk_bindings.as_ptr(),
@@ -79,7 +81,8 @@ impl VkDescriptorSetLayout {
     }.unwrap();
     Self {
       device: device.clone(),
-      layout
+      layout,
+      binding_infos
     }
   }
 
@@ -198,7 +201,12 @@ impl VkDescriptorSet {
       device.allocate_descriptor_sets(&set_create_info)
     }.unwrap().pop().unwrap();
 
+    let mut writes: Vec<vk::WriteDescriptorSet> = Vec::new();
     for (binding, resource) in bindings.iter().enumerate() {
+      if layout.binding_infos[binding].is_none() {
+        continue;
+      }
+
       let mut write = vk::WriteDescriptorSet {
         dst_set: set,
         dst_binding: binding as u32,
@@ -209,6 +217,7 @@ impl VkDescriptorSet {
 
       match resource {
         VkBoundResource::Buffer(buffer) => {
+
           let buffer_info = vk::DescriptorBufferInfo {
             buffer: *buffer.get_buffer().get_handle(),
             offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
@@ -216,9 +225,6 @@ impl VkDescriptorSet {
           };
           write.p_buffer_info = &buffer_info;
           write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER };
-          unsafe {
-            device.update_descriptor_sets(&[write], &[]);
-          }
         },
         VkBoundResource::Texture(texture) => {
           let texture_info = vk::DescriptorImageInfo {
@@ -228,12 +234,14 @@ impl VkDescriptorSet {
           };
           write.p_image_info = &texture_info;
           write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
-          unsafe {
-            device.update_descriptor_sets(&[write], &[]);
-          }
         },
         _ => {}
       }
+      assert_eq!(layout.binding_infos[binding].unwrap().descriptor_type, write.descriptor_type);
+      writes.push(write);
+    }
+    unsafe {
+      device.update_descriptor_sets(&writes, &[]);
     }
 
     Self {
@@ -389,12 +397,8 @@ impl VkBindingManager {
       if frequency == BindingFrequency::PerDraw {
         bindings.iter().enumerate().for_each(|(index, binding)| {
           if let VkBoundResource::Buffer(buffer) = binding {
-            if let VkBoundResource::Buffer(set_buffer) = &set.bindings[index] {
-              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
-              set_binding.dynamic_offset_count += 1;
-            } else {
-              unreachable!("trying to use incompatible descriptor set with dynamic offsets");
-            }
+            set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+            set_binding.dynamic_offset_count += 1;
           }
         })
       }
@@ -407,7 +411,7 @@ impl VkBindingManager {
     let mut set_bindings: [Option<VkDescriptorSetBinding>; 4] = Default::default();
 
     set_bindings[BindingFrequency::PerDraw as usize] = self.finish_set(pipeline_layout, BindingFrequency::PerDraw);
-    set_bindings[BindingFrequency::PerModel as usize] = self.finish_set(pipeline_layout, BindingFrequency::PerModel);
+    set_bindings[BindingFrequency::PerFrame as usize] = self.finish_set(pipeline_layout, BindingFrequency::PerFrame);
     set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(pipeline_layout, BindingFrequency::PerMaterial);
     set_bindings[BindingFrequency::Rarely as usize] = self.finish_set(pipeline_layout, BindingFrequency::Rarely);
     set_bindings
