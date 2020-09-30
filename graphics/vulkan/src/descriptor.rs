@@ -17,7 +17,6 @@ use spirv_cross::spirv::Decoration::Index;
 use sourcerenderer_core::graphics::LogicOp::Set;
 
 // TODO: clean up descriptor management
-// TODO: remove old permanent entries
 // TODO: determine descriptor and set counts
 // TODO: use templates
 
@@ -57,7 +56,7 @@ pub(crate) struct VkDescriptorSetLayout {
 impl VkDescriptorSetLayout {
   pub fn new(bindings: &[VkDescriptorSetBindingInfo], device: &Arc<RawVkDevice>) -> Self {
     let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
-    let mut binding_infos: [Option<VkDescriptorSetBindingInfo>; 16] = [None; 16];
+    let mut binding_infos: [Option<VkDescriptorSetBindingInfo>; 16] = Default::default();
 
     for (index, binding) in bindings.iter().enumerate() {
       binding_infos[index] = Some(binding.clone());
@@ -164,7 +163,7 @@ impl VkDescriptorPool {
     }
   }
 
-  pub fn new_set(self: &Arc<Self>, layout: &Arc<VkDescriptorSetLayout>, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 8]) -> VkDescriptorSet {
+  pub fn new_set(self: &Arc<Self>, layout: &Arc<VkDescriptorSetLayout>, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 16]) -> VkDescriptorSet {
     VkDescriptorSet::new(self, &self.device, layout, self.is_transient, dynamic_buffer_offsets, bindings)
   }
 }
@@ -184,12 +183,12 @@ pub(crate) struct VkDescriptorSet {
   layout: Arc<VkDescriptorSetLayout>,
   is_transient: bool,
   is_using_dynamic_buffer_offsets: bool,
-  bindings: [VkBoundResource; 8],
+  bindings: [VkBoundResource; 16],
   device: Arc<RawVkDevice>
 }
 
 impl VkDescriptorSet {
-  fn new(pool: &Arc<VkDescriptorPool>, device: &Arc<RawVkDevice>, layout: &Arc<VkDescriptorSetLayout>, is_transient: bool, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 8]) -> Self {
+  fn new(pool: &Arc<VkDescriptorPool>, device: &Arc<RawVkDevice>, layout: &Arc<VkDescriptorSetLayout>, is_transient: bool, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 16]) -> Self {
     let pool_guard = pool.get_handle();
     let set_create_info = vk::DescriptorSetAllocateInfo {
       descriptor_pool: *pool_guard,
@@ -237,7 +236,7 @@ impl VkDescriptorSet {
         },
         _ => {}
       }
-      assert_eq!(layout.binding_infos[binding].unwrap().descriptor_type, write.descriptor_type);
+      assert_eq!(layout.binding_infos[binding].as_ref().unwrap().descriptor_type, write.descriptor_type);
       writes.push(write);
     }
     unsafe {
@@ -296,15 +295,21 @@ pub(crate) struct VkDescriptorSetBinding {
   pub(crate) dynamic_offsets: [u64; 8]
 }
 
+struct VkDescriptorSetCacheEntry {
+  set: Arc<VkDescriptorSet>,
+  last_used_frame: u64
+}
+
 pub(crate) struct VkBindingManager {
   transient_pool: Arc<VkDescriptorPool>,
   permanent_pool: Arc<VkDescriptorPool>,
   device: Arc<RawVkDevice>,
-  current_sets: HashMap<BindingFrequency, VkDescriptorSet>,
+  current_sets: [Option<VkDescriptorSet>; 4],
   dirty: DirtyDescriptorSets,
-  bindings: HashMap<BindingFrequency, [VkBoundResource; 8]>,
-  transient_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<Arc<VkDescriptorSet>>>,
-  permanent_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<Arc<VkDescriptorSet>>>
+  bindings: [[VkBoundResource; 16]; 4],
+  transient_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>,
+  permanent_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>,
+  last_cleanup_frame: u64
 }
 
 impl VkBindingManager {
@@ -316,45 +321,44 @@ impl VkBindingManager {
       transient_pool,
       permanent_pool,
       device: device.clone(),
-      current_sets: HashMap::new(),
+      current_sets: Default::default(),
       dirty: DirtyDescriptorSets::empty(),
-      bindings: HashMap::new(),
+      bindings: Default::default(),
       transient_cache: HashMap::new(),
-      permanent_cache: HashMap::new()
+      permanent_cache: HashMap::new(),
+      last_cleanup_frame: 0
     }
   }
 
   pub(crate) fn reset(&mut self) {
     self.dirty = DirtyDescriptorSets::empty();
-    self.bindings.clear();
+    self.bindings = Default::default();
     self.transient_cache.clear();
     self.transient_pool.reset();
     self.permanent_pool.reset();
   }
 
   pub(crate) fn bind(&mut self, frequency: BindingFrequency, slot: u32, binding: VkBoundResource) {
-    let bindings_table = self.bindings.entry(frequency).or_insert_with(move || {
-      Default::default()
-    });
-    let existing_binding = bindings_table.get(slot as usize);
-    if existing_binding.is_some() && existing_binding.unwrap() != &binding {
+    let mut bindings_table = &mut self.bindings[frequency as usize];
+    let existing_binding = &bindings_table[slot as usize];
+    if existing_binding != &binding {
       self.dirty.insert(DirtyDescriptorSets::from(frequency));
       bindings_table[slot as usize] = binding;
     }
   }
 
-  fn find_compatible_set(&self, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResource; 8], use_permanent_cache: bool, use_dynamic_offsets: bool) -> Option<Arc<VkDescriptorSet>> {
-    let cache = if use_permanent_cache { &self.permanent_cache } else { &self.transient_cache };
+  fn find_compatible_set(&mut self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResource; 16], use_permanent_cache: bool, use_dynamic_offsets: bool) -> Option<Arc<VkDescriptorSet>> {
+    let cache = if use_permanent_cache { &mut self.permanent_cache } else { &mut self.transient_cache };
 
-    cache
-        .get(layout)
+    let mut entry_opt = cache
+        .get_mut(layout)
         .and_then(|sets| {
           sets
-              .iter()
-              .find(|set|
-                  set.is_using_dynamic_buffer_offsets == use_dynamic_offsets
-                  && set.bindings.iter().enumerate().all(|(index, binding)|
-                      if !set.is_using_dynamic_buffer_offsets {
+              .iter_mut()
+              .find(|entry|
+                entry.set.is_using_dynamic_buffer_offsets == use_dynamic_offsets
+                  && entry.set.bindings.iter().enumerate().all(|(index, binding)|
+                      if !entry.set.is_using_dynamic_buffer_offsets {
                         binding == &bindings[index]
                       } else {
                         if let (VkBoundResource::Buffer(entry_buffer), VkBoundResource::Buffer(buffer)) = (binding, &bindings[index]) {
@@ -366,54 +370,77 @@ impl VkBindingManager {
                       }
                   )
               )
-              .map(|set| set.clone())
-        })
-  }
-
-  fn finish_set(&mut self, pipeline_layout: &VkPipelineLayout, frequency: BindingFrequency) -> Option<VkDescriptorSetBinding> {
-    let layout_option = pipeline_layout.get_descriptor_set_layout(frequency as u32);
-    let bindings_option = self.bindings.get(&frequency);
-    if self.dirty.contains(DirtyDescriptorSets::from(frequency)) && layout_option.is_some() {
-      let layout = layout_option.unwrap();
-      let bindings = bindings_option.unwrap();
-      let cached_set = self.find_compatible_set(layout, bindings, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
-
-      let mut is_new = false;
-      let set = cached_set.unwrap_or_else(|| {
-        let pool = if frequency == BindingFrequency::Rarely { &self.permanent_pool } else { &self.transient_pool };
-        let new_set = Arc::new(VkDescriptorSet::new(pool, &self.device, layout, frequency != BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw, bindings));
-        is_new = true;
-        new_set
-      });
-      if is_new {
-        let mut cache = if frequency == BindingFrequency::Rarely { &mut self.permanent_cache } else { &mut self.transient_cache };
-        cache.entry(layout.clone()).or_default().push(set.clone());
-      }
-      let mut set_binding = VkDescriptorSetBinding {
-        set: set.clone(),
-        dynamic_offsets: Default::default(),
-        dynamic_offset_count: 0
-      };
-      if frequency == BindingFrequency::PerDraw {
-        bindings.iter().enumerate().for_each(|(index, binding)| {
-          if let VkBoundResource::Buffer(buffer) = binding {
-            set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
-            set_binding.dynamic_offset_count += 1;
-          }
-        })
-      }
-      return Some(set_binding);
+        });
+    if let Some(entry) = &mut entry_opt {
+      entry.last_used_frame = frame;
     }
-    None
+    entry_opt.map(|entry| entry.set.clone())
   }
 
-  pub fn finish(&mut self, pipeline_layout: &VkPipelineLayout) -> [Option<VkDescriptorSetBinding>; 4] {
-    let mut set_bindings: [Option<VkDescriptorSetBinding>; 4] = Default::default();
+  fn finish_set(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout, frequency: BindingFrequency) -> Option<VkDescriptorSetBinding> {
+    let layout_option = pipeline_layout.get_descriptor_set_layout(frequency as u32);
+    if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) && layout_option.is_some() {
+      return None;
+    }
 
-    set_bindings[BindingFrequency::PerDraw as usize] = self.finish_set(pipeline_layout, BindingFrequency::PerDraw);
-    set_bindings[BindingFrequency::PerFrame as usize] = self.finish_set(pipeline_layout, BindingFrequency::PerFrame);
-    set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(pipeline_layout, BindingFrequency::PerMaterial);
-    set_bindings[BindingFrequency::Rarely as usize] = self.finish_set(pipeline_layout, BindingFrequency::Rarely);
+    let bindings_option = self.bindings.get(frequency as usize);
+    let layout = layout_option.unwrap();
+    let bindings = bindings_option.unwrap().clone();
+    let cached_set = self.find_compatible_set(frame, layout, &bindings, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
+
+    let mut is_new = false;
+    let set = cached_set.unwrap_or_else(|| {
+      let pool = if frequency == BindingFrequency::Rarely { &self.permanent_pool } else { &self.transient_pool };
+      let new_set = Arc::new(VkDescriptorSet::new(pool, &self.device, layout, frequency != BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw, &bindings));
+      is_new = true;
+      new_set
+    });
+    if is_new {
+      let mut cache = if frequency == BindingFrequency::Rarely { &mut self.permanent_cache } else { &mut self.transient_cache };
+      cache.entry(layout.clone()).or_default().push(VkDescriptorSetCacheEntry {
+        set: set.clone(),
+        last_used_frame: frame
+      });
+    }
+    let mut set_binding = VkDescriptorSetBinding {
+      set: set.clone(),
+      dynamic_offsets: Default::default(),
+      dynamic_offset_count: 0
+    };
+    if frequency == BindingFrequency::PerDraw {
+      bindings.iter().enumerate().for_each(|(index, binding)| {
+        if let VkBoundResource::Buffer(buffer) = binding {
+          set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+          set_binding.dynamic_offset_count += 1;
+        }
+      })
+    }
+    return Some(set_binding);
+  }
+
+  pub fn finish(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout) -> [Option<VkDescriptorSetBinding>; 4] {
+    self.clean(frame);
+
+    let mut set_bindings: [Option<VkDescriptorSetBinding>; 4] = Default::default();
+    set_bindings[BindingFrequency::PerDraw as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerDraw);
+    set_bindings[BindingFrequency::PerFrame as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerFrame);
+    set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerMaterial);
+    set_bindings[BindingFrequency::Rarely as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::Rarely);
     set_bindings
+  }
+
+  const FRAMES_BETWEEN_CLEANUP: u64 = 5;
+  const MAX_FRAMES_SET_UNUSED: u64 = 5;
+  fn clean(&mut self, frame: u64) {
+    if frame - self.last_cleanup_frame >= Self::FRAMES_BETWEEN_CLEANUP {
+      return;
+    }
+
+    for (_, entries) in &mut self.permanent_cache {
+      entries.retain(|entry| {
+        frame - entry.last_used_frame >= Self::MAX_FRAMES_SET_UNUSED
+      });
+    }
+    self.last_cleanup_frame = frame;
   }
 }

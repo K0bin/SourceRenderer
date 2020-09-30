@@ -11,7 +11,7 @@ use crossbeam_queue::SegQueue;
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::VkCommandPool;
-use sourcerenderer_core::graphics::{Device, Resettable};
+use sourcerenderer_core::graphics::{Device, Resettable, CommandBufferType};
 use std::cell::{RefCell, RefMut};
 use ::{VkPipeline, VkQueue};
 use ash::version::DeviceV1_0;
@@ -25,7 +25,7 @@ use transfer::VkTransfer;
 use ::{VkTexture, VkRenderPass, VkFrameBuffer};
 use texture::VkTextureView;
 use std::marker::PhantomData;
-use VkFenceInner;
+use ::{VkFenceInner, VkCommandBufferRecorder};
 
 pub struct VkShared {
   pipelines: RwLock<HashMap<u64, Arc<VkPipeline>>>,
@@ -66,7 +66,8 @@ pub struct VkFrameContext {
   device: Arc<RawVkDevice>,
   command_pool: VkCommandPool,
   life_time_trackers: VkLifetimeTrackers,
-  buffer_allocator: Arc<BufferAllocator>
+  buffer_allocator: Arc<BufferAllocator>,
+  frame: u64
 }
 
 pub struct VkFrame {
@@ -110,7 +111,7 @@ impl VkThreadContextManager {
 
   pub fn get_thread_context(&self) -> RefMut<VkThreadContext> {
     let mut context = self.threads.get_or(|| RefCell::new(VkThreadContext::new(&self.device, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, self.max_prepared_frames))).borrow_mut();
-    context.mark_used(self.frame_counter.load(Ordering::SeqCst));
+    context.set_frame(self.frame_counter.load(Ordering::SeqCst));
     context
   }
 
@@ -151,7 +152,7 @@ impl VkThreadContext {
     };
   }
 
-  fn mark_used(&mut self, frame: u64) {
+  fn set_frame(&mut self, frame: u64) {
     debug_assert!(frame >= self.frame_counter);
     if frame > self.frame_counter && frame >= self.frames.len() as u64 {
       let mut frame_ref = self.frames[frame as usize % self.frames.len()].borrow_mut();
@@ -161,7 +162,9 @@ impl VkThreadContext {
   }
 
   pub fn get_frame_context(&self) -> RefMut<VkFrameContext> {
-    self.frames[self.frame_counter as usize % self.frames.len()].borrow_mut()
+    let mut frame_context = self.frames[self.frame_counter as usize % self.frames.len()].borrow_mut();
+    frame_context.set_frame(self.frame_counter);
+    frame_context
   }
 }
 
@@ -171,12 +174,18 @@ impl VkFrameContext {
       device: device.clone(),
       command_pool: graphics_queue.create_command_pool(buffer_allocator),
       life_time_trackers: VkLifetimeTrackers::new(),
-      buffer_allocator: buffer_allocator.clone()
+      buffer_allocator: buffer_allocator.clone(),
+      frame: 0
     }
   }
 
-  pub fn get_command_pool(&mut self) -> &mut VkCommandPool {
-    &mut self.command_pool
+  fn set_frame(&mut self, frame: u64) {
+    debug_assert!(frame >= self.frame);
+    self.frame = frame;
+  }
+
+  pub fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
+    self.command_pool.get_command_buffer(self.frame, command_buffer_type)
   }
 
   pub fn track_semaphore(&mut self, semaphore: &Arc<Recyclable<VkSemaphore>>) {

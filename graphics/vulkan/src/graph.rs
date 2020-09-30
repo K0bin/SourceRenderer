@@ -230,7 +230,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
         Box::new(move || {
           let thread_context = c_context.get_thread_context();
           let mut frame_context = thread_context.get_frame_context();
-          let mut cmd_buffer = frame_context.get_command_pool().get_command_buffer(CommandBufferType::PRIMARY);
+          let mut cmd_buffer = frame_context.get_command_buffer(CommandBufferType::PRIMARY);
 
           match &c_pass as &VkPass {
             VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain } => {

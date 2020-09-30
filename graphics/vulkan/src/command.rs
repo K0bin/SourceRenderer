@@ -70,7 +70,7 @@ impl VkCommandPool {
     };
   }
 
-  pub fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
+  pub fn get_command_buffer(&mut self, frame: u64, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
     let buffers = if command_buffer_type == CommandBufferType::PRIMARY {
       &mut self.primary_buffers
     } else {
@@ -78,7 +78,7 @@ impl VkCommandPool {
     };
 
     let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, self.queue_family_index, &self.shared, &self.buffer_allocator)));
-    buffer.begin();
+    buffer.begin(frame);
     return VkCommandBufferRecorder::new(buffer, self.sender.clone());
   }
 }
@@ -122,7 +122,8 @@ pub struct VkCommandBuffer {
   trackers: VkLifetimeTrackers,
   queue_family_index: u32,
   descriptor_manager: VkBindingManager,
-  buffer_allocator: Arc<BufferAllocator>
+  buffer_allocator: Arc<BufferAllocator>,
+  frame: u64
 }
 
 impl VkCommandBuffer {
@@ -147,7 +148,8 @@ impl VkCommandBuffer {
       trackers: VkLifetimeTrackers::new(),
       queue_family_index,
       descriptor_manager: VkBindingManager::new(device),
-      buffer_allocator: buffer_allocator.clone()
+      buffer_allocator: buffer_allocator.clone(),
+      frame: 0
     };
   }
 
@@ -165,9 +167,12 @@ impl VkCommandBuffer {
     self.descriptor_manager.reset();
   }
 
-  pub(crate) fn begin(&mut self) {
+  pub(crate) fn begin(&mut self, frame: u64) {
     assert_eq!(self.state, VkCommandBufferState::Ready);
+    debug_assert!(frame >= self.frame );
+
     self.state = VkCommandBufferState::Recording;
+    self.frame = frame;
     unsafe {
       let begin_info = vk::CommandBufferBeginInfo {
         ..Default::default()
@@ -433,7 +438,7 @@ impl VkCommandBuffer {
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
     let pipeline_layout = pipeline.get_layout();
 
-    let finished_sets = self.descriptor_manager.finish(pipeline_layout);
+    let finished_sets = self.descriptor_manager.finish(self.frame, pipeline_layout);
     for (index, set_option) in finished_sets.iter().enumerate() {
       match set_option {
         None => {
