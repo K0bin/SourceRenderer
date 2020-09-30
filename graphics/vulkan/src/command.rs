@@ -484,7 +484,7 @@ impl Drop for VkCommandBuffer {
   }
 }
 
-///Small wrapper around VkCommandBuffer to
+// Small wrapper around VkCommandBuffer to
 // disable Send + Sync because sending VkCommandBuffers across threads
 // is only safe after recording is done
 pub struct VkCommandBufferRecorder {
@@ -596,7 +596,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 }
 
 pub struct VkCommandBufferSubmission {
-  item: MaybeUninit<Box<VkCommandBuffer>>,
+  item: Option<Box<VkCommandBuffer>>,
   sender: Sender<Box<VkCommandBuffer>>
 }
 
@@ -605,29 +605,29 @@ unsafe impl Send for VkCommandBufferSubmission {}
 impl VkCommandBufferSubmission {
   fn new(item: Box<VkCommandBuffer>, sender: Sender<Box<VkCommandBuffer>>) -> Self {
     Self {
-      item: MaybeUninit::new(item),
+      item: Some(item),
       sender
     }
   }
 
   pub(crate) fn mark_submitted(&mut self) {
     unsafe {
-      assert_eq!((*(self.item.as_mut_ptr())).state, VkCommandBufferState::Finished);
-      (*(self.item.as_mut_ptr())).state = VkCommandBufferState::Submitted;
+      let mut item = self.item.as_mut().unwrap();
+      assert_eq!(item.state, VkCommandBufferState::Finished);
+      item.state = VkCommandBufferState::Submitted;
     }
   }
 
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
     unsafe {
-      (*(self.item.as_ptr())).get_handle()
+      &self.item.as_ref().unwrap().get_handle()
     }
   }
 }
 
 impl Drop for VkCommandBufferSubmission {
   fn drop(&mut self) {
-    let maybe_item = std::mem::replace(&mut self.item, MaybeUninit::uninit());
-    let item = unsafe { maybe_item.assume_init() };
+    let item = std::mem::replace(&mut self.item, None).unwrap();
     self.sender.send(item);
   }
 }
