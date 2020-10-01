@@ -4,6 +4,7 @@ extern crate crossbeam_channel;
 extern crate crossbeam_queue;
 extern crate crossbeam_deque;
 extern crate crossbeam_utils;
+extern crate num_cpus;
 
 pub mod graphics;
 pub mod platform;

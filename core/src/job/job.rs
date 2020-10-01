@@ -179,7 +179,7 @@ impl JobScheduler {
   }
 
   pub fn new() -> Self {
-    let thread_count = 1;
+    let thread_count = num_cpus::get();
     let global = Injector::new();
     let mut workers = Vec::new();
     let mut stealers = Vec::new();
