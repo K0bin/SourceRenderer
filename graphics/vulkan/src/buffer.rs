@@ -125,12 +125,15 @@ impl Eq for VkBuffer {}
 
 impl Buffer for VkBufferSlice {
   fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
-    where T: Sized {
+    where T: 'static + Send + Sync + Sized + Clone {
     MappedBuffer::new(self)
   }
 
   unsafe fn map_unsafe(&self) -> Option<*mut u8> {
-    if !self.buffer.is_coherent && (self.buffer.memory_usage == MemoryUsage::CpuToGpu || self.buffer.memory_usage == MemoryUsage::CpuOnly) {
+    if !self.buffer.is_coherent &&
+      (self.buffer.memory_usage == MemoryUsage::CpuToGpu
+        || self.buffer.memory_usage == MemoryUsage::CpuOnly
+        || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let mut allocator = &self.buffer.device.allocator;
       allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
@@ -138,7 +141,10 @@ impl Buffer for VkBufferSlice {
   }
 
   unsafe fn unmap_unsafe(&self) {
-    if !self.buffer.is_coherent && (self.buffer.memory_usage == MemoryUsage::CpuToGpu || self.buffer.memory_usage == MemoryUsage::CpuOnly) {
+    if !self.buffer.is_coherent &&
+      (self.buffer.memory_usage == MemoryUsage::CpuToGpu
+        || self.buffer.memory_usage == MemoryUsage::CpuOnly
+        || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let mut allocator = &self.buffer.device.allocator;
       allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }

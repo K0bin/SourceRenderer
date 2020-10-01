@@ -145,9 +145,9 @@ impl Device<VkBackend> for VkDevice {
       std::slice::from_raw_parts(
         data.as_ptr() as *const u8,
         std::mem::size_of_val(data))
-    },
-                         memory_usage,
-                         usage
+      },
+      memory_usage,
+      usage
     )
   }
 

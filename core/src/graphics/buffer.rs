@@ -17,7 +17,7 @@ bitflags! {
 
 pub trait Buffer {
   fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
-    where Self: Sized, T: Sized;
+    where Self: Sized, T: 'static + Send + Sync + Sized + Clone;
   unsafe fn map_unsafe(&self) -> Option<*mut u8>;
   unsafe fn unmap_unsafe(&self);
 
@@ -25,14 +25,14 @@ pub trait Buffer {
 }
 
 pub struct MappedBuffer<'a, B, T>
-  where B: Buffer {
+  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
   buffer: &'a B,
   data: &'a mut T,
   phantom: PhantomData<*const u8>
 }
 
 impl<'a, B, T> MappedBuffer<'a, B, T>
-  where B: Buffer {
+  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
   pub fn new(buffer: &'a B) -> Option<Self> {
     unsafe { buffer.map_unsafe() }.map(move |ptr|
       Self {
@@ -43,13 +43,13 @@ impl<'a, B, T> MappedBuffer<'a, B, T>
     )
   }
 
-  pub fn get_data(&mut self) -> &mut T {
+  pub fn data(&mut self) -> &mut T {
     return self.data;
   }
 }
 
 impl<B, T> Drop for MappedBuffer<'_, B, T>
-  where B: Buffer {
+  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
   fn drop(&mut self) {
     unsafe { self.buffer.unmap_unsafe(); }
   }
