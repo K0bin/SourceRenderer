@@ -77,7 +77,7 @@ impl VkDescriptorSetLayout {
         dst_array_element: 0,
         descriptor_count: 1,
         descriptor_type: binding.descriptor_type,
-        offset: index * std::mem::size_of::<VkDescriptorEntry>(),
+        offset: binding.index as usize * std::mem::size_of::<VkDescriptorEntry>(),
         stride: std::mem::size_of::<VkDescriptorEntry>()
       });
     }
