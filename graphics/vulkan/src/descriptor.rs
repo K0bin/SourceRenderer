@@ -104,7 +104,8 @@ impl VkDescriptorSetLayout {
       pipeline_layout: vk::PipelineLayout::null(),
       set: 0
     };
-    let template = if device.extensions.contains(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE) {
+    let template = if !vk_template_entries.is_empty() &&
+      device.extensions.contains(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE) {
       Some(unsafe {
         device.create_descriptor_update_template(&template_info, None)
       }.unwrap())
