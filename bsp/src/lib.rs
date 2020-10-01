@@ -11,6 +11,8 @@ extern crate num_derive;
 #[macro_use]
 extern crate bitflags;
 
+extern crate nalgebra;
+
 mod lump;
 mod lump_data;
 mod map_header;
