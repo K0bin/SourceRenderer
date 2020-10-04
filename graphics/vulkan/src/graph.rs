@@ -96,7 +96,7 @@ impl VkRenderGraph {
             mip_levels: *levels,
             array_length: 1,
             samples: *samples
-          }));
+          }, Some(name.as_str())));
 
           let view = Arc::new(VkTextureView::new_render_target_view(device, &texture));
           attachments.insert(name.clone(), VkAttachment {

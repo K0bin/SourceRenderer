@@ -36,6 +36,7 @@ use std::cmp::{max, min};
 use descriptor::{VkBindingManager, VkBoundResource};
 use texture::VkTextureView;
 use transfer::VkTransferCommandBuffer;
+use std::ffi::{CStr, CString};
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,
@@ -480,6 +481,23 @@ impl VkCommandBuffer {
     }
     Arc::new(slice)
   }
+
+  pub(crate) fn begin_label(&self, label: &str) {
+    let label_cstring = CString::new(label).unwrap();
+    unsafe {
+      self.device.instance.debug_utils_loader.cmd_begin_debug_utils_label(self.buffer, &vk::DebugUtilsLabelEXT {
+        p_label_name: label_cstring.as_ptr(),
+        color: [0.0f32; 4],
+        ..Default::default()
+      });
+    }
+  }
+
+  pub(crate) fn end_label(&self) {
+    unsafe {
+      self.device.instance.debug_utils_loader.cmd_end_debug_utils_label(self.buffer);
+    }
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -572,6 +590,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     self.item.as_mut().unwrap().init_texture_mip_level(src_buffer, texture, mip_level, array_layer);
   }
 
+  #[inline(always)]
   fn upload_dynamic_data<T>(&mut self, data: T, usage: BufferUsage) -> Arc<VkBufferSlice>
     where T: 'static + Send + Sync + Sized + Clone {
     self.item.as_mut().unwrap().upload_dynamic_data(data, usage)
@@ -592,6 +611,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     self.item.as_mut().unwrap().bind_texture_view(frequency, binding, texture);
   }
 
+  #[inline(always)]
   fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
     self.item.as_mut().unwrap().bind_buffer(frequency, binding, buffer);
   }
@@ -599,6 +619,16 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn finish_binding(&mut self) {
     self.item.as_mut().unwrap().finish_binding();
+  }
+
+  #[inline(always)]
+  fn begin_label(&mut self, label: &str) {
+    self.item.as_mut().unwrap().begin_label(label);
+  }
+
+  #[inline(always)]
+  fn end_label(&mut self) {
+    self.item.as_mut().unwrap().end_label();
   }
 }
 

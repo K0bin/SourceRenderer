@@ -32,7 +32,7 @@ use crate::VkBackend;
 use std::hash::{Hasher, Hash};
 use VkRenderPass;
 use spirv_cross::spirv::Decoration;
-use ash::vk::ShaderStageFlags;
+use ash::vk::{ShaderStageFlags, Handle};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
@@ -68,7 +68,7 @@ impl Hash for VkShader {
 }
 
 impl VkShader {
-  pub fn new(device: &Arc<RawVkDevice>, shader_type: ShaderType, bytecode: &[u8]) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Self {
     let create_info = vk::ShaderModuleCreateInfo {
       code_size: bytecode.len(),
       p_code: bytecode.as_ptr() as *const u32,
@@ -108,6 +108,18 @@ impl VkShader {
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
         shader_stage: shader_type_to_vk(shader_type)
       });
+    }
+
+    if let Some(name) = name {
+      let name_cstring = CString::new(name).unwrap();
+      unsafe {
+        device.instance.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+          object_type: vk::ObjectType::SHADER_MODULE,
+          object_handle: shader_module.as_raw(),
+          p_object_name: name_cstring.as_ptr(),
+          ..Default::default()
+        });
+      }
     }
 
     return VkShader {

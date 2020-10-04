@@ -95,7 +95,7 @@ impl<P: Platform> AssetManager<P> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1
-    });
+    }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0);
     let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
@@ -192,7 +192,7 @@ impl<P: Platform> AssetManager<P> {
     let key = self.make_asset_key();
     let mut graphics = self.graphics.write().unwrap();
     let src_buffer = graphics.device.upload_data_raw(texture_data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let texture = graphics.device.create_texture(info);
+    let texture = graphics.device.create_texture(info, Some(name));
     graphics.device.init_texture(&texture, &src_buffer, 0, 0);
     let srv = graphics.device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
       base_mip_level: 0,

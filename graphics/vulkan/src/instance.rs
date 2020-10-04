@@ -14,12 +14,8 @@ use raw::RawVkInstance;
 use std::mem::ManuallyDrop;
 use std::os::raw::{c_char, c_void};
 
-//const DEBUG_EXT_NAME =
-
 pub struct VkInstance {
-  raw: ManuallyDrop<Arc<RawVkInstance>>,
-  debug_utils_loader: ManuallyDrop<ash::extensions::ext::DebugUtils>,
-  debug_messenger: vk::DebugUtilsMessengerEXT
+  raw: Arc<RawVkInstance>,
 }
 
 impl VkInstance {
@@ -82,12 +78,12 @@ impl VkInstance {
       }, None).unwrap();
 
       VkInstance {
-        debug_utils_loader: ManuallyDrop::new(debug_utils_loader),
-        debug_messenger,
-        raw: ManuallyDrop::new(Arc::new(RawVkInstance {
+        raw: Arc::new(RawVkInstance {
           entry,
-          instance
-        }))
+          instance,
+          debug_utils_loader,
+          debug_messenger,
+        })
       }
     };
   }
@@ -112,16 +108,6 @@ impl VkInstance {
 
     println!("VK DEBUG: {:?}", CStr::from_ptr(callback_data.p_message));
     vk::FALSE
-  }
-}
-
-impl Drop for VkInstance {
-  fn drop(&mut self) {
-    unsafe {
-      self.debug_utils_loader.destroy_debug_utils_messenger(self.debug_messenger, None);
-      ManuallyDrop::drop(&mut self.debug_utils_loader);
-      ManuallyDrop::drop(&mut self.raw);
-    }
   }
 }
 

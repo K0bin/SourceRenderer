@@ -14,17 +14,19 @@ use pipeline::{samples_to_vk, compare_func_to_vk};
 use vk_mem::MemoryUsage;
 use std::cmp::max;
 use std::hash::{Hash, Hasher};
+use std::ffi::CString;
+use ash::vk::Handle;
 
 
 pub struct VkTexture {
   image: vk::Image,
   allocation: Option<vk_mem::Allocation>,
   device: Arc<RawVkDevice>,
-  info: TextureInfo,
+  info: TextureInfo
 }
 
 impl VkTexture {
-  pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, name: Option<&str>) -> Self {
     let create_info = vk::ImageCreateInfo {
       flags: vk::ImageCreateFlags::empty(),
       tiling: vk::ImageTiling::OPTIMAL,
@@ -48,6 +50,17 @@ impl VkTexture {
       ..Default::default()
     };
     let (image, allocation, allocation_info) = device.allocator.create_image(&create_info, &alloc_info).unwrap();
+    if let Some(name) = name {
+      let name_cstring = CString::new(name).unwrap();
+      unsafe {
+        device.instance.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+          object_type: vk::ObjectType::IMAGE,
+          object_handle: image.as_raw(),
+          p_object_name: name_cstring.as_ptr(),
+          ..Default::default()
+        });
+      }
+    }
     Self {
       image,
       allocation: Some(allocation),

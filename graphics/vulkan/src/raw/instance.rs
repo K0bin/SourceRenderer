@@ -11,18 +11,9 @@ use std::ops::Deref;
 
 pub struct RawVkInstance {
   pub entry: ash::Entry,
-  pub instance: ash::Instance
-}
-
-impl RawVkInstance {
-  pub fn new(entry: ash::Entry, create_info: &vk::InstanceCreateInfo) -> Result<Self, InstanceError> {
-    unsafe {
-      entry.create_instance(create_info, None).map(|instance| Self {
-        entry,
-        instance
-      })
-    }
-  }
+  pub instance: ash::Instance,
+  pub debug_utils_loader: ash::extensions::ext::DebugUtils,
+  pub debug_messenger: vk::DebugUtilsMessengerEXT
 }
 
 impl Deref for RawVkInstance {
@@ -36,6 +27,7 @@ impl Deref for RawVkInstance {
 impl Drop for RawVkInstance {
   fn drop(&mut self) {
     unsafe {
+      self.debug_utils_loader.destroy_debug_utils_messenger(self.debug_messenger, None);
       self.instance.destroy_instance(None);
     }
   }

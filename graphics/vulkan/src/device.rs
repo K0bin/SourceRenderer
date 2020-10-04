@@ -162,12 +162,12 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(slice)
   }
 
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>) -> Arc<VkShader> {
-    return Arc::new(VkShader::new(&self.device, shader_type, bytecode));
+  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>, name: Option<&str>) -> Arc<VkShader> {
+    return Arc::new(VkShader::new(&self.device, shader_type, bytecode, name));
   }
 
-  fn create_texture(&self, info: &TextureInfo) -> Arc<VkTexture> {
-    return Arc::new(VkTexture::new(&self.device, info));
+  fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<VkTexture> {
+    return Arc::new(VkTexture::new(&self.device, info, name));
   }
 
   fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Arc<VkTextureView> {

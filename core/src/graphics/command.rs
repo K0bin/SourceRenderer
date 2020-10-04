@@ -43,6 +43,8 @@ pub trait CommandBuffer<B: Backend> {
   fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureShaderResourceView>);
   fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
   fn finish_binding(&mut self);
+  fn begin_label(&mut self, label: &str);
+  fn end_label(&mut self);
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]

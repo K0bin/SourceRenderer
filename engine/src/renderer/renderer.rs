@@ -92,14 +92,14 @@ impl<P: Platform> RendererInternal<P> {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes)
+      device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
     };
 
     let fragment_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.frag.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::FragmentShader, &bytes)
+      device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
     };
 
     let pipeline_info: PipelineInfo<P::GraphicsBackend> = PipelineInfo {
