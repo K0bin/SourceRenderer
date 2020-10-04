@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage};
+use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage, PipelineBinding};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -24,7 +24,7 @@ use crate::VkPipeline;
 use crate::VkBackend;
 
 use crate::raw::*;
-use pipeline::VkPipelineInfo;
+use pipeline::{VkPipelineInfo, VkPipelineLayout};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use context::{VkThreadContextManager, VkShared, VkLifetimeTrackers};
@@ -190,45 +190,19 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn set_pipeline(&mut self, pipeline: &PipelineInfo<VkBackend>) {
+  pub(crate) fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    if self.render_pass.is_none() {
-      panic!("Cant set pipeline outside of render pass");
-    }
 
-    let render_pass = self.render_pass.clone().unwrap();
-
-    let info = VkPipelineInfo {
-      info: pipeline,
-      render_pass: &render_pass,
-      sub_pass: self.sub_pass
-    };
-
-    let mut hasher = DefaultHasher::new();
-    info.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    {
-      let lock = self.shared.get_pipelines().read().unwrap();
-      let cached_pipeline = lock.get(&hash);
-      if let Some(pipeline) = cached_pipeline {
-        let vk_pipeline = *pipeline.get_handle();
+    match &pipeline {
+      PipelineBinding::Graphics(graphics_pipeline) => {
+        let vk_pipeline = graphics_pipeline.get_handle();
         unsafe {
-          self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, vk_pipeline);
+          self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, *vk_pipeline);
         }
-        self.pipeline = Some(pipeline.clone());
-        return;
-      }
-    }
-    let pipeline = Arc::new(VkPipeline::new(&self.device, &info, &self.shared));
-    let mut lock = self.shared.get_pipelines().write().unwrap();
-    lock.insert(hash, pipeline.clone());
-    let stored_pipeline = lock.get(&hash).unwrap();
-    let vk_pipeline = *stored_pipeline.get_handle();
-    unsafe {
-      self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, vk_pipeline);
-    }
-    self.pipeline = Some(pipeline);
+        self.pipeline = Some((*graphics_pipeline).clone())
+      },
+      _ => unimplemented!()
+    };
   }
 
   pub(crate) fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, recording_mode: RenderpassRecordingMode) {
@@ -561,7 +535,7 @@ impl VkCommandBufferRecorder {
 
 impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
-  fn set_pipeline(&mut self, pipeline: &PipelineInfo<VkBackend>) {
+  fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
     self.item.as_mut().unwrap().set_pipeline(pipeline);
   }
 

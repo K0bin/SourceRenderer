@@ -156,6 +156,12 @@ pub struct VkPipeline {
   device: Arc<RawVkDevice>
 }
 
+impl PartialEq for VkPipeline {
+  fn eq(&self, other: &Self) -> bool {
+    self.pipeline == other.pipeline
+  }
+}
+
 const SHADER_ENTRY_POINT_NAME: &str = "main";
 
 pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {

@@ -29,8 +29,14 @@ pub enum CommandBufferType {
   SECONDARY
 }
 
+#[derive(Clone)]
+pub enum PipelineBinding<'a, B: Backend> {
+  Graphics(&'a Arc<B::GraphicsPipeline>),
+  Compute
+}
+
 pub trait CommandBuffer<B: Backend> {
-  fn set_pipeline(&mut self, info: &PipelineInfo<B>);
+  fn set_pipeline(&mut self, pipeline: PipelineBinding<B>);
   fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<B::Buffer>);
   fn set_index_buffer(&mut self, index_buffer: &Arc<B::Buffer>);
   fn set_viewports(&mut self, viewports: &[ Viewport ]);

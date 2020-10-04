@@ -24,6 +24,7 @@ pub trait Backend: 'static + Sized {
   type TextureShaderResourceView: TextureShaderResourceView + Send + Sync;
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
+  type GraphicsPipeline: Send + Sync;
   type RenderGraphTemplate: RenderGraphTemplate + Send + Sync;
   type RenderGraph: RenderGraph<Self> + Send + Sync;
   type Fence : Fence + Send + Sync;

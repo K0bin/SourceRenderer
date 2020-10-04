@@ -9,7 +9,7 @@ use crossbeam_channel::{Sender, bounded, Receiver};
 use nalgebra::Matrix4;
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
-use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, RenderPassCallback};
+use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, RenderPassCallback, PipelineBinding};
 use sourcerenderer_core::graphics::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, OutputTextureAttachmentReference};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
@@ -102,6 +102,32 @@ impl<P: Platform> RendererInternal<P> {
       device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
     };
 
+    let asset_manager_ref = asset_manager.clone();
+    let mut passes: Vec<PassInfo> = vec![
+      PassInfo {
+        name: "Geometry".to_string(),
+        pass_type: PassType::Graphics {
+          subpasses: vec![
+            GraphicsSubpassInfo {
+              outputs: vec![OutputTextureAttachmentReference {
+                name: BACK_BUFFER_ATTACHMENT_NAME.to_owned(),
+                load_action: LoadAction::Clear,
+                store_action: StoreAction::Store
+              }],
+              inputs: Vec::new()
+            }
+          ],
+        }
+      }
+    ];
+
+    let graph_template = Arc::new(device.create_render_graph_template(&RenderGraphTemplateInfo {
+      attachments: HashMap::new(),
+      passes,
+      swapchain_sample_count: swapchain.sample_count(),
+      swapchain_format: swapchain.format()
+    }));
+
     let pipeline_info: PipelineInfo<P::GraphicsBackend> = PipelineInfo {
       vs: vertex_shader.clone(),
       fs: Some(fragment_shader.clone()),
@@ -169,33 +195,7 @@ impl<P: Platform> RendererInternal<P> {
         ]
       }
     };
-
-    let asset_manager_ref = asset_manager.clone();
-    let mut passes: Vec<PassInfo> = vec![
-      PassInfo {
-        name: "Geometry".to_string(),
-        pass_type: PassType::Graphics {
-          subpasses: vec![
-            GraphicsSubpassInfo {
-              outputs: vec![OutputTextureAttachmentReference {
-                name: BACK_BUFFER_ATTACHMENT_NAME.to_owned(),
-                load_action: LoadAction::Clear,
-                store_action: StoreAction::Store
-              }],
-              inputs: Vec::new()
-            }
-          ],
-        }
-      }
-    ];
-
-    let graph_template = Arc::new(device.create_render_graph_template(&RenderGraphTemplateInfo {
-      attachments: HashMap::new(),
-      passes,
-      swapchain_sample_count: swapchain.sample_count(),
-      swapchain_format: swapchain.format()
-    }));
-
+    let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, "Geometry", 0);
 
     let mut callbacks : HashMap<String, Vec<Arc<RenderPassCallback<P::GraphicsBackend>>>>= HashMap::new();
     callbacks.insert("Geometry".to_string(), vec![
@@ -205,7 +205,7 @@ impl<P: Platform> RendererInternal<P> {
         let assets_lookup = asset_manager_ref.lookup_graphics();
 
         let camera_constant_buffer = command_buffer.upload_dynamic_data(state.camera, BufferUsage::CONSTANT);
-        command_buffer.set_pipeline(&pipeline_info);
+        command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         command_buffer.set_viewports(&[Viewport {
           position: Vec2 { x: 0.0f32, y: 0.0f32 },
           extent: Vec2 { x: 1280.0f32, y: 720.0f32 },

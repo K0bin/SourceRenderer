@@ -28,7 +28,6 @@ use std::marker::PhantomData;
 use ::{VkFenceInner, VkCommandBufferRecorder};
 
 pub struct VkShared {
-  pipelines: RwLock<HashMap<u64, Arc<VkPipeline>>>,
   semaphores: Pool<VkSemaphore>,
   fences: Pool<VkFenceInner>,
   buffers: BufferAllocator, // consider per thread
@@ -128,6 +127,11 @@ impl VkThreadContextManager {
   pub fn get_frame_counter(&self) -> u64 {
     self.frame_counter.load(Ordering::SeqCst)
   }
+
+  #[inline]
+  pub fn shared(&self) -> &Arc<VkShared> {
+    &self.shared
+  }
 }
 
 impl VkThreadContext {
@@ -207,7 +211,6 @@ impl VkShared {
     let semaphores_device_clone = device.clone();
     let fences_device_clone = device.clone();
     Self {
-      pipelines: RwLock::new(HashMap::new()),
       semaphores: Pool::new(Box::new(move ||
         VkSemaphore::new(&semaphores_device_clone)
       )),
@@ -218,11 +221,6 @@ impl VkShared {
       descriptor_set_layouts: RwLock::new(HashMap::new()),
       pipeline_layouts: RwLock::new(HashMap::new())
     }
-  }
-
-  #[inline]
-  pub(crate) fn get_pipelines(&self) -> &RwLock<HashMap<u64, Arc<VkPipeline>>> {
-    &self.pipelines
   }
 
   #[inline]
