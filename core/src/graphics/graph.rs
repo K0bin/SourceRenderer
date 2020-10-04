@@ -11,7 +11,7 @@ pub type RenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer) -> usiz
 
 #[derive(Clone)]
 pub struct RenderGraphInfo<B: Backend> {
-  pub pass_callbacks: Vec<Arc<RenderPassCallback<B>>>
+  pub pass_callbacks: HashMap<String, Vec<Arc<RenderPassCallback<B>>>>
 }
 
 #[derive(Clone)]

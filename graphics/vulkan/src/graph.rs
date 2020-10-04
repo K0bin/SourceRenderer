@@ -28,7 +28,7 @@ use std::cmp::{max, min};
 use std::iter::FromIterator;
 use VkTexture;
 use texture::VkTextureView;
-use graph_template::{VkRenderGraphTemplate, VkPassTemplate};
+use graph_template::{VkRenderGraphTemplate, VkPassTemplate, VkPassType};
 
 pub struct VkAttachment {
   texture: Arc<VkTexture>,
@@ -113,19 +113,19 @@ impl VkRenderGraph {
     let swapchain_views = swapchain.get_views();
     let passes = template.passes();
     for pass in passes {
-      match pass {
-        VkPassTemplate::Graphics {
-          attachments: pass_attachments, render_pass, renders_to_swapchain, pass_indices
+      match &pass.pass_type {
+        VkPassType::Graphics {
+          render_pass
         } => {
           let mut width = 0u32;
           let mut height = 0u32;
-          let framebuffer_count = if *renders_to_swapchain { swapchain_views.len() } else { 1 };
+          let framebuffer_count = if pass.renders_to_swapchain { swapchain_views.len() } else { 1 };
           let mut framebuffer_attachments: Vec<Vec<vk::ImageView>> = Vec::with_capacity(framebuffer_count);
           for _ in 0..framebuffer_count {
             framebuffer_attachments.push(Vec::new());
           }
 
-          for pass_attachment in pass_attachments {
+          for pass_attachment in &pass.attachments {
             for i in 0..framebuffer_count {
               if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
                 framebuffer_attachments.get_mut(i).unwrap()
@@ -159,15 +159,12 @@ impl VkRenderGraph {
             framebuffers.push(framebuffer);
           }
 
-          let mut callbacks: Vec<Arc<RenderPassCallback<VkBackend>>> = Vec::new();
-          for index in pass_indices {
-            callbacks.push(info.pass_callbacks[*index as usize].clone());
-          }
+          let mut callbacks: Vec<Arc<RenderPassCallback<VkBackend>>> = info.pass_callbacks[&pass.name].clone();
 
           finished_passes.push(Arc::new(VkPass::Graphics {
             framebuffers,
             callbacks,
-            renders_to_swapchain: *renders_to_swapchain,
+            renders_to_swapchain: pass.renders_to_swapchain,
             renderpass: render_pass.clone()
           }));
         },

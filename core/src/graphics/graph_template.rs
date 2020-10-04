@@ -23,10 +23,21 @@ pub enum AttachmentSizeClass {
 }
 
 #[derive(Clone)]
-pub enum PassInfo {
+pub struct GraphicsSubpassInfo {
+  pub outputs: Vec<OutputTextureAttachmentReference>,
+  pub inputs: Vec<InputAttachmentReference>
+}
+
+#[derive(Clone)]
+pub struct PassInfo {
+  pub name: String,
+  pub pass_type: PassType
+}
+
+#[derive(Clone)]
+pub enum PassType {
   Graphics {
-    outputs: Vec<OutputTextureAttachmentReference>,
-    inputs: Vec<InputAttachmentReference>
+    subpasses: Vec<GraphicsSubpassInfo>
   },
   Compute,
   Transfer,
@@ -40,9 +51,14 @@ pub struct OutputTextureAttachmentReference {
 }
 
 #[derive(Clone)]
-pub enum InputAttachmentReference {
+pub struct InputAttachmentReference {
+  pub name: String,
+  pub attachment_type: InputAttachmentReferenceType
+}
+
+#[derive(Clone)]
+pub enum InputAttachmentReferenceType {
   Texture {
-    name: String,
     is_local: bool,
   },
   Buffer
