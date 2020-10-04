@@ -44,7 +44,7 @@ pub trait Device<B: Backend> {
 
   fn wait_for_idle(&self);
 
-  fn create_render_graph_template(&self, info: &crate::graphics::RenderGraphTemplateInfo) -> B::RenderGraphTemplate;
+  fn create_render_graph_template(&self, info: &crate::graphics::RenderGraphTemplateInfo) -> Arc<B::RenderGraphTemplate>;
   fn create_render_graph(&self, template: &Arc<B::RenderGraphTemplate>, info: &crate::graphics::graph::RenderGraphInfo<B>, swapchain: &Arc<B::Swapchain>) -> B::RenderGraph;
   fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32) -> Arc<B::Fence>;
   fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>) -> Arc<B::Fence>;

@@ -194,8 +194,8 @@ impl Device<VkBackend> for VkDevice {
     unsafe { self.device.device.device_wait_idle(); }
   }
 
-  fn create_render_graph_template(&self, graph_info: &RenderGraphTemplateInfo) -> <VkBackend as Backend>::RenderGraphTemplate {
-    VkRenderGraphTemplate::new(&self.device, graph_info)
+  fn create_render_graph_template(&self, graph_info: &RenderGraphTemplateInfo) -> Arc<<VkBackend as Backend>::RenderGraphTemplate> {
+    Arc::new(VkRenderGraphTemplate::new(&self.device, graph_info))
   }
 
   fn create_render_graph(&self, template: &Arc<<VkBackend as Backend>::RenderGraphTemplate>, info: &RenderGraphInfo<VkBackend>, swapchain: &Arc<<VkBackend as Backend>::Swapchain>) -> <VkBackend as Backend>::RenderGraph {

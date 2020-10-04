@@ -121,12 +121,12 @@ impl<P: Platform> RendererInternal<P> {
       }
     ];
 
-    let graph_template = Arc::new(device.create_render_graph_template(&RenderGraphTemplateInfo {
+    let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
       attachments: HashMap::new(),
       passes,
       swapchain_sample_count: swapchain.sample_count(),
       swapchain_format: swapchain.format()
-    }));
+    });
 
     let pipeline_info: PipelineInfo<P::GraphicsBackend> = PipelineInfo {
       vs: vertex_shader.clone(),
