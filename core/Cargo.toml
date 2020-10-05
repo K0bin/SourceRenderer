@@ -5,7 +5,7 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-vek = "0.9.11"
+nalgebra = "0.22.0"
 bitflags = "1.2.1"
 crossbeam-channel = "0.4.2"
 crossbeam-queue = "0.2.1"

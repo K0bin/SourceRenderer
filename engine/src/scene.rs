@@ -39,133 +39,45 @@ impl Scene {
 
       let triangle = [
         Vertex {
-          position: Vec3 {
-            x: -1.0f32,
-            y: -1.0f32,
-            z: -1.0f32,
-          },
-          color: Vec3 {
-            x: 1.0f32,
-            y: 0.0f32,
-            z: 0.0f32,
-          },
-          uv: Vec2 {
-            x: 0.0f32,
-            y: 0.0f32
-          }
+          position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
+          color: Vec3::new(1.0f32, 0.0f32, 0.0f32),
+          uv: Vec2::new(0.0f32, 0.0f32)
         },
         Vertex {
-          position: Vec3 {
-            x: 1.0f32,
-            y: -1.0f32,
-            z: -1.0f32,
-          },
-          color: Vec3 {
-            x: 0.0f32,
-            y: 1.0f32,
-            z: 0.0f32,
-          },
-          uv: Vec2 {
-            x: 1.0f32,
-            y: 0.0f32
-          }
+          position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
+          color: Vec3::new(0.0f32, 1.0f32, 0.0f32),
+          uv: Vec2::new(1.0f32, 0.0f32)
         },
         Vertex {
-          position: Vec3 {
-            x: 1.0f32,
-            y: 1.0f32,
-            z: -1.0f32,
-          },
-          color: Vec3 {
-            x: 0.0f32,
-            y: 0.0f32,
-            z: 1.0f32,
-          },
-          uv: Vec2 {
-            x: 1.0f32,
-            y: 1.0f32
-          }
+          position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
+          color: Vec3::new(0.0f32, 0.0f32, 1.0f32),
+          uv: Vec2::new(1.0f32, 1.0f32)
         },
         Vertex {
-          position: Vec3 {
-            x: -1.0f32,
-            y: 1.0f32,
-            z: -1.0f32,
-          },
-          color: Vec3 {
-            x: 1.0f32,
-            y: 1.0f32,
-            z: 1.0f32,
-          },
-          uv: Vec2 {
-            x: 0.0f32,
-            y: 1.0f32
-          }
+          position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
+          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          uv: Vec2::new(0.0f32, 1.0f32)
         },
         // face 2
         Vertex {
-          position: Vec3 {
-            x: -1.0f32,
-            y: -1.0f32,
-            z: 1.0f32,
-          },
-          color: Vec3 {
-            x: 1.0f32,
-            y: 0.0f32,
-            z: 0.0f32,
-          },
-          uv: Vec2 {
-            x: 1.0f32,
-            y: 0.0f32
-          }
+          position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
+          color: Vec3::new(1.0f32, 0.0f32, 0.0f32),
+          uv: Vec2::new(1.0f32, 0.0f32)
         },
         Vertex {
-          position: Vec3 {
-            x: 1.0f32,
-            y: -1.0f32,
-            z: 1.0f32,
-          },
-          color: Vec3 {
-            x: 0.0f32,
-            y: 1.0f32,
-            z: 1.0f32,
-          },
-          uv: Vec2 {
-            x: 0.0f32,
-            y: 0.0f32
-          }
+          position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
+          color: Vec3::new(0.0f32, 1.0f32, 1.0f32),
+          uv: Vec2::new(0.0f32, 0.0f32)
         },
         Vertex {
-          position: Vec3 {
-            x: 1.0f32,
-            y: 1.0f32,
-            z: 1.0f32,
-          },
-          color: Vec3 {
-            x: 1.0f32,
-            y: 0.0f32,
-            z: 1.0f32,
-          },
-          uv: Vec2 {
-            x: 0.0f32,
-            y: 1.0f32
-          }
+          position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          color: Vec3::new(1.0f32, 0.0f32, 1.0f32),
+          uv: Vec2::new(0.0f32, 1.0f32)
         },
         Vertex {
-          position: Vec3 {
-            x: -1.0f32,
-            y: 1.0f32,
-            z: 1.0f32,
-          },
-          color: Vec3 {
-            x: 0.0f32,
-            y: 1.0f32,
-            z: 1.0f32,
-          },
-          uv: Vec2 {
-            x: 1.0f32,
-            y: 1.0f32
-          }
+          position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
+          color: Vec3::new(0.0f32, 1.0f32, 1.0f32),
+          uv: Vec2::new(1.0f32, 1.0f32)
         }
       ];
 

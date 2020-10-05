@@ -207,14 +207,14 @@ impl<P: Platform> RendererInternal<P> {
         let camera_constant_buffer = command_buffer.upload_dynamic_data(state.camera, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         command_buffer.set_viewports(&[Viewport {
-          position: Vec2 { x: 0.0f32, y: 0.0f32 },
-          extent: Vec2 { x: 1280.0f32, y: 720.0f32 },
+          position: Vec2::new(0.0f32, 0.0f32),
+          extent: Vec2::new(1280.0f32, 720.0f32),
           min_depth: 0.0f32,
           max_depth: 1.0f32
         }]);
         command_buffer.set_scissors(&[Scissor {
-          position: Vec2I { x: 0, y: 0 },
-          extent: Vec2UI { x: 9999, y: 9999 },
+          position: Vec2I::new(0, 0),
+          extent: Vec2UI::new(9999, 9999),
         }]);
 
         command_buffer.bind_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
