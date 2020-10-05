@@ -2,6 +2,8 @@
 
 pub use self::lump::Lump;
 pub use self::map_header::MapHeader;
+pub use self::map::Map;
+pub use self::lump_data::*;
 
 extern crate byteorder;
 extern crate num_traits;

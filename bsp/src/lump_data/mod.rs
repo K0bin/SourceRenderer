@@ -5,6 +5,12 @@ pub use lump_data::edge::Edge;
 pub use lump_data::brush_side::BrushSide;
 pub use lump_data::face::Face;
 pub use lump_data::plane::Plane;
+pub use lump_data::leaf_face::LeafFace;
+pub use lump_data::leaf_brush::LeafBrush;
+pub use lump_data::surface_edge::SurfaceEdge;
+pub use lump_data::vertex::Vertex;
+pub use lump_data::vertex_normal::VertexNormal;
+pub use lump_data::vertex_normal_index::VertexNormalIndex;
 
 use std::io::{Read, Result as IOResult};
 
@@ -15,6 +21,12 @@ mod edge;
 mod face;
 mod brush_side;
 mod plane;
+mod leaf_face;
+mod leaf_brush;
+mod surface_edge;
+mod vertex;
+mod vertex_normal;
+mod vertex_normal_index;
 
 #[derive(FromPrimitive, Clone, Copy, Debug)]
 #[repr(u8)]

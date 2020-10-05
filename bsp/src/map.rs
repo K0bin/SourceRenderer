@@ -5,6 +5,9 @@ use lump_data::{LumpType, Brush, Node, Leaf, Face, Plane, Edge, BrushSide, LumpD
 use std::ops::DerefMut;
 use std::boxed::{Box};
 use std::io::Result as IOResult;
+use ::{LeafFace, LeafBrush};
+use ::{SurfaceEdge, VertexNormal};
+use ::{Vertex, VertexNormalIndex};
 
 pub struct Map {
   pub name: String,
@@ -13,10 +16,10 @@ pub struct Map {
 }
 
 impl Map {
-  pub fn read(name: String, mut reader: BufReader<File>) -> IOResult<Map> {
+  pub fn read(name: &str, mut reader: BufReader<File>) -> IOResult<Map> {
     let header = MapHeader::read(&mut reader)?;
     return Ok(Map {
-      name,
+      name: name.to_owned(),
       header,
       reader,
     });
@@ -31,7 +34,7 @@ impl Map {
   }
 
   pub fn read_leafs(&mut self) -> IOResult<Vec<Leaf>> {
-    self.read_lump_data::<Leaf>()
+    self.read_lump_data()
   }
 
   pub fn read_brush_sides(&mut self) -> IOResult<Vec<BrushSide>> {
@@ -47,6 +50,30 @@ impl Map {
   }
 
   pub fn read_planes(&mut self) -> IOResult<Vec<Plane>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_leaf_faces(&mut self) -> IOResult<Vec<LeafFace>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_leaf_brushes(&mut self) -> IOResult<Vec<LeafBrush>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_surface_edges(&mut self) -> IOResult<Vec<SurfaceEdge>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_vertices(&mut self) -> IOResult<Vec<Vertex>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_vertex_normals(&mut self) -> IOResult<Vec<VertexNormal>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_vertex_normal_indices(&mut self) -> IOResult<Vec<VertexNormalIndex>> {
     self.read_lump_data()
   }
 
