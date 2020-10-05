@@ -1,9 +1,7 @@
-use std::io::{Read, Result};
+use std::io::{Read, Result as IOResult};
 use byteorder::{ReadBytesExt, LittleEndian};
 use lump_data::brush::BrushContents;
-
-pub const LEAF_SIZE_LE19: u8 = 56;
-pub const LEAF_SIZE: u8 = 32;
+use lump_data::{LumpData, LumpType};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ColorRGBExp32 {
@@ -36,7 +34,7 @@ pub struct Leaf {
 }
 
 impl ColorRGBExp32 {
-  pub fn read(reader: &mut dyn Read) -> Result<Self> {
+  fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let r = reader.read_u8()?;
     let g = reader.read_u8()?;
     let b = reader.read_u8()?;
@@ -52,7 +50,7 @@ impl ColorRGBExp32 {
 }
 
 impl CompressedLightCube {
-  pub fn read(reader: &mut dyn Read) -> Result<Self> {
+  fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let mut colors: [ColorRGBExp32; 6] = [Default::default(); 6];
     for i in 0..6 {
       let color = ColorRGBExp32::read(reader)?;
@@ -64,8 +62,20 @@ impl CompressedLightCube {
   }
 }
 
-impl Leaf {
-  pub fn read(reader: &mut dyn Read, version: i32) -> Result<Self> {
+impl LumpData for Leaf {
+  fn lump_type() -> LumpType {
+    LumpType::Leafs
+  }
+
+  fn element_size(version: i32) -> usize {
+    if version >= 19 {
+      56
+    } else {
+      32
+    }
+  }
+
+  fn read(reader: &mut dyn Read, version: i32) -> IOResult<Self> {
     let contents = reader.read_u32::<LittleEndian>()?;
     let cluster = reader.read_i16::<LittleEndian>()?;
     let area_flags = reader.read_u16::<LittleEndian>()?;

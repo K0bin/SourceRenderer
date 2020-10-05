@@ -1,4 +1,4 @@
-use std::io::{Read, Error};
+use std::io::{Read, Error, Result as IOResult};
 use byteorder::{ReadBytesExt, LittleEndian};
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -10,7 +10,7 @@ pub struct Lump {
 }
 
 impl Lump {
-  pub fn read(reader: &mut dyn Read) -> Result<Self, Error> {
+  pub fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let file_offset = reader.read_i32::<LittleEndian>()?;
     let file_length = reader.read_i32::<LittleEndian>()?;
     let version = reader.read_i32::<LittleEndian>()?;

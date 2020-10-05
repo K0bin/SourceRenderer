@@ -1,7 +1,6 @@
-use std::io::{Read, Result};
+use std::io::{Read, Result as IOResult};
 use byteorder::{ReadBytesExt, LittleEndian};
-
-pub const BRUSH_SIZE: u8 = 12;
+use lump_data::{LumpData, LumpType};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Brush {
@@ -56,8 +55,16 @@ impl BrushContents {
   }
 }
 
-impl Brush {
-  pub fn read(reader: &mut dyn Read) -> Result<Self> {
+impl LumpData for Brush {
+  fn lump_type() -> LumpType {
+    LumpType::Brushes
+  }
+
+  fn element_size(_version: i32) -> usize {
+    12
+  }
+
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let first_side = reader.read_i32::<LittleEndian>()?;
     let sides_count = reader.read_i32::<LittleEndian>()?;
     let contents = reader.read_u32::<LittleEndian>()?;

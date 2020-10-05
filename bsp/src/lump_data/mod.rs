@@ -1,18 +1,12 @@
 pub use self::brush::Brush;
 pub use self::node::Node;
 pub use self::leaf::Leaf;
+pub use lump_data::edge::Edge;
+pub use lump_data::brush_side::BrushSide;
+pub use lump_data::face::Face;
+pub use lump_data::plane::Plane;
 
-use self::brush::BRUSH_SIZE;
-use self::node::NODE_SIZE;
-use self::leaf::LEAF_SIZE;
-use self::leaf::LEAF_SIZE_LE19;
-
-use std::io::{Read, Result};
-use lump_data::edge::{Edge, EDGE_SIZE};
-use lump_data::brush_side::BrushSide;
-use lump_data::face::{Face, FACE_SIZE};
-use lump_data::plane::{Plane, PLANE_SIZE};
-use lump_data::LumpType::BrushSides;
+use std::io::{Read, Result as IOResult};
 
 mod brush;
 mod node;
@@ -91,92 +85,8 @@ pub enum LumpType {
   DisplacementMultiblend = 63,
 }
 
-pub enum LumpData {
-  Brushes(Box<Vec<Brush>>),
-  BrushSides(Box<Vec<BrushSide>>),
-  Edges(Box<Vec<Edge>>),
-  Faces(Box<Vec<Face>>),
-  Leafs(Box<Vec<Leaf>>),
-  Nodes(Box<Vec<Node>>),
-  Planes(Box<Vec<Plane>>),
-}
-
-pub fn read_lump_data(reader: &mut dyn Read, lump_type: LumpType, size: i32, version: i32) -> Result<LumpData> {
-  match lump_type {
-    LumpType::Brushes => {
-      let element_count = size / BRUSH_SIZE as i32;
-      let mut elements: Box<Vec<Brush>> = Box::new(Vec::new());
-      for _ in 0..element_count {
-        let element = Brush::read(reader)?;
-        elements.push(element);
-      }
-      Ok(LumpData::Brushes(elements))
-    }
-
-    LumpType::Nodes => {
-      let element_count = size / NODE_SIZE as i32;
-      let mut elements: Box<Vec<Node>> = Box::new(Vec::new());
-      for _ in 0..element_count {
-        let element = Node::read(reader)?;
-        elements.push(element);
-      }
-      Ok(LumpData::Nodes(elements))
-    }
-
-    LumpType::Leafs => {
-      let mut element_size = LEAF_SIZE as i32;
-      if version <= 19 {
-        element_size = LEAF_SIZE_LE19 as i32;
-      }
-      let element_count = size / element_size;
-      let mut elements: Box<Vec<Leaf>> = Box::new(Vec::new());
-      for _ in 0..element_count {
-        let element = Leaf::read(reader, version)?;
-        elements.push(element);
-      }
-      Ok(LumpData::Leafs(elements))
-    }
-
-    LumpType::BrushSides => {
-      let mut element_count = size / BRUSH_SIZE as i32;
-      let mut elements: Box<Vec<BrushSide>> = Box::new(Vec::new());
-      for _ in 0..element_count {
-        let element = BrushSide::read(reader)?;
-        elements.push(element);
-      }
-      Ok(LumpData::BrushSides(elements))
-    }
-
-    LumpType::Edges => {
-      let mut element_count = size / EDGE_SIZE as i32;
-      let mut elements: Box<Vec<Edge>> = Box::new(Vec::new());
-      for _ in 0..element_count {
-        let element = Edge::read(reader)?;
-        elements.push(element);
-      }
-      Ok(LumpData::Edges(elements))
-    }
-
-    LumpType::Faces => {
-      let mut element_count = size / FACE_SIZE as i32;
-      let mut elements: Box<Vec<Face>> = Box::new(Vec::new());
-      for _ in 0..element_count {
-        let element = Face::read(reader)?;
-        elements.push(element);
-      }
-      Ok(LumpData::Faces(elements))
-    }
-
-    LumpType::Planes => {
-      let mut element_count = size / PLANE_SIZE as i32;
-      let mut elements: Box<Vec<Plane>> = Box::new(Vec::new());
-      for _ in 0..element_count {
-        let element = Plane::read(reader)?;
-        elements.push(element);
-      }
-      Ok(LumpData::Planes(elements))
-    }
-
-    _ => unimplemented!()
-  }
+pub(crate) trait LumpData : Sized{
+  fn lump_type() -> LumpType;
+  fn element_size(version: i32) -> usize;
+  fn read(read: &mut dyn Read, version: i32) -> IOResult<Self>;
 }

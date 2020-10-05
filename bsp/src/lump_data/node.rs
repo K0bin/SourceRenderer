@@ -1,7 +1,6 @@
-use std::io::{Read, Result};
+use std::io::{Read, Result as IOResult};
 use byteorder::{ReadBytesExt, LittleEndian};
-
-pub const NODE_SIZE: u8 = 32;
+use lump_data::{LumpData, LumpType};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Node {
@@ -15,8 +14,16 @@ pub struct Node {
   pub padding: u16,
 }
 
-impl Node {
-  pub fn read(reader: &mut dyn Read) -> Result<Self> {
+impl LumpData for Node {
+  fn lump_type() -> LumpType {
+    LumpType::Nodes
+  }
+
+  fn element_size(_version: i32) -> usize {
+    32
+  }
+
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let plane_number = reader.read_i32::<LittleEndian>()?;
     let children: [i32; 2] = [
       reader.read_i32::<LittleEndian>()?,

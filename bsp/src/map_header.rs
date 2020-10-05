@@ -1,6 +1,6 @@
 use lump::{Lump};
 
-use std::io::{Read, Error};
+use std::io::{Read, Error, Result as IOResult};
 use byteorder::{ReadBytesExt, LittleEndian};
 
 const LUMP_COUNT: usize = 64;
@@ -12,7 +12,7 @@ pub struct MapHeader {
 }
 
 impl MapHeader {
-  pub fn read(reader: &mut dyn Read) -> Result<MapHeader, Error> {
+  pub fn read(reader: &mut dyn Read) -> IOResult<MapHeader> {
     let identifier = reader.read_i32::<LittleEndian>()?;
     let version = reader.read_i32::<LittleEndian>()?;
     let mut lumps: [Lump; LUMP_COUNT] = [

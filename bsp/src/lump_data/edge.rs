@@ -1,15 +1,22 @@
-use std::io::{Read, Result};
+use std::io::{Read, Result as IOResult};
 use byteorder::{ReadBytesExt, LittleEndian};
-
-pub const EDGE_SIZE: u8 = 4;
+use lump_data::{LumpData, LumpType};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Edge {
   pub vertex_index: [u16; 2]
 }
 
-impl Edge {
-  pub fn read(reader: &mut dyn Read) -> Result<Self> {
+impl LumpData for Edge {
+  fn lump_type() -> LumpType {
+    LumpType::Edges
+  }
+
+  fn element_size(_version: i32) -> usize {
+    4
+  }
+
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let vertex_index = [
       reader.read_u16::<LittleEndian>()?,
       reader.read_u16::<LittleEndian>()?

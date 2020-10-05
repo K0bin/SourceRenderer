@@ -1,7 +1,6 @@
-use std::io::{Read, Result};
+use std::io::{Read, Result as IOResult};
 use byteorder::{ReadBytesExt, LittleEndian};
-
-pub const FACE_SIZE: u8 = 56;
+use lump_data::{LumpData, LumpType};
 
 pub struct Face {
   pub plane_number: u16,
@@ -23,8 +22,16 @@ pub struct Face {
   pub smoothing_group: u32
 }
 
-impl Face {
-  pub fn read(reader: &mut dyn Read) -> Result<Self> {
+impl LumpData for Face {
+  fn lump_type() -> LumpType {
+    LumpType::Faces
+  }
+
+  fn element_size(_version: i32) -> usize {
+    56
+  }
+
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let plane_number = reader.read_u16::<LittleEndian>()?;
     let size = reader.read_u8()?;
     let is_on_node = reader.read_u8()? != 0;
