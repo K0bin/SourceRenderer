@@ -53,7 +53,7 @@ impl<P: Platform> Engine<P> {
   }
 
   pub fn run(&mut self) {
-    let scheduler = JobScheduler::new();
+    let scheduler = Arc::new(JobScheduler::new());
 
     let instance = self.platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = self.platform.window().create_surface(instance.clone());

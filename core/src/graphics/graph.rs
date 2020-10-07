@@ -5,7 +5,7 @@ use std::cmp::Eq;
 use std::ops::Fn;
 
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
-use crate::job::{JobQueue, JobCounterWait, JobScheduler};
+use crate::job::JobScheduler;
 
 pub type RenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer) -> usize) + Send + Sync;
 
@@ -23,5 +23,5 @@ pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
 pub trait RenderGraph<B: Backend> {
   fn recreate(old: &Self, swapchain: &Arc<B::Swapchain>) -> Self;
-  fn render(&mut self, job_queue: &dyn JobQueue) -> Result<JobCounterWait, ()>;
+  fn render(&mut self, job_queue: &JobScheduler) -> Result<(), ()>;
 }

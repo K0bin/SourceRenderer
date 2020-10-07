@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use ::{VkRenderPass, VkQueue};
 use ::{VkFrameBuffer, VkSemaphore};
 use ::{VkCommandBufferRecorder, VkFence};
-use sourcerenderer_core::job::{JobQueue, JobScheduler, JobCounterWait};
+use sourcerenderer_core::job::JobScheduler;
 use std::sync::atomic::Ordering;
 use std::cmp::{max, min};
 use std::iter::FromIterator;

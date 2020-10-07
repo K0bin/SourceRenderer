@@ -18,7 +18,7 @@ use crate::asset::AssetManager;
 use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, TransformedRenderable};
 
 use async_std::task;
-use sourcerenderer_core::job::{SystemJob, JobScheduler, JobCounterWait, JobQueue};
+use sourcerenderer_core::job::{JobScheduler};
 use std::sync::atomic::Ordering;
 use sourcerenderer_vulkan::VkSwapchain;
 
@@ -37,15 +37,18 @@ impl<P: Platform> Renderer<P> {
     }
   }
 
-  pub fn run(job_scheduler: &JobScheduler, window: &P::Window, device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
+  pub fn run(job_scheduler: &Arc<JobScheduler>, window: &P::Window, device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
     let (sender, receiver) = bounded::<Renderables>(1);
     let renderer = Arc::new(Renderer::new(sender, device, window));
     let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, receiver);
 
-    job_scheduler.enqueue_system_job(Box::new(move |queue| {
-      internal.render(queue)
-    }));
-    //task::spawn(internal.render_loop());
+    let c_queue = job_scheduler.clone();
+    std::thread::spawn(move || {
+      'render_loop: loop {
+        internal.render(&c_queue);
+      }
+    });
+
     renderer
   }
 
@@ -257,7 +260,7 @@ impl<P: Platform> RendererInternal<P> {
     graph
   }
 
-  fn render(&mut self, queue: &dyn JobQueue) -> JobCounterWait {
+  fn render(&mut self, queue: &JobScheduler) {
     let state = {
       let state_guard = self.renderer.window_state.lock().unwrap();
       state_guard.clone()
@@ -268,12 +271,7 @@ impl<P: Platform> RendererInternal<P> {
 
     match state {
       WindowState::Minimized => {
-        let counter = JobScheduler::new_counter();
-        counter.inc();
-        return JobCounterWait {
-          counter,
-          value: 1
-        };
+        return;
       },
       WindowState::FullScreen {
         width, height
@@ -295,12 +293,7 @@ impl<P: Platform> RendererInternal<P> {
 
       let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, swapchain_width, swapchain_height);
       if new_swapchain_result.is_err() {
-        let counter = JobScheduler::new_counter();
-        counter.inc();
-        return JobCounterWait {
-          counter,
-          value: 1
-        };
+        return;
       }
       let new_swapchain = new_swapchain_result.unwrap();
       if new_swapchain.format() != self.swapchain.format() || new_swapchain.sample_count() != self.swapchain.sample_count() {
@@ -310,9 +303,8 @@ impl<P: Platform> RendererInternal<P> {
       let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
       std::mem::replace(&mut self.swapchain, new_swapchain);
       std::mem::replace(&mut self.graph, new_graph);
-      return self.graph.render(queue).unwrap();
+      self.graph.render(queue);
     }
-    return result.unwrap();
   }
 }
 

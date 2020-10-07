@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use ::{VkRenderPass, VkQueue};
 use ::{VkFrameBuffer, VkSemaphore};
 use ::{VkCommandBufferRecorder, VkFence};
-use sourcerenderer_core::job::{JobQueue, JobScheduler, JobCounterWait};
+use sourcerenderer_core::job::JobScheduler;
 use std::sync::atomic::Ordering;
 use std::cmp::{max, min};
 use std::iter::FromIterator;
@@ -193,7 +193,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     VkRenderGraph::new(&old.device, &old.context, &old.graphics_queue, &old.compute_queue, &old.transfer_queue, &old.template, &old.info, swapchain)
   }
 
-  fn render(&mut self, job_queue: &dyn JobQueue) -> Result<JobCounterWait, ()> {
+  fn render(&mut self, job_queue: &JobScheduler) -> Result<(), ()> {
     let counter = JobScheduler::new_counter();
 
     self.context.begin_frame();
@@ -273,19 +273,12 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           }
 
           c_counter.inc();
-        }),
-        Some(&JobCounterWait {
-          counter: c_wait_counter,
-          value: expected_counter
         })
       );
       expected_counter += 1;
-    }
 
-    job_queue.busy_wait(&JobCounterWait {
-      counter: counter.clone(),
-      value: expected_counter
-    });
+      job_queue.busy_wait(&c_wait_counter, expected_counter);
+    }
 
     let thread_context = self.context.get_thread_context();
     let mut frame_context = thread_context.get_frame_context();
@@ -300,12 +293,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     }
 
     self.context.end_frame(&cmd_fence);
-    counter.set(100);
-
-    Ok(JobCounterWait {
-      counter,
-      value: 100
-    })
+    Ok(())
   }
 }
 
