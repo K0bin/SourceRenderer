@@ -223,8 +223,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       let c_wait_counter = counter.clone();
       let c_cmd_fence = cmd_fence.clone();
       let framebuffer_index = image_index as usize;
-      job_queue.enqueue_job(
-        Box::new(move || {
+      job_queue.spawn(move || {
           let thread_context = c_context.get_thread_context();
           let mut frame_context = thread_context.get_frame_context();
           let mut cmd_buffer = frame_context.get_command_buffer(CommandBufferType::PRIMARY);
@@ -273,7 +272,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           }
 
           c_counter.inc();
-        })
+        }
       );
       expected_counter += 1;
 

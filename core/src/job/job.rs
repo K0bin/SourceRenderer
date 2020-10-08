@@ -81,9 +81,10 @@ impl JobScheduler {
     }
   }
 
-  pub fn enqueue_job(&self, work: Box<dyn FnOnce() -> () + Send>) {
+  pub fn spawn<F>(&self, work: F)
+    where F: FnOnce() -> () + Send + 'static {
     let job = Job {
-      work
+      work: Box::new(work)
     };
     self.inner.queue.push(job);
   }
@@ -122,6 +123,19 @@ impl JobScheduler {
       }
     }
     None
+  }
+
+  pub fn scope<'scope, F>(&self, f: F)
+    where F: FnOnce(&mut Scope<'scope>) + 'scope + Send {
+    let scheduler: &'scope JobScheduler = unsafe { std::mem::transmute(self) };
+    let mut scope = Scope::<'scope> {
+      scheduler,
+      counter: JobScheduler::new_counter(),
+      expected_value: 0
+    };
+    (f)(&mut scope);
+
+    self.busy_wait(&scope.counter, scope.expected_value);
   }
 }
 
@@ -191,4 +205,22 @@ fn find_job_in_stealer(worker: &Worker<Job>, stealer: &Stealer<Job>) -> Option<J
     job_opt = worker.pop();
   }
   job_opt
+}
+
+pub struct Scope<'a> {
+  scheduler: &'a JobScheduler,
+  counter: JobCounter,
+  expected_value: usize
+}
+
+impl<'a> Scope<'a> {
+  pub fn spawn<F>(&mut self, work: F)
+    where F: FnOnce() -> () + Send + 'static {
+    let c_counter = self.counter.clone();
+    self.scheduler.spawn(move || {
+      (work)();
+      c_counter.inc();
+    });
+    self.expected_value += 1;
+  }
 }
