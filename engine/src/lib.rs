@@ -4,9 +4,11 @@ extern crate sourcerenderer_vulkan;
 extern crate async_std;
 extern crate image;
 extern crate crossbeam_channel;
+extern crate sourcerenderer_bsp;
+#[macro_use]
+extern crate legion;
 
 pub use self::engine::Engine;
-pub use self::renderer::Renderer;
 use sourcerenderer_core::{Vec3, Vec2};
 
 // TODO move somewhere else
@@ -20,6 +22,7 @@ pub struct Vertex {
 
 mod engine;
 mod asset;
+mod spinning_cube;
 
 mod renderer;
 mod scene;

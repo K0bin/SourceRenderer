@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex};
 use std::fs::File;
 use std::path::Path;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read as IORead;
 
-use crossbeam_channel::{Sender, bounded, Receiver};
+use crossbeam_channel::{Sender, bounded, Receiver, unbounded};
 
-use nalgebra::Matrix4;
+use nalgebra::{Matrix4, Transform};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
 use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, RenderPassCallback, PipelineBinding};
@@ -15,21 +15,24 @@ use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
 use crate::asset::AssetKey;
 use crate::asset::AssetManager;
-use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, TransformedRenderable};
+use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, RenderableType};
 
 use async_std::task;
 use sourcerenderer_core::job::{JobScheduler};
 use std::sync::atomic::Ordering;
 use sourcerenderer_vulkan::VkSwapchain;
+use crate::renderer::command::RendererCommand;
+use legion::{World, Resources, Schedule};
+use legion::systems::{Builder as SystemBuilder, Builder};
 
 pub struct Renderer<P: Platform> {
-  sender: Sender<Renderables>,
+  sender: Sender<RendererCommand>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   window_state: Mutex<WindowState>
 }
 
 impl<P: Platform> Renderer<P> {
-  fn new(sender: Sender<Renderables>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window) -> Self {
+  fn new(sender: Sender<RendererCommand>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window) -> Self {
     Self {
       sender,
       device: device.clone(),
@@ -37,36 +40,41 @@ impl<P: Platform> Renderer<P> {
     }
   }
 
-  pub fn run(job_scheduler: &Arc<JobScheduler>, window: &P::Window, device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
-    let (sender, receiver) = bounded::<Renderables>(1);
-    let renderer = Arc::new(Renderer::new(sender, device, window));
-    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, receiver);
+  pub fn run(window: &P::Window,
+             device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+             swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+             asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
+    let (sender, receiver) = unbounded::<RendererCommand>();
+    let renderer = Arc::new(Renderer::new(sender.clone(), device, window));
+    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, sender, receiver);
 
-    let c_queue = job_scheduler.clone();
     std::thread::spawn(move || {
       'render_loop: loop {
-        internal.render(&c_queue);
+        internal.render();
       }
     });
-
     renderer
-  }
-
-  pub fn render(&self, renderables: Renderables) {
-    self.sender.send(renderables);
   }
 
   pub fn set_window_state(&self, window_state: WindowState) {
     let mut guard = self.window_state.lock().unwrap();
     std::mem::replace(&mut *guard, window_state);
   }
+
+  pub fn install(&self, world: &mut World, resources: &mut Resources, systems: &mut Builder) {
+    crate::renderer::ecs::install(resources, systems, self.sender.clone());
+  }
 }
 
-struct RendererInternal<P: Platform> {
+
+pub struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   graph: <P::GraphicsBackend as Backend>::RenderGraph,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+  renderables: Arc<Mutex<Renderables>>,
+  sender: Sender<RendererCommand>,
+  receiver: Receiver<RendererCommand>
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -75,13 +83,19 @@ impl<P: Platform> RendererInternal<P> {
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
-    receiver: Receiver<Renderables>) -> Self {
-    let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, receiver);
+    sender: Sender<RendererCommand>,
+    receiver: Receiver<RendererCommand>) -> Self {
+
+    let renderables = Arc::new(Mutex::new(Renderables::default()));
+    let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables);
     Self {
       renderer: renderer.clone(),
       device: device.clone(),
       graph,
-      swapchain: swapchain.clone()
+      swapchain: swapchain.clone(),
+      renderables,
+      sender,
+      receiver
     }
   }
 
@@ -89,7 +103,7 @@ impl<P: Platform> RendererInternal<P> {
     device: &<P::GraphicsBackend as Backend>::Device,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
-    receiver: Receiver<Renderables>)
+    renderables: &Arc<Mutex<Renderables>>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
@@ -105,7 +119,6 @@ impl<P: Platform> RendererInternal<P> {
       device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
     };
 
-    let asset_manager_ref = asset_manager.clone();
     let mut passes: Vec<PassInfo> = vec![
       PassInfo {
         name: "Geometry".to_string(),
@@ -200,12 +213,14 @@ impl<P: Platform> RendererInternal<P> {
     };
     let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, "Geometry", 0);
 
+    let c_asset_manager = asset_manager.clone();
+    let c_renderables = renderables.clone();
     let mut callbacks : HashMap<String, Vec<Arc<RenderPassCallback<P::GraphicsBackend>>>>= HashMap::new();
     callbacks.insert("Geometry".to_string(), vec![
       Arc::new(move |command_buffer| {
+        let state = c_renderables.lock().unwrap();
 
-        let state = receiver.recv().unwrap(); // async
-        let assets_lookup = asset_manager_ref.lookup_graphics();
+        let assets_lookup = c_asset_manager.lookup_graphics();
 
         let camera_constant_buffer = command_buffer.upload_dynamic_data(state.camera, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
@@ -221,11 +236,11 @@ impl<P: Platform> RendererInternal<P> {
         }]);
 
         command_buffer.bind_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
-        for renderable in state.elements {
+        for renderable in &state.elements {
           let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.transform, BufferUsage::CONSTANT);
           command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
-          if let Renderable::Static(static_renderable) = &renderable.renderable {
+          if let RenderableType::Static(static_renderable) = &renderable.renderable_type {
             let model = assets_lookup.get_model(&static_renderable.model);
             let mesh = assets_lookup.get_mesh(&model.mesh);
 
@@ -251,7 +266,9 @@ impl<P: Platform> RendererInternal<P> {
             }
           }
         }
-        0
+
+
+
       })]);
     let graph = device.create_render_graph(&graph_template, &RenderGraphInfo {
       pass_callbacks: callbacks
@@ -260,7 +277,7 @@ impl<P: Platform> RendererInternal<P> {
     graph
   }
 
-  fn render(&mut self, queue: &JobScheduler) {
+  fn render(&mut self) {
     let state = {
       let state_guard = self.renderer.window_state.lock().unwrap();
       state_guard.clone()
@@ -287,7 +304,39 @@ impl<P: Platform> RendererInternal<P> {
       }
     }
 
-    let result = self.graph.render(queue);
+    {
+      let mut guard = self.renderables.lock().unwrap();
+
+      let mut message_opt = self.receiver.recv().ok();
+      while message_opt.is_some() {
+        let message = std::mem::replace(&mut message_opt, self.receiver.recv().ok()).unwrap();
+        match message {
+          RendererCommand::EndFrame => {
+            break;
+          }
+
+          RendererCommand::Register(renderable) => {
+            guard.elements.push(renderable);
+          }
+
+          RendererCommand::UnregisterStatic(entity) => {
+            let index = guard.elements.iter()
+              .enumerate()
+              .find(|(_, r)| r.entity == entity )
+              .map(|(index, _)| index);
+
+            if let Some(index) = index {
+              guard.elements.remove(index);
+            }
+          },
+
+          _ => {}
+        }
+      }
+    }
+
+
+    let result = self.graph.render();
     if result.is_err() {
       self.device.wait_for_idle();
 
@@ -303,7 +352,7 @@ impl<P: Platform> RendererInternal<P> {
       let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
       std::mem::replace(&mut self.swapchain, new_swapchain);
       std::mem::replace(&mut self.graph, new_graph);
-      self.graph.render(queue);
+      self.graph.render();
     }
   }
 }

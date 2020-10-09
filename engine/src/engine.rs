@@ -7,7 +7,7 @@ use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::MemoryUsage;
 use sourcerenderer_core::graphics::BufferUsage;
-use sourcerenderer_core::Vec2;
+use sourcerenderer_core::{Vec2, ThreadPoolBuilder};
 use sourcerenderer_core::Vec2I;
 use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::Vec3;
@@ -34,6 +34,7 @@ use crate::scene::Scene;
 use async_std::sync::{channel, Sender, Receiver};
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::job::*;
+use legion::{World, Resources, Schedule};
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -53,7 +54,8 @@ impl<P: Platform> Engine<P> {
   }
 
   pub fn run(&mut self) {
-    let scheduler = Arc::new(JobScheduler::new());
+    let cores = num_cpus::get();
+    ThreadPoolBuilder::new().num_threads(cores - 2).build_global().unwrap();
 
     let instance = self.platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = self.platform.window().create_surface(instance.clone());
@@ -61,10 +63,9 @@ impl<P: Platform> Engine<P> {
     let mut adapters = instance.list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(true, &device, &surface));
-
-    let asset_manager = Arc::new(AssetManager::<P>::new(&device));
-    let renderer = Renderer::<P>::run(&scheduler, self.platform.window(), &device, &swapchain, &asset_manager);
-    let scene = Scene::run::<P>(&renderer, &asset_manager);
+    let asset_manager = AssetManager::<P>::new(&device);
+    let renderer = Renderer::<P>::run(self.platform.window(), &device, &swapchain, &asset_manager);
+    Scene::run::<P>(&renderer, &asset_manager);
 
     'event_loop: loop {
       let event = self.platform.handle_events();

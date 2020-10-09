@@ -3,6 +3,7 @@ use std::sync::Arc;
 use nalgebra::Matrix4;
 use crate::asset::AssetKey;
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
+use legion::Entity;
 
 pub struct StaticModelRenderable {
   pub model: AssetKey,
@@ -23,21 +24,32 @@ impl Clone for StaticModelRenderable {
 }
 
 #[derive(Clone)]
-pub enum Renderable {
+pub enum RenderableType {
   Static(StaticModelRenderable),
   Skinned // TODO
 }
 
 #[derive(Clone)]
-pub struct TransformedRenderable {
-  pub renderable: Renderable,
+pub struct Renderable {
+  pub renderable_type: RenderableType,
+  pub entity: Entity,
   pub transform: Matrix4<f32>,
   pub old_transform: Matrix4<f32>
 }
 
 #[derive(Clone)]
 pub struct Renderables {
-  pub elements: Vec<TransformedRenderable>,
+  pub elements: Vec<Renderable>,
   pub camera: Matrix4<f32>,
   pub old_camera: Matrix4<f32>
+}
+
+impl Default for Renderables {
+  fn default() -> Self {
+    Self {
+      elements: Vec::new(),
+      camera: Matrix4::<f32>::identity(),
+      old_camera: Matrix4::<f32>::identity(),
+    }
+  }
 }

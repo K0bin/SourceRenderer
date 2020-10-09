@@ -7,7 +7,7 @@ use std::ops::Fn;
 use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
 use crate::job::JobScheduler;
 
-pub type RenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer) -> usize) + Send + Sync;
+pub type RenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer)) + Send + Sync;
 
 #[derive(Clone)]
 pub struct RenderGraphInfo<B: Backend> {
@@ -23,5 +23,5 @@ pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
 pub trait RenderGraph<B: Backend> {
   fn recreate(old: &Self, swapchain: &Arc<B::Swapchain>) -> Self;
-  fn render(&mut self, job_queue: &JobScheduler) -> Result<(), ()>;
+  fn render(&mut self) -> Result<(), ()>;
 }
