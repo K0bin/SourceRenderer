@@ -5,6 +5,7 @@ use nalgebra::Matrix4;
 pub enum RendererCommand {
   Register(Renderable),
   UnregisterStatic(Entity),
-  UpdateTransform(Matrix4<f32>),
+  UpdateTransform(Entity, Matrix4<f32>),
+  UpdateCamera(Matrix4<f32>),
   EndFrame
 }

@@ -62,7 +62,7 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn install(&self, world: &mut World, resources: &mut Resources, systems: &mut Builder) {
-    crate::renderer::ecs::install(resources, systems, self.sender.clone());
+    crate::renderer::ecs::install(systems, self.sender.clone());
   }
 }
 
@@ -308,11 +308,28 @@ impl<P: Platform> RendererInternal<P> {
       let mut guard = self.renderables.lock().unwrap();
 
       let mut message_opt = self.receiver.recv().ok();
+
       while message_opt.is_some() {
-        let message = std::mem::replace(&mut message_opt, self.receiver.recv().ok()).unwrap();
+        let message = std::mem::replace(&mut message_opt, None).unwrap();
         match message {
           RendererCommand::EndFrame => {
             break;
+          }
+
+          RendererCommand::UpdateCamera(camera_mat) => {
+            guard.old_camera = guard.camera.clone();
+            guard.camera = camera_mat;
+          },
+
+          RendererCommand::UpdateTransform(entity, transform_mat) => {
+            let mut element = guard.elements.iter_mut()
+              .find(|r| r.entity == entity);
+            // TODO optimize
+
+            if let Some(element) = element {
+              element.old_transform = element.transform;
+              element.transform = transform_mat;
+            }
           }
 
           RendererCommand::Register(renderable) => {
@@ -321,18 +338,20 @@ impl<P: Platform> RendererInternal<P> {
 
           RendererCommand::UnregisterStatic(entity) => {
             let index = guard.elements.iter()
-              .enumerate()
-              .find(|(_, r)| r.entity == entity )
-              .map(|(index, _)| index);
+              .position(|r| r.entity == entity);
 
             if let Some(index) = index {
               guard.elements.remove(index);
             }
           },
 
-          _ => {}
+          _ => {
+            println!("Unimplemented RenderCommand");
+          }
         }
       }
+
+      std::mem::replace(&mut message_opt, self.receiver.recv().ok());
     }
 
 
