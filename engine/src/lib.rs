@@ -10,6 +10,9 @@ extern crate legion;
 
 pub use self::engine::Engine;
 use sourcerenderer_core::{Vec3, Vec2};
+pub use transform::Transform;
+pub use transform::Parent;
+pub use camera::Camera;
 
 // TODO move somewhere else
 #[repr(C)]
@@ -23,6 +26,8 @@ pub struct Vertex {
 mod engine;
 mod asset;
 mod spinning_cube;
+mod transform;
+mod camera;
 
 mod renderer;
 mod scene;
