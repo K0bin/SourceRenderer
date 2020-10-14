@@ -1,16 +1,19 @@
-use legion::{World, Resources, Entity};
-use crate::Vertex;
+use legion::{World, Resources, Entity, component};
+use crate::{Vertex, Transform, Camera};
 use std::path::Path;
 use sourcerenderer_core::graphics::{Format, TextureInfo, SampleCount};
-use nalgebra::{Point3, Matrix4, Rotation3};
+use nalgebra::{Point3, Matrix4, Rotation3, Unit};
 use image::GenericImageView;
 use crate::asset::AssetManager;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Quaternion};
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::Vec2;
 use std::sync::Arc;
 use crate::renderer::StaticRenderableComponent;
 use legion::systems::Builder as SystemBuilder;
+use crate::transform::GlobalTransform;
+
+struct SpinningCube {}
 
 pub fn install<P: Platform>(world: &mut World, systems: &mut SystemBuilder, asset_manager: &Arc<AssetManager<P>>) {
   let indices = [0u32, 1u32, 2u32, 2u32, 3u32, 0u32, // front
@@ -82,28 +85,21 @@ pub fn install<P: Platform>(world: &mut World, systems: &mut SystemBuilder, asse
   let model_key = asset_manager.add_model("model", mesh_key, &[material_key]);
   asset_manager.flush();
 
-  let mut camera = Matrix4::<f32>::identity();
-  /*let mut cube_rotation = 0f32;
-  'scene_loop: loop {
-    let old_camera = camera;
-    camera =
-      Matrix4::new_perspective(16f32 / 9f32, 1.02974f32, 0.001f32, 20.0f32)
-        *
-        Matrix4::look_at_rh(
-          &Point3::new(0.0f32, 2.0f32, -5.0f32),
-          &Point3::new(0.0f32, 0.0f32, 0.0f32),
-          &Vec3::new(0.0f32, 1.0f32, 0.0f32)
-        );
-
-    let old_cube_transform = Matrix4::from(Rotation3::from_axis_angle(&Vec3::y_axis(), cube_rotation / 300.0f32));
-    cube_rotation += 1f32;
-    let cube_transform = Matrix4::from(Rotation3::from_axis_angle(&Vec3::y_axis(), cube_rotation / 300.0f32));
-  }*/
-
+  systems.add_system(spin_system());
   world.push((StaticRenderableComponent {
     receive_shadows: true,
     cast_shadows: true,
     can_move: true,
     model: model_key
-  },));
+  }, Transform::new(Vec3::new(0f32, 0f32, 0f32)), SpinningCube {}));
+
+  world.push((Camera {
+    fov: 1.57f32
+  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32))));
+}
+
+#[system(for_each)]
+#[filter(component::<SpinningCube>())]
+fn spin(transform: &mut Transform) {
+  transform.rotation *= Quaternion::from_axis_angle(&Unit::new_normalize(Vec3::new(0.0f32, 1.0f32, 0.0f32)), 1.0f32 / 300.0f32);
 }
