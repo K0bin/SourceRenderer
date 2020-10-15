@@ -28,7 +28,7 @@ mod vertex;
 mod vertex_normal;
 mod vertex_normal_index;
 
-#[derive(FromPrimitive, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum LumpType {
   Entities = 0,
