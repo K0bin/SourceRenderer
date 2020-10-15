@@ -4,6 +4,7 @@ extern crate ash;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;
 extern crate sourcerenderer_vulkan;
+extern crate bitset_core;
 
 use std::time::Duration;
 
@@ -13,8 +14,10 @@ use sourcerenderer_core::platform::GraphicsApi;
 use sourcerenderer_engine::Engine;
 
 use sdl_platform::SDLPlatform;
+use input::SDLInput;
 
 mod sdl_platform;
+mod input;
 
 fn main() {
   let mut platform: Box<SDLPlatform> = Box::new(SDLPlatform::new(GraphicsApi::Vulkan));

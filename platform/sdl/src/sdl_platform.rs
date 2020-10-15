@@ -2,6 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use sourcerenderer_core::platform::Platform;
+use sourcerenderer_core::platform::Input;
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_core::platform::PlatformEvent;
 use sourcerenderer_core::platform::GraphicsApi;
@@ -28,11 +29,14 @@ use ash::version::InstanceV1_0;
 use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
 
+use crate::SDLInput;
+
 pub struct SDLPlatform {
   sdl_context: Sdl,
   video_subsystem: VideoSubsystem,
   event_pump: EventPump,
-  window: SDLWindow
+  window: SDLWindow,
+  input: Arc<SDLInput>
 }
 
 pub struct SDLWindow {
@@ -52,7 +56,8 @@ impl SDLPlatform {
       sdl_context,
       video_subsystem,
       event_pump,
-      window
+      window,
+      input: Arc::new(SDLInput::new())
     };
   }
 }
@@ -83,6 +88,11 @@ impl SDLWindow {
 impl Platform for SDLPlatform {
   type Window = SDLWindow;
   type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
+  type Input = SDLInput;
+
+  fn input(&self) -> &Arc<SDLInput> {
+    &self.input
+  }
 
   fn window(&mut self) -> &SDLWindow {
     return &self.window;
@@ -98,6 +108,7 @@ impl Platform for SDLPlatform {
         _ => {}
       }
     }
+    self.input.update(&self.event_pump, &self.sdl_context.mouse(), &self.window);
     return PlatformEvent::Continue;
   }
 

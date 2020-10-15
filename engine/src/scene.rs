@@ -21,13 +21,17 @@ pub struct Scene {
 
 impl Scene {
   pub fn run<P: Platform>(renderer: &Arc<Renderer<P>>,
-                          asset_manager: &Arc<AssetManager<P>>) {
+                          asset_manager: &Arc<AssetManager<P>>,
+                          input: &Arc<P::Input>) {
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
+    let c_input = input.clone();
     thread::spawn(move || {
       let mut world = World::default();
       let mut systems = Schedule::builder();
       let mut resources = Resources::default();
+
+      resources.insert(c_input);
 
       transform::install(&mut systems);
       camera::install(&mut systems);

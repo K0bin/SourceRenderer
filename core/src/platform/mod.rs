@@ -3,6 +3,10 @@ use std::sync::Arc;
 
 use crate::graphics;
 
+mod input;
+pub use input::Input;
+pub use input::Key;
+
 #[derive(PartialEq)]
 pub enum PlatformEvent {
   Continue,
@@ -20,7 +24,9 @@ pub enum GraphicsApi {
 pub trait Platform: 'static + Sized {
   type GraphicsBackend: graphics::Backend + Send + Sync;
   type Window: Window<Self>;
+  type Input: Input;
 
+  fn input(&self) -> &Arc<Self::Input>;
   fn window(&mut self) -> &Self::Window;
   fn handle_events(&mut self) -> PlatformEvent;
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<<Self::GraphicsBackend as graphics::Backend>::Instance>, Box<dyn Error>>;

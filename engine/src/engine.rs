@@ -65,7 +65,7 @@ impl<P: Platform> Engine<P> {
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(true, &device, &surface));
     let asset_manager = AssetManager::<P>::new(&device);
     let renderer = Renderer::<P>::run(self.platform.window(), &device, &swapchain, &asset_manager);
-    Scene::run::<P>(&renderer, &asset_manager);
+    Scene::run::<P>(&renderer, &asset_manager, self.platform.input());
 
     'event_loop: loop {
       let event = self.platform.handle_events();
