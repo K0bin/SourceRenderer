@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use byteorder::{ReadBytesExt, LittleEndian};
 use lump_data::{LumpData, LumpType};
+use read_u16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct LeafFace {
@@ -17,7 +17,7 @@ impl LumpData for LeafFace {
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let face = reader.read_u16::<LittleEndian>()?;
+    let face = read_u16(reader)?;
     return Ok(Self {
       index: face
     });

@@ -1,7 +1,7 @@
 use std::io::{Read, Result as IOResult};
-use byteorder::{ReadBytesExt, LittleEndian};
 use lump_data::{LumpData, LumpType};
 use nalgebra::Vector3;
+use read_f32;
 
 #[derive(Clone, Debug)]
 pub struct Vertex {
@@ -18,7 +18,7 @@ impl LumpData for Vertex {
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let vec3 = Vector3::<f32>::new(reader.read_f32::<LittleEndian>()?, reader.read_f32::<LittleEndian>()?, reader.read_f32::<LittleEndian>()?);
+    let vec3 = Vector3::<f32>::new(read_f32(reader)?, read_f32(reader)?, read_f32(reader)?);
     return Ok(Self {
       position: vec3
     });

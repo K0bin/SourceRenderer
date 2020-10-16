@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use byteorder::{ReadBytesExt, LittleEndian};
 use lump_data::{LumpData, LumpType};
+use ::{read_i16, read_u16};
 
 pub struct BrushSide {
   pub plane_number: u16,
@@ -19,10 +19,10 @@ impl LumpData for BrushSide {
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let plane_number = reader.read_u16::<LittleEndian>()?;
-    let texture_info = reader.read_i16::<LittleEndian>()?;
-    let displacement_info = reader.read_i16::<LittleEndian>()?;
-    let is_bevel_plane = reader.read_i16::<LittleEndian>()? != 0;
+    let plane_number = read_u16(reader)?;
+    let texture_info = read_i16(reader)?;
+    let displacement_info = read_i16(reader)?;
+    let is_bevel_plane = read_i16(reader)? != 0;
     return Ok(Self {
       plane_number,
       texture_info,

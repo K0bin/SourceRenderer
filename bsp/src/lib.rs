@@ -5,8 +5,6 @@ pub use self::map_header::MapHeader;
 pub use self::map::Map;
 pub use self::lump_data::*;
 
-extern crate byteorder;
-
 #[macro_use]
 extern crate bitflags;
 
@@ -16,3 +14,6 @@ mod lump;
 mod lump_data;
 mod map_header;
 mod map;
+mod util;
+
+pub(crate) use self::util::*;

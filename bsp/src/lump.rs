@@ -1,5 +1,5 @@
 use std::io::{Read, Error, Result as IOResult};
-use byteorder::{ReadBytesExt, LittleEndian};
+use read_i32;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Lump {
@@ -11,10 +11,10 @@ pub struct Lump {
 
 impl Lump {
   pub fn read(reader: &mut dyn Read) -> IOResult<Self> {
-    let file_offset = reader.read_i32::<LittleEndian>()?;
-    let file_length = reader.read_i32::<LittleEndian>()?;
-    let version = reader.read_i32::<LittleEndian>()?;
-    let four_cc = reader.read_i32::<LittleEndian>()?;
+    let file_offset = read_i32(reader)?;
+    let file_length = read_i32(reader)?;
+    let version = read_i32(reader)?;
+    let four_cc = read_i32(reader)?;
 
     return Ok(Self {
       file_offset,

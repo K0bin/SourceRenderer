@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use byteorder::{ReadBytesExt, LittleEndian};
 use lump_data::{LumpData, LumpType};
+use read_u16;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Edge {
@@ -18,8 +18,8 @@ impl LumpData for Edge {
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let vertex_index = [
-      reader.read_u16::<LittleEndian>()?,
-      reader.read_u16::<LittleEndian>()?
+      read_u16(reader)?,
+      read_u16(reader)?
     ];
     return Ok(Self {
       vertex_index

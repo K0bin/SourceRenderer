@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use byteorder::{ReadBytesExt, LittleEndian};
 use lump_data::{LumpData, LumpType};
+use read_u16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct  SurfaceEdge {
@@ -17,7 +17,7 @@ impl LumpData for SurfaceEdge {
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let edge = reader.read_u16::<LittleEndian>()?;
+    let edge = read_u16(reader)?;
     return Ok(Self {
       index: edge
     });
