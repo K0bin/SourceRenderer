@@ -9,9 +9,10 @@ use nalgebra::{Vector3, Unit};
 pub struct Transform {
   pub position: Vec3,
   pub rotation: Quaternion,
-  pub scale: Vec3,
-  dirty: bool
+  pub scale: Vec3
 }
+
+struct TransformDirty(bool);
 
 pub struct GlobalTransform(pub Matrix4);
 
@@ -24,8 +25,8 @@ struct Children(Vec<Entity>);
 impl From<Transform> for Matrix4 {
   fn from(transform: Transform) -> Self {
     Matrix4::new_translation(&transform.position)
-    * Matrix4::new_rotation(transform.rotation.axis_angle().map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| *axis * amount))
-    * Matrix4::new_nonuniform_scaling(&transform.scale)
+      * Matrix4::new_rotation(transform.rotation.axis_angle().map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| *axis * amount))
+      * Matrix4::new_nonuniform_scaling(&transform.scale)
   }
 }
 
@@ -43,7 +44,6 @@ impl Transform {
       position,
       rotation: Quaternion::identity(),
       scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-      dirty: true
     }
   }
 }
@@ -52,7 +52,8 @@ impl Transform {
 pub fn install(systems: &mut Builder) {
   systems.add_system(maintain_children_system(HashMap::new()));
   systems.flush();
-  systems.add_system(mark_transforms_dirty_system());
+  systems.add_system(add_dirty_to_new_transforms_system());
+  systems.add_system(mark_changed_transforms_dirty_system());
   systems.add_system(mark_transforms_dirty_because_parent_system());
   systems.flush();
   systems.add_system(update_global_transforms_system());
@@ -61,24 +62,31 @@ pub fn install(systems: &mut Builder) {
 }
 
 #[system(for_each)]
+#[filter(component::<Transform>() & !component::<TransformDirty>())]
+fn add_dirty_to_new_transforms(entity: &Entity, command_buffer: &mut CommandBuffer) {
+  command_buffer.add_component(*entity, TransformDirty(true));
+}
+
+#[system(for_each)]
 #[filter(maybe_changed::<Transform>())]
-fn mark_transforms_dirty(transform: &mut Transform) {
-  transform.dirty = true;
+fn mark_changed_transforms_dirty(dirty: &mut TransformDirty) {
+  dirty.0 = true;
 }
 
 #[system(for_each)]
 #[filter(maybe_changed::<Parent>())]
-fn mark_transforms_dirty_because_parent(transform: &mut Transform) {
-  transform.dirty = true;
+fn mark_transforms_dirty_because_parent(dirty: &mut TransformDirty) {
+  dirty.0 = true;
 }
 
 #[system(par_for_each)]
-fn mark_transforms_clean(transform: &mut Transform) {
-  transform.dirty = false;
+fn mark_transforms_clean(dirty: &mut TransformDirty) {
+  dirty.0 = false;
 }
 
 #[system]
 #[read_component(Transform)]
+#[read_component(TransformDirty)]
 #[read_component(GlobalTransform)]
 fn update_global_transforms(world: &SubWorld,
                             command_buffer: &mut CommandBuffer) {
@@ -102,7 +110,8 @@ fn propagade_transforms(entity: &Entity,
 
   let mut entry = entry_opt.unwrap();
   let transform = entry.get_component::<Transform>().unwrap();
-  let dirty = parent_dirty || transform.dirty;
+  let transform_dirty = entry.get_component::<TransformDirty>().unwrap();
+  let dirty = parent_dirty || transform_dirty.0;
   let new_global_transform = if dirty {
     Some(GlobalTransform(parent_transform.clone() * Matrix4::from(transform)))
     //Some(GlobalTransform(Matrix4::identity()))
