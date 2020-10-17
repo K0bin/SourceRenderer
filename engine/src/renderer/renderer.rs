@@ -361,6 +361,9 @@ impl<P: Platform> RendererInternal<P> {
       } => {
         swapchain_width = width;
         swapchain_height = height;
+      },
+      WindowState::Exited => {
+        return;
       }
     }
 

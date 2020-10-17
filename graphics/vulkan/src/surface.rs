@@ -7,6 +7,7 @@ use crate::VkBackend;
 use crate::raw::*;
 use std::sync::Arc;
 use std::cmp::{min, max};
+use ash::prelude::VkResult;
 
 pub struct VkSurface {
   surface: vk::SurfaceKHR,
@@ -33,22 +34,22 @@ impl VkSurface {
     return &self.surface_loader;
   }
 
-  pub(crate) fn get_capabilities(&self, physical_device: &vk::PhysicalDevice) -> vk::SurfaceCapabilitiesKHR {
+  pub(crate) fn get_capabilities(&self, physical_device: &vk::PhysicalDevice) -> VkResult<vk::SurfaceCapabilitiesKHR> {
     unsafe {
       self.surface_loader.get_physical_device_surface_capabilities(*physical_device, self.surface)
-    }.unwrap()
+    }
   }
 
-  pub(crate) fn get_formats(&self, physical_device: &vk::PhysicalDevice) -> Vec<vk::SurfaceFormatKHR> {
+  pub(crate) fn get_formats(&self, physical_device: &vk::PhysicalDevice) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
     unsafe {
       self.surface_loader.get_physical_device_surface_formats(*physical_device, self.surface)
-    }.unwrap()
+    }
   }
 
-  pub(crate) fn get_present_modes(&self, physical_device: &vk::PhysicalDevice) -> Vec<vk::PresentModeKHR> {
+  pub(crate) fn get_present_modes(&self, physical_device: &vk::PhysicalDevice) -> VkResult<Vec<vk::PresentModeKHR>> {
     unsafe {
       self.surface_loader.get_physical_device_surface_present_modes(*physical_device, self.surface)
-    }.unwrap()
+    }
   }
 }
 

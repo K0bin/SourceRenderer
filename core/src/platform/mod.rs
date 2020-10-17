@@ -43,7 +43,8 @@ pub enum WindowState {
   FullScreen {
     width: u32,
     height: u32
-  }
+  },
+  Exited
 }
 
 pub trait Window<P: Platform> {

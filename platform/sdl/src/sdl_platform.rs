@@ -41,7 +41,8 @@ pub struct SDLPlatform {
 
 pub struct SDLWindow {
   window: sdl2::video::Window,
-  graphics_api: GraphicsApi
+  graphics_api: GraphicsApi,
+  is_active: bool
 }
 
 impl SDLPlatform {
@@ -75,7 +76,8 @@ impl SDLWindow {
     let window = window_builder.build().unwrap();
     return SDLWindow {
       graphics_api,
-      window
+      window,
+      is_active: true
     };
   }
 
@@ -107,6 +109,7 @@ impl Platform for SDLPlatform {
       match event {
         Event::Quit {..} |
         Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+          self.window.is_active = false;
           return PlatformEvent::Quit;
         },
         _ => {}
@@ -137,6 +140,10 @@ impl Window<SDLPlatform> for SDLWindow {
   }
 
   fn state(&self) -> WindowState {
+    if !self.is_active {
+      return WindowState::Exited;
+    }
+
     let (width, height) = self.window.drawable_size();
     let flags = self.window.window_flags();
     let fullscreen = (flags & SDL_WindowFlags::SDL_WINDOW_FULLSCREEN as u32) != 0 || (flags & SDL_WindowFlags::SDL_WINDOW_FULLSCREEN_DESKTOP as u32) != 0;

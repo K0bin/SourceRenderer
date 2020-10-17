@@ -42,12 +42,21 @@ impl VkSwapchain {
 
     return unsafe {
       let physical_device = device.physical_device;
-      let present_modes = surface.get_present_modes(&physical_device);
+      let present_modes = match surface.get_present_modes(&physical_device) {
+        Ok(present_modes) => present_modes,
+        Err(e) => return Err(SwapchainError::SurfaceLost)
+      };
       let present_mode = VkSwapchain::pick_present_mode(present_modes);
       let swapchain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
-      let capabilities = surface.get_capabilities(&physical_device);
-      let formats = surface.get_formats(&physical_device);
+      let capabilities = match surface.get_capabilities(&physical_device) {
+        Ok(capabilities) => capabilities,
+        Err(e) => return Err(SwapchainError::SurfaceLost)
+      };
+      let formats = match surface.get_formats(&physical_device) {
+        Ok(format) => format,
+        Err(e) => return Err(SwapchainError::SurfaceLost)
+      };
       let format = VkSwapchain::pick_format(&formats);
 
       let (width, height) = VkSwapchain::pick_extent(&capabilities, width, height);
@@ -122,8 +131,6 @@ impl VkSwapchain {
   pub fn new(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>) -> Result<Arc<Self>, SwapchainError> {
     VkSwapchain::new_internal(vsync, width, height, device, surface, None)
   }
-
-
 
   pub fn pick_extent(capabilities: &vk::SurfaceCapabilitiesKHR, preferred_width: u32, preferred_height: u32) -> (u32, u32) {
     if capabilities.current_extent.width != u32::MAX && capabilities.current_extent.height != u32::MAX {

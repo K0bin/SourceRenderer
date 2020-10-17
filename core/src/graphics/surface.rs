@@ -11,6 +11,7 @@ pub trait Surface {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SwapchainError {
   ZeroExtents,
+  SurfaceLost,
   Other
 }
 
