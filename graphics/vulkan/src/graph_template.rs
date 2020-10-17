@@ -53,10 +53,38 @@ pub enum VkPassType {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-struct AttachmentPassIndices {
+struct AttachmentMetadata {
   last_used_in_pass_index: u32,
   produced_in_pass_index: u32,
   producer_pass_type: AttachmentProducerPassType
+}
+
+impl Default for AttachmentMetadata {
+  fn default() -> Self {
+    Self {
+      last_used_in_pass_index: 0,
+      produced_in_pass_index: 0,
+      producer_pass_type: AttachmentProducerPassType::Graphics
+    }
+  }
+}
+
+struct SubpassAttachmentMetadata {
+  produced_in_subpass_index: u32,
+  render_pass_attachment_index: u32,
+  last_used_in_pass_index: u32,
+  layout: vk::ImageLayout
+}
+
+impl Default for SubpassAttachmentMetadata {
+  fn default() -> Self {
+    Self {
+      produced_in_subpass_index: vk::SUBPASS_EXTERNAL,
+      render_pass_attachment_index: 0,
+      last_used_in_pass_index: 0,
+      layout: vk::ImageLayout::UNDEFINED
+    }
+  }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -81,7 +109,7 @@ impl VkRenderGraphTemplate {
     let mut pass_infos = info.passes.clone();
     let mut reordered_passes = VkRenderGraphTemplate::reorder_passes(&info.attachments, &mut pass_infos);
 
-    let mut attachments: HashMap<&str, AttachmentPassIndices> = HashMap::new();
+    let mut attachment_metadata: HashMap<&str, AttachmentMetadata> = HashMap::new();
     for (pass_index, reordered_pass) in info.passes.iter().enumerate() {
       match &reordered_pass.pass_type {
         PassType::Graphics {
@@ -89,27 +117,18 @@ impl VkRenderGraphTemplate {
         } => {
           for subpass in subpasses {
             for output in &subpass.outputs {
-              attachments.entry(output.name.as_str()).or_insert(AttachmentPassIndices {
-                last_used_in_pass_index: 0,
-                produced_in_pass_index: 0,
-                producer_pass_type: AttachmentProducerPassType::Graphics
-              }).produced_in_pass_index = pass_index as u32;
+              attachment_metadata.entry(output.name.as_str())
+                .or_default().produced_in_pass_index = pass_index as u32;
             }
 
             for input in &subpass.inputs {
-              attachments.entry(input.name.as_str()).or_insert(AttachmentPassIndices {
-                last_used_in_pass_index: 0,
-                produced_in_pass_index: 0,
-                producer_pass_type: AttachmentProducerPassType::Graphics
-              }).last_used_in_pass_index = pass_index as u32;
+              attachment_metadata.entry(input.name.as_str())
+                .or_default().last_used_in_pass_index = pass_index as u32;
             }
 
             if let Some(depth_stencil) = &subpass.depth_stencil {
-              attachments.entry(depth_stencil.name.as_str()).or_insert(AttachmentPassIndices {
-                last_used_in_pass_index: 0,
-                produced_in_pass_index: 0,
-                producer_pass_type: AttachmentProducerPassType::Graphics
-              }).produced_in_pass_index = pass_index as u32;
+              attachment_metadata.entry(depth_stencil.name.as_str())
+                .or_default().produced_in_pass_index = pass_index as u32;
             }
           }
         },
@@ -128,7 +147,7 @@ impl VkRenderGraphTemplate {
           ref subpasses
         } => {
           // build subpasses, requires the attachment indices populated before
-          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, &info.attachments, &mut layouts, pass_index, &attachments, info.swapchain_format, info.swapchain_sample_count);
+          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, &info.attachments, &mut layouts, pass_index, &attachment_metadata, info.swapchain_format, info.swapchain_sample_count);
           did_render_to_backbuffer |= render_graph_pass.renders_to_swapchain;
           passes.push(render_graph_pass);
         },
@@ -176,19 +195,21 @@ impl VkRenderGraphTemplate {
                        attachments: &HashMap<String, AttachmentInfo>,
                        layouts: &mut HashMap<String, vk::ImageLayout>,
                        pass_index: u32,
-                       attachment_pass_indices: &HashMap<&str, AttachmentPassIndices>,
+                       attachment_metadata: &HashMap<&str, AttachmentMetadata>,
                        swapchain_format: Format,
                        swapchain_samples: SampleCount) -> VkPassTemplate {
     let mut vk_render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
-    let mut vk_attachment_indices: HashMap<&str, u32> = HashMap::new();
-    let mut used_attachments: Vec<String> = Vec::new();
+    let mut subpass_attachment_metadata: HashMap<&str, SubpassAttachmentMetadata> = HashMap::new();
     let mut pass_renders_to_backbuffer = false;
-    let mut attachment_producer_subpass_index: HashMap<&str, u32> = HashMap::new();
 
     // Prepare attachments
-    for (pass_index, pass) in passes.iter().enumerate() {
+    for (subpass_index, pass) in passes.iter().enumerate() {
       for output in &pass.outputs {
-        let render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+        let mut metadata = subpass_attachment_metadata.entry(output.name.as_str())
+          .or_default();
+        metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+        metadata.produced_in_subpass_index = subpass_index as u32;
+
         if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
           if output.load_action == LoadAction::Load {
             panic!("cant load back buffer");
@@ -205,12 +226,13 @@ impl VkRenderGraphTemplate {
               store_op: store_action_to_vk(output.store_action),
               stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
               stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-              initial_layout: *(layouts.get(&output.name).unwrap_or(&vk::ImageLayout::UNDEFINED)),
+              initial_layout: metadata.layout,
               final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
               ..Default::default()
             }
           );
-          layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
+
+          metadata.layout = vk::ImageLayout::PRESENT_SRC_KHR;
         } else {
           let attachment = attachments.get(&output.name).expect("Output not attachment not declared.");
           match attachment {
@@ -229,24 +251,25 @@ impl VkRenderGraphTemplate {
                   store_op: store_action_to_vk(output.store_action),
                   stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
                   stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-                  initial_layout: *layouts.get(&output.name as &str).unwrap_or(&vk::ImageLayout::UNDEFINED),
+                  initial_layout: metadata.layout,
                   final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                   ..Default::default()
                 }
               );
-              layouts.insert(output.name.clone(), vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
             },
             _ => unreachable!()
           }
-        }
 
-        used_attachments.push(output.name.clone());
-        vk_attachment_indices.insert(&output.name as &str, render_pass_attachment_index);
-        attachment_producer_subpass_index.insert(&output.name as &str, pass_index as u32);
+          metadata.layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+        }
       }
 
       if let Some(depth_stencil) = &pass.depth_stencil {
-        let render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+        let mut metadata = subpass_attachment_metadata.entry(depth_stencil.name.as_str())
+          .or_default();
+        metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+        metadata.produced_in_subpass_index = subpass_index as u32;
+
         let attachment = attachments.get(&depth_stencil.name).expect("DS  attachment not declared.");
         match attachment {
           AttachmentInfo::Texture {
@@ -264,19 +287,23 @@ impl VkRenderGraphTemplate {
                 store_op: store_action_to_vk(depth_stencil.store_action),
                 stencil_load_op: load_action_to_vk(depth_stencil.load_action),
                 stencil_store_op: store_action_to_vk(depth_stencil.store_action),
-                initial_layout: *layouts.get(&depth_stencil.name as &str).unwrap_or(&vk::ImageLayout::UNDEFINED),
+                initial_layout: metadata.layout,
                 final_layout: vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
                 ..Default::default()
               }
             );
-            layouts.insert(depth_stencil.name.clone(), vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL);
           },
           _ => unreachable!()
         }
+        metadata.layout = vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL;
+      }
 
-        used_attachments.push(depth_stencil.name.clone());
-        vk_attachment_indices.insert(&depth_stencil.name as &str, render_pass_attachment_index);
-        attachment_producer_subpass_index.insert(&depth_stencil.name as &str, pass_index as u32);
+      for input in &pass.inputs {
+        let mut metadata = subpass_attachment_metadata.entry(input.name.as_str())
+          .or_default();
+        if subpass_index as u32 > metadata.last_used_in_pass_index {
+          metadata.last_used_in_pass_index = subpass_index as u32;
+        }
       }
     }
 
@@ -284,32 +311,33 @@ impl VkRenderGraphTemplate {
     let mut subpasses: Vec<vk::SubpassDescription> = Vec::new();
     let mut attachment_refs: Vec<vk::AttachmentReference> = Vec::new();
     let mut preserve_attachments: Vec<u32> = Vec::new();
-    for (index, pass) in passes.iter().enumerate() {
+    for (subpass_index, pass) in passes.iter().enumerate() {
       let inputs_start = attachment_refs.len() as isize;
       let inputs_len = pass.inputs.len() as u32;
       for input in &pass.inputs {
-        let indices = &attachment_pass_indices[input.name.as_str()];
+        let metadata = &attachment_metadata[input.name.as_str()];
+        let subpass_metadata = &subpass_attachment_metadata[input.name.as_str()];
         match &input.attachment_type {
           InputAttachmentReferenceType::Texture {
             is_local
           } => {
             if *is_local {
               attachment_refs.push(vk::AttachmentReference {
-                attachment: (*vk_attachment_indices.get(&input.name as &str).expect(format!("Couldn't find index for {}", &input.name).as_str())) as u32,
+                attachment: subpass_metadata.render_pass_attachment_index,
                 layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               });
             }
 
             dependencies.push(vk::SubpassDependency {
-              src_subpass: attachment_producer_subpass_index.get(&input.name as &str).map(|index| *index).unwrap_or(vk::SUBPASS_EXTERNAL),
-              dst_subpass: index as u32,
-              src_stage_mask: match indices.producer_pass_type {
+              src_subpass: subpass_metadata.produced_in_subpass_index,
+              dst_subpass: subpass_index as u32,
+              src_stage_mask: match metadata.producer_pass_type {
                 AttachmentProducerPassType::Graphics => vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 AttachmentProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
                 AttachmentProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
               },
               dst_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
-              src_access_mask: match indices.producer_pass_type {
+              src_access_mask: match metadata.producer_pass_type {
                 AttachmentProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
                 AttachmentProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
                 AttachmentProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
@@ -326,32 +354,35 @@ impl VkRenderGraphTemplate {
       let outputs_len = pass.outputs.len() as u32;
       let mut graph_pass_index = 0;
       for output in &pass.outputs {
-        graph_pass_index = attachment_pass_indices.get(output.name.as_str()).unwrap().produced_in_pass_index;
+        let metadata = &subpass_attachment_metadata[output.name.as_str()];
+        graph_pass_index = metadata.produced_in_subpass_index;
 
         attachment_refs.push(vk::AttachmentReference {
-          attachment: (*vk_attachment_indices.get(&output.name as &str).expect(format!("Couldn't find index for {}", &output.name).as_str())),
+          attachment: metadata.render_pass_attachment_index,
           layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
         });
       }
 
       let depth_stencil_start = pass.depth_stencil.as_ref().map(|depth_stencil| {
+        let metadata = &subpass_attachment_metadata[depth_stencil.name.as_str()];
         let index = attachment_refs.len();
         attachment_refs.push(vk::AttachmentReference {
-          attachment: (*vk_attachment_indices.get(&depth_stencil.name as &str).expect(format!("Couldn't find index for {}", &depth_stencil.name).as_str())),
+          attachment: metadata.render_pass_attachment_index,
           layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
         });
         index as isize
       });
 
-      for (name, attachment) in attachments {
+      for (name, _) in attachments {
         let mut is_used = false;
         for input in &pass.inputs {
           is_used |= &input.name == name;
         }
 
-        let indices = attachment_pass_indices.get(&name.as_str()).unwrap();
-        if !is_used && indices.last_used_in_pass_index > pass_index {
-          preserve_attachments.push(*(vk_attachment_indices.get(name.as_str()).expect(format!("Couldn't find index for {}", name.as_str()).as_str())));
+        let metadata = attachment_metadata.get(&name.as_str()).unwrap();
+        let subpass_metadata = subpass_attachment_metadata.get(&name.as_str()).unwrap();
+        if !is_used && (metadata.last_used_in_pass_index > pass_index || subpass_metadata.last_used_in_pass_index > subpass_index as u32) {
+          preserve_attachments.push(subpass_metadata.render_pass_attachment_index);
         }
       }
 
@@ -379,6 +410,10 @@ impl VkRenderGraphTemplate {
       ..Default::default()
     };
     let render_pass = Arc::new(VkRenderPass::new(device, &render_pass_create_info));
+
+    let mut sorted_metadata: Vec<(&&str, &SubpassAttachmentMetadata)> = subpass_attachment_metadata.iter().collect();
+    sorted_metadata.sort_by_key(|(name, subpass_metadata)| subpass_metadata.render_pass_attachment_index);
+    let used_attachments = sorted_metadata.iter().map(|(name, _)| (*name).to_string()).collect();
 
     VkPassTemplate {
       renders_to_swapchain: pass_renders_to_backbuffer,
