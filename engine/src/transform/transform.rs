@@ -46,6 +46,10 @@ impl Transform {
       scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
     }
   }
+
+  pub fn transform(&self, vector: &Vec3) -> Vec3 {
+    Matrix4::from(self).transform_vector(&vector)
+  }
 }
 
 
@@ -114,15 +118,12 @@ fn propagade_transforms(entity: &Entity,
   let dirty = parent_dirty || transform_dirty.0;
   let new_global_transform = if dirty {
     Some(GlobalTransform(parent_transform.clone() * Matrix4::from(transform)))
-    //Some(GlobalTransform(Matrix4::identity()))
   } else {
     None
   };
-  let global_transform = if let Some(global_transform) = new_global_transform.as_ref() {
-    global_transform
-  } else {
+  let global_transform = new_global_transform.as_ref().unwrap_or_else(|| {
     entry.get_component::<GlobalTransform>().expect("Parent does not have a global transform component")
-  };
+  });
 
   let children_opt = entry.get_component::<Children>();
   if let Ok(children) = children_opt {

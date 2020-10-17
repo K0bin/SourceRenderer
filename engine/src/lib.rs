@@ -29,6 +29,7 @@ mod asset;
 mod spinning_cube;
 mod transform;
 mod camera;
+mod fps_camera;
 
 mod renderer;
 mod scene;

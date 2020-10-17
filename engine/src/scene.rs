@@ -14,6 +14,7 @@ use crate::asset::AssetManager;
 use legion::{World, Resources, Schedule};
 use legion::systems::Builder as SystemBuilder;
 use crate::transform;
+use crate::fps_camera;
 
 pub struct Scene {
 
@@ -33,18 +34,17 @@ impl Scene {
 
       resources.insert(c_input);
 
+      crate::spinning_cube::install(&mut world, &mut resources, &mut systems, &c_asset_manager);
+      fps_camera::install::<P>(&mut world, &mut systems);
+
       transform::install(&mut systems);
       camera::install(&mut systems);
       c_renderer.install(&mut world, &mut resources, &mut systems);
-      crate::spinning_cube::install(&mut world, &mut systems, &c_asset_manager);
 
-      systems.flush();
       let mut schedule = systems.build();
       loop {
         while c_renderer.is_saturated() {}
         schedule.execute(&mut world, &mut resources);
-
-        thread::sleep(Duration::new(0, 16_000));
       }
     });
   }

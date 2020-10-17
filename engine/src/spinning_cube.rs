@@ -12,10 +12,12 @@ use std::sync::Arc;
 use crate::renderer::StaticRenderableComponent;
 use legion::systems::Builder as SystemBuilder;
 use crate::transform::GlobalTransform;
+use crate::camera::ActiveCamera;
+use crate::fps_camera::FPSCameraComponent;
 
 struct SpinningCube {}
 
-pub fn install<P: Platform>(world: &mut World, systems: &mut SystemBuilder, asset_manager: &Arc<AssetManager<P>>) {
+pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, systems: &mut SystemBuilder, asset_manager: &Arc<AssetManager<P>>) {
   let indices = [0u32, 1u32, 2u32, 2u32, 3u32, 0u32, // front
     6u32, 5u32, 4u32, 4u32, 7u32, 6u32, // back
     5u32, 1u32, 0u32, 0u32, 4u32, 5u32, // top
@@ -93,9 +95,11 @@ pub fn install<P: Platform>(world: &mut World, systems: &mut SystemBuilder, asse
     model: model_key
   }, Transform::new(Vec3::new(0f32, 0f32, 0f32)), SpinningCube {}));
 
-  world.push((Camera {
+  let camera = world.push((Camera {
     fov: 1.57f32
-  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32))));
+  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCameraComponent::new()));
+
+  resources.insert(ActiveCamera(camera));
 }
 
 #[system(for_each)]
