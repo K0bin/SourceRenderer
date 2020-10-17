@@ -6,12 +6,12 @@ use std::io::Read as IORead;
 
 use crossbeam_channel::{Sender, bounded, Receiver, unbounded};
 
-use nalgebra::{Matrix4, Transform};
+use nalgebra::Transform;
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
 use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, RenderPassCallback, PipelineBinding};
 use sourcerenderer_core::graphics::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, OutputTextureAttachmentReference};
-use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Matrix4};
 
 use crate::asset::AssetKey;
 use crate::asset::AssetManager;
@@ -19,16 +19,18 @@ use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable
 
 use async_std::task;
 use sourcerenderer_core::job::{JobScheduler};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{Ordering, AtomicUsize};
 use sourcerenderer_vulkan::VkSwapchain;
 use crate::renderer::command::RendererCommand;
-use legion::{World, Resources, Schedule};
+use legion::{World, Resources, Schedule, Entity};
 use legion::systems::{Builder as SystemBuilder, Builder};
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
-  window_state: Mutex<WindowState>
+  window_state: Mutex<WindowState>,
+  queued_frames_counter: AtomicUsize,
+  max_prequeued_frames: usize
 }
 
 impl<P: Platform> Renderer<P> {
@@ -36,7 +38,9 @@ impl<P: Platform> Renderer<P> {
     Self {
       sender,
       device: device.clone(),
-      window_state: Mutex::new(window.state())
+      window_state: Mutex::new(window.state()),
+      queued_frames_counter: AtomicUsize::new(0),
+      max_prequeued_frames: 1
     }
   }
 
@@ -61,8 +65,48 @@ impl<P: Platform> Renderer<P> {
     std::mem::replace(&mut *guard, window_state);
   }
 
-  pub fn install(&self, world: &mut World, resources: &mut Resources, systems: &mut Builder) {
-    crate::renderer::ecs::install(systems, self.sender.clone());
+  pub fn install(self: &Arc<Renderer<P>>, world: &mut World, resources: &mut Resources, systems: &mut Builder) {
+    crate::renderer::ecs::install(systems, self);
+  }
+
+  pub fn register_static_renderable(&self, renderable: Renderable) {
+    let result = self.sender.send(RendererCommand::Register(renderable));
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  pub fn unregister_static_renderable(&self, entity: Entity) {
+    let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  pub fn update_camera(&self, camera_matrix: Matrix4) {
+    let result = self.sender.send(RendererCommand::UpdateCamera(camera_matrix));
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  pub fn update_transform(&self, entity: Entity, transform: Matrix4) {
+    let result = self.sender.send(RendererCommand::UpdateTransform(entity, transform));
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  pub fn end_frame(&self) {
+    self.queued_frames_counter.fetch_add(1, Ordering::SeqCst);
+    let result = self.sender.send(RendererCommand::EndFrame);
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  pub fn is_saturated(&self) -> bool {
+    self.queued_frames_counter.load(Ordering::SeqCst) > self.max_prequeued_frames
   }
 }
 
@@ -307,14 +351,22 @@ impl<P: Platform> RendererInternal<P> {
     {
       let mut guard = self.renderables.lock().unwrap();
 
-      let mut message_opt = self.receiver.recv().ok();
+      let mut message_opt: Option<RendererCommand> = None;
 
-      while message_opt.is_some() {
+      let message_result = self.receiver.recv();
+      if message_result.is_err() {
+        panic!("Rendering channel closed");
+      } else {
+        message_opt = message_result.ok();
+      }
+
+      loop {
         let message = std::mem::replace(&mut message_opt, None).unwrap();
         match message {
           RendererCommand::EndFrame => {
+            let frame = self.renderer.queued_frames_counter.fetch_sub(1, Ordering::SeqCst);
             break;
-          }
+          },
 
           RendererCommand::UpdateCamera(camera_mat) => {
             guard.old_camera = guard.camera.clone();
@@ -330,11 +382,11 @@ impl<P: Platform> RendererInternal<P> {
               element.old_transform = element.transform;
               element.transform = transform_mat;
             }
-          }
+          },
 
           RendererCommand::Register(renderable) => {
             guard.elements.push(renderable);
-          }
+          },
 
           RendererCommand::UnregisterStatic(entity) => {
             let index = guard.elements.iter()
@@ -349,11 +401,15 @@ impl<P: Platform> RendererInternal<P> {
             println!("Unimplemented RenderCommand");
           }
         }
+
+        let message_result = self.receiver.recv();
+        if message_result.is_err() {
+          panic!("Rendering channel closed");
+        } else {
+          message_opt = message_result.ok();
+        }
       }
-
-      std::mem::replace(&mut message_opt, self.receiver.recv().ok());
     }
-
 
     let result = self.graph.render();
     if result.is_err() {

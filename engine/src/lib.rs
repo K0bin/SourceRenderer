@@ -13,6 +13,7 @@ use sourcerenderer_core::{Vec3, Vec2};
 pub use transform::Transform;
 pub use transform::Parent;
 pub use camera::Camera;
+pub use camera::ActiveCamera;
 
 // TODO move somewhere else
 #[repr(C)]

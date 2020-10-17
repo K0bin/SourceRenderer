@@ -41,6 +41,7 @@ impl Scene {
       systems.flush();
       let mut schedule = systems.build();
       loop {
+        while c_renderer.is_saturated() {}
         schedule.execute(&mut world, &mut resources);
 
         thread::sleep(Duration::new(0, 16_000));
