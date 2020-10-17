@@ -9,7 +9,7 @@ use crossbeam_channel::{Sender, bounded, Receiver, unbounded};
 use nalgebra::Transform;
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
-use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, RenderPassCallback, PipelineBinding};
+use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, RenderPassCallback, PipelineBinding, AttachmentInfo, AttachmentSizeClass};
 use sourcerenderer_core::graphics::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, OutputTextureAttachmentReference};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Matrix4};
 
@@ -163,6 +163,17 @@ impl<P: Platform> RendererInternal<P> {
       device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
     };
 
+    let mut attachments: HashMap<String, AttachmentInfo> = HashMap::new();
+    attachments.insert("DS".to_string(), AttachmentInfo::Texture {
+      format: Format::D24S8,
+      samples: SampleCount::Samples1,
+      size_class: AttachmentSizeClass::RelativeToSwapchain,
+      width: 1.0,
+      height: 1.0,
+      levels: 1,
+      external: false
+    });
+
     let mut passes: Vec<PassInfo> = vec![
       PassInfo {
         name: "Geometry".to_string(),
@@ -174,7 +185,12 @@ impl<P: Platform> RendererInternal<P> {
                 load_action: LoadAction::Clear,
                 store_action: StoreAction::Store
               }],
-              inputs: Vec::new()
+              inputs: Vec::new(),
+              depth_stencil: Some(OutputTextureAttachmentReference {
+                name: "DS".to_string(),
+                store_action: StoreAction::DontCare,
+                load_action: LoadAction::Clear
+              })
             }
           ],
         }
@@ -182,7 +198,7 @@ impl<P: Platform> RendererInternal<P> {
     ];
 
     let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
-      attachments: HashMap::new(),
+      attachments,
       passes,
       swapchain_sample_count: swapchain.sample_count(),
       swapchain_format: swapchain.format()

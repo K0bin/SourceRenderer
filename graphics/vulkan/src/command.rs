@@ -205,7 +205,7 @@ impl VkCommandBuffer {
     };
   }
 
-  pub(crate) fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, recording_mode: RenderpassRecordingMode) {
+  pub(crate) fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, clear_values: &[vk::ClearValue], recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     // TODO: begin info fields
     unsafe {
@@ -216,20 +216,8 @@ impl VkCommandBuffer {
           offset: vk::Offset2D { x: 0i32, y: 0i32 },
           extent: vk::Extent2D { width: 1280, height: 720 }
         },
-        clear_value_count: 1,
-        p_clear_values: &[
-          vk::ClearValue {
-            color: vk::ClearColorValue {
-              float32: [0.0f32, 0.0f32, 0.0f32, 1.0f32]
-            }
-          },
-          vk::ClearValue {
-            depth_stencil: vk::ClearDepthStencilValue {
-              depth: 0.0f32,
-              stencil: 0u32
-            }
-          }
-        ] as *const vk::ClearValue,
+        clear_value_count: clear_values.len() as u32,
+        p_clear_values: clear_values.as_ptr(),
         ..Default::default()
       };
       self.device.cmd_begin_render_pass(self.buffer, &begin_info, if recording_mode == RenderpassRecordingMode::Commands { vk::SubpassContents::INLINE } else { vk::SubpassContents::SECONDARY_COMMAND_BUFFERS });
@@ -511,8 +499,8 @@ impl VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  pub fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, recording_mode: RenderpassRecordingMode) {
-    self.item.as_mut().unwrap().begin_render_pass(render_pass, frame_buffer, recording_mode);
+  pub fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, clear_values: &[vk::ClearValue], recording_mode: RenderpassRecordingMode) {
+    self.item.as_mut().unwrap().begin_render_pass(render_pass, frame_buffer, clear_values, recording_mode);
   }
 
   #[inline(always)]

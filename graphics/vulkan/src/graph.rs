@@ -57,6 +57,7 @@ pub enum VkPass {
     framebuffers: Vec<Arc<VkFrameBuffer>>,
     renderpass: Arc<VkRenderPass>,
     renders_to_swapchain: bool,
+    clear_values: Vec<vk::ClearValue>,
     callbacks: Vec<Arc<RenderPassCallback<VkBackend>>>
   },
   Compute,
@@ -82,6 +83,15 @@ impl VkRenderGraph {
         AttachmentInfo::Texture {
           format, size_class, width, height, samples, levels, ..
         } => {
+          let mut usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
+
+          if format.is_depth() || format.is_stencil() {
+            usage |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+          } else {
+            usage |= vk::ImageUsageFlags::STORAGE;
+          }
+
           let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
             format: *format,
             width: if *size_class == AttachmentSizeClass::RelativeToSwapchain {
@@ -98,7 +108,7 @@ impl VkRenderGraph {
             mip_levels: *levels,
             array_length: 1,
             samples: *samples
-          }, Some(name.as_str())));
+          }, Some(name.as_str()), usage));
 
           let view = Arc::new(VkTextureView::new_render_target_view(device, &texture));
           attachments.insert(name.clone(), VkAttachment {
@@ -119,6 +129,8 @@ impl VkRenderGraph {
         VkPassType::Graphics {
           render_pass
         } => {
+          let mut clear_values = Vec::<vk::ClearValue>::new();
+
           let mut width = 0u32;
           let mut height = 0u32;
           let framebuffer_count = if pass.renders_to_swapchain { swapchain_views.len() } else { 1 };
@@ -128,6 +140,25 @@ impl VkRenderGraph {
           }
 
           for pass_attachment in &pass.attachments {
+            if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
+              clear_values.push(vk::ClearValue {
+                color: vk::ClearColorValue {
+                  uint32: [0u32; 4]
+                }
+              });
+            } else {
+              let attachment = attachments.get(pass_attachment.as_str()).unwrap();
+              let format = attachment.texture.get_info().format;
+              if format.is_depth() || format.is_stencil() {
+                clear_values.push(vk::ClearValue {
+                  depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 0f32,
+                    stencil: 0u32
+                  }
+                });
+              }
+            }
+
             for i in 0..framebuffer_count {
               if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
                 framebuffer_attachments.get_mut(i).unwrap()
@@ -167,7 +198,8 @@ impl VkRenderGraph {
             framebuffers,
             callbacks,
             renders_to_swapchain: pass.renders_to_swapchain,
-            renderpass: render_pass.clone()
+            renderpass: render_pass.clone(),
+            clear_values
           }));
         },
         _ => unimplemented!()
@@ -227,8 +259,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let mut cmd_buffer = frame_context.get_command_buffer(CommandBufferType::PRIMARY);
 
           match &c_pass as &VkPass {
-            VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain } => {
-              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], RenderpassRecordingMode::Commands);
+            VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain, clear_values } => {
+              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);
               for i in 0..callbacks.len() {
                 if i != 0 {
                   cmd_buffer.advance_subpass();

@@ -167,7 +167,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<VkTexture> {
-    return Arc::new(VkTexture::new(&self.device, info, name));
+    return Arc::new(VkTexture::new(&self.device, info, name, vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST));
   }
 
   fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Arc<VkTextureView> {

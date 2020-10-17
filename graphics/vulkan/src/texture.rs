@@ -26,14 +26,14 @@ pub struct VkTexture {
 }
 
 impl VkTexture {
-  pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, name: Option<&str>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, name: Option<&str>, usage: vk::ImageUsageFlags) -> Self {
     let create_info = vk::ImageCreateInfo {
       flags: vk::ImageCreateFlags::empty(),
       tiling: vk::ImageTiling::OPTIMAL,
       initial_layout: vk::ImageLayout::UNDEFINED,
       sharing_mode: vk::SharingMode::EXCLUSIVE,
-      usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
-      image_type: if info.height == 0 { vk::ImageType::TYPE_1D } else if info.depth == 0 { vk::ImageType::TYPE_2D } else { vk::ImageType::TYPE_3D},
+      usage,
+      image_type: if info.height <= 1 { vk::ImageType::TYPE_1D } else if info.depth <= 1 { vk::ImageType::TYPE_2D } else { vk::ImageType::TYPE_3D},
       extent: vk::Extent3D {
         width: max(1, info.width),
         height: max(1, info.height),
@@ -144,7 +144,7 @@ impl VkTextureView {
   pub(crate) fn new_shader_resource_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
-      view_type: if texture.get_info().height == 0 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth == 0 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
+      view_type: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
       format: format_to_vk(texture.info.format),
       components: vk::ComponentMapping {
         r: vk::ComponentSwizzle::IDENTITY,
@@ -153,7 +153,13 @@ impl VkTextureView {
         a: vk::ComponentSwizzle::IDENTITY,
       },
       subresource_range: vk::ImageSubresourceRange {
-        aspect_mask: vk::ImageAspectFlags::COLOR,
+        aspect_mask: if texture.info.format.is_depth() && texture.info.format.is_stencil() {
+          vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+        } else if texture.info.format.is_depth() {
+          vk::ImageAspectFlags::DEPTH
+        } else {
+          vk::ImageAspectFlags::COLOR
+        },
         base_mip_level: info.base_mip_level,
         level_count: info.mip_level_length,
         base_array_layer: info.base_array_level,
@@ -199,7 +205,7 @@ impl VkTextureView {
     let info = texture.get_info();
     let vk_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
-      view_type: if info.depth > 1 { vk::ImageViewType::TYPE_3D } else { vk::ImageViewType::TYPE_2D },
+      view_type: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
       format: format_to_vk(info.format),
       components: vk::ComponentMapping {
         r: vk::ComponentSwizzle::IDENTITY,
@@ -208,7 +214,13 @@ impl VkTextureView {
         a: vk::ComponentSwizzle::IDENTITY,
       },
       subresource_range: vk::ImageSubresourceRange {
-        aspect_mask: vk::ImageAspectFlags::COLOR,
+        aspect_mask: if texture.info.format.is_depth() && texture.info.format.is_stencil() {
+          vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+        } else if texture.info.format.is_depth() {
+          vk::ImageAspectFlags::DEPTH
+        } else {
+          vk::ImageAspectFlags::COLOR
+        },
         base_mip_level: 0,
         level_count: 1,
         base_array_layer: 0,

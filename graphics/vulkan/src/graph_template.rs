@@ -72,7 +72,6 @@ impl VkRenderGraphTemplate {
 
     let mut did_render_to_backbuffer = false;
     let mut layouts: HashMap<String, vk::ImageLayout> = HashMap::new();
-    layouts.insert(BACK_BUFFER_ATTACHMENT_NAME.to_owned(), vk::ImageLayout::UNDEFINED);
 
     // TODO: figure out threading
     // TODO: more generic support for external images / one time rendering
@@ -104,6 +103,14 @@ impl VkRenderGraphTemplate {
                 producer_pass_type: AttachmentProducerPassType::Graphics
               }).last_used_in_pass_index = pass_index as u32;
             }
+
+            if let Some(depth_stencil) = &subpass.depth_stencil {
+              attachments.entry(depth_stencil.name.as_str()).or_insert(AttachmentPassIndices {
+                last_used_in_pass_index: 0,
+                produced_in_pass_index: 0,
+                producer_pass_type: AttachmentProducerPassType::Graphics
+              }).produced_in_pass_index = pass_index as u32;
+            }
           }
         },
         _ => unimplemented!()
@@ -111,6 +118,7 @@ impl VkRenderGraphTemplate {
     }
 
     let mut reordered_passes_queue: VecDeque<PassInfo> = VecDeque::from_iter(reordered_passes);
+    let mut pass_index: u32 = 0;
     let mut pass_opt = reordered_passes_queue.pop_front();
     while pass_opt.is_some() {
       let pass = pass_opt.unwrap();
@@ -120,7 +128,7 @@ impl VkRenderGraphTemplate {
           ref subpasses
         } => {
           // build subpasses, requires the attachment indices populated before
-          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, &info.attachments, &mut layouts, &attachments, info.swapchain_format, info.swapchain_sample_count);
+          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, &info.attachments, &mut layouts, pass_index, &attachments, info.swapchain_format, info.swapchain_sample_count);
           did_render_to_backbuffer |= render_graph_pass.renders_to_swapchain;
           passes.push(render_graph_pass);
         },
@@ -128,6 +136,7 @@ impl VkRenderGraphTemplate {
       }
 
       pass_opt = reordered_passes_queue.pop_front();
+      pass_index += 1;
     }
 
     Self {
@@ -166,6 +175,7 @@ impl VkRenderGraphTemplate {
                        device: &Arc<RawVkDevice>,
                        attachments: &HashMap<String, AttachmentInfo>,
                        layouts: &mut HashMap<String, vk::ImageLayout>,
+                       pass_index: u32,
                        attachment_pass_indices: &HashMap<&str, AttachmentPassIndices>,
                        swapchain_format: Format,
                        swapchain_samples: SampleCount) -> VkPassTemplate {
@@ -176,8 +186,8 @@ impl VkRenderGraphTemplate {
     let mut attachment_producer_subpass_index: HashMap<&str, u32> = HashMap::new();
 
     // Prepare attachments
-    for pass in passes {
-      for (pass_index, output) in pass.outputs.iter().enumerate() {
+    for (pass_index, pass) in passes.iter().enumerate() {
+      for output in &pass.outputs {
         let render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
         if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
           if output.load_action == LoadAction::Load {
@@ -207,6 +217,10 @@ impl VkRenderGraphTemplate {
             AttachmentInfo::Texture {
               format: texture_attachment_format, samples: texture_attachment_samples, ..
             } => {
+              if texture_attachment_format.is_depth() {
+                panic!("Output attachment must not have a depth stencil format");
+              }
+
               vk_render_pass_attachments.push(
                 vk::AttachmentDescription {
                   format: format_to_vk(*texture_attachment_format),
@@ -220,7 +234,7 @@ impl VkRenderGraphTemplate {
                   ..Default::default()
                 }
               );
-              layouts.insert(output.name.clone(), vk::ImageLayout::PRESENT_SRC_KHR);
+              layouts.insert(output.name.clone(), vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
             },
             _ => unreachable!()
           }
@@ -228,8 +242,41 @@ impl VkRenderGraphTemplate {
 
         used_attachments.push(output.name.clone());
         vk_attachment_indices.insert(&output.name as &str, render_pass_attachment_index);
-
         attachment_producer_subpass_index.insert(&output.name as &str, pass_index as u32);
+      }
+
+      if let Some(depth_stencil) = &pass.depth_stencil {
+        let render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+        let attachment = attachments.get(&depth_stencil.name).expect("DS  attachment not declared.");
+        match attachment {
+          AttachmentInfo::Texture {
+            format: texture_attachment_format, samples: texture_attachment_samples, ..
+          } => {
+            if !texture_attachment_format.is_depth() {
+              panic!("Depth stencil attachment must have a depth stencil format");
+            }
+
+            vk_render_pass_attachments.push(
+              vk::AttachmentDescription {
+                format: format_to_vk(*texture_attachment_format),
+                samples: samples_to_vk(*texture_attachment_samples),
+                load_op: load_action_to_vk(depth_stencil.load_action),
+                store_op: store_action_to_vk(depth_stencil.store_action),
+                stencil_load_op: load_action_to_vk(depth_stencil.load_action),
+                stencil_store_op: store_action_to_vk(depth_stencil.store_action),
+                initial_layout: *layouts.get(&depth_stencil.name as &str).unwrap_or(&vk::ImageLayout::UNDEFINED),
+                final_layout: vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+                ..Default::default()
+              }
+            );
+            layouts.insert(depth_stencil.name.clone(), vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL);
+          },
+          _ => unreachable!()
+        }
+
+        used_attachments.push(depth_stencil.name.clone());
+        vk_attachment_indices.insert(&depth_stencil.name as &str, render_pass_attachment_index);
+        attachment_producer_subpass_index.insert(&depth_stencil.name as &str, pass_index as u32);
       }
     }
 
@@ -287,9 +334,24 @@ impl VkRenderGraphTemplate {
         });
       }
 
-      for attachment in &used_attachments {
-        if attachment_pass_indices.get(attachment.as_str()).unwrap().last_used_in_pass_index > graph_pass_index {
-          preserve_attachments.push(*(vk_attachment_indices.get(attachment.as_str()).expect(format!("Couldn't find index for {}", attachment).as_str())));
+      let depth_stencil_start = pass.depth_stencil.as_ref().map(|depth_stencil| {
+        let index = attachment_refs.len();
+        attachment_refs.push(vk::AttachmentReference {
+          attachment: (*vk_attachment_indices.get(&depth_stencil.name as &str).expect(format!("Couldn't find index for {}", &depth_stencil.name).as_str())),
+          layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        });
+        index as isize
+      });
+
+      for (name, attachment) in attachments {
+        let mut is_used = false;
+        for input in &pass.inputs {
+          is_used |= &input.name == name;
+        }
+
+        let indices = attachment_pass_indices.get(&name.as_str()).unwrap();
+        if !is_used && indices.last_used_in_pass_index > pass_index {
+          preserve_attachments.push(*(vk_attachment_indices.get(name.as_str()).expect(format!("Couldn't find index for {}", name.as_str()).as_str())));
         }
       }
 
@@ -301,6 +363,7 @@ impl VkRenderGraphTemplate {
           color_attachment_count: outputs_len,
           p_preserve_attachments: preserve_attachments.as_ptr(),
           preserve_attachment_count: preserve_attachments.len() as u32,
+          p_depth_stencil_attachment: depth_stencil_start.map_or(std::ptr::null(), |start| attachment_refs.as_ptr().offset(start)),
           ..Default::default()
         });
       }

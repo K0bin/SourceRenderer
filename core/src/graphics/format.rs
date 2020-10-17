@@ -12,4 +12,32 @@ pub enum Format {
   R32Float,
   RG32Float,
   RGB32Float,
+
+  D16,
+  D16S8,
+  D32,
+  D32S8,
+  D24S8
+}
+
+impl Format {
+  pub fn is_depth(&self) -> bool {
+    match self {
+      Format::D32
+      | Format::D16
+      | Format::D16S8
+      | Format::D24S8
+      | Format::D32S8 => true,
+      _ => false
+    }
+  }
+
+  pub fn is_stencil(&self) -> bool {
+    match self {
+      | Format::D16S8
+      | Format::D24S8
+      | Format::D32S8 => true,
+      _ => false
+    }
+  }
 }

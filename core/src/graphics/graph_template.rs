@@ -25,6 +25,7 @@ pub enum AttachmentSizeClass {
 #[derive(Clone)]
 pub struct GraphicsSubpassInfo {
   pub outputs: Vec<OutputTextureAttachmentReference>,
+  pub depth_stencil: Option<OutputTextureAttachmentReference>,
   pub inputs: Vec<InputAttachmentReference>
 }
 
