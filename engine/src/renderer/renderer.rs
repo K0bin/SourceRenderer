@@ -370,20 +370,12 @@ impl<P: Platform> RendererInternal<P> {
     {
       let mut guard = self.renderables.lock().unwrap();
 
-      let mut message_opt: Option<RendererCommand> = None;
-
-      let message_result = self.receiver.recv();
-      if message_result.is_err() {
-        panic!("Rendering channel closed");
-      } else {
-        message_opt = message_result.ok();
-      }
-
+      let mut message_opt = Some(self.receiver.recv().expect("Rendering channel closed"));
       loop {
         let message = std::mem::replace(&mut message_opt, None).unwrap();
         match message {
           RendererCommand::EndFrame => {
-            let frame = self.renderer.queued_frames_counter.fetch_sub(1, Ordering::SeqCst);
+            self.renderer.queued_frames_counter.fetch_sub(1, Ordering::SeqCst);
             break;
           },
 
@@ -421,12 +413,7 @@ impl<P: Platform> RendererInternal<P> {
           }
         }
 
-        let message_result = self.receiver.recv();
-        if message_result.is_err() {
-          panic!("Rendering channel closed");
-        } else {
-          message_opt = message_result.ok();
-        }
+        message_opt = Some(self.receiver.recv().expect("Rendering channel closed"));
       }
     }
 
