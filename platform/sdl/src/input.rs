@@ -25,7 +25,8 @@ pub struct SDLInputInner {
   mouse_pos: Vec2I,
   mouse_buttons: u32,
   keyboard_keys: [u32; 8],
-  lock_cursor: bool
+  lock_mouse: bool,
+  was_mouse_locked: bool
 }
 
 impl Input for SDLInput {
@@ -41,9 +42,9 @@ impl Input for SDLInput {
     let guard = self.inner.read().unwrap();
     guard.mouse_pos.clone()
   }
-  fn toggle_mouse_capturing(&self, enabled: bool) {
+  fn toggle_mouse_lock(&self, enabled: bool) {
     let mut guard = self.inner.write().unwrap();
-    guard.lock_cursor = enabled;
+    guard.lock_mouse = enabled;
   }
 }
 
@@ -63,15 +64,11 @@ impl SDLInput {
         mouse_pos: Vec2I::new(0i32, 0i32),
         keyboard_keys: Default::default(),
         mouse_buttons: 0u32,
-        lock_cursor: false
+        lock_mouse: false,
+        was_mouse_locked: false
       }),
       key_to_scancode
     }
-  }
-
-  pub(crate) fn should_lock_cursor(&self) -> bool {
-    let guard = self.inner.read().unwrap();
-    guard.lock_cursor
   }
 
   pub(crate) fn update(&self, event_pump: &EventPump, mouse_util: &MouseUtil, window: &SDLWindow) {
@@ -79,20 +76,28 @@ impl SDLInput {
     let window_state = window.state();
     let keyboard_state = event_pump.keyboard_state();
     let mouse_state = event_pump.mouse_state();
-    guard.mouse_pos = match window_state {
-      WindowState::Visible { width, height, .. } => {
-        Vec2I::new(mouse_state.x() as i32 - width as i32 / 2, mouse_state.y() as i32 - height as i32 / 2)
+    guard.mouse_pos = Vec2I::new(0, 0);
+
+    match window_state {
+      WindowState::Visible { width, height, focussed } => {
+        guard.mouse_pos = Vec2I::new(mouse_state.x() as i32 - width as i32 / 2, mouse_state.y() as i32 - height as i32 / 2);
+
+        if guard.lock_mouse && focussed {
+          mouse_util.warp_mouse_in_window(window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
+          if !guard.was_mouse_locked {
+            guard.mouse_pos = Vec2I::new(0, 0);
+          }
+        }
+        guard.was_mouse_locked = guard.lock_mouse;
       },
-      _ => { Vec2I::new(0, 0) }
+      _ => {}
     };
 
     for key_index in 0..7 {
       let key = unsafe { std::mem::transmute(key_index as u32) };
-      guard.mouse_buttons.bit_cond(key_index, keyboard_state.is_scancode_pressed(
+      guard.keyboard_keys.bit_cond(key_index, keyboard_state.is_scancode_pressed(
         *self.key_to_scancode.get(&key).unwrap()
       ));
     }
-
-    mouse_util.capture(guard.lock_cursor);
   }
 }

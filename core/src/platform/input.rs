@@ -16,5 +16,5 @@ pub trait Input: Send + Sync {
   fn is_key_down(&self, key: Key) -> bool;
   fn is_mouse_button_down(&self, button: u8) -> bool;
   fn mouse_position(&self) -> Vec2I;
-  fn toggle_mouse_capturing(&self, enabled: bool);
+  fn toggle_mouse_lock(&self, enabled: bool);
 }

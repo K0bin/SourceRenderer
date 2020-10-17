@@ -79,6 +79,10 @@ impl SDLWindow {
     };
   }
 
+  pub(crate) fn sdl_window_handle(&self) -> &sdl2::video::Window {
+    &self.window
+  }
+
   #[inline]
   pub fn vulkan_instance_extensions(&self) -> Result<Vec<&str>, String> {
     return self.window.vulkan_instance_extensions();
