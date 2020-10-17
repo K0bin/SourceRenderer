@@ -43,7 +43,15 @@ impl Scene {
 
       let mut schedule = systems.build();
       loop {
-        while c_renderer.is_saturated() {}
+        let mut spin_counter = 0u32;
+        while c_renderer.is_saturated() {
+          if spin_counter > 1024 {
+            thread::sleep(Duration::new(0, 1_000_000)); // 1ms
+          } else if spin_counter > 128 {
+            thread::yield_now();
+          }
+          spin_counter += 1;
+        }
         schedule.execute(&mut world, &mut resources);
       }
     });
