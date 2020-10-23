@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::asset::AssetKey;
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use legion::Entity;
+use std::f32;
 
 pub enum DrawableType {
   Static {
@@ -59,19 +60,25 @@ impl Drawable {
 pub(super) struct View {
   pub(super) elements: Vec<Drawable>,
   pub(super) interpolated_camera: Matrix4,
-  pub(super) camera: Matrix4,
-  pub(super) old_camera: Matrix4,
-  pub(super) older_camera: Matrix4
+  pub(super) camera_transform: Matrix4,
+  pub(super) old_camera_transform: Matrix4,
+  pub(super) older_camera_transform: Matrix4,
+  pub(super) camera_fov: f32,
+  pub(super) old_camera_fov: f32,
+  pub(super) older_camera_fov: f32
 }
 
 impl Default for View {
   fn default() -> Self {
     Self {
       elements: Vec::new(),
-      old_camera: Matrix4::identity(),
-      older_camera: Matrix4::identity(),
-      camera: Matrix4::identity(),
-      interpolated_camera: Matrix4::identity()
+      old_camera_transform: Matrix4::identity(),
+      older_camera_transform: Matrix4::identity(),
+      camera_transform: Matrix4::identity(),
+      interpolated_camera: Matrix4::identity(),
+      camera_fov: f32::consts::PI / 2f32,
+      old_camera_fov: f32::consts::PI / 2f32,
+      older_camera_fov: f32::consts::PI / 2f32
     }
   }
 }

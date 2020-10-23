@@ -9,8 +9,7 @@ use legion::systems::{Builder, CommandBuffer};
 use legion::component;
 use legion::world::SubWorld;
 use crate::transform::GlobalTransform;
-use crate::camera::GlobalCamera;
-use crate::ActiveCamera;
+use crate::{ActiveCamera, Camera};
 use crate::renderer::Renderer;
 use std::sync::Arc;
 use sourcerenderer_core::Platform;
@@ -33,9 +32,9 @@ pub fn install<P: Platform>(systems: &mut Builder, renderer: &Arc<Renderer<P>>) 
 }
 
 #[system]
-#[read_component(GlobalCamera)]
 #[read_component(StaticRenderableComponent)]
 #[read_component(GlobalTransform)]
+#[read_component(Camera)]
 fn renderer<P: Platform>(world: &mut SubWorld,
             #[state] renderer: &Arc<Renderer<P>>,
             #[state] active_static_renderables: &mut ActiveStaticRenderables,
@@ -43,9 +42,10 @@ fn renderer<P: Platform>(world: &mut SubWorld,
             #[resource] active_camera: &ActiveCamera) {
 
   let camera_entry = world.entry_ref(active_camera.0).ok();
-  let camera_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<GlobalCamera>().ok());
-  if let Some(camera) = camera_component {
-    renderer.update_camera(camera.0);
+  let transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<GlobalTransform>().ok());
+  let camera_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<Camera>().ok());
+  if camera_component.is_some() && transform_component.is_some() {
+    renderer.update_camera_transform(transform_component.unwrap().0, camera_component.unwrap().fov);
   }
 
   let mut static_components_query = <(Entity, &StaticRenderableComponent, &GlobalTransform)>::query();

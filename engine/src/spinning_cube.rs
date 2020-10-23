@@ -15,6 +15,7 @@ use crate::transform::GlobalTransform;
 use crate::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
 use crate::scene::DeltaTime;
+use std::f32;
 
 struct SpinningCube {}
 
@@ -97,7 +98,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
   }, Transform::new(Vec3::new(0f32, 0f32, 0f32)), SpinningCube {}));
 
   let camera = world.push((Camera {
-    fov: 1.57f32
+    fov: f32::consts::PI / 2f32
   }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCameraComponent::new()));
 
   resources.insert(ActiveCamera(camera));

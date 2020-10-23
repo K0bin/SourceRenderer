@@ -2,16 +2,16 @@ use std::sync::{Arc, Mutex};
 use crate::renderer::Renderer;
 use crossbeam_channel::{Sender, Receiver, TryRecvError};
 use crate::renderer::command::RendererCommand;
-use std::time::SystemTime;
+use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
 use sourcerenderer_core::graphics::{Backend, ShaderType, AttachmentInfo, SampleCount, AttachmentSizeClass, Format, PassInfo, PassType, GraphicsSubpassInfo, OutputTextureAttachmentReference, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, PipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, RenderPassCallback, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph};
 use std::path::Path;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use crate::renderer::{DrawableType, View};
 use sourcerenderer_core::platform::WindowState;
-use nalgebra::Matrix3;
+use nalgebra::{Matrix3, Point3};
 use std::sync::atomic::Ordering;
 use std::io::Read;
 
@@ -24,7 +24,7 @@ pub(super) struct RendererInternal<P: Platform> {
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   simulation_tick_rate: u32,
-  last_tick: SystemTime,
+  last_tick: SystemTime
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -267,15 +267,19 @@ impl<P: Platform> RendererInternal<P> {
             element.older_transform = element.old_transform;
             element.old_transform = element.transform;
           }
-          guard.older_camera = guard.old_camera;
-          guard.old_camera = guard.camera;
+          guard.older_camera_transform = guard.old_camera_transform;
+          guard.old_camera_transform = guard.camera_transform;
+          guard.older_camera_fov = guard.old_camera_fov;
+          guard.old_camera_fov = guard.camera_fov;
+          break;
         },
 
-        RendererCommand::UpdateCamera(camera_mat) => {
-          guard.camera = camera_mat;
+        RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => {
+          guard.camera_transform = camera_transform_mat;
+          guard.camera_fov = fov;
         },
 
-        RendererCommand::UpdateTransform(entity, transform_mat) => {
+        RendererCommand::UpdateTransform { entity, transform_mat } => {
           let mut element = guard.elements.iter_mut()
             .find(|r| r.entity == entity);
           // TODO optimize
@@ -324,6 +328,7 @@ impl<P: Platform> RendererInternal<P> {
 
     match state {
       WindowState::Minimized => {
+        std::thread::sleep(Duration::new(1, 0));
         return;
       },
       WindowState::FullScreen {
@@ -351,10 +356,20 @@ impl<P: Platform> RendererInternal<P> {
       let delta = now.duration_since(self.last_tick).unwrap().as_millis() as f32;
       let frac = f32::max(0f32, f32::min(1f32, delta / (1000f32 / self.simulation_tick_rate as f32)));
 
-      guard.interpolated_camera = guard.old_camera;
       for element in &mut guard.elements {
         element.interpolated_transform = interpolate_transform_matrix(element.older_transform, element.old_transform, frac);
       }
+
+      guard.interpolated_camera = interpolate_transform_matrix(guard.older_camera_transform, guard.old_camera_transform, frac);
+      let interpolated_fov = guard.older_camera_fov + (guard.old_camera_fov - guard.older_camera_fov) * frac;
+
+      let position = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
+      let target = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
+
+      let aspect_ratio = swapchain_width as f32 / swapchain_height as f32;
+      let vertical_fov = 2f32 * ((interpolated_fov / 2f32).tan() * (1f32 / aspect_ratio)).atan();
+      guard.interpolated_camera = Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 20.0f32)
+        * Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32));
     }
 
     let result = self.graph.render();

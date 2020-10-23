@@ -49,7 +49,6 @@ impl Scene {
       fps_camera::install::<P>(&mut world, &mut systems);
 
       transform::install(&mut systems);
-      camera::install(&mut systems);
       c_renderer.install(&mut world, &mut resources, &mut systems);
 
       let mut tick = 0u64;

@@ -84,15 +84,15 @@ impl<P: Platform> Renderer<P> {
     }
   }
 
-  pub fn update_camera(&self, camera_matrix: Matrix4) {
-    let result = self.sender.send(RendererCommand::UpdateCamera(camera_matrix));
+  pub fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
+    let result = self.sender.send(RendererCommand::UpdateCameraTransform { camera_transform_mat, fov });
     if result.is_err() {
       panic!("Sending message to render thread failed");
     }
   }
 
   pub fn update_transform(&self, entity: Entity, transform: Matrix4) {
-    let result = self.sender.send(RendererCommand::UpdateTransform(entity, transform));
+    let result = self.sender.send(RendererCommand::UpdateTransform { entity, transform_mat: transform });
     if result.is_err() {
       panic!("Sending message to render thread failed");
     }
