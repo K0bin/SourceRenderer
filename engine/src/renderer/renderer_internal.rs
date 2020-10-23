@@ -264,8 +264,14 @@ impl<P: Platform> RendererInternal<P> {
           self.last_tick = SystemTime::now();
 
           for element in &mut guard.elements {
-            element.older_transform = element.old_transform;
-            element.old_transform = element.transform;
+            if let DrawableType::Static { can_move, .. } = &element.drawable_type {
+              if !*can_move {
+                element.interpolated_transform = element.transform;
+              } else {
+                element.older_transform = element.old_transform;
+                element.old_transform = element.transform;
+              }
+            }
           }
           guard.older_camera_transform = guard.old_camera_transform;
           guard.old_camera_transform = guard.camera_transform;
@@ -317,6 +323,33 @@ impl<P: Platform> RendererInternal<P> {
     }
   }
 
+  fn interpolate_drawables(&mut self, swapchain_width: u32, swapchain_height: u32) {
+    let mut guard = self.view.lock().unwrap();
+
+    let now = SystemTime::now();
+    let delta = now.duration_since(self.last_tick).unwrap().as_millis() as f32;
+    let frac = f32::max(0f32, f32::min(1f32, delta / (1000f32 / self.simulation_tick_rate as f32)));
+
+    for element in &mut guard.elements {
+      if let DrawableType::Static { can_move, .. } = &element.drawable_type {
+        if *can_move {
+          element.interpolated_transform = interpolate_transform_matrix(element.older_transform, element.old_transform, frac);
+        }
+      }
+    }
+
+    guard.interpolated_camera = interpolate_transform_matrix(guard.older_camera_transform, guard.old_camera_transform, frac);
+    let interpolated_fov = guard.older_camera_fov + (guard.old_camera_fov - guard.older_camera_fov) * frac;
+
+    let position = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
+    let target = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
+
+    let aspect_ratio = swapchain_width as f32 / swapchain_height as f32;
+    let vertical_fov = 2f32 * ((interpolated_fov / 2f32).tan() * (1f32 / aspect_ratio)).atan();
+    guard.interpolated_camera = Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 20.0f32)
+      * Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32));
+  }
+
   pub(super) fn render(&mut self) {
     let state = {
       let state_guard = self.renderer.window_state().lock().unwrap();
@@ -349,28 +382,7 @@ impl<P: Platform> RendererInternal<P> {
     }
 
     self.receive_messages();
-    {
-      let mut guard = self.view.lock().unwrap();
-
-      let now = SystemTime::now();
-      let delta = now.duration_since(self.last_tick).unwrap().as_millis() as f32;
-      let frac = f32::max(0f32, f32::min(1f32, delta / (1000f32 / self.simulation_tick_rate as f32)));
-
-      for element in &mut guard.elements {
-        element.interpolated_transform = interpolate_transform_matrix(element.older_transform, element.old_transform, frac);
-      }
-
-      guard.interpolated_camera = interpolate_transform_matrix(guard.older_camera_transform, guard.old_camera_transform, frac);
-      let interpolated_fov = guard.older_camera_fov + (guard.old_camera_fov - guard.older_camera_fov) * frac;
-
-      let position = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
-      let target = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
-
-      let aspect_ratio = swapchain_width as f32 / swapchain_height as f32;
-      let vertical_fov = 2f32 * ((interpolated_fov / 2f32).tan() * (1f32 / aspect_ratio)).atan();
-      guard.interpolated_camera = Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 20.0f32)
-        * Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32));
-    }
+    self.interpolate_drawables(swapchain_width, swapchain_height);
 
     let result = self.graph.render();
     if result.is_err() {
