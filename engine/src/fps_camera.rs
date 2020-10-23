@@ -7,6 +7,7 @@ use nalgebra::Unit;
 use legion::systems::Builder;
 use legion::{component, World, Entity, IntoQuery};
 use crate::transform::GlobalTransform;
+use crate::scene::DeltaTime;
 
 pub fn install<P: Platform>(world: &mut World, systems: &mut Builder) {
   systems.add_system(fps_camera_system::<P>());
@@ -28,7 +29,7 @@ impl FPSCameraComponent {
 
 #[system(for_each)]
 #[filter(component::<Camera>())]
-fn fps_camera<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Transform, fps_camera: &mut FPSCameraComponent) {
+fn fps_camera<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Transform, fps_camera: &mut FPSCameraComponent, #[resource] delta_time: &DeltaTime) {
   // TODO delta timing
 
   input.toggle_mouse_lock(true);
@@ -55,6 +56,6 @@ fn fps_camera<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Tr
   if movement_vector.x.abs() > 0.00001f32 || movement_vector.y.abs() > 0.00001f32 || movement_vector.z.abs() > 0.00001f32 {
     movement_vector = movement_vector.normalize();
     movement_vector = Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(0.0f32, 1.0f32, 0.0f32)), fps_camera.yaw).transform_vector(&movement_vector);
-    transform.position += movement_vector * 0.01f32;
+    transform.position += movement_vector * 3f32 * delta_time.secs();
   }
 }
