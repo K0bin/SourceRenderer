@@ -106,7 +106,7 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn is_saturated(&self) -> bool {
-    self.queued_frames_counter.load(Ordering::SeqCst) > 3
+    self.queued_frames_counter.load(Ordering::SeqCst) > 2
   }
 }
 
