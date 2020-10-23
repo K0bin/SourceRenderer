@@ -20,7 +20,7 @@ pub(super) struct RendererInternal<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   graph: <P::GraphicsBackend as Backend>::RenderGraph,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-  renderables: Arc<Mutex<View>>,
+  view: Arc<Mutex<View>>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   simulation_tick_rate: u32,
@@ -44,7 +44,7 @@ impl<P: Platform> RendererInternal<P> {
       device: device.clone(),
       graph,
       swapchain: swapchain.clone(),
-      renderables,
+      view: renderables,
       sender,
       receiver,
       simulation_tick_rate,
@@ -237,15 +237,80 @@ impl<P: Platform> RendererInternal<P> {
             }
           }
         }
-
-
-
       })]);
     let graph = device.create_render_graph(&graph_template, &RenderGraphInfo {
       pass_callbacks: callbacks
     }, swapchain);
 
     graph
+  }
+
+  fn receive_messages(&mut self) {
+    let mut guard = self.view.lock().unwrap();
+
+    let message_res = self.receiver.try_recv();
+    if let Some(err) = message_res.as_ref().err() {
+      if let TryRecvError::Disconnected = err {
+        panic!("Rendering channel closed");
+      }
+    }
+    let mut message_opt = message_res.ok();
+
+    while message_opt.is_some() {
+      let message = std::mem::replace(&mut message_opt, None).unwrap();
+      match message {
+        RendererCommand::EndFrame => {
+          self.renderer.dec_queued_frames_counter();
+          self.last_tick = SystemTime::now();
+
+          for element in &mut guard.elements {
+            element.older_transform = element.old_transform;
+            element.old_transform = element.transform;
+          }
+          guard.older_camera = guard.old_camera;
+          guard.old_camera = guard.camera;
+        },
+
+        RendererCommand::UpdateCamera(camera_mat) => {
+          guard.camera = camera_mat;
+        },
+
+        RendererCommand::UpdateTransform(entity, transform_mat) => {
+          let mut element = guard.elements.iter_mut()
+            .find(|r| r.entity == entity);
+          // TODO optimize
+
+          if let Some(element) = element {
+            element.transform = transform_mat;
+          }
+        },
+
+        RendererCommand::Register(renderable) => {
+          guard.elements.push(renderable);
+        },
+
+        RendererCommand::UnregisterStatic(entity) => {
+          let index = guard.elements.iter()
+            .position(|r| r.entity == entity);
+
+          if let Some(index) = index {
+            guard.elements.remove(index);
+          }
+        },
+
+        _ => {
+          println!("Unimplemented RenderCommand");
+        }
+      }
+
+      let message_res = self.receiver.try_recv();
+      if let Some(err) = message_res.as_ref().err() {
+        if let TryRecvError::Disconnected = err {
+          panic!("Rendering channel closed");
+        }
+      }
+      message_opt = message_res.ok();
+    }
   }
 
   pub(super) fn render(&mut self) {
@@ -278,72 +343,9 @@ impl<P: Platform> RendererInternal<P> {
       }
     }
 
+    self.receive_messages();
     {
-      let mut guard = self.renderables.lock().unwrap();
-
-      let message_res = self.receiver.try_recv();
-      if let Some(err) = message_res.as_ref().err() {
-        if let TryRecvError::Disconnected = err {
-          panic!("Rendering channel closed");
-        }
-      }
-      let mut message_opt = message_res.ok();
-
-      while message_opt.is_some() {
-        let message = std::mem::replace(&mut message_opt, None).unwrap();
-        match message {
-          RendererCommand::EndFrame => {
-            self.renderer.dec_queued_frames_counter();
-            self.last_tick = SystemTime::now();
-
-            for element in &mut guard.elements {
-              element.older_transform = element.old_transform;
-              element.old_transform = element.transform;
-            }
-            guard.older_camera = guard.old_camera;
-            guard.old_camera = guard.camera;
-          },
-
-          RendererCommand::UpdateCamera(camera_mat) => {
-            guard.camera = camera_mat;
-          },
-
-          RendererCommand::UpdateTransform(entity, transform_mat) => {
-            let mut element = guard.elements.iter_mut()
-              .find(|r| r.entity == entity);
-            // TODO optimize
-
-            if let Some(element) = element {
-              element.transform = transform_mat;
-            }
-          },
-
-          RendererCommand::Register(renderable) => {
-            guard.elements.push(renderable);
-          },
-
-          RendererCommand::UnregisterStatic(entity) => {
-            let index = guard.elements.iter()
-              .position(|r| r.entity == entity);
-
-            if let Some(index) = index {
-              guard.elements.remove(index);
-            }
-          },
-
-          _ => {
-            println!("Unimplemented RenderCommand");
-          }
-        }
-
-        let message_res = self.receiver.try_recv();
-        if let Some(err) = message_res.as_ref().err() {
-          if let TryRecvError::Disconnected = err {
-            panic!("Rendering channel closed");
-          }
-        }
-        message_opt = message_res.ok();
-      }
+      let mut guard = self.view.lock().unwrap();
 
       let now = SystemTime::now();
       let delta = now.duration_since(self.last_tick).unwrap().as_millis() as f32;
