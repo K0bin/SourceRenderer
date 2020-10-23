@@ -15,7 +15,7 @@ use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Matrix4, Vec3, Quaternion};
 
 use crate::asset::AssetKey;
 use crate::asset::AssetManager;
-use crate::renderer::renderable::{Renderables, StaticModelRenderable, Renderable, RenderableType};
+use crate::renderer::{View, Drawable, DrawableType};
 
 use async_std::task;
 use sourcerenderer_core::job::{JobScheduler};
@@ -70,7 +70,7 @@ impl<P: Platform> Renderer<P> {
     crate::renderer::ecs::install(systems, self);
   }
 
-  pub fn register_static_renderable(&self, renderable: Renderable) {
+  pub fn register_static_renderable(&self, renderable: Drawable) {
     let result = self.sender.send(RendererCommand::Register(renderable));
     if result.is_err() {
       panic!("Sending message to render thread failed");

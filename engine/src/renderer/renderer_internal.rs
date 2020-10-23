@@ -9,7 +9,7 @@ use sourcerenderer_core::graphics::{Backend, ShaderType, AttachmentInfo, SampleC
 use std::path::Path;
 use std::collections::HashMap;
 use std::fs::File;
-use crate::renderer::renderable::{RenderableType, Renderables};
+use crate::renderer::{DrawableType, View};
 use sourcerenderer_core::platform::WindowState;
 use nalgebra::Matrix3;
 use std::sync::atomic::Ordering;
@@ -20,7 +20,7 @@ pub(super) struct RendererInternal<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   graph: <P::GraphicsBackend as Backend>::RenderGraph,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-  renderables: Arc<Mutex<Renderables>>,
+  renderables: Arc<Mutex<View>>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   simulation_tick_rate: u32,
@@ -37,7 +37,7 @@ impl<P: Platform> RendererInternal<P> {
     receiver: Receiver<RendererCommand>,
     simulation_tick_rate: u32) -> Self {
 
-    let renderables = Arc::new(Mutex::new(Renderables::default()));
+    let renderables = Arc::new(Mutex::new(View::default()));
     let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables);
     Self {
       renderer: renderer.clone(),
@@ -56,7 +56,7 @@ impl<P: Platform> RendererInternal<P> {
     device: &<P::GraphicsBackend as Backend>::Device,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
-    renderables: &Arc<Mutex<Renderables>>)
+    renderables: &Arc<Mutex<View>>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
@@ -209,8 +209,10 @@ impl<P: Platform> RendererInternal<P> {
           let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
           command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
-          if let RenderableType::Static(static_renderable) = &renderable.renderable_type {
-            let model = assets_lookup.get_model(&static_renderable.model);
+          if let DrawableType::Static {
+            model, ..
+          } = &renderable.drawable_type {
+            let model = assets_lookup.get_model(model);
             let mesh = assets_lookup.get_mesh(&model.mesh);
 
             command_buffer.set_vertex_buffer(&mesh.vertices);

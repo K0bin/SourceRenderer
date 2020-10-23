@@ -1,4 +1,4 @@
-use crate::renderer::renderable::{StaticModelRenderable, Renderable, RenderableType};
+use crate::renderer::{Drawable, DrawableType};
 use std::collections::HashSet;
 use legion::{Entity, Resources, SystemBuilder, IntoQuery, World, maybe_changed, EntityStore};
 use crossbeam_channel::Sender;
@@ -55,19 +55,13 @@ fn renderer<P: Platform>(world: &mut SubWorld,
     }
 
     if !registered_static_renderables.0.contains(entity) {
-      renderer.register_static_renderable(Renderable {
-        renderable_type: RenderableType::Static(StaticModelRenderable {
+      renderer.register_static_renderable(Drawable::new(*entity, DrawableType::Static {
           model: component.model,
           receive_shadows: component.receive_shadows,
           cast_shadows: component.cast_shadows,
           can_move: component.can_move
-        }),
-        entity: *entity,
-        transform: transform.0,
-        old_transform: Matrix4::<f32>::identity(),
-        older_transform: Matrix4::<f32>::identity(),
-        interpolated_transform: Matrix4::<f32>::identity()
-      });
+        }, transform.0)
+      );
 
       registered_static_renderables.0.insert(*entity);
     }
