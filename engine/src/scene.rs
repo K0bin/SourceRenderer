@@ -9,7 +9,7 @@ use image::GenericImageView;
 use nalgebra::{Point3, Matrix4, Rotation3, Vector3};
 use crate::renderer::*;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use crate::asset::AssetManager;
 use legion::{World, Resources, Schedule};
 use legion::systems::Builder as SystemBuilder;
@@ -20,10 +20,21 @@ pub struct Scene {
 
 }
 
+pub struct DeltaTime(Duration);
+
+impl DeltaTime {
+  pub fn secs(&self) -> f32 {
+    self.0.as_secs_f32()
+  }
+}
+
+pub struct Tick(u64);
+
 impl Scene {
   pub fn run<P: Platform>(renderer: &Arc<Renderer<P>>,
                           asset_manager: &Arc<AssetManager<P>>,
-                          input: &Arc<P::Input>) {
+                          input: &Arc<P::Input>,
+                          tick_rate: u32) {
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
     let c_input = input.clone();
@@ -41,8 +52,21 @@ impl Scene {
       camera::install(&mut systems);
       c_renderer.install(&mut world, &mut resources, &mut systems);
 
+      let mut tick = 0u64;
       let mut schedule = systems.build();
+      let mut last_iter_time = SystemTime::now();
       loop {
+        let now = SystemTime::now();
+        let delta = now.duration_since(last_iter_time).unwrap();
+
+        if delta.as_millis() < ((1000 + tick_rate - 1) / tick_rate) as u128 {
+          continue;
+        }
+        last_iter_time = now;
+        resources.insert(DeltaTime(delta));
+        resources.insert(Tick(tick));
+        tick += 1;
+
         let mut spin_counter = 0u32;
         while c_renderer.is_saturated() {
           if spin_counter > 1024 {

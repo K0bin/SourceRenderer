@@ -64,7 +64,9 @@ fn renderer<P: Platform>(world: &mut SubWorld,
         }),
         entity: *entity,
         transform: transform.0,
-        old_transform: Matrix4::<f32>::identity()
+        old_transform: Matrix4::<f32>::identity(),
+        older_transform: Matrix4::<f32>::identity(),
+        interpolated_transform: Matrix4::<f32>::identity()
       });
 
       registered_static_renderables.0.insert(*entity);

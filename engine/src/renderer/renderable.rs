@@ -33,23 +33,29 @@ pub enum RenderableType {
 pub struct Renderable {
   pub renderable_type: RenderableType,
   pub entity: Entity,
+  pub interpolated_transform: Matrix4<f32>,
   pub transform: Matrix4<f32>,
-  pub old_transform: Matrix4<f32>
+  pub old_transform: Matrix4<f32>,
+  pub older_transform: Matrix4<f32>
 }
 
 #[derive(Clone)]
 pub struct Renderables {
   pub elements: Vec<Renderable>,
+  pub interpolated_camera: Matrix4<f32>,
   pub camera: Matrix4<f32>,
-  pub old_camera: Matrix4<f32>
+  pub old_camera: Matrix4<f32>,
+  pub older_camera: Matrix4<f32>
 }
 
 impl Default for Renderables {
   fn default() -> Self {
     Self {
       elements: Vec::new(),
-      camera: Matrix4::<f32>::identity(),
       old_camera: Matrix4::<f32>::identity(),
+      older_camera: Matrix4::<f32>::identity(),
+      camera: Matrix4::<f32>::identity(),
+      interpolated_camera: Matrix4::<f32>::identity()
     }
   }
 }

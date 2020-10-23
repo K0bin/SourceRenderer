@@ -14,6 +14,7 @@ use legion::systems::Builder as SystemBuilder;
 use crate::transform::GlobalTransform;
 use crate::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
+use crate::scene::DeltaTime;
 
 struct SpinningCube {}
 
@@ -104,6 +105,6 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
 
 #[system(for_each)]
 #[filter(component::<SpinningCube>())]
-fn spin(transform: &mut Transform) {
-  transform.rotation *= Quaternion::from_axis_angle(&Unit::new_normalize(Vec3::new(0.0f32, 1.0f32, 0.0f32)), 1.0f32 / 300.0f32);
+fn spin(transform: &mut Transform, #[resource] delta_time: &DeltaTime) {
+  transform.rotation *= Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(0.0f32, 1.0f32, 0.0f32)), 1.0f32 * delta_time.secs());
 }

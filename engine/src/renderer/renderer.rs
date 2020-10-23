@@ -4,14 +4,14 @@ use std::path::Path;
 use std::collections::{HashMap, HashSet};
 use std::io::Read as IORead;
 
-use crossbeam_channel::{Sender, bounded, Receiver, unbounded};
+use crossbeam_channel::{Sender, bounded, Receiver, unbounded, TryRecvError};
 
-use nalgebra::Transform;
+use nalgebra::{Transform, Matrix3, Matrix1x3, UnitQuaternion};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
 use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, RenderPassCallback, PipelineBinding, AttachmentInfo, AttachmentSizeClass};
 use sourcerenderer_core::graphics::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, OutputTextureAttachmentReference};
-use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Matrix4};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Matrix4, Vec3, Quaternion};
 
 use crate::asset::AssetKey;
 use crate::asset::AssetManager;
@@ -24,13 +24,13 @@ use sourcerenderer_vulkan::VkSwapchain;
 use crate::renderer::command::RendererCommand;
 use legion::{World, Resources, Schedule, Entity};
 use legion::systems::{Builder as SystemBuilder, Builder};
+use std::time::SystemTime;
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   window_state: Mutex<WindowState>,
-  queued_frames_counter: AtomicUsize,
-  max_prequeued_frames: usize
+  queued_frames_counter: AtomicUsize
 }
 
 impl<P: Platform> Renderer<P> {
@@ -39,18 +39,18 @@ impl<P: Platform> Renderer<P> {
       sender,
       device: device.clone(),
       window_state: Mutex::new(window.state()),
-      queued_frames_counter: AtomicUsize::new(0),
-      max_prequeued_frames: 1
+      queued_frames_counter: AtomicUsize::new(0)
     }
   }
 
   pub fn run(window: &P::Window,
              device: &Arc<<P::GraphicsBackend as Backend>::Device>,
              swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-             asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
+             asset_manager: &Arc<AssetManager<P>>,
+             simulation_tick_rate: u32) -> Arc<Renderer<P>> {
     let (sender, receiver) = unbounded::<RendererCommand>();
     let renderer = Arc::new(Renderer::new(sender.clone(), device, window));
-    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, sender, receiver);
+    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, sender, receiver, simulation_tick_rate);
 
     std::thread::spawn(move || {
       'render_loop: loop {
@@ -106,10 +106,9 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn is_saturated(&self) -> bool {
-    self.queued_frames_counter.load(Ordering::SeqCst) > self.max_prequeued_frames
+    self.queued_frames_counter.load(Ordering::SeqCst) > 3
   }
 }
-
 
 pub struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
@@ -118,7 +117,9 @@ pub struct RendererInternal<P: Platform> {
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   renderables: Arc<Mutex<Renderables>>,
   sender: Sender<RendererCommand>,
-  receiver: Receiver<RendererCommand>
+  receiver: Receiver<RendererCommand>,
+  simulation_tick_rate: u32,
+  last_tick: SystemTime,
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -128,7 +129,8 @@ impl<P: Platform> RendererInternal<P> {
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
     sender: Sender<RendererCommand>,
-    receiver: Receiver<RendererCommand>) -> Self {
+    receiver: Receiver<RendererCommand>,
+    simulation_tick_rate: u32) -> Self {
 
     let renderables = Arc::new(Mutex::new(Renderables::default()));
     let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables);
@@ -139,7 +141,9 @@ impl<P: Platform> RendererInternal<P> {
       swapchain: swapchain.clone(),
       renderables,
       sender,
-      receiver
+      receiver,
+      simulation_tick_rate,
+      last_tick: SystemTime::now()
     }
   }
 
@@ -275,14 +279,14 @@ impl<P: Platform> RendererInternal<P> {
 
     let c_asset_manager = asset_manager.clone();
     let c_renderables = renderables.clone();
-    let mut callbacks : HashMap<String, Vec<Arc<RenderPassCallback<P::GraphicsBackend>>>>= HashMap::new();
+    let mut callbacks: HashMap<String, Vec<Arc<RenderPassCallback<P::GraphicsBackend>>>> = HashMap::new();
     callbacks.insert("Geometry".to_string(), vec![
       Arc::new(move |command_buffer| {
         let state = c_renderables.lock().unwrap();
 
         let assets_lookup = c_asset_manager.lookup_graphics();
 
-        let camera_constant_buffer = command_buffer.upload_dynamic_data(state.camera, BufferUsage::CONSTANT);
+        let camera_constant_buffer = command_buffer.upload_dynamic_data(state.interpolated_camera, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         command_buffer.set_viewports(&[Viewport {
           position: Vec2::new(0.0f32, 0.0f32),
@@ -297,7 +301,7 @@ impl<P: Platform> RendererInternal<P> {
 
         command_buffer.bind_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
         for renderable in &state.elements {
-          let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.transform, BufferUsage::CONSTANT);
+          let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
           command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
           if let RenderableType::Static(static_renderable) = &renderable.renderable_type {
@@ -370,17 +374,30 @@ impl<P: Platform> RendererInternal<P> {
     {
       let mut guard = self.renderables.lock().unwrap();
 
-      let mut message_opt = Some(self.receiver.recv().expect("Rendering channel closed"));
-      loop {
+      let message_res = self.receiver.try_recv();
+      if let Some(err) = message_res.as_ref().err() {
+        if let TryRecvError::Disconnected = err {
+          panic!("Rendering channel closed");
+        }
+      }
+      let mut message_opt = message_res.ok();
+
+      while message_opt.is_some() {
         let message = std::mem::replace(&mut message_opt, None).unwrap();
         match message {
           RendererCommand::EndFrame => {
             self.renderer.queued_frames_counter.fetch_sub(1, Ordering::SeqCst);
-            break;
+            self.last_tick = SystemTime::now();
+
+            for element in &mut guard.elements {
+              element.older_transform = element.old_transform;
+              element.old_transform = element.transform;
+            }
+            guard.older_camera = guard.old_camera;
+            guard.old_camera = guard.camera;
           },
 
           RendererCommand::UpdateCamera(camera_mat) => {
-            guard.old_camera = guard.camera.clone();
             guard.camera = camera_mat;
           },
 
@@ -390,7 +407,6 @@ impl<P: Platform> RendererInternal<P> {
             // TODO optimize
 
             if let Some(element) = element {
-              element.old_transform = element.transform;
               element.transform = transform_mat;
             }
           },
@@ -413,7 +429,22 @@ impl<P: Platform> RendererInternal<P> {
           }
         }
 
-        message_opt = Some(self.receiver.recv().expect("Rendering channel closed"));
+        let message_res = self.receiver.try_recv();
+        if let Some(err) = message_res.as_ref().err() {
+          if let TryRecvError::Disconnected = err {
+            panic!("Rendering channel closed");
+          }
+        }
+        message_opt = message_res.ok();
+      }
+
+      let now = SystemTime::now();
+      let delta = now.duration_since(self.last_tick).unwrap().as_millis() as f32;
+      let frac = f32::max(0f32, f32::min(1f32, delta / (1000f32 / self.simulation_tick_rate as f32)));
+
+      guard.interpolated_camera = guard.old_camera;
+      for element in &mut guard.elements {
+        element.interpolated_transform = interpolate_transform_matrix(element.older_transform, element.old_transform, frac);
       }
     }
 
@@ -438,4 +469,28 @@ impl<P: Platform> RendererInternal<P> {
   }
 }
 
+fn deconstruct_transform(transform_mat: Matrix4) -> (Vec3, Quaternion, Vec3) {
+  let scale = Vec3::new(transform_mat.column(0).xyz().magnitude(),
+                        transform_mat.column(1).xyz().magnitude(),
+                        transform_mat.column(2).xyz().magnitude());
+  let translation: Vec3 = transform_mat.column(3).xyz();
+  let rotation = Quaternion::from_matrix(&Matrix3::<f32>::from_columns(&[
+    transform_mat.column(0).xyz() / scale.x,
+    transform_mat.column(1).xyz() / scale.y,
+    transform_mat.column(2).xyz() / scale.z
+  ]));
+  (translation, rotation, scale)
+}
+
+fn interpolate_transform_matrix(from: Matrix4, to: Matrix4, frac: f32) -> Matrix4 {
+  let (from_position, from_rotation, from_scale) = deconstruct_transform(from);
+  let (to_position, to_rotation, to_scale) = deconstruct_transform(to);
+  let position = from_position.lerp(&to_position, frac);
+  let rotation: Quaternion = UnitQuaternion::from_quaternion(from_rotation.lerp(&to_rotation, frac));
+  let scale = from_scale.lerp(&to_scale, frac);
+
+  Matrix4::new_translation(&position)
+    * Matrix4::new_rotation(rotation.axis_angle().map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| *axis * amount))
+    * Matrix4::new_nonuniform_scaling(&scale)
+}
 
