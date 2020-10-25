@@ -5,7 +5,7 @@ use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, AttachmentInfo, SampleCount, AttachmentSizeClass, Format, PassInfo, PassType, GraphicsSubpassInfo, OutputTextureAttachmentReference, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, PipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, RenderPassCallback, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph};
+use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, PipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, RenderPassCallback, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput};
 use std::path::Path;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -72,33 +72,25 @@ impl<P: Platform> RendererInternal<P> {
       device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
     };
 
-    let mut attachments: HashMap<String, AttachmentInfo> = HashMap::new();
-    attachments.insert("DS".to_string(), AttachmentInfo::Texture {
-      format: Format::D24S8,
-      samples: SampleCount::Samples1,
-      size_class: AttachmentSizeClass::RelativeToSwapchain,
-      width: 1.0,
-      height: 1.0,
-      levels: 1,
-      external: false
-    });
-
     let mut passes: Vec<PassInfo> = vec![
       PassInfo {
         name: "Geometry".to_string(),
         pass_type: PassType::Graphics {
           subpasses: vec![
             GraphicsSubpassInfo {
-              outputs: vec![OutputTextureAttachmentReference {
-                name: BACK_BUFFER_ATTACHMENT_NAME.to_owned(),
-                load_action: LoadAction::Clear,
-                store_action: StoreAction::Store
-              }],
+              outputs: vec![SubpassOutput::Backbuffer(BackbufferOutput {
+                clear: true
+              })],
               inputs: Vec::new(),
-              depth_stencil: Some(OutputTextureAttachmentReference {
+              depth_stencil: Some(DepthStencilOutput {
                 name: "DS".to_string(),
-                store_action: StoreAction::DontCare,
-                load_action: LoadAction::Clear
+                format: Format::D24S8,
+                samples: SampleCount::Samples1,
+                extent: RenderPassTextureExtent::RelativeToSwapchain {
+                  width: 1.0f32, height: 1.0f32
+                },
+                load_action: LoadAction::Clear,
+                store_action: StoreAction::DontCare
               })
             }
           ],
@@ -107,7 +99,6 @@ impl<P: Platform> RendererInternal<P> {
     ];
 
     let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
-      attachments,
       passes,
       swapchain_sample_count: swapchain.sample_count(),
       swapchain_format: swapchain.format()

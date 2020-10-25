@@ -3,30 +3,72 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub enum AttachmentInfo {
-  Texture {
-    format: Format,
-    samples: SampleCount,
-    size_class: AttachmentSizeClass,
-    width: f32,
-    height: f32,
-    levels: u32,
-    external: bool
-  },
-  Buffer
+pub enum SubpassOutput {
+  Backbuffer(BackbufferOutput),
+  RenderTarget(RenderTargetOutput)
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub enum AttachmentSizeClass {
-  Absolute,
-  RelativeToSwapchain
+#[derive(Clone)]
+pub struct BackbufferOutput {
+  pub clear: bool
+}
+
+#[derive(Clone)]
+pub struct RenderTargetOutput {
+  pub name: String,
+  pub format: Format,
+  pub samples: SampleCount,
+  pub extent: RenderPassTextureExtent,
+  pub depth: u32,
+  pub levels: u32,
+  pub external: bool,
+  pub load_action: LoadAction,
+  pub store_action: StoreAction
+}
+
+#[derive(Clone)]
+pub struct DepthStencilOutput {
+  pub name: String,
+  pub format: Format,
+  pub samples: SampleCount,
+  pub extent: RenderPassTextureExtent,
+  pub load_action: LoadAction,
+  pub store_action: StoreAction
+}
+
+#[derive(Clone)]
+pub struct BufferOutput {
+  pub name: String,
+  pub format: Option<Format>,
+  pub size: u32,
+  pub clear: bool
+}
+
+#[derive(Clone)]
+pub enum PassOutput {
+  RenderTarget(RenderTargetOutput),
+  DepthStencil(DepthStencilOutput),
+  Backbuffer(BackbufferOutput),
+  Buffer(BufferOutput)
+}
+
+#[derive(Clone)]
+pub enum RenderPassTextureExtent {
+  Absolute {
+    width: u32,
+    height: u32
+  },
+  RelativeToSwapchain {
+    width: f32,
+    height: f32
+  }
 }
 
 #[derive(Clone)]
 pub struct GraphicsSubpassInfo {
-  pub outputs: Vec<OutputTextureAttachmentReference>,
-  pub depth_stencil: Option<OutputTextureAttachmentReference>,
-  pub inputs: Vec<InputAttachmentReference>
+  pub outputs: Vec<SubpassOutput>,
+  pub depth_stencil: Option<DepthStencilOutput>,
+  pub inputs: Vec<PassInput>
 }
 
 #[derive(Clone)]
@@ -40,29 +82,20 @@ pub enum PassType {
   Graphics {
     subpasses: Vec<GraphicsSubpassInfo>
   },
-  Compute,
-  Transfer,
-}
-
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct OutputTextureAttachmentReference {
-  pub name: String,
-  pub load_action: LoadAction,
-  pub store_action: StoreAction
-}
-
-#[derive(Clone)]
-pub struct InputAttachmentReference {
-  pub name: String,
-  pub attachment_type: InputAttachmentReferenceType
-}
-
-#[derive(Clone)]
-pub enum InputAttachmentReferenceType {
-  Texture {
-    is_local: bool,
+  Compute {
+    inputs: Vec<PassOutput>,
+    outputs: Vec<PassOutput>
   },
-  Buffer
+  Transfer {
+    inputs: Vec<PassOutput>,
+    outputs: Vec<PassOutput>
+  },
+}
+
+#[derive(Clone)]
+pub struct PassInput {
+  pub name: String,
+  pub is_local: bool
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
@@ -80,7 +113,6 @@ pub enum LoadAction {
 
 #[derive(Clone)]
 pub struct RenderGraphTemplateInfo {
-  pub attachments: HashMap<String, AttachmentInfo>,
   pub passes: Vec<PassInfo>,
   pub swapchain_format: Format,
   pub swapchain_sample_count: SampleCount

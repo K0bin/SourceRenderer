@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{RenderGraph, AttachmentSizeClass, AttachmentInfo, StoreAction, LoadAction, PassInfo, InputAttachmentReference, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount, GraphicsSubpassInfo, PassType, InputAttachmentReferenceType};
+use sourcerenderer_core::graphics::{RenderGraph, RenderPassTextureExtent, PassOutput, StoreAction, LoadAction, PassInfo, PassInput, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount, GraphicsSubpassInfo, PassType, SubpassOutput};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
@@ -34,7 +34,7 @@ pub struct VkRenderGraphTemplate {
   pub device: Arc<RawVkDevice>,
   pub does_render_to_frame_buffer: bool,
   pub passes: Vec<VkPassTemplate>,
-  pub attachments: HashMap<String, AttachmentInfo>
+  pub attachments: HashMap<String, PassOutput>
 }
 
 pub struct VkPassTemplate {
@@ -53,10 +53,11 @@ pub enum VkPassType {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-struct AttachmentMetadata {
-  last_used_in_pass_index: u32,
-  produced_in_pass_index: u32,
-  producer_pass_type: AttachmentProducerPassType
+pub(super) struct AttachmentMetadata {
+  pub(super) last_used_in_pass_index: u32,
+  pub(super) produced_in_pass_index: u32,
+  pub(super) producer_pass_type: AttachmentProducerPassType,
+  pub(super) layout: vk::ImageLayout
 }
 
 impl Default for AttachmentMetadata {
@@ -64,7 +65,8 @@ impl Default for AttachmentMetadata {
     Self {
       last_used_in_pass_index: 0,
       produced_in_pass_index: 0,
-      producer_pass_type: AttachmentProducerPassType::Graphics
+      producer_pass_type: AttachmentProducerPassType::Graphics,
+      layout: vk::ImageLayout::UNDEFINED
     }
   }
 }
@@ -99,7 +101,6 @@ impl VkRenderGraphTemplate {
              info: &RenderGraphTemplateInfo) -> Self {
 
     let mut did_render_to_backbuffer = false;
-    let mut layouts: HashMap<String, vk::ImageLayout> = HashMap::new();
 
     // TODO: figure out threading
     // TODO: more generic support for external images / one time rendering
@@ -107,7 +108,7 @@ impl VkRenderGraphTemplate {
 
     let mut passes: Vec<VkPassTemplate> = Vec::new();
     let mut pass_infos = info.passes.clone();
-    let mut reordered_passes = VkRenderGraphTemplate::reorder_passes(&info.attachments, &mut pass_infos);
+    let (mut reordered_passes, attachment_infos) = VkRenderGraphTemplate::reorder_passes(&mut pass_infos);
 
     let mut attachment_metadata: HashMap<&str, AttachmentMetadata> = HashMap::new();
     for (pass_index, reordered_pass) in info.passes.iter().enumerate() {
@@ -117,8 +118,16 @@ impl VkRenderGraphTemplate {
         } => {
           for subpass in subpasses {
             for output in &subpass.outputs {
-              attachment_metadata.entry(output.name.as_str())
-                .or_default().produced_in_pass_index = pass_index as u32;
+              match output {
+                SubpassOutput::RenderTarget(render_target_output) => {
+                  attachment_metadata.entry(render_target_output.name.as_str())
+                    .or_default().produced_in_pass_index = pass_index as u32;
+                }
+                SubpassOutput::Backbuffer { .. } => {
+                  attachment_metadata.entry(BACK_BUFFER_ATTACHMENT_NAME)
+                    .or_default().produced_in_pass_index = pass_index as u32;
+                }
+              }
             }
 
             for input in &subpass.inputs {
@@ -147,7 +156,7 @@ impl VkRenderGraphTemplate {
           ref subpasses
         } => {
           // build subpasses, requires the attachment indices populated before
-          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, &info.attachments, &mut layouts, pass_index, &attachment_metadata, info.swapchain_format, info.swapchain_sample_count);
+          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, &attachment_infos, pass_index, &attachment_metadata, info.swapchain_format, info.swapchain_sample_count);
           did_render_to_backbuffer |= render_graph_pass.renders_to_swapchain;
           passes.push(render_graph_pass);
         },
@@ -162,7 +171,7 @@ impl VkRenderGraphTemplate {
       device: device.clone(),
       passes,
       does_render_to_frame_buffer: did_render_to_backbuffer,
-      attachments: info.attachments.clone()
+      attachments: attachment_infos
     }
   }
 
@@ -170,7 +179,7 @@ impl VkRenderGraphTemplate {
     &self.passes
   }
 
-  pub(crate) fn attachments(&self) -> &HashMap<String, AttachmentInfo> {
+  pub(crate) fn attachments(&self) -> &HashMap<String, PassOutput> {
     &self.attachments
   }
 
@@ -178,22 +187,43 @@ impl VkRenderGraphTemplate {
     self.does_render_to_frame_buffer
   }
 
-  fn reorder_passes(attachments: &HashMap<String, AttachmentInfo>, passes: &Vec<PassInfo>) -> Vec<PassInfo> {
+  fn reorder_passes(passes: &Vec<PassInfo>) -> (Vec<PassInfo>, HashMap<String, PassOutput>) {
     let mut passes_mut = passes.clone();
     let mut reordered_passes = vec![];
+    let mut outputs_map = HashMap::<String, PassOutput>::new();
 
     while !passes_mut.is_empty() {
-      let pass = VkRenderGraphTemplate::find_next_suitable_pass(attachments, &reordered_passes, &mut passes_mut);
+      let pass = VkRenderGraphTemplate::find_next_suitable_pass(&reordered_passes, &mut passes_mut);
+      match &pass.pass_type {
+        PassType::Graphics {
+          subpasses
+        } => {
+          for subpass in subpasses {
+            for output in &subpass.outputs {
+              match output {
+                SubpassOutput::RenderTarget(render_target_output) => {
+                  outputs_map.insert(render_target_output.name.to_string(), PassOutput::RenderTarget(render_target_output.clone()));
+                },
+                _ => {}
+              }
+            }
+
+            if let Some(depth_stencil) = &subpass.depth_stencil {
+              outputs_map.insert(depth_stencil.name.to_string(), PassOutput::DepthStencil(depth_stencil.clone()));
+            }
+          }
+        },
+        _ => unimplemented!()
+      }
       reordered_passes.push(pass);
     }
-    return reordered_passes;
+    return (reordered_passes, outputs_map);
   }
 
   fn build_render_pass(passes: &Vec<GraphicsSubpassInfo>,
                        name: &str,
                        device: &Arc<RawVkDevice>,
-                       attachments: &HashMap<String, AttachmentInfo>,
-                       layouts: &mut HashMap<String, vk::ImageLayout>,
+                       attachments: &HashMap<String, PassOutput>,
                        pass_index: u32,
                        attachment_metadata: &HashMap<&str, AttachmentMetadata>,
                        swapchain_format: Format,
@@ -205,62 +235,53 @@ impl VkRenderGraphTemplate {
     // Prepare attachments
     for (subpass_index, pass) in passes.iter().enumerate() {
       for output in &pass.outputs {
-        let mut metadata = subpass_attachment_metadata.entry(output.name.as_str())
-          .or_default();
-        metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
-        metadata.produced_in_subpass_index = subpass_index as u32;
+        match output {
+          SubpassOutput::Backbuffer(backbuffer_output) => {
+            let mut metadata = subpass_attachment_metadata.entry(BACK_BUFFER_ATTACHMENT_NAME)
+              .or_default();
+            metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+            metadata.produced_in_subpass_index = subpass_index as u32;
 
-        if &output.name == BACK_BUFFER_ATTACHMENT_NAME {
-          if output.load_action == LoadAction::Load {
-            panic!("cant load back buffer");
-          }
-          if output.store_action != StoreAction::Store {
-            panic!("cant discard back buffer");
-          }
-          pass_renders_to_backbuffer = true;
-          vk_render_pass_attachments.push(
-            vk::AttachmentDescription {
-              format: format_to_vk(swapchain_format),
-              samples: samples_to_vk(swapchain_samples),
-              load_op: load_action_to_vk(output.load_action),
-              store_op: store_action_to_vk(output.store_action),
-              stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-              stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-              initial_layout: metadata.layout,
-              final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-              ..Default::default()
-            }
-          );
-
-          metadata.layout = vk::ImageLayout::PRESENT_SRC_KHR;
-        } else {
-          let attachment = attachments.get(&output.name).expect("Output not attachment not declared.");
-          match attachment {
-            AttachmentInfo::Texture {
-              format: texture_attachment_format, samples: texture_attachment_samples, ..
-            } => {
-              if texture_attachment_format.is_depth() {
-                panic!("Output attachment must not have a depth stencil format");
+            pass_renders_to_backbuffer = true;
+            vk_render_pass_attachments.push(
+              vk::AttachmentDescription {
+                format: format_to_vk(swapchain_format),
+                samples: samples_to_vk(swapchain_samples),
+                load_op: if backbuffer_output.clear { vk::AttachmentLoadOp::CLEAR } else { vk::AttachmentLoadOp::DONT_CARE },
+                store_op: vk::AttachmentStoreOp::STORE,
+                stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+                stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+                initial_layout: metadata.layout,
+                final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+                ..Default::default()
               }
+            );
+            metadata.layout = vk::ImageLayout::PRESENT_SRC_KHR;
+          },
 
-              vk_render_pass_attachments.push(
-                vk::AttachmentDescription {
-                  format: format_to_vk(*texture_attachment_format),
-                  samples: samples_to_vk(*texture_attachment_samples),
-                  load_op: load_action_to_vk(output.load_action),
-                  store_op: store_action_to_vk(output.store_action),
-                  stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
-                  stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
-                  initial_layout: metadata.layout,
-                  final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                  ..Default::default()
-                }
-              );
-            },
-            _ => unreachable!()
+          SubpassOutput::RenderTarget(render_target_output) => {
+            let mut metadata = subpass_attachment_metadata.entry(render_target_output.name.as_str())
+              .or_default();
+            if render_target_output.format.is_depth() {
+              panic!("Output attachment must not have a depth stencil format");
+            }
+
+            vk_render_pass_attachments.push(
+              vk::AttachmentDescription {
+                format: format_to_vk(render_target_output.format),
+                samples: samples_to_vk(render_target_output.samples),
+                load_op: load_action_to_vk(render_target_output.load_action),
+                store_op: store_action_to_vk(render_target_output.store_action),
+                stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+                stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+                initial_layout: metadata.layout,
+                final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                ..Default::default()
+              }
+            );
+
+            metadata.layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
           }
-
-          metadata.layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
         }
       }
 
@@ -270,31 +291,23 @@ impl VkRenderGraphTemplate {
         metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
         metadata.produced_in_subpass_index = subpass_index as u32;
 
-        let attachment = attachments.get(&depth_stencil.name).expect("DS  attachment not declared.");
-        match attachment {
-          AttachmentInfo::Texture {
-            format: texture_attachment_format, samples: texture_attachment_samples, ..
-          } => {
-            if !texture_attachment_format.is_depth() {
-              panic!("Depth stencil attachment must have a depth stencil format");
-            }
-
-            vk_render_pass_attachments.push(
-              vk::AttachmentDescription {
-                format: format_to_vk(*texture_attachment_format),
-                samples: samples_to_vk(*texture_attachment_samples),
-                load_op: load_action_to_vk(depth_stencil.load_action),
-                store_op: store_action_to_vk(depth_stencil.store_action),
-                stencil_load_op: load_action_to_vk(depth_stencil.load_action),
-                stencil_store_op: store_action_to_vk(depth_stencil.store_action),
-                initial_layout: metadata.layout,
-                final_layout: vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
-                ..Default::default()
-              }
-            );
-          },
-          _ => unreachable!()
+        if !depth_stencil.format.is_depth() {
+          panic!("Depth stencil attachment must have a depth stencil format");
         }
+
+        vk_render_pass_attachments.push(
+          vk::AttachmentDescription {
+            format: format_to_vk(depth_stencil.format),
+            samples: samples_to_vk(depth_stencil.samples),
+            load_op: load_action_to_vk(depth_stencil.load_action),
+            store_op: store_action_to_vk(depth_stencil.store_action),
+            stencil_load_op: load_action_to_vk(depth_stencil.load_action),
+            stencil_store_op: store_action_to_vk(depth_stencil.store_action),
+            initial_layout: metadata.layout,
+            final_layout: vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+            ..Default::default()
+          }
+        );
         metadata.layout = vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL;
       }
 
@@ -317,51 +330,59 @@ impl VkRenderGraphTemplate {
       for input in &pass.inputs {
         let metadata = &attachment_metadata[input.name.as_str()];
         let subpass_metadata = &subpass_attachment_metadata[input.name.as_str()];
-        match &input.attachment_type {
-          InputAttachmentReferenceType::Texture {
-            is_local
-          } => {
-            if *is_local {
-              attachment_refs.push(vk::AttachmentReference {
-                attachment: subpass_metadata.render_pass_attachment_index,
-                layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-              });
-            }
-
-            dependencies.push(vk::SubpassDependency {
-              src_subpass: subpass_metadata.produced_in_subpass_index,
-              dst_subpass: subpass_index as u32,
-              src_stage_mask: match metadata.producer_pass_type {
-                AttachmentProducerPassType::Graphics => vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                AttachmentProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
-                AttachmentProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
-              },
-              dst_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
-              src_access_mask: match metadata.producer_pass_type {
-                AttachmentProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                AttachmentProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
-                AttachmentProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
-              },
-              dst_access_mask: if *is_local { vk::AccessFlags::COLOR_ATTACHMENT_READ } else { vk::AccessFlags::SHADER_READ },
-              dependency_flags: if *is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
-            });
-          },
-          _ => unimplemented!()
+        if input.is_local {
+          attachment_refs.push(vk::AttachmentReference {
+            attachment: subpass_metadata.render_pass_attachment_index,
+            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+          });
         }
+
+        dependencies.push(vk::SubpassDependency {
+          src_subpass: subpass_metadata.produced_in_subpass_index,
+          dst_subpass: subpass_index as u32,
+          src_stage_mask: match metadata.producer_pass_type {
+            AttachmentProducerPassType::Graphics => vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            AttachmentProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+            AttachmentProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
+          },
+          dst_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+          src_access_mask: match metadata.producer_pass_type {
+            AttachmentProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            AttachmentProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+            AttachmentProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+          },
+          dst_access_mask: if input.is_local { vk::AccessFlags::COLOR_ATTACHMENT_READ } else { vk::AccessFlags::SHADER_READ },
+          dependency_flags: if input.is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
+        });
       }
 
       let outputs_start = attachment_refs.len() as isize;
       let outputs_len = pass.outputs.len() as u32;
       let mut graph_pass_index = 0;
       for output in &pass.outputs {
-        let metadata = &subpass_attachment_metadata[output.name.as_str()];
-        graph_pass_index = metadata.produced_in_subpass_index;
+        match output {
+          SubpassOutput::RenderTarget(render_target_output) => {
+            let metadata = &subpass_attachment_metadata[render_target_output.name.as_str()];
+            graph_pass_index = metadata.produced_in_subpass_index;
 
-        attachment_refs.push(vk::AttachmentReference {
-          attachment: metadata.render_pass_attachment_index,
-          layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
-        });
+            attachment_refs.push(vk::AttachmentReference {
+              attachment: metadata.render_pass_attachment_index,
+              layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+            });
+          },
+          SubpassOutput::Backbuffer {
+            ..
+          } => {
+            let metadata = &subpass_attachment_metadata[BACK_BUFFER_ATTACHMENT_NAME];
+            graph_pass_index = metadata.produced_in_subpass_index;
+
+            attachment_refs.push(vk::AttachmentReference {
+              attachment: metadata.render_pass_attachment_index,
+              layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+            });
+          }
       }
+    }
 
       let depth_stencil_start = pass.depth_stencil.as_ref().map(|depth_stencil| {
         let metadata = &subpass_attachment_metadata[depth_stencil.name.as_str()];
@@ -425,7 +446,7 @@ impl VkRenderGraphTemplate {
     }
   }
 
-  fn find_next_suitable_pass(attachments: &HashMap<String, AttachmentInfo>, reordered_pass_infos: &[PassInfo], pass_infos: &mut Vec<PassInfo>) -> PassInfo {
+  fn find_next_suitable_pass(reordered_pass_infos: &[PassInfo], pass_infos: &mut Vec<PassInfo>) -> PassInfo {
     let mut attachment_indices: HashMap<String, usize> = HashMap::new();
     for (index, pass) in reordered_pass_infos.iter().enumerate() {
       match &pass.pass_type {
@@ -434,7 +455,18 @@ impl VkRenderGraphTemplate {
         } => {
           for subpass in subpasses {
             for output in &subpass.outputs {
-              attachment_indices.insert(output.name.clone(), index);
+              match output {
+                SubpassOutput::RenderTarget(render_target_output) => {
+                  attachment_indices.insert(render_target_output.name.clone(), index);
+                },
+                SubpassOutput::Backbuffer(_) => {
+                  attachment_indices.insert(BACK_BUFFER_ATTACHMENT_NAME.to_string(), index);
+                }
+              }
+            }
+
+            if let Some(depth_stencil) = &subpass.depth_stencil {
+              attachment_indices.insert(depth_stencil.name.clone(), index);
             }
           }
         },

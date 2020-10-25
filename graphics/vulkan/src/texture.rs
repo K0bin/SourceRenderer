@@ -201,7 +201,7 @@ impl VkTextureView {
     }
   }
 
-  pub(crate) fn new_render_target_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>) -> Self {
+  pub(crate) fn new_attachment_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>) -> Self {
     let info = texture.get_info();
     let vk_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),

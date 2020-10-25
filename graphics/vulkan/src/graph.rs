@@ -1,11 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::u32;
 
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{RenderGraph, StoreAction, LoadAction, AttachmentSizeClass, AttachmentInfo, PassInfo, InputAttachmentReference, RenderGraphTemplate, RenderPassCallback};
+use sourcerenderer_core::graphics::{RenderGraph, StoreAction, LoadAction, RenderPassTextureExtent, PassOutput, PassInfo, PassInput, RenderGraphTemplate, RenderPassCallback, SubpassOutput};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
@@ -35,7 +36,7 @@ use sourcerenderer_core::scope;
 pub struct VkAttachment {
   texture: Arc<VkTexture>,
   view: Arc<VkTextureView>,
-  info: AttachmentInfo
+  info: PassOutput
 }
 
 pub struct VkRenderGraph {
@@ -73,50 +74,87 @@ impl VkRenderGraph {
              template: &Arc<VkRenderGraphTemplate>,
              info: &RenderGraphInfo<VkBackend>,
              swapchain: &Arc<VkSwapchain>) -> Self {
-
     let mut attachments: HashMap<String, VkAttachment> = HashMap::new();
     let attachment_infos = template.attachments();
     for (name, attachment_info) in attachment_infos {
       // TODO: aliasing
       match attachment_info {
         // TODO: transient
-        AttachmentInfo::Texture {
-          format, size_class, width, height, samples, levels, ..
-        } => {
-          let mut usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
-            | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
+        PassOutput::RenderTarget(render_target_output) => {
+          let usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::STORAGE;
 
-          if format.is_depth() || format.is_stencil() {
-            usage |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
-          } else {
-            usage |= vk::ImageUsageFlags::STORAGE;
-          }
+          let (width, height) = match &render_target_output.extent {
+            RenderPassTextureExtent::RelativeToSwapchain {
+              width: output_width, height: output_height
+            } => {
+              ((swapchain.get_width() as f32 * *output_width) as u32,
+               (swapchain.get_height() as f32 * *output_height) as u32)
+            },
+            RenderPassTextureExtent::Absolute {
+              width: output_width, height: output_height
+            } => {
+              (*output_width,
+               *output_height)
+            }
+          };
+          println!("attachment dimensions: {:?} {:?}", width, height);
 
           let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
-            format: *format,
-            width: if *size_class == AttachmentSizeClass::RelativeToSwapchain {
-              (swapchain.get_width() as f32 * *width) as u32
-            } else {
-              *width as u32
-            },
-            height: if *size_class == AttachmentSizeClass::RelativeToSwapchain {
-              (swapchain.get_height() as f32 * *height) as u32
-            } else {
-              *height as u32
-            },
-            depth: 1,
-            mip_levels: *levels,
+            format: render_target_output.format,
+            width,
+            height,
+            depth: render_target_output.depth,
+            mip_levels: render_target_output.levels,
             array_length: 1,
-            samples: *samples
-          }, Some(name.as_str()), usage));
+            samples: render_target_output.samples
+          }, Some(render_target_output.name.as_str()), usage));
 
-          let view = Arc::new(VkTextureView::new_render_target_view(device, &texture));
+          let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
           attachments.insert(name.clone(), VkAttachment {
             texture,
             view,
             info: attachment_info.clone()
           });
         },
+
+        PassOutput::DepthStencil(depth_stencil_output) => {
+          let usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+
+          let (width, height) = match &depth_stencil_output.extent {
+            RenderPassTextureExtent::RelativeToSwapchain {
+              width: output_width, height: output_height
+            } => {
+              ((swapchain.get_width() as f32 * *output_width) as u32,
+               (swapchain.get_height() as f32 * *output_height) as u32)
+            },
+            RenderPassTextureExtent::Absolute {
+              width: output_width, height: output_height
+            } => {
+              (*output_width,
+               *output_height)
+            }
+          };
+
+          let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
+            format: depth_stencil_output.format,
+            width,
+            height,
+            depth: 1,
+            mip_levels: 1,
+            array_length: 1,
+            samples: depth_stencil_output.samples
+          }, Some(depth_stencil_output.name.as_str()), usage));
+
+          let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
+          attachments.insert(name.clone(), VkAttachment {
+            texture,
+            view,
+            info: attachment_info.clone()
+          });
+        },
+
         _ => unimplemented!()
       }
     }
@@ -131,8 +169,8 @@ impl VkRenderGraph {
         } => {
           let mut clear_values = Vec::<vk::ClearValue>::new();
 
-          let mut width = 0u32;
-          let mut height = 0u32;
+          let mut width = u32::MAX;
+          let mut height = u32::MAX;
           let framebuffer_count = if pass.renders_to_swapchain { swapchain_views.len() } else { 1 };
           let mut framebuffer_attachments: Vec<Vec<vk::ImageView>> = Vec::with_capacity(framebuffer_count);
           for _ in 0..framebuffer_count {
@@ -159,22 +197,28 @@ impl VkRenderGraph {
               }
             }
 
+            if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
+              width = min(width, swapchain.get_width());
+              height = min(height, swapchain.get_height());
+            } else {
+              let texture_info = attachments[pass_attachment].texture.get_info();
+              width = min(width, texture_info.width);
+              height = min(height, texture_info.height);
+            }
+
             for i in 0..framebuffer_count {
               if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
                 framebuffer_attachments.get_mut(i).unwrap()
                   .push(*swapchain_views[i].get_view_handle());
-
-                width = swapchain.get_width();
-                height = swapchain.get_height();
               } else {
                 framebuffer_attachments.get_mut(i).unwrap()
                   .push(*attachments[pass_attachment].view.get_view_handle());
-
-                let texture_info = attachments[pass_attachment].texture.get_info();
-                width = texture_info.width;
-                height = texture_info.height;
               }
             }
+          }
+
+          if width == u32::MAX || height == u32::MAX {
+            panic!("Failed to determine frame buffer dimensions");
           }
 
           let mut framebuffers: Vec<Arc<VkFrameBuffer>> = Vec::new();
