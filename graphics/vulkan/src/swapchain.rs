@@ -111,7 +111,7 @@ impl VkSwapchain {
       let swapchain_image_views: Vec<Arc<VkTextureView>> = textures
         .iter()
         .map(|texture| {
-          Arc::new(VkTextureView::new_render_target_view(device, texture))
+          Arc::new(VkTextureView::new_attachment_view(device, texture))
         })
         .collect();
 

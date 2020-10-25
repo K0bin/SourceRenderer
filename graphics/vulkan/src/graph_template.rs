@@ -34,7 +34,7 @@ pub struct VkRenderGraphTemplate {
   pub device: Arc<RawVkDevice>,
   pub does_render_to_frame_buffer: bool,
   pub passes: Vec<VkPassTemplate>,
-  pub attachments: HashMap<String, PassOutput>
+  pub attachments: HashMap<String, AttachmentMetadata>
 }
 
 pub struct VkPassTemplate {
@@ -52,17 +52,19 @@ pub enum VkPassType {
   Copy
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub(super) struct AttachmentMetadata {
+#[derive(Clone)]
+pub struct AttachmentMetadata {
+  pub(super) output: PassOutput,
   pub(super) last_used_in_pass_index: u32,
   pub(super) produced_in_pass_index: u32,
   pub(super) producer_pass_type: AttachmentProducerPassType,
   pub(super) layout: vk::ImageLayout
 }
 
-impl Default for AttachmentMetadata {
-  fn default() -> Self {
+impl AttachmentMetadata {
+  fn new(output: PassOutput) -> Self {
     Self {
+      output,
       last_used_in_pass_index: 0,
       produced_in_pass_index: 0,
       producer_pass_type: AttachmentProducerPassType::Graphics,
@@ -108,42 +110,7 @@ impl VkRenderGraphTemplate {
 
     let mut passes: Vec<VkPassTemplate> = Vec::new();
     let mut pass_infos = info.passes.clone();
-    let (mut reordered_passes, attachment_infos) = VkRenderGraphTemplate::reorder_passes(&mut pass_infos);
-
-    let mut attachment_metadata: HashMap<&str, AttachmentMetadata> = HashMap::new();
-    for (pass_index, reordered_pass) in info.passes.iter().enumerate() {
-      match &reordered_pass.pass_type {
-        PassType::Graphics {
-          subpasses
-        } => {
-          for subpass in subpasses {
-            for output in &subpass.outputs {
-              match output {
-                SubpassOutput::RenderTarget(render_target_output) => {
-                  attachment_metadata.entry(render_target_output.name.as_str())
-                    .or_default().produced_in_pass_index = pass_index as u32;
-                }
-                SubpassOutput::Backbuffer { .. } => {
-                  attachment_metadata.entry(BACK_BUFFER_ATTACHMENT_NAME)
-                    .or_default().produced_in_pass_index = pass_index as u32;
-                }
-              }
-            }
-
-            for input in &subpass.inputs {
-              attachment_metadata.entry(input.name.as_str())
-                .or_default().last_used_in_pass_index = pass_index as u32;
-            }
-
-            if let Some(depth_stencil) = &subpass.depth_stencil {
-              attachment_metadata.entry(depth_stencil.name.as_str())
-                .or_default().produced_in_pass_index = pass_index as u32;
-            }
-          }
-        },
-        _ => unimplemented!()
-      }
-    }
+    let (mut reordered_passes, attachment_metadata) = VkRenderGraphTemplate::reorder_passes(&mut pass_infos);
 
     let mut reordered_passes_queue: VecDeque<PassInfo> = VecDeque::from_iter(reordered_passes);
     let mut pass_index: u32 = 0;
@@ -156,7 +123,7 @@ impl VkRenderGraphTemplate {
           ref subpasses
         } => {
           // build subpasses, requires the attachment indices populated before
-          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, &attachment_infos, pass_index, &attachment_metadata, info.swapchain_format, info.swapchain_sample_count);
+          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, pass_index, &attachment_metadata, info.swapchain_format, info.swapchain_sample_count);
           did_render_to_backbuffer |= render_graph_pass.renders_to_swapchain;
           passes.push(render_graph_pass);
         },
@@ -171,7 +138,7 @@ impl VkRenderGraphTemplate {
       device: device.clone(),
       passes,
       does_render_to_frame_buffer: did_render_to_backbuffer,
-      attachments: attachment_infos
+      attachments: attachment_metadata
     }
   }
 
@@ -179,7 +146,7 @@ impl VkRenderGraphTemplate {
     &self.passes
   }
 
-  pub(crate) fn attachments(&self) -> &HashMap<String, PassOutput> {
+  pub(crate) fn attachments(&self) -> &HashMap<String, AttachmentMetadata> {
     &self.attachments
   }
 
@@ -187,13 +154,13 @@ impl VkRenderGraphTemplate {
     self.does_render_to_frame_buffer
   }
 
-  fn reorder_passes(passes: &Vec<PassInfo>) -> (Vec<PassInfo>, HashMap<String, PassOutput>) {
+  fn reorder_passes(passes: &Vec<PassInfo>) -> (Vec<PassInfo>, HashMap<String, AttachmentMetadata>) {
     let mut passes_mut = passes.clone();
     let mut reordered_passes = vec![];
-    let mut outputs_map = HashMap::<String, PassOutput>::new();
+    let mut metadata = HashMap::<String, AttachmentMetadata>::new();
 
     while !passes_mut.is_empty() {
-      let pass = VkRenderGraphTemplate::find_next_suitable_pass(&reordered_passes, &mut passes_mut);
+      let pass = VkRenderGraphTemplate::find_next_suitable_pass(&mut passes_mut, &metadata);
       match &pass.pass_type {
         PassType::Graphics {
           subpasses
@@ -202,14 +169,30 @@ impl VkRenderGraphTemplate {
             for output in &subpass.outputs {
               match output {
                 SubpassOutput::RenderTarget(render_target_output) => {
-                  outputs_map.insert(render_target_output.name.to_string(), PassOutput::RenderTarget(render_target_output.clone()));
+                  metadata
+                    .entry(render_target_output.name.to_string())
+                    .or_insert_with(|| AttachmentMetadata::new(PassOutput::RenderTarget(render_target_output.clone())))
+                    .produced_in_pass_index = reordered_passes.len() as u32;
+                },
+                SubpassOutput::Backbuffer(backbuffer_output) => {
+                  metadata
+                    .entry(BACK_BUFFER_ATTACHMENT_NAME.to_string())
+                    .or_insert_with(|| AttachmentMetadata::new(PassOutput::Backbuffer(backbuffer_output.clone())))
+                    .produced_in_pass_index = reordered_passes.len() as u32;
                 },
                 _ => {}
               }
             }
 
             if let Some(depth_stencil) = &subpass.depth_stencil {
-              outputs_map.insert(depth_stencil.name.to_string(), PassOutput::DepthStencil(depth_stencil.clone()));
+              metadata
+                .entry(depth_stencil.name.to_string())
+                .or_insert_with(|| AttachmentMetadata::new(PassOutput::DepthStencil(depth_stencil.clone())))
+                .produced_in_pass_index = reordered_passes.len() as u32;
+            }
+
+            for input in &subpass.inputs {
+              metadata.get_mut(&input.name).unwrap().last_used_in_pass_index = reordered_passes.len() as u32;
             }
           }
         },
@@ -217,15 +200,14 @@ impl VkRenderGraphTemplate {
       }
       reordered_passes.push(pass);
     }
-    return (reordered_passes, outputs_map);
+    return (reordered_passes, metadata);
   }
 
   fn build_render_pass(passes: &Vec<GraphicsSubpassInfo>,
                        name: &str,
                        device: &Arc<RawVkDevice>,
-                       attachments: &HashMap<String, PassOutput>,
                        pass_index: u32,
-                       attachment_metadata: &HashMap<&str, AttachmentMetadata>,
+                       attachment_metadata: &HashMap<String, AttachmentMetadata>,
                        swapchain_format: Format,
                        swapchain_samples: SampleCount) -> VkPassTemplate {
     let mut vk_render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
@@ -394,14 +376,14 @@ impl VkRenderGraphTemplate {
         index as isize
       });
 
-      for (name, _) in attachments {
+      for (name, _) in attachment_metadata {
         let mut is_used = false;
         for input in &pass.inputs {
-          is_used |= &input.name == name;
+          is_used |= input.name.as_str() == *name;
         }
 
-        let metadata = attachment_metadata.get(&name.as_str()).unwrap();
-        let subpass_metadata = subpass_attachment_metadata.get(&name.as_str()).unwrap();
+        let metadata = attachment_metadata.get(name).unwrap();
+        let subpass_metadata = subpass_attachment_metadata.get(name.as_str()).unwrap();
         if !is_used && (metadata.last_used_in_pass_index > pass_index || subpass_metadata.last_used_in_pass_index > subpass_index as u32) {
           preserve_attachments.push(subpass_metadata.render_pass_attachment_index);
         }
@@ -446,38 +428,11 @@ impl VkRenderGraphTemplate {
     }
   }
 
-  fn find_next_suitable_pass(reordered_pass_infos: &[PassInfo], pass_infos: &mut Vec<PassInfo>) -> PassInfo {
-    let mut attachment_indices: HashMap<String, usize> = HashMap::new();
-    for (index, pass) in reordered_pass_infos.iter().enumerate() {
-      match &pass.pass_type {
-        PassType::Graphics {
-          subpasses
-        } => {
-          for subpass in subpasses {
-            for output in &subpass.outputs {
-              match output {
-                SubpassOutput::RenderTarget(render_target_output) => {
-                  attachment_indices.insert(render_target_output.name.clone(), index);
-                },
-                SubpassOutput::Backbuffer(_) => {
-                  attachment_indices.insert(BACK_BUFFER_ATTACHMENT_NAME.to_string(), index);
-                }
-              }
-            }
-
-            if let Some(depth_stencil) = &subpass.depth_stencil {
-              attachment_indices.insert(depth_stencil.name.clone(), index);
-            }
-          }
-        },
-        _ => unimplemented!()
-      }
-    }
-
-    let mut best_pass_index_score: Option<(usize, usize)> = None;
+  fn find_next_suitable_pass(pass_infos: &mut Vec<PassInfo>, metadata: &HashMap<String, AttachmentMetadata>) -> PassInfo {
+    let mut best_pass_index_score: Option<(u32, u32)> = None;
     for (pass_index, pass) in pass_infos.iter().enumerate() {
       let mut is_ready = true;
-      let mut passes_since_ready = usize::MAX;
+      let mut passes_since_ready = u32::MAX;
 
       match &pass.pass_type {
         PassType::Graphics {
@@ -485,23 +440,23 @@ impl VkRenderGraphTemplate {
         } => {
           for subpass in subpasses {
             for input in &subpass.inputs {
-              let index_opt = attachment_indices.get(&input.name);
+              let index_opt = metadata.get(&input.name);
               if let Some(index) = index_opt {
-                passes_since_ready = min(*index, passes_since_ready);
+                passes_since_ready = min(index.produced_in_pass_index, passes_since_ready);
               } else {
                 is_ready = false;
               }
             }
 
-            if is_ready && (best_pass_index_score.is_none() || passes_since_ready > best_pass_index_score.unwrap().1) {
-              best_pass_index_score = Some((pass_index, passes_since_ready));
+            if is_ready && (best_pass_index_score.is_none() || passes_since_ready > best_pass_index_score.unwrap().1 as u32) {
+              best_pass_index_score = Some((pass_index as u32, passes_since_ready as u32));
             }
           }
         },
         _ => unimplemented!()
       }
     }
-    pass_infos.remove(best_pass_index_score.expect("Invalid render graph").0)
+    pass_infos.remove(best_pass_index_score.expect("Invalid render graph").0 as usize)
   }
 }
 

@@ -78,7 +78,7 @@ impl VkRenderGraph {
     let attachment_infos = template.attachments();
     for (name, attachment_info) in attachment_infos {
       // TODO: aliasing
-      match attachment_info {
+      match &attachment_info.output {
         // TODO: transient
         PassOutput::RenderTarget(render_target_output) => {
           let usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
@@ -98,7 +98,6 @@ impl VkRenderGraph {
                *output_height)
             }
           };
-          println!("attachment dimensions: {:?} {:?}", width, height);
 
           let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
             format: render_target_output.format,
@@ -114,7 +113,7 @@ impl VkRenderGraph {
           attachments.insert(name.clone(), VkAttachment {
             texture,
             view,
-            info: attachment_info.clone()
+            info: attachment_info.output.clone()
           });
         },
 
@@ -151,11 +150,11 @@ impl VkRenderGraph {
           attachments.insert(name.clone(), VkAttachment {
             texture,
             view,
-            info: attachment_info.clone()
+            info: attachment_info.output.clone()
           });
         },
 
-        _ => unimplemented!()
+        _ => {}
       }
     }
 
