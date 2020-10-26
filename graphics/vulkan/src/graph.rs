@@ -31,7 +31,7 @@ use VkTexture;
 use texture::VkTextureView;
 use graph_template::{VkRenderGraphTemplate, VkPassTemplate, VkPassType};
 use sourcerenderer_core::ThreadPool;
-use sourcerenderer_core::scope;
+use sourcerenderer_core::{scope, spawn};
 
 pub struct VkAttachment {
   texture: Arc<VkTexture>,
@@ -295,55 +295,54 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       let c_cmd_semaphore = cmd_semaphore.clone();
       let c_cmd_fence = cmd_fence.clone();
       let framebuffer_index = image_index as usize;
-      scope(move |s| {
-        s.spawn(move |_| {
-          let thread_context = c_context.get_thread_context();
-          let mut frame_context = thread_context.get_frame_context();
-          let mut cmd_buffer = frame_context.get_command_buffer(CommandBufferType::PRIMARY);
 
-          match &c_pass as &VkPass {
-            VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain, clear_values } => {
-              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);
-              for i in 0..callbacks.len() {
-                if i != 0 {
-                  cmd_buffer.advance_subpass();
-                }
-                let callback = &callbacks[i];
-                (callback)(&mut cmd_buffer);
-              }
-              cmd_buffer.end_render_pass();
-              let submission = cmd_buffer.finish();
+      let thread_context = c_context.get_thread_context();
+      let mut frame_context = thread_context.get_frame_context();
+      let mut cmd_buffer = frame_context.get_command_buffer(CommandBufferType::PRIMARY);
 
-              let prepare_semaphores = [&**c_prepare_semaphore];
-              let cmd_semaphores = [&**c_cmd_semaphore];
-
-              let wait_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
-                &prepare_semaphores
-              } else {
-                &[]
-              };
-              let signal_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
-                &cmd_semaphores
-              } else {
-                &[]
-              };
-
-              let fence = if *renders_to_swapchain {
-                Some(&c_cmd_fence as &VkFence)
-              } else {
-                None
-              };
-
-              c_queue.submit(submission, fence, &wait_semaphores, &signal_semaphores);
-
-              if *renders_to_swapchain {
-                frame_context.track_semaphore(&c_prepare_semaphore);
-              }
-            },
-            _ => unimplemented!()
+      match &c_pass as &VkPass {
+        VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain, clear_values } => {
+          cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);
+          for i in 0..callbacks.len() {
+            if i != 0 {
+              cmd_buffer.advance_subpass();
+            }
+            let callback = &callbacks[i];
+            (callback)(&mut cmd_buffer);
           }
-        });
-      });
+          cmd_buffer.end_render_pass();
+          let submission = cmd_buffer.finish();
+
+          let prepare_semaphores = [&**c_prepare_semaphore];
+          let cmd_semaphores = [&**c_cmd_semaphore];
+
+          let wait_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
+            &prepare_semaphores
+          } else {
+            &[]
+          };
+          let signal_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
+            &cmd_semaphores
+          } else {
+            &[]
+          };
+
+          let fence = if *renders_to_swapchain {
+            Some(&c_cmd_fence as &VkFence)
+          } else {
+            None
+          };
+
+          spawn(move || {
+            c_queue.submit(submission, fence, &wait_semaphores, &signal_semaphores);
+          });
+
+          if *renders_to_swapchain {
+            frame_context.track_semaphore(&c_prepare_semaphore);
+          }
+        },
+        _ => unimplemented!()
+      }
     }
 
     let thread_context = self.context.get_thread_context();
