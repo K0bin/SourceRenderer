@@ -55,19 +55,31 @@ impl Eq for VkRenderPass {}
 
 pub struct VkFrameBuffer {
   device: Arc<RawVkDevice>,
-  frame_buffer: vk::Framebuffer
+  frame_buffer: vk::Framebuffer,
+  width: u32,
+  height: u32
 }
 
 impl VkFrameBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, info: &vk::FramebufferCreateInfo) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, info: &vk::FramebufferCreateInfo) -> Self {
     Self {
       device: device.clone(),
-      frame_buffer: unsafe { device.create_framebuffer(info, None).unwrap() }
+      frame_buffer: unsafe { device.create_framebuffer(info, None).unwrap() },
+      width: info.width,
+      height: info.height
     }
   }
 
-  pub fn get_handle(&self) -> &vk::Framebuffer {
+  pub(crate) fn get_handle(&self) -> &vk::Framebuffer {
     &self.frame_buffer
+  }
+
+  pub(crate) fn width(&self) -> u32 {
+    self.width
+  }
+
+  pub(crate) fn height(&self) -> u32 {
+    self.height
   }
 }
 

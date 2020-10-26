@@ -214,7 +214,7 @@ impl VkCommandBuffer {
         render_pass: *render_pass.get_handle(),
         render_area: vk::Rect2D {
           offset: vk::Offset2D { x: 0i32, y: 0i32 },
-          extent: vk::Extent2D { width: 1280, height: 720 }
+          extent: vk::Extent2D { width: frame_buffer.width(), height: frame_buffer.height() }
         },
         clear_value_count: clear_values.len() as u32,
         p_clear_values: clear_values.as_ptr(),
