@@ -7,6 +7,7 @@ pub use self::surface::Swapchain;
 pub use self::surface::SwapchainError;
 pub use self::command::CommandBuffer;
 pub use self::command::CommandBufferType;
+pub use self::command::InnerCommandBufferProvider;
 pub use self::buffer::Buffer;
 pub use self::buffer::MappedBuffer;
 pub use self::buffer::BufferUsage;
@@ -39,6 +40,7 @@ mod backend;
 mod sync;
 mod graph;
 mod graph_template;
+mod graph_builder;
 
 // TODO: find a better place for this
 pub trait Resettable {

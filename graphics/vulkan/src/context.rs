@@ -11,7 +11,7 @@ use crossbeam_queue::SegQueue;
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::VkCommandPool;
-use sourcerenderer_core::graphics::{Device, Resettable, CommandBufferType};
+use sourcerenderer_core::graphics::{Device, Resettable, CommandBufferType, InnerCommandBufferProvider};
 use std::cell::{RefCell, RefMut};
 use ::{VkPipeline, VkQueue};
 use ash::version::DeviceV1_0;
@@ -26,6 +26,7 @@ use ::{VkTexture, VkRenderPass, VkFrameBuffer};
 use texture::VkTextureView;
 use std::marker::PhantomData;
 use ::{VkFenceInner, VkCommandBufferRecorder};
+use VkBackend;
 
 pub struct VkShared {
   semaphores: Pool<VkSemaphore>,
@@ -318,5 +319,13 @@ impl VkLifetimeTrackers {
 impl Drop for VkFrameContext {
   fn drop(&mut self) {
     unsafe { self.device.device_wait_idle(); }
+  }
+}
+
+impl InnerCommandBufferProvider<VkBackend> for VkThreadContextManager {
+  fn get_inner_command_buffer(&self) -> VkCommandBufferRecorder {
+    let thread_context = self.get_thread_context();
+    let mut frame_context = thread_context.get_frame_context();
+    frame_context.get_command_buffer(CommandBufferType::SECONDARY)
   }
 }

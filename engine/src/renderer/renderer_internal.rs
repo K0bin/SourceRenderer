@@ -5,7 +5,7 @@ use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, PipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, RenderPassCallback, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput};
+use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, PipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput, RenderPassCallbacks};
 use std::path::Path;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -175,60 +175,63 @@ impl<P: Platform> RendererInternal<P> {
 
     let c_asset_manager = asset_manager.clone();
     let c_renderables = renderables.clone();
-    let mut callbacks: HashMap<String, Vec<Arc<RenderPassCallback<P::GraphicsBackend>>>> = HashMap::new();
-    callbacks.insert("Geometry".to_string(), vec![
-      Arc::new(move |command_buffer| {
-        let state = c_renderables.lock().unwrap();
+    let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
+    callbacks.insert("Geometry".to_string(), RenderPassCallbacks::Regular(
+      vec![
+        Arc::new(move |command_buffer_a| {
+          let mut command_buffer = command_buffer_a as &mut <P::GraphicsBackend as Backend>::CommandBuffer;
+          let state = c_renderables.lock().unwrap();
 
-        let assets_lookup = c_asset_manager.lookup_graphics();
+          let assets_lookup = c_asset_manager.lookup_graphics();
 
-        let camera_constant_buffer = command_buffer.upload_dynamic_data(state.interpolated_camera, BufferUsage::CONSTANT);
-        command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
-        command_buffer.set_viewports(&[Viewport {
-          position: Vec2::new(0.0f32, 0.0f32),
-          extent: Vec2::new(1280.0f32, 720.0f32),
-          min_depth: 0.0f32,
-          max_depth: 1.0f32
-        }]);
-        command_buffer.set_scissors(&[Scissor {
-          position: Vec2I::new(0, 0),
-          extent: Vec2UI::new(9999, 9999),
-        }]);
+          let camera_constant_buffer: Arc<<P::GraphicsBackend as Backend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as Backend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.interpolated_camera, BufferUsage::CONSTANT);
+          command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+          command_buffer.set_viewports(&[Viewport {
+            position: Vec2::new(0.0f32, 0.0f32),
+            extent: Vec2::new(1280.0f32, 720.0f32),
+            min_depth: 0.0f32,
+            max_depth: 1.0f32
+          }]);
+          command_buffer.set_scissors(&[Scissor {
+            position: Vec2I::new(0, 0),
+            extent: Vec2UI::new(9999, 9999),
+          }]);
 
-        command_buffer.bind_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
-        for renderable in &state.elements {
-          let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
-          command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
+          command_buffer.bind_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
+          for renderable in &state.elements {
+            let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
+            command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
-          if let DrawableType::Static {
-            model, ..
-          } = &renderable.drawable_type {
-            let model = assets_lookup.get_model(model);
-            let mesh = assets_lookup.get_mesh(&model.mesh);
+            if let DrawableType::Static {
+              model, ..
+            } = &renderable.drawable_type {
+              let model = assets_lookup.get_model(model);
+              let mesh = assets_lookup.get_mesh(&model.mesh);
 
-            command_buffer.set_vertex_buffer(&mesh.vertices);
-            if mesh.indices.is_some() {
-              command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
-            }
-
-            for i in 0..mesh.parts.len() {
-              let range = &mesh.parts[i];
-              let material_key = &model.materials[i];
-
-              let material = assets_lookup.get_material(material_key);
-              let albedo_view = assets_lookup.get_texture(&material.albedo);
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
-              command_buffer.finish_binding();
-
+              command_buffer.set_vertex_buffer(&mesh.vertices);
               if mesh.indices.is_some() {
-                command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
-              } else {
-                command_buffer.draw(range.count, range.start);
+                command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
+              }
+
+              for i in 0..mesh.parts.len() {
+                let range = &mesh.parts[i];
+                let material_key = &model.materials[i];
+
+                let material = assets_lookup.get_material(material_key);
+                let albedo_view = assets_lookup.get_texture(&material.albedo);
+                command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
+                command_buffer.finish_binding();
+
+                if mesh.indices.is_some() {
+                  command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+                } else {
+                  command_buffer.draw(range.count, range.start);
+                }
               }
             }
           }
-        }
-      })]);
+        })
+      ]));
     let graph = device.create_render_graph(&graph_template, &RenderGraphInfo {
       pass_callbacks: callbacks
     }, swapchain);

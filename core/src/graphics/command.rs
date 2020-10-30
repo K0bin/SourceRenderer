@@ -60,3 +60,7 @@ pub enum BindingFrequency {
   PerFrame = 2,
   Rarely = 3
 }
+
+pub trait InnerCommandBufferProvider<B: Backend> {
+  fn get_inner_command_buffer(&self) -> B::CommandBuffer;
+}

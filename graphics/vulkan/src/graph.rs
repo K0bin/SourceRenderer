@@ -6,7 +6,7 @@ use std::u32;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{RenderGraph, StoreAction, LoadAction, RenderPassTextureExtent, PassOutput, PassInfo, PassInput, RenderGraphTemplate, RenderPassCallback, SubpassOutput};
+use sourcerenderer_core::graphics::{RenderGraph, StoreAction, LoadAction, RenderPassTextureExtent, PassOutput, PassInfo, PassInput, RenderGraphTemplate, RenderPassCallbacks, SubpassOutput, InnerCommandBufferProvider};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
@@ -59,7 +59,7 @@ pub enum VkPass {
     renderpass: Arc<VkRenderPass>,
     renders_to_swapchain: bool,
     clear_values: Vec<vk::ClearValue>,
-    callbacks: Vec<Arc<RenderPassCallback<VkBackend>>>
+    callbacks: RenderPassCallbacks<VkBackend>
   },
   Compute,
   Copy
@@ -235,7 +235,7 @@ impl VkRenderGraph {
             framebuffers.push(framebuffer);
           }
 
-          let mut callbacks: Vec<Arc<RenderPassCallback<VkBackend>>> = info.pass_callbacks[&pass.name].clone();
+          let mut callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
 
           finished_passes.push(Arc::new(VkPass::Graphics {
             framebuffers,
@@ -302,15 +302,34 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
       match &c_pass as &VkPass {
         VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain, clear_values } => {
-          cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);
-          for i in 0..callbacks.len() {
-            if i != 0 {
-              cmd_buffer.advance_subpass();
+          match callbacks {
+            RenderPassCallbacks::Regular(callbacks) => {
+              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);
+              for i in 0..callbacks.len() {
+                if i != 0 {
+                  cmd_buffer.advance_subpass();
+                }
+                let callback = &callbacks[i];
+                (callback)(&mut cmd_buffer);
+              }
+              cmd_buffer.end_render_pass();
             }
-            let callback = &callbacks[i];
-            (callback)(&mut cmd_buffer);
+            RenderPassCallbacks::InternallyThreaded(callbacks) => {
+              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::CommandBuffers);
+              let provider = c_context.clone() as Arc<dyn InnerCommandBufferProvider<VkBackend>>;
+              for i in 0..callbacks.len() {
+                if i != 0 {
+                  cmd_buffer.advance_subpass();
+                }
+                let callback = &callbacks[i];
+                (callback)(&provider);
+              }
+              cmd_buffer.end_render_pass();
+            }
+            RenderPassCallbacks::Threaded(callbacks) => {
+              unimplemented!();
+            }
           }
-          cmd_buffer.end_render_pass();
           let submission = cmd_buffer.finish();
 
           let prepare_semaphores = [&**c_prepare_semaphore];
@@ -333,9 +352,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             None
           };
 
-          spawn(move || {
-            c_queue.submit(submission, fence, &wait_semaphores, &signal_semaphores);
-          });
+          c_queue.submit(submission, fence, &wait_semaphores, &signal_semaphores);
 
           if *renders_to_swapchain {
             frame_context.track_semaphore(&c_prepare_semaphore);
