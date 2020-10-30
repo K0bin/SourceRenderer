@@ -7,7 +7,7 @@ use ash::vk;
 use ash::extensions::khr;
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 
-use sourcerenderer_core::graphics::Adapter;
+use sourcerenderer_core::graphics::{Adapter, CommandBufferType};
 use sourcerenderer_core::graphics::Device;
 use crate::device::VkDevice;
 use crate::raw::RawVkDevice;
@@ -83,6 +83,7 @@ impl VkQueue {
   }
 
   pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
+    assert!(command_buffer.command_buffer_type(), CommandBufferType::PRIMARY);
     debug_assert!(fence.is_none() || !fence.unwrap().is_signaled());
 
     let mut cmd_buffer_mut = command_buffer;

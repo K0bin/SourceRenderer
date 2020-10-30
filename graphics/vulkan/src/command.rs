@@ -12,7 +12,6 @@ use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
 use sourcerenderer_core::pool::Recyclable;
-use std::sync::mpsc::{ Sender, Receiver, channel };
 
 use crate::VkQueue;
 use crate::VkDevice;
@@ -38,6 +37,7 @@ use texture::VkTextureView;
 use transfer::VkTransferCommandBuffer;
 use std::ffi::{CStr, CString};
 use lifetime_tracker::VkLifetimeTrackers;
+use crossbeam_channel::{Receiver, Sender, unbounded};
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,
@@ -58,7 +58,7 @@ impl VkCommandPool {
       ..Default::default()
     };
 
-    let (sender, receiver) = channel();
+    let (sender, receiver) = unbounded();
 
     return Self {
       raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
@@ -386,7 +386,6 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
     let pipeline_layout = pipeline.get_layout();
-    let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
     self.descriptor_manager.bind(frequency, binding, VkBoundResource::Buffer(buffer.clone()));
     self.trackers.track_buffer(buffer);
   }
@@ -461,6 +460,14 @@ impl VkCommandBuffer {
       self.device.instance.debug_utils_loader.cmd_end_debug_utils_label(self.buffer);
     }
   }
+
+  pub(crate) fn execute_inner_command_buffer(&mut self, mut submission: VkCommandBufferSubmission) {
+    assert_eq!(submission.command_buffer_type(), CommandBufferType::SECONDARY);
+    unsafe {
+      self.device.cmd_execute_commands(self.buffer, &[*submission.get_handle()]);
+    }
+    submission.mark_submitted();
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -511,6 +518,10 @@ impl VkCommandBufferRecorder {
 
   pub fn advance_subpass(&mut self) {
     self.item.as_mut().unwrap().advance_subpass();
+  }
+
+  pub fn execute_inner_command_buffer(&mut self, mut submission: VkCommandBufferSubmission) {
+    self.item.as_mut().unwrap().execute_inner_command_buffer(submission);
   }
 
   pub fn finish(self) -> VkCommandBufferSubmission {
@@ -622,6 +633,10 @@ impl VkCommandBufferSubmission {
     unsafe {
       &self.item.as_ref().unwrap().get_handle()
     }
+  }
+
+  pub(crate) fn command_buffer_type(&self) -> CommandBufferType {
+    self.item.as_ref().unwrap().command_buffer_type
   }
 }
 

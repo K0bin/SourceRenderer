@@ -20,6 +20,7 @@ pub trait Backend: 'static + Sized {
   type Surface: Surface + Send + Sync;
   type Swapchain: Swapchain + Send + Sync;
   type CommandBuffer: CommandBuffer<Self>;
+  type CommandBufferSubmission: Send + Sync;
   type Texture: Texture + Send + Sync;
   type TextureShaderResourceView: TextureShaderResourceView + Send + Sync;
   type Buffer: Buffer + Send + Sync;

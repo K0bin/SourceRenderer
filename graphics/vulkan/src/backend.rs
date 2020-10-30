@@ -13,6 +13,7 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type Device = VkDevice;
   type Instance = VkInstance;
   type CommandBuffer = VkCommandBufferRecorder;
+  type CommandBufferSubmission = VkCommandBufferSubmission;
   type Adapter = VkAdapter;
   type Surface = VkSurface;
   type Texture = VkTexture;

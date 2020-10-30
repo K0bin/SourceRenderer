@@ -322,7 +322,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                   cmd_buffer.advance_subpass();
                 }
                 let callback = &callbacks[i];
-                (callback)(&provider);
+                let inner_cmd_buffers = (callback)(&provider);
+                for inner_cmd_buffer in inner_cmd_buffers {
+                  cmd_buffer.execute_inner_command_buffer(inner_cmd_buffer);
+                }
               }
               cmd_buffer.end_render_pass();
             }

@@ -9,7 +9,7 @@ use crate::job::JobScheduler;
 use crate::graphics::command::InnerCommandBufferProvider;
 
 pub type RegularRenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer)) + Send + Sync;
-pub type InternallyThreadedRenderPassCallback<B: Backend> = dyn (Fn(&Arc<dyn InnerCommandBufferProvider<B>>) -> B::CommandBuffer) + Send + Sync;
+pub type InternallyThreadedRenderPassCallback<B: Backend> = dyn (Fn(&Arc<dyn InnerCommandBufferProvider<B>>) -> Vec<B::CommandBufferSubmission>) + Send + Sync;
 pub type ThreadedRenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer)) + Send + Sync;
 
 #[derive(Clone)]
