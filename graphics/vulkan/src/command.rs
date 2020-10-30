@@ -27,7 +27,7 @@ use crate::raw::*;
 use pipeline::{VkPipelineInfo, VkPipelineLayout};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use context::{VkThreadContextManager, VkShared, VkLifetimeTrackers};
+use ::{VkThreadManager, VkShared};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use buffer::{VkBufferSlice, BufferAllocator};
@@ -37,6 +37,7 @@ use descriptor::{VkBindingManager, VkBoundResource};
 use texture::VkTextureView;
 use transfer::VkTransferCommandBuffer;
 use std::ffi::{CStr, CString};
+use lifetime_tracker::VkLifetimeTrackers;
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,

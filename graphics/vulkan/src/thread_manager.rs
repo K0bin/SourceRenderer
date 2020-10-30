@@ -25,23 +25,14 @@ use transfer::VkTransfer;
 use ::{VkTexture, VkRenderPass, VkFrameBuffer};
 use texture::VkTextureView;
 use std::marker::PhantomData;
-use ::{VkFenceInner, VkCommandBufferRecorder};
-use VkBackend;
+use ::{VkFenceInner, VkCommandBufferRecorder, VkLifetimeTrackers, VkShared, VkBackend};
 
-pub struct VkShared {
-  semaphores: Pool<VkSemaphore>,
-  fences: Pool<VkFenceInner>,
-  buffers: BufferAllocator, // consider per thread
-  descriptor_set_layouts: RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>>,
-  pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>
-}
-
-pub struct VkThreadContextManager {
+pub struct VkThreadManager {
   device: Arc<RawVkDevice>,
   graphics_queue: Arc<VkQueue>,
   compute_queue: Option<Arc<VkQueue>>,
   transfer_queue: Option<Arc<VkQueue>>,
-  threads: ThreadLocal<RefCell<VkThreadContext>>,
+  threads: ThreadLocal<RefCell<VkThreadLocal>>,
   shared: Arc<VkShared>,
   max_prepared_frames: u32,
   frame_counter: AtomicU64,
@@ -51,9 +42,9 @@ pub struct VkThreadContextManager {
 /*
 A thread context manages frame contexts for a thread
 */
-pub struct VkThreadContext {
+pub struct VkThreadLocal {
   device: Arc<RawVkDevice>,
-  frames: Vec<RefCell<VkFrameContext>>,
+  frames: Vec<RefCell<VkFrameLocal>>,
   buffer_allocator: Arc<BufferAllocator>,
   frame_counter: u64,
   disable_send_sync: PhantomData<u32>
@@ -62,7 +53,7 @@ pub struct VkThreadContext {
 /*
 A frame context manages and resets all resources used to render a frame
 */
-pub struct VkFrameContext {
+pub struct VkFrameLocal {
   device: Arc<RawVkDevice>,
   command_pool: VkCommandPool,
   life_time_trackers: VkLifetimeTrackers,
@@ -75,14 +66,14 @@ pub struct VkFrame {
   fence: Arc<VkFence>
 }
 
-impl VkThreadContextManager {
+impl VkThreadManager {
   pub fn new(device: &Arc<RawVkDevice>,
              graphics_queue: &Arc<VkQueue>,
              compute_queue: &Option<Arc<VkQueue>>,
              transfer_queue: &Option<Arc<VkQueue>>,
              shared: &Arc<VkShared>,
              max_prepared_frames: u32) -> Self {
-    return VkThreadContextManager {
+    return VkThreadManager {
       device: device.clone(),
       threads: ThreadLocal::new(),
       graphics_queue: graphics_queue.clone(),
@@ -109,10 +100,10 @@ impl VkThreadContextManager {
     &self.shared
   }
 
-  pub fn get_thread_context(&self) -> RefMut<VkThreadContext> {
-    let mut context = self.threads.get_or(|| RefCell::new(VkThreadContext::new(&self.device, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, self.max_prepared_frames))).borrow_mut();
-    context.set_frame(self.frame_counter.load(Ordering::SeqCst));
-    context
+  pub fn get_thread_local(&self) -> RefMut<VkThreadLocal> {
+    let mut thread_local = self.threads.get_or(|| RefCell::new(VkThreadLocal::new(&self.device, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, self.max_prepared_frames))).borrow_mut();
+    thread_local.set_frame(self.frame_counter.load(Ordering::SeqCst));
+    thread_local
   }
 
   pub fn end_frame(&self, fence: &Arc<VkFence>) {
@@ -135,7 +126,7 @@ impl VkThreadContextManager {
   }
 }
 
-impl VkThreadContext {
+impl VkThreadLocal {
   fn new(device: &Arc<RawVkDevice>,
          graphics_queue: &Arc<VkQueue>,
          compute_queue: &Option<Arc<VkQueue>>,
@@ -143,12 +134,12 @@ impl VkThreadContext {
          max_prepared_frames: u32) -> Self {
     let buffer_allocator = Arc::new(BufferAllocator::new(device));
 
-    let mut frames: Vec<RefCell<VkFrameContext>> = Vec::new();
+    let mut frames: Vec<RefCell<VkFrameLocal>> = Vec::new();
     for _ in 0..max_prepared_frames {
-      frames.push(RefCell::new(VkFrameContext::new(device, graphics_queue, compute_queue, transfer_queue, &buffer_allocator)))
+      frames.push(RefCell::new(VkFrameLocal::new(device, graphics_queue, compute_queue, transfer_queue, &buffer_allocator)))
     }
 
-    return VkThreadContext {
+    return VkThreadLocal {
       device: device.clone(),
       frames,
       frame_counter: 0u64,
@@ -166,14 +157,14 @@ impl VkThreadContext {
     self.frame_counter = frame;
   }
 
-  pub fn get_frame_context(&self) -> RefMut<VkFrameContext> {
-    let mut frame_context = self.frames[self.frame_counter as usize % self.frames.len()].borrow_mut();
-    frame_context.set_frame(self.frame_counter);
-    frame_context
+  pub fn get_frame_local(&self) -> RefMut<VkFrameLocal> {
+    let mut frame_local = self.frames[self.frame_counter as usize % self.frames.len()].borrow_mut();
+    frame_local.set_frame(self.frame_counter);
+    frame_local
   }
 }
 
-impl VkFrameContext {
+impl VkFrameLocal {
   pub fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, compute_queue: &Option<Arc<VkQueue>>, transfer_queue: &Option<Arc<VkQueue>>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
     Self {
       device: device.clone(),
@@ -207,125 +198,16 @@ impl VkFrameContext {
   }
 }
 
-impl VkShared {
-  pub fn new(device: &Arc<RawVkDevice>) -> Self {
-    let semaphores_device_clone = device.clone();
-    let fences_device_clone = device.clone();
-    Self {
-      semaphores: Pool::new(Box::new(move ||
-        VkSemaphore::new(&semaphores_device_clone)
-      )),
-      fences: Pool::new(Box::new(move ||
-        VkFenceInner::new(&fences_device_clone)
-      )),
-      buffers: BufferAllocator::new(device),
-      descriptor_set_layouts: RwLock::new(HashMap::new()),
-      pipeline_layouts: RwLock::new(HashMap::new())
-    }
-  }
-
-  #[inline]
-  pub(crate) fn get_semaphore(&self) -> Arc<Recyclable<VkSemaphore>> {
-    Arc::new(self.semaphores.get())
-  }
-
-  #[inline]
-  pub(crate) fn get_fence(&self) -> Arc<VkFence> {
-    let inner = self.fences.get();
-    if inner.is_signaled() {
-      inner.reset();
-    }
-    Arc::new(VkFence::new(inner))
-  }
-
-  #[inline]
-  pub(crate) fn get_descriptor_set_layouts(&self) -> &RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>> {
-    &self.descriptor_set_layouts
-  }
-
-  #[inline]
-  pub(crate) fn get_pipeline_layouts(&self) -> &RwLock<HashMap<u64, Arc<VkPipelineLayout>>> {
-    &self.pipeline_layouts
-  }
-
-  #[inline]
-  pub(crate) fn get_buffer_allocator(&self) -> &BufferAllocator {
-    &self.buffers
-  }
-}
-
-pub struct VkLifetimeTrackers {
-  semaphores: Vec<Arc<Recyclable<VkSemaphore>>>,
-  fences: Vec<Arc<VkFence>>,
-  buffers: Vec<Arc<VkBufferSlice>>,
-  textures: Vec<Arc<VkTexture>>,
-  texture_views: Vec<Arc<VkTextureView>>,
-  render_passes: Vec<Arc<VkRenderPass>>,
-  frame_buffers: Vec<Arc<VkFrameBuffer>>
-}
-
-impl VkLifetimeTrackers {
-  pub(crate) fn new() -> Self {
-    Self {
-      semaphores: Vec::new(),
-      fences: Vec::new(),
-      buffers: Vec::new(),
-      textures: Vec::new(),
-      texture_views: Vec::new(),
-      render_passes: Vec::new(),
-      frame_buffers: Vec::new()
-    }
-  }
-
-  pub(crate) fn reset(&mut self) {
-    self.semaphores.clear();
-    self.fences.clear();
-    self.buffers.clear();
-    self.textures.clear();
-    self.texture_views.clear();
-    self.render_passes.clear();
-    self.frame_buffers.clear();
-  }
-
-  pub(crate) fn track_semaphore(&mut self, semaphore: &Arc<Recyclable<VkSemaphore>>) {
-    self.semaphores.push(semaphore.clone());
-  }
-
-  pub(crate) fn track_fence(&mut self, fence: &Arc<VkFence>) {
-    self.fences.push(fence.clone());
-  }
-
-  pub(crate) fn track_buffer(&mut self, buffer: &Arc<VkBufferSlice>) {
-    self.buffers.push(buffer.clone());
-  }
-
-  pub(crate) fn track_texture(&mut self, texture: &Arc<VkTexture>) {
-    self.textures.push(texture.clone());
-  }
-
-  pub(crate) fn track_render_pass(&mut self, render_pass: &Arc<VkRenderPass>) {
-    self.render_passes.push(render_pass.clone());
-  }
-
-  pub(crate) fn track_frame_buffer(&mut self, frame_buffer: &Arc<VkFrameBuffer>) {
-    self.frame_buffers.push(frame_buffer.clone());
-  }
-
-  pub(crate) fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
-    self.texture_views.push(texture_view.clone());
-  }
-}
-
-impl Drop for VkFrameContext {
+impl Drop for VkFrameLocal {
   fn drop(&mut self) {
     unsafe { self.device.device_wait_idle(); }
   }
 }
 
-impl InnerCommandBufferProvider<VkBackend> for VkThreadContextManager {
+impl InnerCommandBufferProvider<VkBackend> for VkThreadManager {
   fn get_inner_command_buffer(&self) -> VkCommandBufferRecorder {
-    let thread_context = self.get_thread_context();
-    let mut frame_context = thread_context.get_frame_context();
+    let thread_context = self.get_thread_local();
+    let mut frame_context = thread_context.get_frame_local();
     frame_context.get_command_buffer(CommandBufferType::SECONDARY)
   }
 }

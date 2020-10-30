@@ -18,7 +18,7 @@ use crate::VkSwapchain;
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
 use sourcerenderer_core::graphics::{Backend, CommandBufferType, CommandBuffer, RenderpassRecordingMode, Swapchain};
-use context::VkThreadContextManager;
+use thread_manager::VkThreadManager;
 use std::cell::RefCell;
 use ::{VkRenderPass, VkQueue};
 use ::{VkFrameBuffer, VkSemaphore};
@@ -44,7 +44,7 @@ pub struct VkRenderGraph {
   passes: Vec<Arc<VkPass>>,
   template: Arc<VkRenderGraphTemplate>,
   attachments: HashMap<String, VkAttachment>,
-  context: Arc<VkThreadContextManager>,
+  thread_manager: Arc<VkThreadManager>,
   swapchain: Arc<VkSwapchain>,
   graphics_queue: Arc<VkQueue>,
   compute_queue: Option<Arc<VkQueue>>,
@@ -67,7 +67,7 @@ pub enum VkPass {
 
 impl VkRenderGraph {
   pub fn new(device: &Arc<RawVkDevice>,
-             context: &Arc<VkThreadContextManager>,
+             context: &Arc<VkThreadManager>,
              graphics_queue: &Arc<VkQueue>,
              compute_queue: &Option<Arc<VkQueue>>,
              transfer_queue: &Option<Arc<VkQueue>>,
@@ -254,7 +254,7 @@ impl VkRenderGraph {
       template: template.clone(),
       passes: finished_passes,
       attachments,
-      context: context.clone(),
+      thread_manager: context.clone(),
       swapchain: swapchain.clone(),
       graphics_queue: graphics_queue.clone(),
       compute_queue: compute_queue.clone(),
@@ -267,15 +267,15 @@ impl VkRenderGraph {
 
 impl RenderGraph<VkBackend> for VkRenderGraph {
   fn recreate(old: &Self, swapchain: &Arc<VkSwapchain>) -> Self {
-    VkRenderGraph::new(&old.device, &old.context, &old.graphics_queue, &old.compute_queue, &old.transfer_queue, &old.template, &old.info, swapchain)
+    VkRenderGraph::new(&old.device, &old.thread_manager, &old.graphics_queue, &old.compute_queue, &old.transfer_queue, &old.template, &old.info, swapchain)
   }
 
   fn render(&mut self) -> Result<(), ()> {
-    self.context.begin_frame();
+    self.thread_manager.begin_frame();
 
-    let mut prepare_semaphore = self.context.get_shared().get_semaphore();
-    let cmd_semaphore = self.context.get_shared().get_semaphore();
-    let cmd_fence = self.context.get_shared().get_fence();
+    let mut prepare_semaphore = self.thread_manager.get_shared().get_semaphore();
+    let cmd_semaphore = self.thread_manager.get_shared().get_semaphore();
+    let cmd_fence = self.thread_manager.get_shared().get_fence();
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
@@ -288,7 +288,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     }
 
     for pass in &self.passes {
-      let c_context = self.context.clone();
+      let c_thread_manager = self.thread_manager.clone();
       let c_pass = pass.clone();
       let c_queue = self.graphics_queue.clone();
       let c_prepare_semaphore = prepare_semaphore.clone();
@@ -296,9 +296,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       let c_cmd_fence = cmd_fence.clone();
       let framebuffer_index = image_index as usize;
 
-      let thread_context = c_context.get_thread_context();
-      let mut frame_context = thread_context.get_frame_context();
-      let mut cmd_buffer = frame_context.get_command_buffer(CommandBufferType::PRIMARY);
+      let thread_local = c_thread_manager.get_thread_local();
+      let mut frame_local = thread_local.get_frame_local();
+      let mut cmd_buffer = frame_local.get_command_buffer(CommandBufferType::PRIMARY);
 
       match &c_pass as &VkPass {
         VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain, clear_values } => {
@@ -316,7 +316,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             }
             RenderPassCallbacks::InternallyThreaded(callbacks) => {
               cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::CommandBuffers);
-              let provider = c_context.clone() as Arc<dyn InnerCommandBufferProvider<VkBackend>>;
+              let provider = c_thread_manager.clone() as Arc<dyn InnerCommandBufferProvider<VkBackend>>;
               for i in 0..callbacks.len() {
                 if i != 0 {
                   cmd_buffer.advance_subpass();
@@ -355,15 +355,15 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           c_queue.submit(submission, fence, &wait_semaphores, &signal_semaphores);
 
           if *renders_to_swapchain {
-            frame_context.track_semaphore(&c_prepare_semaphore);
+            frame_local.track_semaphore(&c_prepare_semaphore);
           }
         },
         _ => unimplemented!()
       }
     }
 
-    let thread_context = self.context.get_thread_context();
-    let mut frame_context = thread_context.get_frame_context();
+    let thread_context = self.thread_manager.get_thread_local();
+    let mut frame_context = thread_context.get_frame_local();
 
     if self.renders_to_swapchain {
       let result = self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
@@ -374,7 +374,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       frame_context.track_semaphore(&cmd_semaphore);
     }
 
-    self.context.end_frame(&cmd_fence);
+    self.thread_manager.end_frame(&cmd_fence);
     Ok(())
   }
 }

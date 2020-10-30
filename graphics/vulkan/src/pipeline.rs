@@ -36,7 +36,7 @@ use ash::vk::{ShaderStageFlags, Handle};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
-use context::VkShared;
+use ::VkShared;
 
 #[inline]
 pub(crate) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {

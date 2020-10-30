@@ -8,11 +8,11 @@ use ::{VkCommandBufferSubmission, VkFence};
 use crossbeam_channel::{Sender, Receiver, unbounded};
 use command::VkCommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
-use context::{VkShared, VkLifetimeTrackers};
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::{max, min};
 use sourcerenderer_core::pool::Recyclable;
 use std::collections::VecDeque;
+use ::{VkShared, VkLifetimeTrackers};
 
 pub(crate) struct VkTransfer {
   inner: Mutex<VkTransferInner>,

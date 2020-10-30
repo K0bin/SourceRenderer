@@ -22,7 +22,7 @@ use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::graph::VkRenderGraph;
 use crate::swapchain::VkSwapchain;
-use context::{VkThreadContextManager, VkShared};
+use ::{VkThreadManager, VkShared};
 use raw::{RawVkDevice, RawVkInstance};
 use std::collections::HashMap;
 use pipeline::VkPipelineInfo;
@@ -38,7 +38,7 @@ pub struct VkDevice {
   compute_queue: Option<Arc<VkQueue>>,
   transfer_queue: Option<Arc<VkQueue>>,
   extensions: VkAdapterExtensionSupport,
-  context: Arc<VkThreadContextManager>,
+  context: Arc<VkThreadManager>,
   transfer: VkTransfer
 }
 
@@ -88,7 +88,7 @@ impl VkDevice {
       Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
     });
 
-    let context = Arc::new(VkThreadContextManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 3));
+    let context = Arc::new(VkThreadManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 3));
 
     let transfer = VkTransfer::new(&raw, &graphics_queue, &transfer_queue, &shared);
 
