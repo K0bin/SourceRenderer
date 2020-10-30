@@ -37,8 +37,7 @@ fn fps_camera<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Tr
   fps_camera.pitch -= mouse_delta.y as f32 / 1000f32;
   fps_camera.yaw -= mouse_delta.x as f32 / 1000f32;
 
-  transform.rotation = Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(1.0f32, 0.0f32, 0.0f32)), fps_camera.pitch)
-    * Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(0.0f32, 1.0f32, 0.0f32)), fps_camera.yaw);
+  transform.rotation = Quaternion::from_euler_angles(fps_camera.pitch, fps_camera.yaw, 0f32);
 
   let mut movement_vector = Vec3::new(0f32, 0f32, 0f32);
   if input.is_key_down(Key::W) {
