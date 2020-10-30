@@ -40,7 +40,6 @@ mod backend;
 mod sync;
 mod graph;
 mod graph_template;
-mod graph_builder;
 
 // TODO: find a better place for this
 pub trait Resettable {
