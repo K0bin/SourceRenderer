@@ -83,7 +83,7 @@ impl VkQueue {
   }
 
   pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&VkFence>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
-    assert!(command_buffer.command_buffer_type(), CommandBufferType::PRIMARY);
+    assert_eq!(command_buffer.command_buffer_type(), CommandBufferType::PRIMARY);
     debug_assert!(fence.is_none() || !fence.unwrap().is_signaled());
 
     let mut cmd_buffer_mut = command_buffer;
