@@ -36,7 +36,7 @@ use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::job::*;
 use legion::{World, Resources, Schedule};
 
-const tick_rate: u32 = 5;
+const TICK_RATE: u32 = 128;
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -66,8 +66,8 @@ impl<P: Platform> Engine<P> {
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let mut swapchain = Arc::new(self.platform.window().create_swapchain(true, &device, &surface));
     let asset_manager = AssetManager::<P>::new(&device);
-    let renderer = Renderer::<P>::run(self.platform.window(), &device, &swapchain, &asset_manager, tick_rate);
-    Scene::run::<P>(&renderer, &asset_manager, self.platform.input(), tick_rate);
+    let renderer = Renderer::<P>::run(self.platform.window(), &device, &swapchain, &asset_manager, TICK_RATE);
+    Scene::run::<P>(&renderer, &asset_manager, self.platform.input(), TICK_RATE);
 
     'event_loop: loop {
       let event = self.platform.handle_events();
