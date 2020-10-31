@@ -155,9 +155,9 @@ impl Device<VkBackend> for VkDevice {
     assert_ne!(memory_usage, MemoryUsage::GpuOnly);
     let slice = self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, data.len());
     unsafe {
-      let ptr = slice.map_unsafe().expect("Failed to map buffer slice");
+      let ptr = slice.map_unsafe(false).expect("Failed to map buffer slice");
       std::ptr::copy(data.as_ptr(), ptr, min(data.len(), slice.get_offset_and_length().1));
-      slice.unmap_unsafe();
+      slice.unmap_unsafe(true);
     }
     Arc::new(slice)
   }

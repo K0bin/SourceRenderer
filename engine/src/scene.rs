@@ -51,6 +51,8 @@ impl Scene {
       transform::install(&mut systems);
       c_renderer.install(&mut world, &mut resources, &mut systems);
 
+      resources.insert(c_renderer.primary_camera().clone());
+
       let mut tick = 0u64;
       let mut schedule = systems.build();
       let mut last_iter_time = SystemTime::now();

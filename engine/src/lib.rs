@@ -4,6 +4,7 @@ extern crate sourcerenderer_vulkan;
 extern crate async_std;
 extern crate image;
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 extern crate sourcerenderer_bsp;
 #[macro_use]
 extern crate legion;

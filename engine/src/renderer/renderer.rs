@@ -26,12 +26,14 @@ use legion::{World, Resources, Schedule, Entity};
 use legion::systems::{Builder as SystemBuilder, Builder};
 use std::time::SystemTime;
 use crate::renderer::RendererInternal;
+use crate::renderer::camera::PrimaryCamera;
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   window_state: Mutex<WindowState>,
-  queued_frames_counter: AtomicUsize
+  queued_frames_counter: AtomicUsize,
+  primary_camera: Arc<PrimaryCamera<P::GraphicsBackend>>
 }
 
 impl<P: Platform> Renderer<P> {
@@ -40,7 +42,8 @@ impl<P: Platform> Renderer<P> {
       sender,
       device: device.clone(),
       window_state: Mutex::new(window.state()),
-      queued_frames_counter: AtomicUsize::new(0)
+      queued_frames_counter: AtomicUsize::new(0),
+      primary_camera: Arc::new(PrimaryCamera::new(device.as_ref()))
     }
   }
 
@@ -51,7 +54,7 @@ impl<P: Platform> Renderer<P> {
              simulation_tick_rate: u32) -> Arc<Renderer<P>> {
     let (sender, receiver) = unbounded::<RendererCommand>();
     let renderer = Arc::new(Renderer::new(sender.clone(), device, window));
-    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, sender, receiver, simulation_tick_rate);
+    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, sender, receiver, simulation_tick_rate, renderer.primary_camera());
 
     std::thread::spawn(move || {
       'render_loop: loop {
@@ -59,6 +62,10 @@ impl<P: Platform> Renderer<P> {
       }
     });
     renderer
+  }
+
+  pub fn primary_camera(&self) -> &Arc<PrimaryCamera<P::GraphicsBackend>> {
+    &self.primary_camera
   }
 
   pub fn set_window_state(&self, window_state: WindowState) {

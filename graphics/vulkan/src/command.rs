@@ -438,8 +438,9 @@ impl VkCommandBuffer {
     where T: 'static + Send + Sync + Sized + Clone {
     let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of::<T>());
     unsafe {
-      let mut map = slice.map().expect("Mapping failed");
-      std::mem::replace::<T>(map.data(), data);
+      let mut ptr = slice.map_unsafe(false).expect("Failed to map buffer");
+      std::mem::replace::<T>((ptr as *mut T).as_mut().unwrap(), data);
+      slice.unmap_unsafe(true);
     }
     Arc::new(slice)
   }

@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use thread_local::ThreadLocal;
 
-use crossbeam_queue::SegQueue;
-
 use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::VkCommandPool;

@@ -35,8 +35,9 @@ use async_std::sync::{channel, Sender, Receiver};
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::job::*;
 use legion::{World, Resources, Schedule};
+use crate::fps_camera::{FPSCamera, fps_camera_rotation};
 
-const TICK_RATE: u32 = 128;
+const TICK_RATE: u32 = 5;
 
 pub struct Engine<P: Platform> {
     platform: Box<P>
@@ -69,12 +70,14 @@ impl<P: Platform> Engine<P> {
     let renderer = Renderer::<P>::run(self.platform.window(), &device, &swapchain, &asset_manager, TICK_RATE);
     Scene::run::<P>(&renderer, &asset_manager, self.platform.input(), TICK_RATE);
 
+    let mut fps_camera = FPSCamera::new();
     'event_loop: loop {
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {
         break 'event_loop;
       }
       renderer.set_window_state(self.platform.window().state());
+      renderer.primary_camera().update_rotation(fps_camera_rotation::<P>(self.platform.input(), &mut fps_camera, 1.0f32));
       std::thread::sleep(Duration::new(0, 4_000_000)); // 4ms
     }
   }

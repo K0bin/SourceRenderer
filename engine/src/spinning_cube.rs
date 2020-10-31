@@ -13,7 +13,7 @@ use crate::renderer::StaticRenderableComponent;
 use legion::systems::Builder as SystemBuilder;
 use crate::transform::GlobalTransform;
 use crate::camera::ActiveCamera;
-use crate::fps_camera::FPSCameraComponent;
+use crate::fps_camera::FPSCamera;
 use crate::scene::DeltaTime;
 use std::f32;
 
@@ -99,7 +99,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32
-  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCameraComponent::new()));
+  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCamera::new()));
 
   resources.insert(ActiveCamera(camera));
 }

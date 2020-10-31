@@ -14,6 +14,7 @@ use sourcerenderer_core::platform::WindowState;
 use nalgebra::{Matrix3, Point3};
 use std::sync::atomic::Ordering;
 use std::io::Read;
+use crate::renderer::camera::PrimaryCamera;
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
@@ -24,7 +25,8 @@ pub(super) struct RendererInternal<P: Platform> {
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   simulation_tick_rate: u32,
-  last_tick: SystemTime
+  last_tick: SystemTime,
+  primary_camera: Arc<PrimaryCamera<P::GraphicsBackend>>
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -35,7 +37,8 @@ impl<P: Platform> RendererInternal<P> {
     asset_manager: &Arc<AssetManager<P>>,
     sender: Sender<RendererCommand>,
     receiver: Receiver<RendererCommand>,
-    simulation_tick_rate: u32) -> Self {
+    simulation_tick_rate: u32,
+    primary_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>) -> Self {
 
     let renderables = Arc::new(Mutex::new(View::default()));
     let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables);
@@ -48,7 +51,8 @@ impl<P: Platform> RendererInternal<P> {
       sender,
       receiver,
       simulation_tick_rate,
-      last_tick: SystemTime::now()
+      last_tick: SystemTime::now(),
+      primary_camera: primary_camera.clone()
     }
   }
 
@@ -333,15 +337,10 @@ impl<P: Platform> RendererInternal<P> {
     }
 
     guard.interpolated_camera = interpolate_transform_matrix(guard.older_camera_transform, guard.old_camera_transform, frac);
-    let interpolated_fov = guard.older_camera_fov + (guard.old_camera_fov - guard.older_camera_fov) * frac;
+    let (translation, _, _) = deconstruct_transform(guard.interpolated_camera);
+    self.primary_camera.update_position(translation);
 
-    let position = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
-    let target = guard.interpolated_camera.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
-
-    let aspect_ratio = swapchain_width as f32 / swapchain_height as f32;
-    let vertical_fov = 2f32 * ((interpolated_fov / 2f32).tan() * (1f32 / aspect_ratio)).atan();
-    guard.interpolated_camera = Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 20.0f32)
-      * Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32));
+    guard.interpolated_camera = self.primary_camera.get_camera();
   }
 
   pub(super) fn render(&mut self) {

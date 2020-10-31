@@ -10,6 +10,7 @@ pub use self::command::CommandBufferType;
 pub use self::command::InnerCommandBufferProvider;
 pub use self::buffer::Buffer;
 pub use self::buffer::MappedBuffer;
+pub use self::buffer::MutMappedBuffer;
 pub use self::buffer::BufferUsage;
 pub use self::device::MemoryUsage;
 pub use self::format::Format;

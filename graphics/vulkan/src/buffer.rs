@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use ash::vk;
 
-use sourcerenderer_core::graphics::{Buffer, BufferUsage, MemoryUsage, MappedBuffer};
+use sourcerenderer_core::graphics::{Buffer, BufferUsage, MemoryUsage, MappedBuffer, MutMappedBuffer};
 
 use crate::VkDevice;
 use crate::raw::*;
@@ -124,29 +124,38 @@ impl PartialEq for VkBuffer {
 impl Eq for VkBuffer {}
 
 impl Buffer for VkBufferSlice {
-  fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
+  fn map_mut<T>(&self) -> Option<MutMappedBuffer<Self, T>>
     where T: 'static + Send + Sync + Sized + Clone {
-    MappedBuffer::new(self)
+    MutMappedBuffer::new(self, true)
   }
 
-  unsafe fn map_unsafe(&self) -> Option<*mut u8> {
+  fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
+    where T: 'static + Send + Sync + Sized + Clone {
+    MappedBuffer::new(self, true)
+  }
+
+  unsafe fn map_unsafe(&self, invalidate: bool) -> Option<*mut u8> {
     if !self.buffer.is_coherent &&
       (self.buffer.memory_usage == MemoryUsage::CpuToGpu
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let mut allocator = &self.buffer.device.allocator;
-      allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+      if invalidate {
+        allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+      }
     }
     return self.buffer.map_ptr.map(|ptr| ptr.add(self.offset));
   }
 
-  unsafe fn unmap_unsafe(&self) {
+  unsafe fn unmap_unsafe(&self, flush: bool) {
     if !self.buffer.is_coherent &&
       (self.buffer.memory_usage == MemoryUsage::CpuToGpu
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let mut allocator = &self.buffer.device.allocator;
-      allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+      if flush {
+        allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+      }
     }
   }
 
