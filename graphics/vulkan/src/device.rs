@@ -25,7 +25,7 @@ use crate::swapchain::VkSwapchain;
 use ::{VkThreadManager, VkShared};
 use raw::{RawVkDevice, RawVkInstance};
 use std::collections::HashMap;
-use pipeline::VkPipelineInfo;
+use pipeline::VkGraphicsPipelineInfo;
 use buffer::VkBufferSlice;
 use std::cmp::min;
 use texture::VkTextureView;
@@ -174,13 +174,13 @@ impl Device<VkBackend> for VkDevice {
     return Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, info));
   }
 
-  fn create_graphics_pipeline(&self, info: &PipelineInfo<VkBackend>, graph_template: &<VkBackend as Backend>::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
+  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, graph_template: &<VkBackend as Backend>::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
     let pass = graph_template.passes.iter().find(|pass| pass.name.as_str() == pass_name).expect(format!("Can not find pass {} in render graph.", pass_name).as_str());
     match &pass.pass_type {
       VkPassType::Graphics {
         render_pass, ..
       } => {
-        Arc::new(VkPipeline::new(&self.device, &VkPipelineInfo {
+        Arc::new(VkPipeline::new_graphics(&self.device, &VkGraphicsPipelineInfo {
           info,
           render_pass,
           sub_pass: subpass_index
@@ -188,6 +188,10 @@ impl Device<VkBackend> for VkDevice {
       },
       _ => panic!("Pass by name: {} is not a graphics pass.", pass_name)
     }
+  }
+
+  fn create_compute_pipeline(&self, shader: &Arc<VkShader>) -> Arc<VkPipeline> {
+    Arc::new(VkPipeline::new_compute(&self.device, shader, self.context.shared()))
   }
 
   fn wait_for_idle(&self) {

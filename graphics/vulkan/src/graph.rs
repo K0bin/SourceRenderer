@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::{sync::RwLock, collections::{HashMap, VecDeque}};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::u32;
@@ -6,7 +6,7 @@ use std::u32;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{RenderGraph, StoreAction, LoadAction, RenderPassTextureExtent, PassOutput, PassInfo, PassInput, RenderGraphTemplate, RenderPassCallbacks, SubpassOutput, InnerCommandBufferProvider};
+use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, PassInfo, PassInput, PassOutput, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderGraphTemplate, RenderPassCallbacks, RenderPassTextureExtent, StoreAction, SubpassOutput};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
@@ -27,11 +27,28 @@ use sourcerenderer_core::job::JobScheduler;
 use std::sync::atomic::Ordering;
 use std::cmp::{max, min};
 use std::iter::FromIterator;
-use VkTexture;
+use ::{VkTexture, VkBuffer};
 use texture::VkTextureView;
-use graph_template::{VkRenderGraphTemplate, VkPassTemplate, VkPassType};
+use buffer::VkBufferSlice;
+use graph_template::{VkRenderGraphTemplate, VkPassTemplate, VkPassType, VkBarrierTemplate};
 use sourcerenderer_core::ThreadPool;
 use sourcerenderer_core::{scope, spawn};
+use VkShared;
+
+pub struct VkResource {
+  info: PassOutput,
+  details: VkResourceDetails
+}
+
+pub enum VkResourceDetails {
+  Image {
+    texture: Arc<VkTexture>,
+    view: Arc<VkTextureView>,
+  },
+  Buffer {
+    buffer: Arc<VkBufferSlice>,
+  }
+}
 
 pub struct VkAttachment {
   texture: Arc<VkTexture>,
@@ -43,7 +60,7 @@ pub struct VkRenderGraph {
   device: Arc<RawVkDevice>,
   passes: Vec<Arc<VkPass>>,
   template: Arc<VkRenderGraphTemplate>,
-  attachments: HashMap<String, VkAttachment>,
+  resources: HashMap<String, VkResource>,
   thread_manager: Arc<VkThreadManager>,
   swapchain: Arc<VkSwapchain>,
   graphics_queue: Arc<VkQueue>,
@@ -53,17 +70,73 @@ pub struct VkRenderGraph {
   info: RenderGraphInfo<VkBackend>
 }
 
+pub struct VkRenderGraphResources<'a> {
+  resources: &'a HashMap<String, VkResource>,
+  pass_resource_names: &'a HashSet<String>
+}
+
+impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
+  fn get_buffer(&self, name: &str) -> Result<&Arc<VkBufferSlice>, RenderGraphResourceError> {
+    let resource_opt = self.resources.get(name);
+    if resource_opt.is_none() {
+      return Err(RenderGraphResourceError::NotFound);
+    }
+    if !self.pass_resource_names.contains(name) {
+      return Err(RenderGraphResourceError::NotAllowed);
+    }
+    let resource = resource_opt.unwrap();
+    match &resource.details {
+      VkResourceDetails::Buffer {
+        buffer
+      } => {
+        Ok(buffer)
+      },
+      _ => Err(RenderGraphResourceError::WrongResourceType)
+    }
+  }
+
+  fn get_texture(&self, name: &str) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
+    let resource_opt = self.resources.get(name);
+    if resource_opt.is_none() {
+      return Err(RenderGraphResourceError::NotFound);
+    }
+    if self.pass_resource_names.contains(name) {
+      return Err(RenderGraphResourceError::NotAllowed);
+    }
+    let resource = resource_opt.unwrap();
+    match &resource.details {
+      VkResourceDetails::Image {
+        view, ..
+      } => {
+        Ok(view)
+      },
+      _ => Err(RenderGraphResourceError::WrongResourceType)
+    }
+  }
+}
+
 pub enum VkPass {
   Graphics {
     framebuffers: Vec<Arc<VkFrameBuffer>>,
     renderpass: Arc<VkRenderPass>,
     renders_to_swapchain: bool,
     clear_values: Vec<vk::ClearValue>,
-    callbacks: RenderPassCallbacks<VkBackend>
+    callbacks: RenderPassCallbacks<VkBackend>,
+    resources: HashSet<String>
   },
-  Compute,
+  Compute {
+    src_stage: vk::PipelineStageFlags,
+    dst_stage: vk::PipelineStageFlags,
+    image_barriers: Vec<vk::ImageMemoryBarrier>,
+    buffer_barriers: Vec<vk::BufferMemoryBarrier>,
+    callbacks: RenderPassCallbacks<VkBackend>,
+    resources: HashSet<String>
+  },
   Copy
 }
+
+unsafe impl Send for VkPass {}
+unsafe impl Sync for VkPass {}
 
 impl VkRenderGraph {
   pub fn new(device: &Arc<RawVkDevice>,
@@ -74,7 +147,7 @@ impl VkRenderGraph {
              template: &Arc<VkRenderGraphTemplate>,
              info: &RenderGraphInfo<VkBackend>,
              swapchain: &Arc<VkSwapchain>) -> Self {
-    let mut attachments: HashMap<String, VkAttachment> = HashMap::new();
+    let mut resources: HashMap<String, VkResource> = HashMap::new();
     let attachment_infos = template.attachments();
     for (name, attachment_info) in attachment_infos {
       // TODO: aliasing
@@ -110,9 +183,11 @@ impl VkRenderGraph {
           }, Some(render_target_output.name.as_str()), usage));
 
           let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
-          attachments.insert(name.clone(), VkAttachment {
-            texture,
-            view,
+          resources.insert(name.clone(), VkResource {
+            details: VkResourceDetails::Image {
+              texture,
+              view,
+            },
             info: attachment_info.output.clone()
           });
         },
@@ -147,14 +222,29 @@ impl VkRenderGraph {
           }, Some(depth_stencil_output.name.as_str()), usage));
 
           let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
-          attachments.insert(name.clone(), VkAttachment {
-            texture,
-            view,
-            info: attachment_info.output.clone()
+          resources.insert(name.clone(), VkResource {
+            info: attachment_info.output.clone(),
+            details: VkResourceDetails::Image {
+              texture,
+              view,
+            }
           });
         },
 
-        _ => {}
+        PassOutput::Buffer(buffer_output) => {
+          let allocator = context.get_shared().get_buffer_allocator();
+          let buffer = Arc::new(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, buffer_output.size as usize));
+          resources.insert(name.clone(), VkResource {
+            info: attachment_info.output.clone(),
+            details: VkResourceDetails::Buffer {
+              buffer
+            }
+          });
+        },
+
+        PassOutput::Backbuffer(_) => {},
+
+        _ => unimplemented!()
       }
     }
 
@@ -164,7 +254,7 @@ impl VkRenderGraph {
     for pass in passes {
       match &pass.pass_type {
         VkPassType::Graphics {
-          render_pass
+          render_pass, attachments
         } => {
           let mut clear_values = Vec::<vk::ClearValue>::new();
 
@@ -176,7 +266,7 @@ impl VkRenderGraph {
             framebuffer_attachments.push(Vec::new());
           }
 
-          for pass_attachment in &pass.attachments {
+          for pass_attachment in attachments {
             if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
               clear_values.push(vk::ClearValue {
                 color: vk::ClearColorValue {
@@ -184,8 +274,12 @@ impl VkRenderGraph {
                 }
               });
             } else {
-              let attachment = attachments.get(pass_attachment.as_str()).unwrap();
-              let format = attachment.texture.get_info().format;
+              let resource = resources.get(pass_attachment.as_str()).unwrap();
+              let resource_texture = match &resource.details {
+                VkResourceDetails::Image { texture, .. } => texture,
+                _ => { continue; }
+              };
+              let format = resource_texture.get_info().format;
               if format.is_depth() || format.is_stencil() {
                 clear_values.push(vk::ClearValue {
                   depth_stencil: vk::ClearDepthStencilValue {
@@ -200,7 +294,12 @@ impl VkRenderGraph {
               width = min(width, swapchain.get_width());
               height = min(height, swapchain.get_height());
             } else {
-              let texture_info = attachments[pass_attachment].texture.get_info();
+              let resource = resources.get(pass_attachment.as_str()).unwrap();
+              let resource_texture = match &resource.details {
+                VkResourceDetails::Image { texture, .. } => texture,
+                _ => unreachable!()
+              };
+              let texture_info = resource_texture.get_info();
               width = min(width, texture_info.width);
               height = min(height, texture_info.height);
             }
@@ -210,8 +309,13 @@ impl VkRenderGraph {
                 framebuffer_attachments.get_mut(i).unwrap()
                   .push(*swapchain_views[i].get_view_handle());
               } else {
+                let resource = resources.get(pass_attachment.as_str()).unwrap();
+                let resource_view = match &resource.details {
+                  VkResourceDetails::Image { view, .. } => view,
+                  _ => unreachable!()
+                };
                 framebuffer_attachments.get_mut(i).unwrap()
-                  .push(*attachments[pass_attachment].view.get_view_handle());
+                  .push(*resource_view.get_view_handle());
               }
             }
           }
@@ -235,16 +339,97 @@ impl VkRenderGraph {
             framebuffers.push(framebuffer);
           }
 
-          let mut callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
+          let callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
 
           finished_passes.push(Arc::new(VkPass::Graphics {
             framebuffers,
             callbacks,
             renders_to_swapchain: pass.renders_to_swapchain,
             renderpass: render_pass.clone(),
-            clear_values
+            clear_values,
+            resources: pass.resources.clone()
           }));
         },
+
+        VkPassType::Compute {
+          barriers
+        } => {
+          let mut src_stage = vk::PipelineStageFlags::empty();
+          let mut dst_stage = vk::PipelineStageFlags::empty();
+          let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
+          let mut buffer_barriers = Vec::<vk::BufferMemoryBarrier>::new();
+          for barrier_template in barriers {
+            match barrier_template {
+              VkBarrierTemplate::Image {
+                name, old_layout, new_layout, src_access_mask, dst_access_mask, src_stage: image_src_stage, dst_stage: image_dst_stage, src_queue_family_index, dst_queue_family_index } => {
+                src_stage |= *image_src_stage;
+                dst_stage |= *image_dst_stage;
+
+                let resource = resources.get(name.as_str()).unwrap();
+                let resource_texture = match &resource.details {
+                  VkResourceDetails::Image { texture, .. } => texture,
+                  _ => unreachable!()
+                };
+                image_barriers.push(vk::ImageMemoryBarrier {
+                  src_access_mask: *src_access_mask,
+                  dst_access_mask: *dst_access_mask,
+                  old_layout: *old_layout,
+                  new_layout: *new_layout,
+                  src_queue_family_index: *src_queue_family_index,
+                  dst_queue_family_index: *dst_queue_family_index,
+                  image: *resource_texture.get_handle(),
+                  subresource_range: vk::ImageSubresourceRange {
+                    aspect_mask: if resource_texture.get_info().format.is_depth() && resource_texture.get_info().format.is_stencil() {
+                      vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+                    } else if resource_texture.get_info().format.is_depth() {
+                      vk::ImageAspectFlags::DEPTH
+                    } else {
+                      vk::ImageAspectFlags::COLOR
+                    },
+                    base_mip_level: 0,
+                    level_count: resource_texture.get_info().mip_levels,
+                    base_array_layer: 0,
+                    layer_count: resource_texture.get_info().array_length
+                  },
+                  ..Default::default()
+                });
+              }
+              VkBarrierTemplate::Buffer {
+                name, src_access_mask, dst_access_mask, src_stage: buffer_src_stage, dst_stage: buffer_dst_stage, src_queue_family_index, dst_queue_family_index } => {
+                src_stage |= *buffer_src_stage;
+                dst_stage |= *buffer_dst_stage;
+                let resource = resources.get(name.as_str()).unwrap();
+                let resource_buffer = match &resource.details {
+                  VkResourceDetails::Buffer { buffer, .. } => buffer,
+                  _ => unreachable!()
+                };
+                let (offset, length) = resource_buffer.get_offset_and_length();
+                buffer_barriers.push(vk::BufferMemoryBarrier {
+                  src_access_mask: *src_access_mask,
+                  dst_access_mask: *dst_access_mask,
+                  src_queue_family_index: *src_queue_family_index,
+                  dst_queue_family_index: *dst_queue_family_index,
+                  buffer: *resource_buffer.get_buffer().get_handle(),
+                  offset: offset as u64,
+                  size: length as u64,
+                  ..Default::default()
+                });
+              }
+            }
+          }
+
+          let callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
+
+          finished_passes.push(Arc::new(VkPass::Compute {
+            src_stage,
+            dst_stage,
+            image_barriers,
+            buffer_barriers,
+            callbacks,
+            resources: pass.resources.clone()
+          }))
+        },
+
         _ => unimplemented!()
       }
     }
@@ -253,7 +438,7 @@ impl VkRenderGraph {
       device: device.clone(),
       template: template.clone(),
       passes: finished_passes,
-      attachments,
+      resources,
       thread_manager: context.clone(),
       swapchain: swapchain.clone(),
       graphics_queue: graphics_queue.clone(),
@@ -301,7 +486,20 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       let mut cmd_buffer = frame_local.get_command_buffer(CommandBufferType::PRIMARY);
 
       match &c_pass as &VkPass {
-        VkPass::Graphics { framebuffers, callbacks, renderpass, renders_to_swapchain, clear_values } => {
+        VkPass::Graphics {
+          framebuffers,
+          callbacks,
+          renderpass,
+          renders_to_swapchain,
+          clear_values,
+          resources: pass_resource_names
+        } => {
+          let graph_resources = VkRenderGraphResources {
+            resources: &self.resources,
+            pass_resource_names
+          };
+          let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
+
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
               cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);
@@ -310,7 +508,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                   cmd_buffer.advance_subpass();
                 }
                 let callback = &callbacks[i];
-                (callback)(&mut cmd_buffer);
+                (callback)(&mut cmd_buffer, graph_resources_ref);
               }
               cmd_buffer.end_render_pass();
             }
@@ -322,7 +520,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                   cmd_buffer.advance_subpass();
                 }
                 let callback = &callbacks[i];
-                let inner_cmd_buffers = (callback)(&provider);
+                let inner_cmd_buffers = (callback)(&provider, graph_resources_ref);
                 for inner_cmd_buffer in inner_cmd_buffers {
                   cmd_buffer.execute_inner_command_buffer(inner_cmd_buffer);
                 }
@@ -360,8 +558,46 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           if *renders_to_swapchain {
             frame_local.track_semaphore(&c_prepare_semaphore);
           }
-        },
-        _ => unimplemented!()
+        }
+
+        VkPass::Compute {
+          src_stage,
+          dst_stage,
+          buffer_barriers,
+          image_barriers,
+          callbacks,
+          resources: pass_resource_names
+        } => {
+          let graph_resources = VkRenderGraphResources {
+            resources: &self.resources,
+            pass_resource_names
+          };
+          let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
+
+          if *src_stage != vk::PipelineStageFlags::empty() || !buffer_barriers.is_empty() || !image_barriers.is_empty() {
+            cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
+              &[], buffer_barriers, image_barriers);
+          }
+          match callbacks {
+            RenderPassCallbacks::Regular(callbacks) => {
+              for callback in callbacks {
+                (callback)(&mut cmd_buffer, graph_resources_ref);
+              }
+            },
+            RenderPassCallbacks::InternallyThreaded(callbacks) => {
+              unimplemented!();
+            },
+            RenderPassCallbacks::Threaded(_) => {
+              unimplemented!();
+            }
+          }
+
+          let submission = cmd_buffer.finish();
+          c_queue.submit(submission, None, &[], &[]);
+        }
+
+
+          VkPass::Copy => {}
       }
     }
 

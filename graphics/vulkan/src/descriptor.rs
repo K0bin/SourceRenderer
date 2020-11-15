@@ -169,6 +169,12 @@ impl VkDescriptorPool {
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::UNIFORM_BUFFER,
       descriptor_count: 256
+    }, vk::DescriptorPoolSize {
+      ty: vk::DescriptorType::STORAGE_BUFFER,
+      descriptor_count: 256
+    }, vk::DescriptorPoolSize {
+      ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+      descriptor_count: 64
     }];
     let info = vk::DescriptorPoolCreateInfo {
       max_sets: 32,
@@ -270,7 +276,16 @@ impl VkDescriptorSet {
           write.descriptor_count = 1;
 
           match resource {
-            VkBoundResource::Buffer(buffer) => {
+            VkBoundResource::StorageBuffer(buffer) => {
+              let buffer_info = vk::DescriptorBufferInfo {
+                buffer: *buffer.get_buffer().get_handle(),
+                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
+                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+              };
+              write.p_buffer_info = &buffer_info;
+              write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER };
+            },
+            VkBoundResource::UniformBuffer(buffer) => {
               let buffer_info = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
                 offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
@@ -279,7 +294,7 @@ impl VkDescriptorSet {
               write.p_buffer_info = &buffer_info;
               write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER };
             },
-            VkBoundResource::Texture(texture) => {
+            VkBoundResource::SampledTexture(texture) => {
               let texture_info = vk::DescriptorImageInfo {
                 image_view: *texture.get_view_handle(),
                 sampler: *texture.get_sampler_handle().unwrap(),
@@ -307,14 +322,21 @@ impl VkDescriptorSet {
           }
           let mut entry = &mut entries[entries_len];
           match resource {
-            VkBoundResource::Buffer(buffer) => {
+            VkBoundResource::StorageBuffer(buffer) => {
               entry.buffer = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
                 offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
                 range: buffer.get_offset_and_length().1 as vk::DeviceSize
               };
             },
-            VkBoundResource::Texture(texture) => {
+            VkBoundResource::UniformBuffer(buffer) => {
+              entry.buffer = vk::DescriptorBufferInfo {
+                buffer: *buffer.get_buffer().get_handle(),
+                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
+                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+              };
+            },
+            VkBoundResource::SampledTexture(texture) => {
               entry.image = vk::DescriptorImageInfo {
                 image_view: *texture.get_view_handle(),
                 sampler: *texture.get_sampler_handle().unwrap(),
@@ -367,8 +389,9 @@ impl Drop for VkDescriptorSet {
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub(crate) enum VkBoundResource {
   None,
-  Buffer(Arc<VkBufferSlice>),
-  Texture(Arc<VkTextureView>)
+  UniformBuffer(Arc<VkBufferSlice>),
+  StorageBuffer(Arc<VkBufferSlice>),
+  SampledTexture(Arc<VkTextureView>)
 }
 
 impl Default for VkBoundResource {
@@ -449,8 +472,10 @@ impl VkBindingManager {
                       if !entry.set.is_using_dynamic_buffer_offsets {
                         binding == &bindings[index]
                       } else {
-                        if let (VkBoundResource::Buffer(entry_buffer), VkBoundResource::Buffer(buffer)) = (binding, &bindings[index]) {
-                          // https://github.com/rust-lang/rust/issues/53667
+                        // https://github.com/rust-lang/rust/issues/53667
+                        if let (VkBoundResource::UniformBuffer(entry_buffer), VkBoundResource::UniformBuffer(buffer)) = (binding, &bindings[index]) {
+                          buffer.get_buffer() == entry_buffer.get_buffer()
+                        } else if let (VkBoundResource::StorageBuffer(entry_buffer), VkBoundResource::StorageBuffer(buffer)) = (binding, &bindings[index]) {
                           buffer.get_buffer() == entry_buffer.get_buffer()
                         } else {
                           binding == &bindings[index]
@@ -484,7 +509,7 @@ impl VkBindingManager {
       new_set
     });
     if is_new {
-      let mut cache = if frequency == BindingFrequency::Rarely { &mut self.permanent_cache } else { &mut self.transient_cache };
+      let cache = if frequency == BindingFrequency::Rarely { &mut self.permanent_cache } else { &mut self.transient_cache };
       cache.entry(layout.clone()).or_default().push(VkDescriptorSetCacheEntry {
         set: set.clone(),
         last_used_frame: frame
@@ -496,10 +521,17 @@ impl VkBindingManager {
       dynamic_offset_count: 0
     };
     if frequency == BindingFrequency::PerDraw {
-      bindings.iter().enumerate().for_each(|(index, binding)| {
-        if let VkBoundResource::Buffer(buffer) = binding {
-          set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
-          set_binding.dynamic_offset_count += 1;
+      bindings.iter().enumerate().for_each(|(_, binding)| {
+        match binding {
+          VkBoundResource::UniformBuffer(buffer) => {
+            set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+            set_binding.dynamic_offset_count += 1;
+          }
+          VkBoundResource::StorageBuffer(buffer) => {
+            set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+            set_binding.dynamic_offset_count += 1;
+          },
+          _ => {}
         }
       })
     }
@@ -520,7 +552,7 @@ impl VkBindingManager {
   const FRAMES_BETWEEN_CLEANUP: u64 = 5;
   const MAX_FRAMES_SET_UNUSED: u64 = 5;
   fn clean(&mut self, frame: u64) {
-    if frame - self.last_cleanup_frame >= Self::FRAMES_BETWEEN_CLEANUP {
+    if frame - self.last_cleanup_frame <= Self::FRAMES_BETWEEN_CLEANUP {
       return;
     }
 

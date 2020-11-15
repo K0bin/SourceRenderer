@@ -4,7 +4,7 @@ use crate::graphics::Device;
 use crate::graphics::Surface;
 use crate::graphics::CommandBuffer;
 use crate::graphics::Shader;
-use crate::graphics::PipelineInfo;
+use crate::graphics::GraphicsPipelineInfo;
 use crate::graphics::Texture;
 use crate::graphics::Buffer;
 use crate::graphics::Swapchain;
@@ -26,6 +26,7 @@ pub trait Backend: 'static + Sized {
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
   type GraphicsPipeline: Send + Sync;
+  type ComputePipeline: Send + Sync;
   type RenderGraphTemplate: RenderGraphTemplate + Send + Sync;
   type RenderGraph: RenderGraph<Self> + Send + Sync;
   type Fence : Fence + Send + Sync;

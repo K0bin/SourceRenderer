@@ -5,7 +5,7 @@ use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, PipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput, RenderPassCallbacks};
+use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput, RenderPassCallbacks, PassInput, BufferOutput};
 use std::path::Path;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -41,7 +41,7 @@ impl<P: Platform> RendererInternal<P> {
     primary_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>) -> Self {
 
     let renderables = Arc::new(Mutex::new(View::default()));
-    let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables);
+    let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables, &primary_camera);
     Self {
       renderer: renderer.clone(),
       device: device.clone(),
@@ -60,7 +60,8 @@ impl<P: Platform> RendererInternal<P> {
     device: &<P::GraphicsBackend as Backend>::Device,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
-    renderables: &Arc<Mutex<View>>)
+    renderables: &Arc<Mutex<View>>,
+    primary_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
     let vertex_shader = {
       let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
@@ -76,7 +77,33 @@ impl<P: Platform> RendererInternal<P> {
       device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
     };
 
-    let mut passes: Vec<PassInfo> = vec![
+    let copy_camera_compute_shader = {
+      let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("copy_camera.comp.spv"))).unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.create_shader(ShaderType::ComputeShader, &bytes, Some("copy_camera.comp.spv"))
+    };
+
+    let passes: Vec<PassInfo> = vec![
+      PassInfo {
+        name: "CameraCopy".to_string(),
+        pass_type: PassType::Compute {
+          inputs: vec![
+            /*PassInput {
+              name: "PrimaryCameras".to_string(),
+              is_local: false
+            }*/
+          ],
+          outputs: vec![
+            PassOutput::Buffer(BufferOutput {
+              name: "Camera".to_string(),
+              format: None,
+              size: std::mem::size_of::<Matrix4>() as u32,
+              clear: false
+            })
+          ]
+        }
+      },
       PassInfo {
         name: "Geometry".to_string(),
         pass_type: PassType::Graphics {
@@ -85,7 +112,12 @@ impl<P: Platform> RendererInternal<P> {
               outputs: vec![SubpassOutput::Backbuffer(BackbufferOutput {
                 clear: true
               })],
-              inputs: Vec::new(),
+              inputs: vec![
+                PassInput {
+                  name: "Camera".to_string(),
+                  is_local: false
+                }
+              ],
               depth_stencil: Some(DepthStencilOutput {
                 name: "DS".to_string(),
                 format: Format::D24S8,
@@ -103,12 +135,13 @@ impl<P: Platform> RendererInternal<P> {
     ];
 
     let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
+      external_resources: Vec::new(),
       passes,
       swapchain_sample_count: swapchain.sample_count(),
       swapchain_format: swapchain.format()
     });
 
-    let pipeline_info: PipelineInfo<P::GraphicsBackend> = PipelineInfo {
+    let pipeline_info: GraphicsPipelineInfo<P::GraphicsBackend> = GraphicsPipelineInfo {
       vs: vertex_shader.clone(),
       fs: Some(fragment_shader.clone()),
       gs: None,
@@ -177,12 +210,14 @@ impl<P: Platform> RendererInternal<P> {
     };
     let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, "Geometry", 0);
 
+    let copy_camera_pipeline = device.create_compute_pipeline(&copy_camera_compute_shader);
+
     let c_asset_manager = asset_manager.clone();
     let c_renderables = renderables.clone();
     let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
     callbacks.insert("Geometry".to_string(), RenderPassCallbacks::Regular(
       vec![
-        Arc::new(move |command_buffer_a| {
+        Arc::new(move |command_buffer_a, graph_resources| {
           let mut command_buffer = command_buffer_a as &mut <P::GraphicsBackend as Backend>::CommandBuffer;
           let state = c_renderables.lock().unwrap();
 
@@ -201,10 +236,11 @@ impl<P: Platform> RendererInternal<P> {
             extent: Vec2UI::new(9999, 9999),
           }]);
 
-          command_buffer.bind_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
+          //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer("Camera").expect("Failed to get graph resource"));
           for renderable in &state.elements {
             let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
-            command_buffer.bind_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
+            command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
             if let DrawableType::Static {
               model, ..
@@ -236,6 +272,20 @@ impl<P: Platform> RendererInternal<P> {
           }
         })
       ]));
+
+    let c_cameras_buffer = primary_camera.buffer().clone();
+    callbacks.insert("CameraCopy".to_string(), RenderPassCallbacks::Regular(
+      vec![
+        Arc::new(move |command_buffer_a, graph_resources| {
+          let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as Backend>::CommandBuffer;
+          command_buffer.set_pipeline(PipelineBinding::Compute(&copy_camera_pipeline));
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &c_cameras_buffer);
+          command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, graph_resources.get_buffer("Camera").expect("Failed to get graph resource"));
+          command_buffer.finish_binding();
+          command_buffer.dispatch(1, 1, 1);
+        })
+      ]
+    ));
     let graph = device.create_render_graph(&graph_template, &RenderGraphInfo {
       pass_callbacks: callbacks
     }, swapchain);

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{PipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage, PipelineBinding};
+use sourcerenderer_core::graphics::{GraphicsPipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage, PipelineBinding};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -23,7 +23,7 @@ use crate::VkPipeline;
 use crate::VkBackend;
 
 use crate::raw::*;
-use pipeline::{VkPipelineInfo, VkPipelineLayout};
+use pipeline::{VkGraphicsPipelineInfo, VkPipelineLayout};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use ::{VkThreadManager, VkShared};
@@ -201,8 +201,14 @@ impl VkCommandBuffer {
           self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, *vk_pipeline);
         }
         self.pipeline = Some((*graphics_pipeline).clone())
+      }
+      PipelineBinding::Compute(compute_pipeline) => {
+        let vk_pipeline = compute_pipeline.get_handle();
+        unsafe {
+          self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::COMPUTE, *vk_pipeline);
+        }
+        self.pipeline = Some((*compute_pipeline).clone())
       },
-      _ => unimplemented!()
     };
   }
 
@@ -295,6 +301,8 @@ impl VkCommandBuffer {
 
   pub(crate) fn draw(&mut self, vertices: u32, offset: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pipeline.is_some());
+    debug_assert!(self.pipeline.as_ref().unwrap().is_graphics());
     unsafe {
       self.device.cmd_draw(self.buffer, vertices, 1, offset, 0);
     }
@@ -302,6 +310,8 @@ impl VkCommandBuffer {
 
   pub(crate) fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pipeline.is_some());
+    debug_assert!(self.pipeline.as_ref().unwrap().is_graphics());
     unsafe {
       self.device.cmd_draw_indexed(self.buffer, indices, instances, first_index, vertex_offset, first_instance);
     }
@@ -375,18 +385,19 @@ impl VkCommandBuffer {
 
   pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-    let pipeline_layout = pipeline.get_layout();
-    let descriptor_layout = pipeline_layout.get_descriptor_set_layout(frequency as u32).expect("No set for given binding frequency");
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::Texture(texture.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::SampledTexture(texture.clone()));
     self.trackers.track_texture_view(texture);
   }
 
-  pub(crate) fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+  pub(crate) fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-    let pipeline_layout = pipeline.get_layout();
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::Buffer(buffer.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::UniformBuffer(buffer.clone()));
+    self.trackers.track_buffer(buffer);
+  }
+
+  pub(crate) fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::UniformBuffer(buffer.clone()));
     self.trackers.track_buffer(buffer);
   }
 
@@ -407,7 +418,7 @@ impl VkCommandBuffer {
         None => {
           if descriptor_sets_count != 0 {
             unsafe {
-              self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
+              self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
               base_index = index as u32 + 1;
               offsets_count = 0;
               descriptor_sets_count = 0;
@@ -446,6 +457,7 @@ impl VkCommandBuffer {
   }
 
   pub(crate) fn begin_label(&self, label: &str) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let label_cstring = CString::new(label).unwrap();
     unsafe {
       self.device.instance.debug_utils_loader.cmd_begin_debug_utils_label(self.buffer, &vk::DebugUtilsLabelEXT {
@@ -457,17 +469,42 @@ impl VkCommandBuffer {
   }
 
   pub(crate) fn end_label(&self) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     unsafe {
       self.device.instance.debug_utils_loader.cmd_end_debug_utils_label(self.buffer);
     }
   }
 
   pub(crate) fn execute_inner_command_buffer(&mut self, mut submission: VkCommandBufferSubmission) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     assert_eq!(submission.command_buffer_type(), CommandBufferType::SECONDARY);
     unsafe {
       self.device.cmd_execute_commands(self.buffer, &[*submission.get_handle()]);
     }
     submission.mark_submitted();
+  }
+
+  pub(crate) fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pipeline.is_some());
+    debug_assert!(!self.pipeline.as_ref().unwrap().is_graphics());
+    unsafe {
+      self.device.cmd_dispatch(self.buffer, group_count_x, group_count_y, group_count_z);
+    }
+  }
+
+  pub(crate) fn barrier(
+    &mut self,
+    src_stage_mask: vk::PipelineStageFlags,
+    dst_stage_mask: vk::PipelineStageFlags,
+    dependency_flags: vk::DependencyFlags,
+    memory_barriers: &[vk::MemoryBarrier],
+    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+    image_memory_barriers: &[vk::ImageMemoryBarrier]) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    unsafe {
+      self.device.cmd_pipeline_barrier(self.buffer, src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
+    }
   }
 }
 
@@ -532,6 +569,18 @@ impl VkCommandBufferRecorder {
     item.end();
     VkCommandBufferSubmission::new(item, mut_self.sender.clone())
   }
+
+  #[inline(always)]
+  pub(crate) fn barrier(
+    &mut self,
+    src_stage_mask: vk::PipelineStageFlags,
+    dst_stage_mask: vk::PipelineStageFlags,
+    dependency_flags: vk::DependencyFlags,
+    memory_barriers: &[vk::MemoryBarrier],
+    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+    image_memory_barriers: &[vk::ImageMemoryBarrier]) {
+      self.item.as_mut().unwrap().barrier(src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
+  }
 }
 
 impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
@@ -587,8 +636,13 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
-    self.item.as_mut().unwrap().bind_buffer(frequency, binding, buffer);
+  fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+    self.item.as_mut().unwrap().bind_uniform_buffer(frequency, binding, buffer);
+  }
+
+  #[inline(always)]
+  fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+    self.item.as_mut().unwrap().bind_storage_buffer(frequency, binding, buffer);
   }
 
   #[inline(always)]
@@ -604,6 +658,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn end_label(&mut self) {
     self.item.as_mut().unwrap().end_label();
+  }
+
+  #[inline(always)]
+  fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+    self.item.as_mut().unwrap().dispatch(group_count_x, group_count_y, group_count_z);
   }
 }
 

@@ -335,6 +335,10 @@ impl BufferAllocator {
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_uniform_buffer_offset_alignment as usize);
     }
+    if (buffer_usage & BufferUsage::STORAGE) == BufferUsage::STORAGE {
+      // TODO max doesnt guarantee both alignments
+      alignment = max(alignment, self.device_limits.min_storage_buffer_offset_alignment as usize);
+    }
 
     let mut guard = self.buffers.lock().unwrap();
     let mut matching_buffers = guard.entry(BufferKey { memory_usage, buffer_usage }).or_default();

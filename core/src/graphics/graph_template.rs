@@ -83,11 +83,11 @@ pub enum PassType {
     subpasses: Vec<GraphicsSubpassInfo>
   },
   Compute {
-    inputs: Vec<PassOutput>,
+    inputs: Vec<PassInput>,
     outputs: Vec<PassOutput>
   },
   Transfer {
-    inputs: Vec<PassOutput>,
+    inputs: Vec<PassInput>,
     outputs: Vec<PassOutput>
   },
 }
@@ -114,6 +114,7 @@ pub enum LoadAction {
 #[derive(Clone)]
 pub struct RenderGraphTemplateInfo {
   pub passes: Vec<PassInfo>,
+  pub external_resources: Vec<PassOutput>,
   pub swapchain_format: Format,
   pub swapchain_sample_count: SampleCount
 }

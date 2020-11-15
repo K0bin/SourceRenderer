@@ -20,6 +20,7 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type Buffer = VkBufferSlice;
   type Shader = VkShader;
   type GraphicsPipeline = VkPipeline;
+  type ComputePipeline = VkPipeline;
   type Swapchain = VkSwapchain;
   type RenderGraph = VkRenderGraph;
   type RenderGraphTemplate = VkRenderGraphTemplate;

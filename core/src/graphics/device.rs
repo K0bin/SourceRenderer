@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::graphics::{Surface, TextureInfo, TextureShaderResourceViewInfo};
 use crate::graphics::Buffer;
 use crate::graphics::BufferUsage;
-use crate::graphics::PipelineInfo;
+use crate::graphics::GraphicsPipelineInfo;
 use crate::graphics::Shader;
 use crate::graphics::ShaderType;
 use crate::graphics::Texture;
@@ -40,7 +40,8 @@ pub trait Device<B: Backend> {
   fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>, name: Option<&str>) -> Arc<B::Shader>;
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;
   fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> Arc<B::TextureShaderResourceView>;
-  fn create_graphics_pipeline(&self, info: &PipelineInfo<B>, graph_template: &B::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<B::GraphicsPipeline>;
+  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, graph_template: &B::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<B::GraphicsPipeline>;
+  fn create_compute_pipeline(&self, shader: &Arc<B::Shader>) -> Arc<B::ComputePipeline>;
 
   fn wait_for_idle(&self);
 

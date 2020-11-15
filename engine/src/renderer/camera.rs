@@ -22,7 +22,7 @@ pub struct PrimaryCamera<B: Backend> {
 impl<B: Backend> PrimaryCamera<B> {
   pub fn new(device: &B::Device) -> Self {
     Self {
-      buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC),
+      buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuToGpu, BufferUsage::CONSTANT),
       counter: AtomicU32::new(0),
       position: AtomicCell::new(Vec3::new(0f32, 0f32, 0f32)),
       rotation: AtomicCell::new(Quaternion::identity())
@@ -73,5 +73,9 @@ impl<B: Backend> PrimaryCamera<B> {
       let buf = (ptr as *mut PrimaryCameraBuffer).as_ref().unwrap();
       buf.mats[(counter % 16) as usize]
     }
+  }
+
+  pub fn buffer(&self) -> &Arc<B::Buffer> {
+    &self.buffer
   }
 }

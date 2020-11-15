@@ -8,7 +8,7 @@ use crate::Vec2I;
 use crate::Vec2UI;
 
 use crate::graphics::RenderpassRecordingMode;
-use crate::graphics::{Backend, PipelineInfo, BufferUsage};
+use crate::graphics::{Backend, GraphicsPipelineInfo, BufferUsage};
 use crate::pool::Recyclable;
 
 pub struct Viewport {
@@ -32,7 +32,7 @@ pub enum CommandBufferType {
 #[derive(Clone)]
 pub enum PipelineBinding<'a, B: Backend> {
   Graphics(&'a Arc<B::GraphicsPipeline>),
-  Compute
+  Compute(&'a Arc<B::ComputePipeline>)
 }
 
 pub trait CommandBuffer<B: Backend> {
@@ -47,10 +47,12 @@ pub trait CommandBuffer<B: Backend> {
   fn draw(&mut self, vertices: u32, offset: u32);
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
   fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureShaderResourceView>);
-  fn bind_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
+  fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
+  fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
   fn finish_binding(&mut self);
   fn begin_label(&mut self, label: &str);
   fn end_label(&mut self);
+  fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]

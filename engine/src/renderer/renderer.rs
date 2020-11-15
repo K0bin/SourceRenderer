@@ -9,7 +9,7 @@ use crossbeam_channel::{Sender, bounded, Receiver, unbounded, TryRecvError};
 use nalgebra::{Transform, Matrix3, Matrix1x3, UnitQuaternion};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
-use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, PipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, PipelineBinding, PassOutput, RenderPassTextureExtent};
+use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, PipelineBinding, PassOutput, RenderPassTextureExtent};
 use sourcerenderer_core::graphics::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, SubpassOutput};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Matrix4, Vec3, Quaternion};
 
@@ -70,7 +70,7 @@ impl<P: Platform> Renderer<P> {
 
   pub fn set_window_state(&self, window_state: WindowState) {
     let mut guard = self.window_state.lock().unwrap();
-    std::mem::replace(&mut *guard, window_state);
+    *guard = window_state
   }
 
   pub fn install(self: &Arc<Renderer<P>>, world: &mut World, resources: &mut Resources, systems: &mut Builder) {

@@ -310,7 +310,7 @@ pub trait Shader {
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
-pub struct PipelineInfo<B: Backend> {
+pub struct GraphicsPipelineInfo<B: Backend> {
   pub vs: Arc<B::Shader>,
   pub fs: Option<Arc<B::Shader>>,
   pub gs: Option<Arc<B::Shader>>,
