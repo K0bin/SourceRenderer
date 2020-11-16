@@ -1,5 +1,5 @@
 use sourcerenderer_core::platform::{Platform, PlatformEvent};
-use std::sync::{Arc};
+use std::{time::SystemTime, sync::{Arc}};
 use std::time::{Duration};
 
 use sourcerenderer_core::{Vec2, ThreadPoolBuilder};
@@ -46,14 +46,27 @@ impl<P: Platform> Engine<P> {
     Scene::run::<P>(&renderer, &asset_manager, self.platform.input(), TICK_RATE);
 
     let mut fps_camera = FPSCamera::new();
+    let mut last_iter_time = SystemTime::now();
+    let event_tick_rate = 256;
     'event_loop: loop {
+      let now = SystemTime::now();
+      let delta = now.duration_since(last_iter_time).unwrap();
+
+      if delta.as_millis() < ((1000 + event_tick_rate - 1) / event_tick_rate) as u128 {
+        if event_tick_rate < 500 {
+          std::thread::yield_now();
+        } else {
+          continue;
+        }
+      }
+      last_iter_time = now;
+
       let event = self.platform.handle_events();
       if event == PlatformEvent::Quit {
         break 'event_loop;
       }
       renderer.set_window_state(self.platform.window().state());
-      renderer.primary_camera().update_rotation(fps_camera_rotation::<P>(self.platform.input(), &mut fps_camera, 1.0f32));
-      std::thread::sleep(Duration::new(0, 4_000_000)); // 4ms
+      renderer.primary_camera().update_rotation(fps_camera_rotation::<P>(self.platform.input(), &mut fps_camera, delta.as_secs_f32()));
     }
   }
 }

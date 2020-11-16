@@ -17,6 +17,7 @@ pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
 pub struct FpsCameraComponent {}
 
 pub struct FPSCamera {
+  sensitivity: f32,
   pitch: f32,
   yaw: f32
 }
@@ -24,19 +25,18 @@ pub struct FPSCamera {
 impl FPSCamera {
   pub fn new() -> Self {
     FPSCamera {
+      sensitivity: 1.0f32,
       pitch: 0f32,
       yaw: 0f32
     }
   }
 }
 
-pub fn fps_camera_rotation<P: Platform>(input: &Arc<P::Input>, fps_camera: &mut FPSCamera, delta_time: f32) -> Quaternion {
-  // TODO delta timing
-
+pub fn fps_camera_rotation<P: Platform>(input: &Arc<P::Input>, fps_camera: &mut FPSCamera, _delta_time: f32) -> Quaternion {
   input.toggle_mouse_lock(true);
   let mouse_delta = input.mouse_position();
-  fps_camera.pitch -= (mouse_delta.y as f32 / 1000f32) * delta_time;
-  fps_camera.yaw -= (mouse_delta.x as f32 / 1000f32) * delta_time;
+  fps_camera.pitch -= mouse_delta.y as f32 / 20_000f32 * fps_camera.sensitivity;
+  fps_camera.yaw -= mouse_delta.x as f32 / 20_000f32 * fps_camera.sensitivity;
 
   Quaternion::from_euler_angles(fps_camera.pitch, fps_camera.yaw, 0f32)
 }
