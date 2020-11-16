@@ -8,8 +8,8 @@ use ash::vk;
 
 use thread_manager::VkThreadManager;
 
-use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode};
-use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, PassOutput, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
+use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount};
+use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo};
@@ -17,30 +17,35 @@ use sourcerenderer_core::graphics::{Texture, TextureInfo};
 use ::{VkRenderPass, VkQueue, VkFence, VkTexture, VkFrameBuffer, VkSemaphore};
 use texture::VkTextureView;
 use buffer::VkBufferSlice;
-use graph_template::{VkRenderGraphTemplate, VkPassType, VkBarrierTemplate};
+use graph_template::{VkRenderGraphTemplate, VkPassType, VkBarrierTemplate, VkResourceTemplate};
 use crate::VkBackend;
 use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
 
-pub struct VkResource {
-  info: PassOutput,
-  details: VkResourceDetails
-}
-
-pub enum VkResourceDetails {
-  Image {
+pub enum VkResource {
+  Texture {
     texture: Arc<VkTexture>,
     view: Arc<VkTextureView>,
+    name: String,
+    format: Format,
+    samples: SampleCount,
+    extent: RenderPassTextureExtent,
+    depth: u32,
+    levels: u32,
+    external: bool,
+    load_action: LoadAction,
+    store_action: StoreAction,
+    stencil_load_action: LoadAction,
+    stencil_store_action: StoreAction,
+    is_backbuffer: bool
   },
   Buffer {
     buffer: Arc<VkBufferSlice>,
+    name: String,
+    format: Option<Format>,
+    size: u32,
+    clear: bool
   }
-}
-
-pub struct VkAttachment {
-  texture: Arc<VkTexture>,
-  view: Arc<VkTextureView>,
-  info: PassOutput
 }
 
 pub struct VkRenderGraph {
@@ -72,9 +77,9 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
       return Err(RenderGraphResourceError::NotAllowed);
     }
     let resource = resource_opt.unwrap();
-    match &resource.details {
-      VkResourceDetails::Buffer {
-        buffer
+    match resource {
+      VkResource::Buffer {
+        buffer, ..
       } => {
         Ok(buffer)
       },
@@ -91,8 +96,8 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
       return Err(RenderGraphResourceError::NotAllowed);
     }
     let resource = resource_opt.unwrap();
-    match &resource.details {
-      VkResourceDetails::Image {
+    match resource {
+      VkResource::Texture {
         view, ..
       } => {
         Ok(view)
@@ -135,16 +140,31 @@ impl VkRenderGraph {
              info: &RenderGraphInfo<VkBackend>,
              swapchain: &Arc<VkSwapchain>) -> Self {
     let mut resources: HashMap<String, VkResource> = HashMap::new();
-    let attachment_infos = template.attachments();
+    let attachment_infos = template.resources();
     for (name, attachment_info) in attachment_infos {
       // TODO: aliasing
-      match &attachment_info.output {
+      match &attachment_info.template {
         // TODO: transient
-        PassOutput::RenderTarget(render_target_output) => {
-          let usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
-            | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::STORAGE;
+        VkResourceTemplate::Texture {
+          name, extent, format,
+          depth, levels, samples,
+          external, load_action, store_action,
+          stencil_load_action, stencil_store_action, is_backbuffer
+        } => {
+          if *is_backbuffer {
+            continue;
+          }
 
-          let (width, height) = match &render_target_output.extent {
+          let mut usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
+
+          if format.is_depth() || format.is_stencil() {
+            usage |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+          } else {
+            usage |= vk::ImageUsageFlags::STORAGE;
+          }
+
+          let (width, height) = match extent {
             RenderPassTextureExtent::RelativeToSwapchain {
               width: output_width, height: output_height
             } => {
@@ -160,76 +180,47 @@ impl VkRenderGraph {
           };
 
           let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
-            format: render_target_output.format,
+            format: *format,
             width,
             height,
-            depth: render_target_output.depth,
-            mip_levels: render_target_output.levels,
+            depth: *depth,
+            mip_levels: *levels,
             array_length: 1,
-            samples: render_target_output.samples
-          }, Some(render_target_output.name.as_str()), usage));
+            samples: *samples
+          }, Some(name.as_str()), usage));
 
           let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
-          resources.insert(name.clone(), VkResource {
-            details: VkResourceDetails::Image {
-              texture,
-              view,
-            },
-            info: attachment_info.output.clone()
+          resources.insert(name.clone(), VkResource::Texture {
+            texture,
+            view,
+            name: name.clone(),
+            format: *format,
+            samples: *samples,
+            extent: extent.clone(),
+            depth: *depth,
+            levels: *levels,
+            external: *external,
+            load_action: *load_action,
+            store_action: *store_action,
+            stencil_load_action: *stencil_load_action,
+            stencil_store_action: *stencil_store_action,
+            is_backbuffer: false
           });
         }
 
-        PassOutput::DepthStencil(depth_stencil_output) => {
-          let usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
-            | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
-
-          let (width, height) = match &depth_stencil_output.extent {
-            RenderPassTextureExtent::RelativeToSwapchain {
-              width: output_width, height: output_height
-            } => {
-              ((swapchain.get_width() as f32 * *output_width) as u32,
-               (swapchain.get_height() as f32 * *output_height) as u32)
-            },
-            RenderPassTextureExtent::Absolute {
-              width: output_width, height: output_height
-            } => {
-              (*output_width,
-               *output_height)
-            }
-          };
-
-          let texture = Arc::new(VkTexture::new(&device, &TextureInfo {
-            format: depth_stencil_output.format,
-            width,
-            height,
-            depth: 1,
-            mip_levels: 1,
-            array_length: 1,
-            samples: depth_stencil_output.samples
-          }, Some(depth_stencil_output.name.as_str()), usage));
-
-          let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
-          resources.insert(name.clone(), VkResource {
-            info: attachment_info.output.clone(),
-            details: VkResourceDetails::Image {
-              texture,
-              view,
-            }
-          });
-        }
-
-        PassOutput::Buffer(buffer_output) => {
+        VkResourceTemplate::Buffer {
+          name, format, size, clear
+        } => {
           let allocator = context.get_shared().get_buffer_allocator();
-          let buffer = Arc::new(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, buffer_output.size as usize));
-          resources.insert(name.clone(), VkResource {
-            info: attachment_info.output.clone(),
-            details: VkResourceDetails::Buffer {
-              buffer
-            }
+          let buffer = Arc::new(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, *size as usize));
+          resources.insert(name.clone(), VkResource::Buffer {
+            buffer,
+            name: name.clone(),
+            format: *format,
+            clear: *clear,
+            size: *size
           });
         }
-
-        PassOutput::Backbuffer(_) => {}
       }
     }
 
@@ -260,8 +251,8 @@ impl VkRenderGraph {
               });
             } else {
               let resource = resources.get(pass_attachment.as_str()).unwrap();
-              let resource_texture = match &resource.details {
-                VkResourceDetails::Image { texture, .. } => texture,
+              let resource_texture = match resource {
+                VkResource::Texture { texture, .. } => texture,
                 _ => { continue; }
               };
               let format = resource_texture.get_info().format;
@@ -280,8 +271,8 @@ impl VkRenderGraph {
               height = min(height, swapchain.get_height());
             } else {
               let resource = resources.get(pass_attachment.as_str()).unwrap();
-              let resource_texture = match &resource.details {
-                VkResourceDetails::Image { texture, .. } => texture,
+              let resource_texture = match resource {
+                VkResource::Texture { texture, .. } => texture,
                 _ => unreachable!()
               };
               let texture_info = resource_texture.get_info();
@@ -295,8 +286,8 @@ impl VkRenderGraph {
                   .push(*swapchain_views[i].get_view_handle());
               } else {
                 let resource = resources.get(pass_attachment.as_str()).unwrap();
-                let resource_view = match &resource.details {
-                  VkResourceDetails::Image { view, .. } => view,
+                let resource_view = match resource {
+                  VkResource::Texture { view, .. } => view,
                   _ => unreachable!()
                 };
                 framebuffer_attachments.get_mut(i).unwrap()
@@ -351,8 +342,8 @@ impl VkRenderGraph {
                 dst_stage |= *image_dst_stage;
 
                 let resource = resources.get(name.as_str()).unwrap();
-                let resource_texture = match &resource.details {
-                  VkResourceDetails::Image { texture, .. } => texture,
+                let resource_texture = match resource {
+                  VkResource::Texture { texture, .. } => texture,
                   _ => unreachable!()
                 };
                 image_barriers.push(vk::ImageMemoryBarrier {
@@ -384,8 +375,8 @@ impl VkRenderGraph {
                 src_stage |= *buffer_src_stage;
                 dst_stage |= *buffer_dst_stage;
                 let resource = resources.get(name.as_str()).unwrap();
-                let resource_buffer = match &resource.details {
-                  VkResourceDetails::Buffer { buffer, .. } => buffer,
+                let resource_buffer = match resource {
+                  VkResource::Buffer { buffer, .. } => buffer,
                   _ => unreachable!()
                 };
                 let (offset, length) = resource_buffer.get_offset_and_length();

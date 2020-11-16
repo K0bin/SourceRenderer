@@ -2,26 +2,20 @@ use crate::graphics::{Format, SampleCount};
 
 #[derive(Clone)]
 pub enum SubpassOutput {
-  Backbuffer(BackbufferOutput),
-  RenderTarget(RenderTargetOutput)
-}
-
-#[derive(Clone)]
-pub struct BackbufferOutput {
-  pub clear: bool
-}
-
-#[derive(Clone)]
-pub struct RenderTargetOutput {
-  pub name: String,
-  pub format: Format,
-  pub samples: SampleCount,
-  pub extent: RenderPassTextureExtent,
-  pub depth: u32,
-  pub levels: u32,
-  pub external: bool,
-  pub load_action: LoadAction,
-  pub store_action: StoreAction
+  Backbuffer {
+    clear: bool
+  },
+  RenderTarget {
+    name: String,
+    format: Format,
+    samples: SampleCount,
+    extent: RenderPassTextureExtent,
+    depth: u32,
+    levels: u32,
+    external: bool,
+    load_action: LoadAction,
+    store_action: StoreAction
+  }
 }
 
 #[derive(Clone)]
@@ -30,24 +24,40 @@ pub struct DepthStencilOutput {
   pub format: Format,
   pub samples: SampleCount,
   pub extent: RenderPassTextureExtent,
-  pub load_action: LoadAction,
-  pub store_action: StoreAction
+  pub depth_load_action: LoadAction,
+  pub depth_store_action: StoreAction,
+  pub stencil_load_action: LoadAction,
+  pub stencil_store_action: StoreAction
 }
 
 #[derive(Clone)]
-pub struct BufferOutput {
-  pub name: String,
-  pub format: Option<Format>,
-  pub size: u32,
-  pub clear: bool
-}
-
-#[derive(Clone)]
-pub enum PassOutput {
-  RenderTarget(RenderTargetOutput),
-  DepthStencil(DepthStencilOutput),
-  Backbuffer(BackbufferOutput),
-  Buffer(BufferOutput)
+pub enum ComputeOutput {
+  RenderTarget {
+    name: String,
+    format: Format,
+    samples: SampleCount,
+    extent: RenderPassTextureExtent,
+    depth: u32,
+    levels: u32,
+    external: bool,
+    clear: bool
+  },
+  DepthStencil {
+    name: String,
+    format: Format,
+    samples: SampleCount,
+    extent: RenderPassTextureExtent,
+    clear: bool
+  },
+  Backbuffer {
+    clear: bool
+   },
+  Buffer {
+    name: String,
+    format: Option<Format>,
+    size: u32,
+    clear: bool
+  }
 }
 
 #[derive(Clone)]
@@ -82,11 +92,11 @@ pub enum PassType {
   },
   Compute {
     inputs: Vec<PassInput>,
-    outputs: Vec<PassOutput>
+    outputs: Vec<ComputeOutput>
   },
   Transfer {
     inputs: Vec<PassInput>,
-    outputs: Vec<PassOutput>
+    outputs: Vec<ComputeOutput>
   },
 }
 
@@ -112,7 +122,6 @@ pub enum LoadAction {
 #[derive(Clone)]
 pub struct RenderGraphTemplateInfo {
   pub passes: Vec<PassInfo>,
-  pub external_resources: Vec<PassOutput>,
   pub swapchain_format: Format,
   pub swapchain_sample_count: SampleCount
 }

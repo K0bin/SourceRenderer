@@ -21,11 +21,6 @@ pub struct RenderGraphInfo<B: Backend> {
   pub pass_callbacks: HashMap<String, RenderPassCallbacks<B>>
 }
 
-#[derive(Clone)]
-pub struct BufferAttachmentInfo {
-  pub size: u32
-}
-
 pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
 pub trait RenderGraph<B: Backend> {

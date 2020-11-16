@@ -5,7 +5,7 @@ use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput, RenderPassCallbacks, PassInput, BufferOutput};
+use sourcerenderer_core::graphics::{Backend, ShaderType, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput,  RenderPassCallbacks, PassInput, ComputeOutput};
 use std::path::Path;
 use std::collections::{HashMap};
 use std::fs::File;
@@ -95,12 +95,12 @@ impl<P: Platform> RendererInternal<P> {
             }*/
           ],
           outputs: vec![
-            PassOutput::Buffer(BufferOutput {
+            ComputeOutput::Buffer {
               name: "Camera".to_string(),
               format: None,
               size: std::mem::size_of::<Matrix4>() as u32,
               clear: false
-            })
+            }
           ]
         }
       },
@@ -109,9 +109,9 @@ impl<P: Platform> RendererInternal<P> {
         pass_type: PassType::Graphics {
           subpasses: vec![
             GraphicsSubpassInfo {
-              outputs: vec![SubpassOutput::Backbuffer(BackbufferOutput {
+              outputs: vec![SubpassOutput::Backbuffer {
                 clear: true
-              })],
+              }],
               inputs: vec![
                 PassInput {
                   name: "Camera".to_string(),
@@ -125,8 +125,10 @@ impl<P: Platform> RendererInternal<P> {
                 extent: RenderPassTextureExtent::RelativeToSwapchain {
                   width: 1.0f32, height: 1.0f32
                 },
-                load_action: LoadAction::Clear,
-                store_action: StoreAction::DontCare
+                depth_load_action: LoadAction::Clear,
+                depth_store_action: StoreAction::DontCare,
+                stencil_load_action: LoadAction::DontCare,
+                stencil_store_action: StoreAction::DontCare
               })
             }
           ],
@@ -135,7 +137,6 @@ impl<P: Platform> RendererInternal<P> {
     ];
 
     let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
-      external_resources: Vec::new(),
       passes,
       swapchain_sample_count: swapchain.sample_count(),
       swapchain_format: swapchain.format()
