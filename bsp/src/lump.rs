@@ -1,4 +1,4 @@
-use std::io::{Read, Error, Result as IOResult};
+use std::io::{Read, Result as IOResult};
 use read_i32;
 
 #[derive(Copy, Clone, Debug, Default)]

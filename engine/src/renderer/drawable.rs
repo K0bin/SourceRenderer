@@ -1,7 +1,7 @@
-use sourcerenderer_core::{Platform, Matrix4};
-use std::sync::Arc;
+use sourcerenderer_core::{Matrix4};
+
 use crate::asset::AssetKey;
-use sourcerenderer_core::graphics::Backend as GraphicsBackend;
+
 use legion::Entity;
 use std::f32;
 

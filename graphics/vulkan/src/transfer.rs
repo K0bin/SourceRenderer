@@ -2,16 +2,14 @@ use ash::vk;
 use ::{VkQueue, VkTexture};
 use raw::{RawVkDevice, RawVkCommandPool};
 use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
 use ash::version::DeviceV1_0;
 use buffer::VkBufferSlice;
-use ::{VkCommandBufferSubmission, VkFence};
+use ::{VkFence};
 use crossbeam_channel::{Sender, Receiver, unbounded};
-use command::VkCommandBuffer;
-use sourcerenderer_core::graphics::CommandBufferType;
+
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::{max, min};
-use sourcerenderer_core::pool::Recyclable;
-use std::collections::VecDeque;
 use ::{VkShared, VkLifetimeTrackers};
 
 pub(crate) struct VkTransfer {
@@ -41,7 +39,7 @@ impl VkTransfer {
       ..Default::default()
     };
     let graphics_pool = Arc::new(RawVkCommandPool::new(device, &graphics_pool_info).unwrap());
-    let mut graphics_buffer = Box::new({
+    let graphics_buffer = Box::new({
       let buffer_info = vk::CommandBufferAllocateInfo {
         command_pool: **graphics_pool,
         level: vk::CommandBufferLevel::PRIMARY,
@@ -65,14 +63,14 @@ impl VkTransfer {
       device.begin_command_buffer(graphics_buffer.cmd_buffer, &begin_info);
     }
 
-    let (transfer_pool, transfer_buffer) = if let Some(queue) = transfer_queue {
+    let (transfer_pool, transfer_buffer) = if let Some(_queue) = transfer_queue {
       let transfer_pool_info = vk::CommandPoolCreateInfo {
         flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER | vk::CommandPoolCreateFlags::TRANSIENT,
         queue_family_index: graphics_queue.get_queue_family_index(),
         ..Default::default()
       };
       let transfer_pool = Arc::new(RawVkCommandPool::new(device, &transfer_pool_info).unwrap());
-      let mut transfer_buffer = Box::new(
+      let transfer_buffer = Box::new(
         {
           let buffer_info = vk::CommandBufferAllocateInfo {
             command_pool: **transfer_pool,
@@ -262,7 +260,7 @@ impl VkTransfer {
         }
       })
     };
-    let mut cmd_buffer = std::mem::replace(&mut guard.current_graphics_buffer, new_cmd_buffer);
+    let cmd_buffer = std::mem::replace(&mut guard.current_graphics_buffer, new_cmd_buffer);
     unsafe {
       self.device.end_command_buffer(cmd_buffer.cmd_buffer);
       self.device.begin_command_buffer(guard.current_graphics_buffer.cmd_buffer, &vk::CommandBufferBeginInfo {

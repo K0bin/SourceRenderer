@@ -127,7 +127,7 @@ impl Buffer for VkBufferSlice {
       (self.buffer.memory_usage == MemoryUsage::CpuToGpu
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
-      let mut allocator = &self.buffer.device.allocator;
+      let allocator = &self.buffer.device.allocator;
       if invalidate {
         allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
       }
@@ -140,7 +140,7 @@ impl Buffer for VkBufferSlice {
       (self.buffer.memory_usage == MemoryUsage::CpuToGpu
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
-      let mut allocator = &self.buffer.device.allocator;
+      let allocator = &self.buffer.device.allocator;
       if flush {
         allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
       }
@@ -329,7 +329,7 @@ impl BufferAllocator {
     }
 
     let mut guard = self.buffers.lock().unwrap();
-    let mut matching_buffers = guard.entry(BufferKey { memory_usage, buffer_usage }).or_default();
+    let matching_buffers = guard.entry(BufferKey { memory_usage, buffer_usage }).or_default();
     for buffer in matching_buffers.iter() {
       if buffer.slice_size % alignment == 0 && buffer.slice_size > length {
         let mut slices = buffer.slices.lock().unwrap();

@@ -20,7 +20,7 @@ impl<P: Platform> AssetLoader<P> for CSGOLoader{
     asset_type == AssetType::Container && Path::new(path).file_name().unwrap() == self.path.as_str()
   }
 
-  fn load(&self, path: &str, asset_type: AssetType) -> Option<Asset<P>> {
+  fn load(&self, path: &str, _asset_type: AssetType) -> Option<Asset<P>> {
     Some(Asset::Container(Box::new(BspLevelLoader::new(path).ok()?)))
   }
 }

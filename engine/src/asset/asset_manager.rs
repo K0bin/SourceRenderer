@@ -1,13 +1,13 @@
-use std::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
-use std::sync::{Arc, MutexGuard, RwLock, RwLockReadGuard, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock, RwLockReadGuard, Mutex};
 use std::collections::{HashMap, VecDeque};
 use sourcerenderer_core::platform::Platform;
-use sourcerenderer_core::{graphics, Vec3};
-use sourcerenderer_core::graphics::{Backend, Texture, Buffer, Device, MemoryUsage, BufferUsage, TextureInfo, Format, SampleCount, TextureShaderResourceViewInfo, Filter, AddressMode};
-use nalgebra::{Vector3, Vector4};
-use std::hash::{Hash, Hasher};
+use sourcerenderer_core::graphics;
+use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureInfo, Format, SampleCount, TextureShaderResourceViewInfo, Filter, AddressMode};
+use nalgebra::Vector4;
+use std::hash::Hash;
 use crate::Vertex;
-use std::thread::{Thread, JoinHandle};
+
 use std::sync::Weak;
 use std::thread;
 use std::time::Duration;
@@ -144,11 +144,11 @@ impl<P: Platform> AssetManager<P> {
     self.asset_key_counter.fetch_add(1, Ordering::SeqCst)
   }
 
-  pub fn add_mesh(self: &Arc<AssetManager<P>>, name: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) -> AssetKey {
+  pub fn add_mesh(self: &Arc<AssetManager<P>>, _name: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) -> AssetKey {
     let key = self.make_asset_key();
     let mut graphics = self.graphics.write().unwrap();
 
-    vertex_buffer_data.clone();
+    //vertex_buffer_data.clone();
     let vertex_buffer = graphics.device.upload_data_slice(vertex_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::VERTEX | BufferUsage::COPY_SRC);
     let index_buffer = if index_buffer_data.len() != 0 {
       Some(graphics.device.upload_data_slice(index_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::INDEX | BufferUsage::COPY_SRC))
@@ -167,7 +167,7 @@ impl<P: Platform> AssetManager<P> {
     key
   }
 
-  pub fn add_material(self: &Arc<AssetManager<P>>, name: &str, albedo: AssetKey) -> AssetKey {
+  pub fn add_material(self: &Arc<AssetManager<P>>, _name: &str, albedo: AssetKey) -> AssetKey {
     let key = self.make_asset_key();
     let material = Material {
       albedo
@@ -177,7 +177,7 @@ impl<P: Platform> AssetManager<P> {
     key
   }
 
-  pub fn add_model(self: &Arc<AssetManager<P>>, name: &str, mesh: AssetKey, materials: &[AssetKey]) -> AssetKey {
+  pub fn add_model(self: &Arc<AssetManager<P>>, _name: &str, mesh: AssetKey, materials: &[AssetKey]) -> AssetKey {
     let key = self.make_asset_key();
     let mut graphics = self.graphics.write().unwrap();
     let model = Model {
@@ -261,7 +261,7 @@ impl<P: Platform> AssetManagerGraphics<P> {
 }
 
 fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
-  'asset_loop: loop {
+  loop {
     {
       let request_opt = {
         let mgr_opt = asset_manager.upgrade();

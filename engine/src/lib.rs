@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 extern crate num_cpus;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_vulkan;

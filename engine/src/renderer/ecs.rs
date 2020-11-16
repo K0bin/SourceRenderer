@@ -1,11 +1,10 @@
 use crate::renderer::{Drawable, DrawableType};
 use std::collections::HashSet;
-use legion::{Entity, Resources, SystemBuilder, IntoQuery, World, maybe_changed, EntityStore};
-use crossbeam_channel::Sender;
-use crate::renderer::command::RendererCommand;
+use legion::{Entity, IntoQuery, maybe_changed, EntityStore};
+
 use crate::asset::AssetKey;
-use nalgebra::Matrix4;
-use legion::systems::{Builder, CommandBuffer};
+
+use legion::systems::Builder;
 use legion::component;
 use legion::world::SubWorld;
 use crate::transform::GlobalTransform;

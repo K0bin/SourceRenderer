@@ -1,10 +1,10 @@
 use std::sync::Arc;
-use std::ffi::{CStr, CString};
+use std::ffi::{CString};
 
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use spirv_cross::{spirv, glsl, ErrorCode};
+use spirv_cross::{spirv, glsl};
 
 use sourcerenderer_core::graphics::{InputRate, BindingFrequency};
 use sourcerenderer_core::graphics::GraphicsPipelineInfo;
@@ -20,19 +20,14 @@ use sourcerenderer_core::graphics::LogicOp;
 use sourcerenderer_core::graphics::BlendFactor;
 use sourcerenderer_core::graphics::BlendOp;
 use sourcerenderer_core::graphics::ColorComponents;
-use sourcerenderer_core::graphics::StoreOp;
-use sourcerenderer_core::graphics::LoadOp;
-use sourcerenderer_core::graphics::ImageLayout;
-use sourcerenderer_core::graphics::AttachmentRef;
 
-use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::VkBackend;
 use std::hash::{Hasher, Hash};
 use VkRenderPass;
 use spirv_cross::spirv::Decoration;
-use ash::vk::{ShaderStageFlags, Handle};
+use ash::vk::{Handle};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
@@ -77,14 +72,14 @@ impl VkShader {
     let vk_device = &device.device;
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
 
-    let mut module = spirv::Module::from_words(unsafe { std::slice::from_raw_parts(bytecode.as_ptr() as *const u32, bytecode.len() / std::mem::size_of::<u32>()) });
+    let module = spirv::Module::from_words(unsafe { std::slice::from_raw_parts(bytecode.as_ptr() as *const u32, bytecode.len() / std::mem::size_of::<u32>()) });
     let ast = spirv::Ast::<glsl::Target>::parse(&module).expect("Failed to parse shader with SPIR-V Cross");
     let resources = ast.get_shader_resources().expect("Failed to get resources");
 
     let mut sets: HashMap<u32, Vec<VkDescriptorSetBindingInfo>> = HashMap::new();
     for resource in resources.sampled_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let mut set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert(Vec::new());
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -93,7 +88,7 @@ impl VkShader {
     }
     for resource in resources.subpass_inputs {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let mut set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert(Vec::new());
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -102,7 +97,7 @@ impl VkShader {
     }
     for resource in resources.uniform_buffers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let mut set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert(Vec::new());
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
@@ -111,7 +106,7 @@ impl VkShader {
     }
     for resource in resources.storage_buffers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let mut set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert(Vec::new());
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER },
@@ -306,9 +301,9 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layout_bindings[*index as usize];
         for binding in shader_set {
-          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
@@ -328,9 +323,9 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layout_bindings[*index as usize];
         for binding in shader_set {
-          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
@@ -350,9 +345,9 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layout_bindings[*index as usize];
         for binding in shader_set {
-          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
@@ -372,9 +367,9 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layout_bindings[*index as usize];
         for binding in shader_set {
-          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
@@ -394,9 +389,9 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let mut set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layout_bindings[*index as usize];
         for binding in shader_set {
-          let mut existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;

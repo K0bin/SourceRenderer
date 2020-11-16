@@ -40,7 +40,7 @@ impl ColorRGBExp32 {
     let r = read_u8(reader)?;
     let g = read_u8(reader)?;
     let b = read_u8(reader)?;
-    read_u8(reader);
+    let _padding = read_u8(reader);
     let exponent = read_i8(reader)?;
     return Ok(Self {
       r,

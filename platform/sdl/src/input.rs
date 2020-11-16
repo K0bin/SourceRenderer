@@ -1,19 +1,15 @@
 use std::sync::RwLock;
+use std::collections::HashMap;
 
-use sdl2::{
-  mouse::MouseState,
-  keyboard::KeyboardState,
-  EventPump
-};
-
-
-use sourcerenderer_core::platform::{Input, Key, Window, WindowState};
-use sourcerenderer_core::{Vec2UI, Vec2I};
 use bitset_core::BitSet;
-use std::task::Context;
+
+use sdl2::EventPump;
 use sdl2::mouse::MouseUtil;
 use sdl2::keyboard::Scancode;
-use std::collections::HashMap;
+
+use sourcerenderer_core::platform::{Input, Key, Window, WindowState};
+use sourcerenderer_core::Vec2I;
+
 use sdl_platform::SDLWindow;
 
 pub struct SDLInput {

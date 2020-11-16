@@ -1,9 +1,15 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::hash::Hash;
+use std::marker::PhantomData;
+use std::cmp::max;
+use std::ffi::{CString};
 
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{GraphicsPipelineInfo, Backend, Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage, PipelineBinding};
+use crossbeam_channel::{Receiver, Sender, unbounded};
+
+use sourcerenderer_core::graphics::{Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage, PipelineBinding};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -11,33 +17,18 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
-use sourcerenderer_core::pool::Recyclable;
-
-use crate::VkQueue;
-use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::VkRenderPass;
 use crate::VkFrameBuffer;
-use crate::VkBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;
-
 use crate::raw::*;
-use pipeline::{VkGraphicsPipelineInfo, VkPipelineLayout};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use ::{VkThreadManager, VkShared};
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
+use ::{VkShared};
 use buffer::{VkBufferSlice, BufferAllocator};
 use VkTexture;
-use std::cmp::{max, min};
 use descriptor::{VkBindingManager, VkBoundResource};
 use texture::VkTextureView;
-use transfer::VkTransferCommandBuffer;
-use std::ffi::{CStr, CString};
 use lifetime_tracker::VkLifetimeTrackers;
-use crossbeam_channel::{Receiver, Sender, unbounded};
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,
@@ -449,8 +440,8 @@ impl VkCommandBuffer {
     where T: 'static + Send + Sync + Sized + Clone {
     let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of::<T>());
     unsafe {
-      let mut ptr = slice.map_unsafe(false).expect("Failed to map buffer");
-      std::mem::replace::<T>((ptr as *mut T).as_mut().unwrap(), data);
+      let ptr = slice.map_unsafe(false).expect("Failed to map buffer");
+      *(ptr as *mut T) = data;
       slice.unmap_unsafe(true);
     }
     Arc::new(slice)
@@ -558,7 +549,7 @@ impl VkCommandBufferRecorder {
     self.item.as_mut().unwrap().advance_subpass();
   }
 
-  pub fn execute_inner_command_buffer(&mut self, mut submission: VkCommandBufferSubmission) {
+  pub fn execute_inner_command_buffer(&mut self, submission: VkCommandBufferSubmission) {
     self.item.as_mut().unwrap().execute_inner_command_buffer(submission);
   }
 
@@ -682,17 +673,13 @@ impl VkCommandBufferSubmission {
   }
 
   pub(crate) fn mark_submitted(&mut self) {
-    unsafe {
-      let mut item = self.item.as_mut().unwrap();
-      assert_eq!(item.state, VkCommandBufferState::Finished);
-      item.state = VkCommandBufferState::Submitted;
-    }
+    let item = self.item.as_mut().unwrap();
+    assert_eq!(item.state, VkCommandBufferState::Finished);
+    item.state = VkCommandBufferState::Submitted;
   }
 
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
-    unsafe {
-      &self.item.as_ref().unwrap().get_handle()
-    }
+    &self.item.as_ref().unwrap().get_handle()
   }
 
   pub(crate) fn command_buffer_type(&self) -> CommandBufferType {

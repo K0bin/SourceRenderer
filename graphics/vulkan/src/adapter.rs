@@ -1,23 +1,23 @@
 
 use std::ffi::{CStr, CString};
-use std::cmp::Ordering;
+
 use std::sync::Arc;
 use std::f32;
-use std::slice;
+
 use std::os::raw::c_char;
 
 use ash::vk;
-use ash::extensions::khr;
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+
+use ash::version::{InstanceV1_0};
 
 use sourcerenderer_core::graphics::Adapter;
-use sourcerenderer_core::graphics::Device;
+
 use sourcerenderer_core::graphics::AdapterType;
-use sourcerenderer_core::graphics::Surface;
+
 use crate::VkDevice;
-use crate::VkInstance;
+
 use crate::VkSurface;
-use crate::VkQueue;
+
 use crate::queue::VkQueueInfo;
 use crate::VkBackend;
 use crate::raw::*;
@@ -102,7 +102,7 @@ impl Adapter<VkBackend> for VkAdapter {
       let compute_queue_family_props = queue_properties
         .iter()
         .enumerate()
-        .find(|(index, queue_props)|
+        .find(|(_index, queue_props)|
           queue_props.queue_count > 0
           && queue_props.queue_flags & vk::QueueFlags::COMPUTE  == vk::QueueFlags::COMPUTE
           && queue_props.queue_flags & vk::QueueFlags::GRAPHICS != vk::QueueFlags::GRAPHICS
@@ -111,7 +111,7 @@ impl Adapter<VkBackend> for VkAdapter {
       let transfer_queue_family_props = queue_properties
         .iter()
         .enumerate()
-        .find(|(index, queue_props)|
+        .find(|(_index, queue_props)|
           queue_props.queue_count > 0
           && queue_props.queue_flags & vk::QueueFlags::TRANSFER == vk::QueueFlags::TRANSFER
           && queue_props.queue_flags & vk::QueueFlags::COMPUTE  != vk::QueueFlags::COMPUTE

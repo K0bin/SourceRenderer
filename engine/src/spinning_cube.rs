@@ -1,8 +1,8 @@
-use legion::{World, Resources, Entity, component};
+use legion::{World, Resources, component};
 use crate::{Vertex, Transform, Camera};
 use std::path::Path;
 use sourcerenderer_core::graphics::{Format, TextureInfo, SampleCount};
-use nalgebra::{Point3, Matrix4, Rotation3, Unit};
+use nalgebra::{Unit};
 use image::GenericImageView;
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Quaternion};
@@ -11,7 +11,7 @@ use sourcerenderer_core::Vec2;
 use std::sync::Arc;
 use crate::renderer::StaticRenderableComponent;
 use legion::systems::Builder as SystemBuilder;
-use crate::transform::GlobalTransform;
+
 use crate::camera::ActiveCamera;
 use crate::fps_camera::FPSCamera;
 use crate::scene::DeltaTime;

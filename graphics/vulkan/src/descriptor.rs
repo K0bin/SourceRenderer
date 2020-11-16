@@ -2,19 +2,13 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use ash::vk;
 use raw::RawVkDevice;
 use ash::version::{DeviceV1_0, DeviceV1_1};
-use std::ops::Deref;
-use ash::prelude::VkResult;
-use sourcerenderer_core::graphics::{ShaderType, BindingFrequency};
+use sourcerenderer_core::graphics::{BindingFrequency};
 use std::collections::HashMap;
-use std::cell::RefCell;
-use ::{VkPipeline, VkTexture};
-use bitflags::_core::cell::RefMut;
+
 use texture::VkTextureView;
 use buffer::VkBufferSlice;
 use std::hash::{Hash, Hasher};
 use pipeline::VkPipelineLayout;
-use spirv_cross::spirv::Decoration::Index;
-use sourcerenderer_core::graphics::LogicOp::Set;
 use std::ffi::c_void;
 use VkAdapterExtensionSupport;
 
@@ -450,7 +444,7 @@ impl VkBindingManager {
   }
 
   pub(crate) fn bind(&mut self, frequency: BindingFrequency, slot: u32, binding: VkBoundResource) {
-    let mut bindings_table = &mut self.bindings[frequency as usize];
+    let bindings_table = &mut self.bindings[frequency as usize];
     let existing_binding = &bindings_table[slot as usize];
     if existing_binding != &binding {
       self.dirty.insert(DirtyDescriptorSets::from(frequency));

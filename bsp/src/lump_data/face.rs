@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 use lump_data::{LumpData, LumpType};
-use ::{read_i8, read_f32};
+use ::read_f32;
 use ::{read_u8, read_u16};
 use ::{read_i16, read_i32};
 use read_u32;

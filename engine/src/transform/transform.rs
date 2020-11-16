@@ -1,10 +1,10 @@
 use sourcerenderer_core::{Vec3, Quaternion, Matrix4};
-use legion::{Entity, World, IntoQuery, component, maybe_changed, EntityStore, Write, Resources};
-use std::process::Child;
+use legion::{Entity, IntoQuery, component, maybe_changed, EntityStore};
+
 use legion::systems::{CommandBuffer, Builder};
 use std::collections::HashMap;
 use legion::world::SubWorld;
-use nalgebra::{Vector3, Unit};
+
 
 pub struct Transform {
   pub position: Vec3,
@@ -112,7 +112,7 @@ fn propagade_transforms(entity: &Entity,
     return;
   }
 
-  let mut entry = entry_opt.unwrap();
+  let entry = entry_opt.unwrap();
   let transform = entry.get_component::<Transform>().unwrap();
   let transform_dirty = entry.get_component::<TransformDirty>().unwrap();
   let dirty = parent_dirty || transform_dirty.0;
@@ -150,7 +150,7 @@ fn maintain_children(command_buffer: &mut CommandBuffer, world: &mut SubWorld, #
   for (entity, parent) in added_parent_components_query.iter(other_world) {
     let parent_entry = children_world.entry_mut(parent.0);
     if let Ok(mut parent_entry) = parent_entry {
-      let mut children = parent_entry.get_component_mut::<Children>();
+      let children = parent_entry.get_component_mut::<Children>();
       if let Ok(children) = children {
         children.0.push(*entity);
       } else {
@@ -175,8 +175,8 @@ fn maintain_children(command_buffer: &mut CommandBuffer, world: &mut SubWorld, #
   for (entity, parent, previous) in changed_parent_components_query.iter(other_world) {
     let mut previous_parent_entry = children_world.entry_mut(previous.0).ok();
     let previous_parent_children = previous_parent_entry.as_mut()
-      .and_then(|mut entry| entry.get_component_mut::<Children>().ok());
-    if let Some(mut previous_parent_children) = previous_parent_children {
+      .and_then(|entry| entry.get_component_mut::<Children>().ok());
+    if let Some(previous_parent_children) = previous_parent_children {
       let index = previous_parent_children.0.iter().position(|child| child == entity);
       if let Some(index) = index {
         previous_parent_children.0.remove(index);
@@ -185,7 +185,7 @@ fn maintain_children(command_buffer: &mut CommandBuffer, world: &mut SubWorld, #
 
     let parent_entry = children_world.entry_mut(parent.0);
     if let Ok(mut parent_entry) = parent_entry {
-      let mut children = parent_entry.get_component_mut::<Children>();
+      let children = parent_entry.get_component_mut::<Children>();
       if let Ok(children) = children {
         children.0.push(*entity);
       } else {
@@ -203,9 +203,9 @@ fn maintain_children(command_buffer: &mut CommandBuffer, world: &mut SubWorld, #
   }
 
   // remove broken children references
-  let mut children_query = <(&mut Children)>::query()
+  let mut children_query = <&mut Children>::query()
     .filter(component::<Transform>());
-  for (children) in children_query.iter_mut(children_world) {
+  for children in children_query.iter_mut(children_world) {
     children.0.retain(|child| other_world.entry_ref(*child).is_ok());
   }
 

@@ -4,19 +4,16 @@ use ash::vk;
 use ash::version::DeviceV1_0;
 
 use sourcerenderer_core::graphics::{Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode};
-use sourcerenderer_core::graphics::Format;
 
-use crate::VkDevice;
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
-use crate::VkBackend;
+
 use pipeline::{samples_to_vk, compare_func_to_vk};
 use vk_mem::MemoryUsage;
 use std::cmp::max;
 use std::hash::{Hash, Hasher};
 use std::ffi::CString;
 use ash::vk::Handle;
-
 
 pub struct VkTexture {
   image: vk::Image,
@@ -49,7 +46,7 @@ impl VkTexture {
       usage: MemoryUsage::GpuOnly,
       ..Default::default()
     };
-    let (image, allocation, allocation_info) = device.allocator.create_image(&create_info, &alloc_info).unwrap();
+    let (image, allocation, _allocation_info) = device.allocator.create_image(&create_info, &alloc_info).unwrap();
     if let Some(name) = name {
       let name_cstring = CString::new(name).unwrap();
       unsafe {

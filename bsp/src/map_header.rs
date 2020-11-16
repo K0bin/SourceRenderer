@@ -1,6 +1,6 @@
 use lump::{Lump};
 
-use std::io::{Read, Error, Result as IOResult};
+use std::io::{Read, Result as IOResult};
 use read_i32;
 
 const LUMP_COUNT: usize = 64;

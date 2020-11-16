@@ -1,9 +1,9 @@
 use map_header::{MapHeader};
-use std::io::{Read, Error, ErrorKind, Seek, SeekFrom, BufReader};
+use std::io::{Seek, SeekFrom, BufReader};
 use std::fs::File;
-use lump_data::{LumpType, Brush, Node, Leaf, Face, Plane, Edge, BrushSide, LumpData};
-use std::ops::DerefMut;
-use std::boxed::{Box};
+use lump_data::{Brush, Node, Leaf, Face, Plane, Edge, BrushSide, LumpData};
+
+
 use std::io::Result as IOResult;
 use ::{LeafFace, LeafBrush};
 use ::{SurfaceEdge, VertexNormal};

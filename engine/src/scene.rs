@@ -1,19 +1,14 @@
-use crate::{Vertex, camera};
-use std::sync::{Arc, Mutex};
-use sourcerenderer_core::{Platform, Vec3, Vec2};
-use crossbeam_channel::bounded;
-use async_std::task;
-use std::path::Path;
-use sourcerenderer_core::graphics::{TextureInfo, Format, SampleCount};
-use image::GenericImageView;
-use nalgebra::{Point3, Matrix4, Rotation3, Vector3};
-use crate::renderer::*;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime};
-use crate::asset::AssetManager;
+
 use legion::{World, Resources, Schedule};
-use legion::systems::Builder as SystemBuilder;
+
+use sourcerenderer_core::Platform;
+
+use crate::renderer::*;
 use crate::transform;
+use crate::asset::AssetManager;
 use crate::fps_camera;
 
 pub struct Scene {

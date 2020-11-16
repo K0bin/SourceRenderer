@@ -2,15 +2,15 @@ use std::error::Error;
 use std::sync::Arc;
 
 use sourcerenderer_core::platform::Platform;
-use sourcerenderer_core::platform::Input;
+
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_core::platform::PlatformEvent;
 use sourcerenderer_core::platform::GraphicsApi;
 use sourcerenderer_core::platform::WindowState;
-use sourcerenderer_core::graphics::Instance;
-use sourcerenderer_core::graphics::Surface;
-use sourcerenderer_core::graphics::Device;
-use sourcerenderer_core::graphics::Swapchain;
+
+
+
+
 
 use sourcerenderer_vulkan::VkInstance;
 use sourcerenderer_vulkan::VkSurface;
@@ -22,7 +22,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::Sdl;
 use sdl2::VideoSubsystem;
 use sdl2::EventPump;
-use sdl2::video::VkInstance as SdlVkInstance;
+
 use sdl2_sys::SDL_WindowFlags;
 
 use ash::version::InstanceV1_0;
@@ -49,7 +49,7 @@ impl SDLPlatform {
   pub fn new(graphics_api: GraphicsApi) -> SDLPlatform {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
-    let mut event_pump = sdl_context.event_pump().unwrap();
+    let event_pump = sdl_context.event_pump().unwrap();
 
     let window = SDLWindow::new(&sdl_context, &video_subsystem, graphics_api);
 
@@ -64,7 +64,7 @@ impl SDLPlatform {
 }
 
 impl SDLWindow {
-  pub fn new(sdl_context: &Sdl, video_subsystem: &VideoSubsystem, graphics_api: GraphicsApi) -> SDLWindow {
+  pub fn new(_sdl_context: &Sdl, video_subsystem: &VideoSubsystem, graphics_api: GraphicsApi) -> SDLWindow {
     let mut window_builder = video_subsystem.window("sourcerenderer", 1280, 720);
     window_builder.position_centered();
 
@@ -119,7 +119,7 @@ impl Platform for SDLPlatform {
     return PlatformEvent::Continue;
   }
 
-  fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<Error>> {
+  fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     let extensions = self.window.vulkan_instance_extensions().unwrap();
     return Ok(Arc::new(VkInstance::new(&extensions, debug_layers)));
   }

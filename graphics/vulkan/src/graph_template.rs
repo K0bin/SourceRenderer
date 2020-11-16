@@ -3,32 +3,17 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use ash::vk;
-use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{RenderGraph, RenderPassTextureExtent, PassOutput, StoreAction, LoadAction, PassInfo, PassInput, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount, GraphicsSubpassInfo, PassType, SubpassOutput};
-use sourcerenderer_core::graphics::RenderGraphInfo;
+
+use sourcerenderer_core::graphics::{PassOutput, StoreAction, LoadAction, PassInfo, PassInput, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount, GraphicsSubpassInfo, PassType, SubpassOutput};
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
-use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
-
-use crate::VkBackend;
-use crate::VkDevice;
 use crate::raw::RawVkDevice;
-use crate::VkSwapchain;
+
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
-use sourcerenderer_core::graphics::{Backend, CommandBufferType, CommandBuffer, RenderpassRecordingMode, Swapchain};
-use thread_manager::VkThreadManager;
-use std::cell::RefCell;
-use ::{VkRenderPass, VkQueue};
-use ::{VkFrameBuffer, VkSemaphore};
-use ::{VkCommandBufferRecorder, VkFence};
-use sourcerenderer_core::job::JobScheduler;
-use std::sync::atomic::Ordering;
-use std::cmp::{max, min};
+use ::{VkRenderPass};
+use std::cmp::{min};
 use std::iter::FromIterator;
-use VkTexture;
-use texture::VkTextureView;
-use graph::VkRenderGraph;
 
 pub struct VkRenderGraphTemplate {
   pub device: Arc<RawVkDevice>,
@@ -155,7 +140,7 @@ impl VkRenderGraphTemplate {
 
     let mut passes: Vec<VkPassTemplate> = Vec::new();
     let mut pass_infos = info.passes.clone();
-    let mut reordered_passes = VkRenderGraphTemplate::reorder_passes(&mut pass_infos, &mut attachment_metadata);
+    let reordered_passes = VkRenderGraphTemplate::reorder_passes(&mut pass_infos, &mut attachment_metadata);
 
     let mut reordered_passes_queue: VecDeque<PassInfo> = VecDeque::from_iter(reordered_passes);
     let mut pass_index: u32 = 0;
@@ -526,11 +511,11 @@ impl VkRenderGraphTemplate {
   fn build_compute_pass(inputs: &[PassInput],
                         outputs: &[PassOutput],
                         name: &str,
-                        device: &Arc<RawVkDevice>,
-                        pass_index: u32,
+                        _device: &Arc<RawVkDevice>,
+                        _pass_index: u32,
                         attachment_metadata: &mut HashMap<String, AttachmentMetadata>,
-                        swapchain_format: Format,
-                        swapchain_samples: SampleCount) -> VkPassTemplate {
+                        _swapchain_format: Format,
+                        _swapchain_samples: SampleCount) -> VkPassTemplate {
     let mut used_resources = HashSet::<String>::new();
     for output in outputs {
       used_resources.insert(match output {
@@ -548,7 +533,7 @@ impl VkRenderGraphTemplate {
     let barriers = inputs.iter().map(|input|{
       let metadata = attachment_metadata.get(&input.name).unwrap();
       match &metadata.output {
-        PassOutput::RenderTarget(rt_output) => {
+        PassOutput::RenderTarget(_rt_output) => {
           VkBarrierTemplate::Image {
             name: input.name.clone(),
             old_layout: metadata.layout,
@@ -571,7 +556,7 @@ impl VkRenderGraphTemplate {
             dst_queue_family_index: 0
           }
         },
-        PassOutput::DepthStencil(ds_output) => {
+        PassOutput::DepthStencil(_ds_output) => {
           VkBarrierTemplate::Image {
             name: input.name.clone(),
             old_layout: metadata.layout,
@@ -590,7 +575,7 @@ impl VkRenderGraphTemplate {
           }
         },
         PassOutput::Backbuffer(_) => unreachable!(),
-        PassOutput::Buffer(buffer_output) => {
+        PassOutput::Buffer(_buffer_output) => {
           VkBarrierTemplate::Buffer {
             name: input.name.clone(),
             src_access_mask: vk::AccessFlags::SHADER_WRITE,

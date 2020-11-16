@@ -1,17 +1,16 @@
 use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Poll, Context};
+use std::ops::Deref;
 
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use crate::VkDevice;
 use crate::raw::RawVkDevice;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Poll, Context};
-use ash::prelude::VkResult;
+
 use sourcerenderer_core::graphics::Fence;
-use sourcerenderer_core::pool::{Recyclable, Pool};
-use std::ops::Deref;
+use sourcerenderer_core::pool::{Recyclable};
 
 pub struct VkSemaphore {
   semaphore: vk::Semaphore,
@@ -20,7 +19,7 @@ pub struct VkSemaphore {
 
 impl VkSemaphore {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
-    let vk_device = &device.device;
+    let _vk_device = &device.device;
     let info = vk::SemaphoreCreateInfo {
       ..Default::default()
     };
@@ -87,16 +86,16 @@ impl VkFenceInner {
 
   pub fn is_signaled(&self) -> bool {
     let vk_device = &self.device.device;
-    return unsafe {
+    unsafe {
       vk_device.get_fence_status(self.fence).is_ok()
-    };
+    }
   }
 }
 
 impl Future for VkFence {
   type Output = ();
 
-  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
     if self.is_signaled() {
       Poll::Ready(())
     } else {
@@ -128,10 +127,10 @@ impl Deref for VkFence {
 
 impl Fence for VkFence {
   fn is_signaled(&self) -> bool {
-    self.is_signaled()
+    self.inner.is_signaled()
   }
 
   fn await_signal(&self) {
-    self.await_signal();
+    self.inner.await_signal();
   }
 }

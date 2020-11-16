@@ -1,23 +1,20 @@
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::rc::Rc;
 use std::iter::*;
 
 use ash::vk;
-use ash::extensions::khr;
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0};
 
-use sourcerenderer_core::graphics::{Adapter, CommandBufferType};
-use sourcerenderer_core::graphics::Device;
-use crate::device::VkDevice;
+use sourcerenderer_core::graphics::{CommandBufferType};
+
+
 use crate::raw::RawVkDevice;
 use crate::command::VkCommandPool;
 use crate::swapchain::VkSwapchain;
 use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
-use crate::VkBackend;
-use sourcerenderer_core::graphics::Backend;
-use ::{VkThreadManager, VkShared};
+
+use ::{VkShared};
 use VkCommandBufferSubmission;
 use transfer::VkTransferCommandBuffer;
 use buffer::BufferAllocator;

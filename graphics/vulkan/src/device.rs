@@ -1,30 +1,21 @@
-use std::sync::{Arc, RwLock};
-use std::sync::Weak;
-use std::sync::Mutex;
+use std::sync::{Arc};
 
 use ash::vk;
-use ash::extensions::khr;
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0};
 
 use sourcerenderer_core::graphics::*;
 use crate::queue::VkQueue;
 use crate::queue::VkQueueInfo;
-use crate::adapter::VkAdapter;
 use crate::VkBackend;
-use crate::buffer::VkBuffer;
-use crate::buffer::buffer_usage_to_vk;
 use crate::VkAdapterExtensionSupport;
 use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
-use crate::renderpass::VkRenderPass;
 use crate::texture::VkTexture;
-use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 use crate::graph::VkRenderGraph;
-use crate::swapchain::VkSwapchain;
+
 use ::{VkThreadManager, VkShared};
 use raw::{RawVkDevice, RawVkInstance};
-use std::collections::HashMap;
 use pipeline::VkGraphicsPipelineInfo;
 use buffer::VkBufferSlice;
 use std::cmp::min;

@@ -1,39 +1,26 @@
-use std::{sync::RwLock, collections::{HashMap, VecDeque}};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::u32;
+use std::cmp::{min};
 
 use ash::vk;
-use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, PassInfo, PassInput, PassOutput, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderGraphTemplate, RenderPassCallbacks, RenderPassTextureExtent, StoreAction, SubpassOutput};
+use thread_manager::VkThreadManager;
+
+use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode};
+use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, PassOutput, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
-use sourcerenderer_core::graphics::{Texture, TextureInfo, AttachmentBlendInfo};
+use sourcerenderer_core::graphics::{Texture, TextureInfo};
 
-use crate::VkBackend;
-use crate::VkDevice;
-use crate::raw::RawVkDevice;
-use crate::VkSwapchain;
-use crate::format::format_to_vk;
-use crate::pipeline::samples_to_vk;
-use sourcerenderer_core::graphics::{Backend, CommandBufferType, CommandBuffer, RenderpassRecordingMode, Swapchain};
-use thread_manager::VkThreadManager;
-use std::cell::RefCell;
-use ::{VkRenderPass, VkQueue};
-use ::{VkFrameBuffer, VkSemaphore};
-use ::{VkCommandBufferRecorder, VkFence};
-use sourcerenderer_core::job::JobScheduler;
-use std::sync::atomic::Ordering;
-use std::cmp::{max, min};
-use std::iter::FromIterator;
-use ::{VkTexture, VkBuffer};
+use ::{VkRenderPass, VkQueue, VkFence, VkTexture, VkFrameBuffer, VkSemaphore};
 use texture::VkTextureView;
 use buffer::VkBufferSlice;
-use graph_template::{VkRenderGraphTemplate, VkPassTemplate, VkPassType, VkBarrierTemplate};
-use sourcerenderer_core::ThreadPool;
-use sourcerenderer_core::{scope, spawn};
-use VkShared;
+use graph_template::{VkRenderGraphTemplate, VkPassType, VkBarrierTemplate};
+use crate::VkBackend;
+use crate::raw::RawVkDevice;
+use crate::VkSwapchain;
 
 pub struct VkResource {
   info: PassOutput,
@@ -190,7 +177,7 @@ impl VkRenderGraph {
             },
             info: attachment_info.output.clone()
           });
-        },
+        }
 
         PassOutput::DepthStencil(depth_stencil_output) => {
           let usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
@@ -229,7 +216,7 @@ impl VkRenderGraph {
               view,
             }
           });
-        },
+        }
 
         PassOutput::Buffer(buffer_output) => {
           let allocator = context.get_shared().get_buffer_allocator();
@@ -240,11 +227,9 @@ impl VkRenderGraph {
               buffer
             }
           });
-        },
+        }
 
-        PassOutput::Backbuffer(_) => {},
-
-        _ => unimplemented!()
+        PassOutput::Backbuffer(_) => {}
       }
     }
 
@@ -458,13 +443,13 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
   fn render(&mut self) -> Result<(), ()> {
     self.thread_manager.begin_frame();
 
-    let mut prepare_semaphore = self.thread_manager.get_shared().get_semaphore();
+    let prepare_semaphore = self.thread_manager.get_shared().get_semaphore();
     let cmd_semaphore = self.thread_manager.get_shared().get_semaphore();
     let cmd_fence = self.thread_manager.get_shared().get_fence();
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
-      let mut result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
+      let result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
       if result.is_err() || !result.unwrap().1 && false {
         return Err(())
       }
@@ -527,7 +512,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
               }
               cmd_buffer.end_render_pass();
             }
-            RenderPassCallbacks::Threaded(callbacks) => {
+            RenderPassCallbacks::Threaded(_callbacks) => {
               unimplemented!();
             }
           }
@@ -584,7 +569,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                 (callback)(&mut cmd_buffer, graph_resources_ref);
               }
             },
-            RenderPassCallbacks::InternallyThreaded(callbacks) => {
+            RenderPassCallbacks::InternallyThreaded(_callbacks) => {
               unimplemented!();
             },
             RenderPassCallbacks::Threaded(_) => {

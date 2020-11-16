@@ -1,12 +1,7 @@
 use std::sync::Arc;
-use std::sync::Mutex;
 
-use ash::Device;
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0};
 use ash::vk;
-use ash::extensions::khr::Swapchain as SwapchainLoader;
-use ash::extensions::khr::Surface as SurfaceLoader;
-use ash::prelude::VkResult;
 
 mod device;
 mod instance;

@@ -1,8 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use crossbeam_deque::{Steal, Worker, Injector, Stealer};
-use std::time::{Instant, SystemTime, UNIX_EPOCH, Duration};
-use std::collections::VecDeque;
+use std::time::{SystemTime, Duration};
 
 // TODO: optimize orderings
 
@@ -98,7 +97,7 @@ impl JobScheduler {
   }
 
   pub fn pop_job(&self) -> Option<Job> {
-    let mut job_opt: Option<Job> = None;
+    let job_opt: Option<Job> = None;
     for stealer in &self.inner.stealers {
       'stealing: loop {
         match stealer.steal() {
@@ -112,13 +111,13 @@ impl JobScheduler {
     }
 
     if job_opt.is_none() {
-      'stealing: loop {
+      'queue_stealing: loop {
         match self.inner.queue.steal() {
           Steal::Success(job) => {
             return Some(job);
           },
-          Steal::Retry => { continue 'stealing; },
-          Steal::Empty => { break 'stealing; }
+          Steal::Retry => { continue 'queue_stealing; },
+          Steal::Empty => { break 'queue_stealing; }
         }
       }
     }
@@ -146,7 +145,7 @@ const IDLE_SPINS_SLEEP_AGES_THRESHOLD: u32 = 16384;
 fn job_thread(local: Worker<Job>, scheduler: Arc<JobSchedulerInner>) {
   let others_refs: Vec<&Stealer<Job>> = scheduler.stealers.iter().map(|other| other).collect();
   let mut idle_spins = 0;
-  'worker_loop: loop {
+  loop {
     let job_opt = find_job(&local, &scheduler.queue, &others_refs);
     if let Some(job) = job_opt {
       idle_spins = 0;
@@ -188,20 +187,20 @@ fn find_job(local: &Worker<Job>, global: &Injector<Job>, others: &[&Stealer<Job>
 }
 
 fn find_job_in_injector(worker: &Worker<Job>, injector: &Injector<Job>) -> Option<Job> {
-  injector.steal_batch(worker);
+  let _ = injector.steal_batch(worker);
   let mut job_opt = worker.pop();
   while !injector.is_empty() && job_opt.is_none() {
-    injector.steal_batch(worker);
+    let _ = injector.steal_batch(worker);
     job_opt = worker.pop();
   }
   job_opt
 }
 
 fn find_job_in_stealer(worker: &Worker<Job>, stealer: &Stealer<Job>) -> Option<Job> {
-  stealer.steal_batch(worker);
+  let _ = stealer.steal_batch(worker);
   let mut job_opt = worker.pop();
   while !stealer.is_empty() && job_opt.is_none() {
-    stealer.steal_batch(worker);
+    let _ = stealer.steal_batch(worker);
     job_opt = worker.pop();
   }
   job_opt

@@ -1,29 +1,23 @@
-use std::collections::{HashMap, VecDeque};
-use std::thread::ThreadId;
+use std::collections::{VecDeque};
 use std::sync::{Arc, Mutex};
-use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::cell::{RefCell, RefMut};
+use std::marker::PhantomData;
 
 use thread_local::ThreadLocal;
 
-use crate::VkDevice;
+use ash::version::DeviceV1_0;
+
+use sourcerenderer_core::graphics::{Resettable, CommandBufferType, InnerCommandBufferProvider};
+use sourcerenderer_core::pool::{Recyclable};
+
+
 use crate::raw::RawVkDevice;
 use crate::VkCommandPool;
-use sourcerenderer_core::graphics::{Device, Resettable, CommandBufferType, InnerCommandBufferProvider};
-use std::cell::{RefCell, RefMut};
-use ::{VkPipeline, VkQueue};
-use ash::version::DeviceV1_0;
-use sourcerenderer_core::pool::{Pool, Recyclable};
+use ::{VkQueue};
 use ::{VkSemaphore, VkFence};
-use ash::prelude::VkResult;
-use buffer::{BufferAllocator, VkBufferSlice};
-use descriptor::VkDescriptorSetLayout;
-use pipeline::VkPipelineLayout;
-use transfer::VkTransfer;
-use ::{VkTexture, VkRenderPass, VkFrameBuffer};
-use texture::VkTextureView;
-use std::marker::PhantomData;
-use ::{VkFenceInner, VkCommandBufferRecorder, VkLifetimeTrackers, VkShared, VkBackend};
+use buffer::BufferAllocator;
+use ::{VkCommandBufferRecorder, VkLifetimeTrackers, VkShared, VkBackend};
 
 pub struct VkThreadManager {
   device: Arc<RawVkDevice>,
@@ -163,7 +157,7 @@ impl VkThreadLocal {
 }
 
 impl VkFrameLocal {
-  pub fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, compute_queue: &Option<Arc<VkQueue>>, transfer_queue: &Option<Arc<VkQueue>>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, _compute_queue: &Option<Arc<VkQueue>>, _transfer_queue: &Option<Arc<VkQueue>>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
     Self {
       device: device.clone(),
       command_pool: graphics_queue.create_command_pool(buffer_allocator),

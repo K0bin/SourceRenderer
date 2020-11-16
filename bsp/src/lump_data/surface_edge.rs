@@ -1,10 +1,10 @@
 use std::io::{Read, Result as IOResult};
 use lump_data::{LumpData, LumpType};
-use read_u16;
+use read_i32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct  SurfaceEdge {
-  pub index: u16
+  pub index: i32
 }
 
 impl LumpData for SurfaceEdge {
@@ -13,11 +13,11 @@ impl LumpData for SurfaceEdge {
   }
 
   fn element_size(_version: i32) -> usize {
-    2
+    4
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let edge = read_u16(reader)?;
+    let edge = read_i32(reader)?;
     return Ok(Self {
       index: edge
     });

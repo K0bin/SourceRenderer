@@ -1,7 +1,7 @@
-use sourcerenderer_core::graphics::Backend;
+
 use sourcerenderer_core::Platform;
 use crate::asset::{AssetLoader, AssetType, Asset};
-use std::io::{BufReader, Error};
+use std::io::{BufReader};
 use std::fs::File;
 use std::path::Path;
 use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge};
@@ -29,7 +29,7 @@ impl BspLevelLoader {
   pub fn new(path: &str) -> std::io::Result<Self> {
     let map_name = Path::new(path).file_name().unwrap().to_str().unwrap().to_string();
     let buf_reader = BufReader::new(File::open(path)?);
-    let mut map = Map::read(map_name.as_str(), buf_reader)?;
+    let map = Map::read(map_name.as_str(), buf_reader)?;
 
     Ok(Self {
       map: Mutex::new(map),
@@ -120,7 +120,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     }
   }
 
-  fn load(&self, path: &str, asset_type: AssetType) -> Option<Asset<P>> {
+  fn load(&self, _path: &str, asset_type: AssetType) -> Option<Asset<P>> {
     if asset_type == AssetType::Model {
       let mut map_guard = self.map.lock().unwrap();
       let leafs = map_guard.read_leafs().ok()?;

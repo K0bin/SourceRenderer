@@ -1,30 +1,19 @@
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::fs::File;
-use std::path::Path;
-use std::collections::{HashMap, HashSet};
-use std::io::Read as IORead;
-
-use crossbeam_channel::{Sender, bounded, Receiver, unbounded, TryRecvError};
-
-use nalgebra::{Transform, Matrix3, Matrix1x3, UnitQuaternion};
+use std::sync::{Arc, Mutex};
+use crossbeam_channel::{Sender, unbounded};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
-use sourcerenderer_core::graphics::{Instance, Adapter, Device, Backend, ShaderType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, Format, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, Viewport, Scissor, BindingFrequency, Swapchain, RenderGraphTemplateInfo, GraphicsSubpassInfo, PassType, PipelineBinding, PassOutput, RenderPassTextureExtent};
-use sourcerenderer_core::graphics::{BACK_BUFFER_ATTACHMENT_NAME, RenderGraphInfo, RenderGraph, LoadAction, StoreAction, PassInfo, SubpassOutput};
-use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Matrix4, Vec3, Quaternion};
+use sourcerenderer_core::graphics::Backend;
+use sourcerenderer_core::Matrix4;
 
-use crate::asset::AssetKey;
 use crate::asset::AssetManager;
-use crate::renderer::{View, Drawable, DrawableType};
+use crate::renderer::Drawable;
 
-use async_std::task;
-use sourcerenderer_core::job::{JobScheduler};
 use std::sync::atomic::{Ordering, AtomicUsize};
-use sourcerenderer_vulkan::VkSwapchain;
+
 use crate::renderer::command::RendererCommand;
-use legion::{World, Resources, Schedule, Entity};
-use legion::systems::{Builder as SystemBuilder, Builder};
-use std::time::SystemTime;
+use legion::{World, Resources, Entity};
+use legion::systems::Builder;
+
 use crate::renderer::RendererInternal;
 use crate::renderer::camera::PrimaryCamera;
 
@@ -57,7 +46,7 @@ impl<P: Platform> Renderer<P> {
     let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, sender, receiver, simulation_tick_rate, renderer.primary_camera());
 
     std::thread::spawn(move || {
-      'render_loop: loop {
+      loop {
         internal.render();
       }
     });
@@ -73,7 +62,7 @@ impl<P: Platform> Renderer<P> {
     *guard = window_state
   }
 
-  pub fn install(self: &Arc<Renderer<P>>, world: &mut World, resources: &mut Resources, systems: &mut Builder) {
+  pub fn install(self: &Arc<Renderer<P>>, _world: &mut World, _resources: &mut Resources, systems: &mut Builder) {
     crate::renderer::ecs::install(systems, self);
   }
 

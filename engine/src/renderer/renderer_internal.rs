@@ -5,14 +5,14 @@ use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, BACK_BUFFER_ATTACHMENT_NAME, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput, RenderPassCallbacks, PassInput, BufferOutput};
+use sourcerenderer_core::graphics::{Backend, ShaderType, PassOutput, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, BackbufferOutput, RenderPassCallbacks, PassInput, BufferOutput};
 use std::path::Path;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::fs::File;
 use crate::renderer::{DrawableType, View};
 use sourcerenderer_core::platform::WindowState;
-use nalgebra::{Matrix3, Point3};
-use std::sync::atomic::Ordering;
+use nalgebra::{Matrix3};
+
 use std::io::Read;
 use crate::renderer::camera::PrimaryCamera;
 
@@ -218,12 +218,12 @@ impl<P: Platform> RendererInternal<P> {
     callbacks.insert("Geometry".to_string(), RenderPassCallbacks::Regular(
       vec![
         Arc::new(move |command_buffer_a, graph_resources| {
-          let mut command_buffer = command_buffer_a as &mut <P::GraphicsBackend as Backend>::CommandBuffer;
+          let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as Backend>::CommandBuffer;
           let state = c_renderables.lock().unwrap();
 
           let assets_lookup = c_asset_manager.lookup_graphics();
 
-          let camera_constant_buffer: Arc<<P::GraphicsBackend as Backend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as Backend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.interpolated_camera, BufferUsage::CONSTANT);
+          let _camera_constant_buffer: Arc<<P::GraphicsBackend as Backend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as Backend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.interpolated_camera, BufferUsage::CONSTANT);
           command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
           command_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
@@ -326,26 +326,26 @@ impl<P: Platform> RendererInternal<P> {
           guard.older_camera_fov = guard.old_camera_fov;
           guard.old_camera_fov = guard.camera_fov;
           break;
-        },
+        }
 
         RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => {
           guard.camera_transform = camera_transform_mat;
           guard.camera_fov = fov;
-        },
+        }
 
         RendererCommand::UpdateTransform { entity, transform_mat } => {
-          let mut element = guard.elements.iter_mut()
+          let element = guard.elements.iter_mut()
             .find(|r| r.entity == entity);
           // TODO optimize
 
           if let Some(element) = element {
             element.transform = transform_mat;
           }
-        },
+        }
 
         RendererCommand::Register(renderable) => {
           guard.elements.push(renderable);
-        },
+        }
 
         RendererCommand::UnregisterStatic(entity) => {
           let index = guard.elements.iter()
@@ -354,10 +354,6 @@ impl<P: Platform> RendererInternal<P> {
           if let Some(index) = index {
             guard.elements.remove(index);
           }
-        },
-
-        _ => {
-          println!("Unimplemented RenderCommand");
         }
       }
 
@@ -371,7 +367,7 @@ impl<P: Platform> RendererInternal<P> {
     }
   }
 
-  fn interpolate_drawables(&mut self, swapchain_width: u32, swapchain_height: u32) {
+  fn interpolate_drawables(&mut self, _swapchain_width: u32, _swapchain_height: u32) {
     let mut guard = self.view.lock().unwrap();
 
     let now = SystemTime::now();
@@ -441,9 +437,9 @@ impl<P: Platform> RendererInternal<P> {
       }
 
       let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
-      std::mem::replace(&mut self.swapchain, new_swapchain);
-      std::mem::replace(&mut self.graph, new_graph);
-      self.graph.render();
+      self.swapchain = new_swapchain;
+      self.graph = new_graph;
+      let _ = self.graph.render();
     }
   }
 }

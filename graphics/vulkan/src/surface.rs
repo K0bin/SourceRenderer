@@ -3,10 +3,9 @@ use sourcerenderer_core::graphics::Surface;
 use ash::vk;
 use ash::extensions::khr::Surface as SurfaceLoader;
 
-use crate::VkBackend;
 use crate::raw::*;
 use std::sync::Arc;
-use std::cmp::{min, max};
+
 use ash::prelude::VkResult;
 
 pub struct VkSurface {

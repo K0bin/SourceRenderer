@@ -1,18 +1,18 @@
 use std::ffi::{CStr, CString};
-use std::cmp::Ordering;
+
 use std::sync::Arc;
 
 use ash::vk;
-use ash::extensions::khr;
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+
+use ash::version::{EntryV1_0, InstanceV1_0};
 
 use sourcerenderer_core::graphics::Instance;
-use sourcerenderer_core::graphics::Adapter;
+
 use crate::VkAdapter;
 use crate::VkBackend;
 use raw::RawVkInstance;
-use std::mem::ManuallyDrop;
-use std::os::raw::{c_char, c_void};
+
+use std::os::raw::{c_void};
 
 pub struct VkInstance {
   raw: Arc<RawVkInstance>,
@@ -93,14 +93,12 @@ impl VkInstance {
   }
 
   unsafe extern "system" fn debug_callback(
-                    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-                    message_types: vk::DebugUtilsMessageTypeFlagsEXT,
+                    _message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+                    _message_types: vk::DebugUtilsMessageTypeFlagsEXT,
                     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-                    p_user_data: *mut c_void,
+                    _p_user_data: *mut c_void,
                     ) -> vk::Bool32 {
-    let callback_data_opt = unsafe {
-       p_callback_data.as_ref()
-    };
+    let callback_data_opt = p_callback_data.as_ref();
     if callback_data_opt.is_none() {
       return vk::FALSE;
     }

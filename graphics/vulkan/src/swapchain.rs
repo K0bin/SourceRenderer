@@ -1,28 +1,20 @@
 use std::sync::Arc;
+use std::cmp::{min, max};
 
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
-use ash::Device;
-use crate::ash::version::DeviceV1_0;
 
 use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError};
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
 
-use crate::VkInstance;
 use crate::VkSurface;
-use crate::VkDevice;
 use crate::raw::{RawVkInstance, RawVkDevice};
-use crate::VkAdapter;
 use crate::VkTexture;
 use crate::VkSemaphore;
-use crate::VkBackend;
-use crate::VkQueue;
-use std::cmp::{min, max};
 use texture::VkTextureView;
-use vk_mem::ffi::VkResult_VK_ERROR_OUT_OF_DATE_KHR;
+
 use ash::prelude::VkResult;
-use swapchain::VkSwapchainAcquireResult::Success;
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
@@ -44,18 +36,18 @@ impl VkSwapchain {
       let physical_device = device.physical_device;
       let present_modes = match surface.get_present_modes(&physical_device) {
         Ok(present_modes) => present_modes,
-        Err(e) => return Err(SwapchainError::SurfaceLost)
+        Err(_e) => return Err(SwapchainError::SurfaceLost)
       };
       let present_mode = VkSwapchain::pick_present_mode(present_modes);
       let swapchain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
       let capabilities = match surface.get_capabilities(&physical_device) {
         Ok(capabilities) => capabilities,
-        Err(e) => return Err(SwapchainError::SurfaceLost)
+        Err(_e) => return Err(SwapchainError::SurfaceLost)
       };
       let formats = match surface.get_formats(&physical_device) {
         Ok(format) => format,
-        Err(e) => return Err(SwapchainError::SurfaceLost)
+        Err(_e) => return Err(SwapchainError::SurfaceLost)
       };
       let format = VkSwapchain::pick_format(&formats);
 

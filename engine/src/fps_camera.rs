@@ -2,15 +2,15 @@ use std::sync::Arc;
 use sourcerenderer_core::platform::{Input, Key};
 use crate::Transform;
 use crate::Camera;
-use sourcerenderer_core::{Quaternion, Vec3, Platform, Vec2I};
+use sourcerenderer_core::{Quaternion, Vec3, Platform};
 use nalgebra::Unit;
 use legion::systems::Builder;
-use legion::{component, World, Entity, IntoQuery};
-use crate::transform::GlobalTransform;
+use legion::{component, World};
+
 use crate::scene::DeltaTime;
 use crate::renderer::PrimaryCamera;
 
-pub fn install<P: Platform>(world: &mut World, systems: &mut Builder) {
+pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
   systems.add_system(fps_camera_movement_system::<P>());
 }
 

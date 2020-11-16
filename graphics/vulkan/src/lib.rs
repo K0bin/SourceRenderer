@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 extern crate sourcerenderer_core;
 
 #[macro_use]
@@ -31,8 +33,6 @@ pub use self::backend::VkBackend;
 pub(crate) use self::shared::VkShared;
 pub(crate) use self::lifetime_tracker::VkLifetimeTrackers;
 pub(crate) use self::thread_manager::VkThreadManager;
-pub(crate) use self::thread_manager::VkFrameLocal;
-pub(crate) use self::thread_manager::VkThreadLocal;
 pub(crate) use self::sync::VkFenceInner;
 
 mod raw;
