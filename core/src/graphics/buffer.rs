@@ -1,4 +1,3 @@
-use crate::graphics::Backend;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 

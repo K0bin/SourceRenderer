@@ -1,14 +1,8 @@
 use std::sync::Arc;
-use std::rc::Rc;
 
-use crate::graphics::{Surface, TextureInfo, TextureShaderResourceViewInfo};
-use crate::graphics::Buffer;
-use crate::graphics::BufferUsage;
-use crate::graphics::GraphicsPipelineInfo;
-use crate::graphics::Shader;
-use crate::graphics::ShaderType;
-use crate::graphics::Texture;
-use crate::graphics::Backend;
+use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo,
+  BufferUsage, GraphicsPipelineInfo, ShaderType,
+  Backend};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {

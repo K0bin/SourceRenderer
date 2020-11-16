@@ -1,9 +1,5 @@
-use std::sync::Arc;
-
 use crate::graphics::Format;
 use crate::graphics::SampleCount;
-
-use crate::graphics::Backend;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum LoadOp {

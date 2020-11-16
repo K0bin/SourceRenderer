@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use crate::graphics::{Texture, SampleCount, Format};
-
-use crate::graphics::Backend;
+use crate::graphics::{SampleCount, Format};
 
 pub trait Surface {
 

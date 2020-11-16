@@ -1,11 +1,8 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::Arc;
-use std::cmp::Eq;
 use std::ops::Fn;
 
-use crate::graphics::{ Backend, VertexLayoutInfo, RasterizerInfo, DepthStencilInfo, BlendInfo, Format, SampleCount };
-use crate::job::JobScheduler;
+use crate::graphics::Backend;
 use crate::graphics::command::InnerCommandBufferProvider;
 
 pub type RegularRenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer, &dyn RenderGraphResources<B>)) + Send + Sync;

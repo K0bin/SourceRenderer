@@ -1,25 +1,15 @@
-use std::sync::{Arc, Mutex};
-
-use ash::vk;
+use std::{fmt::Formatter, sync::{Arc, Mutex}};
+use std::cmp::max;
+use std::hash::{Hash, Hasher};
+use std::collections::{VecDeque, BTreeMap};
+use std::fmt::Debug;
 
 use sourcerenderer_core::graphics::{Buffer, BufferUsage, MemoryUsage, MappedBuffer, MutMappedBuffer};
 
-use crate::VkDevice;
+use ash::{version::InstanceV1_1, vk};
+
 use crate::raw::*;
-use crate::VkBackend;
 use crate::device::memory_usage_to_vma;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use sourcerenderer_core::pool::Recyclable;
-use std::process::exit;
-use std::collections::{HashMap, VecDeque, BTreeMap};
-use ash::vk::BufferUsageFlags;
-use std::fmt::{Debug, Display};
-use bitflags::_core::fmt::Formatter;
-use ash::version::{InstanceV1_0, InstanceV1_1};
-use std::cmp::max;
-use bitflags::_core::mem::ManuallyDrop;
-use std::hash::{Hash, Hasher};
 
 pub struct VkBuffer {
   buffer: vk::Buffer,
@@ -103,9 +93,7 @@ impl VkBuffer {
 
 impl Drop for VkBuffer {
   fn drop(&mut self) {
-    unsafe {
-      self.device.allocator.destroy_buffer(self.buffer, &self.allocation).unwrap();
-    }
+    self.device.allocator.destroy_buffer(self.buffer, &self.allocation).unwrap();
   }
 }
 

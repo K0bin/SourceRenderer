@@ -1,15 +1,10 @@
-use std::rc::Rc;
 use std::sync::Arc;
-use std::cell::RefCell;
-use std::sync::Mutex;
 
 use crate::Vec2;
 use crate::Vec2I;
 use crate::Vec2UI;
 
-use crate::graphics::RenderpassRecordingMode;
-use crate::graphics::{Backend, GraphicsPipelineInfo, BufferUsage};
-use crate::pool::Recyclable;
+use crate::graphics::{Backend, BufferUsage};
 
 pub struct Viewport {
   pub position: Vec2,
