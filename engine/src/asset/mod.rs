@@ -1,4 +1,3 @@
-mod package;
 mod loaders;
 mod asset_manager;
 

@@ -27,7 +27,8 @@ pub enum AssetType {
   Material,
   Sound,
   Level,
-  Chunk
+  Chunk,
+  Container
 }
 
 #[derive(Clone)]
@@ -59,13 +60,13 @@ pub enum Asset<P: Platform> {
   Mesh(Mesh<P>),
   Model(Model),
   Sound,
-  Material(Material)
+  Material(Material),
+  Container(Box<dyn AssetLoader<P> + Send + Sync>)
 }
 
 pub struct AssetManager<P: Platform> {
   graphics: RwLock<AssetManagerGraphics<P>>,
   load_queue: Mutex<VecDeque<AssetLoadRequest>>,
-  loader_factories: RwLock<Vec<Box<dyn AssetLoaderFactory<P> + Send + Sync>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P> + Send + Sync>>>,
   asset_key_counter: AtomicUsize
 }
@@ -82,7 +83,6 @@ impl<P: Platform> AssetManager<P> {
       }),
       load_queue: Mutex::new(VecDeque::new()),
       loaders: RwLock::new(Vec::new()),
-      loader_factories: RwLock::new(Vec::new()),
       asset_key_counter: AtomicUsize::new(0)
     });
 
@@ -286,21 +286,24 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       let mgr = mgr_opt.unwrap();
       {
         let mut loaders = mgr.loaders.read().unwrap();
-        let mut loader_opt = loaders.iter().find(|l| l.matches_path(&request.path, request.asset_type));
+        let mut loader_opt = loaders.iter().find(|l| l.matches(&request.path, request.asset_type));
 
         if loader_opt.is_none() {
           // drop so we can lock again for writing
           std::mem::drop(loader_opt);
           std::mem::drop(loaders);
 
-          let factories = mgr.loader_factories.read().unwrap();
-          let factory = factories.iter().find(|f| f.matches_path(&request.path, request.asset_type))
-            .expect(&format!("Could not find loader or factory for path: {}", &request.path));
-          let new_loader = factory.new_loader(&request.path, request.asset_type)
-            .expect(&format!("Failed to create loader for path: {}", &request.path));
           {
-            let mut loaders_write = mgr.loaders.write().unwrap();
-            loaders_write.push(new_loader);
+            let mut loaders_mut = mgr.loaders.write().unwrap();
+            let container_loader = loaders_mut.iter().find(|f| (*f).matches(&request.path, AssetType::Container))
+              .expect(&format!("Could not find loader or container for path: {}", &request.path));
+            let new_loader_asset = container_loader.load(&request.path, AssetType::Container)
+              .expect(&format!("Failed to create loader for path: {}", &request.path));
+            let new_loader = match new_loader_asset {
+              Asset::Container(loader) => loader,
+              _ => panic!("Failed to create loader for path: {}, created wrong asset type", &request.path)
+            };
+            loaders_mut.push(new_loader);
           }
           loaders = mgr.loaders.read().unwrap();
           loader_opt = loaders.last();
@@ -312,7 +315,11 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
         match asset {
           Asset::Texture(view) => {
             let mut graphics = mgr.graphics.write().unwrap();
-            graphics.textures.insert(request.key, view.clone());
+            graphics.textures.insert(request.key, view);
+          },
+          Asset::Model(model) => {
+            let mut graphics = mgr.graphics.write().unwrap();
+            graphics.models.insert(request.key, model);
           },
           _ => {
             panic!("");
@@ -325,12 +332,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
   }
 }
 
-pub trait AssetLoaderFactory<P: Platform> {
-  fn matches_path(&self, path: &str, asset_type: AssetType) -> bool;
-  fn new_loader(&self, path: &str, asset_type: AssetType) -> Option<Box<dyn AssetLoader<P> + Send + Sync>>;
-}
-
 pub trait AssetLoader<P: Platform> {
-  fn matches_path(&self, path: &str, asset_type: AssetType) -> bool;
+  fn matches(&self, path: &str, asset_type: AssetType) -> bool;
   fn load(&self, path: &str, asset_type: AssetType) -> Option<Asset<P>>;
 }
