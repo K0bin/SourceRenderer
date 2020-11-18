@@ -60,6 +60,30 @@ pub enum ComputeOutput {
   }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ExternalProducerType {
+  Graphics,
+  Compute,
+  Copy,
+  Host
+}
+
+#[derive(Clone)]
+pub enum ExternalOutput {
+  RenderTarget {
+    name: String,
+    producer_type: ExternalProducerType
+  },
+  DepthStencil {
+    name: String,
+    producer_type: ExternalProducerType
+  },
+  Buffer {
+    name: String,
+    producer_type: ExternalProducerType
+  }
+}
+
 #[derive(Clone)]
 pub enum RenderPassTextureExtent {
   Absolute {
@@ -122,6 +146,7 @@ pub enum LoadAction {
 #[derive(Clone)]
 pub struct RenderGraphTemplateInfo {
   pub passes: Vec<PassInfo>,
+  pub external_resources: Vec<ExternalOutput>,
   pub swapchain_format: Format,
   pub swapchain_sample_count: SampleCount
 }

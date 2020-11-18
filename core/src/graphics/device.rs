@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo,
-  BufferUsage, GraphicsPipelineInfo, ShaderType,
-  Backend};
+use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend, ExternalResource};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
@@ -40,7 +39,11 @@ pub trait Device<B: Backend> {
   fn wait_for_idle(&self);
 
   fn create_render_graph_template(&self, info: &crate::graphics::RenderGraphTemplateInfo) -> Arc<B::RenderGraphTemplate>;
-  fn create_render_graph(&self, template: &Arc<B::RenderGraphTemplate>, info: &crate::graphics::graph::RenderGraphInfo<B>, swapchain: &Arc<B::Swapchain>) -> B::RenderGraph;
+  fn create_render_graph(&self,
+                         template: &Arc<B::RenderGraphTemplate>,
+                         info: &crate::graphics::graph::RenderGraphInfo<B>,
+                         swapchain: &Arc<B::Swapchain>,
+                         external_resources: Option<&HashMap<String, ExternalResource<B>>>) -> B::RenderGraph;
   fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32) -> Arc<B::Fence>;
   fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>) -> Arc<B::Fence>;
   fn flush_transfers(&self);

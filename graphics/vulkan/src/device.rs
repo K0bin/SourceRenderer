@@ -22,6 +22,7 @@ use std::cmp::min;
 use texture::VkTextureView;
 use transfer::VkTransfer;
 use graph_template::{VkRenderGraphTemplate, VkPassType};
+use std::collections::HashMap;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,
@@ -193,8 +194,12 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkRenderGraphTemplate::new(&self.device, graph_info))
   }
 
-  fn create_render_graph(&self, template: &Arc<<VkBackend as Backend>::RenderGraphTemplate>, info: &RenderGraphInfo<VkBackend>, swapchain: &Arc<<VkBackend as Backend>::Swapchain>) -> <VkBackend as Backend>::RenderGraph {
-    VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, template, info, swapchain)
+  fn create_render_graph(&self,
+                         template: &Arc<<VkBackend as Backend>::RenderGraphTemplate>,
+                         info: &RenderGraphInfo<VkBackend>,
+                         swapchain: &Arc<<VkBackend as Backend>::Swapchain>,
+                         external_resources: Option<&HashMap<String, ExternalResource<VkBackend>>>) -> <VkBackend as Backend>::RenderGraph {
+    VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, template, info, swapchain, external_resources)
   }
 
   fn init_texture(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {

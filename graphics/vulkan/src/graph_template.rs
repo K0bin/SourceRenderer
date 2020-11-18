@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{ComputeOutput, RenderPassTextureExtent};
+use sourcerenderer_core::graphics::{ComputeOutput, RenderPassTextureExtent, ExternalOutput, ExternalProducerType};
 use std::collections::{HashMap, VecDeque};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -57,7 +57,8 @@ pub enum VkBarrierTemplate {
 pub enum VkPassType {
   Graphics {
     render_pass: Arc<VkRenderPass>,
-    attachments: Vec<String>
+    attachments: Vec<String>,
+    barriers: Vec<VkBarrierTemplate>
   },
   Compute {
     barriers: Vec<VkBarrierTemplate>
@@ -86,7 +87,11 @@ pub enum VkResourceTemplate {
     format: Option<Format>,
     size: u32,
     clear: bool
-  }
+  },
+  ExternalBuffer,
+  ExternalTexture {
+    is_depth_stencil: bool
+  },
 }
 
 #[derive(Clone)]
@@ -94,7 +99,7 @@ pub struct ResourceMetadata {
   pub(super) template: VkResourceTemplate,
   pub(super) last_used_in_pass_index: u32,
   pub(super) produced_in_pass_index: u32,
-  pub(super) producer_pass_type: AttachmentPassType,
+  pub(super) producer_pass_type: VkResourceProducerPassType,
   pub(super) layout: vk::ImageLayout
 }
 
@@ -104,7 +109,7 @@ impl ResourceMetadata {
       template,
       last_used_in_pass_index: 0,
       produced_in_pass_index: 0,
-      producer_pass_type: AttachmentPassType::Graphics,
+      producer_pass_type: VkResourceProducerPassType::Graphics,
       layout: vk::ImageLayout::UNDEFINED
     }
   }
@@ -129,8 +134,8 @@ impl Default for SubpassAttachmentMetadata {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub enum AttachmentPassType {
-  External,
+pub enum VkResourceProducerPassType {
+  Host,
   Graphics,
   Compute,
   Copy
@@ -147,25 +152,9 @@ impl VkRenderGraphTemplate {
     // TODO: (async) compute
 
     let mut attachment_metadata = HashMap::<String, ResourceMetadata>::new();
-
-    /*for external in &info.external_resources {
-      match external {
-        PassOutput::Buffer(buffer) => {
-          attachment_metadata.insert(buffer.name.clone(), AttachmentMetadata {
-            output: external.clone(),
-            last_used_in_pass_index: 0,
-            produced_in_pass_index: 0,
-            producer_pass_type: AttachmentProducerPassType::External,
-            layout: vk::ImageLayout::UNDEFINED
-          });
-
-        }
-      }
-    }*/
-
     let mut passes: Vec<VkPassTemplate> = Vec::new();
     let mut pass_infos = info.passes.clone();
-    let reordered_passes = VkRenderGraphTemplate::reorder_passes(&mut pass_infos, &mut attachment_metadata, info.swapchain_format, info.swapchain_sample_count);
+    let reordered_passes = VkRenderGraphTemplate::reorder_passes(&mut pass_infos, &mut attachment_metadata, &info.external_resources, info.swapchain_format, info.swapchain_sample_count);
 
     let mut reordered_passes_queue: VecDeque<PassInfo> = VecDeque::from_iter(reordered_passes);
     let mut pass_index: u32 = 0;
@@ -217,10 +206,79 @@ impl VkRenderGraphTemplate {
 
   fn reorder_passes(passes: &Vec<PassInfo>,
                     metadata: &mut HashMap<String, ResourceMetadata>,
+                    external_resources: &Vec<ExternalOutput>,
                     swapchain_format: Format,
                     swapchain_samples: SampleCount) -> Vec<PassInfo> {
     let mut passes_mut = passes.clone();
     let mut reordered_passes = vec![];
+
+    for external in external_resources {
+      match external {
+        ExternalOutput::Buffer {
+          name, producer_type
+        } => {
+          metadata.insert(name.clone(), ResourceMetadata {
+            template: VkResourceTemplate::ExternalBuffer,
+            last_used_in_pass_index: 0,
+            produced_in_pass_index: 0,
+            producer_pass_type: match producer_type {
+              ExternalProducerType::Graphics => VkResourceProducerPassType::Graphics,
+              ExternalProducerType::Compute => VkResourceProducerPassType::Compute,
+              ExternalProducerType::Copy => VkResourceProducerPassType::Copy,
+              ExternalProducerType::Host => VkResourceProducerPassType::Host
+            },
+            layout: match producer_type {
+              ExternalProducerType::Graphics => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+              ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
+              ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+              ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
+            }
+          });
+        }
+        ExternalOutput::RenderTarget {
+          name, producer_type
+        } => {
+          metadata.insert(name.clone(), ResourceMetadata {
+            template: VkResourceTemplate::ExternalTexture { is_depth_stencil: false },
+            last_used_in_pass_index: 0,
+            produced_in_pass_index: 0,
+            producer_pass_type: match producer_type {
+              ExternalProducerType::Graphics => VkResourceProducerPassType::Graphics,
+              ExternalProducerType::Compute => VkResourceProducerPassType::Compute,
+              ExternalProducerType::Copy => VkResourceProducerPassType::Copy,
+              ExternalProducerType::Host => VkResourceProducerPassType::Host
+            },
+            layout: match producer_type {
+              ExternalProducerType::Graphics => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+              ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
+              ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+              ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
+            }
+          });
+        }
+        ExternalOutput::DepthStencil {
+          name, producer_type
+        } => {
+          metadata.insert(name.clone(), ResourceMetadata {
+            template: VkResourceTemplate::ExternalTexture { is_depth_stencil: true },
+            last_used_in_pass_index: 0,
+            produced_in_pass_index: 0,
+            producer_pass_type: match producer_type {
+              ExternalProducerType::Graphics => VkResourceProducerPassType::Graphics,
+              ExternalProducerType::Compute => VkResourceProducerPassType::Compute,
+              ExternalProducerType::Copy => VkResourceProducerPassType::Copy,
+              ExternalProducerType::Host => VkResourceProducerPassType::Host
+            },
+            layout: match producer_type {
+              ExternalProducerType::Graphics => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+              ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
+              ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+              ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
+            }
+          });
+        }
+      }
+    }
 
     while !passes_mut.is_empty() {
       let pass = VkRenderGraphTemplate::find_next_suitable_pass(&mut passes_mut, &metadata);
@@ -330,7 +388,7 @@ impl VkRenderGraphTemplate {
                     is_backbuffer: false
                   }));
                   metadata_entry.produced_in_pass_index = reordered_passes.len() as u32;
-                  metadata_entry.producer_pass_type = AttachmentPassType::Compute;
+                  metadata_entry.producer_pass_type = VkResourceProducerPassType::Compute;
               },
               ComputeOutput::Backbuffer {
                 clear
@@ -352,7 +410,7 @@ impl VkRenderGraphTemplate {
                     is_backbuffer: true
                   }));
                 metadata_entry.produced_in_pass_index = reordered_passes.len() as u32;
-                metadata_entry.producer_pass_type = AttachmentPassType::Compute;
+                metadata_entry.producer_pass_type = VkResourceProducerPassType::Compute;
               },
               ComputeOutput::Buffer {
                 name, format, size, clear
@@ -366,7 +424,7 @@ impl VkRenderGraphTemplate {
                     clear: *clear
                   }));
                   metadata_entry.produced_in_pass_index = reordered_passes.len() as u32;
-                  metadata_entry.producer_pass_type = AttachmentPassType::Compute;
+                  metadata_entry.producer_pass_type = VkResourceProducerPassType::Compute;
               }
               _ => {}
             }
@@ -394,6 +452,7 @@ impl VkRenderGraphTemplate {
     let mut vk_render_pass_attachments: Vec<vk::AttachmentDescription> = Vec::new();
     let mut subpass_attachment_metadata: HashMap<&str, SubpassAttachmentMetadata> = HashMap::new();
     let mut pass_renders_to_backbuffer = false;
+    let mut barriers = Vec::<VkBarrierTemplate>::new();
 
     // Prepare attachments
     for (subpass_index, pass) in passes.iter().enumerate() {
@@ -440,12 +499,10 @@ impl VkRenderGraphTemplate {
                 stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
                 stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
                 initial_layout: metadata.layout,
-                final_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                final_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL, // will be filled in later
                 ..Default::default()
               }
             );
-
-            metadata.layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
           }
         }
       }
@@ -469,11 +526,10 @@ impl VkRenderGraphTemplate {
             stencil_load_op: load_action_to_vk(depth_stencil.stencil_load_action),
             stencil_store_op: store_action_to_vk(depth_stencil.stencil_store_action),
             initial_layout: metadata.layout,
-            final_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            final_layout: vk::ImageLayout::UNDEFINED, // will be filled in later
             ..Default::default()
           }
         );
-        metadata.layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
       }
 
       for input in &pass.inputs {
@@ -482,6 +538,21 @@ impl VkRenderGraphTemplate {
         if subpass_index as u32 > metadata.last_used_in_subpass_index {
           metadata.last_used_in_subpass_index = subpass_index as u32;
         }
+      }
+      // TODO: transition non attachment images
+    }
+
+    let mut use_subpass_dependencies = true;
+    for pass in passes.iter() {
+      for input in &pass.inputs {
+        let metadata = attachment_metadata.get(&input.name).unwrap();
+        let is_buffer = match metadata.template {
+          VkResourceTemplate::Buffer { .. } => true,
+          VkResourceTemplate::ExternalBuffer { .. } => true,
+          _ => false
+        };
+        let subpass_metadata = subpass_attachment_metadata.get(input.name.as_str()).unwrap();
+        use_subpass_dependencies &= is_buffer || subpass_metadata.last_used_in_subpass_index != vk::SUBPASS_EXTERNAL;
       }
     }
 
@@ -493,28 +564,127 @@ impl VkRenderGraphTemplate {
       let inputs_start = attachment_refs.len() as isize;
       let mut inputs_len = 0;
       for input in &pass.inputs {
-        let metadata = attachment_metadata.get(input.name.as_str()).unwrap();
+        let metadata = attachment_metadata.get_mut(input.name.as_str()).unwrap();
         let subpass_metadata = &subpass_attachment_metadata[input.name.as_str()];
 
-        dependencies.push(vk::SubpassDependency {
-          src_subpass: subpass_metadata.produced_in_subpass_index,
-          dst_subpass: subpass_index as u32,
-          src_stage_mask: match metadata.producer_pass_type {
-            AttachmentPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
-            AttachmentPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
-            AttachmentPassType::Copy => vk::PipelineStageFlags::TRANSFER,
-            AttachmentPassType::External => unimplemented!()
-          },
-          dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
-          src_access_mask: match metadata.producer_pass_type {
-            AttachmentPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            AttachmentPassType::Compute => vk::AccessFlags::SHADER_WRITE,
-            AttachmentPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
-            AttachmentPassType::External => unimplemented!()
-          },
-          dst_access_mask: if input.is_local { vk::AccessFlags::COLOR_ATTACHMENT_READ } else { vk::AccessFlags::SHADER_READ },
-          dependency_flags: if input.is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
-        });
+        if subpass_metadata.produced_in_subpass_index != vk::SUBPASS_EXTERNAL || use_subpass_dependencies {
+          dependencies.push(vk::SubpassDependency {
+            src_subpass: subpass_metadata.produced_in_subpass_index,
+            dst_subpass: subpass_index as u32,
+            src_stage_mask: match metadata.producer_pass_type {
+              VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+              VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+              VkResourceProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
+              VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST
+            },
+            dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
+            src_access_mask: match metadata.producer_pass_type {
+              VkResourceProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+              VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+              VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+              VkResourceProducerPassType::Host => vk::AccessFlags::HOST_WRITE
+            },
+            dst_access_mask: if input.is_local { vk::AccessFlags::COLOR_ATTACHMENT_READ } else { vk::AccessFlags::SHADER_READ },
+            dependency_flags: if input.is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
+          });
+        } else {
+          barriers.push(match &metadata.template {
+            VkResourceTemplate::Texture { format, is_backbuffer, .. } => {
+              if *is_backbuffer {
+                panic!("Using the backbuffer as a pass input is not allowed.");
+              }
+              let is_depth_stencil = format.is_depth() || format.is_stencil();
+              let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+              VkBarrierTemplate::Image {
+                name: input.name.clone(),
+                old_layout,
+                new_layout: metadata.layout,
+                src_access_mask: if is_depth_stencil {
+                  vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+                } else {
+                  match metadata.producer_pass_type {
+                    VkResourceProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+                    VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+                    _ => unimplemented!()
+                  }
+                },
+                dst_access_mask: vk::AccessFlags::SHADER_READ,
+                src_stage: match metadata.producer_pass_type {
+                  VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+                  VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+                  VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+                  VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
+                },
+                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_queue_family_index: 0,
+                dst_queue_family_index: 0
+              }
+            },
+            VkResourceTemplate::Buffer { .. } => {
+              VkBarrierTemplate::Buffer {
+                name: input.name.clone(),
+                src_access_mask: vk::AccessFlags::SHADER_WRITE,
+                dst_access_mask: vk::AccessFlags::SHADER_READ,
+                src_stage: match metadata.producer_pass_type {
+                  VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+                  VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+                  VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+                  VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
+                  _ => unimplemented!()
+                },
+                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_queue_family_index: 0,
+                dst_queue_family_index: 0
+              }
+            }
+            VkResourceTemplate::ExternalBuffer => {
+              VkBarrierTemplate::Buffer {
+                name: input.name.clone(),
+                src_access_mask: vk::AccessFlags::SHADER_WRITE,
+                dst_access_mask: vk::AccessFlags::SHADER_READ,
+                src_stage: match metadata.producer_pass_type {
+                  VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+                  VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+                  VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+                  VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
+                  _ => unimplemented!()
+                },
+                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_queue_family_index: 0,
+                dst_queue_family_index: 0
+              }
+            }
+            VkResourceTemplate::ExternalTexture { is_depth_stencil } => {
+              let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+              VkBarrierTemplate::Image {
+                name: input.name.clone(),
+                old_layout,
+                new_layout: metadata.layout,
+                src_access_mask: if *is_depth_stencil {
+                  vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+                } else {
+                  match metadata.producer_pass_type {
+                    VkResourceProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+                    VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+                    _ => unimplemented!()
+                  }
+                },
+                dst_access_mask: vk::AccessFlags::SHADER_READ,
+                src_stage: match metadata.producer_pass_type {
+                  VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+                  VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+                  VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+                  VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
+                },
+                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                src_queue_family_index: 0,
+                dst_queue_family_index: 0
+              }
+            }
+          });
+        }
 
         match &metadata.template {
           VkResourceTemplate::Texture { .. } => {}
@@ -541,9 +711,9 @@ impl VkRenderGraphTemplate {
           SubpassOutput::Backbuffer {
             ..
           } => {
-            let metadata = &subpass_attachment_metadata[BACK_BUFFER_ATTACHMENT_NAME];
+            let subpass_metadata = &subpass_attachment_metadata[BACK_BUFFER_ATTACHMENT_NAME];
             attachment_refs.push(vk::AttachmentReference {
-              attachment: metadata.render_pass_attachment_index,
+              attachment: subpass_metadata.render_pass_attachment_index,
               layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
             });
           }
@@ -557,18 +727,19 @@ impl VkRenderGraphTemplate {
           attachment: metadata.render_pass_attachment_index,
           layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
         });
+        vk_render_pass_attachments[metadata.render_pass_attachment_index as usize].final_layout = vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         index as isize
       });
 
-      for (name, _) in attachment_metadata.iter() {
+      for (name, subpass_metadata) in subpass_attachment_metadata.iter() {
         let mut is_used = false;
         for input in &pass.inputs {
           is_used |= input.name.as_str() == *name;
         }
 
-        let metadata = attachment_metadata.get(name).unwrap();
-        let subpass_metadata = subpass_attachment_metadata.get(name.as_str()).unwrap();
-        if !is_used && (metadata.last_used_in_pass_index > pass_index || subpass_metadata.last_used_in_subpass_index > subpass_index as u32) {
+        let metadata = attachment_metadata.get(*name).unwrap();
+        if !is_used && subpass_metadata.produced_in_subpass_index < subpass_index as u32
+          && (metadata.last_used_in_pass_index > pass_index || subpass_metadata.last_used_in_subpass_index > subpass_index as u32) {
           preserve_attachments.push(subpass_metadata.render_pass_attachment_index);
         }
       }
@@ -614,7 +785,8 @@ impl VkRenderGraphTemplate {
       name: name.to_owned(),
       pass_type: VkPassType::Graphics {
         render_pass,
-        attachments: used_attachments
+        attachments: used_attachments,
+        barriers
       }
     }
   }
@@ -642,33 +814,34 @@ impl VkRenderGraphTemplate {
     }
 
     let barriers = inputs.iter().map(|input|{
-      let metadata = attachment_metadata.get(&input.name).unwrap();
+      let metadata = attachment_metadata.get_mut(&input.name).unwrap();
       match &metadata.template {
         VkResourceTemplate::Texture { format, is_backbuffer, .. } => {
           if *is_backbuffer {
             panic!("Using the backbuffer as a pass input is not allowed.");
           }
           let is_depth_stencil = format.is_depth() || format.is_stencil();
+          let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
           VkBarrierTemplate::Image {
             name: input.name.clone(),
-            old_layout: metadata.layout,
-            new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            src_access_mask: if is_depth_stencil {
-              vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
-            } else {
-                match metadata.producer_pass_type {
-                AttachmentPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                AttachmentPassType::Compute => vk::AccessFlags::SHADER_WRITE,
-                AttachmentPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
-                _ => unimplemented!()
-              }
+            old_layout,
+            new_layout: metadata.layout,
+            src_access_mask: match metadata.producer_pass_type {
+                VkResourceProducerPassType::Graphics => if !is_depth_stencil {
+                  vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                } else {
+                  vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+                },
+                VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+                VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+                VkResourceProducerPassType::Host => vk::AccessFlags::HOST_WRITE,
             },
             dst_access_mask: vk::AccessFlags::SHADER_READ,
             src_stage: match metadata.producer_pass_type {
-              AttachmentPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
-              AttachmentPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
-              AttachmentPassType::Copy => vk::PipelineStageFlags::empty(),
-              _ => unimplemented!()
+              VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+              VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+              VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+              VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
             },
             dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
             src_queue_family_index: 0,
@@ -678,13 +851,68 @@ impl VkRenderGraphTemplate {
         VkResourceTemplate::Buffer { .. } => {
           VkBarrierTemplate::Buffer {
             name: input.name.clone(),
-            src_access_mask: vk::AccessFlags::SHADER_WRITE,
+            src_access_mask: match metadata.producer_pass_type {
+              VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
+              VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+              VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+              VkResourceProducerPassType::Host => vk::AccessFlags::HOST_WRITE
+            },
             dst_access_mask: vk::AccessFlags::SHADER_READ,
             src_stage: match metadata.producer_pass_type {
-              AttachmentPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
-              AttachmentPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
-              AttachmentPassType::Copy => vk::PipelineStageFlags::empty(),
+              VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+              VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+              VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+              VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST
+            },
+            dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
+            src_queue_family_index: 0,
+            dst_queue_family_index: 0
+          }
+        }
+        VkResourceTemplate::ExternalBuffer => {
+          VkBarrierTemplate::Buffer {
+            name: input.name.clone(),
+            src_access_mask: match metadata.producer_pass_type {
+              VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
+              VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+              VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+              VkResourceProducerPassType::Host => vk::AccessFlags::HOST_WRITE
+            },
+            dst_access_mask: vk::AccessFlags::SHADER_READ,
+            src_stage: match metadata.producer_pass_type {
+              VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+              VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+              VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+              VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
               _ => unimplemented!()
+            },
+            dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
+            src_queue_family_index: 0,
+            dst_queue_family_index: 0
+          }
+        }
+        VkResourceTemplate::ExternalTexture { is_depth_stencil } => {
+          let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+          VkBarrierTemplate::Image {
+            name: input.name.clone(),
+            old_layout,
+            new_layout: metadata.layout,
+            src_access_mask: if *is_depth_stencil {
+              vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+            } else {
+              match metadata.producer_pass_type {
+                VkResourceProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+                VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
+                _ => unimplemented!()
+              }
+            },
+            dst_access_mask: vk::AccessFlags::SHADER_READ,
+            src_stage: match metadata.producer_pass_type {
+              VkResourceProducerPassType::Graphics => vk::PipelineStageFlags::ALL_GRAPHICS,
+              VkResourceProducerPassType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
+              VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
+              VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
             },
             dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
             src_queue_family_index: 0,

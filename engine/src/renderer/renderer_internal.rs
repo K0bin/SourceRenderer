@@ -5,7 +5,7 @@ use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput,  RenderPassCallbacks, PassInput, ComputeOutput};
+use sourcerenderer_core::graphics::{Backend, ShaderType, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, RenderPassCallbacks, PassInput, ComputeOutput, ExternalOutput, ExternalProducerType, ExternalResource};
 use std::path::Path;
 use std::collections::{HashMap};
 use std::fs::File;
@@ -42,6 +42,7 @@ impl<P: Platform> RendererInternal<P> {
 
     let renderables = Arc::new(Mutex::new(View::default()));
     let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables, &primary_camera);
+
     Self {
       renderer: renderer.clone(),
       device: device.clone(),
@@ -89,10 +90,10 @@ impl<P: Platform> RendererInternal<P> {
         name: "CameraCopy".to_string(),
         pass_type: PassType::Compute {
           inputs: vec![
-            /*PassInput {
-              name: "PrimaryCameras".to_string(),
+            PassInput {
+              name: "CameraRingBuffer".to_string(),
               is_local: false
-            }*/
+            }
           ],
           outputs: vec![
             ComputeOutput::Buffer {
@@ -136,7 +137,15 @@ impl<P: Platform> RendererInternal<P> {
       }
     ];
 
+    let external_resources = vec![
+      ExternalOutput::Buffer {
+        name: "CameraRingBuffer".to_string(),
+        producer_type: ExternalProducerType::Host
+      }
+    ];
+
     let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
+      external_resources,
       passes,
       swapchain_sample_count: swapchain.sample_count(),
       swapchain_format: swapchain.format()
@@ -287,9 +296,13 @@ impl<P: Platform> RendererInternal<P> {
         })
       ]
     ));
+
+    let mut external_resources = HashMap::<String, ExternalResource<P::GraphicsBackend>>::new();
+    external_resources.insert("CameraRingBuffer".to_string(), ExternalResource::Buffer(primary_camera.buffer().clone()));
+
     let graph = device.create_render_graph(&graph_template, &RenderGraphInfo {
       pass_callbacks: callbacks
-    }, swapchain);
+    }, swapchain, Some(&external_resources));
 
     graph
   }

@@ -8,7 +8,7 @@ use ash::vk;
 
 use thread_manager::VkThreadManager;
 
-use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount};
+use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource};
 use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
@@ -45,7 +45,7 @@ pub enum VkResource {
     format: Option<Format>,
     size: u32,
     clear: bool
-  }
+  },
 }
 
 pub struct VkRenderGraph {
@@ -59,49 +59,44 @@ pub struct VkRenderGraph {
   compute_queue: Option<Arc<VkQueue>>,
   transfer_queue: Option<Arc<VkQueue>>,
   renders_to_swapchain: bool,
-  info: RenderGraphInfo<VkBackend>
+  info: RenderGraphInfo<VkBackend>,
+  external_resources: Option<HashMap<String, ExternalResource<VkBackend>>>
 }
 
 pub struct VkRenderGraphResources<'a> {
   resources: &'a HashMap<String, VkResource>,
-  pass_resource_names: &'a HashSet<String>
+  pass_resource_names: &'a HashSet<String>,
 }
 
 impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
   fn get_buffer(&self, name: &str) -> Result<&Arc<VkBufferSlice>, RenderGraphResourceError> {
-    let resource_opt = self.resources.get(name);
-    if resource_opt.is_none() {
-      return Err(RenderGraphResourceError::NotFound);
+    let resource = self.resources.get(name);
+    if resource.is_none() {
+      return Err(RenderGraphResourceError::WrongResourceType);
     }
     if !self.pass_resource_names.contains(name) {
       return Err(RenderGraphResourceError::NotAllowed);
     }
-    let resource = resource_opt.unwrap();
-    match resource {
+    match resource.unwrap() {
       VkResource::Buffer {
         buffer, ..
-      } => {
-        Ok(buffer)
-      },
+      } => Ok(buffer),
       _ => Err(RenderGraphResourceError::WrongResourceType)
     }
   }
 
   fn get_texture(&self, name: &str) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
-    let resource_opt = self.resources.get(name);
-    if resource_opt.is_none() {
-      return Err(RenderGraphResourceError::NotFound);
+    let resource = self.resources.get(name);
+    if resource.is_none() {
+      return Err(RenderGraphResourceError::WrongResourceType);
     }
-    if self.pass_resource_names.contains(name) {
+    if !self.pass_resource_names.contains(name) {
       return Err(RenderGraphResourceError::NotAllowed);
     }
-    let resource = resource_opt.unwrap();
-    match resource {
+    match resource.unwrap() {
       VkResource::Texture {
         view, ..
-      } => {
-        Ok(view)
-      },
+      } => Ok(view),
       _ => Err(RenderGraphResourceError::WrongResourceType)
     }
   }
@@ -111,6 +106,10 @@ pub enum VkPass {
   Graphics {
     framebuffers: Vec<Arc<VkFrameBuffer>>,
     renderpass: Arc<VkRenderPass>,
+    src_stage: vk::PipelineStageFlags,
+    dst_stage: vk::PipelineStageFlags,
+    image_barriers: Vec<vk::ImageMemoryBarrier>,
+    buffer_barriers: Vec<vk::BufferMemoryBarrier>,
     renders_to_swapchain: bool,
     clear_values: Vec<vk::ClearValue>,
     callbacks: RenderPassCallbacks<VkBackend>,
@@ -138,10 +137,11 @@ impl VkRenderGraph {
              transfer_queue: &Option<Arc<VkQueue>>,
              template: &Arc<VkRenderGraphTemplate>,
              info: &RenderGraphInfo<VkBackend>,
-             swapchain: &Arc<VkSwapchain>) -> Self {
+             swapchain: &Arc<VkSwapchain>,
+             external_resources: Option<&HashMap<String, ExternalResource<VkBackend>>>) -> Self {
     let mut resources: HashMap<String, VkResource> = HashMap::new();
-    let attachment_infos = template.resources();
-    for (name, attachment_info) in attachment_infos {
+    let resource_metadata = template.resources();
+    for (_name, attachment_info) in resource_metadata {
       // TODO: aliasing
       match &attachment_info.template {
         // TODO: transient
@@ -221,6 +221,8 @@ impl VkRenderGraph {
             size: *size
           });
         }
+
+        _ => {}
       }
     }
 
@@ -230,7 +232,7 @@ impl VkRenderGraph {
     for pass in passes {
       match &pass.pass_type {
         VkPassType::Graphics {
-          render_pass, attachments
+          render_pass, attachments, barriers
         } => {
           let mut clear_values = Vec::<vk::ClearValue>::new();
 
@@ -315,10 +317,116 @@ impl VkRenderGraph {
             framebuffers.push(framebuffer);
           }
 
+          let mut src_stage = vk::PipelineStageFlags::empty();
+          let mut dst_stage = vk::PipelineStageFlags::empty();
+          let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
+          let mut buffer_barriers = Vec::<vk::BufferMemoryBarrier>::new();
+          for barrier_template in barriers {
+            match barrier_template {
+              VkBarrierTemplate::Image {
+                name, old_layout, new_layout, src_access_mask, dst_access_mask, src_stage: image_src_stage, dst_stage: image_dst_stage, src_queue_family_index, dst_queue_family_index } => {
+                src_stage |= *image_src_stage;
+                dst_stage |= *image_dst_stage;
+
+                let metadata = resource_metadata.get(name.as_str()).unwrap();
+                let is_external = match metadata.template {
+                  VkResourceTemplate::Texture { .. } => false,
+                  VkResourceTemplate::ExternalTexture { .. } => true,
+                  _ => panic!("Mismatched resource type")
+                };
+                let texture = if !is_external {
+                  let resource = resources.get(name.as_str()).unwrap();
+                  let resource_texture = match resource {
+                    VkResource::Texture { texture, .. } => texture,
+                    _ => unreachable!()
+                  };
+                  resource_texture
+                } else {
+                  let resource = external_resources
+                    .expect(format!("Can't find resource {}", name).as_str())
+                    .get(name.as_str()).unwrap();
+                  let resource_view = match resource {
+                    ExternalResource::Texture(view) => view,
+                    _ => unreachable!()
+                  };
+                  resource_view.texture()
+                };
+
+                image_barriers.push(vk::ImageMemoryBarrier {
+                  src_access_mask: *src_access_mask,
+                  dst_access_mask: *dst_access_mask,
+                  old_layout: *old_layout,
+                  new_layout: *new_layout,
+                  src_queue_family_index: *src_queue_family_index,
+                  dst_queue_family_index: *dst_queue_family_index,
+                  image: *texture.get_handle(),
+                  subresource_range: vk::ImageSubresourceRange {
+                    aspect_mask: if texture.get_info().format.is_depth() && texture.get_info().format.is_stencil() {
+                      vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+                    } else if texture.get_info().format.is_depth() {
+                      vk::ImageAspectFlags::DEPTH
+                    } else {
+                      vk::ImageAspectFlags::COLOR
+                    },
+                    base_mip_level: 0,
+                    level_count: texture.get_info().mip_levels,
+                    base_array_layer: 0,
+                    layer_count: texture.get_info().array_length
+                  },
+                  ..Default::default()
+                });
+              }
+              VkBarrierTemplate::Buffer {
+                name, src_access_mask, dst_access_mask, src_stage: buffer_src_stage, dst_stage: buffer_dst_stage, src_queue_family_index, dst_queue_family_index } => {
+                src_stage |= *buffer_src_stage;
+                dst_stage |= *buffer_dst_stage;
+
+                let metadata = resource_metadata.get(name.as_str()).unwrap();
+                let is_external = match metadata.template {
+                  VkResourceTemplate::Buffer { .. } => false,
+                  VkResourceTemplate::ExternalBuffer { .. } => true,
+                  _ => panic!("Mismatched resource type")
+                };
+                let buffer = if !is_external {
+                  let resource = resources.get(name.as_str()).unwrap();
+                  let resource_buffer = match resource {
+                    VkResource::Buffer { buffer, .. } => buffer,
+                    _ => unreachable!()
+                  };
+                  resource_buffer
+                } else {
+                  let resource = external_resources
+                    .expect(format!("Can't find resource {}", name).as_str())
+                    .get(name.as_str()).unwrap();
+                  let resource_buffer = match resource {
+                    ExternalResource::Buffer(buffer) => buffer,
+                    _ => unreachable!()
+                  };
+                  resource_buffer
+                };
+                let (offset, length) = buffer.get_offset_and_length();
+                buffer_barriers.push(vk::BufferMemoryBarrier {
+                  src_access_mask: *src_access_mask,
+                  dst_access_mask: *dst_access_mask,
+                  src_queue_family_index: *src_queue_family_index,
+                  dst_queue_family_index: *dst_queue_family_index,
+                  buffer: *buffer.get_buffer().get_handle(),
+                  offset: offset as u64,
+                  size: length as u64,
+                  ..Default::default()
+                });
+              }
+            }
+          }
+
           let callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
 
           finished_passes.push(Arc::new(VkPass::Graphics {
             framebuffers,
+            src_stage,
+            dst_stage,
+            image_barriers,
+            buffer_barriers,
             callbacks,
             renders_to_swapchain: pass.renders_to_swapchain,
             renderpass: render_pass.clone(),
@@ -341,11 +449,30 @@ impl VkRenderGraph {
                 src_stage |= *image_src_stage;
                 dst_stage |= *image_dst_stage;
 
-                let resource = resources.get(name.as_str()).unwrap();
-                let resource_texture = match resource {
-                  VkResource::Texture { texture, .. } => texture,
-                  _ => unreachable!()
+                let metadata = resource_metadata.get(name.as_str()).unwrap();
+                let is_external = match metadata.template {
+                  VkResourceTemplate::Texture { .. } => false,
+                  VkResourceTemplate::ExternalTexture { .. } => true,
+                  _ => panic!("Mismatched resource type")
                 };
+                let texture = if !is_external {
+                  let resource = resources.get(name.as_str()).unwrap();
+                  let resource_texture = match resource {
+                    VkResource::Texture { texture, .. } => texture,
+                    _ => unreachable!()
+                  };
+                  resource_texture
+                } else {
+                  let resource = external_resources
+                    .expect(format!("Can't find resource {}", name).as_str())
+                    .get(name.as_str()).unwrap();
+                  let resource_view = match resource {
+                    ExternalResource::Texture(view) => view,
+                    _ => unreachable!()
+                  };
+                  resource_view.texture()
+                };
+
                 image_barriers.push(vk::ImageMemoryBarrier {
                   src_access_mask: *src_access_mask,
                   dst_access_mask: *dst_access_mask,
@@ -353,19 +480,19 @@ impl VkRenderGraph {
                   new_layout: *new_layout,
                   src_queue_family_index: *src_queue_family_index,
                   dst_queue_family_index: *dst_queue_family_index,
-                  image: *resource_texture.get_handle(),
+                  image: *texture.get_handle(),
                   subresource_range: vk::ImageSubresourceRange {
-                    aspect_mask: if resource_texture.get_info().format.is_depth() && resource_texture.get_info().format.is_stencil() {
+                    aspect_mask: if texture.get_info().format.is_depth() && texture.get_info().format.is_stencil() {
                       vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
-                    } else if resource_texture.get_info().format.is_depth() {
+                    } else if texture.get_info().format.is_depth() {
                       vk::ImageAspectFlags::DEPTH
                     } else {
                       vk::ImageAspectFlags::COLOR
                     },
                     base_mip_level: 0,
-                    level_count: resource_texture.get_info().mip_levels,
+                    level_count: texture.get_info().mip_levels,
                     base_array_layer: 0,
-                    layer_count: resource_texture.get_info().array_length
+                    layer_count: texture.get_info().array_length
                   },
                   ..Default::default()
                 });
@@ -374,18 +501,36 @@ impl VkRenderGraph {
                 name, src_access_mask, dst_access_mask, src_stage: buffer_src_stage, dst_stage: buffer_dst_stage, src_queue_family_index, dst_queue_family_index } => {
                 src_stage |= *buffer_src_stage;
                 dst_stage |= *buffer_dst_stage;
-                let resource = resources.get(name.as_str()).unwrap();
-                let resource_buffer = match resource {
-                  VkResource::Buffer { buffer, .. } => buffer,
-                  _ => unreachable!()
+                let metadata = resource_metadata.get(name.as_str()).unwrap();
+                let is_external = match metadata.template {
+                  VkResourceTemplate::Buffer { .. } => false,
+                  VkResourceTemplate::ExternalBuffer { .. } => true,
+                  _ => panic!("Mismatched resource type")
                 };
-                let (offset, length) = resource_buffer.get_offset_and_length();
+                let buffer = if !is_external {
+                  let resource = resources.get(name.as_str()).unwrap();
+                  let resource_buffer = match resource {
+                    VkResource::Buffer { buffer, .. } => buffer,
+                    _ => unreachable!()
+                  };
+                  resource_buffer
+                } else {
+                  let resource = external_resources
+                    .expect(format!("Can't find resource {}", name).as_str())
+                    .get(name.as_str()).unwrap();
+                  let resource_buffer = match resource {
+                    ExternalResource::Buffer(buffer) => buffer,
+                    _ => unreachable!()
+                  };
+                  resource_buffer
+                };
+                let (offset, length) = buffer.get_offset_and_length();
                 buffer_barriers.push(vk::BufferMemoryBarrier {
                   src_access_mask: *src_access_mask,
                   dst_access_mask: *dst_access_mask,
                   src_queue_family_index: *src_queue_family_index,
                   dst_queue_family_index: *dst_queue_family_index,
-                  buffer: *resource_buffer.get_buffer().get_handle(),
+                  buffer: *buffer.get_buffer().get_handle(),
                   offset: offset as u64,
                   size: length as u64,
                   ..Default::default()
@@ -421,14 +566,15 @@ impl VkRenderGraph {
       compute_queue: compute_queue.clone(),
       transfer_queue: transfer_queue.clone(),
       renders_to_swapchain: template.renders_to_swapchain(),
-      info: info.clone()
+      info: info.clone(),
+      external_resources: external_resources.map(|external_resources| external_resources.clone())
     }
   }
 }
 
 impl RenderGraph<VkBackend> for VkRenderGraph {
   fn recreate(old: &Self, swapchain: &Arc<VkSwapchain>) -> Self {
-    VkRenderGraph::new(&old.device, &old.thread_manager, &old.graphics_queue, &old.compute_queue, &old.transfer_queue, &old.template, &old.info, swapchain)
+    VkRenderGraph::new(&old.device, &old.thread_manager, &old.graphics_queue, &old.compute_queue, &old.transfer_queue, &old.template, &old.info, swapchain, old.external_resources.as_ref())
   }
 
   fn render(&mut self) -> Result<(), ()> {
@@ -464,6 +610,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       match &c_pass as &VkPass {
         VkPass::Graphics {
           framebuffers,
+          src_stage,
+          dst_stage,
+          image_barriers,
+          buffer_barriers,
           callbacks,
           renderpass,
           renders_to_swapchain,
@@ -476,6 +626,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           };
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
+          if *src_stage != vk::PipelineStageFlags::empty() || !buffer_barriers.is_empty() || !image_barriers.is_empty() {
+            cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
+                               &[], buffer_barriers, image_barriers);
+          }
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
               cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);

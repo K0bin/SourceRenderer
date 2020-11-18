@@ -23,6 +23,20 @@ pub struct RenderGraphInfo<B: Backend> {
 
 pub const BACK_BUFFER_ATTACHMENT_NAME: &str = "backbuffer";
 
+pub enum ExternalResource<B: Backend> {
+  Texture(Arc<B::TextureShaderResourceView>),
+  Buffer(Arc<B::Buffer>)
+}
+
+impl<B: Backend> Clone for ExternalResource<B> {
+  fn clone(&self) -> Self {
+    match self {
+      Self::Texture(view) => Self::Texture(view.clone()),
+      Self::Buffer(buffer) => Self::Buffer(buffer.clone()),
+    }
+  }
+}
+
 pub trait RenderGraph<B: Backend> {
   fn recreate(old: &Self, swapchain: &Arc<B::Swapchain>) -> Self;
   fn render(&mut self) -> Result<(), ()>;

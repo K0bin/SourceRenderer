@@ -243,6 +243,10 @@ impl VkTextureView {
   pub(crate) fn get_sampler_handle(&self) -> Option<&vk::Sampler> {
     self.sampler.as_ref()
   }
+
+  pub(crate) fn texture(&self) -> &Arc<VkTexture> {
+    &self.texture
+  }
 }
 
 impl Drop for VkTextureView {
