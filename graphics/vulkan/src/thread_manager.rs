@@ -36,7 +36,7 @@ A thread context manages frame contexts for a thread
 */
 pub struct VkThreadLocal {
   device: Arc<RawVkDevice>,
-  frames: Vec<RefCell<VkFrameLocal>>,
+  frames: Vec<VkFrameLocal>,
   buffer_allocator: Arc<BufferAllocator>,
   frame_counter: u64,
   disable_send_sync: PhantomData<u32>
@@ -126,9 +126,9 @@ impl VkThreadLocal {
          max_prepared_frames: u32) -> Self {
     let buffer_allocator = Arc::new(BufferAllocator::new(device));
 
-    let mut frames: Vec<RefCell<VkFrameLocal>> = Vec::new();
+    let mut frames: Vec<VkFrameLocal> = Vec::new();
     for _ in 0..max_prepared_frames {
-      frames.push(RefCell::new(VkFrameLocal::new(device, graphics_queue, compute_queue, transfer_queue, &buffer_allocator)))
+      frames.push(VkFrameLocal::new(device, graphics_queue, compute_queue, transfer_queue, &buffer_allocator))
     }
 
     return VkThreadLocal {
@@ -142,15 +142,17 @@ impl VkThreadLocal {
 
   fn set_frame(&mut self, frame: u64) {
     debug_assert!(frame >= self.frame_counter);
+    let length = self.frames.len();
     if frame > self.frame_counter && frame >= self.frames.len() as u64 {
-      let mut frame_ref = self.frames[frame as usize % self.frames.len()].borrow_mut();
+      let mut frame_ref = &mut self.frames[frame as usize % length];
       frame_ref.reset();
     }
     self.frame_counter = frame;
   }
 
-  pub fn get_frame_local(&self) -> RefMut<VkFrameLocal> {
-    let mut frame_local = self.frames[self.frame_counter as usize % self.frames.len()].borrow_mut();
+  pub fn get_frame_local(&mut self) -> &mut VkFrameLocal {
+    let length = self.frames.len();
+    let mut frame_local = &mut self.frames[self.frame_counter as usize % length];
     frame_local.set_frame(self.frame_counter);
     frame_local
   }
@@ -198,7 +200,7 @@ impl Drop for VkFrameLocal {
 
 impl InnerCommandBufferProvider<VkBackend> for VkThreadManager {
   fn get_inner_command_buffer(&self) -> VkCommandBufferRecorder {
-    let thread_context = self.get_thread_local();
+    let mut thread_context = self.get_thread_local();
     let mut frame_context = thread_context.get_frame_local();
     frame_context.get_command_buffer(CommandBufferType::SECONDARY)
   }

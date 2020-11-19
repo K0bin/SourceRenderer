@@ -607,7 +607,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     let framebuffer_index = image_index as usize;
     for pass in &self.passes {
-      let thread_local = self.thread_manager.get_thread_local();
+      let mut thread_local = self.thread_manager.get_thread_local();
       let mut frame_local = thread_local.get_frame_local();
       let mut cmd_buffer = frame_local.get_command_buffer(CommandBufferType::PRIMARY);
 
@@ -730,7 +730,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       }
     }
 
-    let thread_context = self.thread_manager.get_thread_local();
+    let mut thread_context = self.thread_manager.get_thread_local();
     let mut frame_context = thread_context.get_frame_local();
 
     if self.renders_to_swapchain {
