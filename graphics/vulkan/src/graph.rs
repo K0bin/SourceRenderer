@@ -66,6 +66,7 @@ pub struct VkRenderGraph {
 
 pub struct VkRenderGraphResources<'a> {
   resources: &'a HashMap<String, VkResource>,
+  external_resources: &'a Option<HashMap<String, ExternalResource<VkBackend>>>,
   pass_resource_names: &'a HashSet<String>,
 }
 
@@ -73,7 +74,15 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
   fn get_buffer(&self, name: &str) -> Result<&Arc<VkBufferSlice>, RenderGraphResourceError> {
     let resource = self.resources.get(name);
     if resource.is_none() {
-      return Err(RenderGraphResourceError::WrongResourceType);
+      let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
+      return if external.is_some() {
+        match external.unwrap() {
+          ExternalResource::Buffer(buffer) => Ok(buffer),
+          _ => Err(RenderGraphResourceError::WrongResourceType)
+        }
+      } else {
+        Err(RenderGraphResourceError::NotFound)
+      };
     }
     if !self.pass_resource_names.contains(name) {
       return Err(RenderGraphResourceError::NotAllowed);
@@ -89,7 +98,15 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
   fn get_texture(&self, name: &str) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
     let resource = self.resources.get(name);
     if resource.is_none() {
-      return Err(RenderGraphResourceError::WrongResourceType);
+      let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
+      return if external.is_some() {
+        match external.unwrap() {
+          ExternalResource::Texture(view) => Ok(view),
+          _ => Err(RenderGraphResourceError::WrongResourceType)
+        }
+      } else {
+        Err(RenderGraphResourceError::NotFound)
+      };
     }
     if !self.pass_resource_names.contains(name) {
       return Err(RenderGraphResourceError::NotAllowed);
@@ -626,6 +643,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
         } => {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
+            external_resources: &self.external_resources,
             pass_resource_names
           };
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
@@ -698,6 +716,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
         } => {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
+            external_resources: &self.external_resources,
             pass_resource_names
           };
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
@@ -725,8 +744,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           self.execute_cmd_buffer(&mut cmd_buffer, &mut frame_local, None, &[], &[]);
         }
 
-
-          VkPass::Copy => {}
+        VkPass::Copy => {}
       }
     }
 
