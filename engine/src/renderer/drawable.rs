@@ -57,7 +57,7 @@ impl Drawable {
 }
 
 #[derive(Clone)]
-pub(super) struct View {
+pub(crate) struct View {
   pub(super) elements: Vec<Drawable>,
   pub(super) interpolated_camera: Matrix4,
   pub(super) camera_transform: Matrix4,
