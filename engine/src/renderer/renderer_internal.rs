@@ -72,10 +72,7 @@ impl<P: Platform> RendererInternal<P> {
     ];
 
     let external_resources = vec![
-      ExternalOutput::Buffer {
-        name: "CameraRingBuffer".to_string(),
-        producer_type: ExternalProducerType::Host
-      }
+      passes::late_latching::external_resource_template()
     ];
 
     let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
@@ -93,7 +90,8 @@ impl<P: Platform> RendererInternal<P> {
     callbacks.insert(late_latch_pass_name, late_latch_pass_callback);
 
     let mut external_resources = HashMap::<String, ExternalResource<P::GraphicsBackend>>::new();
-    external_resources.insert("CameraRingBuffer".to_string(), ExternalResource::Buffer(primary_camera.buffer().clone()));
+    let (camera_resource_name, camera_resource) = passes::late_latching::external_resource(primary_camera);
+    external_resources.insert(camera_resource_name, camera_resource);
 
     let graph = device.create_render_graph(&graph_template, &RenderGraphInfo {
       pass_callbacks: callbacks

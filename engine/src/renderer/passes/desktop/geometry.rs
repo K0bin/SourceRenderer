@@ -7,10 +7,14 @@ use crate::asset::AssetManager;
 use std::fs::File;
 use std::path::Path;
 use std::io::Read;
+use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
+
+const PASS_NAME: &str = "Geometry";
+const OUTPUT_DS: &str = "DS";
 
 pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   PassInfo {
-    name: "Geometry".to_string(),
+    name: PASS_NAME.to_string(),
     pass_type: PassType::Graphics {
       subpasses: vec![
         GraphicsSubpassInfo {
@@ -19,12 +23,12 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
           }],
           inputs: vec![
             PassInput {
-              name: "Camera".to_string(),
+              name: LATE_LATCHING_CAMERA.to_string(),
               is_local: false
             }
           ],
           depth_stencil: Some(DepthStencilOutput {
-            name: "DS".to_string(),
+            name: OUTPUT_DS.to_string(),
             format: Format::D24S8,
             samples: SampleCount::Samples1,
             extent: RenderPassTextureExtent::RelativeToSwapchain {
@@ -128,7 +132,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
   let c_asset_manager = asset_manager.clone();
   let c_view = view.clone();
 
-  ("Geometry".to_string(), RenderPassCallbacks::Regular(
+  (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
       Arc::new(move |command_buffer_a, graph_resources| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
@@ -150,7 +154,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
         }]);
 
         //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
-        command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer("Camera").expect("Failed to get graph resource"));
+        command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
         for renderable in &state.elements {
           let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
