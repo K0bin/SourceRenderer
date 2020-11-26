@@ -2,7 +2,7 @@ use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, DepthS
 use std::sync::{Arc, Mutex};
 use crate::renderer::drawable::View;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
-use crate::renderer::DrawableType;
+use crate::renderer::{DrawableType, PrimaryCamera};
 use crate::asset::AssetManager;
 use std::fs::File;
 use std::path::Path;
@@ -108,8 +108,8 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
       sample_count: SampleCount::Samples1
     },
     depth_stencil: DepthStencilInfo {
-      depth_test_enabled: false,
-      depth_write_enabled: false,
+      depth_test_enabled: true,
+      depth_write_enabled: true,
       depth_func: CompareFunc::Less,
       stencil_enable: false,
       stencil_read_mask: 0u8,
@@ -140,7 +140,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
 
         let assets_lookup = c_asset_manager.lookup_graphics();
 
-        let _camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.interpolated_camera, BufferUsage::CONSTANT);
+        let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.interpolated_camera, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         command_buffer.set_viewports(&[Viewport {
           position: Vec2::new(0.0f32, 0.0f32),
@@ -153,17 +153,17 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           extent: Vec2UI::new(9999, 9999),
         }]);
 
-        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
-        command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
+        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
+        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
         for renderable in &state.elements {
           let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
           if let DrawableType::Static {
-            model, ..
+            model_path, ..
           } = &renderable.drawable_type {
-            let model = assets_lookup.get_model(model);
-            let mesh = assets_lookup.get_mesh(&model.mesh);
+            let model = assets_lookup.get_model(model_path);
+            let mesh = assets_lookup.get_mesh(&model.mesh_path);
 
             command_buffer.set_vertex_buffer(&mesh.vertices);
             if mesh.indices.is_some() {
@@ -172,10 +172,10 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
 
             for i in 0..mesh.parts.len() {
               let range = &mesh.parts[i];
-              let material_key = &model.materials[i];
+              let material_key = &model.material_paths[i];
 
               let material = assets_lookup.get_material(material_key);
-              let albedo_view = assets_lookup.get_texture(&material.albedo);
+              let albedo_view = assets_lookup.get_texture(&material.albedo_texture_path);
               command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
               command_buffer.finish_binding();
 

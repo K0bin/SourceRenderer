@@ -1,7 +1,8 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, RwLockReadGuard, Mutex};
 use std::collections::{HashMap, VecDeque};
 use sourcerenderer_core::platform::Platform;
+use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::graphics;
 use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureInfo, Format, SampleCount, TextureShaderResourceViewInfo, Filter, AddressMode};
 use nalgebra::Vector4;
@@ -11,12 +12,25 @@ use crate::Vertex;
 use std::sync::Weak;
 use std::thread;
 use std::time::Duration;
+use legion::World;
+use std::fs::File;
+
 pub type AssetKey = usize;
 
-struct AssetLoadRequest {
-  key: AssetKey,
+pub struct AssetLoadRequest {
   path: String,
-  asset_type: AssetType
+  asset_type: AssetType,
+  progress: Arc<AssetLoaderProgress>
+}
+
+pub struct AssociatedAssetLoadRequest {
+  pub path: String,
+  pub asset_type: AssetType
+}
+
+pub struct LoadedAsset<P: Platform> {
+  pub path: String,
+  pub asset: Asset<P>
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -46,13 +60,52 @@ pub struct Mesh<P: Platform> {
 
 #[derive(Clone)]
 pub struct Model {
-  pub mesh: AssetKey,
-  pub materials: Vec<AssetKey>
+  pub mesh_path: String,
+  pub material_paths: Vec<String>
 }
 
 #[derive(Clone)]
 pub struct Material {
-  pub albedo: AssetKey
+  pub albedo_texture_path: String
+}
+
+pub struct AssetFile {
+  pub path: String,
+  pub data: AssetFileData
+}
+
+pub enum AssetFileData {
+  File(File),
+  Memory(Vec<u8>)
+}
+
+pub trait AssetContainer
+  : Send + Sync  {
+  fn load(&self, path: &str) -> Option<AssetFile>;
+}
+
+pub struct AssetLoaderProgress {
+  expected: AtomicU32,
+  finished: AtomicU32
+}
+
+pub struct AssetLoaderResult<P: Platform> {
+  pub assets: Vec<LoadedAsset<P>>,
+  pub requests: Vec<AssociatedAssetLoadRequest>
+}
+
+impl<P: Platform> AssetLoaderResult<P> {
+
+}
+
+pub struct AssetLoaderContext<P: Platform> {
+  pub graphics_device: Arc<<P::GraphicsBackend as GraphicsBackend>::Device>
+}
+
+pub trait AssetLoader<P: Platform>
+  : Send + Sync {
+  fn matches(&self, file: &AssetFile) -> bool;
+  fn load(&self, file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()>;
 }
 
 pub enum Asset<P: Platform> {
@@ -61,20 +114,22 @@ pub enum Asset<P: Platform> {
   Model(Model),
   Sound,
   Material(Material),
-  Container(Box<dyn AssetLoader<P> + Send + Sync>)
+  Container(Box<dyn AssetContainer>),
+  Level(World)
 }
 
 pub struct AssetManager<P: Platform> {
-  graphics: RwLock<AssetManagerGraphics<P>>,
+  graphics: RwLock<AssetManagerGraphicsCache<P>>,
   load_queue: Mutex<VecDeque<AssetLoadRequest>>,
-  loaders: RwLock<Vec<Box<dyn AssetLoader<P> + Send + Sync>>>,
-  asset_key_counter: AtomicUsize
+  containers: RwLock<Vec<Box<dyn AssetContainer>>>,
+  loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
+  levels: RwLock<HashMap<String, World>>
 }
 
 impl<P: Platform> AssetManager<P> {
   pub fn new(device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>) -> Arc<Self> {
     let manager = Arc::new(Self {
-      graphics: RwLock::new(AssetManagerGraphics {
+      graphics: RwLock::new(AssetManagerGraphicsCache {
         device: device.clone(),
         meshes: HashMap::new(),
         models: HashMap::new(),
@@ -83,14 +138,15 @@ impl<P: Platform> AssetManager<P> {
       }),
       load_queue: Mutex::new(VecDeque::new()),
       loaders: RwLock::new(Vec::new()),
-      asset_key_counter: AtomicUsize::new(0)
+      containers: RwLock::new(Vec::new()),
+      levels: RwLock::new(HashMap::new())
     });
 
-    let zero_buffer = device.upload_data(&Vector4::<u8>::new(0u8, 0u8, 0u8, 0u8), MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
+    let zero_buffer = device.upload_data(&Vector4::<u8>::new(255u8, 255u8, 255u8, 255u8), MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
     let zero_texture = device.create_texture(&TextureInfo {
       format: Format::RGBA8,
-      width: 1,
-      height: 1,
+      width: 2,
+      height: 2,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -118,13 +174,13 @@ impl<P: Platform> AssetManager<P> {
     {
       let mut graphics = manager.graphics.write().unwrap();
 
-      let texture_key = manager.make_asset_key();
+      let texture_key = "BLANK_TEXTURE";
       let material = Material {
-        albedo: texture_key.clone()
+        albedo_texture_path: texture_key.to_owned()
       };
-      graphics.textures.insert(texture_key.clone(), zero_view);
-      let material_key = manager.make_asset_key();
-      graphics.materials.insert(material_key.clone(), material);
+      graphics.textures.insert(texture_key.to_owned(), zero_view);
+      let material_key = "BLANK_MATERIAL";
+      graphics.materials.insert(material_key.to_owned(), material);
     }
 
     let thread_count = 1;
@@ -136,16 +192,11 @@ impl<P: Platform> AssetManager<P> {
     manager
   }
 
-  pub fn lookup_graphics(&self) -> RwLockReadGuard<'_, AssetManagerGraphics<P>> {
+  pub fn lookup_graphics(&self) -> RwLockReadGuard<'_, AssetManagerGraphicsCache<P>> {
     self.graphics.read().unwrap()
   }
 
-  fn make_asset_key(&self) -> AssetKey {
-    self.asset_key_counter.fetch_add(1, Ordering::SeqCst)
-  }
-
-  pub fn add_mesh(self: &Arc<AssetManager<P>>, _name: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) -> AssetKey {
-    let key = self.make_asset_key();
+  pub fn add_mesh(self: &Arc<AssetManager<P>>, path: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) {
     let mut graphics = self.graphics.write().unwrap();
 
     //vertex_buffer_data.clone();
@@ -163,36 +214,30 @@ impl<P: Platform> AssetManager<P> {
         count: if index_buffer_data.len() == 0 { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
       }]
     };
-    graphics.meshes.insert(key, mesh);
-    key
+    graphics.meshes.insert(path.to_owned(), mesh);
   }
 
-  pub fn add_material(self: &Arc<AssetManager<P>>, _name: &str, albedo: AssetKey) -> AssetKey {
-    let key = self.make_asset_key();
+  pub fn add_material(self: &Arc<AssetManager<P>>, path: &str, albedo: &str) {
     let material = Material {
-      albedo
+      albedo_texture_path: albedo.to_string()
     };
     let mut graphics = self.graphics.write().unwrap();
-    graphics.materials.insert(key.clone(), material);
-    key
+    graphics.materials.insert(path.to_owned(), material);
   }
 
-  pub fn add_model(self: &Arc<AssetManager<P>>, _name: &str, mesh: AssetKey, materials: &[AssetKey]) -> AssetKey {
-    let key = self.make_asset_key();
+  pub fn add_model(self: &Arc<AssetManager<P>>, path: &str, mesh_path: &str, material_paths: &[&str]) {
     let mut graphics = self.graphics.write().unwrap();
     let model = Model {
-      mesh: mesh.clone(),
-      materials: materials.iter().map(|mat| *mat).collect()
+      mesh_path: mesh_path.to_string(),
+      material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect()
     };
-    graphics.models.insert(key.clone(), model);
-    key
+    graphics.models.insert(path.to_owned(), model);
   }
 
-  pub fn add_texture(self: &Arc<AssetManager<P>>, name: &str, info: &TextureInfo, texture_data: &[u8]) -> AssetKey {
-    let key = self.make_asset_key();
+  pub fn add_texture(self: &Arc<AssetManager<P>>, path: &str, info: &TextureInfo, texture_data: &[u8]) {
     let mut graphics = self.graphics.write().unwrap();
     let src_buffer = graphics.device.upload_data_raw(texture_data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let texture = graphics.device.create_texture(info, Some(name));
+    let texture = graphics.device.create_texture(info, Some(path));
     graphics.device.init_texture(&texture, &src_buffer, 0, 0);
     let srv = graphics.device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
@@ -211,20 +256,37 @@ impl<P: Platform> AssetManager<P> {
       min_lod: 0.0,
       max_lod: 0.0
     });
-    graphics.textures.insert(key.clone(), srv);
-    key
+    graphics.textures.insert(path.to_owned(), srv);
   }
 
-  pub fn load(self: &Arc<AssetManager<P>>, path: &str, asset_type: AssetType) -> AssetKey {
-    let key = self.make_asset_key();
+  pub fn add_container(&self, container: Box<dyn AssetContainer>) {
+    let mut containers = self.containers.write().unwrap();
+    containers.push(container);
+  }
+
+  pub fn add_loader(&self, loader: Box<dyn AssetLoader<P>>) {
+    let mut loaders = self.loaders.write().unwrap();
+    loaders.push(loader);
+  }
+
+  pub fn get_level(&self, path: &str) -> Option<World> {
+    let mut levels = self.levels.write().unwrap();
+    levels.remove(path)
+  }
+
+  pub fn load(self: &Arc<AssetManager<P>>, path: &str, asset_type: AssetType) -> Arc<AssetLoaderProgress> {
+    let progress = Arc::new(AssetLoaderProgress {
+      expected: AtomicU32::new(1),
+      finished: AtomicU32::new(0)
+    });
     let mut queue_guard = self.load_queue.lock().unwrap();
     queue_guard.push_back(AssetLoadRequest {
-      key,
       asset_type,
-      path: path.to_owned()
+      path: path.to_owned(),
+      progress: progress.clone()
     });
 
-    key
+    progress
   }
 
   pub fn flush(&self) {
@@ -233,34 +295,46 @@ impl<P: Platform> AssetManager<P> {
   }
 }
 
-pub struct AssetManagerGraphics<P: Platform> {
+pub struct AssetManagerGraphicsCache<P: Platform> {
   device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
-  meshes: HashMap<AssetKey, Mesh<P>>,
-  models: HashMap<AssetKey, Model>,
-  materials: HashMap<AssetKey, Material>,
-  textures: HashMap<AssetKey, Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView>>
+  meshes: HashMap<String, Mesh<P>>,
+  models: HashMap<String, Model>,
+  materials: HashMap<String, Material>,
+  textures: HashMap<String, Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView>>
 }
 
-impl<P: Platform> AssetManagerGraphics<P> {
-  pub fn get_model(&self, key: &AssetKey) -> &Model {
+impl<P: Platform> AssetManagerGraphicsCache<P> {
+  pub fn get_model(&self, key: &str) -> &Model {
     // TODO make optional variant of function
     self.models.get(key).unwrap()
   }
-  pub fn get_mesh(&self, key: &AssetKey) -> &Mesh<P> {
+  pub fn get_mesh(&self, key: &str) -> &Mesh<P> {
     // TODO make optional variant of function
     self.meshes.get(key).unwrap()
   }
-  pub fn get_material(&self, key: &AssetKey) -> &Material {
+  pub fn get_material(&self, key: &str) -> &Material {
     // TODO return placeholder if not ready
     self.materials.get(key).unwrap()
   }
-  pub fn get_texture(&self, key: &AssetKey) -> &Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView> {
+  pub fn get_texture(&self, key: &str) -> &Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView> {
     // TODO return placeholder if not ready
     self.textures.get(key).unwrap()
   }
 }
 
 fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
+  let device = {
+    let mgr_opt = asset_manager.upgrade();
+    if mgr_opt.is_none() {
+      return;
+    }
+    let mgr = mgr_opt.unwrap();
+    let graphics = mgr.graphics.read().unwrap();
+    graphics.device.clone()
+  };
+  let context = AssetLoaderContext {
+    graphics_device: device
+  };
   loop {
     {
       let request_opt = {
@@ -285,54 +359,86 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       }
       let mgr = mgr_opt.unwrap();
       {
-        let mut loaders = mgr.loaders.read().unwrap();
-        let mut loader_opt = loaders.iter().find(|l| l.matches(&request.path, request.asset_type));
-
-        if loader_opt.is_none() {
-          // drop so we can lock again for writing
-          std::mem::drop(loader_opt);
-          std::mem::drop(loaders);
-
-          {
-            let mut loaders_mut = mgr.loaders.write().unwrap();
-            let container_loader = loaders_mut.iter().find(|f| (*f).matches(&request.path, AssetType::Container))
-              .expect(&format!("Could not find loader or container for path: {}", &request.path));
-            let new_loader_asset = container_loader.load(&request.path, AssetType::Container)
-              .expect(&format!("Failed to create loader for path: {}", &request.path));
-            let new_loader = match new_loader_asset {
-              Asset::Container(loader) => loader,
-              _ => panic!("Failed to create loader for path: {}, created wrong asset type", &request.path)
-            };
-            loaders_mut.push(new_loader);
+        let mut containers = mgr.containers.read().unwrap();
+        let mut file_opt: Option<AssetFile> = None;
+        'containers: for container in containers.iter() {
+          let container_file_opt = container.load(request.path.as_str());
+          if container_file_opt.is_some() {
+            file_opt = container_file_opt;
+            break 'containers;
           }
-          loaders = mgr.loaders.read().unwrap();
-          loader_opt = loaders.last();
+        }
+        std::mem::drop(containers);
+
+        if file_opt.is_none() {
+          println!("Could not find file: {:?}", request.path.as_str());
+          continue;
+          // dunno, error i guess
+        }
+        let file = file_opt.unwrap();
+        let loaders = mgr.loaders.read().unwrap();
+
+        let loader_opt = loaders.iter().find(|loader| loader.matches(&file));
+        if loader_opt.is_none() {
+          println!("Could not find loader for file: {:?}", request.path.as_str());
+          continue;
+        }
+        let loader = loader_opt.unwrap();
+
+        let assets_opt = loader.load(file, &context);
+        if assets_opt.is_err() {
+          println!("Could not load file: {:?}", request.path.as_str());
+          continue;
+          // dunno, error i guess
+        }
+        let mut assets = assets_opt.unwrap();
+        let loaded_assets = std::mem::replace(&mut assets.assets, Vec::new());
+        for asset in loaded_assets {
+          match asset.asset {
+            Asset::Texture(view) => {
+              let mut graphics = mgr.graphics.write().unwrap();
+              graphics.textures.insert(asset.path.clone(), view);
+            },
+            Asset::Model(model) => {
+              let mut graphics = mgr.graphics.write().unwrap();
+              graphics.models.insert(asset.path.clone(), model);
+            },
+            Asset::Container(container) => {
+              let mut containers = mgr.containers.write().unwrap();
+              containers.push(container)
+            },
+            Asset::Mesh(mesh) => {
+              let mut graphics = mgr.graphics.write().unwrap();
+              graphics.meshes.insert(asset.path.clone(), mesh);
+            },
+            Asset::Level(world) => {
+              let mut levels = mgr.levels.write().unwrap();
+              levels.insert(asset.path.clone(), world);
+            },
+            _ => {
+              panic!("Could not store loaded asset {}.", asset.path.as_str());
+            }
+          }
         }
 
-        let loader = loader_opt.unwrap();
-        let asset_opt = loader.load(&request.path, request.asset_type);
-        let asset = asset_opt.expect(&format!("Failed to load asset with path: {}", &request.path));
-        match asset {
-          Asset::Texture(view) => {
-            let mut graphics = mgr.graphics.write().unwrap();
-            graphics.textures.insert(request.key, view);
-          },
-          Asset::Model(model) => {
-            let mut graphics = mgr.graphics.write().unwrap();
-            graphics.models.insert(request.key, model);
-          },
-          _ => {
-            panic!("");
+        for new_request in assets.requests {
+          request.progress.expected.fetch_add(1, Ordering::SeqCst);
+          let mgr_opt = asset_manager.upgrade();
+          if mgr_opt.is_none() {
+            break;
           }
+          let mgr = mgr_opt.unwrap();
+          let mut queue = mgr.load_queue.lock().unwrap();
+          queue.push_back(AssetLoadRequest {
+            asset_type: new_request.asset_type,
+            path: new_request.path,
+            progress: request.progress.clone()
+          });
         }
       }
+      request.progress.finished.fetch_add(1, Ordering::SeqCst);
     }
 
     thread::sleep(Duration::new(0, 10_000_000)); // 10ms
   }
-}
-
-pub trait AssetLoader<P: Platform> {
-  fn matches(&self, path: &str, asset_type: AssetType) -> bool;
-  fn load(&self, path: &str, asset_type: AssetType) -> Option<Asset<P>>;
 }

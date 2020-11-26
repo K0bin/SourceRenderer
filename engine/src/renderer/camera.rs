@@ -54,7 +54,7 @@ impl<B: Backend> PrimaryCamera<B> {
     let position = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
     let target = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
 
-    self.update_buffer(Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 20.0f32)
+    self.update_buffer(Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 2000.0f32)
       * Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32)));
   }
 

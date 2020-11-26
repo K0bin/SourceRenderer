@@ -70,7 +70,7 @@ impl LumpData for Leaf {
   }
 
   fn element_size(version: i32) -> usize {
-    if version >= 19 {
+    if version <= 19 {
       56
     } else {
       32
@@ -106,9 +106,9 @@ impl LumpData for Leaf {
     if version <= 19 {
       let ambient_lighting_res = CompressedLightCube::read(reader)?;
       ambient_lighting = ambient_lighting_res;
-      let padding_res = read_i16(reader)?;
-      padding = padding_res;
     }
+    let padding_res = read_i16(reader)?;
+    padding = padding_res;
 
     return Ok(Self {
       contents: BrushContents::new(contents),

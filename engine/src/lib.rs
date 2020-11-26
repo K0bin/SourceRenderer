@@ -9,6 +9,7 @@ extern crate crossbeam_utils;
 extern crate sourcerenderer_bsp;
 #[macro_use]
 extern crate legion;
+extern crate regex;
 
 pub use self::engine::Engine;
 use sourcerenderer_core::{Vec3, Vec2};
@@ -31,7 +32,7 @@ mod asset;
 mod spinning_cube;
 mod transform;
 mod camera;
-mod fps_camera;
+pub mod fps_camera;
 
 mod renderer;
 mod scene;

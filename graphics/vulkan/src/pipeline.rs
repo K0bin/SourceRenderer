@@ -27,7 +27,7 @@ use crate::VkBackend;
 use std::hash::{Hasher, Hash};
 use VkRenderPass;
 use spirv_cross::spirv::Decoration;
-use ash::vk::{Handle};
+use ash::vk::{Handle, PipelineRasterizationStateCreateFlags};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
@@ -436,6 +436,9 @@ impl VkPipeline {
     };
 
     let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo {
+      flags: PipelineRasterizationStateCreateFlags::empty(),
+      depth_clamp_enable: vk::FALSE,
+      rasterizer_discard_enable: vk::FALSE,
       polygon_mode: match &info.info.rasterizer.fill_mode {
         FillMode::Fill => vk::PolygonMode::FILL,
         FillMode::Line => vk::PolygonMode::LINE
@@ -449,6 +452,10 @@ impl VkPipeline {
         FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
         FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE
       },
+      depth_bias_enable: vk::FALSE,
+      depth_bias_constant_factor: 0.0f32,
+      depth_bias_clamp: 0.0f32,
+      depth_bias_slope_factor: 0.0f32,
       line_width: 1.0f32,
       ..Default::default()
     };
@@ -463,6 +470,7 @@ impl VkPipeline {
       depth_test_enable: info.info.depth_stencil.depth_test_enabled as u32,
       depth_write_enable: info.info.depth_stencil.depth_write_enabled as u32,
       depth_compare_op: compare_func_to_vk(info.info.depth_stencil.depth_func),
+      depth_bounds_test_enable: vk::FALSE,
       stencil_test_enable: info.info.depth_stencil.stencil_enable as u32,
       front: vk::StencilOpState {
         pass_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.pass_op),
@@ -482,6 +490,8 @@ impl VkPipeline {
         compare_mask: info.info.depth_stencil.stencil_read_mask as u32,
         reference: 0u32
       },
+      min_depth_bounds: 0.0,
+      max_depth_bounds: 0.0,
       ..Default::default()
     };
 

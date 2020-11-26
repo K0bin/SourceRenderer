@@ -11,10 +11,13 @@ use crate::scene::DeltaTime;
 use crate::renderer::PrimaryCamera;
 
 pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
+  systems.add_system(retrieve_fps_camera_rotation_system::<P>());
   systems.add_system(fps_camera_movement_system::<P>());
+  systems.add_system(update_fps_camera_position_system::<P>());
 }
 
-pub struct FpsCameraComponent {}
+pub struct FPSCameraComponent {
+}
 
 pub struct FPSCamera {
   sensitivity: f32,
@@ -42,7 +45,19 @@ pub fn fps_camera_rotation<P: Platform>(input: &Arc<P::Input>, fps_camera: &mut 
 }
 
 #[system(for_each)]
-#[filter(component::<Camera>() & component::<FpsCameraComponent>())]
+#[filter(component::<Camera>() & component::<FPSCameraComponent>())]
+fn retrieve_fps_camera_rotation<P: Platform>(#[resource] primary_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>, transform: &mut Transform, #[resource] delta_time: &DeltaTime) {
+  transform.rotation = primary_camera.rotation();
+}
+
+#[system(for_each)]
+#[filter(component::<Camera>() & component::<FPSCameraComponent>())]
+fn update_fps_camera_position<P: Platform>(#[resource] primary_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>, transform: &mut Transform, #[resource] delta_time: &DeltaTime) {
+  primary_camera.update_position(transform.position);
+}
+
+#[system(for_each)]
+#[filter(component::<Camera>() & component::<FPSCameraComponent>())]
 fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Transform, #[resource] fps_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>, #[resource] delta_time: &DeltaTime) {
   let rotation = fps_camera.rotation();
   let (_, yaw, _) = rotation.euler_angles();

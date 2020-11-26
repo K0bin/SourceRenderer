@@ -13,7 +13,7 @@ use crate::renderer::StaticRenderableComponent;
 use legion::systems::Builder as SystemBuilder;
 
 use crate::camera::ActiveCamera;
-use crate::fps_camera::FPSCamera;
+use crate::fps_camera::{FPSCamera, FPSCameraComponent};
 use crate::scene::DeltaTime;
 use std::f32;
 
@@ -83,10 +83,10 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     samples: SampleCount::Samples1
   };
 
-  let mesh_key = asset_manager.add_mesh("mesh", &triangle, &indices);
-  let texture_key = asset_manager.add_texture("texture", &texture_info, &data);
-  let material_key = asset_manager.add_material("material", texture_key);
-  let model_key = asset_manager.add_model("model", mesh_key, &[material_key]);
+  asset_manager.add_mesh("cube_mesh", &triangle, &indices);
+  asset_manager.add_texture("cube_texture_albedo", &texture_info, &data);
+  asset_manager.add_material("cube_material", "cube_texture_albedo");
+  asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
   asset_manager.flush();
 
   systems.add_system(spin_system());
@@ -94,12 +94,12 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     receive_shadows: true,
     cast_shadows: true,
     can_move: true,
-    model: model_key
+    model_path: "cube_model".to_owned()
   }, Transform::new(Vec3::new(0f32, 0f32, 0f32)), SpinningCube {}));
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32
-  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCamera::new()));
+  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCameraComponent {}));
 
   resources.insert(ActiveCamera(camera));
 }

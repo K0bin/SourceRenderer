@@ -279,7 +279,7 @@ impl VkRenderGraph {
               if format.is_depth() || format.is_stencil() {
                 clear_values.push(vk::ClearValue {
                   depth_stencil: vk::ClearDepthStencilValue {
-                    depth: 0f32,
+                    depth: 9999f32,
                     stencil: 0u32
                   }
                 });

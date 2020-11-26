@@ -13,9 +13,9 @@ use crate::renderer::Renderer;
 use std::sync::Arc;
 use sourcerenderer_core::Platform;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StaticRenderableComponent {
-  pub model: AssetKey,
+  pub model_path: String,
   pub receive_shadows: bool,
   pub cast_shadows: bool,
   pub can_move: bool
@@ -55,7 +55,7 @@ fn renderer<P: Platform>(world: &mut SubWorld,
 
     if !registered_static_renderables.0.contains(entity) {
       renderer.register_static_renderable(Drawable::new(*entity, DrawableType::Static {
-          model: component.model,
+          model_path: component.model_path.clone(),
           receive_shadows: component.receive_shadows,
           cast_shadows: component.cast_shadows,
           can_move: component.can_move

@@ -7,7 +7,8 @@ use sourcerenderer_core::Vec3;
 use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::platform::Window;
 
-use crate::asset::AssetManager;
+use crate::asset::{AssetManager, AssetType};
+use crate::asset::loaders::CSGODirectoryContainer;
 use crate::renderer::Renderer;
 use crate::scene::Scene;
 use crate::fps_camera::{FPSCamera, fps_camera_rotation};

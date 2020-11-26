@@ -1,6 +1,6 @@
 
-use sourcerenderer_core::Platform;
-use crate::asset::{AssetLoader, AssetType, Asset};
+use sourcerenderer_core::{Platform, Quaternion};
+use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
 use std::io::{BufReader};
 use std::fs::File;
 use std::path::Path;
@@ -8,13 +8,20 @@ use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vert
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetLoaderContext, MeshRange, LoadedAsset};
+use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage};
+use legion::world::SubWorld;
+use legion::{World, WorldOptions};
+use crate::renderer::StaticRenderableComponent;
+use crate::Transform;
+use nalgebra::{UnitQuaternion, Unit};
 
 pub struct BspLevelLoader {
-  map: Mutex<Map>,
-  map_name: String,
 }
 
 struct BspTemp {
+  map: Map,
+  map_name: String,
   leafs: Vec<Leaf>,
   nodes: Vec<Node>,
   leaf_faces: Vec<LeafFace>,
@@ -26,15 +33,8 @@ struct BspTemp {
 }
 
 impl BspLevelLoader {
-  pub fn new(path: &str) -> std::io::Result<Self> {
-    let map_name = Path::new(path).file_name().unwrap().to_str().unwrap().to_string();
-    let buf_reader = BufReader::new(File::open(path)?);
-    let map = Map::read(map_name.as_str(), buf_reader)?;
-
-    Ok(Self {
-      map: Mutex::new(map),
-      map_name,
-    })
+  pub fn new() -> Self {
+    Self {}
   }
 
   fn read_node(&self, node: &Node, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut Vec<u32>) {
@@ -53,7 +53,7 @@ impl BspLevelLoader {
   }
 
   fn read_leaf(&self, leaf: &Leaf, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut Vec<u32>) {
-    for leaf_face_index in leaf.first_leaf_face .. leaf.first_leaf_face + leaf.leaf_faces_count {
+    for leaf_face_index in leaf.first_leaf_face as u32 .. leaf.first_leaf_face as u32 + leaf.leaf_faces_count as u32 {
       let face_index = temp.leaf_faces[leaf_face_index as usize].index;
       let face = &temp.faces[face_index as usize];
 
@@ -61,7 +61,7 @@ impl BspLevelLoader {
       let mut root_vertex = 0u16;
       for surf_edge_index in face.first_edge .. face.first_edge + face.edges_count as i32 {
         let edge_index = temp.surface_edges[surf_edge_index as usize].index;
-        let edge = temp.edges[edge_index as usize];
+        let edge = temp.edges[edge_index.abs() as usize];
 
         // Push the two vertices of the first edge
         if surf_edge_index == face.first_edge {
@@ -113,44 +113,99 @@ impl BspLevelLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for BspLevelLoader {
-  fn matches(&self, path: &str, asset_type: AssetType) -> bool {
-    match asset_type {
-      AssetType::Level => Path::new(path).file_name().unwrap() == self.map_name.as_str(),
-      _ => false
-    }
+  fn matches(&self, file: &AssetFile) -> bool {
+    true
   }
 
-  fn load(&self, _path: &str, asset_type: AssetType) -> Option<Asset<P>> {
-    if asset_type == AssetType::Model {
-      let mut map_guard = self.map.lock().unwrap();
-      let leafs = map_guard.read_leafs().ok()?;
-      let nodes = map_guard.read_nodes().ok()?;
-      let faces = map_guard.read_faces().ok()?;
-      let leaf_faces = map_guard.read_leaf_faces().ok()?;
-      let leaf_brushes = map_guard.read_leaf_brushes().ok()?;
-      let edges = map_guard.read_edges().ok()?;
-      let surface_edges = map_guard.read_surface_edges().ok()?;
-      let vertices = map_guard.read_vertices().ok()?;
-      let temp = BspTemp {
-        nodes,
-        leafs,
-        leaf_brushes,
-        leaf_faces,
-        surface_edges,
-        vertices,
-        faces,
-        edges
-      };
+  fn load(&self, asset_file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
+    let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
+    let file = match asset_file.data {
+      AssetFileData::File(file) => file,
+      _ => unreachable!()
+    };
+    let buf_reader = BufReader::new(file);
+    let mut map = Map::read(name, buf_reader).unwrap();
+    let leafs = map.read_leafs().unwrap();
+    let nodes = map.read_nodes().unwrap();
+    let faces = map.read_faces().unwrap();
+    let leaf_faces = map.read_leaf_faces().unwrap();
+    let leaf_brushes = map.read_leaf_brushes().unwrap();
+    let edges = map.read_edges().unwrap();
+    let surface_edges = map.read_surface_edges().unwrap();
+    let vertices = map.read_vertices().unwrap();
+    let temp = BspTemp {
+      map,
+      map_name: name.to_string(),
+      nodes,
+      leafs,
+      leaf_brushes,
+      leaf_faces,
+      surface_edges,
+      vertices,
+      faces,
+      edges
+    };
 
-      let mut brush_vertices = Vec::<crate::Vertex>::new();
-      let mut brush_indices = Vec::<u32>::new();
+    let mut brush_vertices = Vec::<crate::Vertex>::new();
+    let mut brush_indices = Vec::<u32>::new();
 
-      let root = temp.nodes.first().unwrap();
-      self.read_node(root, &temp, &mut brush_vertices, &mut brush_indices);
-    } else {
+    let root = temp.nodes.first().unwrap();
+    self.read_node(root, &temp, &mut brush_vertices, &mut brush_indices);
 
-    }
+    let vertex_buffer_temp = context.graphics_device.upload_data_slice(&brush_vertices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let index_buffer_temp = context.graphics_device.upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let vertex_buffer = context.graphics_device.create_buffer(std::mem::size_of::<crate::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
+    let index_buffer = context.graphics_device.create_buffer(std::mem::size_of::<u32>() * brush_indices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
+    context.graphics_device.init_buffer(&vertex_buffer_temp, &vertex_buffer);
+    context.graphics_device.init_buffer(&index_buffer_temp, &index_buffer);
 
-    None
+    let mesh = Mesh {
+      vertices: vertex_buffer,
+      indices: Some(index_buffer),
+      parts: vec![MeshRange {
+        start: 0,
+        count: brush_indices.len() as u32
+      }]
+    };
+
+    let model = Model {
+      mesh_path: "brushes_mesh".to_string(),
+      material_paths: vec!["BLANK_MATERIAL".to_string()]
+    };
+
+    let mut world = World::new(WorldOptions::default());
+    world.push(
+      (StaticRenderableComponent {
+        model_path: "brushes_model".to_string(),
+        receive_shadows: true,
+        cast_shadows: true,
+        can_move: false
+      },
+      Transform {
+        position: Vec3::new(0.0f32, 0.0f32, 0.0f32),
+        rotation: Quaternion::identity(),
+        scale: Vec3::new(1.0f32, 1.0f32, 1.0f32)
+        /*rotation: Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(1.0f32, 0.0f32, 0.0f32)), std::f32::consts::FRAC_PI_2),
+        scale: Vec3::new(42.35f32, 42.35f32, 42.35f32),*/
+      })
+    );
+
+    Ok(AssetLoaderResult {
+      assets: vec![
+        LoadedAsset {
+          path: "brushes_mesh".to_string(),
+          asset: Asset::Mesh(mesh)
+        },
+        LoadedAsset {
+          path: "brushes_model".to_string(),
+          asset: Asset::Model(model)
+        },
+        LoadedAsset {
+          path: asset_file.path.clone(),
+          asset: Asset::Level(world)
+        }
+      ],
+      requests: Vec::new()
+    })
   }
 }

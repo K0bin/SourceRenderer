@@ -7,7 +7,7 @@ use std::f32;
 
 pub enum DrawableType {
   Static {
-    model: AssetKey,
+    model_path: String,
     receive_shadows: bool,
     cast_shadows: bool,
     can_move: bool
@@ -19,10 +19,10 @@ impl Clone for DrawableType {
   fn clone(&self) -> Self {
     match self {
       DrawableType::Static {
-        model, receive_shadows, cast_shadows, can_move
+        model_path, receive_shadows, cast_shadows, can_move
       } => {
         Self::Static {
-          model: model.clone(),
+          model_path: model_path.clone(),
           receive_shadows: *receive_shadows,
           cast_shadows: *cast_shadows,
           can_move: *can_move

@@ -8,8 +8,11 @@ use sourcerenderer_core::Platform;
 
 use crate::renderer::*;
 use crate::transform;
-use crate::asset::AssetManager;
+use crate::asset::{AssetManager, AssetType};
 use crate::fps_camera;
+use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader};
+use legion::query::{FilterResult, LayoutFilter};
+use legion::storage::ComponentTypeId;
 
 pub struct Scene {
 
@@ -25,11 +28,28 @@ impl DeltaTime {
 
 pub struct Tick(u64);
 
+pub struct FilterAll {}
+impl LayoutFilter for FilterAll {
+  fn matches_layout(&self, components: &[ComponentTypeId]) -> FilterResult {
+    FilterResult::Match(true)
+  }
+}
+
 impl Scene {
   pub fn run<P: Platform>(renderer: &Arc<Renderer<P>>,
                           asset_manager: &Arc<AssetManager<P>>,
                           input: &Arc<P::Input>,
                           tick_rate: u32) {
+    asset_manager.add_loader(Box::new(BspLevelLoader::new()));
+    asset_manager.add_container(Box::new(CSGODirectoryContainer::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive").unwrap()));
+    asset_manager.load("de_overpass", AssetType::Level);
+
+    let mut level = asset_manager.get_level("de_overpass");
+    while level.is_none() {
+      std::thread::sleep(Duration::new(0, 10_000_000));
+      level = asset_manager.get_level("de_overpass");
+    }
+
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
     let c_input = input.clone();
@@ -45,6 +65,9 @@ impl Scene {
 
       transform::install(&mut systems);
       c_renderer.install(&mut world, &mut resources, &mut systems);
+
+      let mut level = level.unwrap();
+      world.move_from(&mut level, &FilterAll {});
 
       resources.insert(c_renderer.primary_camera().clone());
 

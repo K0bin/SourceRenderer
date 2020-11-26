@@ -200,10 +200,7 @@ impl VkTransfer {
       self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::TOP_OF_PIPE, vk::DependencyFlags::empty(), &[], &[
         vk::BufferMemoryBarrier {
           src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-          dst_access_mask: vk::AccessFlags::SHADER_READ
-              | vk::AccessFlags::INDEX_READ
-              | vk::AccessFlags::VERTEX_ATTRIBUTE_READ
-              | vk::AccessFlags::MEMORY_READ,
+          dst_access_mask: vk::AccessFlags::MEMORY_READ,
           src_queue_family_index: self.graphics_queue.get_queue_family_index(),
           dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
           buffer: *dst_buffer.get_buffer().get_handle(),

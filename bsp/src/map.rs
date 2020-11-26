@@ -17,6 +17,7 @@ pub struct Map {
 
 impl Map {
   pub fn read(name: &str, mut reader: BufReader<File>) -> IOResult<Map> {
+    reader.seek(SeekFrom::Start(0));
     let header = MapHeader::read(&mut reader)?;
     return Ok(Map {
       name: name.to_owned(),
