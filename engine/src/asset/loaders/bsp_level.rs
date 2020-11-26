@@ -118,11 +118,11 @@ impl BspLevelLoader {
   }
 
   fn fixup_position(position: Vec3) -> Vec3 {
-    Vec3::new(position.x, -position.z, -position.y) * SCALING_FACTOR
+    Vec3::new(position.x, position.z, -position.y) * SCALING_FACTOR
   }
 
   fn fixup_normal(normal: Vec3) -> Vec3 {
-    Vec3::new(normal.x, -normal.z, -normal.y)
+    Vec3::new(-normal.x, -normal.z, normal.y)
   }
 }
 
@@ -198,7 +198,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
         can_move: false
       },
       Transform {
-        position: Vec3::new(0.0f32, 5.0f32, 0.0f32),
+        position: Vec3::new(0.0f32, -2.0f32, 0.0f32),
         scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
         rotation: Quaternion::identity(),
       })

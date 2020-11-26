@@ -23,4 +23,5 @@ void main(void) {
   out_uv = in_uv;
   out_normal = in_normal;
   gl_Position = (viewProjection * model) * vec4(in_pos, 1);
+  gl_Position.y = -gl_Position.y;
 }
