@@ -30,42 +30,50 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
   let triangle = [
     Vertex {
       position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 0.0f32)
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(0.0f32, 1.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 0.0f32)
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(0.0f32, 0.0f32, 1.0f32),
       uv: Vec2::new(1.0f32, 1.0f32)
     },
     Vertex {
       position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 1.0f32)
     },
     // face 2
     Vertex {
       position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 0.0f32)
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(0.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 0.0f32)
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(1.0f32, 0.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 1.0f32)
     },
     Vertex {
       position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(0.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(1.0f32, 1.0f32)
     }

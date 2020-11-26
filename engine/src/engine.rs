@@ -19,12 +19,6 @@ pub struct Engine<P: Platform> {
     platform: Box<P>
 }
 
-struct Vertex {
-  pub position: Vec3,
-  pub color: Vec3,
-  pub uv: Vec2
-}
-
 impl<P: Platform> Engine<P> {
   pub fn new(platform: Box<P>) -> Box<Engine<P>> {
     return Box::new(Engine {

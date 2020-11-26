@@ -70,7 +70,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
       input_assembler: vec![
         InputAssemblerElement {
           binding: 0,
-          stride: 32,
+          stride: 44,
           input_rate: InputRate::PerVertex
         }
       ],
@@ -97,6 +97,14 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           semantic_name_d3d: String::from(""),
           semantic_index_d3d: 0,
           offset: 24,
+          format: Format::RGB32Float
+        },
+        ShaderInputElement {
+          input_assembler_binding: 0,
+          location_vk_mtl: 3,
+          semantic_name_d3d: String::from(""),
+          semantic_index_d3d: 0,
+          offset: 36,
           format: Format::RG32Float
         }
       ]

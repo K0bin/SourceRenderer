@@ -23,6 +23,7 @@ pub use camera::ActiveCamera;
 #[derive(Clone, PartialEq, Debug)]
 pub struct Vertex {
   pub position: Vec3,
+  pub normal: Vec3,
   pub color: Vec3,
   pub uv: Vec2
 }

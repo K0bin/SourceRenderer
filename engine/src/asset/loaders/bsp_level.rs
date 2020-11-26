@@ -70,6 +70,7 @@ impl BspLevelLoader {
             let position = temp.vertices[root_vertex as usize].position.clone();
             let vertex = crate::Vertex {
               position,
+              normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
               uv: Vec2::new(0.0f32, 0.0f32)
             };
@@ -90,6 +91,7 @@ impl BspLevelLoader {
             let position = temp.vertices[edge.vertex_index[i] as usize].position;
             let vertex = crate::Vertex {
               position,
+              normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
               uv: Vec2::new(0.0f32, 0.0f32)
             };
@@ -183,10 +185,10 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       },
       Transform {
         position: Vec3::new(0.0f32, 0.0f32, 0.0f32),
-        rotation: Quaternion::identity(),
-        scale: Vec3::new(1.0f32, 1.0f32, 1.0f32)
-        /*rotation: Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(1.0f32, 0.0f32, 0.0f32)), std::f32::consts::FRAC_PI_2),
-        scale: Vec3::new(42.35f32, 42.35f32, 42.35f32),*/
+        //rotation: Quaternion::identity(),
+        scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+        rotation: Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(1.0f32, 0.0f32, 0.0f32)), std::f32::consts::FRAC_PI_2),
+        //scale: Vec3::new(42.35f32, 42.35f32, 42.35f32),
       })
     );
 
