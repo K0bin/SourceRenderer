@@ -197,7 +197,7 @@ impl VkTransfer {
           dst_offset: dst_buffer.get_offset() as u64,
           size: min(src_buffer.get_length(), dst_buffer.get_length()) as u64
         }]);
-      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::TOP_OF_PIPE, vk::DependencyFlags::empty(), &[], &[
+      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[], &[
         vk::BufferMemoryBarrier {
           src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
           dst_access_mask: vk::AccessFlags::MEMORY_READ,
