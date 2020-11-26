@@ -20,63 +20,166 @@ use std::f32;
 struct SpinningCube {}
 
 pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, systems: &mut SystemBuilder, asset_manager: &Arc<AssetManager<P>>) {
-  let indices = [0u32, 1u32, 2u32, 2u32, 3u32, 0u32, // front
-    6u32, 5u32, 4u32, 4u32, 7u32, 6u32, // back
-    5u32, 1u32, 0u32, 0u32, 4u32, 5u32, // top
-    3u32, 2u32, 6u32, 6u32, 7u32, 3u32, // bottom
-    7u32, 4u32, 0u32, 0u32, 3u32, 7u32, // left
-    1u32, 5u32, 6u32, 6u32, 2u32, 1u32]; // right
+  let indices: [u32; 36] = [
+    0, 1, 2, 2, 3, 0, // front
+    6, 5, 4, 4, 7, 6, // back
+    8, 9, 10, 10, 11, 8, // top
+    14, 13, 12, 12, 15, 14, // bottom
+    16, 17, 18, 18, 19, 16, // left
+    22, 21, 20, 20, 23, 22, // right
+  ];
 
   let triangle = [
+    // FRONT
     Vertex {
       position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
-      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      color: Vec3::new(1.0f32, 0.0f32, 0.0f32),
+      normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 0.0f32)
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
+      normal: Vec3::new(1.0f32, 0.0f32, -1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
+      normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 1.0f32)
+    },
+    Vertex {
+      position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
+      normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 1.0f32)
+    },
+    // BACK
+    Vertex {
+      position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 1.0f32)
+    },
+    Vertex {
+      position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 1.0f32)
+    },
+    // TOP
+    Vertex {
+      position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
+      normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
+      normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 1.0f32)
+    },
+    Vertex {
+      position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 1.0f32)
+    },
+    // BOTTOM
+    Vertex {
+      position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
+      normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
+      normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 1.0f32)
+    },
+    Vertex {
+      position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
+      normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 1.0f32)
+    },
+    // LEFT
+    Vertex {
+      position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
+      normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
+      normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 0.0f32)
+    },
+    Vertex {
+      position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
+      normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(0.0f32, 1.0f32)
+    },
+    Vertex {
+      position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
+      normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+      uv: Vec2::new(1.0f32, 1.0f32)
+    },
+    // RIGHT
+    Vertex {
+      position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      color: Vec3::new(0.0f32, 1.0f32, 0.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(1.0f32, 0.0f32)
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      color: Vec3::new(0.0f32, 0.0f32, 1.0f32),
-      uv: Vec2::new(1.0f32, 1.0f32)
-    },
-    Vertex {
-      position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
-      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-      uv: Vec2::new(0.0f32, 1.0f32)
-    },
-    // face 2
-    Vertex {
-      position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
-      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      color: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      uv: Vec2::new(1.0f32, 0.0f32)
-    },
-    Vertex {
-      position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
-      normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      color: Vec3::new(0.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 0.0f32)
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      color: Vec3::new(1.0f32, 0.0f32, 1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 1.0f32)
     },
     Vertex {
-      position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
+      position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-      color: Vec3::new(0.0f32, 1.0f32, 1.0f32),
+      color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       uv: Vec2::new(1.0f32, 1.0f32)
-    }
+    },
   ];
 
   let image = image::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("texture.png"))).expect("Failed to open texture");
@@ -103,7 +206,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     cast_shadows: true,
     can_move: true,
     model_path: "cube_model".to_owned()
-  }, Transform::new(Vec3::new(0f32, 0f32, 0f32)), SpinningCube {}));
+  }, Transform::new(Vec3::new(0f32, 2f32, 0f32)), SpinningCube {}));
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32
