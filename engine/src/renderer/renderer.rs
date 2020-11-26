@@ -15,14 +15,14 @@ use legion::{World, Resources, Entity};
 use legion::systems::Builder;
 
 use crate::renderer::RendererInternal;
-use crate::renderer::camera::PrimaryCamera;
+use crate::renderer::camera::LateLatchCamera;
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   window_state: Mutex<WindowState>,
   queued_frames_counter: AtomicUsize,
-  primary_camera: Arc<PrimaryCamera<P::GraphicsBackend>>
+  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>
 }
 
 impl<P: Platform> Renderer<P> {
@@ -32,7 +32,7 @@ impl<P: Platform> Renderer<P> {
       device: device.clone(),
       window_state: Mutex::new(window.state()),
       queued_frames_counter: AtomicUsize::new(0),
-      primary_camera: Arc::new(PrimaryCamera::new(device.as_ref()))
+      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref()))
     }
   }
 
@@ -53,7 +53,7 @@ impl<P: Platform> Renderer<P> {
     renderer
   }
 
-  pub fn primary_camera(&self) -> &Arc<PrimaryCamera<P::GraphicsBackend>> {
+  pub fn primary_camera(&self) -> &Arc<LateLatchCamera<P::GraphicsBackend>> {
     &self.primary_camera
   }
 

@@ -14,7 +14,7 @@ use sourcerenderer_core::platform::WindowState;
 use nalgebra::{Matrix3};
 
 use std::io::Read;
-use crate::renderer::camera::PrimaryCamera;
+use crate::renderer::camera::LateLatchCamera;
 use crate::renderer::passes;
 
 pub(super) struct RendererInternal<P: Platform> {
@@ -27,7 +27,7 @@ pub(super) struct RendererInternal<P: Platform> {
   receiver: Receiver<RendererCommand>,
   simulation_tick_rate: u32,
   last_tick: SystemTime,
-  primary_camera: Arc<PrimaryCamera<P::GraphicsBackend>>
+  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -39,7 +39,7 @@ impl<P: Platform> RendererInternal<P> {
     sender: Sender<RendererCommand>,
     receiver: Receiver<RendererCommand>,
     simulation_tick_rate: u32,
-    primary_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>) -> Self {
+    primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>) -> Self {
 
     let renderables = Arc::new(Mutex::new(View::default()));
     let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables, &primary_camera);
@@ -63,7 +63,7 @@ impl<P: Platform> RendererInternal<P> {
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
     renderables: &Arc<Mutex<View>>,
-    primary_camera: &Arc<PrimaryCamera<P::GraphicsBackend>>)
+    primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
 
     let passes: Vec<PassInfo> = vec![

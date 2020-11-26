@@ -12,14 +12,14 @@ struct PrimaryCameraBuffer {
   counter: u32
 }
 
-pub struct PrimaryCamera<B: Backend> {
+pub struct LateLatchCamera<B: Backend> {
   buffer: Arc<B::Buffer>,
   counter: AtomicU32,
   position: AtomicCell<Vec3>, // AtomicCell uses a mutex for big structs, replace it by something like a lock less ring buffer
   rotation: AtomicCell<Quaternion>
 }
 
-impl<B: Backend> PrimaryCamera<B> {
+impl<B: Backend> LateLatchCamera<B> {
   pub fn new(device: &B::Device) -> Self {
     Self {
       buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuToGpu, BufferUsage::CONSTANT),
@@ -54,7 +54,7 @@ impl<B: Backend> PrimaryCamera<B> {
     let position = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
     let target = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
 
-    self.update_buffer(Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 2000.0f32)
+    self.update_buffer(Matrix4::new_perspective(aspect_ratio, vertical_fov, 0.001f32, 20000.0f32)
       * Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32)));
   }
 

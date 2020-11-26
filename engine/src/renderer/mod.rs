@@ -10,6 +10,6 @@ pub use self::renderer::Renderer;
 pub use self::ecs::StaticRenderableComponent;
 pub use self::drawable::Drawable;
 pub use self::drawable::DrawableType;
-pub use self::camera::PrimaryCamera;
+pub use self::camera::LateLatchCamera;
 use self::drawable::View;
 use self::renderer_internal::RendererInternal;

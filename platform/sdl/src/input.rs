@@ -51,6 +51,8 @@ impl SDLInput {
     key_to_scancode.insert(Key::A, Scancode::A);
     key_to_scancode.insert(Key::S, Scancode::S);
     key_to_scancode.insert(Key::D, Scancode::D);
+    key_to_scancode.insert(Key::Q, Scancode::Q);
+    key_to_scancode.insert(Key::E, Scancode::E);
     key_to_scancode.insert(Key::Space, Scancode::Space);
     key_to_scancode.insert(Key::LShift, Scancode::LShift);
     key_to_scancode.insert(Key::LCtrl, Scancode::LCtrl);

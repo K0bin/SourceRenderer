@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::fs::File;
 use std::path::Path;
 use std::io::Read;
-use crate::renderer::PrimaryCamera;
+use crate::renderer::LateLatchCamera;
 
 const PASS_NAME: &str = "LateLatch";
 pub(super) const OUTPUT_CAMERA: &str = "Camera";
@@ -63,6 +63,6 @@ pub(crate) fn external_resource_template() -> ExternalOutput {
   }
 }
 
-pub(crate) fn external_resource<B: GraphicsBackend>(primary_camera: &Arc<PrimaryCamera<B>>) -> (String, ExternalResource<B>) {
+pub(crate) fn external_resource<B: GraphicsBackend>(primary_camera: &Arc<LateLatchCamera<B>>) -> (String, ExternalResource<B>) {
   (EXTERNAL_RING_BUFFER.to_string(), ExternalResource::Buffer(primary_camera.buffer().clone()))
 }

@@ -7,6 +7,8 @@ pub enum Key {
   A,
   S,
   D,
+  Q,
+  E,
   Space,
   LCtrl,
   LShift,
