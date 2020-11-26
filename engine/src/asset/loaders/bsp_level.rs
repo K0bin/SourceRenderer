@@ -4,7 +4,7 @@ use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
 use std::io::{BufReader};
 use std::fs::File;
 use std::path::Path;
-use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge};
+use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
@@ -29,8 +29,11 @@ struct BspTemp {
   surface_edges: Vec<SurfaceEdge>,
   vertices: Vec<Vertex>,
   faces: Vec<Face>,
-  edges: Vec<Edge>
+  edges: Vec<Edge>,
+  planes: Vec<Plane>
 }
+
+const SCALING_FACTOR: f32 = 0.0236f32;
 
 impl BspLevelLoader {
   pub fn new() -> Self {
@@ -56,6 +59,7 @@ impl BspLevelLoader {
     for leaf_face_index in leaf.first_leaf_face as u32 .. leaf.first_leaf_face as u32 + leaf.leaf_faces_count as u32 {
       let face_index = temp.leaf_faces[leaf_face_index as usize].index;
       let face = &temp.faces[face_index as usize];
+      let plane = &temp.planes[face.plane_index as usize];
 
       let mut face_vertices: HashMap<u16, u32> = HashMap::new(); // Just to make sure that there's no duplicates
       let mut root_vertex = 0u16;
@@ -69,8 +73,8 @@ impl BspLevelLoader {
             root_vertex = edge.vertex_index[if edge_index > 0 { 0 } else { 1 }];
             let position = temp.vertices[root_vertex as usize].position.clone();
             let vertex = crate::Vertex {
-              position,
-              normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
+              position: BspLevelLoader::fixup_position(position),
+              normal: BspLevelLoader::fixup_normal(plane.normal),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
               uv: Vec2::new(0.0f32, 0.0f32)
             };
@@ -90,8 +94,8 @@ impl BspLevelLoader {
           if !face_vertices.contains_key(&edge.vertex_index[i]) {
             let position = temp.vertices[edge.vertex_index[i] as usize].position;
             let vertex = crate::Vertex {
-              position,
-              normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
+              position: BspLevelLoader::fixup_position(position),
+              normal: BspLevelLoader::fixup_normal(plane.normal),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
               uv: Vec2::new(0.0f32, 0.0f32)
             };
@@ -103,14 +107,22 @@ impl BspLevelLoader {
         // Push indices
         brush_indices.push(face_vertices[&root_vertex]);
         if edge_index < 0 {
-          brush_indices.push(face_vertices[&edge.vertex_index[1]]);
           brush_indices.push(face_vertices[&edge.vertex_index[0]]);
+          brush_indices.push(face_vertices[&edge.vertex_index[1]]);
         } else {
-          brush_indices.push(face_vertices[&edge.vertex_index[0]]);
           brush_indices.push(face_vertices[&edge.vertex_index[1]]);
+          brush_indices.push(face_vertices[&edge.vertex_index[0]]);
         }
       }
     }
+  }
+
+  fn fixup_position(position: Vec3) -> Vec3 {
+    Vec3::new(position.x, -position.z, -position.y) * SCALING_FACTOR
+  }
+
+  fn fixup_normal(normal: Vec3) -> Vec3 {
+    Vec3::new(normal.x, -normal.z, -normal.y)
   }
 }
 
@@ -135,6 +147,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let edges = map.read_edges().unwrap();
     let surface_edges = map.read_surface_edges().unwrap();
     let vertices = map.read_vertices().unwrap();
+    let planes = map.read_planes().unwrap();
     let temp = BspTemp {
       map,
       map_name: name.to_string(),
@@ -145,7 +158,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       surface_edges,
       vertices,
       faces,
-      edges
+      edges,
+      planes
     };
 
     let mut brush_vertices = Vec::<crate::Vertex>::new();
@@ -184,11 +198,9 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
         can_move: false
       },
       Transform {
-        position: Vec3::new(0.0f32, 0.0f32, 0.0f32),
-        //rotation: Quaternion::identity(),
+        position: Vec3::new(0.0f32, 5.0f32, 0.0f32),
         scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-        rotation: Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(1.0f32, 0.0f32, 0.0f32)), std::f32::consts::FRAC_PI_2),
-        //scale: Vec3::new(42.35f32, 42.35f32, 42.35f32),
+        rotation: Quaternion::identity(),
       })
     );
 

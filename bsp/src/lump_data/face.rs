@@ -6,7 +6,7 @@ use ::{read_i16, read_i32};
 use read_u32;
 
 pub struct Face {
-  pub plane_number: u16,
+  pub plane_index: u16,
   pub size: u8,
   pub is_on_node: bool, // u8 in struct
   pub first_edge: i32,
@@ -58,7 +58,7 @@ impl LumpData for Face {
     let first_primitive_id = read_u16(reader)?;
     let smoothing_group = read_u32(reader)?;
     return Ok(Self {
-      plane_number,
+      plane_index: plane_number,
       size,
       is_on_node,
       first_edge,
