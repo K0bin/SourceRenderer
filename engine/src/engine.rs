@@ -1,4 +1,4 @@
-use sourcerenderer_core::platform::{Platform, PlatformEvent};
+use sourcerenderer_core::platform::{Platform, PlatformEvent, WindowState};
 use std::{time::SystemTime, sync::{Arc}};
 use std::time::{Duration};
 
@@ -60,8 +60,16 @@ impl<P: Platform> Engine<P> {
       if event == PlatformEvent::Quit {
         break 'event_loop;
       }
-      renderer.set_window_state(self.platform.window().state());
-      renderer.primary_camera().update_rotation(fps_camera_rotation::<P>(self.platform.input(), &mut fps_camera, delta.as_secs_f32()));
+      let window_state = self.platform.window().state();
+      let has_focus = match &window_state {
+        WindowState::Visible { focussed, .. } => *focussed,
+        WindowState::FullScreen { .. } => true,
+        _ => false
+      };
+      renderer.set_window_state(window_state);
+      if has_focus {
+        renderer.primary_camera().update_rotation(fps_camera_rotation::<P>(self.platform.input(), &mut fps_camera, delta.as_secs_f32()));
+      }
     }
   }
 }
