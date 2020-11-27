@@ -6,6 +6,8 @@ use crate::asset::loaders::csgo_loader::CSGOMapLoaderError::CSGONotFound;
 use regex::Regex;
 use std::fs::File;
 
+pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+";
+
 pub struct CSGODirectoryContainer {
   path: String,
   map_name_regex: Regex
@@ -28,7 +30,7 @@ impl CSGODirectoryContainer {
 
     Ok(Self {
       path: path.to_owned(),
-      map_name_regex: Regex::new(r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+").unwrap()
+      map_name_regex: Regex::new(CSGO_MAP_NAME_PATTERN).unwrap()
     })
   }
 }

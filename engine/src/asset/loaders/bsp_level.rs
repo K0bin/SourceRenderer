@@ -15,8 +15,11 @@ use legion::{World, WorldOptions};
 use crate::renderer::StaticRenderableComponent;
 use crate::Transform;
 use nalgebra::{UnitQuaternion, Unit};
+use regex::Regex;
+use crate::asset::loaders::csgo_loader::CSGO_MAP_NAME_PATTERN;
 
 pub struct BspLevelLoader {
+  map_name_regex: Regex
 }
 
 struct BspTemp {
@@ -37,7 +40,9 @@ const SCALING_FACTOR: f32 = 0.0236f32;
 
 impl BspLevelLoader {
   pub fn new() -> Self {
-    Self {}
+    Self {
+      map_name_regex: Regex::new(CSGO_MAP_NAME_PATTERN).unwrap()
+    }
   }
 
   fn read_node(&self, node: &Node, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut Vec<u32>) {
@@ -128,7 +133,8 @@ impl BspLevelLoader {
 
 impl<P: Platform> AssetLoader<P> for BspLevelLoader {
   fn matches(&self, file: &AssetFile) -> bool {
-    true
+    let file_name = Path::new(&file.path).file_stem();
+    file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
   fn load(&self, asset_file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
