@@ -1,0 +1,8 @@
+[package]
+name = "sourcerenderer_bsp"
+version = "0.1.0"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+
+[dependencies]
+bitflags = "1.2.1"
+nalgebra = "0.22.0"
