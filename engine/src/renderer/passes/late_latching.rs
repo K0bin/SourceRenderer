@@ -1,5 +1,5 @@
 use sourcerenderer_core::graphics::{PassInfo, PassType, PassInput, ComputeOutput, RenderPassCallbacks, CommandBuffer, PipelineBinding, BindingFrequency, ShaderType, Backend as GraphicsBackend, Device, ExternalResource, ExternalOutput, ExternalProducerType};
-use sourcerenderer_core::{Matrix4, Platform};
+use sourcerenderer_core::Matrix4;
 use std::sync::Arc;
 use std::fs::File;
 use std::path::Path;

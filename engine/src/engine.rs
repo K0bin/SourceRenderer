@@ -1,6 +1,5 @@
 use sourcerenderer_core::platform::{Platform, PlatformEvent, WindowState};
 use std::{time::SystemTime, sync::{Arc}};
-use std::time::{Duration};
 
 use sourcerenderer_core::{Vec2, ThreadPoolBuilder};
 use sourcerenderer_core::Vec3;

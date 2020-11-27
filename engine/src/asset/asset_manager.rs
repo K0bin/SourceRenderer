@@ -359,7 +359,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       }
       let mgr = mgr_opt.unwrap();
       {
-        let mut containers = mgr.containers.read().unwrap();
+        let containers = mgr.containers.read().unwrap();
         let mut file_opt: Option<AssetFile> = None;
         'containers: for container in containers.iter() {
           let container_file_opt = container.load(request.path.as_str());

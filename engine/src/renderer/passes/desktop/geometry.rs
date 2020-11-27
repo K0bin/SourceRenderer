@@ -2,7 +2,7 @@ use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, DepthS
 use std::sync::{Arc, Mutex};
 use crate::renderer::drawable::View;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
-use crate::renderer::{DrawableType, LateLatchCamera};
+use crate::renderer::DrawableType;
 use crate::asset::AssetManager;
 use std::fs::File;
 use std::path::Path;
