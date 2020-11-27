@@ -13,7 +13,7 @@ sourcerenderer_vulkan = { path = "../graphics/vulkan" }
 image = "0.23.2"
 crossbeam-channel = "0.5.0"
 crossbeam-utils = "0.8.0"
-sourcerenderer_bsp = { path = "../bsp" }
+sourcerenderer_bsp = { path = "../valve_formats/bsp" }
 legion = "0.3.1"
 regex = "1.4.2"
 
