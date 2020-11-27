@@ -10,6 +10,6 @@ layout(location = 0) out vec4 out_color;
 layout(set = 1, binding = 0) uniform sampler2D tex;
 
 void main(void) {
-  vec3 lightDir = normalize(vec3(0.1, -1, 0.1));
-  out_color = vec4(in_color, 1.0) * texture(tex, in_uv) * max(0.2, dot(lightDir, in_normal));
+  vec3 lightDir = normalize(vec3(0.5, -1, 0));
+  out_color = vec4(in_color, 1.0) * texture(tex, in_uv) * max(0.4, dot(lightDir, in_normal));
 }
