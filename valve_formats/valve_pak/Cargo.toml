@@ -1,0 +1,10 @@
+[package]
+name = "sourcerenderer_vpk"
+version = "0.1.0"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+
+[dependencies]
+bitflags = "1.2.1"
+rsa = "0.3.0"
+crc = "1.8.1"
+md5 = "0.7.0"
