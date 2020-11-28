@@ -24,7 +24,7 @@ pub struct PackageEntry {
   pub archive_index: u16,
 
   /// The preloaded bytes
-  pub small_data: Vec<u8>
+  pub small_data: Box<[u8]>
 }
 
 impl PackageEntry {

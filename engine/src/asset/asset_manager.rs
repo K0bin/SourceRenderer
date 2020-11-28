@@ -76,7 +76,7 @@ pub struct AssetFile {
 
 pub enum AssetFileData {
   File(File),
-  Memory(Vec<u8>)
+  Memory(Box<[u8]>)
 }
 
 pub trait AssetContainer

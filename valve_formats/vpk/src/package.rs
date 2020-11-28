@@ -3,7 +3,7 @@ use std::fs::File;
 use package_entry::PackageEntry;
 use std::collections::HashMap;
 use archive_md5_section_entry::ArchiveMD5SectionEntry;
-use read_util::{PrimitiveReader, StringReader, StringReadError};
+use read_util::{PrimitiveRead, StringRead, StringReadError, RawDataRead};
 use crc::crc32;
 use utilities::AsnKeyParser;
 use rsa::{BigUint, PaddingScheme, Hash, PublicKey};
@@ -51,10 +51,10 @@ pub struct Package<R: Read + Seek> {
   whole_file_checksum: [u8; 16],
 
   /// The public key
-  public_key: Vec<u8>,
+  public_key: Box<[u8]>,
 
   /// The signature
-  signature: Vec<u8>,
+  signature: Box<[u8]>,
 
   /// The package entries
   entries: HashMap<String, Vec<PackageEntry>>,
@@ -257,10 +257,12 @@ impl<R: Read + Seek> Package<R> {
     self.entries[file_extension].iter().find(|x| x.directory_name.as_str() == trimmed_directory && x.file_name.as_str() == file_name)
   }
 
-  pub fn read_entry(&self, entry: &PackageEntry, validate_crc: bool) -> Result<Vec<u8>, PackageError> {
-    let mut output = vec![0; entry.small_data.len() + entry.len as usize];
+  pub fn read_entry(&self, entry: &PackageEntry, validate_crc: bool) -> Result<Box<[u8]>, PackageError> {
+    let output_size = entry.small_data.len() + entry.len as usize;
+    let mut output = Vec::with_capacity(output_size);
+    unsafe { output.set_len(output_size); }
     if entry.small_data.len() > 0 {
-      output.extend_from_slice(&entry.small_data);
+      &mut output[.. entry.small_data.len()].copy_from_slice(&entry.small_data);
     }
 
     if entry.len > 0 {
@@ -286,7 +288,7 @@ impl<R: Read + Seek> Package<R> {
       return Err(PackageError::FileError("CRC32 mismatch for read data.".to_string()));
     }
 
-    Ok(output)
+    Ok(output.into_boxed_slice())
   }
 
   fn read_entries(input: &mut R) -> Result<HashMap<String, Vec<PackageEntry>>, PackageError> {
@@ -320,23 +322,29 @@ impl<R: Read + Seek> Package<R> {
             break 'files;
           }
 
+          let crc32 = input.read_u32().map_err(|e| PackageError::IOError(e))?;
+          let small_data_len = input.read_u16().map_err(|e| PackageError::IOError(e))? as usize;
+          let archive_index = input.read_u16().map_err(|e| PackageError::IOError(e))?;
+          let offset = input.read_u32().map_err(|e| PackageError::IOError(e))?;
+          let len = input.read_u32().map_err(|e| PackageError::IOError(e))?;
+
           let mut entry = PackageEntry {
             file_name,
             directory_name: directory_name.clone(),
             type_name: type_name.clone(),
-            crc32: input.read_u32().map_err(|e| PackageError::IOError(e))?,
-            small_data: vec![0; input.read_u16().map_err(|e| PackageError::IOError(e))? as usize],
-            archive_index: input.read_u16().map_err(|e| PackageError::IOError(e))?,
-            offset: input.read_u32().map_err(|e| PackageError::IOError(e))?,
-            len: input.read_u32().map_err(|e| PackageError::IOError(e))?
+            crc32,
+            small_data: Vec::new().into_boxed_slice(),
+            archive_index,
+            offset,
+            len
           };
 
           if input.read_u16().map_err(|e| PackageError::IOError(e))? != 0xFFFF {
             return Err(PackageError::FileError("Invalid terminator.".to_string()));
           }
 
-          if entry.small_data.len() > 0 {
-            input.read_exact(&mut entry.small_data[..]).map_err(|e| PackageError::IOError(e))?;
+          if small_data_len > 0 {
+            entry.small_data = input.read_data(small_data_len).map_err(|e| PackageError::IOError(e))?;
           }
 
           entries.push(entry);
@@ -358,8 +366,7 @@ impl<R: Read + Seek> Package<R> {
     {
       let mut reader = self.reader.lock().unwrap();
       reader.seek(SeekFrom::Start(0)).map_err(|e| PackageError::IOError(e))?;
-      let mut buffer = vec![0u8; (self.header_size + self.tree_size + self.file_data_section_size + self.archive_md5_section_size + 32) as usize];
-      reader.read_exact(&mut buffer).map_err(|e| PackageError::IOError(e))?;
+      let mut buffer = reader.read_data((self.header_size + self.tree_size + self.file_data_section_size + self.archive_md5_section_size + 32) as usize).map_err(|e| PackageError::IOError(e))?;
       let mut hash = md5::compute(&buffer);
       if hash.0 != self.whole_file_checksum {
         return Err(PackageError::FileError(format!("Package checksum mismatch ({:?} != expected {:?}).", &hash, &self.whole_file_checksum)));
@@ -405,11 +412,11 @@ impl<R: Read + Seek> Package<R> {
       return false;
     }
     let public_key = public_key_res.unwrap();
-    let mut data = vec![0u8; (self.header_size + self.tree_size + self.file_data_section_size + self.archive_md5_section_size + self.other_md5_section_size) as usize];
-    let io_res = reader.read_exact(&mut data);
-    if io_res.is_err() {
+    let data_res = reader.read_data((self.header_size + self.tree_size + self.file_data_section_size + self.archive_md5_section_size + self.other_md5_section_size) as usize);
+    if data_res.is_err() {
       return false;
     }
+    let data = data_res.unwrap();
 
     let padding = PaddingScheme::PKCS1v15Sign {
       hash: Some(Hash::SHA1)
@@ -421,7 +428,7 @@ impl<R: Read + Seek> Package<R> {
     }
     let enc_data = enc_data_res.unwrap();
 
-    enc_data == self.signature
+    &enc_data[..] == &self.signature[..]
   }
 
   fn read_archive_md5_section(input: &mut R, archive_md5_section_size: u32) -> Result<Vec<ArchiveMD5SectionEntry>, PackageError> {
@@ -463,18 +470,16 @@ impl<R: Read + Seek> Package<R> {
   }
 
 
-  fn read_signature_section(input: &mut R, signature_section_size: u32) -> Result<(Vec<u8>, Vec<u8>), PackageError> {
+  fn read_signature_section(input: &mut R, signature_section_size: u32) -> Result<(Box<[u8]>, Box<[u8]>), PackageError> {
     if signature_section_size == 0 {
-      return Ok((Vec::new(), Vec::new()));
+      return Ok((Vec::new().into_boxed_slice(), Vec::new().into_boxed_slice()));
     }
 
-    let public_key_size = input.read_u32().map_err(|e| PackageError::IOError(e))?;
-    let mut public_key = vec![0; public_key_size as usize];
-    input.read_exact(&mut public_key).map_err(|e| PackageError::IOError(e))?;
+    let public_key_size = input.read_u32().map_err(|e| PackageError::IOError(e))? as usize;
+    let public_key = input.read_data(public_key_size).map_err(|e| PackageError::IOError(e))?;
 
-    let signature_size = input.read_u32().map_err(|e| PackageError::IOError(e))?;
-    let mut signature = vec![0; signature_size as usize];
-    input.read_exact(&mut signature).map_err(|e| PackageError::IOError(e))?;
+    let signature_size = input.read_u32().map_err(|e| PackageError::IOError(e))? as usize;
+    let signature = input.read_data(signature_size).map_err(|e| PackageError::IOError(e))?;
     Ok((public_key, signature))
   }
 }

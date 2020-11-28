@@ -35,8 +35,8 @@ pub struct BerDecodeError {
 }
 
 pub struct RSAParameters {
-  pub modulus: Vec<u8>,
-  pub exponent: Vec<u8>
+  pub modulus: Box<[u8]>,
+  pub exponent: Box<[u8]>
 }
 
 pub struct AsnKeyParser {
@@ -50,12 +50,12 @@ impl AsnKeyParser {
     }
   }
 
-  pub fn trim_leading_zero(values: &[u8]) -> Vec<u8> {
-    if values[0] == 0x00 && values.len() > 1 {
+  pub fn trim_leading_zero(values: &[u8]) -> Box<[u8]> {
+    (if values[0] == 0x00 && values.len() > 1 {
       values[1..values.len()].to_vec()
     } else {
       values.to_vec()
-    }
+    }).into_boxed_slice()
   }
 
   pub fn equal_oid(first: &[u8], second: &[u8]) -> bool {
@@ -192,7 +192,7 @@ impl AsnParser {
     Ok(length)
   }
 
-  pub fn next(&mut self) -> Result<Vec<u8>, BerDecodeError> {
+  pub fn next(&mut self) -> Result<Box<[u8]>, BerDecodeError> {
     let position = self.current_position();
 
     let _ = self.get_next_octet()?;
@@ -220,7 +220,7 @@ impl AsnParser {
     Ok(self.get_octets(1)?[0])
   }
 
-  fn get_octets(&mut self, octet_count: u32) -> Result<Vec<u8>, BerDecodeError> {
+  fn get_octets(&mut self, octet_count: u32) -> Result<Box<[u8]>, BerDecodeError> {
     let position = self.current_position();
 
     if octet_count > self.remaining_bytes() {
@@ -231,7 +231,7 @@ impl AsnParser {
     }
 
     let values: Vec<u8> = self.octets.drain(0..octet_count as usize).collect();
-    return Ok(values);
+    return Ok(values.into_boxed_slice());
   }
 
   pub fn is_next_null(&self) -> bool {
@@ -307,7 +307,7 @@ impl AsnParser {
     Ok(length)
   }
 
-  pub fn next_integer(&mut self) -> Result<Vec<u8>, BerDecodeError> {
+  pub fn next_integer(&mut self) -> Result<Box<[u8]>, BerDecodeError> {
     let position = self.current_position();
     let mut b = self.get_next_octet()?;
     if b != 0x02 {
@@ -328,7 +328,7 @@ impl AsnParser {
     self.get_octets(length)
   }
 
-  pub fn next_oid(&mut self) -> Result<Vec<u8>, BerDecodeError> {
+  pub fn next_oid(&mut self) -> Result<Box<[u8]>, BerDecodeError> {
     let position = self.current_position();
     let mut b = self.get_next_octet()?;
     if b != 0x06 {
@@ -346,7 +346,7 @@ impl AsnParser {
       });
     }
 
-    let values: Vec<u8> = self.octets.drain(0..length as usize).collect();
+    let values: Box<[u8]> = self.octets.drain(0..length as usize).collect();
     Ok(values)
   }
 }
