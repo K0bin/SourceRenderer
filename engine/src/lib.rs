@@ -18,7 +18,6 @@ pub use transform::Transform;
 pub use transform::Parent;
 pub use camera::Camera;
 pub use camera::ActiveCamera;
-pub use self::bufreader::BufReader;
 
 // TODO move somewhere else
 #[repr(C)]
@@ -39,4 +38,3 @@ pub mod fps_camera;
 
 mod renderer;
 mod scene;
-mod bufreader;

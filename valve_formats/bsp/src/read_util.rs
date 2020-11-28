@@ -42,61 +42,61 @@ pub trait PrimitiveReader {
 impl<T: Read> PrimitiveReader for T {
   fn read_u8(&mut self) -> IOResult<u8> {
     let mut buffer = [0u8; 1];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(u8::from_le_bytes(buffer))
   }
 
   fn read_u16(&mut self) -> IOResult<u16> {
     let mut buffer = [0u8; 2];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(u16::from_le_bytes(buffer))
   }
 
   fn read_u32(&mut self) -> IOResult<u32> {
     let mut buffer = [0u8; 4];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(u32::from_le_bytes(buffer))
   }
 
   fn read_u64(&mut self) -> IOResult<u64> {
     let mut buffer = [0u8; 8];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(u64::from_le_bytes(buffer))
   }
 
   fn read_i8(&mut self) -> IOResult<i8> {
     let mut buffer = [0u8; 1];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(i8::from_le_bytes(buffer))
   }
 
   fn read_i16(&mut self) -> IOResult<i16> {
     let mut buffer = [0u8; 2];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(i16::from_le_bytes(buffer))
   }
 
   fn read_i32(&mut self) -> IOResult<i32> {
     let mut buffer = [0u8; 4];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(i32::from_le_bytes(buffer))
   }
 
   fn read_i64(&mut self) -> IOResult<i64> {
     let mut buffer = [0u8; 8];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(i64::from_le_bytes(buffer))
   }
 
   fn read_f32(&mut self) -> IOResult<f32> {
     let mut buffer = [0u8; 4];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(f32::from_le_bytes(buffer))
   }
 
   fn read_f64(&mut self) -> IOResult<f64> {
     let mut buffer = [0u8; 8];
-    self.read(&mut buffer)?;
+    self.read_exact(&mut buffer)?;
     Ok(f64::from_le_bytes(buffer))
   }
 }

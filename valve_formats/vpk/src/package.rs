@@ -273,12 +273,12 @@ impl<R: Read + Seek> Package<R> {
         let file_name = format!("{}_{:.2}.vpk", self.file_name, entry.archive_index);
         let mut reader = BufReader::new(File::open(file_name).map_err(|e| PackageError::IOError(e))?);
         reader.seek(SeekFrom::Start(offset as u64)).map_err(|e| PackageError::IOError(e))?;
-        reader.read(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(|e| PackageError::IOError(e))?;
+        reader.read_exact(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(|e| PackageError::IOError(e))?;
       } else {
         let offset = self.header_size + self.tree_size + entry.offset;
         let mut reader = self.reader.lock().unwrap();
         reader.seek(SeekFrom::Start(offset as u64)).map_err(|e| PackageError::IOError(e))?;
-        reader.read(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(|e| PackageError::IOError(e))?;
+        reader.read_exact(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(|e| PackageError::IOError(e))?;
       }
     }
 
@@ -336,7 +336,7 @@ impl<R: Read + Seek> Package<R> {
           }
 
           if entry.small_data.len() > 0 {
-            input.read(&mut entry.small_data[..]).map_err(|e| PackageError::IOError(e))?;
+            input.read_exact(&mut entry.small_data[..]).map_err(|e| PackageError::IOError(e))?;
           }
 
           entries.push(entry);
@@ -359,14 +359,14 @@ impl<R: Read + Seek> Package<R> {
       let mut reader = self.reader.lock().unwrap();
       reader.seek(SeekFrom::Start(0)).map_err(|e| PackageError::IOError(e))?;
       let mut buffer = vec![0u8; (self.header_size + self.tree_size + self.file_data_section_size + self.archive_md5_section_size + 32) as usize];
-      reader.read(&mut buffer).map_err(|e| PackageError::IOError(e))?;
+      reader.read_exact(&mut buffer).map_err(|e| PackageError::IOError(e))?;
       let mut hash = md5::compute(&buffer);
       if hash.0 != self.whole_file_checksum {
         return Err(PackageError::FileError(format!("Package checksum mismatch ({:?} != expected {:?}).", &hash, &self.whole_file_checksum)));
       }
 
       reader.seek(SeekFrom::Start((self.header_size + self.tree_size + self.file_data_section_size) as u64)).map_err(|e| PackageError::IOError(e))?;
-      reader.read(&mut buffer[..self.archive_md5_section_size as usize]).map_err(|e| PackageError::IOError(e))?;
+      reader.read_exact(&mut buffer[..self.archive_md5_section_size as usize]).map_err(|e| PackageError::IOError(e))?;
       hash = md5::compute(&buffer[..self.archive_md5_section_size as usize]);
       if hash.0 != self.whole_file_checksum {
         return Err(PackageError::FileError(format!("Archive MD5 entries checksum mismatch ({:?} != expected {:?}).", &hash, &self.archive_md5_entries_checksum)));
@@ -406,7 +406,7 @@ impl<R: Read + Seek> Package<R> {
     }
     let public_key = public_key_res.unwrap();
     let mut data = vec![0u8; (self.header_size + self.tree_size + self.file_data_section_size + self.archive_md5_section_size + self.other_md5_section_size) as usize];
-    let io_res = reader.read(&mut data);
+    let io_res = reader.read_exact(&mut data);
     if io_res.is_err() {
       return false;
     }
@@ -441,7 +441,7 @@ impl<R: Read + Seek> Package<R> {
         checksum: Default::default()
       };
 
-      input.read(&mut entry.checksum).map_err(|e| PackageError::IOError(e))?;
+      input.read_exact(&mut entry.checksum).map_err(|e| PackageError::IOError(e))?;
 
       archive_md5_entries.push(entry);
     }
@@ -454,11 +454,11 @@ impl<R: Read + Seek> Package<R> {
     }
 
     let mut tree_checksum = [0u8; 16];
-    input.read(&mut tree_checksum).map_err(|e| PackageError::IOError(e))?;
+    input.read_exact(&mut tree_checksum).map_err(|e| PackageError::IOError(e))?;
     let mut archive_md5_entries_checksum = [0u8; 16];
-    input.read(&mut archive_md5_entries_checksum).map_err(|e| PackageError::IOError(e))?;
+    input.read_exact(&mut archive_md5_entries_checksum).map_err(|e| PackageError::IOError(e))?;
     let mut whole_file_checksum = [0u8; 16];
-    input.read(&mut whole_file_checksum).map_err(|e| PackageError::IOError(e))?;
+    input.read_exact(&mut whole_file_checksum).map_err(|e| PackageError::IOError(e))?;
     Ok((tree_checksum, archive_md5_entries_checksum, whole_file_checksum))
   }
 
@@ -470,11 +470,11 @@ impl<R: Read + Seek> Package<R> {
 
     let public_key_size = input.read_u32().map_err(|e| PackageError::IOError(e))?;
     let mut public_key = vec![0; public_key_size as usize];
-    input.read(&mut public_key).map_err(|e| PackageError::IOError(e))?;
+    input.read_exact(&mut public_key).map_err(|e| PackageError::IOError(e))?;
 
     let signature_size = input.read_u32().map_err(|e| PackageError::IOError(e))?;
     let mut signature = vec![0; signature_size as usize];
-    input.read(&mut signature).map_err(|e| PackageError::IOError(e))?;
+    input.read_exact(&mut signature).map_err(|e| PackageError::IOError(e))?;
     Ok((public_key, signature))
   }
 }

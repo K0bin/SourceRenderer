@@ -12,10 +12,11 @@ use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage};
 use legion::world::SubWorld;
 use legion::{World, WorldOptions};
 use crate::renderer::StaticRenderableComponent;
-use crate::{Transform, BufReader};
+use crate::Transform;
 use nalgebra::{UnitQuaternion, Unit};
 use regex::Regex;
 use crate::asset::loaders::csgo_loader::CSGO_MAP_NAME_PATTERN;
+use std::io::BufReader;
 
 pub struct BspLevelLoader {
   map_name_regex: Regex

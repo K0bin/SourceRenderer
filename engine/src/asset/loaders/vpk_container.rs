@@ -1,4 +1,4 @@
-use crate::BufReader; //use std::io::BufReader;
+use std::io::BufReader;
 use std::fs::File;
 
 use sourcerenderer_vpk::{Package, PackageError};
