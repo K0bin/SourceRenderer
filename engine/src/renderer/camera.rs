@@ -14,7 +14,8 @@ struct PrimaryCameraBuffer {
 
 pub struct LateLatchCamera<B: Backend> {
   buffer: Arc<B::Buffer>,
-  counter: AtomicU32,
+  read_counter: AtomicU32,
+  write_counter: AtomicU32,
   position: AtomicCell<Vec3>, // AtomicCell uses a mutex for big structs, replace it by something like a lock less ring buffer
   rotation: AtomicCell<Quaternion>
 }
@@ -23,7 +24,8 @@ impl<B: Backend> LateLatchCamera<B> {
   pub fn new(device: &B::Device) -> Self {
     Self {
       buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuOnly, BufferUsage::STORAGE),
-      counter: AtomicU32::new(0),
+      read_counter: AtomicU32::new(0),
+      write_counter: AtomicU32::new(0),
       position: AtomicCell::new(Vec3::new(0f32, 0f32, 0f32)),
       rotation: AtomicCell::new(Quaternion::identity())
     }
@@ -61,19 +63,21 @@ impl<B: Backend> LateLatchCamera<B> {
   fn update_buffer(&self, camera: Matrix4) {
     let mut map = self.buffer.map_mut::<PrimaryCameraBuffer>().expect("Failed to map camera buffer");
     let mats_len = map.mats.len();
-    let counter = self.counter.load(Ordering::SeqCst);
-    map.mats[(counter + 1) as usize % mats_len] = camera;
-    let new_counter = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
-    map.counter = new_counter;
+    let counter = self.write_counter.fetch_add(1, Ordering::SeqCst);
+    map.mats[counter as usize % mats_len] = camera;
+    self.read_counter.store(counter, Ordering::SeqCst);
+    map.counter = counter;
   }
 
   pub fn get_camera(&self) -> Matrix4 {
-    let mats_len = buf.mats.len();
-    let counter = self.counter.load(Ordering::SeqCst);
+    let counter = self.read_counter.load(Ordering::SeqCst);
     unsafe {
       let ptr = self.buffer.map_unsafe(false).expect("Failed to map camera buffer");
       let buf = (ptr as *mut PrimaryCameraBuffer).as_ref().unwrap();
-      buf.mats[counter as usize % mats_len]
+      let mats_len = buf.mats.len();
+      let mat = buf.mats[counter as usize % mats_len];
+      self.buffer.unmap_unsafe(false);
+      mat
     }
   }
 
