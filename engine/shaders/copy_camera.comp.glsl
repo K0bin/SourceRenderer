@@ -10,5 +10,5 @@ layout(set = 0, binding = 1, std140) buffer Camera {
 } camera;
 
 void main() {
-    camera.mat = cameras.mats[cameras.counter % 16];
+    camera.mat = cameras.mats[cameras.counter % 256];
 }
