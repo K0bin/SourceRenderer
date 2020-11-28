@@ -10,7 +10,7 @@ use crate::renderer::*;
 use crate::transform;
 use crate::asset::{AssetManager, AssetType};
 use crate::fps_camera;
-use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainerLoader};
+use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainerLoader, VTFTextureLoader};
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 
@@ -42,6 +42,7 @@ impl Scene {
                           tick_rate: u32) {
     asset_manager.add_loader(Box::new(BspLevelLoader::new()));
     asset_manager.add_loader(Box::new(VPKContainerLoader::new()));
+    asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
     asset_manager.add_container(Box::new(CSGODirectoryContainer::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive").unwrap()));
     let progress = asset_manager.load("pak01_dir", AssetType::Container);
     while !progress.is_done() {

@@ -15,6 +15,7 @@ crossbeam-channel = "0.5.0"
 crossbeam-utils = "0.8.0"
 sourcerenderer_bsp = { path = "../valve_formats/bsp" }
 sourcerenderer_vpk = { path = "../valve_formats/vpk" }
+sourcerenderer_vtf = { path = "../valve_formats/vtf" }
 legion = "0.3.1"
 regex = "1.4.2"
 

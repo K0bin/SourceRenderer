@@ -14,6 +14,7 @@ use std::thread;
 use std::time::Duration;
 use legion::World;
 use std::fs::File;
+use std::io::{Cursor, Seek, SeekFrom};
 
 pub type AssetKey = usize;
 
@@ -76,7 +77,7 @@ pub struct AssetFile {
 
 pub enum AssetFileData {
   File(File),
-  Memory(Box<[u8]>)
+  Memory(Cursor<Box<[u8]>>)
 }
 
 pub trait AssetContainer
@@ -110,7 +111,7 @@ pub struct AssetLoaderContext<P: Platform> {
 
 pub trait AssetLoader<P: Platform>
   : Send + Sync {
-  fn matches(&self, file: &AssetFile) -> bool;
+  fn matches(&self, file: &mut AssetFile) -> bool;
   fn load(&self, file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()>;
 }
 
@@ -381,10 +382,20 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
           continue;
           // dunno, error i guess
         }
-        let file = file_opt.unwrap();
+        let mut file = file_opt.unwrap();
         let loaders = mgr.loaders.read().unwrap();
 
-        let loader_opt = loaders.iter().find(|loader| loader.matches(&file));
+        let start = match &mut file.data {
+          AssetFileData::File(file) => {file.seek(SeekFrom::Current(0))}
+          AssetFileData::Memory(cursor) => {cursor.seek(SeekFrom::Current(0))}
+        }.expect(format!("Failed to read file: {:?}", request.path.as_str()).as_str());
+        let loader_opt = loaders.iter().find(|loader| {
+          match &mut file.data {
+            AssetFileData::File(file) => { file.seek(SeekFrom::Start(start)); }
+            AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Start(start)); }
+          }
+          loader.matches(&mut file)
+        });
         if loader_opt.is_none() {
           println!("Could not find loader for file: {:?}", request.path.as_str());
           continue;

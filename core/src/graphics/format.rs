@@ -7,6 +7,8 @@ pub enum Format {
   RGBA8,
   BGR8UNorm,
   BGRA8UNorm,
+  DXT1,
+  DXT1Alpha,
   DXT3,
   DXT5,
   R32Float,

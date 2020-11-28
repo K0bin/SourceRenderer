@@ -1,4 +1,4 @@
-use std::io::BufReader;
+use std::io::{BufReader, Cursor};
 use std::fs::File;
 
 use sourcerenderer_vpk::{Package, PackageError};
@@ -35,7 +35,7 @@ impl AssetContainer for VPKContainer {
       .and_then(|entry| self.package.read_entry(entry, false).ok())
       .map(|data| AssetFile {
         path: path.to_string(),
-        data: AssetFileData::Memory(data)
+        data: AssetFileData::Memory(Cursor::new(data))
       })
   }
 }
@@ -53,7 +53,7 @@ impl VPKContainerLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
-  fn matches(&self, file: &AssetFile) -> bool {
+  fn matches(&self, file: &mut AssetFile) -> bool {
     let file_name = Path::new(&file.path).file_stem();
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.pak_name_regex.is_match(file_name))
   }

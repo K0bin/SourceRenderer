@@ -14,6 +14,10 @@ pub fn format_to_vk(format: Format) -> vk::Format {
     Format::D24S8 => vk::Format::D24_UNORM_S8_UINT,
     Format::D32 => vk::Format::D32_SFLOAT,
     Format::D32S8 => vk::Format::D32_SFLOAT_S8_UINT,
+    Format::DXT1 => vk::Format::BC1_RGB_UNORM_BLOCK,
+    Format::DXT1Alpha => vk::Format::BC1_RGBA_UNORM_BLOCK,
+    Format::DXT3 => vk::Format::BC2_UNORM_BLOCK,
+    Format::DXT5 => vk::Format::BC3_UNORM_BLOCK,
     _ => vk::Format::R8G8B8A8_UINT
   };
 }
