@@ -1,7 +1,7 @@
 #version 450
 
-layout(set = 0, binding = 0, std140) uniform Cameras {
-    mat4 mats[16];
+layout(set = 0, binding = 0, std140) readonly buffer Cameras {
+    mat4 mats[256];
     uint counter;
 } cameras;
 

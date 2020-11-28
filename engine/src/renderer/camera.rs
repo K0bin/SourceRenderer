@@ -8,7 +8,7 @@ use nalgebra::Point3;
 
 #[derive(Clone)]
 struct PrimaryCameraBuffer {
-  mats: [Matrix4; 16],
+  mats: [Matrix4; 256],
   counter: u32
 }
 
@@ -22,7 +22,7 @@ pub struct LateLatchCamera<B: Backend> {
 impl<B: Backend> LateLatchCamera<B> {
   pub fn new(device: &B::Device) -> Self {
     Self {
-      buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuToGpu, BufferUsage::CONSTANT),
+      buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuOnly, BufferUsage::STORAGE),
       counter: AtomicU32::new(0),
       position: AtomicCell::new(Vec3::new(0f32, 0f32, 0f32)),
       rotation: AtomicCell::new(Quaternion::identity())
@@ -60,18 +60,20 @@ impl<B: Backend> LateLatchCamera<B> {
 
   fn update_buffer(&self, camera: Matrix4) {
     let mut map = self.buffer.map_mut::<PrimaryCameraBuffer>().expect("Failed to map camera buffer");
+    let mats_len = map.mats.len();
     let counter = self.counter.load(Ordering::SeqCst);
-    map.mats[((counter + 1) % 16) as usize] = camera;
+    map.mats[(counter + 1) as usize % mats_len] = camera;
     let new_counter = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
     map.counter = new_counter;
   }
 
   pub fn get_camera(&self) -> Matrix4 {
+    let mats_len = buf.mats.len();
     let counter = self.counter.load(Ordering::SeqCst);
     unsafe {
       let ptr = self.buffer.map_unsafe(false).expect("Failed to map camera buffer");
       let buf = (ptr as *mut PrimaryCameraBuffer).as_ref().unwrap();
-      buf.mats[(counter % 16) as usize]
+      buf.mats[counter as usize % mats_len]
     }
   }
 

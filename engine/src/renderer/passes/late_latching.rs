@@ -46,7 +46,7 @@ pub(crate) fn build_pass<B: GraphicsBackend>(device: &Arc<B::Device>) -> (String
       Arc::new(move |command_buffer_a, graph_resources| {
         let command_buffer = command_buffer_a as &mut B::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&copy_camera_pipeline));
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, graph_resources.get_buffer(EXTERNAL_RING_BUFFER).expect("Failed to get graph resource"));
+        command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, graph_resources.get_buffer(EXTERNAL_RING_BUFFER).expect("Failed to get graph resource"));
         command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, graph_resources.get_buffer(OUTPUT_CAMERA).expect("Failed to get graph resource"));
         command_buffer.finish_binding();
         command_buffer.dispatch(1, 1, 1);
