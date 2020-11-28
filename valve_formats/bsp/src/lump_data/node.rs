@@ -1,7 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::{LumpData, LumpType};
-use ::{read_i32, read_i16};
-use read_u16;
+use crate::lump_data::{LumpData, LumpType};
+use crate::PrimitiveReader;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Node {
@@ -24,29 +23,29 @@ impl LumpData for Node {
     32
   }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let plane_number = read_i32(reader)?;
+  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+    let plane_number = reader.read_i32()?;
     let children: [i32; 2] = [
-      read_i32(reader)?,
-      read_i32(reader)?
+      reader.read_i32()?,
+      reader.read_i32()?
     ];
 
     let mins: [i16; 3] = [
-      read_i16(reader)?,
-      read_i16(reader)?,
-      read_i16(reader)?
+      reader.read_i16()?,
+      reader.read_i16()?,
+      reader.read_i16()?
     ];
 
     let maxs: [i16; 3] = [
-      read_i16(reader)?,
-      read_i16(reader)?,
-      read_i16(reader)?
+      reader.read_i16()?,
+      reader.read_i16()?,
+      reader.read_i16()?
     ];
 
-    let first_face = read_u16(reader)?;
-    let faces_count = read_u16(reader)?;
-    let area = read_u16(reader)?;
-    let padding = read_u16(reader)?;
+    let first_face = reader.read_u16()?;
+    let faces_count = reader.read_u16()?;
+    let area = reader.read_u16()?;
+    let padding = reader.read_u16()?;
 
     return Ok(Self {
       plane_number,

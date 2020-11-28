@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::{LumpData, LumpType};
-use read_u32;
+use crate::lump_data::{LumpData, LumpType};
+use crate::PrimitiveReader;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct VertexNormalIndex {
@@ -16,8 +16,8 @@ impl LumpData for VertexNormalIndex {
     4
   }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let index = read_u32(reader)?;
+  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+    let index = reader.read_u32()?;
     return Ok(Self {
       index
     });

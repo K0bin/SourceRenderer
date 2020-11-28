@@ -14,6 +14,6 @@ mod lump;
 mod lump_data;
 mod map_header;
 mod map;
-mod util;
+mod read_util;
 
-pub(crate) use self::util::*;
+pub(crate) use self::read_util::*;

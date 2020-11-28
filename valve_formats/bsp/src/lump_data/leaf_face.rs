@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::{LumpData, LumpType};
-use read_u16;
+use crate::lump_data::{LumpData, LumpType};
+use crate::PrimitiveReader;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct LeafFace {
@@ -16,8 +16,8 @@ impl LumpData for LeafFace {
     2
   }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let face = read_u16(reader)?;
+  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+    let face = reader.read_u16()?;
     return Ok(Self {
       index: face
     });

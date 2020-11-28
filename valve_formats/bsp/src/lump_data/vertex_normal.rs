@@ -1,7 +1,7 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::{LumpData, LumpType};
+use crate::lump_data::{LumpData, LumpType};
 use nalgebra::Vector3;
-use read_f32;
+use crate::PrimitiveReader;
 
 #[derive(Clone, Debug)]
 pub struct VertexNormal {
@@ -17,8 +17,8 @@ impl LumpData for VertexNormal {
     12
   }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let vec3 = Vector3::<f32>::new(read_f32(reader)?, read_f32(reader)?, read_f32(reader)?);
+  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+    let vec3 = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     return Ok(Self {
       normal: vec3
     });

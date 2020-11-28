@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::{LumpData, LumpType};
-use ::{read_i16, read_u16};
+use crate::lump_data::{LumpData, LumpType};
+use crate::PrimitiveReader;
 
 pub struct BrushSide {
   pub plane_number: u16,
@@ -18,11 +18,11 @@ impl LumpData for BrushSide {
     8
   }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let plane_number = read_u16(reader)?;
-    let texture_info = read_i16(reader)?;
-    let displacement_info = read_i16(reader)?;
-    let is_bevel_plane = read_i16(reader)? != 0;
+  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+    let plane_number = reader.read_u16()?;
+    let texture_info = reader.read_i16()?;
+    let displacement_info = reader.read_i16()?;
+    let is_bevel_plane = reader.read_i16()? != 0;
     return Ok(Self {
       plane_number,
       texture_info,

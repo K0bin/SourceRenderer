@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::{LumpData, LumpType};
-use ::{read_i32, read_u32};
+use crate::lump_data::{LumpData, LumpType};
+use crate::PrimitiveReader;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Brush {
@@ -64,10 +64,10 @@ impl LumpData for Brush {
     12
   }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let first_side = read_i32(reader)?;
-    let sides_count = read_i32(reader)?;
-    let contents = read_u32(reader)?;
+  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+    let first_side = reader.read_i32()?;
+    let sides_count = reader.read_i32()?;
+    let contents = reader.read_u32()?;
     return Ok(Self {
       first_side,
       sides_count,

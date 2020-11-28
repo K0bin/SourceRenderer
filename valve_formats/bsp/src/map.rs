@@ -1,13 +1,13 @@
-use map_header::{MapHeader};
+use crate::map_header::{MapHeader};
 use std::io::{Seek, SeekFrom, Read};
 use std::fs::File;
-use lump_data::{Brush, Node, Leaf, Face, Plane, Edge, BrushSide, LumpData};
+use crate::lump_data::{Brush, Node, Leaf, Face, Plane, Edge, BrushSide, LumpData};
 
 
 use std::io::Result as IOResult;
-use ::{LeafFace, LeafBrush};
-use ::{SurfaceEdge, VertexNormal};
-use ::{Vertex, VertexNormalIndex};
+use crate::{LeafFace, LeafBrush};
+use crate::{SurfaceEdge, VertexNormal};
+use crate::{Vertex, VertexNormalIndex};
 
 pub struct Map<R: Read + Seek> {
   pub name: String,

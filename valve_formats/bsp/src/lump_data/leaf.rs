@@ -1,9 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::brush::BrushContents;
-use lump_data::{LumpData, LumpType};
-use ::{read_u8, read_i8};
-use ::{read_u16, read_i16};
-use read_u32;
+use crate::lump_data::{LumpData, LumpType, brush::BrushContents};
+use crate::PrimitiveReader;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ColorRGBExp32 {
@@ -36,12 +33,12 @@ pub struct Leaf {
 }
 
 impl ColorRGBExp32 {
-  fn read(reader: &mut dyn Read) -> IOResult<Self> {
-    let r = read_u8(reader)?;
-    let g = read_u8(reader)?;
-    let b = read_u8(reader)?;
-    let _padding = read_u8(reader);
-    let exponent = read_i8(reader)?;
+  fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+    let r = reader.read_u8()?;
+    let g = reader.read_u8()?;
+    let b = reader.read_u8()?;
+    let _padding = reader.read_u8();
+    let exponent = reader.read_i8()?;
     return Ok(Self {
       r,
       g,
@@ -52,7 +49,7 @@ impl ColorRGBExp32 {
 }
 
 impl CompressedLightCube {
-  fn read(reader: &mut dyn Read) -> IOResult<Self> {
+  fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
     let mut colors: [ColorRGBExp32; 6] = [Default::default(); 6];
     for i in 0..6 {
       let color = ColorRGBExp32::read(reader)?;
@@ -77,37 +74,37 @@ impl LumpData for Leaf {
     }
   }
 
-  fn read(reader: &mut dyn Read, version: i32) -> IOResult<Self> {
-    let contents = read_u32(reader)?;
-    let cluster = read_i16(reader)?;
-    let area_flags = read_u16(reader)?;
+  fn read(mut reader: &mut dyn Read, version: i32) -> IOResult<Self> {
+    let contents = reader.read_u32()?;
+    let cluster = reader.read_i16()?;
+    let area_flags = reader.read_u16()?;
     let area: i16 = ((area_flags & 0b1111_1111_1000_0000) >> 7) as i16;
     let flags: i16 = (area_flags & 0b0000_0000_0111_1111) as i16;
 
     let mins: [i16; 3] = [
-      read_i16(reader)?,
-      read_i16(reader)?,
-      read_i16(reader)?
+      reader.read_i16()?,
+      reader.read_i16()?,
+      reader.read_i16()?
     ];
 
     let maxs: [i16; 3] = [
-      read_i16(reader)?,
-      read_i16(reader)?,
-      read_i16(reader)?
+      reader.read_i16()?,
+      reader.read_i16()?,
+      reader.read_i16()?
     ];
 
-    let first_leaf_face = read_u16(reader)?;
-    let leaf_faces_count = read_u16(reader)?;
-    let first_leaf_brush = read_u16(reader)?;
-    let leaf_brushes_count = read_u16(reader)?;
-    let leaf_water_data_id = read_i16(reader)?;
+    let first_leaf_face = reader.read_u16()?;
+    let leaf_faces_count = reader.read_u16()?;
+    let first_leaf_brush = reader.read_u16()?;
+    let leaf_brushes_count = reader.read_u16()?;
+    let leaf_water_data_id = reader.read_i16()?;
     let mut padding: i16 = 0;
     let mut ambient_lighting: CompressedLightCube = Default::default();
     if version <= 19 {
       let ambient_lighting_res = CompressedLightCube::read(reader)?;
       ambient_lighting = ambient_lighting_res;
     }
-    let padding_res = read_i16(reader)?;
+    let padding_res = reader.read_i16()?;
     padding = padding_res;
 
     return Ok(Self {

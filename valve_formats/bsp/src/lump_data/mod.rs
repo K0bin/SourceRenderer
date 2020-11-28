@@ -1,16 +1,16 @@
 pub use self::brush::Brush;
 pub use self::node::Node;
 pub use self::leaf::Leaf;
-pub use lump_data::edge::Edge;
-pub use lump_data::brush_side::BrushSide;
-pub use lump_data::face::Face;
-pub use lump_data::plane::Plane;
-pub use lump_data::leaf_face::LeafFace;
-pub use lump_data::leaf_brush::LeafBrush;
-pub use lump_data::surface_edge::SurfaceEdge;
-pub use lump_data::vertex::Vertex;
-pub use lump_data::vertex_normal::VertexNormal;
-pub use lump_data::vertex_normal_index::VertexNormalIndex;
+pub use crate::lump_data::edge::Edge;
+pub use crate::lump_data::brush_side::BrushSide;
+pub use crate::lump_data::face::Face;
+pub use crate::lump_data::plane::Plane;
+pub use crate::lump_data::leaf_face::LeafFace;
+pub use crate::lump_data::leaf_brush::LeafBrush;
+pub use crate::lump_data::surface_edge::SurfaceEdge;
+pub use crate::lump_data::vertex::Vertex;
+pub use crate::lump_data::vertex_normal::VertexNormal;
+pub use crate::lump_data::vertex_normal_index::VertexNormalIndex;
 
 use std::io::{Read, Result as IOResult};
 

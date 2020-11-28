@@ -1,5 +1,5 @@
 use std::io::{Read, Result as IOResult};
-use read_i32;
+use crate::PrimitiveReader;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Lump {
@@ -10,11 +10,11 @@ pub struct Lump {
 }
 
 impl Lump {
-  pub fn read(reader: &mut dyn Read) -> IOResult<Self> {
-    let file_offset = read_i32(reader)?;
-    let file_length = read_i32(reader)?;
-    let version = read_i32(reader)?;
-    let four_cc = read_i32(reader)?;
+  pub fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+    let file_offset = reader.read_i32()?;
+    let file_length = reader.read_i32()?;
+    let version = reader.read_i32()?;
+    let four_cc = reader.read_i32()?;
 
     return Ok(Self {
       file_offset,

@@ -1,9 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use lump_data::{LumpData, LumpType};
-use ::read_f32;
-use ::{read_u8, read_u16};
-use ::{read_i16, read_i32};
-use read_u32;
+use crate::lump_data::{LumpData, LumpType};
+use crate::PrimitiveReader;
 
 pub struct Face {
   pub plane_index: u16,
@@ -34,29 +31,29 @@ impl LumpData for Face {
     56
   }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let plane_number = read_u16(reader)?;
-    let size = read_u8(reader)?;
-    let is_on_node = read_u8(reader)? != 0;
-    let first_edge = read_i32(reader)?;
-    let edges_count = read_i16(reader)?;
-    let texture_info = read_i16(reader)?;
-    let displacement_info = read_i16(reader)?;
-    let surface_fog_volume_id = read_i16(reader)?;
+  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+    let plane_number = reader.read_u16()?;
+    let size = reader.read_u8()?;
+    let is_on_node = reader.read_u8()? != 0;
+    let first_edge = reader.read_i32()?;
+    let edges_count = reader.read_i16()?;
+    let texture_info = reader.read_i16()?;
+    let displacement_info = reader.read_i16()?;
+    let surface_fog_volume_id = reader.read_i16()?;
     let styles = [
-      read_u8(reader)?,
-      read_u8(reader)?,
-      read_u8(reader)?,
-      read_u8(reader)?
+      reader.read_u8()?,
+      reader.read_u8()?,
+      reader.read_u8()?,
+      reader.read_u8()?
     ];
-    let light_offset = read_i32(reader)?;
-    let area = read_f32(reader)?;
-    let lightmap_texture_mins_in_luxels = [read_i32(reader)?, read_i32(reader)?];
-    let lightmap_texture_size_in_luxels = [read_i32(reader)?, read_i32(reader)?];
-    let original_face = read_i32(reader)?;
-    let primitives_count = read_u16(reader)?;
-    let first_primitive_id = read_u16(reader)?;
-    let smoothing_group = read_u32(reader)?;
+    let light_offset = reader.read_i32()?;
+    let area = reader.read_f32()?;
+    let lightmap_texture_mins_in_luxels = [reader.read_i32()?, reader.read_i32()?];
+    let lightmap_texture_size_in_luxels = [reader.read_i32()?, reader.read_i32()?];
+    let original_face = reader.read_i32()?;
+    let primitives_count = reader.read_u16()?;
+    let first_primitive_id = reader.read_u16()?;
+    let smoothing_group = reader.read_u32()?;
     return Ok(Self {
       plane_index: plane_number,
       size,
