@@ -3,7 +3,7 @@ use sourcerenderer_core::{Platform, Quaternion};
 use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
 use std::fs::File;
 use std::path::Path;
-use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane};
+use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
@@ -33,7 +33,11 @@ struct BspTemp {
   vertices: Vec<Vertex>,
   faces: Vec<Face>,
   edges: Vec<Edge>,
-  planes: Vec<Plane>
+  planes: Vec<Plane>,
+  tex_data: Vec<TextureData>,
+  tex_info: Vec<TextureInfo>,
+  tex_string_data: TextureStringData,
+  tex_data_string_table: Vec<TextureDataStringTable>
 }
 
 const SCALING_FACTOR: f32 = 0.0236f32;
@@ -65,6 +69,10 @@ impl BspLevelLoader {
       let face_index = temp.leaf_faces[leaf_face_index as usize].index;
       let face = &temp.faces[face_index as usize];
       let plane = &temp.planes[face.plane_index as usize];
+      let tex_info = &temp.tex_info[face.texture_info as usize];
+      let tex_data = &temp.tex_data[tex_info.texture_data as usize];
+      let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
+      let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32);
 
       let mut face_vertices: HashMap<u16, u32> = HashMap::new(); // Just to make sure that there's no duplicates
       let mut root_vertex = 0u16;
@@ -154,6 +162,11 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let surface_edges = map.read_surface_edges().unwrap();
     let vertices = map.read_vertices().unwrap();
     let planes = map.read_planes().unwrap();
+    let tex_data = map.read_texture_data().unwrap();
+    let tex_info = map.read_texture_info().unwrap();
+    let tex_string_data = map.read_texture_string_data().unwrap();
+    let tex_data_string_table = map.read_texture_data_string_table().unwrap();
+
     let temp = BspTemp {
       map,
       map_name: name.to_string(),
@@ -165,7 +178,11 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       vertices,
       faces,
       edges,
-      planes
+      planes,
+      tex_data,
+      tex_info,
+      tex_string_data,
+      tex_data_string_table
     };
 
     let mut brush_vertices = Vec::<crate::Vertex>::new();

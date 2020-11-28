@@ -11,6 +11,10 @@ pub use crate::lump_data::surface_edge::SurfaceEdge;
 pub use crate::lump_data::vertex::Vertex;
 pub use crate::lump_data::vertex_normal::VertexNormal;
 pub use crate::lump_data::vertex_normal_index::VertexNormalIndex;
+pub use crate::lump_data::texture_data::TextureData;
+pub use crate::lump_data::texture_info::TextureInfo;
+pub use crate::lump_data::texture_string_data::TextureStringData;
+pub use crate::lump_data::texture_data_string_table::TextureDataStringTable;
 
 use std::io::{Read, Result as IOResult};
 
@@ -27,6 +31,10 @@ mod surface_edge;
 mod vertex;
 mod vertex_normal;
 mod vertex_normal_index;
+mod texture_data;
+mod texture_info;
+mod texture_string_data;
+mod texture_data_string_table;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]

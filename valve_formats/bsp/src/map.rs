@@ -1,13 +1,14 @@
 use crate::map_header::{MapHeader};
-use std::io::{Seek, SeekFrom, Read};
+use std::io::{Seek, SeekFrom, Read, Result as IOResult};
 use std::fs::File;
-use crate::lump_data::{Brush, Node, Leaf, Face, Plane, Edge, BrushSide, LumpData};
+use crate::lump_data::{Brush, Node, Leaf, Face,
+                       Plane, Edge, BrushSide, LumpData,
+                       TextureInfo, LeafFace, LeafBrush,
+                       TextureData, SurfaceEdge, Vertex,
+                       VertexNormalIndex, VertexNormal,
+                       TextureDataStringTable, TextureStringData};
+use crate::LumpType;
 
-
-use std::io::Result as IOResult;
-use crate::{LeafFace, LeafBrush};
-use crate::{SurfaceEdge, VertexNormal};
-use crate::{Vertex, VertexNormalIndex};
 
 pub struct Map<R: Read + Seek> {
   pub name: String,
@@ -75,6 +76,25 @@ impl<R: Read + Seek> Map<R> {
   }
 
   pub fn read_vertex_normal_indices(&mut self) -> IOResult<Vec<VertexNormalIndex>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_texture_data(&mut self) -> IOResult<Vec<TextureData>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_texture_info(&mut self) -> IOResult<Vec<TextureInfo>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_texture_string_data(&mut self) -> IOResult<TextureStringData> {
+    let index = LumpType::TextureStringData as usize;
+    let lump = self.header.lumps[index];
+    self.reader.seek(SeekFrom::Start(lump.file_offset as u64))?;
+    TextureStringData::read(&mut self.reader, lump.file_length as u32)
+  }
+
+  pub fn read_texture_data_string_table(&mut self) -> IOResult<Vec<TextureDataStringTable>> {
     self.read_lump_data()
   }
 
