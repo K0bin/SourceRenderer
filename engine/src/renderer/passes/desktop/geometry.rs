@@ -161,8 +161,8 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           extent: Vec2UI::new(9999, 9999),
         }]);
 
-        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
+        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
+        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
         for renderable in &state.elements {
           let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
