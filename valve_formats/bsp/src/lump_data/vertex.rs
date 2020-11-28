@@ -1,7 +1,7 @@
 use std::io::{Read, Result as IOResult};
 use crate::lump_data::{LumpData, LumpType};
 use nalgebra::Vector3;
-use crate::PrimitiveReader;
+use crate::PrimitiveRead;
 
 #[derive(Clone, Debug)]
 pub struct Vertex {

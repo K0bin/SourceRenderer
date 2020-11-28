@@ -1,7 +1,7 @@
 use crate::lump::Lump;
 
 use std::io::{Read, Result as IOResult};
-use crate::PrimitiveReader;
+use crate::PrimitiveRead;
 
 const LUMP_COUNT: usize = 64;
 

@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 use crate::lump_data::{LumpData, LumpType};
-use crate::PrimitiveReader;
+use crate::PrimitiveRead;
 
 pub struct BrushSide {
   pub plane_number: u16,

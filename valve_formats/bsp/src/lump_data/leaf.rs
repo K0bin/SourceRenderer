@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 use crate::lump_data::{LumpData, LumpType, brush::BrushContents};
-use crate::PrimitiveReader;
+use crate::PrimitiveRead;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ColorRGBExp32 {

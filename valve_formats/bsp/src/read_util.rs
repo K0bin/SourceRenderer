@@ -8,11 +8,11 @@ pub enum StringReadError {
   StringConstructionError(FromUtf8Error)
 }
 
-pub trait StringReader {
+pub trait StringRead {
   fn read_null_terminated_string(&mut self) -> Result<String, StringReadError>;
 }
 
-impl<T: Read> StringReader for T {
+impl<T: Read> StringRead for T {
   fn read_null_terminated_string(&mut self) -> Result<String, StringReadError> {
     let mut buffer = Vec::<u8>::new();
     loop {
@@ -26,7 +26,20 @@ impl<T: Read> StringReader for T {
   }
 }
 
-pub trait PrimitiveReader {
+pub trait RawDataRead {
+  fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>>;
+}
+
+impl<T: Read> RawDataRead for T {
+  fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>> {
+    let mut buffer = Vec::with_capacity(len);
+    unsafe { buffer.set_len(len); }
+    self.read_exact(&mut buffer)?;
+    Ok(buffer.into_boxed_slice())
+  }
+}
+
+pub trait PrimitiveRead {
   fn read_u8(&mut self) -> IOResult<u8>;
   fn read_u16(&mut self) -> IOResult<u16>;
   fn read_u32(&mut self) -> IOResult<u32>;
@@ -39,7 +52,7 @@ pub trait PrimitiveReader {
   fn read_f64(&mut self) -> IOResult<f64>;
 }
 
-impl<T: Read> PrimitiveReader for T {
+impl<T: Read> PrimitiveRead for T {
   fn read_u8(&mut self) -> IOResult<u8> {
     let mut buffer = [0u8; 1];
     self.read_exact(&mut buffer)?;

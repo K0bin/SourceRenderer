@@ -1,5 +1,5 @@
 use std::io::{Read, Result as IOResult};
-use crate::PrimitiveReader;
+use crate::PrimitiveRead;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Lump {

@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 use crate::lump_data::{LumpData, LumpType};
-use crate::PrimitiveReader;
+use crate::PrimitiveRead;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct LeafBrush {
