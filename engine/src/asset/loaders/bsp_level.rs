@@ -1,5 +1,5 @@
 
-use sourcerenderer_core::{Platform, Quaternion};
+use sourcerenderer_core::{Platform, Quaternion, Vec4};
 use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
 use std::fs::File;
 use std::path::Path;
@@ -84,12 +84,15 @@ impl BspLevelLoader {
         if surf_edge_index == face.first_edge {
           if !face_vertices.contains_key(&edge.vertex_index[if edge_index > 0 { 0 } else { 1 }]) {
             root_vertex = edge.vertex_index[if edge_index > 0 { 0 } else { 1 }];
-            let position = temp.vertices[root_vertex as usize].position.clone();
-            let vertex = crate::Vertex {
-              position: BspLevelLoader::fixup_position(position),
+            let position = BspLevelLoader::fixup_position(temp.vertices[root_vertex as usize].position.clone());
+            let mut vertex = crate::Vertex {
+              position,
               normal: BspLevelLoader::fixup_normal(plane.normal),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-              uv: Vec2::new(0.0f32, 0.0f32)
+              uv: Vec2::new(
+                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_s) / tex_data.width as f32,
+                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_t) / tex_data.height as f32
+              )
             };
             face_vertices.insert(root_vertex, brush_vertices.len() as u32);
             brush_vertices.push(vertex);
@@ -105,12 +108,15 @@ impl BspLevelLoader {
         // Edge is on opposite side of the first edge => push the vertices
         for i in 0..2 {
           if !face_vertices.contains_key(&edge.vertex_index[i]) {
-            let position = temp.vertices[edge.vertex_index[i] as usize].position;
+            let position = BspLevelLoader::fixup_position(temp.vertices[edge.vertex_index[i] as usize].position);
             let vertex = crate::Vertex {
-              position: BspLevelLoader::fixup_position(position),
+              position,
               normal: BspLevelLoader::fixup_normal(plane.normal),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-              uv: Vec2::new(0.0f32, 0.0f32)
+              uv: Vec2::new(
+                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_s) / tex_data.width as f32,
+                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_t) / tex_data.height as f32
+              )
             };
             face_vertices.insert(edge.vertex_index[i], brush_vertices.len() as u32);
             brush_vertices.push(vertex);
