@@ -7,6 +7,7 @@ extern crate image;
 extern crate crossbeam_channel;
 extern crate crossbeam_utils;
 extern crate sourcerenderer_bsp;
+extern crate sourcerenderer_vpk;
 #[macro_use]
 extern crate legion;
 extern crate regex;
@@ -17,6 +18,7 @@ pub use transform::Transform;
 pub use transform::Parent;
 pub use camera::Camera;
 pub use camera::ActiveCamera;
+pub use self::bufreader::BufReader;
 
 // TODO move somewhere else
 #[repr(C)]
@@ -37,3 +39,4 @@ pub mod fps_camera;
 
 mod renderer;
 mod scene;
+mod bufreader;

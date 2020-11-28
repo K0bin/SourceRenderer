@@ -5,12 +5,14 @@ use crate::asset::asset_manager::{AssetLoaderResult, AssetContainer, AssetFile, 
 use crate::asset::loaders::csgo_loader::CSGOMapLoaderError::CSGONotFound;
 use regex::Regex;
 use std::fs::File;
+use crate::asset::loaders::vpk_container::CSGO_PAK_NAME_PATTERN;
 
-pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+";
+pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+(\.bsp)*";
 
 pub struct CSGODirectoryContainer {
   path: String,
-  map_name_regex: Regex
+  map_name_regex: Regex,
+  pak_name_regex: Regex
 }
 
 #[derive(Debug)]
@@ -30,7 +32,8 @@ impl CSGODirectoryContainer {
 
     Ok(Self {
       path: path.to_owned(),
-      map_name_regex: Regex::new(CSGO_MAP_NAME_PATTERN).unwrap()
+      map_name_regex: Regex::new(CSGO_MAP_NAME_PATTERN).unwrap(),
+      pak_name_regex: Regex::new(CSGO_PAK_NAME_PATTERN).unwrap()
     })
   }
 }
@@ -43,7 +46,19 @@ impl AssetContainer for CSGODirectoryContainer {
       actual_path.push("csgo");
       actual_path.push("maps");
       let mut file_name = path.to_owned();
-      file_name.push_str(".bsp");
+      if !file_name.ends_with(".bsp") {
+        file_name.push_str(".bsp");
+      }
+      actual_path.push(file_name);
+      actual_path
+    } else if self.pak_name_regex.is_match(path) {
+      let mut actual_path = PathBuf::new();
+      actual_path.push(&self.path);
+      actual_path.push("csgo");
+      let mut file_name = path.to_owned();
+      if !file_name.ends_with(".vpk") {
+        file_name.push_str(".vpk");
+      }
       actual_path.push(file_name);
       actual_path
     } else {
@@ -51,6 +66,8 @@ impl AssetContainer for CSGODirectoryContainer {
       actual_path.push(path);
       actual_path
     };
+
+    // TODO: prevent opening arbitrary files
 
     let file = File::open(&actual_path);
     file.ok().map(|file|

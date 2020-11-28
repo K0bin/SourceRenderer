@@ -30,6 +30,7 @@ SOFTWARE.
 extern crate md5;
 extern crate rsa;
 extern crate crc;
+extern crate rand;
 
 mod utilities;
 mod package;
@@ -38,3 +39,7 @@ mod package_entry;
 mod read_util;
 
 use utilities::*;
+
+pub use self::package::Package;
+pub use self::package::PackageError;
+pub use self::package_entry::PackageEntry;

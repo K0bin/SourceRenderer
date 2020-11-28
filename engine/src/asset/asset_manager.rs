@@ -89,6 +89,12 @@ pub struct AssetLoaderProgress {
   finished: AtomicU32
 }
 
+impl AssetLoaderProgress {
+  pub fn is_done(&self) -> bool {
+    self.finished.load(Ordering::SeqCst) == self.expected.load(Ordering::SeqCst)
+  }
+}
+
 pub struct AssetLoaderResult<P: Platform> {
   pub assets: Vec<LoadedAsset<P>>,
   pub requests: Vec<AssociatedAssetLoadRequest>

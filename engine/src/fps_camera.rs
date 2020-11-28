@@ -61,10 +61,10 @@ fn update_fps_camera_position<P: Platform>(#[resource] late_latch_camera: &Arc<L
 fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Transform, #[resource] delta_time: &DeltaTime) {
   let mut movement_vector = Vec3::new(0f32, 0f32, 0f32);
   if input.is_key_down(Key::W) {
-    movement_vector.z -= 1f32;
+    movement_vector.z += 1f32;
   }
   if input.is_key_down(Key::S) {
-    movement_vector.z += 1f32;
+    movement_vector.z -= 1f32;
   }
   if input.is_key_down(Key::A) {
     movement_vector.x -= 1f32;
@@ -80,7 +80,7 @@ fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform
   }
 
   if movement_vector.x.abs() > 0.00001f32 || movement_vector.y.abs() > 0.00001f32 || movement_vector.z.abs() > 0.00001f32 {
-    let mut rotated_movement_vector = Vec3::new(-movement_vector.x, 0.0f32, -movement_vector.z).normalize();
+    let mut rotated_movement_vector = Vec3::new(-movement_vector.x, 0.0f32, movement_vector.z).normalize();
     rotated_movement_vector = transform.rotation.transform_vector(&rotated_movement_vector);
     rotated_movement_vector.y = movement_vector.y;
     transform.position += rotated_movement_vector * 3f32 * delta_time.secs();
