@@ -78,9 +78,9 @@ impl<T: Seek> Seek for BufReader<T> {
       return Ok(current_pos);
     }
 
-    return if target_pos < buffer_start_pos + self.buffer_len as u64 {
+    return if target_pos > buffer_start_pos && target_pos < buffer_start_pos + self.buffer_len as u64 {
       // we can seek within the buffered data
-      self.buffer_position += (target_pos - buffer_start_pos) as usize;
+      self.buffer_position = (target_pos - buffer_start_pos) as usize;
       Ok(target_pos)
     } else {
       // invalidate buffered data and seek in the data source
