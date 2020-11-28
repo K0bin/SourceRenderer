@@ -1,7 +1,6 @@
 
 use sourcerenderer_core::{Platform, Quaternion};
 use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
-use std::io::{BufReader};
 use std::fs::File;
 use std::path::Path;
 use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane};
@@ -13,7 +12,7 @@ use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage};
 use legion::world::SubWorld;
 use legion::{World, WorldOptions};
 use crate::renderer::StaticRenderableComponent;
-use crate::Transform;
+use crate::{Transform, BufReader};
 use nalgebra::{UnitQuaternion, Unit};
 use regex::Regex;
 use crate::asset::loaders::csgo_loader::CSGO_MAP_NAME_PATTERN;
@@ -23,7 +22,7 @@ pub struct BspLevelLoader {
 }
 
 struct BspTemp {
-  map: Map,
+  map: Map<BufReader<File>>,
   map_name: String,
   leafs: Vec<Leaf>,
   nodes: Vec<Node>,

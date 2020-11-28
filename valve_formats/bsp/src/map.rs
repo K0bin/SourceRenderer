@@ -1,5 +1,5 @@
 use map_header::{MapHeader};
-use std::io::{Seek, SeekFrom, BufReader};
+use std::io::{Seek, SeekFrom, Read};
 use std::fs::File;
 use lump_data::{Brush, Node, Leaf, Face, Plane, Edge, BrushSide, LumpData};
 
@@ -9,14 +9,14 @@ use ::{LeafFace, LeafBrush};
 use ::{SurfaceEdge, VertexNormal};
 use ::{Vertex, VertexNormalIndex};
 
-pub struct Map {
+pub struct Map<R: Read + Seek> {
   pub name: String,
   header: MapHeader,
-  reader: BufReader<File>,
+  reader: R,
 }
 
-impl Map {
-  pub fn read(name: &str, mut reader: BufReader<File>) -> IOResult<Map> {
+impl<R: Read + Seek> Map<R> {
+  pub fn read(name: &str, mut reader: R) -> IOResult<Map<R>> {
     reader.seek(SeekFrom::Start(0));
     let header = MapHeader::read(&mut reader)?;
     return Ok(Map {
