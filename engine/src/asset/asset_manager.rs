@@ -172,7 +172,7 @@ impl<P: Platform> AssetManager<P> {
       address_mode_v: AddressMode::Repeat,
       address_mode_w: AddressMode::Repeat,
       mip_bias: 0.0,
-      max_anisotropy: 1.0,
+      max_anisotropy: 0.0,
       compare_op: None,
       min_lod: 0.0,
       max_lod: 0.0
@@ -258,7 +258,7 @@ impl<P: Platform> AssetManager<P> {
       address_mode_v: AddressMode::Repeat,
       address_mode_w: AddressMode::Repeat,
       mip_bias: 0.0,
-      max_anisotropy: 1.0,
+      max_anisotropy: 0.0,
       compare_op: None,
       min_lod: 0.0,
       max_lod: 0.0

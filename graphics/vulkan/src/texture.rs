@@ -176,7 +176,7 @@ impl VkTextureView {
       address_mode_v: address_mode_to_vk(info.address_mode_v),
       address_mode_w: address_mode_to_vk(info.address_mode_u),
       mip_lod_bias: info.mip_bias,
-      anisotropy_enable: (info.max_anisotropy.abs() < 0.01f32) as u32,
+      anisotropy_enable: (info.max_anisotropy.abs() >= 1.0f32) as u32,
       max_anisotropy: info.max_anisotropy,
       compare_enable: info.compare_op.is_some() as u32,
       compare_op: info.compare_op.map_or(vk::CompareOp::ALWAYS, |comp| compare_func_to_vk(comp)),
