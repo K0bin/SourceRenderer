@@ -57,9 +57,11 @@ impl<R: Read + Seek> VtfTexture<R> {
     let mut offset = *self.resource_offsets.get(&Resource::Image).unwrap() as u64;
 
     // I'm sure there's a way to simply calculate that with math but this works just fine
-    for level in (level .. self.header.mipmap_count as u32).rev() {
-      let level_width = max(1, self.header.width >> level) as u32;
-      let level_height = max(1, self.header.height >> level) as u32;
+    for level in 0 .. level {
+      let reversed_level = self.header.mipmap_count as u32 - 1 - level;
+
+      let level_width = max(1, self.header.width >> reversed_level) as u32;
+      let level_height = max(1, self.header.height >> reversed_level) as u32;
       let level_image_size = calculate_image_size(level_width, level_height, 1, self.header.high_res_image_format) as u64;
       let frames_count = self.header.frames as u64;
       let faces_count = 1 as u64; // TODO
@@ -77,10 +79,9 @@ impl<R: Read + Seek> VtfTexture<R> {
     let offset = self.calculate_mip_offset(level)?;
     self.reader.seek(SeekFrom::Start(offset)).ok()?;
 
-    let level = self.header.mipmap_count as u32 - level; // reverse order
-
-    let level_width = max(1, self.header.width >> level) as u32;
-    let level_height = max(1, self.header.height >> level) as u32;
+    let reversed_level = self.header.mipmap_count as u32 - 1 - level;
+    let level_width = max(1, self.header.width >> reversed_level) as u32;
+    let level_height = max(1, self.header.height >> reversed_level) as u32;
     let level_image_size = calculate_image_size(level_width, level_height, 1, self.header.high_res_image_format);
 
     let frames_count = self.header.frames;

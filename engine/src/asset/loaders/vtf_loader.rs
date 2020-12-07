@@ -71,12 +71,12 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
     let texture_view = match file.data {
       AssetFileData::File(file) => {
         let mut texture = VtfTexture::new(BufReader::new(file)).unwrap();
-        let mipmap = &texture.read_mip_map(0).unwrap();
+        let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
         VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, &context.graphics_device)
       }
       AssetFileData::Memory(cursor) => {
         let mut texture = VtfTexture::new(BufReader::new(cursor)).unwrap();
-        let mipmap = &texture.read_mip_map(0).unwrap();
+        let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
         VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, &context.graphics_device)
       }
     };
