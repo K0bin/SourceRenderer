@@ -378,6 +378,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
         std::mem::drop(containers);
 
         if file_opt.is_none() {
+          request.progress.finished.fetch_add(1, Ordering::SeqCst);
           println!("Could not find file: {:?}", request.path.as_str());
           continue;
           // dunno, error i guess
@@ -398,6 +399,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
           loader_matches
         });
         if loader_opt.is_none() {
+          request.progress.finished.fetch_add(1, Ordering::SeqCst);
           println!("Could not find loader for file: {:?}", request.path.as_str());
           continue;
         }
@@ -405,6 +407,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
 
         let assets_opt = loader.load(file, &context);
         if assets_opt.is_err() {
+          request.progress.finished.fetch_add(1, Ordering::SeqCst);
           println!("Could not load file: {:?}", request.path.as_str());
           continue;
           // dunno, error i guess
