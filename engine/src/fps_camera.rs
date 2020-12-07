@@ -41,6 +41,8 @@ pub fn fps_camera_rotation<P: Platform>(input: &Arc<P::Input>, fps_camera: &mut 
   fps_camera.pitch += mouse_delta.y as f32 / 20_000f32 * fps_camera.sensitivity;
   fps_camera.yaw -= mouse_delta.x as f32 / 20_000f32 * fps_camera.sensitivity;
 
+  fps_camera.pitch = fps_camera.pitch.max(-std::f32::consts::FRAC_PI_2 + 0.01f32).min(std::f32::consts::FRAC_PI_2 - 0.01f32);
+
   Quaternion::from_euler_angles(fps_camera.pitch, fps_camera.yaw, 0f32)
 }
 
