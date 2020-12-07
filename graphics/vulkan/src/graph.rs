@@ -22,6 +22,7 @@ use crate::VkBackend;
 use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
 use VkCommandBufferRecorder;
+use rayon;
 
 pub enum VkResource {
   Texture {
@@ -597,6 +598,8 @@ impl VkRenderGraph {
                         signal_semaphore: &[&VkSemaphore]) {
     let finished_cmd_buffer = std::mem::replace(cmd_buffer, frame_local.get_command_buffer(CommandBufferType::PRIMARY));
     self.graphics_queue.submit(finished_cmd_buffer.finish(), fence, wait_semaphores, signal_semaphore);
+    let c_queue = self.graphics_queue.clone();
+    rayon::spawn(move || c_queue.process_submissions());
   }
 }
 

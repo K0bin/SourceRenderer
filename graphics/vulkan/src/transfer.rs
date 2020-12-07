@@ -7,6 +7,7 @@ use ash::version::DeviceV1_0;
 use buffer::VkBufferSlice;
 use ::{VkFence};
 use crossbeam_channel::{Sender, Receiver, unbounded};
+use rayon;
 
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::{max, min};
@@ -265,6 +266,8 @@ impl VkTransfer {
       });
     }
     self.graphics_queue.submit_transfer(&cmd_buffer);
+    let c_queue = self.graphics_queue.clone();
+    rayon::spawn(move || c_queue.process_submissions());
     guard.used_graphics_buffers.push_back(cmd_buffer);
   }
 }

@@ -11,6 +11,8 @@ extern crate bitflags;
 extern crate thread_local;
 extern crate crossbeam_channel;
 extern crate spirv_cross;
+extern crate smallvec;
+extern crate rayon;
 
 pub use self::instance::VkInstance;
 pub use self::adapter::VkAdapter;
