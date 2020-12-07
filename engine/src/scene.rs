@@ -10,7 +10,7 @@ use crate::renderer::*;
 use crate::transform;
 use crate::asset::{AssetManager, AssetType};
 use crate::fps_camera;
-use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainerLoader, VTFTextureLoader};
+use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader};
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 
@@ -43,18 +43,17 @@ impl Scene {
     asset_manager.add_loader(Box::new(BspLevelLoader::new()));
     asset_manager.add_loader(Box::new(VPKContainerLoader::new()));
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
+    asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
     asset_manager.add_container(Box::new(CSGODirectoryContainer::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive").unwrap()));
     let progress = asset_manager.load("pak01_dir", AssetType::Container);
     while !progress.is_done() {
       // wait until our container is loaded
     }
-    asset_manager.load("de_overpass", AssetType::Level);
-
-    let mut level = asset_manager.get_level("de_overpass");
-    while level.is_none() {
+    let progress = asset_manager.load("de_overpass.bsp", AssetType::Level);
+    while !progress.is_done() {
       std::thread::sleep(Duration::new(0, 10_000_000));
-      level = asset_manager.get_level("de_overpass");
     }
+    let mut level = asset_manager.get_level("de_overpass.bsp").unwrap();
 
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
@@ -72,7 +71,6 @@ impl Scene {
       transform::install(&mut systems);
       c_renderer.install(&mut world, &mut resources, &mut systems);
 
-      let mut level = level.unwrap();
       world.move_from(&mut level, &FilterAll {});
 
       resources.insert(c_renderer.primary_camera().clone());
