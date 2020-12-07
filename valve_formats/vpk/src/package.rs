@@ -141,15 +141,16 @@ impl<R: Read + Seek> Package<R> {
 
   pub fn sanitize_file_name(file_name: &str) -> (String, bool) {
     let lower_file_name = file_name.to_lowercase();
-    if lower_file_name.ends_with(".vpk") {
-      return (file_name[0 .. file_name.len() - 4].to_string(), false);
+    let mut file_name_str = lower_file_name.as_str();
+    if file_name_str.ends_with(".vpk") {
+      file_name_str = &file_name[0 .. file_name_str.len() - 4];
     }
 
-    if lower_file_name.ends_with("_dir") {
-      return (file_name[0 .. file_name.len() - 4].to_string(), true);
+    if file_name_str.ends_with("_dir") {
+      return (file_name_str[0 .. file_name_str.len() - 4].to_string(), true);
     }
 
-    (file_name.to_string(), false)
+    (file_name_str.to_string(), false)
   }
 
   pub fn read(file_name: &str, mut input: R) -> Result<Self, PackageError> {
@@ -224,7 +225,7 @@ impl<R: Read + Seek> Package<R> {
     } else {
       (file_path.as_str(), "")
     };
-    self.find_entry_in_dir(file_name, directory)
+    self.find_entry_in_dir(directory, file_name)
   }
 
   /// Searches for a given file entry in the file list.
@@ -272,7 +273,7 @@ impl<R: Read + Seek> Package<R> {
         }
 
         let offset = entry.offset;
-        let file_name = format!("{}_{:.2}.vpk", self.file_name, entry.archive_index);
+        let file_name = format!("{}_{:03}.vpk", self.file_name, entry.archive_index);
         let mut reader = BufReader::new(File::open(file_name).map_err(|e| PackageError::IOError(e))?);
         reader.seek(SeekFrom::Start(offset as u64)).map_err(|e| PackageError::IOError(e))?;
         reader.read_exact(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(|e| PackageError::IOError(e))?;
@@ -481,14 +482,5 @@ impl<R: Read + Seek> Package<R> {
     let signature_size = input.read_u32().map_err(|e| PackageError::IOError(e))? as usize;
     let signature = input.read_data(signature_size).map_err(|e| PackageError::IOError(e))?;
     Ok((public_key, signature))
-  }
-}
-
-impl Package<BufReader<File>> {
-  pub fn read_file(file_name: &str) -> Result<Self, PackageError> {
-    let (file_name, is_dir_vpk) = Package::<BufReader<File>>::sanitize_file_name(file_name);
-    let file_path = format!("{}{}.vpk", file_name, if is_dir_vpk { "_dir" } else { "" });
-    let file = BufReader::new(File::open(&file_path).expect(format!("Failed to open file: {}", file_path).as_str()));
-    Package::<BufReader<File>>::read(file_name.as_str(), file)
   }
 }
