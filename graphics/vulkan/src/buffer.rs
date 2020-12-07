@@ -318,7 +318,7 @@ impl BufferAllocator {
       return slice;
     }
 
-    let mut alignment: usize = 0;
+    let mut alignment: usize = 4;
     if (buffer_usage & BufferUsage::CONSTANT) == BufferUsage::CONSTANT {
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_uniform_buffer_offset_alignment as usize);
