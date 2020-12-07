@@ -30,7 +30,7 @@ impl VkTexture {
       initial_layout: vk::ImageLayout::UNDEFINED,
       sharing_mode: vk::SharingMode::EXCLUSIVE,
       usage,
-      image_type: if info.height <= 1 { vk::ImageType::TYPE_1D } else if info.depth <= 1 { vk::ImageType::TYPE_2D } else { vk::ImageType::TYPE_3D},
+      image_type: vk::ImageType::TYPE_2D, // FIXME: if info.height <= 1 { vk::ImageType::TYPE_1D } else if info.depth <= 1 { vk::ImageType::TYPE_2D } else { vk::ImageType::TYPE_3D},
       extent: vk::Extent3D {
         width: max(1, info.width),
         height: max(1, info.height),
@@ -141,7 +141,7 @@ impl VkTextureView {
   pub(crate) fn new_shader_resource_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
-      view_type: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
+      view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
       format: format_to_vk(texture.info.format),
       components: vk::ComponentMapping {
         r: vk::ComponentSwizzle::IDENTITY,
