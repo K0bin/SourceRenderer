@@ -3,11 +3,11 @@ use sourcerenderer_core::{Platform, Quaternion, Vec4};
 use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
 use std::fs::File;
 use std::path::Path;
-use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable};
+use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable, BrushModel};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetLoaderContext, MeshRange, LoadedAsset};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetLoaderContext, MeshRange, LoadedAsset, AssociatedAssetLoadRequest};
 use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage};
 use legion::world::SubWorld;
 use legion::{World, WorldOptions};
@@ -17,6 +17,10 @@ use nalgebra::{UnitQuaternion, Unit};
 use regex::Regex;
 use crate::asset::loaders::csgo_loader::CSGO_MAP_NAME_PATTERN;
 use std::io::BufReader;
+use std::io::Cursor;
+use std::collections::HashSet;
+use crate::asset::loaders::vpk_container::new_vpk_container;
+use crate::asset::loaders::PakFileContainer;
 
 pub struct BspLevelLoader {
   map_name_regex: Regex
@@ -49,14 +53,14 @@ impl BspLevelLoader {
     }
   }
 
-  fn read_node(&self, node: &Node, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut Vec<u32>) {
+  fn read_node(&self, node: &Node, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
     let left_child = node.children[0];
     self.read_child(left_child, temp, brush_vertices, brush_indices);
     let right_child = node.children[1];
     self.read_child(right_child, temp, brush_vertices, brush_indices);
   }
 
-  fn read_child(&self, index: i32, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut Vec<u32>) {
+  fn read_child(&self, index: i32, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
     if index < 0 {
       self.read_leaf(&temp.leafs[(-1 - index) as usize], temp, brush_vertices, brush_indices);
     } else {
@@ -64,7 +68,7 @@ impl BspLevelLoader {
     };
   }
 
-  fn read_leaf(&self, leaf: &Leaf, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut Vec<u32>) {
+  fn read_leaf(&self, leaf: &Leaf, temp: &BspTemp, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
     for leaf_face_index in leaf.first_leaf_face as u32 .. leaf.first_leaf_face as u32 + leaf.leaf_faces_count as u32 {
       let face_index = temp.leaf_faces[leaf_face_index as usize].index;
       let face = &temp.faces[face_index as usize];
@@ -72,7 +76,7 @@ impl BspLevelLoader {
       let tex_info = &temp.tex_info[face.texture_info as usize];
       let tex_data = &temp.tex_data[tex_info.texture_data as usize];
       let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
-      let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32);
+      let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
 
       let mut face_vertices: HashMap<u16, u32> = HashMap::new(); // Just to make sure that there's no duplicates
       let mut root_vertex = 0u16;
@@ -84,15 +88,12 @@ impl BspLevelLoader {
         if surf_edge_index == face.first_edge {
           if !face_vertices.contains_key(&edge.vertex_index[if edge_index > 0 { 0 } else { 1 }]) {
             root_vertex = edge.vertex_index[if edge_index > 0 { 0 } else { 1 }];
-            let position = BspLevelLoader::fixup_position(temp.vertices[root_vertex as usize].position.clone());
+            let position = temp.vertices[root_vertex as usize].position;
             let mut vertex = crate::Vertex {
-              position,
-              normal: BspLevelLoader::fixup_normal(plane.normal),
+              position: BspLevelLoader::fixup_position(&position),
+              normal: BspLevelLoader::fixup_normal(&plane.normal),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-              uv: Vec2::new(
-                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_s) / tex_data.width as f32,
-                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_t) / tex_data.height as f32
-              )
+              uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
             };
             face_vertices.insert(root_vertex, brush_vertices.len() as u32);
             brush_vertices.push(vertex);
@@ -108,15 +109,12 @@ impl BspLevelLoader {
         // Edge is on opposite side of the first edge => push the vertices
         for i in 0..2 {
           if !face_vertices.contains_key(&edge.vertex_index[i]) {
-            let position = BspLevelLoader::fixup_position(temp.vertices[edge.vertex_index[i] as usize].position);
+            let position = temp.vertices[edge.vertex_index[i] as usize].position;
             let vertex = crate::Vertex {
-              position,
-              normal: BspLevelLoader::fixup_normal(plane.normal),
+              position: BspLevelLoader::fixup_position(&position),
+              normal: BspLevelLoader::fixup_normal(&plane.normal),
               color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-              uv: Vec2::new(
-                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_s) / tex_data.width as f32,
-                Vec4::new(position.x, position.y, position.z, 1.0f32).dot(&tex_info.texture_vecs_t) / tex_data.height as f32
-              )
+              uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
             };
             face_vertices.insert(edge.vertex_index[i], brush_vertices.len() as u32);
             brush_vertices.push(vertex);
@@ -124,38 +122,48 @@ impl BspLevelLoader {
         }
 
         // Push indices
-        brush_indices.push(face_vertices[&root_vertex]);
+        let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
+        material_brush_indices.push(face_vertices[&root_vertex]);
         if edge_index < 0 {
-          brush_indices.push(face_vertices[&edge.vertex_index[0]]);
-          brush_indices.push(face_vertices[&edge.vertex_index[1]]);
+          material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
+          material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
         } else {
-          brush_indices.push(face_vertices[&edge.vertex_index[1]]);
-          brush_indices.push(face_vertices[&edge.vertex_index[0]]);
+          material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
+          material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
         }
       }
     }
   }
 
-  fn fixup_position(position: Vec3) -> Vec3 {
+  fn calculate_uv(position: &Vec3, texture_vecs_s: &Vec4, texture_vecs_t: &Vec4, tex_data: &TextureData) -> Vec2 {
+    let pos4 = Vec4::new(position.x, position.y, position.z, 1.0f32);
+    Vec2::new(
+      pos4.dot(texture_vecs_s) / tex_data.width as f32,
+      pos4.dot(texture_vecs_t) / tex_data.height as f32
+    )
+  }
+
+  fn fixup_position(position: &Vec3) -> Vec3 {
     Vec3::new(position.x, position.z, -position.y) * SCALING_FACTOR
   }
 
-  fn fixup_normal(normal: Vec3) -> Vec3 {
+  fn fixup_normal(normal: &Vec3) -> Vec3 {
     Vec3::new(-normal.x, -normal.z, normal.y)
   }
 }
 
 impl<P: Platform> AssetLoader<P> for BspLevelLoader {
   fn matches(&self, file: &mut AssetFile) -> bool {
-    let file_name = Path::new(&file.path).file_stem();
+    let file_name = Path::new(&file.path).file_name();
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
   fn load(&self, asset_file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
     let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
+    let path = asset_file.path.clone();
     let file = match asset_file.data {
       AssetFileData::File(file) => file,
-      _ => unreachable!()
+      _ => unreachable!("hi")
     };
     let buf_reader = BufReader::new(file);
     let mut map = Map::read(name, buf_reader).unwrap();
@@ -172,6 +180,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let tex_info = map.read_texture_info().unwrap();
     let tex_string_data = map.read_texture_string_data().unwrap();
     let tex_data_string_table = map.read_texture_data_string_table().unwrap();
+    let brush_models = map.read_brush_models().unwrap();
+    let mut pakfile = map.read_pakfile().unwrap();
 
     let temp = BspTemp {
       map,
@@ -191,11 +201,43 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       tex_data_string_table
     };
 
+    let pakfile_container = PakFileContainer::new(pakfile);
+
     let mut brush_vertices = Vec::<crate::Vertex>::new();
     let mut brush_indices = Vec::<u32>::new();
+    let mut mesh_ranges = Vec::<MeshRange>::new();
 
-    let root = temp.nodes.first().unwrap();
-    self.read_node(root, &temp, &mut brush_vertices, &mut brush_indices);
+    let mut per_material_indices = HashMap::<String, Vec<u32>>::new();
+    let mut per_model_range_offsets = Vec::<(usize, usize)>::new();
+    let mut per_model_materials = Vec::<Vec<String>>::new();
+    let mut materials_to_load = HashSet::<String>::new();
+
+    for model in &brush_models {
+      let root = &temp.nodes[model.head_node as usize];
+      self.read_node(root, &temp, &mut brush_vertices, &mut per_material_indices);
+      let mut materials = Vec::<String>::new();
+      let ranges_start = mesh_ranges.len();
+      'materials: for (material, indices) in per_material_indices.drain() {
+        if indices.is_empty() {
+          continue 'materials;
+        }
+
+        let material_path = "materials/".to_string() + material.as_str() + ".vmt";
+        materials_to_load.insert(material_path.clone());
+
+        let offset = brush_indices.len();
+        brush_indices.extend_from_slice(&indices);
+        let count = brush_indices.len() - offset;
+
+        materials.push(material_path);
+        mesh_ranges.push(MeshRange {
+          start: offset as u32,
+          count: count as u32
+        });
+      }
+      per_model_materials.push(materials);
+      per_model_range_offsets.push((ranges_start, mesh_ranges.len() - ranges_start));
+    }
 
     let vertex_buffer_temp = context.graphics_device.upload_data_slice(&brush_vertices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     let index_buffer_temp = context.graphics_device.upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
@@ -204,51 +246,64 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     context.graphics_device.init_buffer(&vertex_buffer_temp, &vertex_buffer);
     context.graphics_device.init_buffer(&index_buffer_temp, &index_buffer);
 
-    let mesh = Mesh {
-      vertices: vertex_buffer,
-      indices: Some(index_buffer),
-      parts: vec![MeshRange {
-        start: 0,
-        count: brush_indices.len() as u32
-      }]
-    };
-
-    let model = Model {
-      mesh_path: "brushes_mesh".to_string(),
-      material_paths: vec!["BLANK_MATERIAL".to_string()]
-    };
-
+    let mut loaded_assets = Vec::<LoadedAsset<P>>::new();
     let mut world = World::new(WorldOptions::default());
-    world.push(
-      (StaticRenderableComponent {
-        model_path: "brushes_model".to_string(),
-        receive_shadows: true,
-        cast_shadows: true,
-        can_move: false
-      },
-      Transform {
-        position: Vec3::new(0.0f32, -2.0f32, 0.0f32),
-        scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-        rotation: Quaternion::identity(),
-      })
-    );
+    for (index, (ranges_start, ranges_count)) in per_model_range_offsets.iter().enumerate() {
+      let mesh = Mesh {
+        vertices: vertex_buffer.clone(),
+        indices: Some(index_buffer.clone()),
+        parts: mesh_ranges[*ranges_start .. *ranges_start + ranges_count].to_vec()
+      };
+      let mesh_name = format!("brushes_mesh_{}", index);
+      loaded_assets.push(LoadedAsset {
+        path: mesh_name.clone(),
+        asset: Asset::Mesh(mesh)
+      });
+
+      let model_name = format!("brushes_model_{}", index);
+      let model = Model {
+        mesh_path: mesh_name,
+        material_paths: per_model_materials[index].clone()
+      };
+      loaded_assets.push(LoadedAsset {
+        path: model_name.clone(),
+        asset: Asset::Model(model)
+      });
+
+      world.push(
+        (StaticRenderableComponent {
+          model_path: model_name,
+          receive_shadows: true,
+          cast_shadows: true,
+          can_move: false
+        },
+         Transform {
+           position: brush_models[index].origin,
+           scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+           rotation: Quaternion::identity(),
+         })
+      );
+    }
+
+    let material_requests: Vec<AssociatedAssetLoadRequest> = materials_to_load.iter().map(|m| {
+      AssociatedAssetLoadRequest {
+      path: m.to_string(),
+      asset_type: AssetType::Material
+    }}).collect();
+
+    loaded_assets.push(LoadedAsset {
+      path: asset_file.path.clone(),
+      asset: Asset::Level(world)
+    });
+
+    loaded_assets.push(LoadedAsset {
+      path: path.clone(),
+      asset: Asset::Container(Box::new(pakfile_container))
+    });
 
     Ok(AssetLoaderResult {
-      assets: vec![
-        LoadedAsset {
-          path: "brushes_mesh".to_string(),
-          asset: Asset::Mesh(mesh)
-        },
-        LoadedAsset {
-          path: "brushes_model".to_string(),
-          asset: Asset::Model(model)
-        },
-        LoadedAsset {
-          path: asset_file.path.clone(),
-          asset: Asset::Level(world)
-        }
-      ],
-      requests: Vec::new()
+      assets: loaded_assets,
+      requests: material_requests
     })
   }
 }
