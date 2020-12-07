@@ -390,11 +390,12 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
           AssetFileData::Memory(cursor) => {cursor.seek(SeekFrom::Current(0))}
         }.expect(format!("Failed to read file: {:?}", request.path.as_str()).as_str());
         let loader_opt = loaders.iter().find(|loader| {
+          let loader_matches = loader.matches(&mut file);
           match &mut file.data {
             AssetFileData::File(file) => { file.seek(SeekFrom::Start(start)); }
             AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Start(start)); }
           }
-          loader.matches(&mut file)
+          loader_matches
         });
         if loader_opt.is_none() {
           println!("Could not find loader for file: {:?}", request.path.as_str());
