@@ -1,5 +1,5 @@
 use crate::map_header::{MapHeader};
-use std::io::{Seek, SeekFrom, Read, Result as IOResult};
+use std::io::{Seek, SeekFrom, Read, Result as IOResult, Cursor};
 use std::fs::File;
 use crate::lump_data::{Brush, Node, Leaf, Face,
                        Plane, Edge, BrushSide, LumpData,
@@ -7,7 +7,7 @@ use crate::lump_data::{Brush, Node, Leaf, Face,
                        TextureData, SurfaceEdge, Vertex,
                        VertexNormalIndex, VertexNormal,
                        TextureDataStringTable, TextureStringData};
-use crate::LumpType;
+use crate::{LumpType, BrushModel, RawDataRead, PakFile};
 
 
 pub struct Map<R: Read + Seek> {
@@ -96,6 +96,18 @@ impl<R: Read + Seek> Map<R> {
 
   pub fn read_texture_data_string_table(&mut self) -> IOResult<Vec<TextureDataStringTable>> {
     self.read_lump_data()
+  }
+
+  pub fn read_brush_models(&mut self) -> IOResult<Vec<BrushModel>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_pakfile(&mut self) -> IOResult<PakFile> {
+    let index = LumpType::PakFile as usize;
+    let lump = self.header.lumps[index];
+    self.reader.seek(SeekFrom::Start(lump.file_offset as u64))?;
+    let data = self.reader.read_data(lump.file_length as usize)?;
+    Ok(PakFile::new(data))
   }
 
   fn read_lump_data<T: LumpData>(&mut self) -> IOResult<Vec<T>> {
