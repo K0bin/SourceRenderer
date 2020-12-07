@@ -7,7 +7,7 @@ use regex::Regex;
 use std::fs::File;
 use crate::asset::loaders::vpk_container::CSGO_PAK_NAME_PATTERN;
 
-pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+(\.bsp)*";
+pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+\.bsp";
 
 pub struct CSGODirectoryContainer {
   path: String,
@@ -40,6 +40,7 @@ impl CSGODirectoryContainer {
 
 impl AssetContainer for CSGODirectoryContainer {
   fn load(&self, path: &str) -> Option<AssetFile> {
+    let mut new_path = path.to_string();
     let actual_path = if self.map_name_regex.is_match(path) {
       let mut actual_path = PathBuf::new();
       actual_path.push(&self.path);
@@ -60,19 +61,16 @@ impl AssetContainer for CSGODirectoryContainer {
         file_name.push_str(".vpk");
       }
       actual_path.push(file_name);
+      new_path = actual_path.to_str().unwrap().to_string();
       actual_path
     } else {
-      let mut actual_path = PathBuf::new();
-      actual_path.push(path);
-      actual_path
+      return None;
     };
-
-    // TODO: prevent opening arbitrary files
 
     let file = File::open(&actual_path);
     file.ok().map(|file|
       AssetFile {
-      path: path.to_owned(),
+      path: new_path,
       data: AssetFileData::File(file)
     })
   }

@@ -1,4 +1,4 @@
-use std::io::{BufReader, Cursor};
+use std::io::{BufReader, Cursor, Error as IOError, ErrorKind as IOErrorKind, Read, Seek};
 use std::fs::File;
 
 use sourcerenderer_vpk::{Package, PackageError};
@@ -10,29 +10,32 @@ use std::path::Path;
 
 pub(super) const CSGO_PAK_NAME_PATTERN: &str = r"pak01_dir(\.bsp)*";
 
-pub struct VPKContainer {
-  package: Package<BufReader<File>>
+pub struct VPKContainer<R: Read + Seek + Send + Sync> {
+  package: Package<R>
 }
 
-impl VPKContainer {
- pub fn new(asset_file: AssetFile) -> Result<Self, PackageError> {
-   let path = asset_file.path.clone();
-   let file = match asset_file.data {
-     AssetFileData::File(file) => file,
-     _ => unreachable!()
-   };
-   let reader = BufReader::new(file);
-   Ok(Self {
-     package: Package::read(&path, reader)?
-   })
- }
+pub fn new_vpk_container(asset_file: AssetFile) -> Result<Box<dyn AssetContainer>, PackageError> {
+  let path = asset_file.path.clone();
+  match asset_file.data {
+    AssetFileData::File(file) => {
+      let reader = BufReader::new(file);
+      Ok(Box::new(VPKContainer {
+        package: Package::read(&path, reader)?
+      }))
+    },
+    AssetFileData::Memory(cursor) => {
+      Ok(Box::new(VPKContainer {
+        package: Package::read(&path, cursor)?
+      }))
+    }
+  }
 }
 
-impl AssetContainer for VPKContainer {
+impl<R: Read + Seek + Send + Sync> AssetContainer for VPKContainer<R> {
   fn load(&self, path: &str) -> Option<AssetFile> {
     let entry = self.package.find_entry(path);
     entry
-      .and_then(|entry| self.package.read_entry(entry, false).ok())
+      .and_then(|entry| Some(self.package.read_entry(entry, false).unwrap()))
       .map(|data| AssetFile {
         path: path.to_string(),
         data: AssetFileData::Memory(Cursor::new(data))
@@ -60,7 +63,7 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
 
   fn load(&self, file: AssetFile, _context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
     let path = file.path.clone();
-    let container = Box::new(VPKContainer::new(file).unwrap());
+    let container = new_vpk_container(file).unwrap();
     Ok(AssetLoaderResult {
       assets: vec![
         LoadedAsset {
