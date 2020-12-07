@@ -321,11 +321,11 @@ impl<P: Platform> AssetManagerGraphicsCache<P> {
   }
   pub fn get_material(&self, key: &str) -> &Material {
     // TODO return placeholder if not ready
-    self.materials.get(key).unwrap()
+    self.materials.get(key).unwrap_or_else(|| self.get_material("BLANK_MATERIAL"))
   }
   pub fn get_texture(&self, key: &str) -> &Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView> {
     // TODO return placeholder if not ready
-    self.textures.get(key).unwrap()
+    self.textures.get(key).unwrap_or_else(|| self.get_texture("BLANK_TEXTURE"))
   }
 }
 
