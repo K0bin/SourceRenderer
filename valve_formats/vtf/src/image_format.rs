@@ -162,7 +162,7 @@ lazy_static! {
         block_width: 4,
         block_height: 4,
         block_depth: 1,
-        total_bits_per_block: 4
+        total_bits_per_block: 8
       }
     });
     m.insert(ImageFormat::DXT1OneBitAlpha, ImageFormatInfo {
@@ -171,7 +171,7 @@ lazy_static! {
         block_width: 4,
         block_height: 4,
         block_depth: 1,
-        total_bits_per_block: 4
+        total_bits_per_block: 8
       }
     });
     m.insert(ImageFormat::DXT1, ImageFormatInfo {
@@ -180,7 +180,7 @@ lazy_static! {
         block_width: 4,
         block_height: 4,
         block_depth: 1,
-        total_bits_per_block: 4
+        total_bits_per_block: 8
       }
     });
     m.insert(ImageFormat::DXT5, ImageFormatInfo {
@@ -189,7 +189,7 @@ lazy_static! {
         block_width: 4,
         block_height: 4,
         block_depth: 1,
-        total_bits_per_block: 8
+        total_bits_per_block: 16
       }
     });
     m.insert(ImageFormat::RGB565, ImageFormatInfo {
@@ -257,9 +257,9 @@ pub(crate) fn calculate_image_size(width: u32, height: u32, depth: u32, format: 
       total_bits_per_pixel as u32 * width * height * depth
     }
     FormatSizeInfo::Block { block_width, block_height, block_depth, total_bits_per_block } => {
-      (width + block_width as u32 - 1) / block_width as u32
-      * (height + block_height as u32 - 1) / block_height as u32
-      * (depth + block_depth as u32 - 1) / block_depth as u32
+      ((width + block_width as u32 - 1) / block_width as u32)
+      * ((height + block_height as u32 - 1) / block_height as u32)
+      * ((depth + block_depth as u32 - 1) / block_depth as u32)
       * total_bits_per_block as u32
     }
   }
