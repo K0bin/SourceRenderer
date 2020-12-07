@@ -424,6 +424,10 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
               let mut graphics = mgr.graphics.write().unwrap();
               graphics.models.insert(asset.path.clone(), model);
             },
+            Asset::Material(material) => {
+              let mut graphics = mgr.graphics.write().unwrap();
+              graphics.materials.insert(asset.path.clone(), material);
+            },
             Asset::Container(container) => {
               let mut containers = mgr.containers.write().unwrap();
               containers.push(container)
