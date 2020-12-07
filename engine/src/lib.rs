@@ -9,6 +9,7 @@ extern crate crossbeam_utils;
 extern crate sourcerenderer_bsp;
 extern crate sourcerenderer_vpk;
 extern crate sourcerenderer_vtf;
+extern crate sourcerenderer_vmt;
 #[macro_use]
 extern crate legion;
 extern crate regex;
