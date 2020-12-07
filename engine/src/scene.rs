@@ -78,27 +78,25 @@ impl Scene {
       let mut tick = 0u64;
       let mut schedule = systems.build();
       let mut last_iter_time = SystemTime::now();
+      let mut spin_counter = 0u32;
       loop {
         let now = SystemTime::now();
         let delta = now.duration_since(last_iter_time).unwrap();
 
-        if delta.as_millis() < ((1000 + tick_rate - 1) / tick_rate) as u128 {
-          continue;
-        }
-        last_iter_time = now;
-        resources.insert(DeltaTime(delta));
-        resources.insert(Tick(tick));
-        tick += 1;
-
-        let mut spin_counter = 0u32;
-        while c_renderer.is_saturated() {
+        if delta.as_nanos() < (1_000_000_000 / tick_rate) as u128 {
           if spin_counter > 1024 {
             thread::sleep(Duration::new(0, 1_000_000)); // 1ms
           } else if spin_counter > 128 {
             thread::yield_now();
           }
           spin_counter += 1;
+          continue;
         }
+        last_iter_time = now;
+        resources.insert(DeltaTime(Duration::new(0, (1_000_000_000 / tick_rate))));
+        resources.insert(Tick(tick));
+        tick += 1;
+
         schedule.execute(&mut world, &mut resources);
       }
     });

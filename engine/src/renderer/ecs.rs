@@ -39,6 +39,9 @@ fn renderer<P: Platform>(world: &mut SubWorld,
             #[state] active_static_renderables: &mut ActiveStaticRenderables,
             #[state] registered_static_renderables: &mut RegisteredStaticRenderables,
             #[resource] active_camera: &ActiveCamera) {
+  if renderer.is_saturated() {
+    return;
+  }
 
   let camera_entry = world.entry_ref(active_camera.0).ok();
   let transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<GlobalTransform>().ok());
