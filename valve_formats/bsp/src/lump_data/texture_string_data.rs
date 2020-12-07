@@ -18,10 +18,10 @@ impl TextureStringData {
     let offset_data = &self.data[offset as usize .. ];
     let mut counter = 0usize;
     for char in offset_data {
+      counter += 1;
       if *char == 0 {
         break;
       }
-      counter += 1;
     }
     return unsafe { CStr::from_bytes_with_nul_unchecked(&offset_data[.. counter as usize]) };
   }
