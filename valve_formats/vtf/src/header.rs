@@ -60,7 +60,7 @@ pub struct Header {
 impl Header {
   pub(super) fn check_file<T: Read + Seek>(mut reader: &mut T) -> IOResult<bool> {
     let signature = reader.read_u32()?;
-    Ok(signature != EXPECTED_SIGNATURE)
+    Ok(signature == EXPECTED_SIGNATURE)
   }
 
 
