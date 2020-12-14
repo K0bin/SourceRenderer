@@ -3,11 +3,13 @@ use std::sync::{Arc, Mutex};
 use crate::renderer::drawable::View;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::DrawableType;
+use crate::renderer::drawable::RDrawableType;
 use crate::asset::AssetManager;
 use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
+use crate::renderer::renderer_assets::*;
 
 const PASS_NAME: &str = "Geometry";
 const OUTPUT_DS: &str = "DS";
@@ -45,7 +47,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   }
 }
 
-pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<Mutex<View>>, asset_manager: &Arc<AssetManager<P>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
+pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<Mutex<View<P::GraphicsBackend>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let vertex_shader = {
     let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
@@ -137,7 +139,6 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
   };
   let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, "Geometry", 0);
 
-  let c_asset_manager = asset_manager.clone();
   let c_view = view.clone();
 
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
@@ -145,8 +146,6 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
       Arc::new(move |command_buffer_a, graph_resources| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         let state = c_view.lock().unwrap();
-
-        let assets_lookup = c_asset_manager.lookup_graphics();
 
         let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.interpolated_camera, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
@@ -167,11 +166,10 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
-          if let DrawableType::Static {
-            model_path, ..
+          if let RDrawableType::Static {
+            model, ..
           } = &renderable.drawable_type {
-            let model = assets_lookup.get_model(model_path);
-            let mesh = assets_lookup.get_mesh(&model.mesh_path);
+            let mesh = &model.mesh;
 
             command_buffer.set_vertex_buffer(&mesh.vertices);
             if mesh.indices.is_some() {
@@ -180,10 +178,8 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
 
             for i in 0..mesh.parts.len() {
               let range = &mesh.parts[i];
-              let material_key = &model.material_paths[i];
-
-              let material = assets_lookup.get_material(material_key);
-              let albedo_view = assets_lookup.get_texture(&material.albedo_texture_path);
+              let material = &model.materials[i];
+              let albedo_view = &material.albedo;
               command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
               command_buffer.finish_binding();
 

@@ -5,6 +5,7 @@ mod command;
 mod renderer_internal;
 mod camera;
 pub(crate) mod passes;
+mod renderer_assets;
 
 pub use self::renderer::Renderer;
 pub use self::ecs::StaticRenderableComponent;

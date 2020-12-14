@@ -52,11 +52,20 @@ pub struct MeshRange {
   pub count: u32
 }
 
-#[derive(Clone)]
-pub struct Mesh<P: Platform> {
-  pub vertices: Arc<<P::GraphicsBackend as graphics::Backend>::Buffer>,
-  pub indices: Option<Arc<<P::GraphicsBackend as graphics::Backend>::Buffer>>,
+pub struct Mesh<B: GraphicsBackend> {
+  pub vertices: Arc<B::Buffer>,
+  pub indices: Option<Arc<B::Buffer>>,
   pub parts: Vec<MeshRange>
+}
+
+impl<B: GraphicsBackend> Clone for Mesh<B> {
+  fn clone(&self) -> Self {
+    Self {
+      vertices: self.vertices.clone(),
+      indices: self.indices.clone(),
+      parts: self.parts.clone()
+    }
+  }
 }
 
 #[derive(Clone)]
@@ -117,7 +126,7 @@ pub trait AssetLoader<P: Platform>
 
 pub enum Asset<P: Platform> {
   Texture(Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView>),
-  Mesh(Mesh<P>),
+  Mesh(Mesh<P::GraphicsBackend>),
   Model(Model),
   Sound,
   Material(Material),
@@ -213,14 +222,14 @@ impl<P: Platform> AssetManager<P> {
     } else {
       None
     };
-    let mesh = Mesh {
+    let mesh = Arc::new(Mesh {
       vertices: vertex_buffer,
       indices: index_buffer,
       parts: vec![MeshRange {
         start: 0,
         count: if index_buffer_data.len() == 0 { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
       }]
-    };
+    });
     graphics.meshes.insert(path.to_owned(), mesh);
   }
 
@@ -304,7 +313,7 @@ impl<P: Platform> AssetManager<P> {
 
 pub struct AssetManagerGraphicsCache<P: Platform> {
   device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
-  meshes: HashMap<String, Mesh<P>>,
+  meshes: HashMap<String, Arc<Mesh<P::GraphicsBackend>>>,
   models: HashMap<String, Model>,
   materials: HashMap<String, Material>,
   textures: HashMap<String, Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView>>
@@ -315,7 +324,7 @@ impl<P: Platform> AssetManagerGraphicsCache<P> {
     // TODO make optional variant of function
     self.models.get(key).unwrap()
   }
-  pub fn get_mesh(&self, key: &str) -> &Mesh<P> {
+  pub fn get_mesh(&self, key: &str) -> &Arc<Mesh<P::GraphicsBackend>> {
     // TODO make optional variant of function
     self.meshes.get(key).unwrap()
   }
@@ -434,7 +443,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
             },
             Asset::Mesh(mesh) => {
               let mut graphics = mgr.graphics.write().unwrap();
-              graphics.meshes.insert(asset.path.clone(), mesh);
+              graphics.meshes.insert(asset.path.clone(), Arc::new(mesh));
             },
             Asset::Level(world) => {
               let mut levels = mgr.levels.write().unwrap();

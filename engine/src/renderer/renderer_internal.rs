@@ -13,18 +13,22 @@ use nalgebra::{Matrix3};
 
 use crate::renderer::camera::LateLatchCamera;
 use crate::renderer::passes;
+use crate::renderer::drawable::{RDrawable, RDrawableType};
+use crate::renderer::renderer_assets::*;
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   graph: <P::GraphicsBackend as Backend>::RenderGraph,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-  view: Arc<Mutex<View>>,
+  asset_manager: Arc<AssetManager<P>>,
+  view: Arc<Mutex<View<P::GraphicsBackend>>>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   simulation_tick_rate: u32,
   last_tick: SystemTime,
-  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>
+  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
+  assets: RendererAssets<P>
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -39,27 +43,28 @@ impl<P: Platform> RendererInternal<P> {
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>) -> Self {
 
     let renderables = Arc::new(Mutex::new(View::default()));
-    let graph = RendererInternal::<P>::build_graph(device, swapchain, asset_manager, &renderables, &primary_camera);
+    let graph = RendererInternal::<P>::build_graph(device, swapchain, &renderables, &primary_camera);
 
     Self {
       renderer: renderer.clone(),
       device: device.clone(),
       graph,
       swapchain: swapchain.clone(),
+      asset_manager: asset_manager.clone(),
       view: renderables,
       sender,
       receiver,
       simulation_tick_rate,
       last_tick: SystemTime::now(),
-      primary_camera: primary_camera.clone()
+      primary_camera: primary_camera.clone(),
+      assets: RendererAssets::new()
     }
   }
 
   fn build_graph(
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-    asset_manager: &Arc<AssetManager<P>>,
-    renderables: &Arc<Mutex<View>>,
+    renderables: &Arc<Mutex<View<P::GraphicsBackend>>>,
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
 
@@ -80,7 +85,7 @@ impl<P: Platform> RendererInternal<P> {
     });
 
     let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
-    let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &renderables, &asset_manager);
+    let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &renderables);
     callbacks.insert(geometry_pass_name, geometry_pass_callback);
 
     let (late_latch_pass_name, late_latch_pass_callback) = passes::late_latching::build_pass::<P::GraphicsBackend>(device);
@@ -116,7 +121,7 @@ impl<P: Platform> RendererInternal<P> {
           self.last_tick = SystemTime::now();
 
           for element in &mut guard.elements {
-            if let DrawableType::Static { can_move, .. } = &element.drawable_type {
+            if let RDrawableType::Static { can_move, .. } = &element.drawable_type {
               if !*can_move {
                 element.interpolated_transform = element.transform;
               } else {
@@ -147,8 +152,28 @@ impl<P: Platform> RendererInternal<P> {
           }
         }
 
-        RendererCommand::Register(renderable) => {
-          guard.elements.push(renderable);
+        RendererCommand::Register(drawable) => {
+          guard.elements.push(RDrawable {
+            drawable_type: match &drawable.drawable_type {
+              DrawableType::Static {
+                model_path, receive_shadows, cast_shadows, can_move
+              } => {
+                let model = self.assets.get_model(&self.asset_manager, model_path);
+                RDrawableType::Static {
+                  model: model,
+                  receive_shadows: false,
+                  cast_shadows: false,
+                  can_move: false
+                }
+              }
+              _ => unimplemented!()
+            },
+            entity: drawable.entity,
+            interpolated_transform: drawable.transform,
+            transform: drawable.transform,
+            old_transform: drawable.transform,
+            older_transform: drawable.transform
+          });
         }
 
         RendererCommand::UnregisterStatic(entity) => {
@@ -179,7 +204,7 @@ impl<P: Platform> RendererInternal<P> {
     let frac = f32::max(0f32, f32::min(1f32, delta / (1000f32 / self.simulation_tick_rate as f32)));
 
     for element in &mut guard.elements {
-      if let DrawableType::Static { can_move, .. } = &element.drawable_type {
+      if let RDrawableType::Static { can_move, .. } = &element.drawable_type {
         if *can_move {
           element.interpolated_transform = interpolate_transform_matrix(element.older_transform, element.old_transform, frac);
         }
