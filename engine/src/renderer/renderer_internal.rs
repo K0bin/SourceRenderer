@@ -122,9 +122,7 @@ impl<P: Platform> RendererInternal<P> {
 
           for element in &mut guard.elements {
             if let RDrawableType::Static { can_move, .. } = &element.drawable_type {
-              if !*can_move {
-                element.interpolated_transform = element.transform;
-              } else {
+              if *can_move {
                 element.older_transform = element.old_transform;
                 element.old_transform = element.transform;
               }
@@ -161,9 +159,9 @@ impl<P: Platform> RendererInternal<P> {
                 let model = self.assets.get_model(&self.asset_manager, model_path);
                 RDrawableType::Static {
                   model: model,
-                  receive_shadows: false,
-                  cast_shadows: false,
-                  can_move: false
+                  receive_shadows: *receive_shadows,
+                  cast_shadows: *cast_shadows,
+                  can_move: *can_move
                 }
               }
               _ => unimplemented!()
