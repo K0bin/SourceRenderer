@@ -5,6 +5,7 @@ use sourcerenderer_vmt::VMTMaterial;
 use std::io::{BufReader, Seek};
 use async_std::io::SeekFrom;
 use crate::asset::Material;
+use std::sync::Arc;
 
 pub struct VMTMaterialLoader {
 
@@ -48,9 +49,9 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     }
     let albedo = albedo_opt.unwrap();
     let albedo_path = "materials/".to_string() + albedo.to_lowercase().replace('\\', "/").as_str() + ".vtf";
-    let material = Material {
+    let material = Arc::new(Material {
       albedo_texture_path: albedo_path.clone()
-    };
+    });
 
     Ok(AssetLoaderResult {
       requests: vec![AssociatedAssetLoadRequest {

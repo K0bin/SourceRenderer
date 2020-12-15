@@ -126,36 +126,30 @@ pub trait AssetLoader<P: Platform>
 
 pub enum Asset<P: Platform> {
   Texture(Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView>),
-  Mesh(Mesh<P::GraphicsBackend>),
-  Model(Model),
+  Mesh(Arc<Mesh<P::GraphicsBackend>>),
+  Model(Arc<Model>),
   Sound,
-  Material(Material),
+  Material(Arc<Material>),
   Container(Box<dyn AssetContainer>),
   Level(World)
 }
 
 pub struct AssetManager<P: Platform> {
-  graphics: RwLock<AssetManagerGraphicsCache<P>>,
+  device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
   load_queue: Mutex<VecDeque<AssetLoadRequest>>,
   containers: RwLock<Vec<Box<dyn AssetContainer>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
-  levels: RwLock<HashMap<String, World>>
+  assets: Mutex<HashMap<String, Asset<P>>>
 }
 
 impl<P: Platform> AssetManager<P> {
   pub fn new(device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>) -> Arc<Self> {
     let manager = Arc::new(Self {
-      graphics: RwLock::new(AssetManagerGraphicsCache {
-        device: device.clone(),
-        meshes: HashMap::new(),
-        models: HashMap::new(),
-        materials: HashMap::new(),
-        textures: HashMap::new()
-      }),
+      device: device.clone(),
       load_queue: Mutex::new(VecDeque::new()),
       loaders: RwLock::new(Vec::new()),
       containers: RwLock::new(Vec::new()),
-      levels: RwLock::new(HashMap::new())
+      assets: Mutex::new(HashMap::new())
     });
 
     let zero_buffer = device.upload_data(&Vector4::<u8>::new(255u8, 255u8, 255u8, 255u8), MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
@@ -188,15 +182,15 @@ impl<P: Platform> AssetManager<P> {
     });
 
     {
-      let mut graphics = manager.graphics.write().unwrap();
+      let mut assets = manager.assets.lock().unwrap();
 
       let texture_key = "BLANK_TEXTURE";
-      let material = Material {
+      let material = Arc::new(Material {
         albedo_texture_path: texture_key.to_owned()
-      };
-      graphics.textures.insert(texture_key.to_owned(), zero_view);
+      });
+      assets.insert(texture_key.to_owned(), Asset::Texture(zero_view));
       let material_key = "BLANK_MATERIAL";
-      graphics.materials.insert(material_key.to_owned(), material);
+      assets.insert(material_key.to_owned(), Asset::Material(material));
     }
 
     let thread_count = 1;
@@ -208,17 +202,10 @@ impl<P: Platform> AssetManager<P> {
     manager
   }
 
-  pub fn lookup_graphics(&self) -> RwLockReadGuard<'_, AssetManagerGraphicsCache<P>> {
-    self.graphics.read().unwrap()
-  }
-
   pub fn add_mesh(self: &Arc<AssetManager<P>>, path: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) {
-    let mut graphics = self.graphics.write().unwrap();
-
-    //vertex_buffer_data.clone();
-    let vertex_buffer = graphics.device.upload_data_slice(vertex_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::VERTEX | BufferUsage::COPY_SRC);
+    let vertex_buffer = self.device.upload_data_slice(vertex_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::VERTEX | BufferUsage::COPY_SRC);
     let index_buffer = if index_buffer_data.len() != 0 {
-      Some(graphics.device.upload_data_slice(index_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::INDEX | BufferUsage::COPY_SRC))
+      Some(self.device.upload_data_slice(index_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::INDEX | BufferUsage::COPY_SRC))
     } else {
       None
     };
@@ -230,32 +217,32 @@ impl<P: Platform> AssetManager<P> {
         count: if index_buffer_data.len() == 0 { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
       }]
     });
-    graphics.meshes.insert(path.to_owned(), mesh);
+    let mut assets = self.assets.lock().unwrap();
+    assets.insert(path.to_owned(), Asset::Mesh(mesh));
   }
 
   pub fn add_material(self: &Arc<AssetManager<P>>, path: &str, albedo: &str) {
-    let material = Material {
+    let material = Arc::new(Material {
       albedo_texture_path: albedo.to_string()
-    };
-    let mut graphics = self.graphics.write().unwrap();
-    graphics.materials.insert(path.to_owned(), material);
+    });
+    let mut assets = self.assets.lock().unwrap();
+    assets.insert(path.to_owned(), Asset::Material(material));
   }
 
   pub fn add_model(self: &Arc<AssetManager<P>>, path: &str, mesh_path: &str, material_paths: &[&str]) {
-    let mut graphics = self.graphics.write().unwrap();
-    let model = Model {
+    let model = Arc::new(Model {
       mesh_path: mesh_path.to_string(),
       material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect()
-    };
-    graphics.models.insert(path.to_owned(), model);
+    });
+    let mut assets = self.assets.lock().unwrap();
+    assets.insert(path.to_owned(), Asset::Model(model));
   }
 
   pub fn add_texture(self: &Arc<AssetManager<P>>, path: &str, info: &TextureInfo, texture_data: &[u8]) {
-    let mut graphics = self.graphics.write().unwrap();
-    let src_buffer = graphics.device.upload_data_raw(texture_data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let texture = graphics.device.create_texture(info, Some(path));
-    graphics.device.init_texture(&texture, &src_buffer, 0, 0);
-    let srv = graphics.device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
+    let src_buffer = self.device.upload_data_raw(texture_data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let texture = self.device.create_texture(info, Some(path));
+    self.device.init_texture(&texture, &src_buffer, 0, 0);
+    let srv = self.device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
@@ -272,7 +259,9 @@ impl<P: Platform> AssetManager<P> {
       min_lod: 0.0,
       max_lod: 0.0
     });
-    graphics.textures.insert(path.to_owned(), srv);
+
+    let mut assets = self.assets.lock().unwrap();
+    assets.insert(path.to_owned(), Asset::Texture(srv));
   }
 
   pub fn add_container(&self, container: Box<dyn AssetContainer>) {
@@ -286,8 +275,44 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn get_level(&self, path: &str) -> Option<World> {
-    let mut levels = self.levels.write().unwrap();
-    levels.remove(path)
+    let mut assets = self.assets.lock().unwrap();
+    let asset = assets.remove(path);
+    asset.and_then(|a| match a {
+      Asset::Level(world) => Some(world),
+      _ => panic!("WRONG TYPE")
+    })
+  }
+  pub fn get_model(&self, path: &str) -> Arc<Model> {
+    let mut assets = self.assets.lock().unwrap();
+    let asset = assets.get(path).unwrap();
+    match asset {
+      Asset::Model(model) => model.clone(),
+      _ => panic!("Wrong asset type")
+    }
+  }
+  pub fn get_mesh(&self, path: &str) -> Arc<Mesh<P::GraphicsBackend>> {
+    let mut assets = self.assets.lock().unwrap();
+    let asset = assets.get(path).unwrap();
+    match asset {
+      Asset::Mesh(mesh) => mesh.clone(),
+      _ => panic!("Wrong asset type")
+    }
+  }
+  pub fn get_material(&self, path: &str) -> Arc<Material> {
+    let mut assets = self.assets.lock().unwrap();
+    let asset = assets.get(path).unwrap_or_else(|| assets.get("BLANK_MATERIAL").unwrap());
+    match asset {
+      Asset::Material(material) => material.clone(),
+      _ => panic!("Wrong asset type")
+    }
+  }
+  pub fn get_texture(&self, path: &str) -> Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView> {
+    let mut assets = self.assets.lock().unwrap();
+    let asset = assets.get(path).unwrap_or_else(|| assets.get("BLANK_TEXTURE").unwrap());
+    match asset {
+      Asset::Texture(texture) => texture.clone(),
+      _ => panic!("Wrong asset type")
+    }
   }
 
   pub fn load(self: &Arc<AssetManager<P>>, path: &str, asset_type: AssetType) -> Arc<AssetLoaderProgress> {
@@ -306,35 +331,7 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn flush(&self) {
-    let guard = self.graphics.read().unwrap();
-    guard.device.flush_transfers();
-  }
-}
-
-pub struct AssetManagerGraphicsCache<P: Platform> {
-  device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
-  meshes: HashMap<String, Arc<Mesh<P::GraphicsBackend>>>,
-  models: HashMap<String, Model>,
-  materials: HashMap<String, Material>,
-  textures: HashMap<String, Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView>>
-}
-
-impl<P: Platform> AssetManagerGraphicsCache<P> {
-  pub fn get_model(&self, key: &str) -> &Model {
-    // TODO make optional variant of function
-    self.models.get(key).unwrap()
-  }
-  pub fn get_mesh(&self, key: &str) -> &Arc<Mesh<P::GraphicsBackend>> {
-    // TODO make optional variant of function
-    self.meshes.get(key).unwrap()
-  }
-  pub fn get_material(&self, key: &str) -> &Material {
-    // TODO return placeholder if not ready
-    self.materials.get(key).unwrap_or_else(|| self.get_material("BLANK_MATERIAL"))
-  }
-  pub fn get_texture(&self, key: &str) -> &Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView> {
-    // TODO return placeholder if not ready
-    self.textures.get(key).unwrap_or_else(|| self.get_texture("BLANK_TEXTURE"))
+    self.device.flush_transfers();
   }
 }
 
@@ -345,8 +342,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       return;
     }
     let mgr = mgr_opt.unwrap();
-    let graphics = mgr.graphics.read().unwrap();
-    graphics.device.clone()
+    mgr.device.clone()
   };
   let context = AssetLoaderContext {
     graphics_device: device
@@ -425,32 +421,13 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
         let loaded_assets = std::mem::replace(&mut assets.assets, Vec::new());
         for asset in loaded_assets {
           match asset.asset {
-            Asset::Texture(view) => {
-              let mut graphics = mgr.graphics.write().unwrap();
-              graphics.textures.insert(asset.path.clone(), view);
-            },
-            Asset::Model(model) => {
-              let mut graphics = mgr.graphics.write().unwrap();
-              graphics.models.insert(asset.path.clone(), model);
-            },
-            Asset::Material(material) => {
-              let mut graphics = mgr.graphics.write().unwrap();
-              graphics.materials.insert(asset.path.clone(), material);
-            },
             Asset::Container(container) => {
               let mut containers = mgr.containers.write().unwrap();
-              containers.push(container)
-            },
-            Asset::Mesh(mesh) => {
-              let mut graphics = mgr.graphics.write().unwrap();
-              graphics.meshes.insert(asset.path.clone(), Arc::new(mesh));
-            },
-            Asset::Level(world) => {
-              let mut levels = mgr.levels.write().unwrap();
-              levels.insert(asset.path.clone(), world);
-            },
+              containers.push(container);
+            }
             _ => {
-              panic!("Could not store loaded asset {}.", asset.path.as_str());
+              let mut cache = mgr.assets.lock().unwrap();
+              cache.insert(asset.path, asset.asset);
             }
           }
         }

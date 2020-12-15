@@ -36,20 +36,19 @@ impl<P: Platform> RendererAssets<P> {
       return model.clone();
     }
 
-    let graphics = asset_manager.lookup_graphics();
-    let asset_model = graphics.get_model(model_path);
+    let asset_model = asset_manager.get_model(model_path);
 
     let mesh = self.meshes.entry(asset_model.mesh_path.clone()).or_insert_with(|| {
-      graphics.get_mesh(&asset_model.mesh_path).clone()
+      asset_manager.get_mesh(&asset_model.mesh_path).clone()
     }).clone();
 
     let materials_vec: Vec<Arc<RendererMaterial<P::GraphicsBackend>>> = asset_model.material_paths.iter().map(|material_path| {
       if let Some(material) = self.materials.get(material_path) {
         material.clone()
       } else {
-        let asset_material = graphics.get_material(material_path);
+        let asset_material = asset_manager.get_material(material_path);
         let albedo_texture = self.textures.entry(asset_material.albedo_texture_path.clone()).or_insert_with(||
-          graphics.get_texture(&asset_material.albedo_texture_path).clone()
+          asset_manager.get_texture(&asset_material.albedo_texture_path).clone()
         );
         let material = Arc::new(RendererMaterial {
           albedo: albedo_texture.clone()

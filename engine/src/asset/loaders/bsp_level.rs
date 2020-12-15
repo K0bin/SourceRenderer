@@ -3,6 +3,7 @@ use sourcerenderer_core::{Platform, Quaternion, Vec4};
 use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
 use std::fs::File;
 use std::path::Path;
+use std::sync::Arc;
 use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable, BrushModel};
 use std::sync::Mutex;
 use std::collections::HashMap;
@@ -249,11 +250,11 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let mut loaded_assets = Vec::<LoadedAsset<P>>::new();
     let mut world = World::new(WorldOptions::default());
     for (index, (ranges_start, ranges_count)) in per_model_range_offsets.iter().enumerate() {
-      let mesh = Mesh {
+      let mesh = Arc::new(Mesh {
         vertices: vertex_buffer.clone(),
         indices: Some(index_buffer.clone()),
         parts: mesh_ranges[*ranges_start .. *ranges_start + ranges_count].to_vec()
-      };
+      });
       let mesh_name = format!("brushes_mesh_{}", index);
       loaded_assets.push(LoadedAsset {
         path: mesh_name.clone(),
@@ -261,10 +262,10 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       });
 
       let model_name = format!("brushes_model_{}", index);
-      let model = Model {
+      let model = Arc::new(Model {
         mesh_path: mesh_name,
         material_paths: per_model_materials[index].clone()
-      };
+      });
       loaded_assets.push(LoadedAsset {
         path: model_name.clone(),
         asset: Asset::Model(model)
@@ -292,12 +293,12 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     }}).collect();
 
     loaded_assets.push(LoadedAsset {
-      path: asset_file.path.clone(),
+      path: path.clone(),
       asset: Asset::Level(world)
     });
 
     loaded_assets.push(LoadedAsset {
-      path: path.clone(),
+      path: path.clone() + "_pakfile",
       asset: Asset::Container(Box::new(pakfile_container))
     });
 
