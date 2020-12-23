@@ -2,8 +2,8 @@ use std::io::{BufReader, Cursor, Error as IOError, ErrorKind as IOErrorKind, Rea
 use std::fs::File;
 
 use sourcerenderer_vpk::{Package, PackageError};
-use crate::asset::{AssetLoader, Asset};
-use crate::asset::asset_manager::{AssetLoaderContext, AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer};
+use crate::asset::{AssetLoader, Asset, AssetManager};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer};
 use sourcerenderer_core::Platform;
 use regex::Regex;
 use std::path::Path;
@@ -61,7 +61,7 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.pak_name_regex.is_match(file_name))
   }
 
-  fn load(&self, file: AssetFile, _context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
+  fn load(&self, file: AssetFile, _manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()> {
     let path = file.path.clone();
     let container = new_vpk_container(file).unwrap();
     Ok(AssetLoaderResult {

@@ -1,6 +1,6 @@
 
 use sourcerenderer_core::{Platform, Quaternion, Vec4};
-use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model};
+use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model, AssetManager};
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vert
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetLoaderContext, MeshRange, LoadedAsset, AssociatedAssetLoadRequest};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, LoadedAsset, AssociatedAssetLoadRequest};
 use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage};
 use legion::world::SubWorld;
 use legion::{World, WorldOptions};
@@ -159,7 +159,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
-  fn load(&self, asset_file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
+  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()> {
     let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
     let path = asset_file.path.clone();
     let file = match asset_file.data {
@@ -240,12 +240,12 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       per_model_range_offsets.push((ranges_start, mesh_ranges.len() - ranges_start));
     }
 
-    let vertex_buffer_temp = context.graphics_device.upload_data_slice(&brush_vertices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let index_buffer_temp = context.graphics_device.upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let vertex_buffer = context.graphics_device.create_buffer(std::mem::size_of::<crate::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
-    let index_buffer = context.graphics_device.create_buffer(std::mem::size_of::<u32>() * brush_indices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
-    context.graphics_device.init_buffer(&vertex_buffer_temp, &vertex_buffer);
-    context.graphics_device.init_buffer(&index_buffer_temp, &index_buffer);
+    let vertex_buffer_temp = manager.graphics_device().upload_data_slice(&brush_vertices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let index_buffer_temp = manager.graphics_device().upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let vertex_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<crate::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
+    let index_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<u32>() * brush_indices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
+    manager.graphics_device().init_buffer(&vertex_buffer_temp, &vertex_buffer);
+    manager.graphics_device().init_buffer(&index_buffer_temp, &index_buffer);
 
     let mut loaded_assets = Vec::<LoadedAsset<P>>::new();
     let mut world = World::new(WorldOptions::default());

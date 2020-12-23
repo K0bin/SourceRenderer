@@ -114,14 +114,10 @@ impl<P: Platform> AssetLoaderResult<P> {
 
 }
 
-pub struct AssetLoaderContext<P: Platform> {
-  pub graphics_device: Arc<<P::GraphicsBackend as GraphicsBackend>::Device>
-}
-
 pub trait AssetLoader<P: Platform>
   : Send + Sync {
   fn matches(&self, file: &mut AssetFile) -> bool;
-  fn load(&self, file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()>;
+  fn load(&self, file: AssetFile, manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()>;
 }
 
 pub enum Asset<P: Platform> {
@@ -200,6 +196,10 @@ impl<P: Platform> AssetManager<P> {
     }
 
     manager
+  }
+
+  pub fn graphics_device(&self) -> &Arc<<P::GraphicsBackend as graphics::Backend>::Device> {
+    &self.device
   }
 
   pub fn add_mesh(self: &Arc<AssetManager<P>>, path: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) {
@@ -344,9 +344,6 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
     let mgr = mgr_opt.unwrap();
     mgr.device.clone()
   };
-  let context = AssetLoaderContext {
-    graphics_device: device
-  };
   loop {
     {
       let request_opt = {
@@ -410,7 +407,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
         }
         let loader = loader_opt.unwrap();
 
-        let assets_opt = loader.load(file, &context);
+        let assets_opt = loader.load(file, &mgr);
         if assets_opt.is_err() {
           request.progress.finished.fetch_add(1, Ordering::SeqCst);
           println!("Could not load file: {:?}", request.path.as_str());

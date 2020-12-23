@@ -1,6 +1,6 @@
-use crate::asset::{AssetLoader, Asset};
+use crate::asset::{AssetLoader, Asset, AssetManager};
 use sourcerenderer_core::Platform;
-use crate::asset::asset_manager::{AssetLoaderContext, AssetFile, AssetLoaderResult, AssetFileData, LoadedAsset};
+use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, AssetFileData, LoadedAsset};
 use std::io::{Cursor, BufReader};
 use sourcerenderer_vtf::{VtfTexture, ImageFormat as VTFTextureFormat, ImageFormat, Header as VTFHeader};
 use std::fs::File;
@@ -66,18 +66,18 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
     }
   }
 
-  fn load(&self, file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
+  fn load(&self, file: AssetFile, manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()> {
     let path = file.path.clone();
     let texture_view = match file.data {
       AssetFileData::File(file) => {
         let mut texture = VtfTexture::new(BufReader::new(file)).unwrap();
         let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
-        VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, &context.graphics_device)
+        VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, manager.graphics_device())
       }
       AssetFileData::Memory(cursor) => {
         let mut texture = VtfTexture::new(BufReader::new(cursor)).unwrap();
         let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
-        VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, &context.graphics_device)
+        VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, manager.graphics_device())
       }
     };
 

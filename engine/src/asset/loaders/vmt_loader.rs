@@ -1,5 +1,5 @@
-use crate::asset::{AssetLoader, Asset, AssetType};
-use crate::asset::asset_manager::{AssetLoaderContext, AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer, AssociatedAssetLoadRequest};
+use crate::asset::{AssetLoader, Asset, AssetType, AssetManager};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer, AssociatedAssetLoadRequest};
 use sourcerenderer_core::Platform;
 use sourcerenderer_vmt::VMTMaterial;
 use std::io::{BufReader, Seek};
@@ -22,7 +22,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     file.path.starts_with("materials/") && file.path.ends_with(".vmt")
   }
 
-  fn load(&self, asset_file: AssetFile, context: &AssetLoaderContext<P>) -> Result<AssetLoaderResult<P>, ()> {
+  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()> {
     let path = asset_file.path.clone();
     let vmt_material_opt = match asset_file.data {
       AssetFileData::File(file) => {
