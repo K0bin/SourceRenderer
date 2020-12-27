@@ -179,7 +179,8 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
             for i in 0..mesh.parts.len() {
               let range = &mesh.parts[i];
               let material = &model.materials[i];
-              let albedo_view = &material.albedo;
+              let texture = material.albedo.borrow();
+              let albedo_view = texture.view.borrow();
               command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
               command_buffer.finish_binding();
 

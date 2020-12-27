@@ -14,6 +14,8 @@ pub mod pool;
 
 pub mod job;
 
+pub mod atomic_refcell;
+
 pub use crate::platform::Platform;
 
 pub use crate::job::Job;

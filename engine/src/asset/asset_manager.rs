@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, RwLockReadGuard, Mutex};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque, HashSet};
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::graphics;
@@ -15,6 +15,8 @@ use std::time::Duration;
 use legion::World;
 use std::fs::File;
 use std::io::{Cursor, Seek, SeekFrom};
+
+use crossbeam_channel::{unbounded, Sender, Receiver};
 
 pub type AssetKey = usize;
 
@@ -135,60 +137,24 @@ pub struct AssetManager<P: Platform> {
   load_queue: Mutex<VecDeque<AssetLoadRequest>>,
   containers: RwLock<Vec<Box<dyn AssetContainer>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
-  assets: Mutex<HashMap<String, Asset<P>>>,
+  loaded_assets: Mutex<HashSet<String>>,
+  renderer_sender: Sender<LoadedAsset<P>>,
+  renderer_receiver: Receiver<LoadedAsset<P>>
 }
 
 impl<P: Platform> AssetManager<P> {
   pub fn new(device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>) -> Arc<Self> {
+    let (renderer_sender, renderer_receiver) = unbounded();
 
     let manager = Arc::new(Self {
       device: device.clone(),
       load_queue: Mutex::new(VecDeque::new()),
       loaders: RwLock::new(Vec::new()),
       containers: RwLock::new(Vec::new()),
-      assets: Mutex::new(HashMap::new())
+      loaded_assets: Mutex::new(HashSet::new()),
+      renderer_sender,
+      renderer_receiver
     });
-
-    let zero_buffer = device.upload_data(&Vector4::<u8>::new(255u8, 255u8, 255u8, 255u8), MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
-    let zero_texture = device.create_texture(&TextureInfo {
-      format: Format::RGBA8,
-      width: 2,
-      height: 2,
-      depth: 1,
-      mip_levels: 1,
-      array_length: 1,
-      samples: SampleCount::Samples1
-    }, Some("AssetManagerZeroTexture"));
-    device.init_texture(&zero_texture, &zero_buffer, 0, 0);
-    let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::Repeat,
-      address_mode_v: AddressMode::Repeat,
-      address_mode_w: AddressMode::Repeat,
-      mip_bias: 0.0,
-      max_anisotropy: 0.0,
-      compare_op: None,
-      min_lod: 0.0,
-      max_lod: 0.0
-    });
-
-    {
-      let mut assets = manager.assets.lock().unwrap();
-
-      let texture_key = "BLANK_TEXTURE";
-      let material = Arc::new(Material {
-        albedo_texture_path: texture_key.to_owned()
-      });
-      assets.insert(texture_key.to_owned(), Asset::Texture(zero_view));
-      let material_key = "BLANK_MATERIAL";
-      assets.insert(material_key.to_owned(), Asset::Material(material));
-    }
 
     let thread_count = 1;
     for _ in 0..thread_count {
@@ -203,7 +169,7 @@ impl<P: Platform> AssetManager<P> {
     &self.device
   }
 
-  pub fn add_mesh(self: &Arc<AssetManager<P>>, path: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) {
+  pub fn add_mesh(&self, path: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) {
     let vertex_buffer = self.device.upload_data_slice(vertex_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::VERTEX | BufferUsage::COPY_SRC);
     let index_buffer = if index_buffer_data.len() != 0 {
       Some(self.device.upload_data_slice(index_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::INDEX | BufferUsage::COPY_SRC))
@@ -218,28 +184,25 @@ impl<P: Platform> AssetManager<P> {
         count: if index_buffer_data.len() == 0 { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
       }]
     });
-    let mut assets = self.assets.lock().unwrap();
-    assets.insert(path.to_owned(), Asset::Mesh(mesh));
+    self.add_asset(path, Asset::Mesh(mesh));
   }
 
-  pub fn add_material(self: &Arc<AssetManager<P>>, path: &str, albedo: &str) {
+  pub fn add_material(&self, path: &str, albedo: &str) {
     let material = Arc::new(Material {
       albedo_texture_path: albedo.to_string()
     });
-    let mut assets = self.assets.lock().unwrap();
-    assets.insert(path.to_owned(), Asset::Material(material));
+    self.add_asset(path, Asset::Material(material));
   }
 
-  pub fn add_model(self: &Arc<AssetManager<P>>, path: &str, mesh_path: &str, material_paths: &[&str]) {
+  pub fn add_model(&self, path: &str, mesh_path: &str, material_paths: &[&str]) {
     let model = Arc::new(Model {
       mesh_path: mesh_path.to_string(),
       material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect()
     });
-    let mut assets = self.assets.lock().unwrap();
-    assets.insert(path.to_owned(), Asset::Model(model));
+    self.add_asset(path, Asset::Model(model));
   }
 
-  pub fn add_texture(self: &Arc<AssetManager<P>>, path: &str, info: &TextureInfo, texture_data: &[u8]) {
+  pub fn add_texture(&self, path: &str, info: &TextureInfo, texture_data: &[u8]) {
     let src_buffer = self.device.upload_data_raw(texture_data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     let texture = self.device.create_texture(info, Some(path));
     self.device.init_texture(&texture, &src_buffer, 0, 0);
@@ -260,9 +223,7 @@ impl<P: Platform> AssetManager<P> {
       min_lod: 0.0,
       max_lod: 0.0
     });
-
-    let mut assets = self.assets.lock().unwrap();
-    assets.insert(path.to_owned(), Asset::Texture(srv));
+    self.add_asset(path, Asset::Texture(srv));
   }
 
   pub fn add_container(&self, container: Box<dyn AssetContainer>) {
@@ -287,43 +248,40 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn add_asset_with_progress(&self, path: &str, asset: Asset<P>, progress: Option<&Arc<AssetLoaderProgress>>) {
-    let mut assets = self.assets.lock().unwrap();
-    assets.insert(path.to_string(), asset);
+    {
+      let mut loaded = self.loaded_assets.lock().unwrap();
+      loaded.insert(path.to_string());
+    }
+
     if let Some(progress) = progress {
       progress.finished.fetch_add(1, Ordering::SeqCst);
     }
-  }
-
-  pub fn get_model(&self, path: &str) -> Arc<Model> {
-    let mut assets = self.assets.lock().unwrap();
-    let asset = assets.get(path).unwrap();
     match asset {
-      Asset::Model(model) => model.clone(),
-      _ => panic!("Wrong asset type")
-    }
-  }
-  pub fn get_mesh(&self, path: &str) -> Arc<Mesh<P::GraphicsBackend>> {
-    let mut assets = self.assets.lock().unwrap();
-    let asset = assets.get(path).unwrap();
-    match asset {
-      Asset::Mesh(mesh) => mesh.clone(),
-      _ => panic!("Wrong asset type")
-    }
-  }
-  pub fn get_material(&self, path: &str) -> Arc<Material> {
-    let mut assets = self.assets.lock().unwrap();
-    let asset = assets.get(path).unwrap_or_else(|| assets.get("BLANK_MATERIAL").unwrap());
-    match asset {
-      Asset::Material(material) => material.clone(),
-      _ => panic!("Wrong asset type")
-    }
-  }
-  pub fn get_texture(&self, path: &str) -> Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView> {
-    let mut assets = self.assets.lock().unwrap();
-    let asset = assets.get(path).unwrap_or_else(|| assets.get("BLANK_TEXTURE").unwrap());
-    match asset {
-      Asset::Texture(texture) => texture.clone(),
-      _ => panic!("Wrong asset type")
+      Asset::Material(material) => {
+        self.renderer_sender.send(LoadedAsset {
+          asset: Asset::Material(material),
+          path: path.to_owned()
+        });
+      }
+      Asset::Texture(texture) => {
+        self.renderer_sender.send(LoadedAsset {
+          asset: Asset::Texture(texture),
+          path: path.to_owned()
+        });
+      }
+      Asset::Mesh(mesh) => {
+        self.renderer_sender.send(LoadedAsset {
+          asset: Asset::Mesh(mesh),
+          path: path.to_owned()
+        });
+      }
+      Asset::Model(model) => {
+        self.renderer_sender.send(LoadedAsset {
+          asset: Asset::Model(model),
+          path: path.to_owned()
+        });
+      }
+      _ => unimplemented!()
     }
   }
 
@@ -337,6 +295,14 @@ impl<P: Platform> AssetManager<P> {
       finished: AtomicU32::new(0)
     }), |p| p.clone());
     progress.expected.fetch_add(1, Ordering::SeqCst);
+
+    {
+      let loaded_assets = self.loaded_assets.lock().unwrap();
+      if loaded_assets.contains(path) {
+        progress.finished.fetch_add(1, Ordering::SeqCst);
+        return progress;
+      }
+    }
 
     let mut queue_guard = self.load_queue.lock().unwrap();
     queue_guard.push_back(AssetLoadRequest {
@@ -409,7 +375,7 @@ impl<P: Platform> AssetManager<P> {
     loader_opt
   }
 
-  fn load_asset(&self, mut file: AssetFile, progress: &Arc<AssetLoaderProgress>) -> Option<Asset<P>> {
+  fn load_asset(&self, mut file: AssetFile, progress: &Arc<AssetLoaderProgress>) {
     let path = file.path.clone();
 
     let loaders = self.loaders.read().unwrap();
@@ -417,7 +383,7 @@ impl<P: Platform> AssetManager<P> {
     if loader_opt.is_none() {
       progress.finished.fetch_add(1, Ordering::SeqCst);
       println!("Could not find loader for file: {:?}", path.as_str());
-      return None;
+      return;
     }
     let loader = loader_opt.unwrap();
 
@@ -425,12 +391,23 @@ impl<P: Platform> AssetManager<P> {
     if assets_opt.is_err() {
       progress.finished.fetch_add(1, Ordering::SeqCst);
       println!("Could not load file: {:?}", path.as_str());
-      return None;
+      return;
       // dunno, error i guess
     }
-    let mut assets = assets_opt.unwrap();
-    let cache = self.assets.lock().unwrap();
-    cache.get(&path).map(|a| a.clone())
+  }
+
+  pub fn receive_render_asset(&self) -> Option<LoadedAsset<P>> {
+    self.renderer_receiver.try_recv().ok()
+  }
+
+  pub fn notify_loaded(&self, path: &str) {
+    let mut loaded_assets = self.loaded_assets.lock().unwrap();
+    loaded_assets.insert(path.to_string());
+  }
+
+  pub fn notify_unloaded(&self, path: &str) {
+    let mut loaded_assets = self.loaded_assets.lock().unwrap();
+    loaded_assets.remove(path);
   }
 
   pub fn flush(&self) {
@@ -472,7 +449,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
           continue;
         }
         let file = file_opt.unwrap();
-        let asset = mgr.load_asset(file, &request.progress);
+        mgr.load_asset(file, &request.progress);
       }
     }
 

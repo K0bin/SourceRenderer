@@ -1,12 +1,21 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::graphics::Backend;
-use crate::asset::{Mesh, Model, Material, AssetManager};
+use sourcerenderer_core::graphics::{Backend, Device};
+use crate::asset::{Mesh, Model, Material, AssetManager, Asset};
 use sourcerenderer_core::Platform;
+use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };
+use nalgebra::Vector4;
+
+use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use std::option::Option::Some;
+
+pub(super) struct RendererTexture<B: Backend> {
+  pub(super) view: AtomicRefCell<Arc<B::TextureShaderResourceView>>
+}
 
 pub(super) struct RendererMaterial<B: Backend> {
-  pub(super) albedo: Arc<B::TextureShaderResourceView>
+  pub(super) albedo: AtomicRefCell<Arc<RendererTexture<B>>>
 }
 
 pub(super) struct RendererModel<B: Backend> {
@@ -18,17 +27,115 @@ pub(super) struct RendererAssets<P: Platform> {
   models: HashMap<String, Arc<RendererModel<P::GraphicsBackend>>>,
   meshes: HashMap<String, Arc<Mesh<P::GraphicsBackend>>>,
   materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
-  textures: HashMap<String, Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>>
+  textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
+  zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>
 }
 
 impl<P: Platform> RendererAssets<P> {
-  pub(super) fn new() -> Self {
+  pub(super) fn new(device: &<P::GraphicsBackend as Backend>::Device) -> Self {
+    let zero_buffer = device.upload_data(&Vector4::<u8>::new(255u8, 255u8, 255u8, 255u8), MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
+    let zero_texture = device.create_texture(&TextureInfo {
+      format: Format::RGBA8,
+      width: 2,
+      height: 2,
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1
+    }, Some("AssetManagerZeroTexture"));
+    device.init_texture(&zero_texture, &zero_buffer, 0, 0);
+    let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1,
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
+      address_mode_u: AddressMode::Repeat,
+      address_mode_v: AddressMode::Repeat,
+      address_mode_w: AddressMode::Repeat,
+      mip_bias: 0.0,
+      max_anisotropy: 0.0,
+      compare_op: None,
+      min_lod: 0.0,
+      max_lod: 0.0
+    });
+    device.flush_transfers();
+
     Self {
       models: HashMap::new(),
       meshes: HashMap::new(),
       materials: HashMap::new(),
-      textures: HashMap::new()
+      textures: HashMap::new(),
+      zero_view
     }
+  }
+
+  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>) -> Arc<RendererTexture<P::GraphicsBackend>> {
+    let existing_texture = self.textures.get(texture_path);
+    if let Some(existing_texture) = existing_texture {
+      *existing_texture.view.borrow_mut() = texture.clone();
+      return existing_texture.clone();
+    }
+
+    let renderer_texture = Arc::new(RendererTexture {
+      view: AtomicRefCell::new(texture.clone())
+    });
+    self.textures.insert(texture_path.to_owned(), renderer_texture.clone());
+    renderer_texture
+  }
+
+  pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: &Arc<Mesh<P::GraphicsBackend>>) -> Arc<Mesh<P::GraphicsBackend>> {
+    self.meshes.insert(mesh_path.to_owned(), mesh.clone());
+    mesh.clone()
+  }
+
+  pub fn integrate_material(&mut self, material_path: &str, material: &Material) -> Arc<RendererMaterial<P::GraphicsBackend>> {
+    let albedo = self.textures.get(&material.albedo_texture_path)
+      .map(|m| m.clone())
+      .or_else(|| {
+        let zero_view = self.zero_view.clone();
+        Some(self.integrate_texture(&material.albedo_texture_path, &zero_view))
+      }).unwrap();
+
+    let existing_material = self.materials.get(material_path);
+    if let Some(existing_material) = existing_material {
+      *existing_material.albedo.borrow_mut() = albedo.clone();
+      return existing_material.clone();
+    }
+
+    let renderer_material = Arc::new(RendererMaterial {
+      albedo: AtomicRefCell::new(albedo)
+    });
+    self.materials.insert(material_path.to_owned(), renderer_material.clone());
+    renderer_material
+  }
+
+  pub fn integrate_model(&mut self, model_path: &str, model: &Model) -> Option<Arc<RendererModel<P::GraphicsBackend>>> {
+    let mesh = self.meshes.get(&model.mesh_path);
+    if mesh.is_none() {
+      return None;
+    }
+    let mesh = mesh.unwrap().clone();
+    let mut renderer_materials = Vec::<Arc<RendererMaterial<P::GraphicsBackend>>>::new();
+    for material in &model.material_paths {
+      let renderer_material = self.materials.get(material)
+        .map(|m| m.clone())
+        .or_else(|| {
+        Some(self.integrate_material(material, &Material {
+          albedo_texture_path: "NULL".to_string()
+        }))
+      }).unwrap();
+      renderer_materials.push(renderer_material);
+    }
+
+    let renderer_model = Arc::new(RendererModel {
+      materials: renderer_materials.into_boxed_slice(),
+      mesh: mesh.clone()
+    });
+    self.models.insert(model_path.to_owned(), renderer_model.clone());
+    Some(renderer_model)
   }
 
   pub fn get_model(&mut self, asset_manager: &AssetManager<P>, model_path: &str) -> Arc<RendererModel<P::GraphicsBackend>> {
@@ -36,33 +143,21 @@ impl<P: Platform> RendererAssets<P> {
       return model.clone();
     }
 
-    let asset_model = asset_manager.get_model(model_path);
+    panic!("Model not yet loaded");
+  }
 
-    let mesh = self.meshes.entry(asset_model.mesh_path.clone()).or_insert_with(|| {
-      asset_manager.get_mesh(&asset_model.mesh_path).clone()
-    }).clone();
-
-    let materials_vec: Vec<Arc<RendererMaterial<P::GraphicsBackend>>> = asset_model.material_paths.iter().map(|material_path| {
-      if let Some(material) = self.materials.get(material_path) {
-        material.clone()
-      } else {
-        let asset_material = asset_manager.get_material(material_path);
-        let albedo_texture = self.textures.entry(asset_material.albedo_texture_path.clone()).or_insert_with(||
-          asset_manager.get_texture(&asset_material.albedo_texture_path).clone()
-        );
-        let material = Arc::new(RendererMaterial {
-          albedo: albedo_texture.clone()
-        });
-        self.materials.insert(material_path.clone(), material.clone());
-        material
+  pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {
+    let mut asset_opt = asset_manager.receive_render_asset();
+    while asset_opt.is_some() {
+      let asset = asset_opt.unwrap();
+      match &asset.asset {
+        Asset::Texture(texture) => { self.integrate_texture(&asset.path, texture); }
+        Asset::Material(material) => { self.integrate_material(&asset.path, material); }
+        Asset::Mesh(mesh) => { self.integrate_mesh(&asset.path, mesh); }
+        Asset::Model(model) => { self.integrate_model(&asset.path, model); }
+        _ => unimplemented!()
       }
-    }).map(|m| m.clone()).collect();
-    let materials = materials_vec.into_boxed_slice();
-    let model = Arc::new(RendererModel {
-      mesh,
-      materials
-    });
-    self.models.insert(model_path.to_string(), model.clone());
-    model
+      asset_opt = asset_manager.receive_render_asset();
+    }
   }
 }

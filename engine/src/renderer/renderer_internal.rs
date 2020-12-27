@@ -3,7 +3,7 @@ use crate::renderer::Renderer;
 use crossbeam_channel::{Sender, Receiver, TryRecvError};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
-use crate::asset::AssetManager;
+use crate::asset::{AssetManager, Asset};
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
 use sourcerenderer_core::graphics::{Backend, ShaderType, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, DepthStencilOutput, RenderPassCallbacks, PassInput, ComputeOutput, ExternalOutput, ExternalProducerType, ExternalResource};
 use std::collections::{HashMap};
@@ -15,6 +15,7 @@ use crate::renderer::camera::LateLatchCamera;
 use crate::renderer::passes;
 use crate::renderer::drawable::{RDrawable, RDrawableType};
 use crate::renderer::renderer_assets::*;
+use sourcerenderer_bsp::LumpType::TextureInfo;
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
@@ -57,7 +58,7 @@ impl<P: Platform> RendererInternal<P> {
       simulation_tick_rate,
       last_tick: SystemTime::now(),
       primary_camera: primary_camera.clone(),
-      assets: RendererAssets::new()
+      assets: RendererAssets::new(device.as_ref())
     }
   }
 
@@ -247,6 +248,7 @@ impl<P: Platform> RendererInternal<P> {
       }
     }
 
+    self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
     self.interpolate_drawables(swapchain_width, swapchain_height);
 
