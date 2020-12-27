@@ -63,7 +63,9 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
           path,
           asset: Asset::Material(material)
         }
-      ]
+      ],
+      containers: Vec::new(),
+      level: None
     })
   }
 }

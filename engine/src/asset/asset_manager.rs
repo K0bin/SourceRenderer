@@ -107,6 +107,8 @@ impl AssetLoaderProgress {
 
 pub struct AssetLoaderResult<P: Platform> {
   pub assets: Vec<LoadedAsset<P>>,
+  pub containers: Vec<Box<dyn AssetContainer>>,
+  pub level: Option<World>,
   pub requests: Vec<AssociatedAssetLoadRequest>
 }
 
@@ -125,9 +127,19 @@ pub enum Asset<P: Platform> {
   Mesh(Arc<Mesh<P::GraphicsBackend>>),
   Model(Arc<Model>),
   Sound,
-  Material(Arc<Material>),
-  Container(Box<dyn AssetContainer>),
-  Level(World)
+  Material(Arc<Material>)
+}
+
+impl<P: Platform> Clone for Asset<P> {
+  fn clone(&self) -> Self {
+    match self {
+      Asset::Texture(tex) => Asset::Texture(tex.clone()),
+      Asset::Mesh(mesh) => Asset::Mesh(mesh.clone()),
+      Asset::Model(model) => Asset::Model(model.clone()),
+      Asset::Sound => Asset::Sound,
+      Asset::Material(mat) => Asset::Material(mat.clone())
+    }
+  }
 }
 
 pub struct AssetManager<P: Platform> {
@@ -135,11 +147,12 @@ pub struct AssetManager<P: Platform> {
   load_queue: Mutex<VecDeque<AssetLoadRequest>>,
   containers: RwLock<Vec<Box<dyn AssetContainer>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
-  assets: Mutex<HashMap<String, Asset<P>>>
+  assets: Mutex<HashMap<String, Asset<P>>>,
 }
 
 impl<P: Platform> AssetManager<P> {
   pub fn new(device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>) -> Arc<Self> {
+
     let manager = Arc::new(Self {
       device: device.clone(),
       load_queue: Mutex::new(VecDeque::new()),
@@ -274,14 +287,6 @@ impl<P: Platform> AssetManager<P> {
     loaders.push(loader);
   }
 
-  pub fn get_level(&self, path: &str) -> Option<World> {
-    let mut assets = self.assets.lock().unwrap();
-    let asset = assets.remove(path);
-    asset.and_then(|a| match a {
-      Asset::Level(world) => Some(world),
-      _ => panic!("WRONG TYPE")
-    })
-  }
   pub fn get_model(&self, path: &str) -> Arc<Model> {
     let mut assets = self.assets.lock().unwrap();
     let asset = assets.get(path).unwrap();
@@ -315,7 +320,7 @@ impl<P: Platform> AssetManager<P> {
     }
   }
 
-  pub fn load(self: &Arc<AssetManager<P>>, path: &str, asset_type: AssetType) -> Arc<AssetLoaderProgress> {
+  pub fn request_asset(self: &Arc<AssetManager<P>>, path: &str, asset_type: AssetType) -> Arc<AssetLoaderProgress> {
     let progress = Arc::new(AssetLoaderProgress {
       expected: AtomicU32::new(1),
       finished: AtomicU32::new(0)
@@ -328,6 +333,137 @@ impl<P: Platform> AssetManager<P> {
     });
 
     progress
+  }
+
+  pub fn load_level(&self, path: &str) -> Option<World> {
+    let mut file_opt = self.load_file(path);
+    if file_opt.is_none() {
+      println!("Could not load file: {:?}", path);
+      return None;
+    }
+    let mut file = file_opt.unwrap();
+
+    let loaders = self.loaders.read().unwrap();
+    let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
+    if loader_opt.is_none() {
+      println!("Could not find loader for file: {:?}", path);
+      return None;
+    }
+    let loader = loader_opt.unwrap();
+    let assets_opt = loader.load(file, self);
+    if assets_opt.is_err() {
+      println!("Could not load file: {:?}", path);
+      return None;
+    }
+    let mut assets = assets_opt.unwrap();
+    let progress = Arc::new(AssetLoaderProgress {
+      expected: AtomicU32::new(1),
+      finished: AtomicU32::new(0)
+    });
+    let level = self.finish_import(assets, Some(&progress));
+    while level.is_some() && !progress.is_done() {}
+    level
+  }
+
+  fn load_file(&self, path: &str) -> Option<AssetFile> {
+    let containers = self.containers.read().unwrap();
+    let mut file_opt: Option<AssetFile> = None;
+    for container in containers.iter() {
+      let container_file_opt = container.load(path);
+      if container_file_opt.is_some() {
+        file_opt = container_file_opt;
+        break;
+      }
+    }
+    file_opt
+  }
+
+  fn find_loader<'a>(file: &mut AssetFile, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a Box<dyn AssetLoader<P>>> {
+    let start = match &mut file.data {
+      AssetFileData::File(file) => { file.seek(SeekFrom::Current(0)) }
+      AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Current(0)) }
+    }.expect(format!("Failed to read file: {:?}", file.path.as_str()).as_str());
+    let loader_opt = loaders.iter().find(|loader| {
+      let loader_matches = loader.matches(file);
+      match &mut file.data {
+        AssetFileData::File(file) => { file.seek(SeekFrom::Start(start)); }
+        AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Start(start)); }
+      }
+      loader_matches
+    });
+    loader_opt
+  }
+
+  fn load_asset(&self, mut file: AssetFile, progress: Option<&Arc<AssetLoaderProgress>>) -> Option<Asset<P>> {
+    let path = file.path.clone();
+
+    let loaders = self.loaders.read().unwrap();
+    let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
+    if loader_opt.is_none() {
+      if let Some(progress) = progress {
+        progress.finished.fetch_add(1, Ordering::SeqCst);
+      }
+      println!("Could not find loader for file: {:?}", path.as_str());
+      return None;
+    }
+    let loader = loader_opt.unwrap();
+
+    let assets_opt = loader.load(file, self);
+    if assets_opt.is_err() {
+      if let Some(progress) = progress {
+        progress.finished.fetch_add(1, Ordering::SeqCst);
+      }
+      println!("Could not load file: {:?}", path.as_str());
+      return None;
+      // dunno, error i guess
+    }
+    let mut assets = assets_opt.unwrap();
+    self.finish_import(assets, progress);
+    let cache = self.assets.lock().unwrap();
+    cache.get(&path).map(|a| a.clone())
+  }
+
+  fn finish_import(&self, mut asset_load_result: AssetLoaderResult<P>, progress: Option<&Arc<AssetLoaderProgress>>) -> Option<World> {
+    let loaded_assets = std::mem::replace(&mut asset_load_result.assets, Vec::new());
+    let loaded_containers = std::mem::replace(&mut asset_load_result.containers, Vec::new());
+    let loaded_level = std::mem::replace(&mut asset_load_result.level, None);
+
+    {
+      let mut containers = self.containers.write().unwrap();
+      for container in loaded_containers {
+        containers.push(container);
+      }
+    }
+
+    {
+      let mut cache = self.assets.lock().unwrap();
+      for asset in loaded_assets {
+        cache.insert(asset.path.clone(), asset.asset.clone());
+      }
+    }
+
+    {
+      let mut queue = self.load_queue.lock().unwrap();
+      if let Some(progress) = progress {
+        progress.expected.fetch_add(asset_load_result.requests.len() as u32, Ordering::SeqCst);
+      }
+      for new_request in asset_load_result.requests {
+        queue.push_back(AssetLoadRequest {
+          asset_type: new_request.asset_type,
+          path: new_request.path,
+          progress: progress.map_or_else(|| Arc::new(AssetLoaderProgress {
+            expected: AtomicU32::new(1),
+            finished: AtomicU32::new(0)
+          }),|p| p.clone())
+        });
+      }
+    }
+
+    if let Some(progress) = progress {
+      progress.finished.fetch_add(1, Ordering::SeqCst);
+    }
+
+    loaded_level
   }
 
   pub fn flush(&self) {
@@ -346,12 +482,12 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
   };
   loop {
     {
+      let mgr_opt = asset_manager.upgrade();
+      if mgr_opt.is_none() {
+        break;
+      }
+      let mgr = mgr_opt.unwrap();
       let request_opt = {
-        let mgr_opt = asset_manager.upgrade();
-        if mgr_opt.is_none() {
-          break;
-        }
-        let mgr = mgr_opt.unwrap();
         let mut queue = mgr.load_queue.lock().unwrap();
         queue.pop_front()
       };
@@ -362,89 +498,15 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       }
 
       let request = request_opt.unwrap();
-      let mgr_opt = asset_manager.upgrade();
-      if mgr_opt.is_none() {
-        break;
-      }
-      let mgr = mgr_opt.unwrap();
       {
-        let containers = mgr.containers.read().unwrap();
-        let mut file_opt: Option<AssetFile> = None;
-        'containers: for container in containers.iter() {
-          let container_file_opt = container.load(request.path.as_str());
-          if container_file_opt.is_some() {
-            file_opt = container_file_opt;
-            break 'containers;
-          }
-        }
-        std::mem::drop(containers);
-
+        let file_opt = mgr.load_file(&request.path);
         if file_opt.is_none() {
           request.progress.finished.fetch_add(1, Ordering::SeqCst);
-          println!("Could not find file: {:?}", request.path.as_str());
-          continue;
-          // dunno, error i guess
-        }
-        let mut file = file_opt.unwrap();
-        let loaders = mgr.loaders.read().unwrap();
-
-        let start = match &mut file.data {
-          AssetFileData::File(file) => {file.seek(SeekFrom::Current(0))}
-          AssetFileData::Memory(cursor) => {cursor.seek(SeekFrom::Current(0))}
-        }.expect(format!("Failed to read file: {:?}", request.path.as_str()).as_str());
-        let loader_opt = loaders.iter().find(|loader| {
-          let loader_matches = loader.matches(&mut file);
-          match &mut file.data {
-            AssetFileData::File(file) => { file.seek(SeekFrom::Start(start)); }
-            AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Start(start)); }
-          }
-          loader_matches
-        });
-        if loader_opt.is_none() {
-          request.progress.finished.fetch_add(1, Ordering::SeqCst);
-          println!("Could not find loader for file: {:?}", request.path.as_str());
           continue;
         }
-        let loader = loader_opt.unwrap();
-
-        let assets_opt = loader.load(file, &mgr);
-        if assets_opt.is_err() {
-          request.progress.finished.fetch_add(1, Ordering::SeqCst);
-          println!("Could not load file: {:?}", request.path.as_str());
-          continue;
-          // dunno, error i guess
-        }
-        let mut assets = assets_opt.unwrap();
-        let loaded_assets = std::mem::replace(&mut assets.assets, Vec::new());
-        for asset in loaded_assets {
-          match asset.asset {
-            Asset::Container(container) => {
-              let mut containers = mgr.containers.write().unwrap();
-              containers.push(container);
-            }
-            _ => {
-              let mut cache = mgr.assets.lock().unwrap();
-              cache.insert(asset.path, asset.asset);
-            }
-          }
-        }
-
-        for new_request in assets.requests {
-          request.progress.expected.fetch_add(1, Ordering::SeqCst);
-          let mgr_opt = asset_manager.upgrade();
-          if mgr_opt.is_none() {
-            break;
-          }
-          let mgr = mgr_opt.unwrap();
-          let mut queue = mgr.load_queue.lock().unwrap();
-          queue.push_back(AssetLoadRequest {
-            asset_type: new_request.asset_type,
-            path: new_request.path,
-            progress: request.progress.clone()
-          });
-        }
+        let file = file_opt.unwrap();
+        let asset = mgr.load_asset(file, Some(&request.progress));
       }
-      request.progress.finished.fetch_add(1, Ordering::SeqCst);
     }
 
     thread::sleep(Duration::new(0, 10_000_000)); // 10ms

@@ -45,15 +45,11 @@ impl Scene {
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
     asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
     asset_manager.add_container(Box::new(CSGODirectoryContainer::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive").unwrap()));
-    let progress = asset_manager.load("pak01_dir", AssetType::Container);
+    let progress = asset_manager.request_asset("pak01_dir", AssetType::Container);
     while !progress.is_done() {
       // wait until our container is loaded
     }
-    let progress = asset_manager.load("de_overpass.bsp", AssetType::Level);
-    while !progress.is_done() {
-      std::thread::sleep(Duration::new(0, 10_000_000));
-    }
-    let mut level = asset_manager.get_level("de_overpass.bsp").unwrap();
+    let mut level = asset_manager.load_level("de_overpass.bsp").unwrap();
 
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();

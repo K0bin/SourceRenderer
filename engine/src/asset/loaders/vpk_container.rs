@@ -65,13 +65,10 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
     let path = file.path.clone();
     let container = new_vpk_container(file).unwrap();
     Ok(AssetLoaderResult {
-      assets: vec![
-        LoadedAsset {
-          path,
-          asset: Asset::Container(container)
-        }
-      ],
-      requests: vec![]
+      assets: vec![],
+      requests: vec![],
+      containers: vec![container],
+      level: None
     })
   }
 }

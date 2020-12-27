@@ -86,7 +86,9 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
         path,
         asset: Asset::Texture(texture_view)
       }],
-      requests: vec![]
+      requests: vec![],
+      containers: Vec::new(),
+      level: None
     })
   }
 }

@@ -292,19 +292,11 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       asset_type: AssetType::Material
     }}).collect();
 
-    loaded_assets.push(LoadedAsset {
-      path: path.clone(),
-      asset: Asset::Level(world)
-    });
-
-    loaded_assets.push(LoadedAsset {
-      path: path.clone() + "_pakfile",
-      asset: Asset::Container(Box::new(pakfile_container))
-    });
-
     Ok(AssetLoaderResult {
       assets: loaded_assets,
-      requests: material_requests
+      requests: material_requests,
+      containers: vec![Box::new(pakfile_container)],
+      level: Some(world)
     })
   }
 }
