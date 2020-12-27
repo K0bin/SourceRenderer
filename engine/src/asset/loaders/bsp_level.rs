@@ -8,7 +8,7 @@ use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vert
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, LoadedAsset, AssociatedAssetLoadRequest};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, LoadedAsset, AssetLoaderProgress};
 use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage};
 use legion::world::SubWorld;
 use legion::{World, WorldOptions};
@@ -159,7 +159,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
-  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()> {
+  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
     let path = asset_file.path.clone();
     let file = match asset_file.data {
@@ -202,7 +202,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       tex_data_string_table
     };
 
-    let pakfile_container = PakFileContainer::new(pakfile);
+    let pakfile_container = Box::new(PakFileContainer::new(pakfile));
 
     let mut brush_vertices = Vec::<crate::Vertex>::new();
     let mut brush_indices = Vec::<u32>::new();
@@ -247,7 +247,6 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     manager.graphics_device().init_buffer(&vertex_buffer_temp, &vertex_buffer);
     manager.graphics_device().init_buffer(&index_buffer_temp, &index_buffer);
 
-    let mut loaded_assets = Vec::<LoadedAsset<P>>::new();
     let mut world = World::new(WorldOptions::default());
     for (index, (ranges_start, ranges_count)) in per_model_range_offsets.iter().enumerate() {
       let mesh = Arc::new(Mesh {
@@ -256,20 +255,15 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
         parts: mesh_ranges[*ranges_start .. *ranges_start + ranges_count].to_vec()
       });
       let mesh_name = format!("brushes_mesh_{}", index);
-      loaded_assets.push(LoadedAsset {
-        path: mesh_name.clone(),
-        asset: Asset::Mesh(mesh)
-      });
+
+      manager.add_asset(&mesh_name, Asset::Mesh(mesh));
 
       let model_name = format!("brushes_model_{}", index);
       let model = Arc::new(Model {
         mesh_path: mesh_name,
         material_paths: per_model_materials[index].clone()
       });
-      loaded_assets.push(LoadedAsset {
-        path: model_name.clone(),
-        asset: Asset::Model(model)
-      });
+      manager.add_asset(&model_name, Asset::Model(model));
 
       world.push(
         (StaticRenderableComponent {
@@ -286,16 +280,13 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       );
     }
 
-    let material_requests: Vec<AssociatedAssetLoadRequest> = materials_to_load.iter().map(|m| {
-      AssociatedAssetLoadRequest {
-      path: m.to_string(),
-      asset_type: AssetType::Material
-    }}).collect();
+    for material in materials_to_load {
+      manager.request_asset_with_progress(&material, AssetType::Material, Some(progress));
+    }
+
+    manager.add_container(pakfile_container);
 
     Ok(AssetLoaderResult {
-      assets: loaded_assets,
-      requests: material_requests,
-      containers: vec![Box::new(pakfile_container)],
       level: Some(world)
     })
   }

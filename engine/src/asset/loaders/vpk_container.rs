@@ -2,11 +2,12 @@ use std::io::{BufReader, Cursor, Error as IOError, ErrorKind as IOErrorKind, Rea
 use std::fs::File;
 
 use sourcerenderer_vpk::{Package, PackageError};
-use crate::asset::{AssetLoader, Asset, AssetManager};
+use crate::asset::{AssetLoader, Asset, AssetManager, AssetLoaderProgress};
 use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer};
 use sourcerenderer_core::Platform;
 use regex::Regex;
 use std::path::Path;
+use std::sync::Arc;
 
 pub(super) const CSGO_PAK_NAME_PATTERN: &str = r"pak01_dir(\.bsp)*";
 
@@ -61,13 +62,11 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.pak_name_regex.is_match(file_name))
   }
 
-  fn load(&self, file: AssetFile, _manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()> {
+  fn load(&self, file: AssetFile, manager: &AssetManager<P>, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = file.path.clone();
     let container = new_vpk_container(file).unwrap();
+    manager.add_container_with_progress(container, Some(progress));
     Ok(AssetLoaderResult {
-      assets: vec![],
-      requests: vec![],
-      containers: vec![container],
       level: None
     })
   }

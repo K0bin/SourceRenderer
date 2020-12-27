@@ -1,6 +1,6 @@
 use crate::asset::{AssetLoader, Asset, AssetManager};
 use sourcerenderer_core::Platform;
-use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, AssetFileData, LoadedAsset};
+use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, AssetFileData, LoadedAsset, AssetLoaderProgress};
 use std::io::{Cursor, BufReader};
 use sourcerenderer_vtf::{VtfTexture, ImageFormat as VTFTextureFormat, ImageFormat, Header as VTFHeader};
 use std::fs::File;
@@ -66,7 +66,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
     }
   }
 
-  fn load(&self, file: AssetFile, manager: &AssetManager<P>) -> Result<AssetLoaderResult<P>, ()> {
+  fn load(&self, file: AssetFile, manager: &AssetManager<P>, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = file.path.clone();
     let texture_view = match file.data {
       AssetFileData::File(file) => {
@@ -81,13 +81,9 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
       }
     };
 
+    manager.add_asset_with_progress(&path, Asset::Texture(texture_view), Some(progress));
+
     Ok(AssetLoaderResult {
-      assets: vec![LoadedAsset {
-        path,
-        asset: Asset::Texture(texture_view)
-      }],
-      requests: vec![],
-      containers: Vec::new(),
       level: None
     })
   }
