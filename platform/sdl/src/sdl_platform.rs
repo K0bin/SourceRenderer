@@ -30,6 +30,7 @@ use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
 
 use crate::SDLInput;
+use std::time::SystemTime;
 
 pub struct SDLPlatform {
   sdl_context: Sdl,
@@ -105,7 +106,11 @@ impl Platform for SDLPlatform {
   }
 
   fn handle_events(&mut self) -> PlatformEvent {
+    let mut before = SystemTime::now();
+
+    let mut counter = 0;
     for event in self.event_pump.poll_iter() {
+      counter += 1;
       match event {
         Event::Quit {..} |
         Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
@@ -115,7 +120,20 @@ impl Platform for SDLPlatform {
         _ => {}
       }
     }
+
+    let mut after = SystemTime::now();
+
+    let diff = after.duration_since(before).unwrap();
+    if diff.as_millis() > 16 {
+      println!("Polling took ages?! {:?}, counted {} events", diff.as_millis(), counter);
+    }
+    before = after;
     self.input.update(&self.event_pump, &self.sdl_context.mouse(), &self.window);
+    after = SystemTime::now();
+    let diff = after.duration_since(before).unwrap();
+    if diff.as_millis() > 16 {
+      println!("Updating input took ages?! {:?}", diff.as_millis());
+    }
     return PlatformEvent::Continue;
   }
 
