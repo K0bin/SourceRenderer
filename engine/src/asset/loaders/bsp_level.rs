@@ -4,7 +4,7 @@ use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model, AssetManager};
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
-use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable, BrushModel};
+use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable, BrushModel, DispVert, DispTri, DispInfo};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
@@ -42,7 +42,10 @@ struct BspTemp {
   tex_data: Vec<TextureData>,
   tex_info: Vec<TextureInfo>,
   tex_string_data: TextureStringData,
-  tex_data_string_table: Vec<TextureDataStringTable>
+  tex_data_string_table: Vec<TextureDataStringTable>,
+  disp_infos: Vec<DispInfo>,
+  disp_verts: Vec<DispVert>,
+  disp_tris: Vec<DispTri>
 }
 
 const SCALING_FACTOR: f32 = 0.0236f32;
@@ -182,6 +185,9 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let tex_string_data = map.read_texture_string_data().unwrap();
     let tex_data_string_table = map.read_texture_data_string_table().unwrap();
     let brush_models = map.read_brush_models().unwrap();
+    let disp_infos = map.read_disp_infos().unwrap();
+    let disp_verts = map.read_disp_verts().unwrap();
+    let disp_tris = map.read_disp_tris().unwrap();
     let mut pakfile = map.read_pakfile().unwrap();
 
     let temp = BspTemp {
@@ -199,7 +205,10 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       tex_data,
       tex_info,
       tex_string_data,
-      tex_data_string_table
+      tex_data_string_table,
+      disp_infos,
+      disp_verts,
+      disp_tris,
     };
 
     let pakfile_container = Box::new(PakFileContainer::new(pakfile));

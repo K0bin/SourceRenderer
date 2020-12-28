@@ -17,6 +17,9 @@ pub use crate::lump_data::texture_string_data::TextureStringData;
 pub use crate::lump_data::texture_data_string_table::TextureDataStringTable;
 pub use crate::lump_data::brush_model::BrushModel;
 pub use crate::lump_data::pakfile::PakFile;
+pub use crate::lump_data::disp_vert::DispVert;
+pub use crate::lump_data::disp_tri::DispTri;
+pub use crate::lump_data::disp_info::*;
 
 use std::io::{Read, Result as IOResult};
 
@@ -39,6 +42,9 @@ mod texture_string_data;
 mod texture_data_string_table;
 mod brush_model;
 mod pakfile;
+mod disp_info;
+mod disp_vert;
+mod disp_tri;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
