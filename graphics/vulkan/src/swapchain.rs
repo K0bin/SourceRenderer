@@ -38,7 +38,7 @@ impl VkSwapchain {
         Ok(present_modes) => present_modes,
         Err(_e) => return Err(SwapchainError::SurfaceLost)
       };
-      let present_mode = VkSwapchain::pick_present_mode(present_modes);
+      let present_mode = VkSwapchain::pick_present_mode(vsync, present_modes);
       let swapchain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
       let capabilities = match surface.get_capabilities(&physical_device) {
@@ -157,7 +157,16 @@ impl VkSwapchain {
     image_count
   }
 
-  unsafe fn pick_present_mode(present_modes: Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
+  unsafe fn pick_present_mode(vsync: bool, present_modes: Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
+    if !vsync {
+      if let Some(mode) = present_modes
+        .iter()
+        .filter(|&&mode| mode == vk::PresentModeKHR::IMMEDIATE)
+        .nth(0) {
+        return *mode;
+      }
+    }
+
     return *present_modes
       .iter()
       .filter(|&&mode| mode == vk::PresentModeKHR::FIFO)
