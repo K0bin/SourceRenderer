@@ -7,7 +7,7 @@ use crate::lump_data::{Brush, Node, Leaf, Face,
                        TextureData, SurfaceEdge, Vertex,
                        VertexNormalIndex, VertexNormal,
                        TextureDataStringTable, TextureStringData};
-use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert};
+use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting};
 
 
 pub struct Map<R: Read + Seek> {
@@ -111,6 +111,10 @@ impl<R: Read + Seek> Map<R> {
   }
 
   pub fn read_disp_verts(&mut self) -> IOResult<Vec<DispVert>> {
+    self.read_lump_data()
+  }
+
+  pub fn read_lighting(&mut self) -> IOResult<Vec<Lighting>> {
     self.read_lump_data()
   }
 

@@ -33,7 +33,7 @@ pub struct Leaf {
 }
 
 impl ColorRGBExp32 {
-  fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+  pub(super) fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
     let r = reader.read_u8()?;
     let g = reader.read_u8()?;
     let b = reader.read_u8()?;

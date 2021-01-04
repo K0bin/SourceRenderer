@@ -20,6 +20,7 @@ pub use crate::lump_data::pakfile::PakFile;
 pub use crate::lump_data::disp_vert::DispVert;
 pub use crate::lump_data::disp_tri::DispTri;
 pub use crate::lump_data::disp_info::*;
+pub use crate::lump_data::lighting::Lighting;
 
 use std::io::{Read, Result as IOResult};
 
@@ -45,6 +46,7 @@ mod pakfile;
 mod disp_info;
 mod disp_vert;
 mod disp_tri;
+mod lighting;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
