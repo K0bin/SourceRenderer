@@ -293,7 +293,7 @@ impl Default for AttachmentBlendInfo {
   }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ShaderType {
   VertexShader = 0,
   FragmentShader,
@@ -303,6 +303,15 @@ pub enum ShaderType {
   ComputeShader,
   // TODO add RT shader types
   // TODO add mesh shaders (?)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum PrimitiveType {
+  Triangles,
+  TriangleStrip,
+  Lines,
+  LineStrip,
+  Points
 }
 
 pub trait Shader {
@@ -319,5 +328,6 @@ pub struct GraphicsPipelineInfo<B: Backend> {
   pub vertex_layout: VertexLayoutInfo,
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
-  pub blend: BlendInfo
+  pub blend: BlendInfo,
+  pub primitive_type: PrimitiveType
 }

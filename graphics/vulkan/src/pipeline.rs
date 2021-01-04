@@ -20,6 +20,7 @@ use sourcerenderer_core::graphics::LogicOp;
 use sourcerenderer_core::graphics::BlendFactor;
 use sourcerenderer_core::graphics::BlendOp;
 use sourcerenderer_core::graphics::ColorComponents;
+use sourcerenderer_core::graphics::PrimitiveType;
 
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
@@ -430,7 +431,13 @@ impl VkPipeline {
     };
 
     let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo {
-      topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+      topology: match info.info.primitive_type {
+        PrimitiveType::Triangles => vk::PrimitiveTopology::TRIANGLE_LIST,
+        PrimitiveType::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
+        PrimitiveType::Lines => vk::PrimitiveTopology::LINE_LIST,
+        PrimitiveType::LineStrip => vk::PrimitiveTopology::LINE_STRIP,
+        PrimitiveType::Points => vk::PrimitiveTopology::POINT_LIST,
+      },
       primitive_restart_enable: false as u32,
       ..Default::default()
     };
