@@ -156,22 +156,22 @@ impl VkDescriptorPool {
     // TODO figure out proper numbers
     let pool_sizes = [vk::DescriptorPoolSize {
       ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-      descriptor_count: 4096
+      descriptor_count: 8192
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-      descriptor_count: 64
+      descriptor_count: 128
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::UNIFORM_BUFFER,
-      descriptor_count: 256
+      descriptor_count: 512
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::STORAGE_BUFFER,
-      descriptor_count: 256
+      descriptor_count: 512
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
-      descriptor_count: 64
+      descriptor_count: 128
     }];
     let info = vk::DescriptorPoolCreateInfo {
-      max_sets: 128,
+      max_sets: 256,
       p_pool_sizes: pool_sizes.as_ptr(),
       pool_size_count: pool_sizes.len() as u32,
       flags: if is_transient { vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET } else { vk::DescriptorPoolCreateFlags::empty() },
