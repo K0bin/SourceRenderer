@@ -328,8 +328,9 @@ impl BufferAllocator {
       alignment = max(alignment, self.device_limits.min_storage_buffer_offset_alignment as usize);
     }
 
+    let key = BufferKey { memory_usage, buffer_usage };
     let mut guard = self.buffers.lock().unwrap();
-    let matching_buffers = guard.entry(BufferKey { memory_usage, buffer_usage }).or_default();
+    let matching_buffers = guard.entry(key).or_default();
     for buffer in matching_buffers.iter() {
       if buffer.slice_size % alignment == 0 && buffer.slice_size > length {
         let mut slices = buffer.slices.lock().unwrap();
@@ -355,7 +356,7 @@ impl BufferAllocator {
       let mut buffer_guard = buffer.slices.lock().unwrap();
       buffer_guard.pop_front().unwrap()
     };
-    guard.insert(BufferKey { memory_usage, buffer_usage }, vec![buffer]);
+    matching_buffers.push(buffer);
     slice
   }
 }
