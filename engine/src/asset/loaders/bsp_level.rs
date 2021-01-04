@@ -76,66 +76,83 @@ impl BspLevelLoader {
     for leaf_face_index in leaf.first_leaf_face as u32 .. leaf.first_leaf_face as u32 + leaf.leaf_faces_count as u32 {
       let face_index = temp.leaf_faces[leaf_face_index as usize].index;
       let face = &temp.faces[face_index as usize];
-      let plane = &temp.planes[face.plane_index as usize];
-      let tex_info = &temp.tex_info[face.texture_info as usize];
-      let tex_data = &temp.tex_data[tex_info.texture_data as usize];
-      let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
-      let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
 
-      let mut face_vertices: HashMap<u16, u32> = HashMap::new(); // Just to make sure that there's no duplicates
-      let mut root_vertex = 0u16;
-      for surf_edge_index in face.first_edge .. face.first_edge + face.edges_count as i32 {
-        let edge_index = temp.surface_edges[surf_edge_index as usize].index;
-        let edge = temp.edges[edge_index.abs() as usize];
-
-        // Push the two vertices of the first edge
-        if surf_edge_index == face.first_edge {
-          if !face_vertices.contains_key(&edge.vertex_index[if edge_index > 0 { 0 } else { 1 }]) {
-            root_vertex = edge.vertex_index[if edge_index > 0 { 0 } else { 1 }];
-            let position = temp.vertices[root_vertex as usize].position;
-            let mut vertex = crate::Vertex {
-              position: BspLevelLoader::fixup_position(&position),
-              normal: BspLevelLoader::fixup_normal(&plane.normal),
-              color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-              uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
-            };
-            face_vertices.insert(root_vertex, brush_vertices.len() as u32);
-            brush_vertices.push(vertex);
-          }
-          continue;
-        }
-
-        // Edge must not be connected to the root vertex
-        if edge.vertex_index[0] == root_vertex || edge.vertex_index[1] == root_vertex {
-          continue;
-        }
-
-        // Edge is on opposite side of the first edge => push the vertices
-        for i in 0..2 {
-          if !face_vertices.contains_key(&edge.vertex_index[i]) {
-            let position = temp.vertices[edge.vertex_index[i] as usize].position;
-            let vertex = crate::Vertex {
-              position: BspLevelLoader::fixup_position(&position),
-              normal: BspLevelLoader::fixup_normal(&plane.normal),
-              color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-              uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
-            };
-            face_vertices.insert(edge.vertex_index[i], brush_vertices.len() as u32);
-            brush_vertices.push(vertex);
-          }
-        }
-
-        // Push indices
-        let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
-        material_brush_indices.push(face_vertices[&root_vertex]);
-        if edge_index < 0 {
-          material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
-          material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
-        } else {
-          material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
-          material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
-        }
+      let disp_info = if face.displacement_info != -1 { Some(&temp.disp_infos[face.displacement_info as usize]) } else { None };
+      if let Some(disp_info) = disp_info {
+        self.build_displacement_face(temp, disp_info, brush_vertices, brush_indices);
+      } else {
+        self.build_face(temp, face, brush_vertices, brush_indices);
       }
+    }
+  }
+
+  fn build_face(&self, temp: &BspTemp, face: &Face, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
+    let tex_info = &temp.tex_info[face.texture_info as usize];
+    let tex_data = &temp.tex_data[tex_info.texture_data as usize];
+    let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
+    let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
+
+    let mut face_vertices = HashMap::<u16, u32>::new();
+    let mut root_vertex = 0u16;
+    let plane = &temp.planes[face.plane_index as usize];
+    for surf_edge_index in face.first_edge..face.first_edge + face.edges_count as i32 {
+      let edge_index = temp.surface_edges[surf_edge_index as usize].index;
+      let edge = temp.edges[edge_index.abs() as usize];
+
+      // Push the two vertices of the first edge
+      if surf_edge_index == face.first_edge {
+        let vert_index = edge.vertex_index[if edge_index > 0 { 0 } else { 1 }];
+        root_vertex = vert_index;
+        let position = temp.vertices[root_vertex as usize].position;
+        let mut vertex = crate::Vertex {
+          position: BspLevelLoader::fixup_position(&position),
+          normal: BspLevelLoader::fixup_normal(&plane.normal),
+          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
+        };
+        face_vertices.insert(root_vertex, brush_vertices.len() as u32);
+        brush_vertices.push(vertex);
+        continue;
+      }
+
+      // Edge must not be connected to the root vertex
+      if edge.vertex_index[0] == root_vertex || edge.vertex_index[1] == root_vertex {
+        continue;
+      }
+
+      // Edge is on opposite side of the first edge => push the vertices
+      for i in 0..2 {
+        let position = temp.vertices[edge.vertex_index[i] as usize].position;
+        let vertex = crate::Vertex {
+          position: BspLevelLoader::fixup_position(&position),
+          normal: BspLevelLoader::fixup_normal(&plane.normal),
+          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
+        };
+        face_vertices.insert(edge.vertex_index[i], brush_vertices.len() as u32);
+        brush_vertices.push(vertex);
+      }
+
+      // Push indices
+      let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
+      material_brush_indices.push(face_vertices[&root_vertex]);
+      if edge_index < 0 {
+        material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
+        material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
+      } else {
+        material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
+        material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
+      }
+    }
+  }
+
+  fn build_displacement_face(&self, temp: &BspTemp, disp_info: &DispInfo, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
+    println!("found disp face");
+    let face = &temp.faces[disp_info.map_face as usize];
+    let disp_plane = &temp.planes[face.plane_index as usize];
+    for surf_edge_index in face.first_edge..face.first_edge + face.edges_count as i32 {
+      let edge_index = temp.surface_edges[surf_edge_index as usize].index;
+      let edge = temp.edges[edge_index.abs() as usize];
     }
   }
 
@@ -224,7 +241,18 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
     for model in &brush_models {
       let root = &temp.nodes[model.head_node as usize];
-      self.read_node(root, &temp, &mut brush_vertices, &mut per_material_indices);
+      //self.read_node(root, &temp, &mut brush_vertices, &mut per_material_indices);
+
+      for face in &temp.faces[model.first_face as usize .. (model.first_face + model.num_faces) as usize] {
+        if face.displacement_info != -1 {
+          let displacement = &temp.disp_infos[face.displacement_info as usize];
+          self.build_face(&temp, &temp.faces[displacement.map_face as usize], &mut brush_vertices, &mut per_material_indices);
+          //self.build_displacement_face(&temp, displacement, &mut brush_vertices, &mut per_material_indices);
+        } else {
+          self.build_face(&temp, face, &mut brush_vertices, &mut per_material_indices);
+        }
+      }
+
       let mut materials = Vec::<String>::new();
       let ranges_start = mesh_ranges.len();
       'materials: for (material, indices) in per_material_indices.drain() {
