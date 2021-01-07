@@ -23,6 +23,13 @@ use std::collections::HashSet;
 use crate::asset::loaders::vpk_container::new_vpk_container;
 use crate::asset::loaders::PakFileContainer;
 
+// REFERENCE
+// https://github.com/lewa-j/Unity-Source-Tools/blob/1c5dc0635cdc4c65775d4af2c4449be49639f46b/Assets/Code/Read/SourceBSPLoader.cs#L877
+// https://github.com/Metapyziks/VBspViewer/blob/master/Assets/VBspViewer/Scripts/Importing/VBsp/VBspFile.cs#L499
+// https://github.com/Metapyziks/SourceUtils/blob/master/SourceUtils.WebExport/Bsp/Geometry.cs
+// http://web.archive.org/web/20050426034532/http://www.geocities.com/cofrdrbob/bspformat.html
+// https://github.com/toji/webgl-source/blob/a435841a856bb3d43f9783d3d2e7ac1cb63992a5/js/source-bsp.js
+
 pub struct BspLevelLoader {
   map_name_regex: Regex
 }
@@ -86,21 +93,17 @@ impl BspLevelLoader {
     }
   }
 
-  // https://github.com/lewa-j/Unity-Source-Tools/blob/1c5dc0635cdc4c65775d4af2c4449be49639f46b/Assets/Code/Read/SourceBSPLoader.cs#L877
-  // https://github.com/Metapyziks/VBspViewer/blob/master/Assets/VBspViewer/Scripts/Importing/VBsp/VBspFile.cs#L499
-  // https://github.com/Metapyziks/SourceUtils/blob/master/SourceUtils.WebExport/Bsp/Geometry.cs
-  // http://web.archive.org/web/20050426034532/http://www.geocities.com/cofrdrbob/bspformat.html
-  // https://github.com/toji/webgl-source/blob/a435841a856bb3d43f9783d3d2e7ac1cb63992a5/js/source-bsp.js
   fn build_face(&self, temp: &BspTemp, face: &Face, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
     let tex_info = &temp.tex_info[face.texture_info as usize];
     let tex_data = &temp.tex_data[tex_info.texture_data as usize];
     let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
     let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
 
-    let first_vertex = brush_vertices.len() as u32;
     let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
     let plane = &temp.planes[face.plane_index as usize];
-    for surf_edge_index in face.first_edge as u32 ..face.first_edge as u32 + face.edges_count as u32 {
+    let root_vertex = brush_vertices.len() as u32;
+
+    for surf_edge_index in face.first_edge ..face.first_edge  + face.edges_count as i32 {
       let edge_index = temp.surface_edges[surf_edge_index as usize].index;
       let edge = temp.edges[edge_index.abs() as usize];
 
@@ -114,24 +117,102 @@ impl BspLevelLoader {
         uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
       });
 
-      let i = surf_edge_index - face.first_edge as u32;
-      if i <= 1 {
+      if surf_edge_index < face.first_edge + 2 {
         continue;
       }
-      material_brush_indices.push(first_vertex + i);
-      material_brush_indices.push(first_vertex + i - 1);
-      material_brush_indices.push(first_vertex);
+      material_brush_indices.push(root_vertex);
+      material_brush_indices.push(brush_vertices.len() as u32 - 1);
+      material_brush_indices.push(brush_vertices.len() as u32 - 2);
     }
   }
 
   fn build_displacement_face(&self, temp: &BspTemp, disp_info: &DispInfo, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
-    println!("found disp face");
     let face = &temp.faces[disp_info.map_face as usize];
+    let tex_info = &temp.tex_info[face.texture_info as usize];
+    let tex_data = &temp.tex_data[tex_info.texture_data as usize];
+    let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
+    let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
+    let plane = &temp.planes[face.plane_index as usize];
+    let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
+
     let disp_plane = &temp.planes[face.plane_index as usize];
+    let mut corners = [Vec3::default(); 4];
+    let size = 1 << disp_info.power;
+    let mut first_corner = 0;
+    let mut first_corner_dist_squared = f32::MAX;
     for surf_edge_index in face.first_edge..face.first_edge + face.edges_count as i32 {
       let edge_index = temp.surface_edges[surf_edge_index as usize].index;
       let edge = temp.edges[edge_index.abs() as usize];
+      let vert_index = edge.vertex_index[if edge_index >= 0 { 0 } else { 1 }];
+      let position = temp.vertices[vert_index as usize].position;
+      corners[(surf_edge_index - face.first_edge) as usize] = position;
+
+      let dist_squared = (disp_info.start_position - position).magnitude_squared();
+      if dist_squared < first_corner_dist_squared {
+        first_corner = surf_edge_index - face.first_edge;
+        first_corner_dist_squared = dist_squared;
+      }
     }
+
+    for x in 0..size {
+      for y in 0..size {
+        let root_vertex = brush_vertices.len() as u32;
+
+        brush_vertices.push(crate::Vertex {
+          position: Self::calculate_disp_vert(disp_info.disp_vert_start, x, y, size, &corners, first_corner, &temp.disp_verts),
+          normal: Self::fixup_normal(&plane.normal),
+          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          uv: Self::calculate_disp_uv(x, y, size, &face)
+        });
+        brush_vertices.push(crate::Vertex {
+          position: Self::calculate_disp_vert(disp_info.disp_vert_start, x, y + 1, size, &corners, first_corner, &temp.disp_verts),
+          normal: Self::fixup_normal(&plane.normal),
+          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          uv: Self::calculate_disp_uv(x, y + 1, size, &face)
+        });
+        brush_vertices.push(crate::Vertex {
+          position: Self::calculate_disp_vert(disp_info.disp_vert_start, x + 1, y + 1, size, &corners, first_corner, &temp.disp_verts),
+          normal: Self::fixup_normal(&plane.normal),
+          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          uv: Self::calculate_disp_uv(x + 1, y + 1, size, &face)
+        });
+        brush_vertices.push(crate::Vertex {
+          position: Self::calculate_disp_vert(disp_info.disp_vert_start, x + 1, y, size, &corners, first_corner, &temp.disp_verts),
+          normal: Self::fixup_normal(&plane.normal),
+          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+          uv: Self::calculate_disp_uv(x + 1, y, size, &face)
+        });
+
+        material_brush_indices.push(root_vertex);
+        material_brush_indices.push(root_vertex + 2);
+        material_brush_indices.push(root_vertex + 1);
+
+        material_brush_indices.push(root_vertex);
+        material_brush_indices.push(root_vertex + 3);
+        material_brush_indices.push(root_vertex + 2);
+      }
+    }
+  }
+
+  fn calculate_disp_uv(x: i32, y: i32, size: i32, face: &Face) -> Vec2 {
+    Vec2::new(0f32, 0f32)
+  }
+
+  fn calculate_disp_vert(offset: i32, x: i32, y: i32, size: i32, corners: &[Vec3; 4], first_corner: i32, disp_verts: &[DispVert]) -> Vec3 {
+    let disp_vert = &disp_verts[(offset + x + y * (size + 1)) as usize];
+    let tx = (x as f32) / (size as f32);
+    let ty = (y as f32) / (size as f32);
+    let sx = 1f32 - tx;
+    let sy = 1f32 - ty;
+
+    let relevant_corners = [
+      corners[((first_corner) & 3) as usize],
+      corners[((first_corner + 1) & 3) as usize],
+      corners[((first_corner + 2) & 3) as usize],
+      corners[((first_corner + 3) & 3) as usize],
+    ];
+    let origin = ty * (sx * relevant_corners[1] + tx * relevant_corners[2]) + sy * (sx * relevant_corners[0] + tx * relevant_corners[3]);
+    Self::fixup_position(&(origin + disp_vert.vec * disp_vert.dist))
   }
 
   fn calculate_uv(position: &Vec3, texture_vecs_s: &Vec4, texture_vecs_t: &Vec4, tex_data: &TextureData) -> Vec2 {
@@ -224,8 +305,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       for face in &temp.faces[model.first_face as usize .. (model.first_face + model.num_faces) as usize] {
         if face.displacement_info != -1 {
           let displacement = &temp.disp_infos[face.displacement_info as usize];
-          self.build_face(&temp, &temp.faces[displacement.map_face as usize], &mut brush_vertices, &mut per_material_indices);
-          //self.build_displacement_face(&temp, displacement, &mut brush_vertices, &mut per_material_indices);
+          //self.build_face(&temp, &temp.faces[displacement.map_face as usize], &mut brush_vertices, &mut per_material_indices);
+          self.build_displacement_face(&temp, displacement, &mut brush_vertices, &mut per_material_indices);
         } else {
           self.build_face(&temp, face, &mut brush_vertices, &mut per_material_indices);
         }
