@@ -86,63 +86,41 @@ impl BspLevelLoader {
     }
   }
 
+  // https://github.com/lewa-j/Unity-Source-Tools/blob/1c5dc0635cdc4c65775d4af2c4449be49639f46b/Assets/Code/Read/SourceBSPLoader.cs#L877
+  // https://github.com/Metapyziks/VBspViewer/blob/master/Assets/VBspViewer/Scripts/Importing/VBsp/VBspFile.cs#L499
+  // https://github.com/Metapyziks/SourceUtils/blob/master/SourceUtils.WebExport/Bsp/Geometry.cs
+  // http://web.archive.org/web/20050426034532/http://www.geocities.com/cofrdrbob/bspformat.html
+  // https://github.com/toji/webgl-source/blob/a435841a856bb3d43f9783d3d2e7ac1cb63992a5/js/source-bsp.js
   fn build_face(&self, temp: &BspTemp, face: &Face, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
     let tex_info = &temp.tex_info[face.texture_info as usize];
     let tex_data = &temp.tex_data[tex_info.texture_data as usize];
     let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
     let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
 
-    let mut face_vertices = HashMap::<u16, u32>::new();
-    let mut root_vertex = 0u16;
+    let first_vertex = brush_vertices.len() as u32;
+    let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
     let plane = &temp.planes[face.plane_index as usize];
-    for surf_edge_index in face.first_edge..face.first_edge + face.edges_count as i32 {
+    for surf_edge_index in face.first_edge as u32 ..face.first_edge as u32 + face.edges_count as u32 {
       let edge_index = temp.surface_edges[surf_edge_index as usize].index;
       let edge = temp.edges[edge_index.abs() as usize];
 
       // Push the two vertices of the first edge
-      if surf_edge_index == face.first_edge {
-        let vert_index = edge.vertex_index[if edge_index > 0 { 0 } else { 1 }];
-        root_vertex = vert_index;
-        let position = temp.vertices[root_vertex as usize].position;
-        let mut vertex = crate::Vertex {
-          position: BspLevelLoader::fixup_position(&position),
-          normal: BspLevelLoader::fixup_normal(&plane.normal),
-          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-          uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
-        };
-        face_vertices.insert(root_vertex, brush_vertices.len() as u32);
-        brush_vertices.push(vertex);
+      let vert_index = edge.vertex_index[if edge_index >= 0 { 0 } else { 1 }];
+      let position = temp.vertices[vert_index as usize].position;
+      brush_vertices.push(crate::Vertex {
+        position: BspLevelLoader::fixup_position(&position),
+        normal: BspLevelLoader::fixup_normal(&plane.normal),
+        color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+        uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
+      });
+
+      let i = surf_edge_index - face.first_edge as u32;
+      if i <= 1 {
         continue;
       }
-
-      // Edge must not be connected to the root vertex
-      if edge.vertex_index[0] == root_vertex || edge.vertex_index[1] == root_vertex {
-        continue;
-      }
-
-      // Edge is on opposite side of the first edge => push the vertices
-      for i in 0..2 {
-        let position = temp.vertices[edge.vertex_index[i] as usize].position;
-        let vertex = crate::Vertex {
-          position: BspLevelLoader::fixup_position(&position),
-          normal: BspLevelLoader::fixup_normal(&plane.normal),
-          color: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-          uv: BspLevelLoader::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t, &tex_data)
-        };
-        face_vertices.insert(edge.vertex_index[i], brush_vertices.len() as u32);
-        brush_vertices.push(vertex);
-      }
-
-      // Push indices
-      let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
-      material_brush_indices.push(face_vertices[&root_vertex]);
-      if edge_index < 0 {
-        material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
-        material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
-      } else {
-        material_brush_indices.push(face_vertices[&edge.vertex_index[1]]);
-        material_brush_indices.push(face_vertices[&edge.vertex_index[0]]);
-      }
+      material_brush_indices.push(first_vertex + i);
+      material_brush_indices.push(first_vertex + i - 1);
+      material_brush_indices.push(first_vertex);
     }
   }
 
