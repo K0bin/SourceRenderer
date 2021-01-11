@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use std::io::{Read, Result as IOResult};
+use std::io::{Read, Result as IOResult, Error as IOError, ErrorKind, Cursor};
 use crate::{PrimitiveRead, LumpData, LumpType};
 
 pub struct DispInfo {
@@ -34,19 +34,23 @@ impl LumpData for DispInfo {
     LumpType::DisplacementInfo
   }
 
-  fn element_size(version: i32) -> usize {
+  fn element_size(_version: i32) -> usize {
     176
   }
 
-  fn read(mut read: &mut dyn Read, version: i32) -> IOResult<Self> {
+  fn read(mut read: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let start_position = Vector3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let disp_vert_start = read.read_i32()?;
     let disp_tri_start = read.read_i32()?;
     let power = read.read_i32()?;
+    if power != 2 && power != 3 && power != 4 {
+      panic!(format!("illegal power: {}", power));
+    }
     let min_tess = read.read_i32()?;
     let smoothing_angle = read.read_f32()?;
     let contents = read.read_i32()?;
     let map_face = read.read_u16()?;
+    let _padding = read.read_u16()?;
     let lightmap_alpha_start = read.read_i32()?;
     let lightmap_sample_position_start = read.read_i32()?;
     let edge_neighbors = [
@@ -59,7 +63,6 @@ impl LumpData for DispInfo {
     for i in 0..allowed_verts.len() {
       allowed_verts[i] = read.read_u32()?;
     }
-    let _padding = read.read_u16()?;
     Ok(Self {
       start_position,
       disp_vert_start,
@@ -118,8 +121,24 @@ impl DispSubNeighbor {
   pub fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
     let neighbor_index = reader.read_u16()?;
     let neighbor_orientation = reader.read_u8()?;
+
+    if neighbor_orientation > unsafe { std::mem::transmute::<NeighborOrientation, u8>(NeighborOrientation::CounterClockWise270) }
+      && neighbor_orientation != unsafe { std::mem::transmute::<NeighborOrientation, u8>(NeighborOrientation::Unknown) } {
+      return Err(IOError::new(ErrorKind::Other, format!("Value for neighbor orientation in DispSubNeighbor out of range: {}", neighbor_orientation)));
+    }
+
     let span = reader.read_u8()?;
+    if span > unsafe { std::mem::transmute::<NeighborSpan, u8>(NeighborSpan::MidpointToCorner) } {
+      println!("{}", format!("Value for span in DispSubNeighbor out of range: {}", span));
+      // FIXME
+    }
+
     let neighbor_span = reader.read_u8()?;
+    if neighbor_span > unsafe { std::mem::transmute::<NeighborSpan, u8>(NeighborSpan::MidpointToCorner) } {
+      println!("{}", format!("Value for neighbor_span in DispSubNeighbor out of range: {}", neighbor_span));
+      // FIXME
+    }
+
     let _padding = reader.read_u8()?;
     Ok(Self {
       neighbor_index,
@@ -131,24 +150,31 @@ impl DispSubNeighbor {
 }
 
 pub struct DispCornerNeighbors {
-  pub neighbors: [u16; 4],
-  pub num_neighbors: u8
+  neighbors: [u16; 4],
+  num_neighbors: u8
 }
 
 impl DispCornerNeighbors {
   pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
     let neighbors = [read.read_u16()?, read.read_u16()?, read.read_u16()?, read.read_u16()?];
     let num_neighbors = read.read_u8()?;
+    if num_neighbors > 4 {
+      return Err(IOError::new(ErrorKind::Other, format!("Value for num_neighbors in DispCornerNeighbors out of range: {}", num_neighbors)));
+    }
     let _padding = read.read_u8()?;
     Ok(Self {
       neighbors,
       num_neighbors
     })
   }
+
+  pub fn corner_neighbor_indices(&self) -> &[u16] {
+    &self.neighbors[..self.num_neighbors as usize]
+  }
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Hash)]
 pub enum NeighborOrientation {
   CounterClockwise0 = 0,
   CounterClockwise90 = 1,
@@ -158,7 +184,7 @@ pub enum NeighborOrientation {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Hash)]
 pub enum NeighborSpan {
   CornerToCorner = 0,
   CornerToMidpoint = 1,
@@ -166,7 +192,7 @@ pub enum NeighborSpan {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Hash)]
 pub enum NeighborCorner {
   LowerLeft = 0,
   UpperLeft = 1,
@@ -175,7 +201,7 @@ pub enum NeighborCorner {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Ord, Hash)]
 pub enum NeighborEdge {
   Left = 0,
   Top = 1,
