@@ -81,13 +81,16 @@ fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform
     movement_vector.y -= 1f32;
   }
 
+  if movement_vector.x.abs() > 0.00001f32 || movement_vector.z.abs() > 0.00001f32 {
+    let y = movement_vector.y;
+    movement_vector = movement_vector.normalize();
+    movement_vector = Vec3::new(-movement_vector.x, 0.0f32, movement_vector.z).normalize();
+    movement_vector = transform.rotation.transform_vector(&movement_vector);
+    movement_vector.y = y;
+  }
+
   if movement_vector.x.abs() > 0.00001f32 || movement_vector.y.abs() > 0.00001f32 || movement_vector.z.abs() > 0.00001f32 {
-    let mut rotated_movement_vector = Vec3::new(-movement_vector.x, 0.0f32, movement_vector.z).normalize();
-    rotated_movement_vector = transform.rotation.transform_vector(&rotated_movement_vector);
-    rotated_movement_vector.y = 0f32;
-    rotated_movement_vector = rotated_movement_vector.normalize();
-    rotated_movement_vector.y = movement_vector.y;
-    rotated_movement_vector = rotated_movement_vector.normalize();
-    transform.position += rotated_movement_vector * 3f32 * delta_time.secs();
+    movement_vector = movement_vector.normalize();
+    transform.position += movement_vector * 3f32 * delta_time.secs();
   }
 }
