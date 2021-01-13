@@ -7,7 +7,7 @@ use nalgebra::Unit;
 use legion::systems::Builder;
 use legion::{component, World};
 
-use crate::scene::DeltaTime;
+use crate::scene::{DeltaTime, TickRate};
 use crate::renderer::LateLatchCamera;
 
 pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
@@ -60,7 +60,7 @@ fn update_fps_camera_position<P: Platform>(#[resource] late_latch_camera: &Arc<L
 
 #[system(for_each)]
 #[filter(component::<Camera>() & component::<FPSCameraComponent>())]
-fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Transform, #[resource] delta_time: &DeltaTime) {
+fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Transform, #[resource] tick_rate: &TickRate) {
   let mut movement_vector = Vec3::new(0f32, 0f32, 0f32);
   if input.is_key_down(Key::W) {
     movement_vector.z += 1f32;
@@ -91,6 +91,6 @@ fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform
 
   if movement_vector.x.abs() > 0.00001f32 || movement_vector.y.abs() > 0.00001f32 || movement_vector.z.abs() > 0.00001f32 {
     movement_vector = movement_vector.normalize();
-    transform.position += movement_vector * 3f32 * delta_time.secs();
+    transform.position += movement_vector * 3f32 / (tick_rate.0 as f32);
   }
 }

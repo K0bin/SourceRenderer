@@ -124,14 +124,11 @@ impl<P: Platform> RendererInternal<P> {
           for element in &mut guard.elements {
             if let RDrawableType::Static { can_move, .. } = &element.drawable_type {
               if *can_move {
-                element.older_transform = element.old_transform;
                 element.old_transform = element.transform;
               }
             }
           }
-          guard.older_camera_transform = guard.old_camera_transform;
           guard.old_camera_transform = guard.camera_transform;
-          guard.older_camera_fov = guard.old_camera_fov;
           guard.old_camera_fov = guard.camera_fov;
           break;
         }
@@ -139,6 +136,10 @@ impl<P: Platform> RendererInternal<P> {
         RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => {
           guard.camera_transform = camera_transform_mat;
           guard.camera_fov = fov;
+
+          let position = camera_transform_mat.column(3).xyz();
+          self.primary_camera.update_position(position);
+          guard.camera_matrix = self.primary_camera.get_camera();
         }
 
         RendererCommand::UpdateTransform { entity, transform_mat } => {
@@ -168,10 +169,8 @@ impl<P: Platform> RendererInternal<P> {
               _ => unimplemented!()
             },
             entity: drawable.entity,
-            interpolated_transform: drawable.transform,
             transform: drawable.transform,
-            old_transform: drawable.transform,
-            older_transform: drawable.transform
+            old_transform: drawable.transform
           });
         }
 
@@ -193,28 +192,6 @@ impl<P: Platform> RendererInternal<P> {
       }
       message_opt = message_res.ok();
     }
-  }
-
-  fn interpolate_drawables(&mut self, _swapchain_width: u32, _swapchain_height: u32) {
-    let mut guard = self.view.lock().unwrap();
-
-    let now = SystemTime::now();
-    let delta = now.duration_since(self.last_tick).unwrap().as_millis() as f32;
-    let frac = f32::max(0f32, f32::min(1f32, delta / (1000f32 / self.simulation_tick_rate as f32)));
-
-    for element in &mut guard.elements {
-      if let RDrawableType::Static { can_move, .. } = &element.drawable_type {
-        if *can_move {
-          element.interpolated_transform = interpolate_transform_matrix(element.older_transform, element.old_transform, frac);
-        }
-      }
-    }
-
-    guard.interpolated_camera = interpolate_transform_matrix(guard.older_camera_transform, guard.old_camera_transform, frac);
-    let (translation, _, _) = deconstruct_transform(guard.interpolated_camera);
-    self.primary_camera.update_position(translation);
-
-    guard.interpolated_camera = self.primary_camera.get_camera();
   }
 
   pub(super) fn render(&mut self) {
@@ -250,7 +227,6 @@ impl<P: Platform> RendererInternal<P> {
 
     self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
-    self.interpolate_drawables(swapchain_width, swapchain_height);
 
     let result = self.graph.render();
     if result.is_err() {
@@ -271,29 +247,4 @@ impl<P: Platform> RendererInternal<P> {
       let _ = self.graph.render();
     }
   }
-}
-
-fn deconstruct_transform(transform_mat: Matrix4) -> (Vec3, Quaternion, Vec3) {
-  let scale = Vec3::new(transform_mat.column(0).xyz().magnitude(),
-                        transform_mat.column(1).xyz().magnitude(),
-                        transform_mat.column(2).xyz().magnitude());
-  let translation: Vec3 = transform_mat.column(3).xyz();
-  let rotation = Quaternion::from_matrix(&Matrix3::<f32>::from_columns(&[
-    transform_mat.column(0).xyz() / scale.x,
-    transform_mat.column(1).xyz() / scale.y,
-    transform_mat.column(2).xyz() / scale.z
-  ]));
-  (translation, rotation, scale)
-}
-
-fn interpolate_transform_matrix(from: Matrix4, to: Matrix4, frac: f32) -> Matrix4 {
-  let (from_position, from_rotation, from_scale) = deconstruct_transform(from);
-  let (to_position, to_rotation, to_scale) = deconstruct_transform(to);
-  let position = from_position.lerp(&to_position, frac);
-  let rotation: Quaternion = Quaternion::from_quaternion(from_rotation.lerp(&to_rotation, frac));
-  let scale = from_scale.lerp(&to_scale, frac);
-
-  Matrix4::new_translation(&position)
-    * Matrix4::new_rotation(rotation.axis_angle().map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| *axis * amount))
-    * Matrix4::new_nonuniform_scaling(&scale)
 }

@@ -24,9 +24,7 @@ struct Children(Vec<Entity>);
 
 impl From<Transform> for Matrix4 {
   fn from(transform: Transform) -> Self {
-    Matrix4::new_translation(&transform.position)
-      * Matrix4::new_rotation(transform.rotation.axis_angle().map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| *axis * amount))
-      * Matrix4::new_nonuniform_scaling(&transform.scale)
+    Self::from(&transform)
   }
 }
 
@@ -131,6 +129,7 @@ fn propagade_transforms(entity: &Entity,
       propagade_transforms(child, &global_transform.0, dirty, world, command_buffer);
     }
   }
+
   if let Some(global_transform) = new_global_transform {
     command_buffer.add_component(*entity, global_transform);
   }

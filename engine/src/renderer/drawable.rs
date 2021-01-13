@@ -85,10 +85,8 @@ impl<B: Backend> Clone for RDrawableType<B> {
 pub(super) struct RDrawable<B: Backend> {
   pub(super) drawable_type: RDrawableType<B>,
   pub(super) entity: Entity,
-  pub(super) interpolated_transform: Matrix4,
   pub(super) transform: Matrix4,
   pub(super) old_transform: Matrix4,
-  pub(super) older_transform: Matrix4
 }
 
 impl<B: Backend> RDrawable<B> {
@@ -97,9 +95,7 @@ impl<B: Backend> RDrawable<B> {
       entity,
       drawable_type,
       transform,
-      old_transform: transform,
-      older_transform: transform,
-      interpolated_transform: transform
+      old_transform: transform
     }
   }
 }
@@ -107,26 +103,22 @@ impl<B: Backend> RDrawable<B> {
 #[derive(Clone)]
 pub(crate) struct View<B: Backend> {
   pub(super) elements: Vec<RDrawable<B>>,
-  pub(super) interpolated_camera: Matrix4,
+  pub(super) camera_matrix: Matrix4,
   pub(super) camera_transform: Matrix4,
-  pub(super) old_camera_transform: Matrix4,
-  pub(super) older_camera_transform: Matrix4,
   pub(super) camera_fov: f32,
+  pub(super) old_camera_transform: Matrix4,
   pub(super) old_camera_fov: f32,
-  pub(super) older_camera_fov: f32
 }
 
 impl<B: Backend> Default for View<B> {
   fn default() -> Self {
     Self {
       elements: Vec::new(),
-      old_camera_transform: Matrix4::identity(),
-      older_camera_transform: Matrix4::identity(),
       camera_transform: Matrix4::identity(),
-      interpolated_camera: Matrix4::identity(),
+      old_camera_transform: Matrix4::identity(),
+      camera_matrix: Matrix4::identity(),
       camera_fov: f32::consts::PI / 2f32,
-      old_camera_fov: f32::consts::PI / 2f32,
-      older_camera_fov: f32::consts::PI / 2f32
+      old_camera_fov: f32::consts::PI / 2f32
     }
   }
 }

@@ -12,6 +12,7 @@ use crate::{ActiveCamera, Camera};
 use crate::renderer::Renderer;
 use std::sync::Arc;
 use sourcerenderer_core::Platform;
+use crate::transform::interpolation::InterpolatedTransform;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct StaticRenderableComponent {
@@ -32,7 +33,7 @@ pub fn install<P: Platform>(systems: &mut Builder, renderer: &Arc<Renderer<P>>) 
 
 #[system]
 #[read_component(StaticRenderableComponent)]
-#[read_component(GlobalTransform)]
+#[read_component(InterpolatedTransform)]
 #[read_component(Camera)]
 fn renderer<P: Platform>(world: &mut SubWorld,
             #[state] renderer: &Arc<Renderer<P>>,
@@ -44,13 +45,13 @@ fn renderer<P: Platform>(world: &mut SubWorld,
   }
 
   let camera_entry = world.entry_ref(active_camera.0).ok();
-  let transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<GlobalTransform>().ok());
+  let transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<InterpolatedTransform>().ok());
   let camera_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<Camera>().ok());
   if camera_component.is_some() && transform_component.is_some() {
     renderer.update_camera_transform(transform_component.unwrap().0, camera_component.unwrap().fov);
   }
 
-  let mut static_components_query = <(Entity, &StaticRenderableComponent, &GlobalTransform)>::query();
+  let mut static_components_query = <(Entity, &StaticRenderableComponent, &InterpolatedTransform)>::query();
   for (entity, component, transform) in static_components_query.iter(world) {
     if active_static_renderables.0.contains(entity) {
       continue;
@@ -71,8 +72,8 @@ fn renderer<P: Platform>(world: &mut SubWorld,
     active_static_renderables.0.insert(*entity);
   }
 
-  let mut static_components_update_transforms_query = <(Entity, &GlobalTransform)>::query()
-    .filter(component::<StaticRenderableComponent>() & maybe_changed::<GlobalTransform>());
+  let mut static_components_update_transforms_query = <(Entity, &InterpolatedTransform)>::query()
+    .filter(component::<StaticRenderableComponent>() & maybe_changed::<InterpolatedTransform>());
 
   for (entity, transform) in static_components_update_transforms_query.iter(world) {
     renderer.update_transform(*entity, transform.0.clone());

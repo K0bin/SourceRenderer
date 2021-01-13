@@ -148,7 +148,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         let state = c_view.lock().unwrap();
 
-        let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.interpolated_camera, BufferUsage::CONSTANT);
+        let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.camera_matrix, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         command_buffer.set_viewports(&[Viewport {
           position: Vec2::new(0.0f32, 0.0f32),
@@ -164,7 +164,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
         command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
         //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
         for renderable in &state.elements {
-          let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.interpolated_transform, BufferUsage::CONSTANT);
+          let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.transform, BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
 
           if let RDrawableType::Static {

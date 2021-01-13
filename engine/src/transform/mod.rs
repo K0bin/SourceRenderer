@@ -1,4 +1,5 @@
 mod transform;
+pub mod interpolation;
 
 pub use transform::Transform;
 pub use transform::GlobalTransform;

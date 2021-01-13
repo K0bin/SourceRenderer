@@ -14,11 +14,12 @@ use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainer
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 
-pub struct Scene {
+pub struct Scene {}
 
-}
-
-pub struct DeltaTime(Duration);
+pub struct TickDuration(pub Duration);
+pub struct TickRate(pub u32);
+pub struct DeltaTime(pub Duration);
+pub struct TickDelta(pub Duration);
 
 impl DeltaTime {
   pub fn secs(&self) -> f32 {
@@ -56,43 +57,50 @@ impl Scene {
     let c_input = input.clone();
     thread::spawn(move || {
       let mut world = World::default();
-      let mut systems = Schedule::builder();
+      let mut fixed_schedule = Schedule::builder();
+      let mut schedule = Schedule::builder();
       let mut resources = Resources::default();
 
       resources.insert(c_input);
 
-      crate::spinning_cube::install(&mut world, &mut resources, &mut systems, &c_asset_manager);
-      fps_camera::install::<P>(&mut world, &mut systems);
-
-      transform::install(&mut systems);
-      c_renderer.install(&mut world, &mut resources, &mut systems);
+      crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, &c_asset_manager);
+      fps_camera::install::<P>(&mut world, &mut fixed_schedule);
+      transform::interpolation::install(&mut fixed_schedule, &mut schedule);
+      transform::install(&mut fixed_schedule);
+      c_renderer.install(&mut world, &mut resources, &mut schedule);
 
       world.move_from(&mut level, &FilterAll {});
 
       resources.insert(c_renderer.primary_camera().clone());
 
+      let tick_duration = Duration::new(0, (1_000_000_000 / tick_rate));
+      resources.insert(TickRate(tick_rate));
+      resources.insert(TickDuration(tick_duration));
+
       let mut tick = 0u64;
-      let mut schedule = systems.build();
+      let mut schedule = schedule.build();
+      let mut fixed_schedule = fixed_schedule.build();
+      let mut last_tick_time = SystemTime::now();
       let mut last_iter_time = SystemTime::now();
-      let mut spin_counter = 0u32;
       loop {
         let now = SystemTime::now();
-        let delta = now.duration_since(last_iter_time).unwrap();
 
-        if delta.as_nanos() < (1_000_000_000 / tick_rate) as u128 {
-          if spin_counter > 1024 {
-            thread::sleep(Duration::new(0, 1_000_000)); // 1ms
-          } else if spin_counter > 128 {
-            thread::yield_now();
-          }
-          spin_counter += 1;
-          continue;
+        // run fixed step systems first
+        let mut tick_delta = now.duration_since(last_tick_time).unwrap();
+        while tick_delta >= tick_duration {
+          last_tick_time += tick_duration;
+          resources.insert(Tick(tick));
+          fixed_schedule.execute(&mut world, &mut resources);
+          tick += 1;
+          tick_delta = now.duration_since(last_tick_time).unwrap();
         }
-        last_iter_time = now;
-        resources.insert(DeltaTime(Duration::new(0, (1_000_000_000 / tick_rate))));
-        resources.insert(Tick(tick));
-        tick += 1;
 
+        while c_renderer.is_saturated() {}
+
+        let delta = now.duration_since(last_iter_time).unwrap();
+        last_iter_time = now;
+        resources.insert(TickDelta(tick_delta));
+        resources.insert(DeltaTime(delta));
         schedule.execute(&mut world, &mut resources);
       }
     });
