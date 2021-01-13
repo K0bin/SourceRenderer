@@ -126,7 +126,7 @@ impl Default for SubpassAttachmentMetadata {
   fn default() -> Self {
     Self {
       produced_in_subpass_index: vk::SUBPASS_EXTERNAL,
-      render_pass_attachment_index: 0,
+      render_pass_attachment_index: u32::MAX,
       last_used_in_subpass_index: 0,
       layout: vk::ImageLayout::UNDEFINED
     }
@@ -489,6 +489,8 @@ impl VkRenderGraphTemplate {
             if format.is_depth() {
               panic!("Output attachment must not have a depth stencil format");
             }
+            metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+            metadata.produced_in_subpass_index = subpass_index as u32;
 
             vk_render_pass_attachments.push(
               vk::AttachmentDescription {

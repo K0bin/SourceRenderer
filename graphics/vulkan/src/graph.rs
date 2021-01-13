@@ -180,7 +180,7 @@ impl VkRenderGraph {
           if format.is_depth() || format.is_stencil() {
             usage |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
           } else {
-            usage |= vk::ImageUsageFlags::STORAGE;
+            usage |= vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE;
           }
 
           let (width, height) = match extent {
@@ -282,6 +282,12 @@ impl VkRenderGraph {
                   depth_stencil: vk::ClearDepthStencilValue {
                     depth: 9999f32,
                     stencil: 0u32
+                  }
+                });
+              } else {
+                clear_values.push(vk::ClearValue {
+                  color: vk::ClearColorValue {
+                    uint32: [0u32; 4]
                   }
                 });
               }
@@ -657,7 +663,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           }
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
-              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::Commands);
+              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[if *renders_to_swapchain { framebuffer_index } else { 0 }], &clear_values, RenderpassRecordingMode::Commands);
               for i in 0..callbacks.len() {
                 if i != 0 {
                   cmd_buffer.advance_subpass();
@@ -668,7 +674,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
               cmd_buffer.end_render_pass();
             }
             RenderPassCallbacks::InternallyThreaded(callbacks) => {
-              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::CommandBuffers);
+              cmd_buffer.begin_render_pass(&renderpass, &framebuffers[if *renders_to_swapchain { framebuffer_index } else { 0 }], &clear_values, RenderpassRecordingMode::CommandBuffers);
               let provider = self.thread_manager.clone() as Arc<dyn InnerCommandBufferProvider<VkBackend>>;
               for i in 0..callbacks.len() {
                 if i != 0 {
