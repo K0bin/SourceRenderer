@@ -19,15 +19,21 @@ pub enum SubpassOutput {
 }
 
 #[derive(Clone)]
-pub struct DepthStencilOutput {
-  pub name: String,
-  pub format: Format,
-  pub samples: SampleCount,
-  pub extent: RenderPassTextureExtent,
-  pub depth_load_action: LoadAction,
-  pub depth_store_action: StoreAction,
-  pub stencil_load_action: LoadAction,
-  pub stencil_store_action: StoreAction
+pub enum DepthStencil {
+  Output {
+    name: String,
+    format: Format,
+    samples: SampleCount,
+    extent: RenderPassTextureExtent,
+    depth_load_action: LoadAction,
+    depth_store_action: StoreAction,
+    stencil_load_action: LoadAction,
+    stencil_store_action: StoreAction
+  },
+  Input {
+    name: String
+  },
+  None
 }
 
 #[derive(Clone)]
@@ -99,7 +105,7 @@ pub enum RenderPassTextureExtent {
 #[derive(Clone)]
 pub struct GraphicsSubpassInfo {
   pub outputs: Vec<SubpassOutput>,
-  pub depth_stencil: Option<DepthStencilOutput>,
+  pub depth_stencil: DepthStencil,
   pub inputs: Vec<PassInput>
 }
 

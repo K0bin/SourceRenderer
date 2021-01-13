@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, DepthStencilOutput, Format, SampleCount, RenderPassTextureExtent, LoadAction, StoreAction, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, RenderPassTextureExtent, LoadAction, StoreAction, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil};
 use std::sync::{Arc, Mutex};
 use crate::renderer::drawable::View;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
@@ -11,11 +11,11 @@ use std::io::Read;
 use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
 use crate::renderer::renderer_assets::*;
 
-const PASS_NAME: &str = "Prepass";
-const OUTPUT_DS: &str = "PrepassDS";
+pub(super) const PASS_NAME: &str = "Prepass";
+pub(super) const OUTPUT_DS: &str = "PrepassDS";
 
-const OUTPUT_NORMALS: &str = "PrepassNormals";
-const OUTPUT_MOTION: &str = "PrepassMotion";
+pub(super) const OUTPUT_NORMALS: &str = "PrepassNormals";
+pub(super) const OUTPUT_MOTION: &str = "PrepassMotion";
 
 #[derive(Clone, Copy)]
 struct PrepassCameraCB {
@@ -68,7 +68,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
               is_local: false
             }
           ],
-          depth_stencil: Some(DepthStencilOutput {
+          depth_stencil: DepthStencil::Output {
             name: OUTPUT_DS.to_string(),
             format: Format::D24S8,
             samples: SampleCount::Samples1,
@@ -79,7 +79,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
             depth_store_action: StoreAction::Store,
             stencil_load_action: LoadAction::DontCare,
             stencil_store_action: StoreAction::DontCare
-          })
+          }
         }
       ],
     }

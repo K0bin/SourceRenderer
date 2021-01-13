@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, DepthStencilOutput, Format, SampleCount, RenderPassTextureExtent, LoadAction, StoreAction, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, RenderPassTextureExtent, LoadAction, StoreAction, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil};
 use std::sync::{Arc, Mutex};
 use crate::renderer::drawable::View;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
@@ -29,18 +29,9 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
               is_local: false
             }
           ],
-          depth_stencil: Some(DepthStencilOutput {
-            name: OUTPUT_DS.to_string(),
-            format: Format::D24S8,
-            samples: SampleCount::Samples1,
-            extent: RenderPassTextureExtent::RelativeToSwapchain {
-              width: 1.0f32, height: 1.0f32
-            },
-            depth_load_action: LoadAction::Clear,
-            depth_store_action: StoreAction::DontCare,
-            stencil_load_action: LoadAction::DontCare,
-            stencil_store_action: StoreAction::DontCare
-          })
+          depth_stencil: DepthStencil::Input {
+            name: super::prepass::OUTPUT_DS.to_string(),
+          }
         }
       ],
     }
@@ -120,8 +111,8 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
     },
     depth_stencil: DepthStencilInfo {
       depth_test_enabled: true,
-      depth_write_enabled: true,
-      depth_func: CompareFunc::Less,
+      depth_write_enabled: false,
+      depth_func: CompareFunc::LessEqual,
       stencil_enable: false,
       stencil_read_mask: 0u8,
       stencil_write_mask: 0u8,

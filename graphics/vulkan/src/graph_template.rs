@@ -1,10 +1,9 @@
-use sourcerenderer_core::graphics::{ComputeOutput, RenderPassTextureExtent, ExternalOutput, ExternalProducerType};
+use sourcerenderer_core::graphics::{ComputeOutput, RenderPassTextureExtent, ExternalOutput, ExternalProducerType, DepthStencil, StoreOp};
 use std::collections::{HashMap, VecDeque};
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use ash::vk;
-
 
 use sourcerenderer_core::graphics::{StoreAction, LoadAction, PassInfo, PassInput, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount, GraphicsSubpassInfo, PassType, SubpassOutput};
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
@@ -15,6 +14,7 @@ use crate::pipeline::samples_to_vk;
 use ::VkRenderPass;
 use std::cmp::min;
 use std::iter::FromIterator;
+use ash::vk::{AttachmentStoreOp, AttachmentLoadOp};
 
 pub struct VkRenderGraphTemplate {
   pub device: Arc<RawVkDevice>,
@@ -337,24 +337,43 @@ impl VkRenderGraphTemplate {
               }
             }
 
-            if let Some(depth_stencil) = &subpass.depth_stencil {
-              metadata
-                .entry(depth_stencil.name.to_string())
-                .or_insert_with(|| ResourceMetadata::new(VkResourceTemplate::Texture {
-                  name: depth_stencil.name.clone(),
-                  format: depth_stencil.format,
-                  samples: depth_stencil.samples,
-                  extent: depth_stencil.extent.clone(),
-                  depth: 1,
-                  levels: 1,
-                  external: false,
-                  load_action: depth_stencil.depth_load_action,
-                  store_action: depth_stencil.depth_store_action,
-                  stencil_load_action: LoadAction::DontCare,
-                  stencil_store_action: StoreAction::DontCare,
-                  is_backbuffer: false
-                }))
-                .produced_in_pass_index = reordered_passes.len() as u32;
+            match &subpass.depth_stencil {
+              DepthStencil::Output {
+                name: ds_name,
+                samples: ds_samples,
+                extent: ds_extent,
+                format: ds_format,
+                depth_load_action,
+                depth_store_action,
+                stencil_load_action,
+                stencil_store_action
+              } => {
+                metadata
+                  .entry(ds_name.to_string())
+                  .or_insert_with(|| ResourceMetadata::new(VkResourceTemplate::Texture {
+                    name: ds_name.clone(),
+                    format: *ds_format,
+                    samples: *ds_samples,
+                    extent: ds_extent.clone(),
+                    depth: 1,
+                    levels: 1,
+                    external: false,
+                    load_action: *depth_load_action,
+                    store_action: *depth_store_action,
+                    stencil_load_action: *stencil_load_action,
+                    stencil_store_action: *stencil_store_action,
+                    is_backbuffer: false
+                  }))
+                  .produced_in_pass_index = reordered_passes.len() as u32;
+
+              }
+              DepthStencil::Input {
+                name: ds_name, ..
+              } => {
+                let mut input_metadata = metadata.get_mut(ds_name).unwrap();
+                input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+              }
+              DepthStencil::None => {}
             }
 
             for input in &subpass.inputs {
@@ -509,29 +528,77 @@ impl VkRenderGraphTemplate {
         }
       }
 
-      if let Some(depth_stencil) = &pass.depth_stencil {
-        let mut metadata = subpass_attachment_metadata.entry(depth_stencil.name.as_str())
-          .or_default();
-        metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
-        metadata.produced_in_subpass_index = subpass_index as u32;
+      match &pass.depth_stencil {
+        DepthStencil::Output {
+          name: ds_name,
+          format: ds_format,
+          samples: ds_samples,
+          depth_load_action,
+          depth_store_action,
+          stencil_load_action,
+          stencil_store_action,
+          ..
+        } => {
+          let mut metadata = subpass_attachment_metadata.entry(ds_name.as_str())
+            .or_default();
+          metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+          metadata.produced_in_subpass_index = subpass_index as u32;
 
-        if !depth_stencil.format.is_depth() {
-          panic!("Depth stencil attachment must have a depth stencil format");
+          if !ds_format.is_depth() {
+            panic!("Depth stencil attachment must have a depth stencil format");
+          }
+
+          vk_render_pass_attachments.push(
+            vk::AttachmentDescription {
+              format: format_to_vk(*ds_format),
+              samples: samples_to_vk(*ds_samples),
+              load_op: load_action_to_vk(*depth_load_action),
+              store_op: store_action_to_vk(*depth_store_action),
+              stencil_load_op: load_action_to_vk(*stencil_load_action),
+              stencil_store_op: store_action_to_vk(*stencil_store_action),
+              initial_layout: metadata.layout,
+              final_layout: vk::ImageLayout::UNDEFINED, // will be filled in later
+              ..Default::default()
+            }
+          );
         }
 
-        vk_render_pass_attachments.push(
-          vk::AttachmentDescription {
-            format: format_to_vk(depth_stencil.format),
-            samples: samples_to_vk(depth_stencil.samples),
-            load_op: load_action_to_vk(depth_stencil.depth_load_action),
-            store_op: store_action_to_vk(depth_stencil.depth_store_action),
-            stencil_load_op: load_action_to_vk(depth_stencil.stencil_load_action),
-            stencil_store_op: store_action_to_vk(depth_stencil.stencil_store_action),
-            initial_layout: metadata.layout,
-            final_layout: vk::ImageLayout::UNDEFINED, // will be filled in later
-            ..Default::default()
+        DepthStencil::Input {
+          name: ds_name, ..
+        } => {
+          let metadata = attachment_metadata.get(ds_name.as_str()).expect("Can not find attachment.");
+          let (format, samples) = match &metadata.template {
+            VkResourceTemplate::Texture { format, samples, .. } => { (*format, *samples) }
+            VkResourceTemplate::Buffer { .. } => { unreachable!() }
+            VkResourceTemplate::ExternalBuffer => { unreachable!() }
+            VkResourceTemplate::ExternalTexture { .. } => { unimplemented!() }
+          };
+          let mut subpass_metadata = subpass_attachment_metadata.entry(ds_name.as_str())
+            .or_default();
+          subpass_metadata.layout = metadata.layout;
+          subpass_metadata.last_used_in_subpass_index = subpass_index as u32;
+          subpass_metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+
+          if !format.is_depth() {
+            panic!("Depth stencil attachment must have a depth stencil format");
           }
-        );
+
+          vk_render_pass_attachments.push(
+            vk::AttachmentDescription {
+              format: format_to_vk(format),
+              samples: samples_to_vk(samples),
+              load_op: AttachmentLoadOp::LOAD,
+              store_op: AttachmentStoreOp::STORE,
+              stencil_load_op: AttachmentLoadOp::LOAD,
+              stencil_store_op: AttachmentStoreOp::STORE,
+              initial_layout: subpass_metadata.layout,
+              final_layout: vk::ImageLayout::UNDEFINED, // will be filled in later
+              ..Default::default()
+            }
+          );
+        }
+
+        DepthStencil::None => {}
       }
 
       for input in &pass.inputs {
@@ -809,19 +876,43 @@ impl VkRenderGraphTemplate {
               layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
             });
           }
+        }
       }
-    }
 
-      let depth_stencil_start = pass.depth_stencil.as_ref().map(|depth_stencil| {
-        let metadata = &subpass_attachment_metadata[depth_stencil.name.as_str()];
-        let index = attachment_refs.len();
-        attachment_refs.push(vk::AttachmentReference {
-          attachment: metadata.render_pass_attachment_index,
-          layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-        });
-        vk_render_pass_attachments[metadata.render_pass_attachment_index as usize].final_layout = vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        index as isize
-      });
+      let depth_stencil_start = match &pass.depth_stencil {
+        DepthStencil::Output {
+          name: ds_name,
+          ..
+        } => {
+          let metadata = attachment_metadata.get_mut(ds_name.as_str()).unwrap();
+          let subpass_metadata = &subpass_attachment_metadata[ds_name.as_str()];
+          let index = attachment_refs.len();
+          attachment_refs.push(vk::AttachmentReference {
+            attachment: subpass_metadata.render_pass_attachment_index,
+            layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+          });
+          vk_render_pass_attachments[subpass_metadata.render_pass_attachment_index as usize].final_layout = vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+          metadata.layout = vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+          Some(index as isize)
+        }
+        DepthStencil::Input {
+          name: ds_name, ..
+        } => {
+          let metadata = attachment_metadata.get_mut(ds_name.as_str()).unwrap();
+          let subpass_metadata = &subpass_attachment_metadata[ds_name.as_str()];
+          let index = attachment_refs.len();
+          attachment_refs.push(vk::AttachmentReference {
+            attachment: subpass_metadata.render_pass_attachment_index,
+            layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+          });
+          vk_render_pass_attachments[subpass_metadata.render_pass_attachment_index as usize].final_layout = vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+          metadata.layout = vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+          Some(index as isize)
+        }
+        DepthStencil::None => {
+          None
+        }
+      };
 
       for (name, subpass_metadata) in subpass_attachment_metadata.iter() {
         let mut is_used = false;
