@@ -11,8 +11,22 @@ use std::io::Read;
 use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
 use crate::renderer::renderer_assets::*;
 
-const PASS_NAME: &str = "Geometry";
-const OUTPUT_DS: &str = "DS";
+const PASS_NAME: &str = "Prepass";
+const OUTPUT_DS: &str = "PrepassDS";
+
+const OUTPUT_NORMALS: &str = "PrepassNormals";
+const OUTPUT_MOTION: &str = "PrepassMotion";
+
+#[derive(Clone, Copy)]
+struct PrepassCameraCB {
+  view_projection: Matrix4,
+  old_view_projection: Matrix4
+}
+#[derive(Clone, Copy)]
+struct PrepassModelCB {
+  model: Matrix4,
+  old_model: Matrix4
+}
 
 pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   PassInfo {
@@ -20,9 +34,34 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
     pass_type: PassType::Graphics {
       subpasses: vec![
         GraphicsSubpassInfo {
-          outputs: vec![SubpassOutput::Backbuffer {
-            clear: true
-          }],
+          outputs: vec![
+            SubpassOutput::RenderTarget {
+              name: OUTPUT_NORMALS.to_string(),
+              format: Format::RGBA32Float,
+              samples: SampleCount::Samples1,
+              extent: RenderPassTextureExtent::RelativeToSwapchain {
+                width: 1f32, height: 1f32
+              },
+              depth: 1,
+              levels: 1,
+              external: false,
+              load_action: LoadAction::Clear,
+              store_action: StoreAction::Store
+            },
+            SubpassOutput::RenderTarget {
+              name: OUTPUT_MOTION.to_string(),
+              format: Format::RGBA32Float,
+              samples: SampleCount::Samples1,
+              extent: RenderPassTextureExtent::RelativeToSwapchain {
+                width: 1f32, height: 1f32
+              },
+              depth: 1,
+              levels: 1,
+              external: false,
+              load_action: LoadAction::Clear,
+              store_action: StoreAction::Store
+            },
+          ],
           inputs: vec![
             PassInput {
               name: LATE_LATCHING_CAMERA.to_string(),
@@ -34,10 +73,10 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
             format: Format::D24S8,
             samples: SampleCount::Samples1,
             extent: RenderPassTextureExtent::RelativeToSwapchain {
-              width: 1.0f32, height: 1.0f32
+              width: 1f32, height: 1f32
             },
             depth_load_action: LoadAction::Clear,
-            depth_store_action: StoreAction::DontCare,
+            depth_store_action: StoreAction::Store,
             stencil_load_action: LoadAction::DontCare,
             stencil_store_action: StoreAction::DontCare
           })
@@ -49,14 +88,14 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
 
 pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<Mutex<View<P::GraphicsBackend>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let vertex_shader = {
-    let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
+    let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("prepass.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
     device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
   };
 
   let fragment_shader = {
-    let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.frag.spv"))).unwrap();
+    let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("prepass.frag.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
     device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
@@ -134,6 +173,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
       logic_op: LogicOp::And,
       constants: [0f32, 0f32, 0f32, 0f32],
       attachments: vec![
+        AttachmentBlendInfo::default(),
         AttachmentBlendInfo::default()
       ]
     }
@@ -148,7 +188,10 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         let state = c_view.lock().unwrap();
 
-        let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<Matrix4>(state.camera_matrix, BufferUsage::CONSTANT);
+        let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<PrepassCameraCB>(PrepassCameraCB {
+            view_projection: state.camera_matrix,
+            old_view_projection: state.old_camera_matrix
+          }, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         command_buffer.set_viewports(&[Viewport {
           position: Vec2::new(0.0f32, 0.0f32),
@@ -161,11 +204,15 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           extent: Vec2UI::new(9999, 9999),
         }]);
 
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
+        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
         command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
         for renderable in &state.elements {
-          let model_constant_buffer = command_buffer.upload_dynamic_data(renderable.transform, BufferUsage::CONSTANT);
+          let model_constant_buffer = command_buffer.upload_dynamic_data(PrepassModelCB {
+            model: renderable.transform,
+            old_model: renderable.old_transform
+          }, BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
+          command_buffer.finish_binding();
 
           if let RDrawableType::Static {
             model, ..
@@ -179,11 +226,6 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
 
             for i in 0..mesh.parts.len() {
               let range = &mesh.parts[i];
-              let material = &model.materials[i];
-              let texture = material.albedo.borrow();
-              let albedo_view = texture.view.borrow();
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
-              command_buffer.finish_binding();
 
               if mesh.indices.is_some() {
                 command_buffer.draw_indexed(1, 0, range.count, range.start, 0);

@@ -71,6 +71,7 @@ impl<P: Platform> RendererInternal<P> {
 
     let passes: Vec<PassInfo> = vec![
       passes::late_latching::build_pass_template::<P::GraphicsBackend>(),
+      passes::desktop::prepass::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::geometry::build_pass_template::<P::GraphicsBackend>()
     ];
 
@@ -86,6 +87,9 @@ impl<P: Platform> RendererInternal<P> {
     });
 
     let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
+    let (pre_pass_name, pre_pass_callback) = passes::desktop::prepass::build_pass::<P>(device, &graph_template, &renderables);
+    callbacks.insert(pre_pass_name, pre_pass_callback);
+
     let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &renderables);
     callbacks.insert(geometry_pass_name, geometry_pass_callback);
 
