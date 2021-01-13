@@ -148,6 +148,7 @@ impl<P: Platform> RendererInternal<P> {
           // TODO optimize
 
           if let Some(element) = element {
+            element.old_transform = element.transform;
             element.transform = transform_mat;
           }
         }
