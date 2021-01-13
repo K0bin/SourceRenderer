@@ -8,8 +8,8 @@ use nalgebra::Point3;
 
 #[derive(Clone)]
 struct PrimaryCameraBuffer {
-  mats: [Matrix4; 256],
-  counter: u32
+  mats: [Matrix4; 16],
+  index: u32
 }
 
 pub struct LateLatchCamera<B: Backend> {
@@ -63,18 +63,18 @@ impl<B: Backend> LateLatchCamera<B> {
   fn update_buffer(&self, camera: Matrix4) {
     let mut map = self.buffer.map_mut::<PrimaryCameraBuffer>().expect("Failed to map camera buffer");
     let mats_len = map.mats.len();
-    let counter = self.write_counter.fetch_add(1, Ordering::SeqCst);
+    let counter = self.write_counter.fetch_add(1, Ordering::SeqCst) + 1;
     map.mats[counter as usize % mats_len] = camera;
     self.read_counter.store(counter, Ordering::SeqCst);
-    map.counter = counter;
+    map.index = counter % mats_len as u32;
   }
 
   pub fn get_camera(&self) -> Matrix4 {
-    let counter = self.read_counter.load(Ordering::SeqCst);
     unsafe {
       let ptr = self.buffer.map_unsafe(false).expect("Failed to map camera buffer");
       let buf = (ptr as *mut PrimaryCameraBuffer).as_ref().unwrap();
       let mats_len = buf.mats.len();
+      let counter = self.read_counter.load(Ordering::SeqCst);
       let mat = buf.mats[counter as usize % mats_len];
       self.buffer.unmap_unsafe(false);
       mat

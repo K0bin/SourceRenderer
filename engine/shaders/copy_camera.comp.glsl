@@ -1,8 +1,8 @@
 #version 450
 
 layout(set = 0, binding = 0, std140) readonly buffer Cameras {
-    mat4 mats[256];
-    uint counter;
+    mat4 mats[16];
+    uint index;
 } cameras;
 
 layout(set = 0, binding = 1, std140) buffer Camera {
@@ -10,5 +10,5 @@ layout(set = 0, binding = 1, std140) buffer Camera {
 } camera;
 
 void main() {
-    camera.mat = cameras.mats[cameras.counter % 256];
+    camera.mat = cameras.mats[cameras.index];
 }
