@@ -120,16 +120,6 @@ impl<P: Platform> RendererInternal<P> {
         RendererCommand::EndFrame => {
           self.renderer.dec_queued_frames_counter();
           self.last_tick = SystemTime::now();
-
-          for element in &mut guard.elements {
-            if let RDrawableType::Static { can_move, .. } = &element.drawable_type {
-              if *can_move {
-                element.old_transform = element.transform;
-              }
-            }
-          }
-          guard.old_camera_transform = guard.camera_transform;
-          guard.old_camera_fov = guard.camera_fov;
           break;
         }
 
@@ -137,6 +127,7 @@ impl<P: Platform> RendererInternal<P> {
           guard.camera_transform = camera_transform_mat;
           guard.camera_fov = fov;
 
+          guard.old_camera_matrix = guard.camera_matrix;
           let position = camera_transform_mat.column(3).xyz();
           self.primary_camera.update_position(position);
           guard.camera_matrix = self.primary_camera.get_camera();

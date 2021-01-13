@@ -104,10 +104,9 @@ impl<B: Backend> RDrawable<B> {
 pub(crate) struct View<B: Backend> {
   pub(super) elements: Vec<RDrawable<B>>,
   pub(super) camera_matrix: Matrix4,
+  pub(super) old_camera_matrix: Matrix4,
   pub(super) camera_transform: Matrix4,
-  pub(super) camera_fov: f32,
-  pub(super) old_camera_transform: Matrix4,
-  pub(super) old_camera_fov: f32,
+  pub(super) camera_fov: f32
 }
 
 impl<B: Backend> Default for View<B> {
@@ -115,10 +114,9 @@ impl<B: Backend> Default for View<B> {
     Self {
       elements: Vec::new(),
       camera_transform: Matrix4::identity(),
-      old_camera_transform: Matrix4::identity(),
+      old_camera_matrix: Matrix4::identity(),
       camera_matrix: Matrix4::identity(),
-      camera_fov: f32::consts::PI / 2f32,
-      old_camera_fov: f32::consts::PI / 2f32
+      camera_fov: f32::consts::PI / 2f32
     }
   }
 }
