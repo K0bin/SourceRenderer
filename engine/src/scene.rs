@@ -83,6 +83,8 @@ impl Scene {
       let mut last_tick_time = SystemTime::now();
       let mut last_iter_time = SystemTime::now();
       loop {
+        while c_renderer.is_saturated() {}
+
         let now = SystemTime::now();
 
         // run fixed step systems first
@@ -94,8 +96,6 @@ impl Scene {
           tick += 1;
           tick_delta = now.duration_since(last_tick_time).unwrap();
         }
-
-        while c_renderer.is_saturated() {}
 
         let delta = now.duration_since(last_iter_time).unwrap();
         last_iter_time = now;
