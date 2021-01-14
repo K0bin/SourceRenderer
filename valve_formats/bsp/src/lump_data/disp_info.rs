@@ -33,6 +33,9 @@ impl LumpData for DispInfo {
   fn lump_type() -> LumpType {
     LumpType::DisplacementInfo
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(_version: i32) -> usize {
     176

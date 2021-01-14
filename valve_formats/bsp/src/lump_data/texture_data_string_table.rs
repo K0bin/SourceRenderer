@@ -9,6 +9,9 @@ impl LumpData for TextureDataStringTable {
   fn lump_type() -> LumpType {
     LumpType::TextureDataStringTable
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(_version: i32) -> usize {
     4

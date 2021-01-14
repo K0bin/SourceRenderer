@@ -118,6 +118,10 @@ impl<R: Read + Seek> Map<R> {
     self.read_lump_data()
   }
 
+  pub fn read_hdr_lighting(&mut self) -> IOResult<Vec<Lighting>> {
+    self.read_lump_data()
+  }
+
   pub fn read_pakfile(&mut self) -> IOResult<PakFile> {
     let index = LumpType::PakFile as usize;
     let lump = self.header.lumps[index];
@@ -134,8 +138,18 @@ impl<R: Read + Seek> Map<R> {
   }
 
   fn read_lump_data<T: LumpData>(&mut self) -> IOResult<Vec<T>> {
-    let index = T::lump_type() as usize;
-    let lump = self.header.lumps[index];
+    let mut lump_type = T::lump_type();
+    let lump_type_hdr = T::lump_type_hdr();
+    if let Some(lump_type_hdr) = lump_type_hdr {
+      let index = lump_type_hdr as usize;
+      let lump = &self.header.lumps[index];
+      if lump.file_length != 0 {
+        lump_type = lump_type_hdr;
+      }
+    }
+
+    let index = lump_type as usize;
+    let lump = &self.header.lumps[index];
     self.reader.seek(SeekFrom::Start(lump.file_offset as u64))?;
 
     let element_count = lump.file_length / T::element_size(self.header.version) as i32;

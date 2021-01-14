@@ -18,6 +18,9 @@ impl LumpData for Node {
   fn lump_type() -> LumpType {
     LumpType::Nodes
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(_version: i32) -> usize {
     32

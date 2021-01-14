@@ -36,6 +36,9 @@ impl LumpData for TextureInfo {
   fn lump_type() -> LumpType {
     LumpType::TextureInfo
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(_version: i32) -> usize {
     72

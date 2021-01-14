@@ -59,6 +59,9 @@ impl LumpData for Brush {
   fn lump_type() -> LumpType {
     LumpType::Brushes
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(_version: i32) -> usize {
     12

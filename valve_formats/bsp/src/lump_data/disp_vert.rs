@@ -13,6 +13,9 @@ impl LumpData for DispVert {
   fn lump_type() -> LumpType {
     LumpType::DisplacementVertices
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(_version: i32) -> usize {
     20

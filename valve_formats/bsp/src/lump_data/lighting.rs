@@ -11,9 +11,12 @@ impl LumpData for Lighting {
   fn lump_type() -> LumpType {
     LumpType::Lighting
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    Some(LumpType::LightingHDR)
+  }
 
-  fn element_size(version: i32) -> usize {
-    5
+  fn element_size(_version: i32) -> usize {
+    4
   }
 
   fn read(read: &mut dyn Read, version: i32) -> IOResult<Self> {

@@ -121,6 +121,7 @@ pub enum LumpType {
 
 pub(crate) trait LumpData : Sized{
   fn lump_type() -> LumpType;
+  fn lump_type_hdr() -> Option<LumpType>;
   fn element_size(version: i32) -> usize;
   fn read(read: &mut dyn Read, version: i32) -> IOResult<Self>;
 }

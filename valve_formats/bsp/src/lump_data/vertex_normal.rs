@@ -12,6 +12,9 @@ impl LumpData for VertexNormal {
   fn lump_type() -> LumpType {
     LumpType::VertexNormals
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(_version: i32) -> usize {
     12

@@ -26,6 +26,9 @@ impl LumpData for Face {
   fn lump_type() -> LumpType {
     LumpType::Faces
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    Some(LumpType::FacesHDR)
+  }
 
   fn element_size(_version: i32) -> usize {
     56

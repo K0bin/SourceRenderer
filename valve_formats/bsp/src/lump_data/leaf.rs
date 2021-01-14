@@ -65,6 +65,9 @@ impl LumpData for Leaf {
   fn lump_type() -> LumpType {
     LumpType::Leafs
   }
+  fn lump_type_hdr() -> Option<LumpType> {
+    None
+  }
 
   fn element_size(version: i32) -> usize {
     if version <= 19 {
