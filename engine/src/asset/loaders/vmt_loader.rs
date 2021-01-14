@@ -24,7 +24,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
 
   fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = asset_file.path.clone();
-    let vmt_material_opt = match asset_file.data {
+    let mut vmt_material = match asset_file.data {
       AssetFileData::File(file) => {
         let mut bufreader = BufReader::new(file);
         let current = bufreader.seek(SeekFrom::Current(0)).unwrap();
@@ -38,11 +38,34 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
         cursor.seek(SeekFrom::Start(current)).unwrap();
         VMTMaterial::new(&mut cursor, len as u32)
       }
-    };
-    if vmt_material_opt.is_err() {
-      return Err(());
+    }.map_err(|_| ())?;;
+
+    if vmt_material.is_patch() {
+      let base_path = vmt_material.get_patch_base().unwrap().replace('\\', "/").to_lowercase();
+      let base_file = manager.load_file(&base_path);
+      if base_file.is_none() {
+        return Err(());
+      }
+      let base_file = base_file.unwrap();
+      let mut base_material = match base_file.data {
+        AssetFileData::File(file) => {
+          let mut bufreader = BufReader::new(file);
+          let current = bufreader.seek(SeekFrom::Current(0)).unwrap();
+          let len = bufreader.seek(SeekFrom::End(0)).unwrap();
+          bufreader.seek(SeekFrom::Start(current)).unwrap();
+          VMTMaterial::new(&mut bufreader, len as u32)
+        }
+        AssetFileData::Memory(mut cursor) => {
+          let current = cursor.seek(SeekFrom::Current(0)).unwrap();
+          let len = cursor.seek(SeekFrom::End(0)).unwrap();
+          cursor.seek(SeekFrom::Start(current)).unwrap();
+          VMTMaterial::new(&mut cursor, len as u32)
+        }
+      }.map_err(|_| ())?;
+      base_material.apply_patch(&vmt_material);
+      vmt_material = base_material
     }
-    let vmt_material = vmt_material_opt.unwrap();
+
     let albedo_opt = vmt_material.get_base_texture_name();
     if albedo_opt.is_none() {
       return Err(());

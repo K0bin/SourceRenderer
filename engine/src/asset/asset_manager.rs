@@ -346,7 +346,7 @@ impl<P: Platform> AssetManager<P> {
     level
   }
 
-  fn load_file(&self, path: &str) -> Option<AssetFile> {
+  pub fn load_file(&self, path: &str) -> Option<AssetFile> {
     let containers = self.containers.read().unwrap();
     let mut file_opt: Option<AssetFile> = None;
     for container in containers.iter() {
