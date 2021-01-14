@@ -17,8 +17,6 @@ pub(crate) struct VkTransfer {
   inner: Mutex<VkTransferInner>,
   transfer_queue: Option<Arc<VkQueue>>,
   graphics_queue: Arc<VkQueue>,
-  graphics_pool: Arc<RawVkCommandPool>, // TODO synchronize
-  transfer_pool: Option<Arc<RawVkCommandPool>>, // TODO synchronize
   device: Arc<RawVkDevice>,
   sender: Sender<Box<VkTransferCommandBuffer>>,
   receiver: Receiver<Box<VkTransferCommandBuffer>>,
@@ -29,7 +27,9 @@ struct VkTransferInner {
   current_transfer_buffer: Option<Box<VkTransferCommandBuffer>>,
   current_graphics_buffer: Box<VkTransferCommandBuffer>,
   used_graphics_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
-  current_fence: Arc<VkFence>
+  current_fence: Arc<VkFence>,
+  graphics_pool: Arc<RawVkCommandPool>,
+  transfer_pool: Option<Arc<RawVkCommandPool>>
 }
 
 impl VkTransfer {
@@ -106,10 +106,10 @@ impl VkTransfer {
         current_graphics_buffer: graphics_buffer,
         current_transfer_buffer: transfer_buffer,
         used_graphics_buffers: VecDeque::new(),
-        current_fence: fence
+        current_fence: fence,
+        graphics_pool,
+        transfer_pool
       }),
-      graphics_pool,
-      transfer_pool,
       transfer_queue: transfer_queue.clone(),
       graphics_queue: graphics_queue.clone(),
       device: device.clone(),
@@ -242,7 +242,7 @@ impl VkTransfer {
     } else {
       Box::new({
         let buffer_info = vk::CommandBufferAllocateInfo {
-          command_pool: **self.graphics_pool,
+          command_pool: **guard.graphics_pool,
           level: vk::CommandBufferLevel::PRIMARY,
           command_buffer_count: 1,
           ..Default::default()
