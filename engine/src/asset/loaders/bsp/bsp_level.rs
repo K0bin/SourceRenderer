@@ -4,7 +4,10 @@ use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model, AssetManager};
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
-use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge, Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable, BrushModel, DispVert, DispTri, DispInfo, NeighborEdge, DispSubNeighbor};
+use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge,
+                         Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable,
+                         BrushModel, DispVert, DispTri, DispInfo, NeighborEdge, DispSubNeighbor,
+                         SurfaceFlags};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
@@ -48,6 +51,11 @@ impl BspLevelLoader {
 
   fn build_face(&self, temp: &BspLumps, face: &Face, brush_vertices: &mut Vec<crate::Vertex>, brush_indices: &mut HashMap<String, Vec<u32>>) {
     let tex_info = &temp.tex_info[face.texture_info as usize];
+    let ignore_flags = SurfaceFlags::NODRAW | SurfaceFlags::LIGHT | SurfaceFlags::SKY | SurfaceFlags::SKY2D | SurfaceFlags::TRIGGER;
+    if tex_info.flags.intersects(ignore_flags) {
+      return;
+    }
+
     let tex_data = &temp.tex_data[tex_info.texture_data as usize];
     let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
     let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
@@ -86,6 +94,11 @@ impl BspLevelLoader {
                              brush_indices: &mut HashMap<String, Vec<u32>>) {
     let face = &temp.faces[disp_info.map_face as usize];
     let tex_info = &temp.tex_info[face.texture_info as usize];
+    let ignore_flags = SurfaceFlags::NODRAW | SurfaceFlags::LIGHT | SurfaceFlags::SKY | SurfaceFlags::SKY2D | SurfaceFlags::TRIGGER;
+    if tex_info.flags.intersects(ignore_flags) {
+      return;
+    }
+
     let tex_data = &temp.tex_data[tex_info.texture_data as usize];
     let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
     let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();

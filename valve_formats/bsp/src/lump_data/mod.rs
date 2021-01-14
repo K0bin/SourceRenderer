@@ -12,7 +12,7 @@ pub use crate::lump_data::vertex::Vertex;
 pub use crate::lump_data::vertex_normal::VertexNormal;
 pub use crate::lump_data::vertex_normal_index::VertexNormalIndex;
 pub use crate::lump_data::texture_data::TextureData;
-pub use crate::lump_data::texture_info::TextureInfo;
+pub use crate::lump_data::texture_info::*;
 pub use crate::lump_data::texture_string_data::TextureStringData;
 pub use crate::lump_data::texture_data_string_table::TextureDataStringTable;
 pub use crate::lump_data::brush_model::BrushModel;
