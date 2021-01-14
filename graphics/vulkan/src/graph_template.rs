@@ -118,8 +118,7 @@ impl ResourceMetadata {
 struct SubpassAttachmentMetadata {
   produced_in_subpass_index: u32,
   render_pass_attachment_index: u32,
-  last_used_in_subpass_index: u32,
-  layout: vk::ImageLayout
+  last_used_in_subpass_index: u32
 }
 
 impl Default for SubpassAttachmentMetadata {
@@ -127,8 +126,7 @@ impl Default for SubpassAttachmentMetadata {
     Self {
       produced_in_subpass_index: vk::SUBPASS_EXTERNAL,
       render_pass_attachment_index: u32::MAX,
-      last_used_in_subpass_index: 0,
-      layout: vk::ImageLayout::UNDEFINED
+      last_used_in_subpass_index: 0
     }
   }
 }
@@ -478,10 +476,11 @@ impl VkRenderGraphTemplate {
       for output in &pass.outputs {
         match output {
           SubpassOutput::Backbuffer { clear } => {
-            let mut metadata = subpass_attachment_metadata.entry(BACK_BUFFER_ATTACHMENT_NAME)
+            let metadata = attachment_metadata.get_mut(BACK_BUFFER_ATTACHMENT_NAME).unwrap();
+            let mut subpass_metadata = subpass_attachment_metadata.entry(BACK_BUFFER_ATTACHMENT_NAME)
               .or_default();
-            metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
-            metadata.produced_in_subpass_index = subpass_index as u32;
+            subpass_metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+            subpass_metadata.produced_in_subpass_index = subpass_index as u32;
 
             pass_renders_to_backbuffer = true;
             vk_render_pass_attachments.push(
@@ -503,13 +502,14 @@ impl VkRenderGraphTemplate {
           SubpassOutput::RenderTarget {
             name, format, samples, extent, depth, levels, external, load_action, store_action
           } => {
-            let mut metadata = subpass_attachment_metadata.entry(name.as_str())
+            let metadata = attachment_metadata.get(name.as_str()).unwrap();
+            let mut subpass_metadata = subpass_attachment_metadata.entry(name.as_str())
               .or_default();
             if format.is_depth() {
               panic!("Output attachment must not have a depth stencil format");
             }
-            metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
-            metadata.produced_in_subpass_index = subpass_index as u32;
+            subpass_metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+            subpass_metadata.produced_in_subpass_index = subpass_index as u32;
 
             vk_render_pass_attachments.push(
               vk::AttachmentDescription {
@@ -539,10 +539,11 @@ impl VkRenderGraphTemplate {
           stencil_store_action,
           ..
         } => {
-          let mut metadata = subpass_attachment_metadata.entry(ds_name.as_str())
+          let metadata = attachment_metadata.get(ds_name.as_str()).unwrap();
+          let mut subpass_metadata = subpass_attachment_metadata.entry(ds_name.as_str())
             .or_default();
-          metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
-          metadata.produced_in_subpass_index = subpass_index as u32;
+          subpass_metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
+          subpass_metadata.produced_in_subpass_index = subpass_index as u32;
 
           if !ds_format.is_depth() {
             panic!("Depth stencil attachment must have a depth stencil format");
@@ -575,7 +576,6 @@ impl VkRenderGraphTemplate {
           };
           let mut subpass_metadata = subpass_attachment_metadata.entry(ds_name.as_str())
             .or_default();
-          subpass_metadata.layout = metadata.layout;
           subpass_metadata.last_used_in_subpass_index = subpass_index as u32;
           subpass_metadata.render_pass_attachment_index = vk_render_pass_attachments.len() as u32;
 
@@ -591,7 +591,7 @@ impl VkRenderGraphTemplate {
               store_op: AttachmentStoreOp::STORE,
               stencil_load_op: AttachmentLoadOp::LOAD,
               stencil_store_op: AttachmentStoreOp::STORE,
-              initial_layout: subpass_metadata.layout,
+              initial_layout: metadata.layout,
               final_layout: vk::ImageLayout::UNDEFINED, // will be filled in later
               ..Default::default()
             }
