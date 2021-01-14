@@ -7,7 +7,7 @@ use crate::lump_data::{Brush, Node, Leaf, Face,
                        TextureData, SurfaceEdge, Vertex,
                        VertexNormalIndex, VertexNormal,
                        TextureDataStringTable, TextureStringData};
-use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting};
+use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting, Visibility};
 
 
 pub struct Map<R: Read + Seek> {
@@ -124,6 +124,13 @@ impl<R: Read + Seek> Map<R> {
     self.reader.seek(SeekFrom::Start(lump.file_offset as u64))?;
     let data = self.reader.read_data(lump.file_length as usize)?;
     Ok(PakFile::new(data))
+  }
+
+  pub fn read_visibility(&mut self) -> IOResult<Visibility> {
+    let index = LumpType::Visibility as usize;
+    let lump = self.header.lumps[index];
+    self.reader.seek(SeekFrom::Start(lump.file_offset as u64))?;
+    Visibility::read(&mut self.reader)
   }
 
   fn read_lump_data<T: LumpData>(&mut self) -> IOResult<Vec<T>> {

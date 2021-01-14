@@ -1,25 +1,7 @@
 use std::io::BufReader;
 use std::fs::File;
 
-use sourcerenderer_bsp::{
-  Map,
-  Leaf,
-  Node,
-  LeafFace,
-  LeafBrush,
-  SurfaceEdge,
-  Vertex,
-  Face,
-  Edge,
-  Plane,
-  TextureData,
-  TextureDataStringTable,
-  TextureInfo,
-  TextureStringData,
-  DispInfo,
-  DispVert,
-  DispTri
-};
+use sourcerenderer_bsp::{Map, Leaf, Node, LeafFace, LeafBrush, SurfaceEdge, Vertex, Face, Edge, Plane, TextureData, TextureDataStringTable, TextureInfo, TextureStringData, DispInfo, DispVert, DispTri, Lighting, Visibility};
 
 pub(super) struct BspLumps {
   pub(super) map: Map<BufReader<File>>,
@@ -39,5 +21,7 @@ pub(super) struct BspLumps {
   pub(super) tex_data_string_table: Vec<TextureDataStringTable>,
   pub(super) disp_infos: Vec<DispInfo>,
   pub(super) disp_verts: Vec<DispVert>,
-  pub(super) disp_tris: Vec<DispTri>
+  pub(super) disp_tris: Vec<DispTri>,
+  pub(super) lighting: Vec<Lighting>,
+  pub(super) visibility: Visibility
 }
