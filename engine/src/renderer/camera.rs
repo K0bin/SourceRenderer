@@ -7,6 +7,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use nalgebra::Point3;
 
 #[derive(Clone)]
+#[repr(C)]
 struct PrimaryCameraBuffer {
   mats: [Matrix4; 16],
   index: u32

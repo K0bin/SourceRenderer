@@ -18,11 +18,13 @@ pub(super) const OUTPUT_NORMALS: &str = "PrepassNormals";
 pub(super) const OUTPUT_MOTION: &str = "PrepassMotion";
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 struct PrepassCameraCB {
   view_projection: Matrix4,
   old_view_projection: Matrix4
 }
 #[derive(Clone, Copy)]
+#[repr(C)]
 struct PrepassModelCB {
   model: Matrix4,
   old_model: Matrix4
