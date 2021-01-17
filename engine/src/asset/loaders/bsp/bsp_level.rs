@@ -143,8 +143,6 @@ impl BspLevelLoader {
     } else {
       (0, 0)
     };
-    let lm_size = Vec2::new(face.lightmap_texture_size_in_luxels[0] as f32, face.lightmap_texture_size_in_luxels[1] as f32);
-    let lm_min = Vec2::new(face.lightmap_texture_mins_in_luxels[0] as f32, face.lightmap_texture_mins_in_luxels[1] as f32);
 
     let mut corners = [Vec3::default(); 4];
     let mut corners_uv = [Vec2::default(); 4];
@@ -187,8 +185,8 @@ impl BspLevelLoader {
           normal: Self::fixup_normal(&plane.normal),
           uv: (corners_uv[0] * (1f32 - u) + corners_uv[3] * u) * (1f32 - v[0]) + (corners_uv[1] * (1f32 - u) + corners_uv[2] * u) * v[0],
           lightmap_uv: Vec2::new(
-            (u * ((face.lightmap_texture_size_in_luxels[0] + 1) as f32) + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
-            (v[0] * ((face.lightmap_texture_size_in_luxels[1] + 1) as f32) + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
+            (u * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
+            (v[0] * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
           ),
           alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + y * size) as usize].alpha / alpha_mul
         });
@@ -204,8 +202,8 @@ impl BspLevelLoader {
           normal: Self::fixup_normal(&plane.normal),
           uv: (corners_uv[0] * (1f32 - u) + corners_uv[3] * u) * (1f32 - v[1]) + (corners_uv[1] * (1f32 - u) + corners_uv[2] * u) * v[1],
           lightmap_uv: Vec2::new(
-            (u * ((face.lightmap_texture_size_in_luxels[0] + 1) as f32) + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
-            (v[1] * ((face.lightmap_texture_size_in_luxels[1] + 1) as f32) + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
+            (u * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
+            (v[1] * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
           ),
           alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + (y + 1) * size) as usize].alpha / alpha_mul
         });
@@ -217,10 +215,6 @@ impl BspLevelLoader {
         }
       }
     }
-  }
-
-  fn calculate_disp_uv(x: i32, y: i32, size: i32, face: &Face) -> Vec2 {
-    Vec2::new(0f32, 0f32)
   }
 
   fn calculate_disp_vert(offset: i32, x: i32, y: i32, size: i32, corners: &[Vec3; 4], first_corner: i32, disp_verts: &[DispVert]) -> Vec3 {
