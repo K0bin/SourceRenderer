@@ -3,6 +3,7 @@ use crate::lump_data::{LumpData, LumpType, brush::BrushContents};
 use crate::PrimitiveRead;
 
 #[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
 pub struct ColorRGBExp32 {
   pub r: u8,
   pub g: u8,
@@ -37,7 +38,6 @@ impl ColorRGBExp32 {
     let r = reader.read_u8()?;
     let g = reader.read_u8()?;
     let b = reader.read_u8()?;
-    let _padding = reader.read_u8();
     let exponent = reader.read_i8()?;
     return Ok(Self {
       r,
@@ -45,6 +45,15 @@ impl ColorRGBExp32 {
       b,
       exponent,
     });
+  }
+
+  pub fn to_u32_color(&self) -> u32 {
+    let scaled_exp = 2f32.powi(self.exponent as i32);
+    let r = ((self.r as f32 * scaled_exp) as u32).min(255);
+    let g = ((self.g as f32 * scaled_exp) as u32).min(255);
+    let b = ((self.b as f32 * scaled_exp) as u32).min(255);
+
+    r | g << 8 | b << 16 | 255 << 24
   }
 }
 

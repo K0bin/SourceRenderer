@@ -9,6 +9,7 @@ What's working:
 * loading BSP levels
   * basic brush geometry
   * displacements (at least to some degree)
+  * light maps
 * loading 2D VTF textures
 * loading the most basic VMT materials
 * somewhat broken FPS camera with somewhat broken late latching on the GPU

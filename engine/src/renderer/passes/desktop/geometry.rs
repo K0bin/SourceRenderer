@@ -91,15 +91,23 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           semantic_name_d3d: String::from(""),
           semantic_index_d3d: 0,
           offset: 24,
-          format: Format::RGB32Float
+          format: Format::RG32Float
         },
         ShaderInputElement {
           input_assembler_binding: 0,
           location_vk_mtl: 3,
           semantic_name_d3d: String::from(""),
           semantic_index_d3d: 0,
-          offset: 36,
+          offset: 32,
           format: Format::RG32Float
+        },
+        ShaderInputElement {
+          input_assembler_binding: 0,
+          location_vk_mtl: 4,
+          semantic_name_d3d: String::from(""),
+          semantic_index_d3d: 0,
+          offset: 40,
+          format: Format::R32Float
         }
       ]
     },
@@ -174,6 +182,9 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
               let texture = material.albedo.borrow();
               let albedo_view = texture.view.borrow();
               command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
+
+              let lightmap_ref = state.lightmap.view.borrow();
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref);
               command_buffer.finish_binding();
 
               if mesh.indices.is_some() {

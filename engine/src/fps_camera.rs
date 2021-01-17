@@ -91,6 +91,6 @@ fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform
 
   if movement_vector.x.abs() > 0.00001f32 || movement_vector.y.abs() > 0.00001f32 || movement_vector.z.abs() > 0.00001f32 {
     movement_vector = movement_vector.normalize();
-    transform.position += movement_vector * 3f32 / (tick_rate.0 as f32);
+    transform.position += movement_vector * 8f32 / (tick_rate.0 as f32);
   }
 }

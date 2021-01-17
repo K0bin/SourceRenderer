@@ -138,12 +138,28 @@ impl<P: Platform> RendererAssets<P> {
     Some(renderer_model)
   }
 
-  pub fn get_model(&mut self, asset_manager: &AssetManager<P>, model_path: &str) -> Arc<RendererModel<P::GraphicsBackend>> {
-    if let Some(model) = self.models.get(model_path) {
-      return model.clone();
+  pub fn get_model(&self, model_path: &str) -> Arc<RendererModel<P::GraphicsBackend>> {
+    self.models.get(model_path)
+      .map(|m| m.clone())
+      .expect("Model not yet loaded")
+  }
+
+  pub fn get_texture(&self, texture_path: &str) -> Arc<RendererTexture<P::GraphicsBackend>> {
+    self.textures.get(texture_path)
+      .map(|t| t.clone())
+      .expect("Texture not yet loaded")
+  }
+
+  pub fn insert_placeholder_texture(&mut self, texture_path: &str) -> Arc<RendererTexture<P::GraphicsBackend>> {
+    if self.textures.contains_key(texture_path) {
+      return self.textures.get(texture_path).unwrap().clone();
     }
 
-    panic!("Model not yet loaded");
+    let texture = Arc::new(RendererTexture {
+      view: AtomicRefCell::new(self.zero_view.clone())
+    });
+    self.textures.insert(texture_path.to_string(), texture.clone());
+    texture
   }
 
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {

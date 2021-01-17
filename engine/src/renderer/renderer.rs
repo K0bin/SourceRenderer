@@ -43,9 +43,14 @@ impl<P: Platform> Renderer<P> {
              simulation_tick_rate: u32) -> Arc<Renderer<P>> {
     let (sender, receiver) = unbounded::<RendererCommand>();
     let renderer = Arc::new(Renderer::new(sender.clone(), device, window));
-    let mut internal = RendererInternal::new(&renderer, &device, &swapchain, asset_manager, sender, receiver, simulation_tick_rate, renderer.primary_camera());
+
+    let c_device = device.clone();
+    let c_renderer = renderer.clone();
+    let c_swapchain = swapchain.clone();
+    let c_asset_manager = asset_manager.clone();
 
     std::thread::spawn(move || {
+      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, receiver, simulation_tick_rate, c_renderer.primary_camera());
       loop {
         internal.render();
       }

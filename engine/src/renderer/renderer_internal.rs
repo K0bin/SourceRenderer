@@ -43,7 +43,10 @@ impl<P: Platform> RendererInternal<P> {
     simulation_tick_rate: u32,
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>) -> Self {
 
-    let renderables = Arc::new(Mutex::new(View::default()));
+    let mut assets = RendererAssets::new(device.as_ref());
+    let lightmap = assets.insert_placeholder_texture("lightmap");
+
+    let renderables = Arc::new(Mutex::new(View::<P::GraphicsBackend>::default_with_lightmap(&lightmap)));
     let graph = RendererInternal::<P>::build_graph(device, swapchain, &renderables, &primary_camera);
 
     Self {
@@ -58,7 +61,7 @@ impl<P: Platform> RendererInternal<P> {
       simulation_tick_rate,
       last_tick: SystemTime::now(),
       primary_camera: primary_camera.clone(),
-      assets: RendererAssets::new(device.as_ref())
+      assets
     }
   }
 
@@ -154,7 +157,7 @@ impl<P: Platform> RendererInternal<P> {
               DrawableType::Static {
                 model_path, receive_shadows, cast_shadows, can_move
               } => {
-                let model = self.assets.get_model(&self.asset_manager, model_path);
+                let model = self.assets.get_model(model_path);
                 RDrawableType::Static {
                   model: model,
                   receive_shadows: *receive_shadows,

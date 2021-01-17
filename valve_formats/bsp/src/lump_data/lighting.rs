@@ -3,6 +3,7 @@ use std::io::{Read, Result as IOResult};
 use crate::lump_data::{LumpData, LumpType};
 use crate::PrimitiveRead;
 
+#[repr(C)]
 pub struct Lighting {
   pub color: ColorRGBExp32
 }
@@ -19,7 +20,7 @@ impl LumpData for Lighting {
     4
   }
 
-  fn read(read: &mut dyn Read, version: i32) -> IOResult<Self> {
+  fn read(read: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let color = ColorRGBExp32::read(read)?;
     Ok(Self {
       color

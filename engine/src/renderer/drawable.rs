@@ -106,17 +106,19 @@ pub(crate) struct View<B: Backend> {
   pub(super) camera_matrix: Matrix4,
   pub(super) old_camera_matrix: Matrix4,
   pub(super) camera_transform: Matrix4,
-  pub(super) camera_fov: f32
+  pub(super) camera_fov: f32,
+  pub(super) lightmap: Arc<RendererTexture<B>>
 }
 
-impl<B: Backend> Default for View<B> {
-  fn default() -> Self {
+impl<B: Backend> View<B> {
+  pub(super) fn default_with_lightmap(lightmap: &Arc<RendererTexture<B>>) -> Self {
     Self {
       elements: Vec::new(),
       camera_transform: Matrix4::identity(),
       old_camera_matrix: Matrix4::identity(),
       camera_matrix: Matrix4::identity(),
-      camera_fov: f32::consts::PI / 2f32
+      camera_fov: f32::consts::PI / 2f32,
+      lightmap: lightmap.clone()
     }
   }
 }

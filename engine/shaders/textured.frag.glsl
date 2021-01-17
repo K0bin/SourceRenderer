@@ -2,14 +2,16 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 layout(location = 0) in vec3 in_normal;
-layout(location = 1) in vec3 in_color;
-layout(location = 2) in vec2 in_uv;
+layout(location = 1) in vec2 in_uv;
+layout(location = 2) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
 layout(set = 1, binding = 0) uniform sampler2D tex;
+layout(set = 1, binding = 1) uniform sampler2D lightmap;
 
 void main(void) {
-  vec3 lightDir = normalize(vec3(0.5, -1, 0));
-  out_color = vec4(in_color, 1.0) * texture(tex, in_uv) * min(1.0, 0.4 + dot(lightDir, in_normal));
+  vec4 lighting = texture(lightmap, in_lightmap_uv);
+  vec4 tex = texture(tex, in_uv);
+  out_color = vec4(lighting.x * tex.x, lighting.y * tex.y, lighting.z * tex.z, 1);
 }
