@@ -18,13 +18,17 @@ fn main() {
 
       let path = file.path();
       let compiled_file_path = Path::join(Path::new(&shader_dir), [path.file_stem().unwrap().to_str().unwrap(), ".spv"].concat());
-      Command::new("glslangValidator")
+      let output = Command::new("glslangValidator")
       .arg("-V")
       .arg("-o")
       .arg(compiled_file_path)
       .arg(path)
       .output()
       .expect("Failed to compile shader");
+
+      if !output.status.success() {
+        panic!("Failed to compile shader");
+      }
     }
   );
 }
