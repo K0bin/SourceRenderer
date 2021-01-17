@@ -33,7 +33,8 @@ pub(super) struct RendererAssets<P: Platform> {
 
 impl<P: Platform> RendererAssets<P> {
   pub(super) fn new(device: &<P::GraphicsBackend as Backend>::Device) -> Self {
-    let zero_buffer = device.upload_data(&Vector4::<u8>::new(255u8, 255u8, 255u8, 255u8), MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
+    let zero_data = [255u8; 16];
+    let zero_buffer = device.upload_data(&zero_data, MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
     let zero_texture = device.create_texture(&TextureInfo {
       format: Format::RGBA8,
       width: 2,
