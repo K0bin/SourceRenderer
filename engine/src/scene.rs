@@ -45,7 +45,11 @@ impl Scene {
     asset_manager.add_loader(Box::new(VPKContainerLoader::new()));
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
     asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
-    asset_manager.add_container(Box::new(CSGODirectoryContainer::new("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive").unwrap()));
+    #[cfg(target_os = "linux")]
+        let csgo_path = "~/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
+    #[cfg(target_os = "windows")]
+        let csgo_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive";
+    asset_manager.add_container(Box::new(CSGODirectoryContainer::new(csgo_path).unwrap()));
     let progress = asset_manager.request_asset("pak01_dir", AssetType::Container);
     while !progress.is_done() {
       // wait until our container is loaded
