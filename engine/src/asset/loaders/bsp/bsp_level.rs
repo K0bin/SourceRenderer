@@ -71,6 +71,8 @@ impl BspLevelLoader {
     let (lightmap_offset_x, lightmap_offset_y) = if face.light_offset >= 0 {
       debug_assert!(face.light_offset % 4 == 0);
       let offset = (face.light_offset / 4) as usize;
+      debug_assert!(face.lightmap_texture_size_in_luxels[0] > 0);
+      debug_assert!(face.lightmap_texture_size_in_luxels[1] > 0);
       lightmap_packer.add_samples((face.lightmap_texture_size_in_luxels[0] + 1) as u32, (face.lightmap_texture_size_in_luxels[1] + 1) as u32, &temp.lighting[offset..])
     } else {
       (0, 0)
@@ -139,6 +141,8 @@ impl BspLevelLoader {
     let (lightmap_offset_x, lightmap_offset_y) = if face.light_offset >= 0 {
       debug_assert!(face.light_offset % 4 == 0);
       let offset = (face.light_offset / 4) as usize;
+      debug_assert!(face.lightmap_texture_size_in_luxels[0] > 0);
+      debug_assert!(face.lightmap_texture_size_in_luxels[1] > 0);
       lightmap_packer.add_samples((face.lightmap_texture_size_in_luxels[0] + 1) as u32, (face.lightmap_texture_size_in_luxels[1] + 1) as u32, &temp.lighting[offset..])
     } else {
       (0, 0)
@@ -180,10 +184,23 @@ impl BspLevelLoader {
       for x in 0..size {
         let u = x as f32 * sub_div_mul;
 
+        let position = Self::calculate_disp_vert(disp_info.disp_vert_start, x, y, size, &corners, first_corner, &temp.disp_verts);
+        let mut uv = Self::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t);
+        uv.x /= tex_data.width as f32;
+        uv.y /= tex_data.height as f32;
+        /*let mut lightmap_uv = Vec2::default();
+        if face.light_offset != -1 {
+          lightmap_uv = Self::calculate_uv(&position, &tex_info.lightmap_vecs_s, &tex_info.lightmap_vecs_t);
+          lightmap_uv -= Vec2::new(face.lightmap_texture_mins_in_luxels[0] as f32, face.lightmap_texture_mins_in_luxels[1] as f32);
+          lightmap_uv += Vec2::new(0.5f32, 0.5f32);
+          lightmap_uv += Vec2::new(lightmap_offset_x as f32, lightmap_offset_y as f32);
+          lightmap_uv.x /= lightmap_packer.texture_width() as f32;
+          lightmap_uv.y /= lightmap_packer.texture_height() as f32;
+        }*/
         brush_vertices.push(super::Vertex {
-          position: Self::calculate_disp_vert(disp_info.disp_vert_start, x, y, size, &corners, first_corner, &temp.disp_verts),
+          position: Self::fixup_position(&position),
           normal: Self::fixup_normal(&plane.normal),
-          uv: (corners_uv[0] * (1f32 - u) + corners_uv[3] * u) * (1f32 - v[0]) + (corners_uv[1] * (1f32 - u) + corners_uv[2] * u) * v[0],
+          uv,
           lightmap_uv: Vec2::new(
             (u * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
             (v[0] * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
@@ -197,10 +214,23 @@ impl BspLevelLoader {
           material_brush_indices.push(brush_vertices.len() as u32 - 2);
         }
 
+        let position = Self::calculate_disp_vert(disp_info.disp_vert_start, x, y + 1, size, &corners, first_corner, &temp.disp_verts);
+        let mut uv = Self::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t);
+        uv.x /= tex_data.width as f32;
+        uv.y /= tex_data.height as f32;
+        /*let mut lightmap_uv = Vec2::default();
+        if face.light_offset != -1 {
+          lightmap_uv = Self::calculate_uv(&position, &tex_info.lightmap_vecs_s, &tex_info.lightmap_vecs_t);
+          lightmap_uv -= Vec2::new(face.lightmap_texture_mins_in_luxels[0] as f32, face.lightmap_texture_mins_in_luxels[1] as f32);
+          lightmap_uv += Vec2::new(0.5f32, 0.5f32);
+          lightmap_uv += Vec2::new(lightmap_offset_x as f32, lightmap_offset_y as f32);
+          lightmap_uv.x /= lightmap_packer.texture_width() as f32;
+          lightmap_uv.y /= lightmap_packer.texture_height() as f32;
+        }*/
         brush_vertices.push(super::Vertex {
-          position: Self::calculate_disp_vert(disp_info.disp_vert_start, x, y + 1, size, &corners, first_corner, &temp.disp_verts),
+          position: Self::fixup_position(&position),
           normal: Self::fixup_normal(&plane.normal),
-          uv: (corners_uv[0] * (1f32 - u) + corners_uv[3] * u) * (1f32 - v[1]) + (corners_uv[1] * (1f32 - u) + corners_uv[2] * u) * v[1],
+          uv,
           lightmap_uv: Vec2::new(
             (u * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
             (v[1] * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
@@ -231,7 +261,7 @@ impl BspLevelLoader {
       corners[((first_corner + 3) & 3) as usize],
     ];
     let origin = ty * (sx * relevant_corners[1] + tx * relevant_corners[2]) + sy * (sx * relevant_corners[0] + tx * relevant_corners[3]);
-    Self::fixup_position(&(origin + disp_vert.vec * disp_vert.dist))
+    origin + disp_vert.vec * disp_vert.dist
   }
 
   fn calculate_uv(position: &Vec3, texture_vecs_s: &Vec4, texture_vecs_t: &Vec4) -> Vec2 {
