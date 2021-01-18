@@ -78,7 +78,7 @@ impl LightmapPacker {
           rect.width -= MARGIN * 2 + width;
         } else {
           new_rect = Some(Rect {
-            x: rect.x + MARGIN * 2 + height,
+            x: rect.x + MARGIN * 2 + width,
             y: rect.y,
             width: rect.width - MARGIN * 2 - width,
             height: height + MARGIN * 2
