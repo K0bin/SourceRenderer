@@ -24,6 +24,7 @@ pub(super) struct RendererModel<B: Backend> {
 }
 
 pub(super) struct RendererAssets<P: Platform> {
+  device: Arc<<P::GraphicsBackend as Backend>::Device>,
   models: HashMap<String, Arc<RendererModel<P::GraphicsBackend>>>,
   meshes: HashMap<String, Arc<Mesh<P::GraphicsBackend>>>,
   materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
@@ -32,7 +33,7 @@ pub(super) struct RendererAssets<P: Platform> {
 }
 
 impl<P: Platform> RendererAssets<P> {
-  pub(super) fn new(device: &<P::GraphicsBackend as Backend>::Device) -> Self {
+  pub(super) fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
     let zero_data = [255u8; 16];
     let zero_buffer = device.upload_data(&zero_data, MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
     let zero_texture = device.create_texture(&TextureInfo {
@@ -65,6 +66,7 @@ impl<P: Platform> RendererAssets<P> {
     device.flush_transfers();
 
     Self {
+      device: device.clone(),
       models: HashMap::new(),
       meshes: HashMap::new(),
       materials: HashMap::new(),
@@ -164,6 +166,7 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {
+    self.device.flush_transfers();
     let mut asset_opt = asset_manager.receive_render_asset();
     while asset_opt.is_some() {
       let asset = asset_opt.unwrap();

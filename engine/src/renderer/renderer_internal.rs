@@ -43,7 +43,7 @@ impl<P: Platform> RendererInternal<P> {
     simulation_tick_rate: u32,
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>) -> Self {
 
-    let mut assets = RendererAssets::new(device.as_ref());
+    let mut assets = RendererAssets::new(device);
     let lightmap = assets.insert_placeholder_texture("lightmap");
 
     let renderables = Arc::new(Mutex::new(View::<P::GraphicsBackend>::default_with_lightmap(&lightmap)));

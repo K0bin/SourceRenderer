@@ -428,7 +428,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     }
 
     for material in materials_to_load {
-      manager.request_asset_with_progress(&material, AssetType::Material, Some(progress));
+      manager.request_asset(&material, AssetType::Material);
     }
 
     manager.add_container(pakfile_container);
