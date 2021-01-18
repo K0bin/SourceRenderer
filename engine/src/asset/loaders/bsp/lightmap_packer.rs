@@ -57,7 +57,8 @@ impl LightmapPacker {
   fn find_space(&mut self, width: u32, height: u32) -> Option<Rect> {
     let mut new_rect: Option<Rect> = None;
     let mut spot: Option<Rect> = None;
-    for rect in &mut self.free_list {
+    let mut delete_index: Option<usize> = None;
+    for (i, rect) in &mut self.free_list.iter_mut().enumerate() {
       if rect.width >= width + MARGIN * 2 && rect.height >= height + MARGIN * 2 {
         let target = Rect {
           x: rect.x + MARGIN,
@@ -67,25 +68,37 @@ impl LightmapPacker {
         };
 
         if rect.width > rect.height {
-          new_rect = Some(Rect {
+          let remaining_space = Rect {
             x: rect.x,
             y: rect.y + MARGIN * 2 + height,
             width: width + MARGIN * 2,
             height: rect.height - MARGIN * 2 - height
-          });
+          };
+          if remaining_space.width >= FREE_MIN && remaining_space.height >= FREE_MIN {
+            new_rect = Some(remaining_space);
+          }
 
           rect.x += MARGIN * 2 + width;
           rect.width -= MARGIN * 2 + width;
+          if rect.width <= FREE_MIN || rect.height <= FREE_MIN {
+            delete_index = Some(i);
+          }
         } else {
-          new_rect = Some(Rect {
+          let remaining_space = Rect {
             x: rect.x + MARGIN * 2 + width,
             y: rect.y,
             width: rect.width - MARGIN * 2 - width,
             height: height + MARGIN * 2
-          });
+          };
+          if remaining_space.width >= FREE_MIN && remaining_space.height >= FREE_MIN {
+            new_rect = Some(remaining_space);
+          }
 
           rect.y += MARGIN * 2 + height;
           rect.height -= MARGIN * 2 + height;
+          if rect.width <= FREE_MIN || rect.height <= FREE_MIN {
+            delete_index = Some(i);
+          }
         }
 
         spot = Some(target);
@@ -93,11 +106,14 @@ impl LightmapPacker {
       }
     }
 
+    if let Some(delete_index) = delete_index {
+      self.free_list.remove(delete_index);
+    }
     if let Some(new_rect) = new_rect {
-      if new_rect.width >= FREE_MIN && new_rect.height >= FREE_MIN {
-        self.free_list.push(new_rect);
-        self.free_list.sort_by_key(|r| r.area());
-      }
+      self.free_list.push(new_rect);
+    }
+    if spot.is_some() {
+      self.free_list.sort_by_key(|r| r.area());
     }
 
     spot
