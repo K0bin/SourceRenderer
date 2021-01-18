@@ -35,7 +35,7 @@ use crate::asset::loaders::bsp::lightmap_packer::LightmapPacker;
 // https://github.com/Metapyziks/SourceUtils/blob/master/SourceUtils.WebExport/Bsp/Geometry.cs
 // http://web.archive.org/web/20050426034532/http://www.geocities.com/cofrdrbob/bspformat.html
 // https://github.com/toji/webgl-source/blob/a435841a856bb3d43f9783d3d2e7ac1cb63992a5/js/source-bsp.js
-// https://github.com/Galaco/kero/blob/dev/LICENSE
+// https://github.com/Galaco/kero/blob/master/scene/loaders/bsp.go
 
 // VBSP IS CURSED
 
@@ -97,6 +97,10 @@ impl BspLevelLoader {
         lightmap_uv = Self::calculate_uv(&position, &tex_info.lightmap_vecs_s, &tex_info.lightmap_vecs_t);
         lightmap_uv -= Vec2::new(face.lightmap_texture_mins_in_luxels[0] as f32, face.lightmap_texture_mins_in_luxels[1] as f32);
         lightmap_uv += Vec2::new(0.5f32, 0.5f32);
+        debug_assert!(lightmap_uv.x >= 0f32);
+        debug_assert!(lightmap_uv.x < (face.lightmap_texture_size_in_luxels[0] + 1) as f32);
+        debug_assert!(lightmap_uv.y >= 0f32);
+        debug_assert!(lightmap_uv.y < (face.lightmap_texture_size_in_luxels[1] + 1) as f32);
         lightmap_uv += Vec2::new(lightmap_offset_x as f32, lightmap_offset_y as f32);
         lightmap_uv.x /= lightmap_packer.texture_width() as f32;
         lightmap_uv.y /= lightmap_packer.texture_height() as f32;
