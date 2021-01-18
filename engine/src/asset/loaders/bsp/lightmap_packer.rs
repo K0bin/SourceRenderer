@@ -111,6 +111,7 @@ impl LightmapPacker {
         let i = (x + y * width) as usize;
         let offset = (x + rect.x + (y + rect.y) * self.lightmap_width) as usize;
         let sample = &data[i].color;
+        debug_assert_eq!(self.data[offset], 0u32);
         self.data[offset] = sample.to_u32_color();
       }
     }
