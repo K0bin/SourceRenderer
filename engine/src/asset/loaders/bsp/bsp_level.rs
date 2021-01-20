@@ -177,39 +177,22 @@ impl BspLevelLoader {
 
     let subdivisions = 1 << disp_info.power;
     let size = subdivisions + 1;
-    let sub_div_mul = 1f32 / (subdivisions as f32);
-    let alpha_mul = 1f32 / 255f32;
     for y in 0..subdivisions {
       let old_len = brush_vertices.len() as u32;
-      let v = [
-        y as f32 * sub_div_mul,
-        (y + 1) as f32 * sub_div_mul
-      ];
       for x in 0..size {
-        let u = x as f32 * sub_div_mul;
-
         let position = Self::calculate_disp_vert(disp_info.disp_vert_start, x, y, size, &corners, first_corner, &temp.disp_verts);
         let mut uv = Self::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t);
         uv.x /= tex_data.width as f32;
         uv.y /= tex_data.height as f32;
-        /*let mut lightmap_uv = Vec2::default();
-        if face.light_offset != -1 {
-          lightmap_uv = Self::calculate_uv(&position, &tex_info.lightmap_vecs_s, &tex_info.lightmap_vecs_t);
-          lightmap_uv -= Vec2::new(face.lightmap_texture_mins_in_luxels[0] as f32, face.lightmap_texture_mins_in_luxels[1] as f32);
-          lightmap_uv += Vec2::new(0.5f32, 0.5f32);
-          lightmap_uv += Vec2::new(lightmap_offset_x as f32, lightmap_offset_y as f32);
-          lightmap_uv.x /= lightmap_packer.texture_width() as f32;
-          lightmap_uv.y /= lightmap_packer.texture_height() as f32;
-        }*/
         brush_vertices.push(super::Vertex {
           position: Self::fixup_position(&position),
           normal: Self::fixup_normal(&plane.normal),
           uv,
           lightmap_uv: Vec2::new(
-            (u * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
-            (v[0] * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
+            ((x as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
+            ((y as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
           ),
-          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + y * size) as usize].alpha / alpha_mul
+          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + y * size) as usize].alpha * 255f32
         });
 
         if brush_vertices.len() - old_len as usize >= 3 {
@@ -222,24 +205,15 @@ impl BspLevelLoader {
         let mut uv = Self::calculate_uv(&position, &tex_info.texture_vecs_s, &tex_info.texture_vecs_t);
         uv.x /= tex_data.width as f32;
         uv.y /= tex_data.height as f32;
-        /*let mut lightmap_uv = Vec2::default();
-        if face.light_offset != -1 {
-          lightmap_uv = Self::calculate_uv(&position, &tex_info.lightmap_vecs_s, &tex_info.lightmap_vecs_t);
-          lightmap_uv -= Vec2::new(face.lightmap_texture_mins_in_luxels[0] as f32, face.lightmap_texture_mins_in_luxels[1] as f32);
-          lightmap_uv += Vec2::new(0.5f32, 0.5f32);
-          lightmap_uv += Vec2::new(lightmap_offset_x as f32, lightmap_offset_y as f32);
-          lightmap_uv.x /= lightmap_packer.texture_width() as f32;
-          lightmap_uv.y /= lightmap_packer.texture_height() as f32;
-        }*/
         brush_vertices.push(super::Vertex {
           position: Self::fixup_position(&position),
           normal: Self::fixup_normal(&plane.normal),
           uv,
           lightmap_uv: Vec2::new(
-            (u * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
-            (v[1] * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
+            ((x as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
+            (((y + 1) as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
           ),
-          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + (y + 1) * size) as usize].alpha / alpha_mul
+          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + (y + 1) * size) as usize].alpha * 255f32
         });
 
         if brush_vertices.len() - old_len as usize >= 3 {
