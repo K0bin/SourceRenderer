@@ -4,7 +4,7 @@ use std::os::raw::c_char;
 
 use nalgebra::Vector3;
 
-use crate::PrimitiveRead;
+use crate::{PrimitiveRead, StringRead};
 
 bitflags! {
   pub struct StudioHDRFlags: u32 {
@@ -147,10 +147,7 @@ impl Header {
     let id = read.read_i32()?;
     let version = read.read_i32()?;
     let checksum = read.read_i32()?;
-    let mut name_data = [0u8; 64];
-    read.read_exact(&mut name_data)?;
-    let name = unsafe { CString::from_raw(name_data.as_mut_ptr() as *mut c_char) }
-      .to_str().unwrap().to_string();
+    let name = read.read_fixed_length_null_terminated_string(64).unwrap();
 
     let data_length = read.read_i32()?;
 
