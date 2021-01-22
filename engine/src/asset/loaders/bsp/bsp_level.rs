@@ -295,6 +295,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let lighting = map.read_lighting().unwrap();
     let visibility = map.read_visibility().unwrap();
     let static_props = map.read_static_props().unwrap();
+    let entities = map.read_entities().unwrap();
 
     let temp = BspLumps {
       map,
@@ -317,7 +318,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       disp_tris,
       lighting,
       visibility,
-      static_props
+      static_props,
+      entities
     };
 
     let pakfile_container = Box::new(PakFileContainer::new(pakfile));

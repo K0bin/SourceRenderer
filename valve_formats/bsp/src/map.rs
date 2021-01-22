@@ -7,7 +7,7 @@ use crate::lump_data::{Brush, Node, Leaf, Face,
                        TextureData, SurfaceEdge, Vertex,
                        VertexNormalIndex, VertexNormal,
                        TextureDataStringTable, TextureStringData};
-use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting, Visibility, GameLumps};
+use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting, Visibility, GameLumps, Entities};
 use crate::LumpType::GameLump;
 use crate::lump_data::game_lumps::StaticPropDict;
 
@@ -150,6 +150,13 @@ impl<R: Read + Seek> Map<R> {
 
   pub fn read_static_props(&mut self) -> IOResult<StaticPropDict> {
     self.game_lumps.read_static_prop_dict(&mut self.reader)
+  }
+
+  pub fn read_entities(&mut self) -> IOResult<Entities> {
+    let index = LumpType::Entities as usize;
+    let lump = self.header.lumps[index];
+    self.reader.seek(SeekFrom::Start(lump.file_offset as u64))?;
+    Entities::read(&mut self.reader)
   }
 
   fn read_lump_data<T: LumpData>(&mut self) -> IOResult<Vec<T>> {
