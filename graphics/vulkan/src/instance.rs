@@ -93,8 +93,8 @@ impl VkInstance {
   }
 
   unsafe extern "system" fn debug_callback(
-                    _message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-                    _message_types: vk::DebugUtilsMessageTypeFlagsEXT,
+                    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+                    message_types: vk::DebugUtilsMessageTypeFlagsEXT,
                     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
                     _p_user_data: *mut c_void,
                     ) -> vk::Bool32 {
@@ -104,7 +104,9 @@ impl VkInstance {
     }
     let callback_data = callback_data_opt.unwrap();
 
-    println!("VK DEBUG: {:?}", CStr::from_ptr(callback_data.p_message));
+    if message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE {
+      println!("VK: {:?} - {:?}: {:?}", message_severity, message_types, CStr::from_ptr(callback_data.p_message));
+    }
     vk::FALSE
   }
 }
