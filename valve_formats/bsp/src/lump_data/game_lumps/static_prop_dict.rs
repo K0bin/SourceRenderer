@@ -13,9 +13,7 @@ pub struct StaticPropDict {
 
 impl StaticPropDict {
   pub fn id() -> u32 {
-    //let id = unsafe { *("sprp".as_ptr() as *const u32) };
-    //println!("sprp: {:?}", id);
-    1936749168
+    1936749168 // sprp
   }
 
   pub fn read(mut read: &mut dyn Read, version: u16) -> IOResult<Self> {
