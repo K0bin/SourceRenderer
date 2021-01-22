@@ -10,6 +10,7 @@ pub enum StringReadError {
 
 pub trait StringRead {
   fn read_null_terminated_string(&mut self) -> Result<String, StringReadError>;
+  fn read_fixed_length_null_terminated_string(&mut self, length: u32) -> Result<String, StringReadError>;
 }
 
 impl<T: Read> StringRead for T {
@@ -21,6 +22,20 @@ impl<T: Read> StringRead for T {
         break;
       }
       buffer.push(char);
+    }
+    String::from_utf8(buffer).map_err(|e| StringReadError::StringConstructionError(e))
+  }
+
+  fn read_fixed_length_null_terminated_string(&mut self, length: u32) -> Result<String, StringReadError> {
+    let mut buffer = Vec::<u8>::with_capacity(length as usize);
+    unsafe { buffer.set_len(length as usize); }
+    self.read_exact(&mut buffer);
+    for i in 0..buffer.len() {
+      let char = buffer[i];
+      if char == 0 {
+        buffer.resize(i, 0u8);
+        break;
+      }
     }
     String::from_utf8(buffer).map_err(|e| StringReadError::StringConstructionError(e))
   }

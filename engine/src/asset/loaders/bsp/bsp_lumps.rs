@@ -2,6 +2,7 @@ use std::io::BufReader;
 use std::fs::File;
 
 use sourcerenderer_bsp::{Map, Leaf, Node, LeafFace, LeafBrush, SurfaceEdge, Vertex, Face, Edge, Plane, TextureData, TextureDataStringTable, TextureInfo, TextureStringData, DispInfo, DispVert, DispTri, Lighting, Visibility};
+use sourcerenderer_bsp::game_lumps::StaticPropDict;
 
 pub(super) struct BspLumps {
   pub(super) map: Map<BufReader<File>>,
@@ -23,5 +24,6 @@ pub(super) struct BspLumps {
   pub(super) disp_verts: Vec<DispVert>,
   pub(super) disp_tris: Vec<DispTri>,
   pub(super) lighting: Vec<Lighting>,
-  pub(super) visibility: Visibility
+  pub(super) visibility: Visibility,
+  pub(super) static_props: StaticPropDict
 }

@@ -7,12 +7,14 @@ use crate::lump_data::{Brush, Node, Leaf, Face,
                        TextureData, SurfaceEdge, Vertex,
                        VertexNormalIndex, VertexNormal,
                        TextureDataStringTable, TextureStringData};
-use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting, Visibility};
-
+use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting, Visibility, GameLumps};
+use crate::LumpType::GameLump;
+use crate::lump_data::game_lumps::StaticPropDict;
 
 pub struct Map<R: Read + Seek> {
   pub name: String,
   header: MapHeader,
+  game_lumps: GameLumps,
   reader: R,
 }
 
@@ -20,11 +22,20 @@ impl<R: Read + Seek> Map<R> {
   pub fn read(name: &str, mut reader: R) -> IOResult<Map<R>> {
     reader.seek(SeekFrom::Start(0));
     let header = MapHeader::read(&mut reader)?;
+    let game_lumps = Self::read_game_lump(&header, &mut reader)?;
     return Ok(Map {
       name: name.to_owned(),
       header,
+      game_lumps,
       reader,
     });
+  }
+
+  pub fn read_game_lump(header: &MapHeader, read: &mut R) -> IOResult<GameLumps> {
+    let index = LumpType::GameLump as usize;
+    let lump = &header.lumps[index];
+    read.seek(SeekFrom::Start(lump.file_offset as u64))?;
+    GameLumps::read(read)
   }
 
   pub fn read_brushes(&mut self) -> IOResult<Vec<Brush>> {
@@ -135,6 +146,10 @@ impl<R: Read + Seek> Map<R> {
     let lump = self.header.lumps[index];
     self.reader.seek(SeekFrom::Start(lump.file_offset as u64))?;
     Visibility::read(&mut self.reader)
+  }
+
+  pub fn read_static_props(&mut self) -> IOResult<StaticPropDict> {
+    self.game_lumps.read_static_prop_dict(&mut self.reader)
   }
 
   fn read_lump_data<T: LumpData>(&mut self) -> IOResult<Vec<T>> {
