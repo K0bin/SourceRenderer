@@ -44,8 +44,19 @@ impl Entity {
     self.key_values.get(&lower_key).map(|s| s.as_str())
   }
 
-  pub fn class_name(&self) -> &str {
-    self.key_values.get("classname").unwrap()
+  pub fn class_name(&self) -> EntityClass {
+    let class_name = self.key_values.get("classname").unwrap().as_str();
+    match class_name {
+      "prop_detail" => EntityClass::PropDetail,
+      "prop_static" => EntityClass::PropStatic,
+      "prop_physics" => EntityClass::PropPhysics,
+      "prop_ragdoll" => EntityClass::PropRagdoll,
+      "prop_dynamic" => EntityClass::PropDynamic,
+      "prop_physics_multiplayer" => EntityClass::PropPhysicsMultiplayer,
+      "prop_physics_override" => EntityClass::PropPhysicsOverride,
+      "prop_dynamic_override" => EntityClass::PropDynamicOverride,
+      _ => EntityClass::Unknown(class_name.to_string())
+    }
   }
 }
 
@@ -65,4 +76,17 @@ pub fn parse_key_value(text: &str, turn_keys_lower_case: bool) -> HashMap<String
     data.insert(owned_key, value.to_string());
   }
   data
+}
+
+#[derive(Eq, PartialEq, Hash, Debug)]
+pub enum EntityClass {
+  PropDetail,
+  PropStatic,
+  PropPhysics,
+  PropRagdoll,
+  PropDynamic,
+  PropPhysicsMultiplayer,
+  PropPhysicsOverride,
+  PropDynamicOverride,
+  Unknown(String)
 }
