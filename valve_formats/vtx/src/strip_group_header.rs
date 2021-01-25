@@ -28,6 +28,7 @@ impl StripGroupHeader {
     let strips_count = read.read_i32()?;
     let strips_offset = read.read_i32()?;
     let flags = read.read_u8()?;
+    let _padding = read.read_u8()?; // maybe wrong?
     Ok(Self {
       vert_offset,
       verts_count,
