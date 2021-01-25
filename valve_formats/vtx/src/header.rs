@@ -13,7 +13,7 @@ pub struct Header {
   pub max_bones_per_tri: u16,
   pub max_bones_per_vert: i32,
 
-  pub check_sum: i32,
+  pub checksum: i32,
 
   pub lods_count: i32,
 
@@ -31,7 +31,7 @@ impl Header {
     let max_bones_per_tri = read.read_u16()?;
     let max_bones_per_vert = read.read_i32()?;
 
-    let check_sum = read.read_i32()?;
+    let checksum = read.read_i32()?;
 
     let lods_count = read.read_i32()?;
 
@@ -46,7 +46,7 @@ impl Header {
       max_bones_per_strip,
       max_bones_per_tri,
       max_bones_per_vert,
-      check_sum,
+      checksum,
       lods_count,
       material_replacement_list_offset,
       body_parts_count,
