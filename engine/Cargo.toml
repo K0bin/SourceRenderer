@@ -18,6 +18,7 @@ sourcerenderer_vpk = { path = "../valve_formats/vpk" }
 sourcerenderer_vtf = { path = "../valve_formats/vtf" }
 sourcerenderer_vmt = { path = "../valve_formats/vmt" }
 sourcerenderer_mdl = { path = "../valve_formats/mdl" }
+sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 legion = "0.3.1"
 regex = "1.4.2"
 
