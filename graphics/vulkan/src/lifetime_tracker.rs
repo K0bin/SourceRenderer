@@ -1,10 +1,10 @@
 use sourcerenderer_core::pool::Recyclable;
-use ::{VkSemaphore, VkFence};
+use crate::{VkSemaphore, VkFence};
 use std::sync::Arc;
-use buffer::VkBufferSlice;
-use ::{VkTexture, VkRenderPass};
-use texture::VkTextureView;
-use VkFrameBuffer;
+use crate::buffer::VkBufferSlice;
+use crate::{VkTexture, VkRenderPass};
+use crate::texture::VkTextureView;
+use crate::VkFrameBuffer;
 
 pub struct VkLifetimeTrackers {
   semaphores: Vec<Arc<Recyclable<VkSemaphore>>>,

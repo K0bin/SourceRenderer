@@ -1,17 +1,17 @@
 use ash::vk;
-use ::{VkQueue, VkTexture};
-use raw::{RawVkDevice, RawVkCommandPool};
+use crate::{VkQueue, VkTexture};
+use crate::raw::{RawVkDevice, RawVkCommandPool};
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 use ash::version::DeviceV1_0;
-use buffer::VkBufferSlice;
-use ::{VkFence};
+use crate::buffer::VkBufferSlice;
+use crate::{VkFence};
 use crossbeam_channel::{Sender, Receiver, unbounded};
 use rayon;
 
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::{max, min};
-use ::{VkShared, VkLifetimeTrackers};
+use crate::{VkShared, VkLifetimeTrackers};
 
 pub(crate) struct VkTransfer {
   inner: Mutex<VkTransferInner>,

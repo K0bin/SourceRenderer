@@ -2,6 +2,7 @@
 name = "sourcerenderer_vulkan"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 ash = "0.29.0"

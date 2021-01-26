@@ -14,14 +14,14 @@ use crate::texture::VkTexture;
 use crate::sync::VkFence;
 use crate::graph::VkRenderGraph;
 
-use ::{VkThreadManager, VkShared};
-use raw::{RawVkDevice, RawVkInstance};
-use pipeline::VkGraphicsPipelineInfo;
-use buffer::VkBufferSlice;
+use crate::{VkThreadManager, VkShared};
+use crate::raw::{RawVkDevice, RawVkInstance};
+use crate::pipeline::VkGraphicsPipelineInfo;
+use crate::buffer::VkBufferSlice;
 use std::cmp::min;
-use texture::VkTextureView;
-use transfer::VkTransfer;
-use graph_template::{VkRenderGraphTemplate, VkPassType};
+use crate::texture::VkTextureView;
+use crate::transfer::VkTransfer;
+use crate::graph_template::{VkRenderGraphTemplate, VkPassType};
 use std::collections::HashMap;
 
 pub struct VkDevice {

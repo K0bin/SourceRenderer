@@ -26,13 +26,13 @@ use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::VkBackend;
 use std::hash::{Hasher, Hash};
-use VkRenderPass;
+use crate::VkRenderPass;
 use spirv_cross::spirv::Decoration;
 use ash::vk::{Handle, PipelineRasterizationStateCreateFlags};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
-use descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
-use ::VkShared;
+use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
+use crate::VkShared;
 
 #[inline]
 pub(crate) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {

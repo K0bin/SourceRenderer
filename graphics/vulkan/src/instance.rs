@@ -10,7 +10,7 @@ use sourcerenderer_core::graphics::Instance;
 
 use crate::VkAdapter;
 use crate::VkBackend;
-use raw::RawVkInstance;
+use crate::raw::RawVkInstance;
 
 use std::os::raw::{c_void};
 

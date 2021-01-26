@@ -6,7 +6,7 @@ use std::cmp::{min};
 
 use ash::vk;
 
-use thread_manager::{VkThreadManager, VkFrameLocal};
+use crate::thread_manager::{VkThreadManager, VkFrameLocal};
 
 use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource};
 use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
@@ -14,14 +14,14 @@ use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo};
 
-use ::{VkRenderPass, VkQueue, VkFence, VkTexture, VkFrameBuffer, VkSemaphore};
-use texture::VkTextureView;
-use buffer::VkBufferSlice;
-use graph_template::{VkRenderGraphTemplate, VkPassType, VkBarrierTemplate, VkResourceTemplate};
+use crate::{VkRenderPass, VkQueue, VkFence, VkTexture, VkFrameBuffer, VkSemaphore};
+use crate::texture::VkTextureView;
+use crate::buffer::VkBufferSlice;
+use crate::graph_template::{VkRenderGraphTemplate, VkPassType, VkBarrierTemplate, VkResourceTemplate};
 use crate::VkBackend;
 use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
-use VkCommandBufferRecorder;
+use crate::VkCommandBufferRecorder;
 use rayon;
 
 pub enum VkResource {
@@ -187,8 +187,8 @@ impl VkRenderGraph {
             RenderPassTextureExtent::RelativeToSwapchain {
               width: output_width, height: output_height
             } => {
-              ((swapchain.get_width() as f32 * *output_width) as u32,
-               (swapchain.get_height() as f32 * *output_height) as u32)
+              ((swapchain.get_width() as f32 * output_width) as u32,
+               (swapchain.get_height() as f32 * output_height) as u32)
             },
             RenderPassTextureExtent::Absolute {
               width: output_width, height: output_height
@@ -689,8 +689,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
               cmd_buffer.end_render_pass();
             }
           }
-          let prepare_semaphores = [&**prepare_semaphore];
-          let cmd_semaphores = [&**cmd_semaphore];
+          let prepare_semaphores = [prepare_semaphore.as_ref().as_ref()];
+          let cmd_semaphores = [cmd_semaphore.as_ref().as_ref()];
 
           let wait_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
             &prepare_semaphores

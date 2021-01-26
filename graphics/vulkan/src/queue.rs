@@ -14,10 +14,10 @@ use crate::swapchain::VkSwapchain;
 use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 
-use ::{VkShared};
-use VkCommandBufferSubmission;
-use transfer::VkTransferCommandBuffer;
-use buffer::BufferAllocator;
+use crate::{VkShared};
+use crate::VkCommandBufferSubmission;
+use crate::transfer::VkTransferCommandBuffer;
+use crate::buffer::BufferAllocator;
 use ash::prelude::VkResult;
 use std::collections::VecDeque;
 use smallvec::SmallVec;

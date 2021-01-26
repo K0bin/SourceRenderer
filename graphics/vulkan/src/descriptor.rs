@@ -1,16 +1,16 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use ash::vk;
-use raw::RawVkDevice;
+use crate::raw::RawVkDevice;
 use ash::version::{DeviceV1_0, DeviceV1_1};
 use sourcerenderer_core::graphics::{BindingFrequency};
 use std::collections::HashMap;
 
-use texture::VkTextureView;
-use buffer::VkBufferSlice;
+use crate::texture::VkTextureView;
+use crate::buffer::VkBufferSlice;
 use std::hash::{Hash, Hasher};
-use pipeline::VkPipelineLayout;
+use crate::pipeline::VkPipelineLayout;
 use std::ffi::c_void;
-use VkAdapterExtensionSupport;
+use crate::VkAdapterExtensionSupport;
 
 // TODO: clean up descriptor management
 // TODO: determine descriptor and set counts

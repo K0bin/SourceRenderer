@@ -14,10 +14,10 @@ use sourcerenderer_core::pool::{Recyclable};
 
 use crate::raw::RawVkDevice;
 use crate::VkCommandPool;
-use ::{VkQueue};
-use ::{VkSemaphore, VkFence};
-use buffer::BufferAllocator;
-use ::{VkCommandBufferRecorder, VkLifetimeTrackers, VkShared, VkBackend};
+use crate::{VkQueue};
+use crate::{VkSemaphore, VkFence};
+use crate::buffer::BufferAllocator;
+use crate::{VkCommandBufferRecorder, VkLifetimeTrackers, VkShared, VkBackend};
 
 pub struct VkThreadManager {
   device: Arc<RawVkDevice>,

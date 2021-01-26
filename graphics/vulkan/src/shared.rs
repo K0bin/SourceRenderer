@@ -1,12 +1,12 @@
 use sourcerenderer_core::pool::{Pool, Recyclable};
-use ::{VkSemaphore, VkFenceInner};
-use buffer::BufferAllocator;
+use crate::{VkSemaphore, VkFenceInner};
+use crate::buffer::BufferAllocator;
 use std::sync::{RwLock, Arc};
-use descriptor::VkDescriptorSetLayout;
-use pipeline::VkPipelineLayout;
+use crate::descriptor::VkDescriptorSetLayout;
+use crate::pipeline::VkPipelineLayout;
 use std::collections::HashMap;
-use raw::RawVkDevice;
-use VkFence;
+use crate::raw::RawVkDevice;
+use crate::VkFence;
 
 pub struct VkShared {
   semaphores: Pool<VkSemaphore>,

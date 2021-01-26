@@ -8,7 +8,7 @@ use sourcerenderer_core::graphics::{Texture, TextureInfo, TextureShaderResourceV
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 
-use pipeline::{samples_to_vk, compare_func_to_vk};
+use crate::pipeline::{samples_to_vk, compare_func_to_vk};
 use vk_mem::MemoryUsage;
 use std::cmp::max;
 use std::hash::{Hash, Hasher};

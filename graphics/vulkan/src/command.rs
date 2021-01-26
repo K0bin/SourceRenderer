@@ -23,12 +23,12 @@ use crate::VkFrameBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;
 use crate::raw::*;
-use ::{VkShared};
-use buffer::{VkBufferSlice, BufferAllocator};
-use VkTexture;
-use descriptor::{VkBindingManager, VkBoundResource};
-use texture::VkTextureView;
-use lifetime_tracker::VkLifetimeTrackers;
+use crate::{VkShared};
+use crate::buffer::{VkBufferSlice, BufferAllocator};
+use crate::VkTexture;
+use crate::descriptor::{VkBindingManager, VkBoundResource};
+use crate::texture::VkTextureView;
+use crate::lifetime_tracker::VkLifetimeTrackers;
 
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,

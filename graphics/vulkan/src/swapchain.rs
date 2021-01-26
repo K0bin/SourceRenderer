@@ -12,7 +12,7 @@ use crate::VkSurface;
 use crate::raw::{RawVkInstance, RawVkDevice};
 use crate::VkTexture;
 use crate::VkSemaphore;
-use texture::VkTextureView;
+use crate::texture::VkTextureView;
 
 use ash::prelude::VkResult;
 

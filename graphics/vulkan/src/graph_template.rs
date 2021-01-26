@@ -11,7 +11,7 @@ use crate::raw::RawVkDevice;
 
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
-use ::VkRenderPass;
+use crate::VkRenderPass;
 use std::cmp::min;
 use std::iter::FromIterator;
 use ash::vk::{AttachmentStoreOp, AttachmentLoadOp};
