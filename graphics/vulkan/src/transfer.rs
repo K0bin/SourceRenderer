@@ -258,7 +258,9 @@ impl VkTransfer {
         }
       })
     };
+    debug_assert!(new_cmd_buffer.is_empty);
     let cmd_buffer = std::mem::replace(&mut guard.current_graphics_buffer, new_cmd_buffer);
+    debug_assert!(!cmd_buffer.is_empty);
     unsafe {
       self.device.end_command_buffer(cmd_buffer.cmd_buffer);
       self.device.begin_command_buffer(guard.current_graphics_buffer.cmd_buffer, &vk::CommandBufferBeginInfo {
@@ -292,10 +294,14 @@ impl VkTransferCommandBuffer {
   }
 
   fn reset(&mut self) {
+    if self.is_empty {
+      return;
+    }
     self.fence.reset();
     unsafe {
       self.device.reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES);
     }
     self.trackers.reset();
+    self.is_empty = true;
   }
 }
