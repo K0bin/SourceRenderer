@@ -10,7 +10,7 @@ use sdl2::keyboard::Scancode;
 use sourcerenderer_core::platform::{Input, Key, Window, WindowState};
 use sourcerenderer_core::Vec2I;
 
-use sdl_platform::SDLWindow;
+use crate::sdl_platform::SDLWindow;
 
 pub struct SDLInput {
   inner: RwLock<SDLInputInner>,

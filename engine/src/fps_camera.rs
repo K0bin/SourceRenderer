@@ -28,7 +28,7 @@ pub struct FPSCamera {
 impl FPSCamera {
   pub fn new() -> Self {
     FPSCamera {
-      sensitivity: 1.0f32,
+      sensitivity: 5.0f32,
       pitch: 0f32,
       yaw: 0f32
     }

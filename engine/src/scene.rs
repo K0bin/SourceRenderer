@@ -46,7 +46,8 @@ impl Scene {
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
     asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
     #[cfg(target_os = "linux")]
-        let csgo_path = "~/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
+        //let csgo_path = "~/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
+        let csgo_path = "/run/media/robin/System/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive";
     #[cfg(target_os = "windows")]
         let csgo_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive";
     asset_manager.add_container(Box::new(CSGODirectoryContainer::new(csgo_path).unwrap()));

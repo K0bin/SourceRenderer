@@ -8,8 +8,8 @@ fn main() {
         let mut lib_dir = manifest_dir.clone();
         let mut dll_dir = manifest_dir.clone();
         if target.contains("msvc") {
-            lib_dir.push("msvc");
-            dll_dir.push("msvc");
+            lib_dir.push("../sdl/msvc");
+            dll_dir.push("../sdl/msvc");
         }
         else {
             lib_dir.push("gnu-mingw");

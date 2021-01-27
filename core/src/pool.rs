@@ -1,6 +1,7 @@
 use std::mem::MaybeUninit;
 use std::ops::{ Deref, DerefMut };
 use std::fmt::{Debug, Formatter, Display};
+use std::convert::{AsRef, AsMut};
 use crossbeam_channel::{Sender, Receiver, unbounded};
 
 pub struct Recyclable<T> {
@@ -23,10 +24,22 @@ impl<T> DerefMut for Recyclable<T> {
   }
 }
 
+impl<T> AsMut<T> for Recyclable<T> {
+  fn as_mut(&mut self) -> &mut T {
+    unsafe { &mut *(self.item.as_mut_ptr()) }
+  }
+}
+
 impl<T> Deref for Recyclable<T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
+    unsafe { &*(self.item.as_ptr()) }
+  }
+}
+
+impl<T> AsRef<T> for Recyclable<T> {
+  fn as_ref(&self) -> &T {
     unsafe { &*(self.item.as_ptr()) }
   }
 }

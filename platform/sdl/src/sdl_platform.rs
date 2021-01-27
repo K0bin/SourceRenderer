@@ -8,10 +8,6 @@ use sourcerenderer_core::platform::PlatformEvent;
 use sourcerenderer_core::platform::GraphicsApi;
 use sourcerenderer_core::platform::WindowState;
 
-
-
-
-
 use sourcerenderer_vulkan::VkInstance;
 use sourcerenderer_vulkan::VkSurface;
 use sourcerenderer_vulkan::VkSwapchain;
