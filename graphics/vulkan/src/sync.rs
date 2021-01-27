@@ -87,7 +87,7 @@ impl VkFenceInner {
   pub fn is_signaled(&self) -> bool {
     let vk_device = &self.device.device;
     unsafe {
-      vk_device.get_fence_status(self.fence).is_ok()
+      vk_device.get_fence_status(self.fence).unwrap()
     }
   }
 }
