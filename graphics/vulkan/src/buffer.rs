@@ -10,6 +10,7 @@ use ash::{version::InstanceV1_1, vk};
 
 use crate::raw::*;
 use crate::device::memory_usage_to_vma;
+use smallvec::SmallVec;
 
 pub struct VkBuffer {
   buffer: vk::Buffer,
@@ -29,9 +30,22 @@ unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
   pub fn new(device: &Arc<RawVkDevice>, slice_size: usize, slices: usize, memory_usage: MemoryUsage, buffer_usage: BufferUsage, allocator: &vk_mem::Allocator) -> Arc<Self> {
+    let mut queue_families = SmallVec::<[u32; 2]>::new();
+    let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
+    if buffer_usage.contains(BufferUsage::COPY_SRC) {
+      sharing_mode = vk::SharingMode::CONCURRENT;
+      queue_families.push(device.graphics_queue_info.queue_family_index as u32);
+      if let Some(info) = device.transfer_queue_info {
+        queue_families.push(info.queue_family_index as u32);
+      }
+    }
+
     let buffer_info = vk::BufferCreateInfo {
       size: (slice_size * slices) as u64,
       usage: buffer_usage_to_vk(buffer_usage),
+      sharing_mode,
+      p_queue_family_indices: queue_families.as_ptr(),
+      queue_family_index_count: queue_families.len() as u32,
       ..Default::default()
     };
     let allocation_info = vk_mem::AllocationCreateInfo {

@@ -60,7 +60,10 @@ impl VkDevice {
       allocator,
       physical_device,
       instance: instance.clone(),
-      extensions: extensions.clone()
+      extensions: extensions.clone(),
+      graphics_queue_info: graphics_queue_info.clone(),
+      transfer_queue_info: transfer_queue_info.clone(),
+      compute_queue_info: compute_queue_info.clone()
     });
 
     let shared = Arc::new(VkShared::new(&raw));
