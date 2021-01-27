@@ -31,10 +31,30 @@ enum VkTransferBarrier {
 unsafe impl Send for VkTransferBarrier {}
 unsafe impl Sync for VkTransferBarrier {}
 
+enum VkTransferCopy {
+  BufferToImage {
+    src: vk::Buffer,
+    dst: vk::Image,
+    region: vk::BufferImageCopy
+  },
+  BufferToBuffer {
+    src: vk::Buffer,
+    dst: vk::Buffer,
+    region: vk::BufferCopy
+  }
+}
+
+unsafe impl Send for VkTransferCopy {}
+unsafe impl Sync for VkTransferCopy {}
+
 struct VkTransferInner {
   current_transfer_buffer: Option<Box<VkTransferCommandBuffer>>,
+  transfer_pre_barriers: Vec<VkTransferBarrier>,
+  transfer_copies: Vec<VkTransferCopy>,
   transfer_post_barriers: Vec<VkTransferBarrier>,
   current_graphics_buffer: Box<VkTransferCommandBuffer>,
+  graphics_pre_barriers: Vec<VkTransferBarrier>,
+  graphics_copies: Vec<VkTransferCopy>,
   graphics_post_barriers: Vec<(Option<VkFence>, VkTransferBarrier)>,
   used_graphics_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
   used_transfer_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
@@ -115,8 +135,12 @@ impl VkTransfer {
     Self {
       inner: Mutex::new(VkTransferInner {
         current_graphics_buffer: graphics_buffer,
+        graphics_pre_barriers: Vec::new(),
+        graphics_copies: Vec::new(),
         graphics_post_barriers: Vec::new(),
         current_transfer_buffer: transfer_buffer,
+        transfer_pre_barriers: Vec::new(),
+        transfer_copies: Vec::new(),
         transfer_post_barriers: Vec::new(),
         used_graphics_buffers: VecDeque::new(),
         used_transfer_buffers: VecDeque::new(),
@@ -136,7 +160,7 @@ impl VkTransfer {
   pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
     let mut guard = self.inner.lock().unwrap();
     unsafe {
-      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], &[
+      guard.graphics_pre_barriers.push(VkTransferBarrier::Image (
         vk::ImageMemoryBarrier {
           src_access_mask: vk::AccessFlags::empty(),
           dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
@@ -153,9 +177,12 @@ impl VkTransfer {
           },
           image: *texture.get_handle(),
           ..Default::default()
-        }]);
-      self.device.cmd_copy_buffer_to_image(*guard.current_graphics_buffer.get_handle(), *src_buffer.get_buffer().get_handle(), *texture.get_handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[
-        vk::BufferImageCopy {
+        }));
+
+      guard.graphics_copies.push(VkTransferCopy::BufferToImage {
+        src: *src_buffer.get_buffer().get_handle(),
+        dst: *texture.get_handle(),
+        region: vk::BufferImageCopy {
           buffer_offset: src_buffer.get_offset_and_length().0 as u64,
           image_offset: vk::Offset3D {
             x: 0,
@@ -175,7 +202,8 @@ impl VkTransfer {
             aspect_mask: vk::ImageAspectFlags::COLOR,
             layer_count: 1
           }
-      }]);
+        }
+      });
 
       guard.graphics_post_barriers.push((None, VkTransferBarrier::Image (
         vk::ImageMemoryBarrier {
@@ -205,12 +233,15 @@ impl VkTransfer {
   pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
     let mut guard = self.inner.lock().unwrap();
     unsafe {
-      self.device.cmd_copy_buffer(*guard.current_graphics_buffer.get_handle(), *src_buffer.get_buffer().get_handle(), *dst_buffer.get_buffer().get_handle(), &[
-        vk::BufferCopy {
+      guard.graphics_copies.push(VkTransferCopy::BufferToBuffer {
+        src: *src_buffer.get_buffer().get_handle(),
+        dst: *dst_buffer.get_buffer().get_handle(),
+        region: vk::BufferCopy {
           src_offset: src_buffer.get_offset() as u64,
           dst_offset: dst_buffer.get_offset() as u64,
           size: min(src_buffer.get_length(), dst_buffer.get_length()) as u64
-        }]);
+        }
+      });
 
       guard.graphics_post_barriers.push((None, VkTransferBarrier::Buffer (
         vk::BufferMemoryBarrier {
@@ -247,9 +278,46 @@ impl VkTransfer {
       return;
     }
 
-    // commit post barriers
+    // commit pre barriers
     let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
     let mut buffer_barriers = Vec::<vk::BufferMemoryBarrier>::new();
+    for barrier in guard.graphics_pre_barriers.drain(..) {
+      match barrier {
+        VkTransferBarrier::Buffer(buffer_memory_barrier) => { buffer_barriers.push(buffer_memory_barrier); }
+        VkTransferBarrier::Image(image_memory_barrier) => { image_barriers.push(image_memory_barrier); }
+      }
+    }
+    unsafe {
+      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::HOST, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[],
+                                       &buffer_barriers,
+                                       &image_barriers
+      );
+    }
+
+    // commit copies
+    let cmd_buffer = guard.current_graphics_buffer.cmd_buffer;
+    for copy in guard.graphics_copies.drain(..) {
+      match copy {
+        VkTransferCopy::BufferToBuffer {
+          src, dst, region
+        } => {
+          unsafe {
+            self.device.cmd_copy_buffer(cmd_buffer, src, dst, &[region]);
+          }
+        },
+        VkTransferCopy::BufferToImage {
+          src, dst, region
+        } => {
+          unsafe {
+            self.device.cmd_copy_buffer_to_image(cmd_buffer, src, dst, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[region]);
+          }
+        }
+      }
+    }
+
+    // commit post barriers
+    image_barriers.clear();
+    buffer_barriers.clear();
     let mut retained_barriers = Vec::<(Option<VkFence>, VkTransferBarrier)>::new();
     for (fence, barrier) in guard.graphics_post_barriers.drain(..) {
       if let Some(fence) = fence {
