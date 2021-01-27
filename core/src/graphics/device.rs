@@ -44,8 +44,8 @@ pub trait Device<B: Backend> {
                          info: &crate::graphics::graph::RenderGraphInfo<B>,
                          swapchain: &Arc<B::Swapchain>,
                          external_resources: Option<&HashMap<String, ExternalResource<B>>>) -> B::RenderGraph;
-  fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32) -> Arc<B::Fence>;
-  fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>) -> Arc<B::Fence>;
+  fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32);
+  fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>);
   fn flush_transfers(&self);
   fn free_completed_transfers(&self);
 }

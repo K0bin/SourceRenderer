@@ -23,10 +23,21 @@ pub(crate) struct VkTransfer {
   shared: Arc<VkShared>
 }
 
+enum VkTransferBarrier {
+  Image(vk::ImageMemoryBarrier),
+  Buffer(vk::BufferMemoryBarrier)
+}
+
+unsafe impl Send for VkTransferBarrier {}
+unsafe impl Sync for VkTransferBarrier {}
+
 struct VkTransferInner {
   current_transfer_buffer: Option<Box<VkTransferCommandBuffer>>,
+  transfer_post_barriers: Vec<VkTransferBarrier>,
   current_graphics_buffer: Box<VkTransferCommandBuffer>,
+  graphics_post_barriers: Vec<(Option<VkFence>, VkTransferBarrier)>,
   used_graphics_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
+  used_transfer_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
   current_fence: Arc<VkFence>,
   graphics_pool: Arc<RawVkCommandPool>,
   transfer_pool: Option<Arc<RawVkCommandPool>>
@@ -104,8 +115,11 @@ impl VkTransfer {
     Self {
       inner: Mutex::new(VkTransferInner {
         current_graphics_buffer: graphics_buffer,
+        graphics_post_barriers: Vec::new(),
         current_transfer_buffer: transfer_buffer,
+        transfer_post_barriers: Vec::new(),
         used_graphics_buffers: VecDeque::new(),
+        used_transfer_buffers: VecDeque::new(),
         current_fence: fence,
         graphics_pool,
         transfer_pool
@@ -119,7 +133,7 @@ impl VkTransfer {
     }
   }
 
-  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {
+  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
     let mut guard = self.inner.lock().unwrap();
     unsafe {
       self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], &[
@@ -162,10 +176,11 @@ impl VkTransfer {
             layer_count: 1
           }
       }]);
-      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER, vk::DependencyFlags::empty(), &[], &[], &[
+
+      guard.graphics_post_barriers.push((None, VkTransferBarrier::Image (
         vk::ImageMemoryBarrier {
           src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-          dst_access_mask: vk::AccessFlags::SHADER_READ,
+          dst_access_mask: vk::AccessFlags::MEMORY_READ,
           old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
           new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
           src_queue_family_index: self.graphics_queue.get_queue_family_index(),
@@ -179,17 +194,15 @@ impl VkTransfer {
           },
           image: *texture.get_handle(),
           ..Default::default()
-      }]);
+      })));
 
       guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
       guard.current_graphics_buffer.trackers.track_texture(texture);
       guard.current_graphics_buffer.is_empty = false;
-
-      guard.current_fence.clone()
     }
   }
 
-  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) -> Arc<VkFence> {
+  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
     let mut guard = self.inner.lock().unwrap();
     unsafe {
       self.device.cmd_copy_buffer(*guard.current_graphics_buffer.get_handle(), *src_buffer.get_buffer().get_handle(), *dst_buffer.get_buffer().get_handle(), &[
@@ -198,23 +211,23 @@ impl VkTransfer {
           dst_offset: dst_buffer.get_offset() as u64,
           size: min(src_buffer.get_length(), dst_buffer.get_length()) as u64
         }]);
-      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[], &[
+
+      guard.graphics_post_barriers.push((None, VkTransferBarrier::Buffer (
         vk::BufferMemoryBarrier {
           src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-          dst_access_mask: vk::AccessFlags::MEMORY_READ,
+          dst_access_mask: vk::AccessFlags::SHADER_READ,
           src_queue_family_index: self.graphics_queue.get_queue_family_index(),
           dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
           buffer: *dst_buffer.get_buffer().get_handle(),
           offset: dst_buffer.get_offset() as u64,
           size: dst_buffer.get_length() as u64,
           ..Default::default()
-        }], &[]);
+        }
+      )));
 
       guard.current_graphics_buffer.trackers.track_buffer(src_buffer);
       guard.current_graphics_buffer.trackers.track_buffer(dst_buffer);
       guard.current_graphics_buffer.is_empty = false;
-
-      guard.current_fence.clone()
     }
   }
 
@@ -232,6 +245,30 @@ impl VkTransfer {
 
     if guard.current_graphics_buffer.is_empty {
       return;
+    }
+
+    // commit post barriers
+    let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
+    let mut buffer_barriers = Vec::<vk::BufferMemoryBarrier>::new();
+    let mut retained_barriers = Vec::<(Option<VkFence>, VkTransferBarrier)>::new();
+    for (fence, barrier) in guard.graphics_post_barriers.drain(..) {
+      if let Some(fence) = fence {
+        if !fence.is_signaled() {
+          retained_barriers.push((Some(fence), barrier));
+          continue;
+        }
+      }
+      match barrier {
+        VkTransferBarrier::Buffer(buffer_memory_barrier) => { buffer_barriers.push(buffer_memory_barrier); }
+        VkTransferBarrier::Image(image_memory_barrier) => { image_barriers.push(image_memory_barrier); }
+      }
+    }
+    guard.graphics_post_barriers.append(&mut retained_barriers);
+    unsafe {
+      self.device.cmd_pipeline_barrier(*guard.current_graphics_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[],
+                                       &buffer_barriers,
+                                       &image_barriers
+      );
     }
 
     let reuse_first_graphics_buffer = guard.used_graphics_buffers.front().map(|cmd_buffer| cmd_buffer.fence.is_signaled()).unwrap_or(false);
