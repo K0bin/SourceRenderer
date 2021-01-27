@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use crate::renderer::Renderer;
+use crate::renderer::{Renderer, Drawable};
 use crossbeam_channel::{Sender, Receiver, TryRecvError};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
@@ -16,6 +16,7 @@ use crate::renderer::passes;
 use crate::renderer::drawable::{RDrawable, RDrawableType};
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_bsp::LumpType::TextureInfo;
+use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
@@ -23,7 +24,9 @@ pub(super) struct RendererInternal<P: Platform> {
   graph: <P::GraphicsBackend as Backend>::RenderGraph,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   asset_manager: Arc<AssetManager<P>>,
-  view: Arc<Mutex<View<P::GraphicsBackend>>>,
+  lightmap: Arc<RendererTexture<P::GraphicsBackend>>,
+  drawables: Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>,
+  view: Arc<AtomicRefCell<View>>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   simulation_tick_rate: u32,
@@ -46,8 +49,9 @@ impl<P: Platform> RendererInternal<P> {
     let mut assets = RendererAssets::new(device);
     let lightmap = assets.insert_placeholder_texture("lightmap");
 
-    let renderables = Arc::new(Mutex::new(View::<P::GraphicsBackend>::default_with_lightmap(&lightmap)));
-    let graph = RendererInternal::<P>::build_graph(device, swapchain, &renderables, &primary_camera);
+    let drawables = Arc::new(AtomicRefCell::new(Vec::new()));
+    let view = Arc::new(AtomicRefCell::new(View::default()));
+    let graph = RendererInternal::<P>::build_graph(device, swapchain, &view, &drawables, &lightmap, &primary_camera);
 
     Self {
       renderer: renderer.clone(),
@@ -55,20 +59,24 @@ impl<P: Platform> RendererInternal<P> {
       graph,
       swapchain: swapchain.clone(),
       asset_manager: asset_manager.clone(),
-      view: renderables,
+      view,
       sender,
       receiver,
       simulation_tick_rate,
       last_tick: SystemTime::now(),
       primary_camera: primary_camera.clone(),
-      assets
+      assets,
+      lightmap,
+      drawables
     }
   }
 
   fn build_graph(
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-    renderables: &Arc<Mutex<View<P::GraphicsBackend>>>,
+    view: &Arc<AtomicRefCell<View>>,
+    drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>,
+    lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
 
@@ -90,10 +98,10 @@ impl<P: Platform> RendererInternal<P> {
     });
 
     let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
-    let (pre_pass_name, pre_pass_callback) = passes::desktop::prepass::build_pass::<P>(device, &graph_template, &renderables);
+    let (pre_pass_name, pre_pass_callback) = passes::desktop::prepass::build_pass::<P>(device, &graph_template, &view, &drawables);
     callbacks.insert(pre_pass_name, pre_pass_callback);
 
-    let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &renderables);
+    let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &view, &drawables, &lightmap);
     callbacks.insert(geometry_pass_name, geometry_pass_callback);
 
     let (late_latch_pass_name, late_latch_pass_callback) = passes::late_latching::build_pass::<P::GraphicsBackend>(device);
@@ -111,7 +119,8 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   fn receive_messages(&mut self) {
-    let mut guard = self.view.lock().unwrap();
+    let mut drawables = self.drawables.borrow_mut();
+    let mut view = self.view.borrow_mut();
 
     let message_res = self.receiver.try_recv();
     if let Some(err) = message_res.as_ref().err() {
@@ -131,17 +140,17 @@ impl<P: Platform> RendererInternal<P> {
         }
 
         RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => {
-          guard.camera_transform = camera_transform_mat;
-          guard.camera_fov = fov;
+          view.camera_transform = camera_transform_mat;
+          view.camera_fov = fov;
 
-          guard.old_camera_matrix = guard.camera_matrix;
+          view.old_camera_matrix = view.camera_matrix;
           let position = camera_transform_mat.column(3).xyz();
           self.primary_camera.update_position(position);
-          guard.camera_matrix = self.primary_camera.get_camera();
+          view.camera_matrix = self.primary_camera.get_camera();
         }
 
         RendererCommand::UpdateTransform { entity, transform_mat } => {
-          let element = guard.elements.iter_mut()
+          let element = drawables.iter_mut()
             .find(|r| r.entity == entity);
           // TODO optimize
 
@@ -152,7 +161,7 @@ impl<P: Platform> RendererInternal<P> {
         }
 
         RendererCommand::Register(drawable) => {
-          guard.elements.push(RDrawable {
+          drawables.push(RDrawable {
             drawable_type: match &drawable.drawable_type {
               DrawableType::Static {
                 model_path, receive_shadows, cast_shadows, can_move
@@ -174,11 +183,11 @@ impl<P: Platform> RendererInternal<P> {
         }
 
         RendererCommand::UnregisterStatic(entity) => {
-          let index = guard.elements.iter()
+          let index = drawables.iter()
             .position(|r| r.entity == entity);
 
           if let Some(index) = index {
-            guard.elements.remove(index);
+            drawables.remove(index);
           }
         }
       }

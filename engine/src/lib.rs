@@ -13,6 +13,7 @@ extern crate sourcerenderer_vmt;
 #[macro_use]
 extern crate legion;
 extern crate regex;
+extern crate bitvec;
 
 pub use self::engine::Engine;
 use sourcerenderer_core::{Vec3, Vec2};

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::f32;
 use sourcerenderer_core::graphics::Backend;
 use crate::renderer::renderer_assets::*;
+use bitvec::vec::BitVec;
 
 pub enum DrawableType {
   Static {
@@ -101,24 +102,22 @@ impl<B: Backend> RDrawable<B> {
 }
 
 #[derive(Clone)]
-pub(crate) struct View<B: Backend> {
-  pub(super) elements: Vec<RDrawable<B>>,
+pub(crate) struct View {
+  pub(super) visible_drawables: BitVec,
   pub(super) camera_matrix: Matrix4,
   pub(super) old_camera_matrix: Matrix4,
   pub(super) camera_transform: Matrix4,
-  pub(super) camera_fov: f32,
-  pub(super) lightmap: Arc<RendererTexture<B>>
+  pub(super) camera_fov: f32
 }
 
-impl<B: Backend> View<B> {
-  pub(super) fn default_with_lightmap(lightmap: &Arc<RendererTexture<B>>) -> Self {
+impl Default for View {
+  fn default() -> Self {
     Self {
-      elements: Vec::new(),
+      visible_drawables: BitVec::new(),
       camera_transform: Matrix4::identity(),
       old_camera_matrix: Matrix4::identity(),
       camera_matrix: Matrix4::identity(),
-      camera_fov: f32::consts::PI / 2f32,
-      lightmap: lightmap.clone()
+      camera_fov: f32::consts::PI / 2f32
     }
   }
 }
