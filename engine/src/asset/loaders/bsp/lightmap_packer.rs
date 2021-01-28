@@ -135,7 +135,7 @@ impl LightmapPacker {
     (rect.x, rect.y)
   }
 
-  pub fn build_texture<B: GraphicsBackend>(&mut self, device: &Arc<B::Device>) -> Arc<B::Texture> {
+  pub fn build_texture<B: GraphicsBackend>(&mut self, device: &Arc<B::Device>) -> (Arc<B::Texture>, Arc<B::Fence>) {
     println!("Lightmap used {} texels", self.used_area);
 
     let texture = device.create_texture(&TextureInfo {
@@ -148,8 +148,8 @@ impl LightmapPacker {
       samples: SampleCount::Samples1
     }, Some("Lightmap"));
     let buffer = device.upload_data_slice(&self.data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    device.init_texture(&texture, &buffer, 0, 0);
-    texture
+    let fence = device.init_texture(&texture, &buffer, 0, 0);
+    (texture, fence)
   }
 
   pub fn texture_width(&self) -> u32 {

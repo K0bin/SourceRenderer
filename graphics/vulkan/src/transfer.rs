@@ -18,8 +18,6 @@ pub(crate) struct VkTransfer {
   transfer_queue: Option<Arc<VkQueue>>,
   graphics_queue: Arc<VkQueue>,
   device: Arc<RawVkDevice>,
-  sender: Sender<Box<VkTransferCommandBuffer>>,
-  receiver: Receiver<Box<VkTransferCommandBuffer>>,
   shared: Arc<VkShared>
 }
 
@@ -49,7 +47,8 @@ unsafe impl Sync for VkTransferCopy {}
 
 struct VkTransferInner {
   graphics: VkTransferCommands,
-  transfer_commands: Option<VkTransferCommands>
+  transfer: Option<VkTransferCommands>,
+  graphics_ownership_acquire_fence: Option<Arc<VkFence>>
 }
 
 struct VkTransferCommands {
@@ -58,7 +57,7 @@ struct VkTransferCommands {
   post_barriers: Vec<(Option<Arc<VkFence>>, VkTransferBarrier)>,
   used_cmd_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
   pool: Arc<RawVkCommandPool>,
-  current_fence: Arc<VkFence>
+  fence: Arc<VkFence>
 }
 
 impl VkTransfer {
@@ -68,24 +67,31 @@ impl VkTransfer {
       queue_family_index: graphics_queue.get_queue_family_index(),
       ..Default::default()
     };
+    let graphics_fence = shared.get_fence();
     let graphics_pool = Arc::new(RawVkCommandPool::new(device, &graphics_pool_info).unwrap());
 
-    let transfer_pool = if let Some(_queue) = transfer_queue {
+    let transfer_commands = if let Some(transfer_queue) = transfer_queue {
       let transfer_pool_info = vk::CommandPoolCreateInfo {
         flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER | vk::CommandPoolCreateFlags::TRANSIENT,
-        queue_family_index: graphics_queue.get_queue_family_index(),
+        queue_family_index: transfer_queue.get_queue_family_index(),
         ..Default::default()
       };
       let transfer_pool = Arc::new(RawVkCommandPool::new(device, &transfer_pool_info).unwrap());
-      Some(transfer_pool)
+      let transfer_fence = shared.get_fence();
+      Some(VkTransferCommands {
+        pool: transfer_pool,
+        pre_barriers: Vec::new(),
+        copies: Vec::new(),
+        post_barriers: Vec::new(),
+        used_cmd_buffers: VecDeque::new(),
+        fence: transfer_fence
+      })
     } else {
       None
     };
 
-    let (sender, receiver) = unbounded();
 
-    let graphics_fence = shared.get_fence();
-    let transfer_fence = if transfer_pool.is_some() {
+    let graphics_ownership_acquire_fence = if transfer_commands.is_some() {
       Some(shared.get_fence())
     } else {
       None
@@ -97,31 +103,21 @@ impl VkTransfer {
           pre_barriers: Vec::new(),
           copies: Vec::new(),
           post_barriers: Vec::new(),
-          current_fence: graphics_fence,
           pool: graphics_pool,
-          used_cmd_buffers: VecDeque::new()
+          used_cmd_buffers: VecDeque::new(),
+          fence: graphics_fence
         },
-        transfer_commands: transfer_pool.map(|transfer_pool| {
-          VkTransferCommands {
-            pre_barriers: Vec::new(),
-            copies: Vec::new(),
-            post_barriers: Vec::new(),
-            current_fence: transfer_fence.unwrap(),
-            pool: transfer_pool,
-            used_cmd_buffers: VecDeque::new()
-          }
-        })
+        transfer: transfer_commands,
+        graphics_ownership_acquire_fence
       }),
       transfer_queue: transfer_queue.clone(),
       graphics_queue: graphics_queue.clone(),
       device: device.clone(),
-      sender,
-      receiver,
       shared: shared.clone()
     }
   }
 
-  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
+  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {
     let mut guard = self.inner.lock().unwrap();
     guard.graphics.pre_barriers.push(VkTransferBarrier::Image (
       vk::ImageMemoryBarrier {
@@ -186,9 +182,10 @@ impl VkTransfer {
         image: *texture.get_handle(),
         ..Default::default()
     })));
+    guard.graphics.fence.clone()
   }
 
-  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
+  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) -> Arc<VkFence> {
     let mut guard = self.inner.lock().unwrap();
     guard.graphics.copies.push(VkTransferCopy::BufferToBuffer {
       src: src_buffer.clone(),
@@ -212,47 +209,144 @@ impl VkTransfer {
         ..Default::default()
       }
     )));
+    guard.graphics.fence.clone()
+  }
+
+  pub fn init_texture_async(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {
+    let mut guard = self.inner.lock().unwrap();
+    if guard.transfer.is_none() {
+      std::mem::forget(guard);
+      return self.init_texture(texture, src_buffer, mip_level, array_layer);
+    }
+
+    let fence = {
+      let transfer = guard.transfer.as_mut().unwrap();
+      transfer.pre_barriers.push(VkTransferBarrier::Image(
+        vk::ImageMemoryBarrier {
+          src_access_mask: vk::AccessFlags::empty(),
+          dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+          old_layout: vk::ImageLayout::UNDEFINED,
+          new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+          src_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
+          dst_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
+          subresource_range: vk::ImageSubresourceRange {
+            base_mip_level: mip_level,
+            level_count: 1,
+            base_array_layer: array_layer,
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            layer_count: 1
+          },
+          image: *texture.get_handle(),
+          ..Default::default()
+        }));
+
+      transfer.copies.push(VkTransferCopy::BufferToImage {
+        src: src_buffer.clone(),
+        dst: texture.clone(),
+        region: vk::BufferImageCopy {
+          buffer_offset: src_buffer.get_offset_and_length().0 as u64,
+          image_offset: vk::Offset3D {
+            x: 0,
+            y: 0,
+            z: 0
+          },
+          buffer_row_length: 0,
+          buffer_image_height: 0,
+          image_extent: vk::Extent3D {
+            width: max(texture.get_info().width >> mip_level, 1),
+            height: max(texture.get_info().height >> mip_level, 1),
+            depth: max(texture.get_info().depth >> mip_level, 1),
+          },
+          image_subresource: vk::ImageSubresourceLayers {
+            mip_level,
+            base_array_layer: array_layer,
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            layer_count: 1
+          }
+        }
+      });
+
+      // release
+      transfer.post_barriers.push((None, VkTransferBarrier::Image (
+        vk::ImageMemoryBarrier {
+          src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+          dst_access_mask: vk::AccessFlags::empty(),
+          old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+          new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+          src_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
+          dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
+          subresource_range: vk::ImageSubresourceRange {
+            base_mip_level: mip_level,
+            level_count: 1,
+            base_array_layer: array_layer,
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            layer_count: 1
+          },
+          image: *texture.get_handle(),
+          ..Default::default()
+        })));
+
+      transfer.fence.clone()
+    };
+
+    // acquire
+    guard.graphics.post_barriers.push((Some(fence), VkTransferBarrier::Image (
+      vk::ImageMemoryBarrier {
+        src_access_mask: vk::AccessFlags::empty(),
+        dst_access_mask: vk::AccessFlags::MEMORY_READ,
+        old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        src_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
+        dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
+        subresource_range: vk::ImageSubresourceRange {
+          base_mip_level: mip_level,
+          level_count: 1,
+          base_array_layer: array_layer,
+          aspect_mask: vk::ImageAspectFlags::COLOR,
+          layer_count: 1
+        },
+        image: *texture.get_handle(),
+        ..Default::default()
+      })));
+
+    guard.graphics_ownership_acquire_fence.as_ref().unwrap().clone()
   }
 
   pub fn try_free_used_buffers(&self) {
     let mut guard = self.inner.lock().unwrap();
     for cmd_buffer in &mut guard.graphics.used_cmd_buffers {
-      if cmd_buffer.fence.is_signaled() {
-        cmd_buffer.reset();
+      if cmd_buffer.fence.is_signalled() {
+        let new_fence = self.shared.get_fence();
+        cmd_buffer.reset(&new_fence);
+      }
+    }
+    if let Some(transfer) = guard.transfer.as_mut() {
+      for cmd_buffer in &mut transfer.used_cmd_buffers {
+        if cmd_buffer.fence.is_signalled() {
+          let new_fence = self.shared.get_fence();
+          cmd_buffer.reset(&new_fence);
+        }
       }
     }
   }
 
-  pub fn flush(&self) {
-    let mut guard = self.inner.lock().unwrap();
-
-    if guard.graphics.copies.is_empty() {
-      return;
+  fn flush_commands(&self, commands: &mut VkTransferCommands) -> Option<(Box<VkTransferCommandBuffer>, bool)> {
+    if commands.copies.is_empty() && commands.post_barriers.is_empty()
+        && !commands.post_barriers.iter().any(|(fence, _)| fence.as_ref().map_or(true, |f| f.is_signalled())) {
+      return None;
     }
 
-    let reuse_first_graphics_buffer = guard.graphics.used_cmd_buffers.front().map(|cmd_buffer| cmd_buffer.fence.is_signaled()).unwrap_or(false);
+    let reuse_first_graphics_buffer = commands.used_cmd_buffers.front().map(|cmd_buffer| cmd_buffer.fence.is_signalled()).unwrap_or(false);
     let mut cmd_buffer = if reuse_first_graphics_buffer {
-      let mut cmd_buffer= guard.graphics.used_cmd_buffers.pop_front().unwrap();
-      cmd_buffer.reset();
+      let mut cmd_buffer= commands.used_cmd_buffers.pop_front().unwrap();
+      cmd_buffer.reset(&commands.fence);
       cmd_buffer
     } else {
       Box::new({
-        let buffer_info = vk::CommandBufferAllocateInfo {
-          command_pool: **guard.graphics.pool,
-          level: vk::CommandBufferLevel::PRIMARY,
-          command_buffer_count: 1,
-          ..Default::default()
-        };
-        let cmd_buffer = unsafe { self.device.allocate_command_buffers(&buffer_info) }.unwrap().pop().unwrap();
-        let new_fence = self.shared.get_fence();
-        VkTransferCommandBuffer {
-          cmd_buffer,
-          device: self.device.clone(),
-          trackers: VkLifetimeTrackers::new(),
-          fence: new_fence
-        }
+        VkTransferCommandBuffer::new(&self.device, &commands.pool, &commands.fence)
       })
     };
+    debug_assert!(!cmd_buffer.is_used());
     unsafe {
       self.device.begin_command_buffer(*cmd_buffer.get_handle(), &vk::CommandBufferBeginInfo {
         ..Default::default()
@@ -262,7 +356,7 @@ impl VkTransfer {
     // commit pre barriers
     let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
     let mut buffer_barriers = Vec::<vk::BufferMemoryBarrier>::new();
-    for barrier in guard.graphics.pre_barriers.drain(..) {
+    for barrier in commands.pre_barriers.drain(..) {
       match barrier {
         VkTransferBarrier::Buffer(buffer_memory_barrier) => { buffer_barriers.push(buffer_memory_barrier); }
         VkTransferBarrier::Image(image_memory_barrier) => { image_barriers.push(image_memory_barrier); }
@@ -276,7 +370,7 @@ impl VkTransfer {
     }
 
     // commit copies
-    for copy in guard.graphics.copies.drain(..) {
+    for copy in commands.copies.drain(..) {
       match copy {
         VkTransferCopy::BufferToBuffer {
           src, dst, region
@@ -302,12 +396,15 @@ impl VkTransfer {
     // commit post barriers
     image_barriers.clear();
     buffer_barriers.clear();
+    let mut has_acquire_barriers = false;
     let mut retained_barriers = Vec::<(Option<Arc<VkFence>>, VkTransferBarrier)>::new();
-    for (fence, barrier) in guard.graphics.post_barriers.drain(..) {
+    for (fence, barrier) in commands.post_barriers.drain(..) {
       if let Some(fence) = fence {
-        if !fence.is_signaled() {
+        if !fence.is_signalled() {
           retained_barriers.push((Some(fence), barrier));
           continue;
+        } else {
+          has_acquire_barriers = true;
         }
       }
       match barrier {
@@ -315,7 +412,7 @@ impl VkTransfer {
         VkTransferBarrier::Image(image_memory_barrier) => { image_barriers.push(image_memory_barrier); }
       }
     }
-    guard.graphics.post_barriers.append(&mut retained_barriers);
+    commands.post_barriers.extend(retained_barriers);
     unsafe {
       self.device.cmd_pipeline_barrier(*cmd_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[],
                                        &buffer_barriers,
@@ -326,10 +423,43 @@ impl VkTransfer {
     unsafe {
       self.device.end_command_buffer(*cmd_buffer.get_handle());
     }
-    self.graphics_queue.submit_transfer(&cmd_buffer);
-    let c_queue = self.graphics_queue.clone();
-    rayon::spawn(move || c_queue.process_submissions());
-    guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
+
+    cmd_buffer.mark_used();
+    commands.fence = self.shared.get_fence();
+
+    Some((cmd_buffer, has_acquire_barriers))
+  }
+
+  pub fn flush(&self) {
+    self.try_free_used_buffers();
+
+    let mut guard = self.inner.lock().unwrap();
+    if let Some(transfer) = guard.transfer.as_mut() {
+      let cmd_buffer_opt = self.flush_commands(transfer);
+      if let Some((cmd_buffer, _)) = cmd_buffer_opt {
+        self.transfer_queue.as_ref().unwrap().submit_transfer(&cmd_buffer);
+        transfer.used_cmd_buffers.push_back(cmd_buffer);
+      }
+    }
+
+    let cmd_buffer_opt = self.flush_commands(&mut guard.graphics);
+    if let Some((cmd_buffer, has_aquire_barriers)) = cmd_buffer_opt {
+      self.graphics_queue.submit_transfer(&cmd_buffer);
+      guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
+      if has_aquire_barriers && guard.graphics_ownership_acquire_fence.is_some() {
+        self.graphics_queue.signal_fence(guard.graphics_ownership_acquire_fence.as_ref().unwrap());
+        guard.graphics_ownership_acquire_fence = Some(self.shared.get_fence());
+      }
+    }
+
+    let c_graphics_queue = self.graphics_queue.clone();
+    let c_transfer_queue = self.transfer_queue.clone();
+    rayon::spawn(move || {
+      c_graphics_queue.process_submissions();
+      if let Some(transfer_queue) = c_transfer_queue {
+        transfer_queue.process_submissions();
+      }
+    });
   }
 }
 
@@ -337,25 +467,59 @@ pub struct VkTransferCommandBuffer {
   cmd_buffer: vk::CommandBuffer,
   device: Arc<RawVkDevice>,
   trackers: VkLifetimeTrackers,
-  fence: Arc<VkFence>
+  fence: Arc<VkFence>,
+  is_used: bool
 }
 
 impl VkTransferCommandBuffer {
+  pub(super) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, fence: &Arc<VkFence>) -> Self {
+    debug_assert!(!fence.is_signalled());
+    let buffer_info = vk::CommandBufferAllocateInfo {
+      command_pool: ***pool,
+      level: vk::CommandBufferLevel::PRIMARY,
+      command_buffer_count: 1,
+      ..Default::default()
+    };
+    let cmd_buffer = unsafe { device.allocate_command_buffers(&buffer_info) }.unwrap().pop().unwrap();
+
+    Self {
+      cmd_buffer,
+      device: device.clone(),
+      fence: fence.clone(),
+      trackers: VkLifetimeTrackers::new(),
+      is_used: false
+    }
+  }
+
   #[inline]
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
     &self.cmd_buffer
   }
 
   #[inline]
-  pub(crate) fn get_fence(&self) -> &VkFence {
+  pub(crate) fn get_fence(&self) -> &Arc<VkFence> {
     &self.fence
   }
 
-  fn reset(&mut self) {
-    self.fence.reset();
+  pub(super) fn mark_used(&mut self) {
+    self.is_used = true;
+  }
+
+  pub(super) fn is_used(&self) -> bool {
+    self.is_used
+  }
+
+  pub(super) fn reset(&mut self, fence: &Arc<VkFence>) {
+    if !self.is_used {
+      return;
+    }
+    debug_assert!(self.fence.is_signalled());
+    debug_assert!(!fence.is_signalled());
+    self.fence = fence.clone();
     unsafe {
       self.device.reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES);
     }
     self.trackers.reset();
+    self.is_used = false;
   }
 }

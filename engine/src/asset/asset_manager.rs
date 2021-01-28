@@ -23,12 +23,15 @@ pub type AssetKey = usize;
 pub struct AssetLoadRequest {
   path: String,
   asset_type: AssetType,
-  progress: Arc<AssetLoaderProgress>
+  progress: Arc<AssetLoaderProgress>,
+  priority: AssetLoadPriority
 }
 
 pub struct LoadedAsset<P: Platform> {
   pub path: String,
-  pub asset: Asset<P>
+  pub asset: Asset<P>,
+  pub fence: Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>,
+  pub priority: AssetLoadPriority
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -106,10 +109,16 @@ pub struct AssetLoaderResult {
   pub level: Option<World>,
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum AssetLoadPriority {
+  Normal,
+  Low
+}
+
 pub trait AssetLoader<P: Platform>
   : Send + Sync {
   fn matches(&self, file: &mut AssetFile) -> bool;
-  fn load(&self, file: AssetFile, manager: &AssetManager<P>, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()>;
+  fn load(&self, file: AssetFile, manager: &AssetManager<P>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()>;
 }
 
 pub enum Asset<P: Platform> {
@@ -184,14 +193,14 @@ impl<P: Platform> AssetManager<P> {
         count: if index_buffer_data.len() == 0 { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
       }]
     });
-    self.add_asset(path, Asset::Mesh(mesh));
+    self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal, None);
   }
 
   pub fn add_material(&self, path: &str, albedo: &str) {
     let material = Arc::new(Material {
       albedo_texture_path: albedo.to_string()
     });
-    self.add_asset(path, Asset::Material(material));
+    self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal, None);
   }
 
   pub fn add_model(&self, path: &str, mesh_path: &str, material_paths: &[&str]) {
@@ -199,7 +208,7 @@ impl<P: Platform> AssetManager<P> {
       mesh_path: mesh_path.to_string(),
       material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect()
     });
-    self.add_asset(path, Asset::Model(model));
+    self.add_asset(path, Asset::Model(model), AssetLoadPriority::Normal, None);
   }
 
   pub fn add_texture(&self, path: &str, info: &TextureInfo, texture_data: &[u8]) {
@@ -223,7 +232,7 @@ impl<P: Platform> AssetManager<P> {
       min_lod: 0.0,
       max_lod: 0.0
     });
-    self.add_asset(path, Asset::Texture(srv));
+    self.add_asset(path, Asset::Texture(srv), AssetLoadPriority::Normal, None);
   }
 
   pub fn add_container(&self, container: Box<dyn AssetContainer>) {
@@ -243,11 +252,11 @@ impl<P: Platform> AssetManager<P> {
     loaders.push(loader);
   }
 
-  pub fn add_asset(&self, path: &str, asset: Asset<P>) {
-    self.add_asset_with_progress(path, asset, None)
+  pub fn add_asset(&self, path: &str, asset: Asset<P>, priority: AssetLoadPriority, fence: Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>) {
+    self.add_asset_with_progress(path, asset, None, priority, fence)
   }
 
-  pub fn add_asset_with_progress(&self, path: &str, asset: Asset<P>, progress: Option<&Arc<AssetLoaderProgress>>) {
+  pub fn add_asset_with_progress(&self, path: &str, asset: Asset<P>, progress: Option<&Arc<AssetLoaderProgress>>, priority: AssetLoadPriority, fence: Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>) {
     {
       let mut loaded = self.loaded_assets.lock().unwrap();
       loaded.insert(path.to_string());
@@ -260,36 +269,44 @@ impl<P: Platform> AssetManager<P> {
       Asset::Material(material) => {
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Material(material),
-          path: path.to_owned()
+          path: path.to_owned(),
+          fence,
+          priority
         });
       }
       Asset::Texture(texture) => {
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Texture(texture),
-          path: path.to_owned()
+          path: path.to_owned(),
+          fence,
+          priority
         });
       }
       Asset::Mesh(mesh) => {
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Mesh(mesh),
-          path: path.to_owned()
+          path: path.to_owned(),
+          fence,
+          priority
         });
       }
       Asset::Model(model) => {
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Model(model),
-          path: path.to_owned()
+          path: path.to_owned(),
+          fence,
+          priority
         });
       }
       _ => unimplemented!()
     }
   }
 
-  pub fn request_asset(&self, path: &str, asset_type: AssetType) -> Arc<AssetLoaderProgress> {
-    self.request_asset_with_progress(path, asset_type, None)
+  pub fn request_asset(&self, path: &str, asset_type: AssetType, priority: AssetLoadPriority) -> Arc<AssetLoaderProgress> {
+    self.request_asset_with_progress(path, asset_type, priority, None)
   }
 
-  pub fn request_asset_with_progress(&self, path: &str, asset_type: AssetType, progress: Option<&Arc<AssetLoaderProgress>>) -> Arc<AssetLoaderProgress> {
+  pub fn request_asset_with_progress(&self, path: &str, asset_type: AssetType, priority: AssetLoadPriority, progress: Option<&Arc<AssetLoaderProgress>>) -> Arc<AssetLoaderProgress> {
     let progress = progress.map_or_else(|| Arc::new(AssetLoaderProgress {
       expected: AtomicU32::new(0),
       finished: AtomicU32::new(0)
@@ -308,7 +325,8 @@ impl<P: Platform> AssetManager<P> {
     queue_guard.push_back(AssetLoadRequest {
       asset_type,
       path: path.to_owned(),
-      progress: progress.clone()
+      progress: progress.clone(),
+      priority
     });
 
     progress
@@ -334,7 +352,7 @@ impl<P: Platform> AssetManager<P> {
       finished: AtomicU32::new(0)
     });
     let loader = loader_opt.unwrap();
-    let assets_opt = loader.load(file, self, &progress);
+    let assets_opt = loader.load(file, self, AssetLoadPriority::Normal, &progress);
     if assets_opt.is_err() {
       println!("Could not load file: {:?}", path);
       return None;
@@ -375,7 +393,7 @@ impl<P: Platform> AssetManager<P> {
     loader_opt
   }
 
-  fn load_asset(&self, mut file: AssetFile, progress: &Arc<AssetLoaderProgress>) {
+  fn load_asset(&self, mut file: AssetFile, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) {
     let path = file.path.clone();
 
     let loaders = self.loaders.read().unwrap();
@@ -387,7 +405,7 @@ impl<P: Platform> AssetManager<P> {
     }
     let loader = loader_opt.unwrap();
 
-    let assets_opt = loader.load(file, self, progress);
+    let assets_opt = loader.load(file, self, priority, progress);
     if assets_opt.is_err() {
       progress.finished.fetch_add(1, Ordering::SeqCst);
       println!("Could not load file: {:?}", path.as_str());
@@ -449,7 +467,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
           continue;
         }
         let file = file_opt.unwrap();
-        mgr.load_asset(file, &request.progress);
+        mgr.load_asset(file, request.priority, &request.progress);
       }
     }
 

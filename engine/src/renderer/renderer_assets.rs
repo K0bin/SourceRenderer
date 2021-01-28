@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::graphics::{Backend, Device};
-use crate::asset::{Mesh, Model, Material, AssetManager, Asset};
+use sourcerenderer_core::graphics::{Backend, Device, Fence};
+use crate::asset::{Mesh, Model, Material, AssetManager, Asset, AssetLoadPriority};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };
 use nalgebra::Vector4;
@@ -29,7 +29,8 @@ pub(super) struct RendererAssets<P: Platform> {
   meshes: HashMap<String, Arc<Mesh<P::GraphicsBackend>>>,
   materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
   textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
-  zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>
+  zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>,
+  async_textures: Vec<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>)>
 }
 
 impl<P: Platform> RendererAssets<P> {
@@ -71,7 +72,8 @@ impl<P: Platform> RendererAssets<P> {
       meshes: HashMap::new(),
       materials: HashMap::new(),
       textures: HashMap::new(),
-      zero_view
+      zero_view,
+      async_textures: Vec::new()
     }
   }
 
@@ -167,9 +169,41 @@ impl<P: Platform> RendererAssets<P> {
 
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {
     self.device.flush_transfers();
+
+    let mut retained_async_textures = Vec::<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>)>::new();
+    let mut ready_async_textures = Vec::<(String, Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>)>::new();
+    for (fence, name, texture) in self.async_textures.drain(..) {
+      if fence.is_signaled() {
+        ready_async_textures.push((name, texture));
+      } else {
+        retained_async_textures.push((fence, name, texture));
+      }
+    }
+    self.async_textures.extend(retained_async_textures);
+    for (name, texture) in ready_async_textures {
+      self.integrate_texture(&name, &texture);
+    }
+
     let mut asset_opt = asset_manager.receive_render_asset();
     while asset_opt.is_some() {
       let asset = asset_opt.unwrap();
+      if asset.priority == AssetLoadPriority::Low {
+        let fence = asset.fence.as_ref();
+        let is_signalled = fence.map_or(true, |f| f.is_signaled());
+        let path = &asset.path;
+        if !is_signalled {
+          let texture = match asset.asset {
+            Asset::Texture(texture) => {
+              texture
+            }
+            _ => {panic!(":(")}
+          };
+          self.async_textures.push((fence.unwrap().clone(), path.clone(), texture));
+          asset_opt = asset_manager.receive_render_asset();
+          continue;
+        }
+      }
+
       match &asset.asset {
         Asset::Texture(texture) => { self.integrate_texture(&asset.path, texture); }
         Asset::Material(material) => { self.integrate_material(&asset.path, material); }

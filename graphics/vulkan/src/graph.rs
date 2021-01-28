@@ -599,7 +599,7 @@ impl VkRenderGraph {
   fn execute_cmd_buffer(&self,
                         cmd_buffer: &mut VkCommandBufferRecorder,
                         frame_local: &mut VkFrameLocal,
-                        fence: Option<&VkFence>,
+                        fence: Option<&Arc<VkFence>>,
                         wait_semaphores: &[&VkSemaphore],
                         signal_semaphore: &[&VkSemaphore]) {
     let finished_cmd_buffer = std::mem::replace(cmd_buffer, frame_local.get_command_buffer(CommandBufferType::PRIMARY));
@@ -704,7 +704,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           };
 
           let fence = if *renders_to_swapchain {
-            Some(&cmd_fence as &VkFence)
+            Some(&cmd_fence)
           } else {
             None
           };

@@ -11,7 +11,7 @@ use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vert
 use std::sync::Mutex;
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, LoadedAsset, AssetLoaderProgress};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, LoadedAsset, AssetLoaderProgress, AssetLoadPriority};
 use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureShaderResourceViewInfo, Filter, AddressMode, Backend};
 use legion::world::SubWorld;
 use legion::{World, WorldOptions};
@@ -265,7 +265,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
-  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
     let path = asset_file.path.clone();
     let file = match asset_file.data {
@@ -373,8 +373,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let index_buffer_temp = manager.graphics_device().upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     let vertex_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<crate::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
     let index_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<u32>() * brush_indices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
-    manager.graphics_device().init_buffer(&vertex_buffer_temp, &vertex_buffer);
-    manager.graphics_device().init_buffer(&index_buffer_temp, &index_buffer);
+    let _vertex_buffer_fence = manager.graphics_device().init_buffer(&vertex_buffer_temp, &vertex_buffer);
+    let index_buffer_fence = manager.graphics_device().init_buffer(&index_buffer_temp, &index_buffer);
 
     let mut world = World::new(WorldOptions::default());
     for (index, (ranges_start, ranges_count)) in per_model_range_offsets.iter().enumerate() {
@@ -385,14 +385,14 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       });
       let mesh_name = format!("brushes_mesh_{}", index);
 
-      manager.add_asset(&mesh_name, Asset::Mesh(mesh));
+      manager.add_asset(&mesh_name, Asset::Mesh(mesh), AssetLoadPriority::Normal, Some(index_buffer_fence.clone()));
 
       let model_name = format!("brushes_model_{}", index);
       let model = Arc::new(Model {
         mesh_path: mesh_name,
         material_paths: per_model_materials[index].clone()
       });
-      manager.add_asset(&model_name, Asset::Model(model));
+      manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal, Some(index_buffer_fence.clone()));
 
       world.push(
         (StaticRenderableComponent {
@@ -410,12 +410,12 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     }
 
     for material in materials_to_load {
-      manager.request_asset(&material, AssetType::Material);
+      manager.request_asset(&material, AssetType::Material, AssetLoadPriority::Low);
     }
 
     manager.add_container(pakfile_container);
 
-    let lightmap = lightmap_packer.build_texture::<P::GraphicsBackend>(manager.graphics_device());
+    let (lightmap, lightmap_fence) = lightmap_packer.build_texture::<P::GraphicsBackend>(manager.graphics_device());
     let lightmap_view = manager.graphics_device().create_shader_resource_view(&lightmap, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
@@ -433,7 +433,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       min_lod: 0.0,
       max_lod: 0.0
     });
-    manager.add_asset("lightmap", Asset::Texture(lightmap_view));
+    manager.add_asset("lightmap", Asset::Texture(lightmap_view), AssetLoadPriority::Normal, Some(lightmap_fence));
 
     Ok(AssetLoaderResult {
       level: Some(world)

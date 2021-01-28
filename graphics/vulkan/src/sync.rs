@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, MutexGuard};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Poll, Context};
@@ -11,6 +11,11 @@ use crate::raw::RawVkDevice;
 
 use sourcerenderer_core::graphics::Fence;
 use sourcerenderer_core::pool::{Recyclable};
+use std::hash::{Hash, Hasher};
+use ash::vk::Handle;
+use crate::ash::version::InstanceV1_0;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 pub struct VkSemaphore {
   semaphore: vk::Semaphore,
@@ -46,7 +51,8 @@ impl Drop for VkSemaphore {
 }
 
 pub struct VkFenceInner {
-  fence: vk::Fence,
+  fence: Mutex<vk::Fence>,
+  is_signalled: AtomicBool,
   device: Arc<RawVkDevice>
 }
 
@@ -62,33 +68,46 @@ impl VkFenceInner {
     }
     return Self {
       device: device.clone(),
-      fence
+      is_signalled: AtomicBool::new(false),
+      fence: Mutex::new(fence)
     };
   }
 
   pub fn reset(&self) {
     let vk_device = &self.device.device;
+    self.is_signalled.store(false, Ordering::SeqCst);
+    let fence_guard = self.fence.lock().unwrap();
     unsafe {
-      vk_device.reset_fences(&[self.fence]);
+      vk_device.reset_fences(&[*fence_guard]);
     }
   }
 
-  pub fn get_handle(&self) -> &vk::Fence {
-    return &self.fence;
+  pub fn get_handle(&self) -> MutexGuard<vk::Fence> {
+    return self.fence.lock().unwrap();
   }
 
   pub fn await_signal(&self) {
     let vk_device = &self.device.device;
+    let fence_guard = self.fence.lock().unwrap();
     unsafe {
-      vk_device.wait_for_fences(&[self.fence], true, std::u64::MAX);
+      vk_device.wait_for_fences(&[*fence_guard], true, std::u64::MAX);
     }
   }
 
-  pub fn is_signaled(&self) -> bool {
-    let vk_device = &self.device.device;
-    unsafe {
-      vk_device.get_fence_status(self.fence).unwrap()
+  pub fn is_signalled(&self) -> bool {
+    if self.is_signalled.load(Ordering::SeqCst) {
+      return true;
     }
+
+    let vk_device = &self.device.device;
+    let fence_guard = self.fence.lock().unwrap();
+    let is_signalled = unsafe {
+      vk_device.get_fence_status(*fence_guard).unwrap()
+    };
+    if is_signalled {
+      self.is_signalled.store(true, Ordering::SeqCst);
+    }
+    is_signalled
   }
 }
 
@@ -127,7 +146,7 @@ impl Deref for VkFence {
 
 impl Fence for VkFence {
   fn is_signaled(&self) -> bool {
-    self.inner.is_signaled()
+    self.inner.is_signalled()
   }
 
   fn await_signal(&self) {

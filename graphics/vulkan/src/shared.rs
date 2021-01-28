@@ -41,7 +41,7 @@ impl VkShared {
   #[inline]
   pub(crate) fn get_fence(&self) -> Arc<VkFence> {
     let inner = self.fences.get();
-    if inner.is_signaled() {
+    if inner.is_signalled() {
       inner.reset();
     }
     Arc::new(VkFence::new(inner))

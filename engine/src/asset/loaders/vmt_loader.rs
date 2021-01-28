@@ -1,5 +1,5 @@
 use crate::asset::{AssetLoader, Asset, AssetType, AssetManager};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer, AssetLoaderProgress};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer, AssetLoaderProgress, AssetLoadPriority};
 use sourcerenderer_core::Platform;
 use sourcerenderer_vmt::VMTMaterial;
 use std::io::{BufReader, Seek};
@@ -22,7 +22,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     file.path.starts_with("materials/") && file.path.ends_with(".vmt")
   }
 
-  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = asset_file.path.clone();
     let mut vmt_material = match asset_file.data {
       AssetFileData::File(file) => {
@@ -76,8 +76,8 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
       albedo_texture_path: albedo_path.clone()
     });
 
-    manager.request_asset_with_progress(&albedo_path, AssetType::Texture, Some(progress));
-    manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress));
+    manager.request_asset_with_progress(&albedo_path, AssetType::Texture, priority, Some(progress));
+    manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress), priority, None);
 
     Ok(AssetLoaderResult {
       level: None

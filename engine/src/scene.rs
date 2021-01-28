@@ -8,7 +8,7 @@ use sourcerenderer_core::Platform;
 
 use crate::renderer::*;
 use crate::transform;
-use crate::asset::{AssetManager, AssetType};
+use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;
 use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader};
 use legion::query::{FilterResult, LayoutFilter};
@@ -51,7 +51,7 @@ impl Scene {
     #[cfg(target_os = "windows")]
         let csgo_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive";
     asset_manager.add_container(Box::new(CSGODirectoryContainer::new(csgo_path).unwrap()));
-    let progress = asset_manager.request_asset("pak01_dir", AssetType::Container);
+    let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
     while !progress.is_done() {
       // wait until our container is loaded
     }
