@@ -30,7 +30,7 @@ pub(super) struct RendererAssets<P: Platform> {
   materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
   textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
   zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>,
-  async_textures: Vec<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>)>
+  delayed: Vec<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Asset<P>)>
 }
 
 impl<P: Platform> RendererAssets<P> {
@@ -73,7 +73,7 @@ impl<P: Platform> RendererAssets<P> {
       materials: HashMap::new(),
       textures: HashMap::new(),
       zero_view,
-      async_textures: Vec::new()
+      delayed: Vec::new()
     }
   }
 
@@ -170,18 +170,24 @@ impl<P: Platform> RendererAssets<P> {
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {
     self.device.flush_transfers();
 
-    let mut retained_async_textures = Vec::<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>)>::new();
-    let mut ready_async_textures = Vec::<(String, Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>)>::new();
-    for (fence, name, texture) in self.async_textures.drain(..) {
+    let mut retained_delayed_assets = Vec::<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Asset<P>)>::new();
+    let mut ready_delayed_assets = Vec::<(String, Asset<P>)>::new();
+    for (fence, name, asset) in self.delayed.drain(..) {
       if fence.is_signaled() {
-        ready_async_textures.push((name, texture));
+        ready_delayed_assets.push((name, asset));
       } else {
-        retained_async_textures.push((fence, name, texture));
+        retained_delayed_assets.push((fence, name, asset));
       }
     }
-    self.async_textures.extend(retained_async_textures);
-    for (name, texture) in ready_async_textures {
-      self.integrate_texture(&name, &texture);
+    self.delayed.extend(retained_delayed_assets);
+    for (name, asset) in ready_delayed_assets {
+      match &asset {
+        Asset::Texture(texture) => { self.integrate_texture(&name, texture); }
+        Asset::Material(material) => { self.integrate_material(&name, material); }
+        Asset::Mesh(mesh) => { self.integrate_mesh(&name, mesh); }
+        Asset::Model(model) => { self.integrate_model(&name, model); }
+        _ => unimplemented!()
+      }
     }
 
     let mut asset_opt = asset_manager.receive_render_asset();
@@ -190,15 +196,8 @@ impl<P: Platform> RendererAssets<P> {
       if asset.priority == AssetLoadPriority::Low {
         let fence = asset.fence.as_ref();
         let is_signalled = fence.map_or(true, |f| f.is_signaled());
-        let path = &asset.path;
         if !is_signalled {
-          let texture = match asset.asset {
-            Asset::Texture(texture) => {
-              texture
-            }
-            _ => {panic!(":(")}
-          };
-          self.async_textures.push((fence.unwrap().clone(), path.clone(), texture));
+          self.delayed.push((fence.unwrap().clone(), asset.path.clone(), asset.asset));
           asset_opt = asset_manager.receive_render_asset();
           continue;
         }
