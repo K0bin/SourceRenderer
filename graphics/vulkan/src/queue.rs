@@ -42,7 +42,7 @@ struct VkQueueInner {
 }
 
 struct VkVirtualSubmission {
-  command_buffer: Option<vk::CommandBuffer>,
+  command_buffer: vk::CommandBuffer,
   wait_semaphores: SmallVec<[vk::Semaphore; 4]>,
   wait_stages: SmallVec<[vk::PipelineStageFlags; 4]>,
   signal_semaphores: SmallVec<[vk::Semaphore; 4]>,
@@ -83,12 +83,12 @@ impl VkQueue {
     let mut command_buffers = SmallVec::<[vk::CommandBuffer; 32]>::new();
     let mut batch = SmallVec::<[vk::SubmitInfo; 8]>::new();
     let vk_queue = guard.queue;
-    for submission in &guard.virtual_queue {
+    for submission in guard.virtual_queue.drain(..) {
       let mut append = false;
       if submission.fence.is_none() && submission.wait_semaphores.len() == 0 && submission.signal_semaphores.len() == 0 {
         if let Some(last_info) = batch.last_mut() {
           if last_info.wait_semaphore_count == 0 && last_info.signal_semaphore_count == 0 {
-            command_buffers.push(submission.command_buffer.unwrap());
+            command_buffers.push(submission.command_buffer);
             last_info.command_buffer_count += 1;
             append = true;
           }
@@ -96,16 +96,12 @@ impl VkQueue {
       }
 
       if !append {
-        let mut submit_cmd_buffer_len = 0u32;
-        if let Some(cmd_buffer) = submission.command_buffer {
-          submit_cmd_buffer_len = 1u32;
-          command_buffers.push(cmd_buffer);
-        }
+        command_buffers.push(submission.command_buffer);
         let submit = vk::SubmitInfo {
           wait_semaphore_count: submission.wait_semaphores.len() as u32,
           p_wait_semaphores: submission.wait_semaphores.as_ptr(),
           p_wait_dst_stage_mask: submission.wait_stages.as_ptr(),
-          command_buffer_count: submit_cmd_buffer_len,
+          command_buffer_count: 1,
           p_command_buffers: unsafe { command_buffers.as_ptr().offset(command_buffers.len() as isize - 1) },
           signal_semaphore_count: submission.signal_semaphores.len() as u32,
           p_signal_semaphores: submission.signal_semaphores.as_ptr(),
@@ -124,9 +120,10 @@ impl VkQueue {
             command_buffers.clear();
           }
 
-          let fence = submission.fence.as_ref().unwrap().get_handle();
+          let fence = submission.fence.unwrap();
+          let fence_handle = fence.get_handle();
           unsafe {
-            let result = self.device.device.queue_submit(vk_queue, &[submit], *fence);
+            let result = self.device.device.queue_submit(vk_queue, &[submit], *fence_handle);
             if result.is_err() {
               panic!("Submit failed: {:?}", result);
             }
@@ -145,8 +142,6 @@ impl VkQueue {
         }
       }
     }
-
-    guard.virtual_queue.clear();
   }
 
   pub fn submit_transfer(&self, command_buffer: &VkTransferCommandBuffer) {
@@ -154,23 +149,11 @@ impl VkQueue {
 
     let vk_cmd_buffer = *command_buffer.get_handle();
     let submission = VkVirtualSubmission {
-      command_buffer: Some(vk_cmd_buffer),
+      command_buffer: vk_cmd_buffer,
       wait_semaphores: SmallVec::new(),
       wait_stages: SmallVec::new(),
       signal_semaphores: SmallVec::new(),
       fence: Some(command_buffer.get_fence().clone())
-    };
-    let mut guard = self.queue.lock().unwrap();
-    guard.virtual_queue.push(submission);
-  }
-
-  pub fn signal_fence(&self, fence: &Arc<VkFence>) {
-    let submission = VkVirtualSubmission {
-      command_buffer: None,
-      wait_semaphores: SmallVec::new(),
-      wait_stages: SmallVec::new(),
-      signal_semaphores: SmallVec::new(),
-      fence: Some(fence.clone())
     };
     let mut guard = self.queue.lock().unwrap();
     guard.virtual_queue.push(submission);
@@ -191,7 +174,7 @@ impl VkQueue {
 
     let vk_cmd_buffer = *cmd_buffer_mut.get_handle();
     let submission = VkVirtualSubmission {
-      command_buffer: Some(vk_cmd_buffer),
+      command_buffer: vk_cmd_buffer,
       wait_semaphores: wait_semaphore_handles,
       wait_stages: stage_masks,
       signal_semaphores: signal_semaphore_handles,
