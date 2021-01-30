@@ -130,6 +130,16 @@ impl VkQueue {
             }
           }
         } else {
+          if batch.len() == batch.capacity() {
+            unsafe {
+              let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
+              if result.is_err() {
+                panic!("Submit failed: {:?}", result);
+              }
+            }
+            batch.clear();
+            command_buffers.clear();
+          }
           batch.push(submit);
         }
       }
