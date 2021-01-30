@@ -16,6 +16,7 @@ use ash::vk::Handle;
 use crate::ash::version::InstanceV1_0;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use crossbeam_utils::atomic::AtomicCell;
 
 pub struct VkSemaphore {
   semaphore: vk::Semaphore,
@@ -50,9 +51,17 @@ impl Drop for VkSemaphore {
   }
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum VkFenceState {
+  Ready,
+  Submitted,
+  Signalled
+}
+
 pub struct VkFenceInner {
   fence: Mutex<vk::Fence>,
-  is_signalled: AtomicBool,
+  state: AtomicCell<VkFenceState>,
   device: Arc<RawVkDevice>
 }
 
@@ -68,14 +77,14 @@ impl VkFenceInner {
     }
     return Self {
       device: device.clone(),
-      is_signalled: AtomicBool::new(false),
+      state: AtomicCell::new(VkFenceState::Ready),
       fence: Mutex::new(fence)
     };
   }
 
   pub fn reset(&self) {
     let vk_device = &self.device.device;
-    self.is_signalled.store(false, Ordering::SeqCst);
+    self.state.store(VkFenceState::Ready);
     let fence_guard = self.fence.lock().unwrap();
     unsafe {
       vk_device.reset_fences(&[*fence_guard]);
@@ -92,11 +101,22 @@ impl VkFenceInner {
     unsafe {
       vk_device.wait_for_fences(&[*fence_guard], true, std::u64::MAX);
     }
+    self.state.store(VkFenceState::Signalled);
   }
 
   pub fn is_signalled(&self) -> bool {
-    if self.is_signalled.load(Ordering::SeqCst) {
-      return true;
+    self.state() == VkFenceState::Signalled
+  }
+
+  pub fn mark_submitted(&self) {
+    debug_assert_eq!(self.state.load(), VkFenceState::Ready);
+    self.state.store(VkFenceState::Submitted);
+  }
+
+  pub fn state(&self) -> VkFenceState {
+    let state = self.state.load();
+    if state != VkFenceState::Submitted {
+      return state;
     }
 
     let vk_device = &self.device.device;
@@ -105,9 +125,11 @@ impl VkFenceInner {
       vk_device.get_fence_status(*fence_guard).unwrap()
     };
     if is_signalled {
-      self.is_signalled.store(true, Ordering::SeqCst);
+      self.state.store(VkFenceState::Signalled);
+      VkFenceState::Signalled
+    } else {
+      VkFenceState::Submitted
     }
-    is_signalled
   }
 }
 

@@ -14,6 +14,7 @@ crossbeam-channel = "0.5.0"
 spirv_cross = { version = "0.18.0", features = ["hlsl", "msl", "glsl"] }
 smallvec = "1.5.1"
 rayon = "1.5.0"
+crossbeam-utils = "0.8.0"
 
 [dependencies.async-std]
 version = "1.6.1"

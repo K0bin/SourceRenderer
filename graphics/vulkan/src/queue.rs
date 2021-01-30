@@ -121,6 +121,7 @@ impl VkQueue {
           }
 
           let fence = submission.fence.unwrap();
+          fence.mark_submitted();
           let fence_handle = fence.get_handle();
           unsafe {
             let result = self.device.device.queue_submit(vk_queue, &[submit], *fence_handle);

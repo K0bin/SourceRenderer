@@ -7,6 +7,7 @@ use crate::pipeline::VkPipelineLayout;
 use std::collections::HashMap;
 use crate::raw::RawVkDevice;
 use crate::VkFence;
+use crate::sync::VkFenceState;
 
 pub struct VkShared {
   semaphores: Pool<VkSemaphore>,
@@ -41,7 +42,9 @@ impl VkShared {
   #[inline]
   pub(crate) fn get_fence(&self) -> Arc<VkFence> {
     let inner = self.fences.get();
-    if inner.is_signalled() {
+    let state = inner.state();
+    debug_assert_ne!(state, VkFenceState::Submitted);
+    if state == VkFenceState::Signalled {
       inner.reset();
     }
     Arc::new(VkFence::new(inner))
