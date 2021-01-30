@@ -209,8 +209,7 @@ impl VkTransfer {
   pub fn init_texture_async(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Option<Arc<VkFence>> {
     let mut guard = self.inner.lock().unwrap();
     if guard.transfer.is_none() {
-      println!("Falling back to sync texture init");
-      std::mem::forget(guard);
+      std::mem::drop(guard);
       self.init_texture(texture, src_buffer, mip_level, array_layer);
       return None;
     }
