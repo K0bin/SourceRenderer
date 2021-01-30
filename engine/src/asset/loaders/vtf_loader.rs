@@ -18,7 +18,7 @@ impl VTFTextureLoader {
     Self {}
   }
 
-  fn load_texture<P: Platform>(data: &[u8], width: u32, height: u32, format: VTFTextureFormat, device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, priority: AssetLoadPriority) -> (Arc<<P::GraphicsBackend as GraphicsBackend>::TextureShaderResourceView>, Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>) {
+  fn load_texture<P: Platform>(path: &str, data: &[u8], width: u32, height: u32, format: VTFTextureFormat, device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, priority: AssetLoadPriority) -> (Arc<<P::GraphicsBackend as GraphicsBackend>::TextureShaderResourceView>, Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>) {
     let buffer = device.upload_data_raw(data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     let texture = device.create_texture(&TextureInfo {
       format: convert_vtf_texture_format(format),
@@ -28,11 +28,12 @@ impl VTFTextureLoader {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1
-    }, None);
+    }, Some(path));
     let fence = if priority == AssetLoadPriority::Low {
       device.init_texture_async(&texture, &buffer, 0, 0)
     } else {
-      device.init_texture(&texture, &buffer, 0, 0)
+      device.init_texture(&texture, &buffer, 0, 0);
+      None
     };
     let srv = device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
@@ -77,16 +78,16 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
       AssetFileData::File(file) => {
         let mut texture = VtfTexture::new(BufReader::new(file)).unwrap();
         let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
-        VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, manager.graphics_device(), priority)
+        VTFTextureLoader::load_texture::<P>(path.as_str(), &mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, manager.graphics_device(), priority)
       }
       AssetFileData::Memory(cursor) => {
         let mut texture = VtfTexture::new(BufReader::new(cursor)).unwrap();
         let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
-        VTFTextureLoader::load_texture::<P>(&mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, manager.graphics_device(), priority)
+        VTFTextureLoader::load_texture::<P>(path.as_str(), &mipmap.frames[0].faces[0].slices[0].data, mipmap.width, mipmap.height, mipmap.format, manager.graphics_device(), priority)
       }
     };
 
-    manager.add_asset_with_progress(&path, Asset::Texture(texture_view), Some(progress), priority, Some(fence));
+    manager.add_asset_with_progress(&path, Asset::Texture(texture_view), Some(progress), priority, fence);
 
     Ok(AssetLoaderResult {
       level: None

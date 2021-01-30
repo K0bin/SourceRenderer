@@ -11,7 +11,9 @@ use rayon;
 
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::{max, min};
+use std::ffi::CString;
 use crate::{VkShared, VkLifetimeTrackers};
+use ash::vk::Handle;
 
 pub(crate) struct VkTransfer {
   inner: Mutex<VkTransferInner>,
@@ -47,8 +49,7 @@ unsafe impl Sync for VkTransferCopy {}
 
 struct VkTransferInner {
   graphics: VkTransferCommands,
-  transfer: Option<VkTransferCommands>,
-  graphics_ownership_acquire_fence: Option<Arc<VkFence>>
+  transfer: Option<VkTransferCommands>
 }
 
 struct VkTransferCommands {
@@ -57,7 +58,8 @@ struct VkTransferCommands {
   post_barriers: Vec<(Option<Arc<VkFence>>, VkTransferBarrier)>,
   used_cmd_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
   pool: Arc<RawVkCommandPool>,
-  fence: Arc<VkFence>
+  fence: Arc<VkFence>,
+  queue_name: &'static str
 }
 
 impl VkTransfer {
@@ -84,15 +86,9 @@ impl VkTransfer {
         copies: Vec::new(),
         post_barriers: Vec::new(),
         used_cmd_buffers: VecDeque::new(),
-        fence: transfer_fence
+        fence: transfer_fence,
+        queue_name: "Transfer"
       })
-    } else {
-      None
-    };
-
-
-    let graphics_ownership_acquire_fence = if transfer_commands.is_some() {
-      Some(shared.get_fence())
     } else {
       None
     };
@@ -105,10 +101,10 @@ impl VkTransfer {
           post_barriers: Vec::new(),
           pool: graphics_pool,
           used_cmd_buffers: VecDeque::new(),
-          fence: graphics_fence
+          fence: graphics_fence,
+          queue_name: "Graphics"
         },
-        transfer: transfer_commands,
-        graphics_ownership_acquire_fence
+        transfer: transfer_commands
       }),
       transfer_queue: transfer_queue.clone(),
       graphics_queue: graphics_queue.clone(),
@@ -117,7 +113,7 @@ impl VkTransfer {
     }
   }
 
-  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {
+  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
     let mut guard = self.inner.lock().unwrap();
     guard.graphics.pre_barriers.push(VkTransferBarrier::Image (
       vk::ImageMemoryBarrier {
@@ -182,10 +178,9 @@ impl VkTransfer {
         image: *texture.get_handle(),
         ..Default::default()
     })));
-    guard.graphics.fence.clone()
   }
 
-  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) -> Arc<VkFence> {
+  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
     let mut guard = self.inner.lock().unwrap();
     guard.graphics.copies.push(VkTransferCopy::BufferToBuffer {
       src: src_buffer.clone(),
@@ -209,18 +204,20 @@ impl VkTransfer {
         ..Default::default()
       }
     )));
-    guard.graphics.fence.clone()
   }
 
-  pub fn init_texture_async(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Arc<VkFence> {
+  pub fn init_texture_async(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Option<Arc<VkFence>> {
     let mut guard = self.inner.lock().unwrap();
     if guard.transfer.is_none() {
+      println!("Falling back to sync texture init");
       std::mem::forget(guard);
-      return self.init_texture(texture, src_buffer, mip_level, array_layer);
+      self.init_texture(texture, src_buffer, mip_level, array_layer);
+      return None;
     }
 
     let fence = {
       let transfer = guard.transfer.as_mut().unwrap();
+      debug_assert!(!transfer.fence.is_signalled());
       transfer.pre_barriers.push(VkTransferBarrier::Image(
         vk::ImageMemoryBarrier {
           src_access_mask: vk::AccessFlags::empty(),
@@ -290,7 +287,7 @@ impl VkTransfer {
     };
 
     // acquire
-    guard.graphics.post_barriers.push((Some(fence), VkTransferBarrier::Image (
+    guard.graphics.post_barriers.push((Some(fence.clone()), VkTransferBarrier::Image (
       vk::ImageMemoryBarrier {
         src_access_mask: vk::AccessFlags::empty(),
         dst_access_mask: vk::AccessFlags::MEMORY_READ,
@@ -309,7 +306,7 @@ impl VkTransfer {
         ..Default::default()
       })));
 
-    guard.graphics_ownership_acquire_fence.as_ref().unwrap().clone()
+    Some(fence)
   }
 
   pub fn try_free_used_buffers(&self) {
@@ -330,9 +327,9 @@ impl VkTransfer {
     }
   }
 
-  fn flush_commands(&self, commands: &mut VkTransferCommands) -> Option<(Box<VkTransferCommandBuffer>, bool)> {
-    if commands.copies.is_empty() && commands.post_barriers.is_empty()
-        && !commands.post_barriers.iter().any(|(fence, _)| fence.as_ref().map_or(true, |f| f.is_signalled())) {
+  fn flush_commands(&self, commands: &mut VkTransferCommands) -> Option<Box<VkTransferCommandBuffer>> {
+    if commands.copies.is_empty() && (commands.post_barriers.is_empty()
+        || commands.post_barriers.iter().all(|(fence, _)| fence.as_ref().map_or(false, |f| !f.is_signalled()))) {
       return None;
     }
 
@@ -343,7 +340,7 @@ impl VkTransfer {
       cmd_buffer
     } else {
       Box::new({
-        VkTransferCommandBuffer::new(&self.device, &commands.pool, &commands.fence)
+        VkTransferCommandBuffer::new(&self.device, &commands.pool, &commands.fence, commands.queue_name)
       })
     };
     debug_assert!(!cmd_buffer.is_used());
@@ -396,15 +393,12 @@ impl VkTransfer {
     // commit post barriers
     image_barriers.clear();
     buffer_barriers.clear();
-    let mut has_acquire_barriers = false;
     let mut retained_barriers = Vec::<(Option<Arc<VkFence>>, VkTransferBarrier)>::new();
     for (fence, barrier) in commands.post_barriers.drain(..) {
       if let Some(fence) = fence {
         if !fence.is_signalled() {
           retained_barriers.push((Some(fence), barrier));
           continue;
-        } else {
-          has_acquire_barriers = true;
         }
       }
       match barrier {
@@ -427,7 +421,7 @@ impl VkTransfer {
     cmd_buffer.mark_used();
     commands.fence = self.shared.get_fence();
 
-    Some((cmd_buffer, has_acquire_barriers))
+    Some(cmd_buffer)
   }
 
   pub fn flush(&self) {
@@ -436,20 +430,16 @@ impl VkTransfer {
     let mut guard = self.inner.lock().unwrap();
     if let Some(transfer) = guard.transfer.as_mut() {
       let cmd_buffer_opt = self.flush_commands(transfer);
-      if let Some((cmd_buffer, _)) = cmd_buffer_opt {
+      if let Some(cmd_buffer) = cmd_buffer_opt {
         self.transfer_queue.as_ref().unwrap().submit_transfer(&cmd_buffer);
         transfer.used_cmd_buffers.push_back(cmd_buffer);
       }
     }
 
     let cmd_buffer_opt = self.flush_commands(&mut guard.graphics);
-    if let Some((cmd_buffer, has_aquire_barriers)) = cmd_buffer_opt {
+    if let Some(cmd_buffer) = cmd_buffer_opt {
       self.graphics_queue.submit_transfer(&cmd_buffer);
       guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
-      if has_aquire_barriers && guard.graphics_ownership_acquire_fence.is_some() {
-        self.graphics_queue.signal_fence(guard.graphics_ownership_acquire_fence.as_ref().unwrap());
-        guard.graphics_ownership_acquire_fence = Some(self.shared.get_fence());
-      }
     }
 
     let c_graphics_queue = self.graphics_queue.clone();
@@ -472,7 +462,7 @@ pub struct VkTransferCommandBuffer {
 }
 
 impl VkTransferCommandBuffer {
-  pub(super) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, fence: &Arc<VkFence>) -> Self {
+  pub(super) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, fence: &Arc<VkFence>, queue_name: &str) -> Self {
     debug_assert!(!fence.is_signalled());
     let buffer_info = vk::CommandBufferAllocateInfo {
       command_pool: ***pool,
@@ -481,6 +471,18 @@ impl VkTransferCommandBuffer {
       ..Default::default()
     };
     let cmd_buffer = unsafe { device.allocate_command_buffers(&buffer_info) }.unwrap().pop().unwrap();
+
+    let mut name_string = "TransferCommandBuffer".to_string();
+    name_string += queue_name;
+    let name_cstring = CString::new(name_string).unwrap();
+    unsafe {
+      device.instance.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+        object_type: vk::ObjectType::COMMAND_BUFFER,
+        object_handle: cmd_buffer.as_raw(),
+        p_object_name: name_cstring.as_ptr(),
+        ..Default::default()
+      });
+    }
 
     Self {
       cmd_buffer,

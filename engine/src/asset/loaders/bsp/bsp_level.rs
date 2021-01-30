@@ -385,14 +385,14 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       });
       let mesh_name = format!("brushes_mesh_{}", index);
 
-      manager.add_asset(&mesh_name, Asset::Mesh(mesh), AssetLoadPriority::Normal, Some(index_buffer_fence.clone()));
+      manager.add_asset(&mesh_name, Asset::Mesh(mesh), AssetLoadPriority::Normal, None);
 
       let model_name = format!("brushes_model_{}", index);
       let model = Arc::new(Model {
         mesh_path: mesh_name,
         material_paths: per_model_materials[index].clone()
       });
-      manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal, Some(index_buffer_fence.clone()));
+      manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal, None);
 
       world.push(
         (StaticRenderableComponent {
@@ -415,7 +415,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
     manager.add_container(pakfile_container);
 
-    let (lightmap, lightmap_fence) = lightmap_packer.build_texture::<P::GraphicsBackend>(manager.graphics_device());
+    let lightmap = lightmap_packer.build_texture::<P::GraphicsBackend>(manager.graphics_device());
     let lightmap_view = manager.graphics_device().create_shader_resource_view(&lightmap, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
@@ -433,7 +433,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       min_lod: 0.0,
       max_lod: 0.0
     });
-    manager.add_asset("lightmap", Asset::Texture(lightmap_view), AssetLoadPriority::Normal, Some(lightmap_fence));
+    manager.add_asset("lightmap", Asset::Texture(lightmap_view), AssetLoadPriority::Normal, None);
 
     Ok(AssetLoaderResult {
       level: Some(world)

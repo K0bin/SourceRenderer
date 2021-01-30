@@ -30,7 +30,7 @@ pub(super) struct RendererAssets<P: Platform> {
   materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
   textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
   zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>,
-  delayed: Vec<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Asset<P>)>
+  delayed_assets: Vec<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Asset<P>)>
 }
 
 impl<P: Platform> RendererAssets<P> {
@@ -73,7 +73,7 @@ impl<P: Platform> RendererAssets<P> {
       materials: HashMap::new(),
       textures: HashMap::new(),
       zero_view,
-      delayed: Vec::new()
+      delayed_assets: Vec::new()
     }
   }
 
@@ -168,18 +168,23 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {
-    self.device.flush_transfers();
-
     let mut retained_delayed_assets = Vec::<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Asset<P>)>::new();
     let mut ready_delayed_assets = Vec::<(String, Asset<P>)>::new();
-    for (fence, name, asset) in self.delayed.drain(..) {
+    for (fence, name, asset) in self.delayed_assets.drain(..) {
       if fence.is_signaled() {
         ready_delayed_assets.push((name, asset));
       } else {
         retained_delayed_assets.push((fence, name, asset));
       }
     }
-    self.delayed.extend(retained_delayed_assets);
+    self.delayed_assets.extend(retained_delayed_assets);
+
+    // has to be called after deciding which fences have gotten signalled
+    // to avoid an unlikely timing problem where the fence isn't ready yet when we
+    // flush the transfers but becomes signalled after that just in time for the renderer
+    // to decide to use the associated assets
+    self.device.flush_transfers();
+
     for (name, asset) in ready_delayed_assets {
       match &asset {
         Asset::Texture(texture) => { self.integrate_texture(&name, texture); }
@@ -193,14 +198,13 @@ impl<P: Platform> RendererAssets<P> {
     let mut asset_opt = asset_manager.receive_render_asset();
     while asset_opt.is_some() {
       let asset = asset_opt.unwrap();
-      if asset.priority == AssetLoadPriority::Low {
-        let fence = asset.fence.as_ref();
-        let is_signalled = fence.map_or(true, |f| f.is_signaled());
-        if !is_signalled {
-          self.delayed.push((fence.unwrap().clone(), asset.path.clone(), asset.asset));
-          asset_opt = asset_manager.receive_render_asset();
-          continue;
-        }
+      let fence = asset.fence.as_ref();
+      if fence.is_some() {
+        // delay the adding of assets with an associated fence by at least one frame
+        // to avoid the race mentioned above
+        self.delayed_assets.push((fence.unwrap().clone(), asset.path.clone(), asset.asset));
+        asset_opt = asset_manager.receive_render_asset();
+        continue;
       }
 
       match &asset.asset {
