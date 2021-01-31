@@ -10,7 +10,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
         <activity android:name="de.kobin.sourcerenderer.MainActivity">
-            <meta-data android:name="android.app.lib_name" android:value="sourcerenderer" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

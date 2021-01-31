@@ -43,20 +43,20 @@ pub struct SDLWindow {
 }
 
 impl SDLPlatform {
-  pub fn new(graphics_api: GraphicsApi) -> SDLPlatform {
+  pub fn new(graphics_api: GraphicsApi) -> Box<SDLPlatform> {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let event_pump = sdl_context.event_pump().unwrap();
 
     let window = SDLWindow::new(&sdl_context, &video_subsystem, graphics_api);
 
-    return SDLPlatform {
+    return Box::new(SDLPlatform {
       sdl_context,
       video_subsystem,
       event_pump,
       window,
       input: Arc::new(SDLInput::new())
-    };
+    });
   }
 }
 

@@ -9,8 +9,10 @@ name = "sourcerenderer"
 crate-type = ["cdylib"]
 
 [dependencies]
+ash = "0.31.0"
 sourcerenderer_engine = { path = "../../../engine" }
 sourcerenderer_core = { path = "../../../core" }
+sourcerenderer_vulkan = { path = "../../../graphics/vulkan" }
 ndk = "0.2.1"
 ndk-sys = "0.2.1"
 jni = "0.18.0"

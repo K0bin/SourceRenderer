@@ -8,7 +8,7 @@ use sourcerenderer_engine::Engine;
 use sourcerenderer_core::platform::GraphicsApi;
 
 fn main() {
-  let platform: Box<SDLPlatform> = Box::new(SDLPlatform::new(GraphicsApi::Vulkan));
-  let mut engine = Box::new(Engine::new(platform));
+  let platform: Box<SDLPlatform> = SDLPlatform::new(GraphicsApi::Vulkan);
+  let mut engine = Engine::new(platform);
   engine.run();
 }
