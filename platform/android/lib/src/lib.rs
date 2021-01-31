@@ -2,15 +2,17 @@ extern crate ndk_sys;
 extern crate jni;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_vulkan;
+extern crate libc;
 
 mod android_platform;
 
-use std::ffi::CString;
+use std::ffi::{CString, CStr};
 use jni::JNIEnv;
 use jni::objects::{JClass, JString, JObject};
 use jni::sys::{jstring, jlong, jint};
 use ndk_sys::__android_log_print;
 use ndk_sys::android_LogPriority_ANDROID_LOG_VERBOSE;
+use ndk_sys::android_LogPriority_ANDROID_LOG_ERROR;
 use crate::android_platform::{AndroidPlatform, AndroidPlatformBridge};
 use sourcerenderer_engine::Engine;
 use std::sync::{Arc, Mutex};
@@ -18,6 +20,10 @@ use std::os::raw::c_void;
 use ndk_sys::ANativeWindow_fromSurface;
 use std::ptr::NonNull;
 use ndk::native_window::NativeWindow;
+use std::io::{BufReader, BufRead};
+use std::fs::File;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::prelude::RawFd;
 
 fn get_bridge(bridge_ptr: jlong) -> Arc<Mutex<AndroidPlatformBridge>> {
   assert_ne!(bridge_ptr, 0);
@@ -25,9 +31,40 @@ fn get_bridge(bridge_ptr: jlong) -> Arc<Mutex<AndroidPlatformBridge>> {
   unsafe { Arc::from_raw(brige_ptr) }
 }
 
+fn setup_log() {
+  let mut pipe: [RawFd; 2] = Default::default();
+  unsafe {
+    libc::pipe(pipe.as_mut_ptr());
+    libc::dup2(pipe[1], libc::STDOUT_FILENO);
+    libc::dup2(pipe[1], libc::STDERR_FILENO);
+  }
+
+  std::thread::spawn(move || {
+    let file = unsafe { File::from_raw_fd(pipe[0]) };
+    let mut reader = BufReader::new(file);
+    let mut buffer = String::new();
+    loop {
+      buffer.clear();
+      if let Ok(len) = reader.read_line(&mut buffer) {
+        if len == 0 {
+          break;
+        } else if let Ok(msg) = CString::new(buffer.clone()) {
+          let tag = CString::new("SourceRenderer").unwrap();
+          unsafe {
+            __android_log_print(android_LogPriority_ANDROID_LOG_VERBOSE as i32, tag.as_ptr(), msg.as_ptr());
+          }
+        }
+      }
+    }
+  });
+  println!("Logging set up");
+}
+
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onCreateNative(env: JNIEnv, class: JClass) -> jlong {
+  setup_log();
+
   let tag = CString::new("RS").unwrap();
   let msg = CString::new("Hello World").unwrap();
   unsafe {
