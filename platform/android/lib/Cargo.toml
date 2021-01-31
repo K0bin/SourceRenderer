@@ -1,0 +1,16 @@
+[package]
+name = "sourcerenderer_android"
+version = "0.1.0"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "sourcerenderer"
+crate-type = ["cdylib"]
+
+[dependencies]
+sourcerenderer_engine = { path = "../../../engine" }
+sourcerenderer_core = { path = "../../../core" }
+ndk = "0.2.1"
+ndk-sys = "0.2.1"
+jni = "0.18.0"
