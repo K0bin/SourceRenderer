@@ -12,7 +12,7 @@ use crate::VkAdapter;
 use crate::VkBackend;
 use crate::raw::RawVkInstance;
 
-use std::os::raw::{c_void};
+use std::os::raw::{c_void, c_char};
 
 pub struct VkInstance {
   raw: Arc<RawVkInstance>,
@@ -31,7 +31,7 @@ impl VkInstance {
     if debug_layers {
       layer_names_c.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
     }
-    let layer_names_ptr: Vec<*const i8> = layer_names_c
+    let layer_names_ptr: Vec<*const c_char> = layer_names_c
       .iter()
       .map(|raw_name| raw_name.as_ptr())
       .collect();
@@ -41,7 +41,7 @@ impl VkInstance {
       .map(|ext| CString::new(*ext).unwrap())
       .collect();
     extension_names_c.push(CString::from(ash::extensions::ext::DebugUtils::name()));
-    let extension_names_ptr: Vec<*const i8> = extension_names_c
+    let extension_names_ptr: Vec<*const c_char> = extension_names_c
       .iter()
       .map(|ext_c| ext_c.as_ptr())
       .collect();

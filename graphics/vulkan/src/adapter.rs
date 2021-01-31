@@ -54,7 +54,7 @@ impl VkAdapter {
 
     let supported_extensions = unsafe { instance.instance.enumerate_device_extension_properties(physical_device) }.unwrap();
     for ref prop in supported_extensions {
-      let name_ptr = &prop.extension_name as *const i8;
+      let name_ptr = &prop.extension_name as *const c_char;
       let c_char_ptr = name_ptr as *const c_char;
       let name_res = unsafe { CStr::from_ptr(c_char_ptr) }.to_str();
       let name = name_res.unwrap();
@@ -191,7 +191,7 @@ impl Adapter<VkBackend> for VkAdapter {
         .iter()
         .map(|ext| CString::new(*ext).unwrap())
         .collect();
-      let extension_names_ptr: Vec<*const i8> = extension_names_c
+      let extension_names_ptr: Vec<*const c_char> = extension_names_c
         .iter()
         .map(|ext_c| ext_c.as_ptr())
         .collect();

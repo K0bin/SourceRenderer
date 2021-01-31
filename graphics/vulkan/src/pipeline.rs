@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetBindingInfo};
 use crate::VkShared;
+use std::os::raw::c_char;
 
 #[inline]
 pub(crate) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
@@ -296,7 +297,7 @@ impl VkPipeline {
       let shader = info.info.vs.clone();
       let shader_stage = vk::PipelineShaderStageCreateInfo {
         module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const i8,
+        p_name: entry_point.as_ptr() as *const c_char,
         stage: shader_type_to_vk(shader.get_shader_type()),
         ..Default::default()
       };
@@ -318,7 +319,7 @@ impl VkPipeline {
     if let Some(shader) = info.info.fs.clone() {
       let shader_stage = vk::PipelineShaderStageCreateInfo {
         module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const i8,
+        p_name: entry_point.as_ptr() as *const c_char,
         stage: shader_type_to_vk(shader.get_shader_type()),
         ..Default::default()
       };
@@ -340,7 +341,7 @@ impl VkPipeline {
     if let Some(shader) = info.info.gs.clone() {
       let shader_stage = vk::PipelineShaderStageCreateInfo {
         module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const i8,
+        p_name: entry_point.as_ptr() as *const c_char,
         stage: shader_type_to_vk(shader.get_shader_type()),
         ..Default::default()
       };
@@ -362,7 +363,7 @@ impl VkPipeline {
     if let Some(shader) = info.info.tes.clone() {
       let shader_stage = vk::PipelineShaderStageCreateInfo {
         module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const i8,
+        p_name: entry_point.as_ptr() as *const c_char,
         stage: shader_type_to_vk(shader.get_shader_type()),
         ..Default::default()
       };
@@ -384,7 +385,7 @@ impl VkPipeline {
     if let Some(shader) = info.info.tcs.clone() {
       let shader_stage = vk::PipelineShaderStageCreateInfo {
         module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const i8,
+        p_name: entry_point.as_ptr() as *const c_char,
         stage: shader_type_to_vk(shader.get_shader_type()),
         ..Default::default()
       };
@@ -631,7 +632,7 @@ impl VkPipeline {
 
     let shader_stage = vk::PipelineShaderStageCreateInfo {
       module: shader.get_shader_module(),
-      p_name: entry_point.as_ptr() as *const i8,
+      p_name: entry_point.as_ptr() as *const c_char,
       stage: shader_type_to_vk(shader.get_shader_type()),
       ..Default::default()
     };
