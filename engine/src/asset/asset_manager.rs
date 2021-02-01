@@ -7,7 +7,6 @@ use sourcerenderer_core::graphics;
 use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureInfo, Format, SampleCount, TextureShaderResourceViewInfo, Filter, AddressMode};
 use nalgebra::Vector4;
 use std::hash::Hash;
-use crate::Vertex;
 
 use std::sync::Weak;
 use std::thread;
@@ -178,7 +177,7 @@ impl<P: Platform> AssetManager<P> {
     &self.device
   }
 
-  pub fn add_mesh(&self, path: &str, vertex_buffer_data: &[Vertex], index_buffer_data: &[u32]) {
+  pub fn add_mesh(&self, path: &str, vertex_buffer_data: &[u8], index_buffer_data: &[u8]) {
     let vertex_buffer = self.device.upload_data_slice(vertex_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::VERTEX | BufferUsage::COPY_SRC);
     let index_buffer = if index_buffer_data.len() != 0 {
       Some(self.device.upload_data_slice(index_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::INDEX | BufferUsage::COPY_SRC))

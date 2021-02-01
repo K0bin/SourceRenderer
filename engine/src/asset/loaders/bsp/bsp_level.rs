@@ -371,7 +371,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
     let vertex_buffer_temp = manager.graphics_device().upload_data_slice(&brush_vertices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     let index_buffer_temp = manager.graphics_device().upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let vertex_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<crate::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
+    let vertex_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<super::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
     let index_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<u32>() * brush_indices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
     let _vertex_buffer_fence = manager.graphics_device().init_buffer(&vertex_buffer_temp, &vertex_buffer);
     let index_buffer_fence = manager.graphics_device().init_buffer(&index_buffer_temp, &index_buffer);
