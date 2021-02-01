@@ -144,7 +144,10 @@ impl VkSwapchain {
     } else {
       *formats
         .iter()
-        .find(|&format| format.format == vk::Format::B8G8R8A8_UNORM && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+        .find(|&format|
+          (format.format == vk::Format::B8G8R8A8_UNORM && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+          || (format.format == vk::Format::R8G8B8A8_UNORM && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
+        )
         .expect("No compatible format found")
     }
   }
