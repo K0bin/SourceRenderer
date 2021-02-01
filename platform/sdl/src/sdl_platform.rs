@@ -92,6 +92,7 @@ impl Platform for SDLPlatform {
   type Window = SDLWindow;
   type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
   type Input = SDLInput;
+  type IO = crate::io::StdIO;
 
   fn input(&self) -> &Arc<SDLInput> {
     &self.input

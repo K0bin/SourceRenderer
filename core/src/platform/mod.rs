@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::graphics;
 
 mod input;
+pub mod io;
 pub use input::Input;
 pub use input::Key;
 
@@ -25,6 +26,7 @@ pub trait Platform: 'static + Sized {
   type GraphicsBackend: graphics::Backend + Send + Sync;
   type Window: Window<Self>;
   type Input: Input;
+  type IO: io::IO;
 
   fn input(&self) -> &Arc<Self::Input>;
   fn window(&mut self) -> &Self::Window;

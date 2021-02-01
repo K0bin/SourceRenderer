@@ -5,26 +5,37 @@ use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
 use sourcerenderer_core::graphics::Backend;
 use ndk::native_window::NativeWindow;
+use ndk_sys::AAssetManager;
 
 use ash::extensions::khr::AndroidSurface;
 use ash::extensions::khr::Surface;
 use ash::vk;
 use ash::vk::SurfaceKHR;
 use std::os::raw::c_void;
+use crate::io::AndroidIO;
+use ndk::asset::AssetManager;
 
-pub struct AndroidPlatformBridge {
-  native_window: Option<NativeWindow>
+pub struct AndroidBridge {
+  native_window: Option<NativeWindow>,
+  asset_manager: *mut AAssetManager
 }
 
-impl AndroidPlatformBridge {
-  pub fn new() -> Arc<Mutex<Self>> {
+unsafe impl Send for AndroidBridge {}
+
+impl AndroidBridge {
+  pub fn new(asset_manager: *mut AAssetManager) -> Arc<Mutex<Self>> {
     Arc::new(Mutex::new(Self {
-      native_window: None
+      native_window: None,
+      asset_manager
     }))
   }
 
   pub fn native_window(&self) -> Option<&NativeWindow> {
     self.native_window.as_ref()
+  }
+
+  pub fn asset_manager(&self) -> *mut AAssetManager {
+    self.asset_manager
   }
 
   pub fn change_native_window(&mut self, window: NativeWindow) {
@@ -33,13 +44,13 @@ impl AndroidPlatformBridge {
 }
 
 pub struct AndroidPlatform {
-  bridge: Arc<Mutex<AndroidPlatformBridge>>,
+  bridge: Arc<Mutex<AndroidBridge>>,
   input: Arc<AndroidInput>,
   window: AndroidWindow
 }
 
 impl AndroidPlatform {
-  pub fn with_bridge(bridge: &Arc<Mutex<AndroidPlatformBridge>>) -> Box<Self> {
+  pub fn with_bridge(bridge: &Arc<Mutex<AndroidBridge>>) -> Box<Self> {
     Box::new(Self {
       bridge: bridge.clone(),
       window: AndroidWindow::new(bridge),
@@ -52,6 +63,7 @@ impl Platform for AndroidPlatform {
   type GraphicsBackend = VkBackend;
   type Window = AndroidWindow;
   type Input = AndroidInput;
+  type IO = AndroidIO;
 
   fn input(&self) -> &Arc<Self::Input> {
     &self.input
@@ -72,11 +84,11 @@ impl Platform for AndroidPlatform {
 }
 
 pub struct AndroidWindow {
-  bridge: Arc<Mutex<AndroidPlatformBridge>>
+  bridge: Arc<Mutex<AndroidBridge>>
 }
 
 impl AndroidWindow {
-  pub fn new(bridge: &Arc<Mutex<AndroidPlatformBridge>>) -> Self {
+  pub fn new(bridge: &Arc<Mutex<AndroidBridge>>) -> Self {
     Self {
       bridge: bridge.clone()
     }

@@ -5,6 +5,7 @@ extern crate sourcerenderer_vulkan;
 extern crate libc;
 
 mod android_platform;
+mod io;
 
 use std::ffi::{CString, CStr};
 use jni::JNIEnv;
@@ -13,7 +14,8 @@ use jni::sys::{jstring, jlong, jint};
 use ndk_sys::__android_log_print;
 use ndk_sys::android_LogPriority_ANDROID_LOG_VERBOSE;
 use ndk_sys::android_LogPriority_ANDROID_LOG_ERROR;
-use crate::android_platform::{AndroidPlatform, AndroidPlatformBridge};
+use ndk_sys::AAssetManager_fromJava;
+use crate::android_platform::{AndroidPlatform, AndroidBridge};
 use sourcerenderer_engine::Engine;
 use std::sync::{Arc, Mutex};
 use std::os::raw::c_void;
@@ -25,9 +27,9 @@ use std::fs::File;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::prelude::RawFd;
 
-fn get_bridge(bridge_ptr: jlong) -> Arc<Mutex<AndroidPlatformBridge>> {
+fn get_bridge(bridge_ptr: jlong) -> Arc<Mutex<AndroidBridge>> {
   assert_ne!(bridge_ptr, 0);
-  let brige_ptr = unsafe { std::mem::transmute::<jlong, *const Mutex<AndroidPlatformBridge>>(bridge_ptr) };
+  let brige_ptr = unsafe { std::mem::transmute::<jlong, *const Mutex<AndroidBridge>>(bridge_ptr) };
   unsafe { Arc::from_raw(brige_ptr) }
 }
 
@@ -62,7 +64,7 @@ fn setup_log() {
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onCreateNative(env: JNIEnv, class: JClass) -> jlong {
+pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onCreateNative(env: *mut jni::sys::JNIEnv, class: JClass, asset_manager: JObject) -> jlong {
   setup_log();
 
   let tag = CString::new("RS").unwrap();
@@ -71,9 +73,10 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onCreateNative(
     __android_log_print(android_LogPriority_ANDROID_LOG_VERBOSE as i32, tag.as_ptr(), msg.as_ptr());
   }
 
-  let bridge = AndroidPlatformBridge::new();
+  let asset_manager = unsafe { AAssetManager_fromJava(unsafe { std::mem::transmute(env) }, *asset_manager as *mut c_void) };
+  let bridge = AndroidBridge::new(asset_manager);
   let ptr = Arc::into_raw(bridge);
-  unsafe { std::mem::transmute::<*const Mutex<AndroidPlatformBridge>, jlong>(ptr) }
+  unsafe { std::mem::transmute::<*const Mutex<AndroidBridge>, jlong>(ptr) }
 }
 
 #[no_mangle]

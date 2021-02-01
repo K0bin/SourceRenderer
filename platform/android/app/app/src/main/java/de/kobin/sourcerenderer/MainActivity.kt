@@ -1,5 +1,6 @@
 package de.kobin.sourcerenderer
 
+import android.content.res.AssetManager
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -36,7 +37,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         System.loadLibrary("sourcerenderer");
-        this.nativeBridgePtr = onCreateNative()
+        this.nativeBridgePtr = onCreateNative(this.assets)
     }
 
     override fun onDestroy() {
@@ -44,7 +45,7 @@ class MainActivity : AppCompatActivity() {
         onDestroyNative(this.nativeBridgePtr)
     }
 
-    private external fun onCreateNative(): Long
+    private external fun onCreateNative(assetManager: AssetManager): Long
     private external fun onSurfaceChangedNative(nativePtr: Long, surface: Surface): Long
     private external fun onDestroyNative(nativePtr: Long)
 }

@@ -14,6 +14,7 @@ use input::SDLInput;
 
 mod sdl_platform;
 mod input;
+mod io;
 
 fn main() {
   let platform: Box<SDLPlatform> = SDLPlatform::new(GraphicsApi::Vulkan);
