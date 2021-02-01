@@ -10,6 +10,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication"
         android:configChanges="density|fontScale|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+        android:preferMinimalPostProcessing="true"
+        android:launchMode="singleInstance"
+        android:documentLaunchMode="always"
+        android:screenOrientation="landscape"
+        android:windowSoftInputMode="stateHidden"
         >
         <activity android:name="de.kobin.sourcerenderer.MainActivity">
             <intent-filter>
@@ -19,5 +24,20 @@
             </intent-filter>
         </activity>
     </application>
+
+    <uses-feature
+        android:name="android.hardware.vulkan.compute "
+        android:version="0"
+        android:required="true" />
+
+    <uses-feature
+        android:name="android.hardware.vulkan.level "
+        android:version="0"
+        android:required="true" />
+
+    <uses-feature
+        android:name="android.hardware.vulkan.version "
+        android:version="0x400003"
+        android:required="true" />
 
 </manifest>
