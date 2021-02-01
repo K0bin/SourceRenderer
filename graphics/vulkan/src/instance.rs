@@ -10,7 +10,7 @@ use sourcerenderer_core::graphics::Instance;
 
 use crate::VkAdapter;
 use crate::VkBackend;
-use crate::raw::RawVkInstance;
+use crate::raw::{RawVkInstance, RawVkDebugUtils};
 
 use std::os::raw::{c_void, c_char};
 
@@ -22,6 +22,31 @@ impl VkInstance {
   pub fn new(instance_extensions: &[&str], debug_layers: bool) -> Self {
     let entry: ash::Entry = ash::Entry::new().unwrap();
 
+    let extensions = entry.enumerate_instance_extension_properties().unwrap();
+    let layers = entry.enumerate_instance_layer_properties().unwrap();
+    let mut supports_khronos_validation = false;
+    let mut supports_lunarg_validation = false;
+    let mut supports_debug_utils = false;
+    for layer in &layers {
+      let name = unsafe { CStr::from_ptr(&layer.layer_name as *const c_char) };
+      match name.to_str().unwrap() {
+        "VK_LAYER_KHRONOS_validation" => {
+          supports_khronos_validation = true;
+        }
+        "VK_LAYER_LUNARG_standard_validation" => {
+          supports_lunarg_validation = true;
+        }
+        _ => {}
+      }
+    }
+    for extension in &extensions {
+      let name = unsafe { CStr::from_ptr(&extension.extension_name as *const c_char) };
+      let debug_utils_name = ash::extensions::ext::DebugUtils::name();
+      if name == debug_utils_name {
+        supports_debug_utils = true;
+      }
+    }
+
     let app_name = CString::new("CS:GO").unwrap();
     let app_name_ptr = app_name.as_ptr();
     let engine_name = CString::new("SourceRenderer").unwrap();
@@ -29,7 +54,14 @@ impl VkInstance {
 
     let mut layer_names_c: Vec<CString> = Vec::new();
     if debug_layers {
-      layer_names_c.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
+      if supports_khronos_validation {
+        layer_names_c.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
+      } else if supports_lunarg_validation {
+        println!("Khronos validation layers not installed, falling back to old LunarG ones");
+        layer_names_c.push(CString::new("VK_LAYER_LUNARG_standard_validation").unwrap());
+      } else {
+        println!("Validation layers not installed");
+      }
     }
     let layer_names_ptr: Vec<*const c_char> = layer_names_c
       .iter()
@@ -38,9 +70,16 @@ impl VkInstance {
 
     let mut extension_names_c: Vec<CString> = instance_extensions
       .iter()
-      .map(|ext| CString::new(*ext).unwrap())
+      .map(|ext| {
+        println!("requesting extension: {:?}", ext);
+        CString::new(*ext).unwrap() }
+      )
       .collect();
-    extension_names_c.push(CString::from(ash::extensions::ext::DebugUtils::name()));
+    if supports_debug_utils {
+      extension_names_c.push(CString::from(ash::extensions::ext::DebugUtils::name()));
+    } else {
+      println!("Vulkan debug utils are unsupported");
+    }
     let extension_names_ptr: Vec<*const c_char> = extension_names_c
       .iter()
       .map(|ext_c| ext_c.as_ptr())
@@ -67,22 +106,29 @@ impl VkInstance {
     return unsafe {
       let instance = entry.create_instance(&instance_create_info, None).unwrap();
 
-      let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
-      let debug_messenger = debug_utils_loader.create_debug_utils_messenger(&vk::DebugUtilsMessengerCreateInfoEXT {
-        flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-        message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::all(),
-        message_type: vk::DebugUtilsMessageTypeFlagsEXT::all(),
-        pfn_user_callback: Some(VkInstance::debug_callback),
-        p_user_data: std::ptr::null_mut(),
-        ..Default::default()
-      }, None).unwrap();
+      let debug_utils = if supports_debug_utils {
+        let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+        let debug_messenger = debug_utils_loader.create_debug_utils_messenger(&vk::DebugUtilsMessengerCreateInfoEXT {
+          flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+          message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::all(),
+          message_type: vk::DebugUtilsMessageTypeFlagsEXT::all(),
+          pfn_user_callback: Some(VkInstance::debug_callback),
+          p_user_data: std::ptr::null_mut(),
+          ..Default::default()
+        }, None).unwrap();
+        Some(RawVkDebugUtils {
+          debug_messenger,
+          debug_utils_loader
+        })
+      } else {
+        None
+      };
 
       VkInstance {
         raw: Arc::new(RawVkInstance {
           entry,
           instance,
-          debug_utils_loader,
-          debug_messenger,
+          debug_utils
         })
       }
     };

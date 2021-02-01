@@ -48,14 +48,16 @@ impl VkTexture {
     };
     let (image, allocation, _allocation_info) = device.allocator.create_image(&create_info, &alloc_info).unwrap();
     if let Some(name) = name {
-      let name_cstring = CString::new(name).unwrap();
-      unsafe {
-        device.instance.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
-          object_type: vk::ObjectType::IMAGE,
-          object_handle: image.as_raw(),
-          p_object_name: name_cstring.as_ptr(),
-          ..Default::default()
-        });
+      if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        let name_cstring = CString::new(name).unwrap();
+        unsafe {
+          debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+            object_type: vk::ObjectType::IMAGE,
+            object_handle: image.as_raw(),
+            p_object_name: name_cstring.as_ptr(),
+            ..Default::default()
+          });
+        }
       }
     }
     Self {

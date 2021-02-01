@@ -450,19 +450,23 @@ impl VkCommandBuffer {
   pub(crate) fn begin_label(&self, label: &str) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let label_cstring = CString::new(label).unwrap();
-    unsafe {
-      self.device.instance.debug_utils_loader.cmd_begin_debug_utils_label(self.buffer, &vk::DebugUtilsLabelEXT {
-        p_label_name: label_cstring.as_ptr(),
-        color: [0.0f32; 4],
-        ..Default::default()
-      });
+    if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
+      unsafe {
+        debug_utils.debug_utils_loader.cmd_begin_debug_utils_label(self.buffer, &vk::DebugUtilsLabelEXT {
+          p_label_name: label_cstring.as_ptr(),
+          color: [0.0f32; 4],
+          ..Default::default()
+        });
+      }
     }
   }
 
   pub(crate) fn end_label(&self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    unsafe {
-      self.device.instance.debug_utils_loader.cmd_end_debug_utils_label(self.buffer);
+    if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
+      unsafe {
+        debug_utils.debug_utils_loader.cmd_end_debug_utils_label(self.buffer);
+      }
     }
   }
 
