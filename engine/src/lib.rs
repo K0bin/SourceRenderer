@@ -22,16 +22,6 @@ pub use transform::Parent;
 pub use camera::Camera;
 pub use camera::ActiveCamera;
 
-// TODO move somewhere else
-#[repr(C)]
-#[derive(Clone, PartialEq, Debug)]
-pub struct Vertex {
-  pub position: Vec3,
-  pub normal: Vec3,
-  pub color: Vec3,
-  pub uv: Vec2
-}
-
 mod engine;
 mod asset;
 mod spinning_cube;
