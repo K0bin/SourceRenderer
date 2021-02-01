@@ -4,9 +4,7 @@ import android.content.res.AssetManager
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.view.Surface
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.view.*
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -15,7 +13,23 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
 
-        val view = findViewById<SurfaceView>(R.id.surface);
+        val view = findViewById<SurfaceView>(R.id.surface)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            view.windowInsetsController?.apply {
+                this.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_BARS_BY_SWIPE
+                this.hide(WindowInsets.Type.statusBars()
+                        or WindowInsets.Type.navigationBars()
+                        or WindowInsets.Type.systemGestures()
+                        or WindowInsets.Type.displayCutout())
+            }
+        } else {
+            view.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_IMMERSIVE
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
+        }
+
         val holder = view.holder
         holder.addCallback(object: SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
