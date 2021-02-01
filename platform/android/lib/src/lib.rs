@@ -3,6 +3,7 @@ extern crate jni;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_vulkan;
 extern crate libc;
+extern crate parking_lot;
 
 mod android_platform;
 mod io;
@@ -15,7 +16,7 @@ use ndk_sys::__android_log_print;
 use ndk_sys::android_LogPriority_ANDROID_LOG_VERBOSE;
 use ndk_sys::android_LogPriority_ANDROID_LOG_ERROR;
 use ndk_sys::AAssetManager_fromJava;
-use crate::android_platform::{AndroidPlatform, AndroidBridge};
+use crate::android_platform::{AndroidPlatform, AndroidBridge, BRIDGE};
 use sourcerenderer_engine::Engine;
 use std::sync::{Arc, Mutex};
 use std::os::raw::c_void;
@@ -26,12 +27,6 @@ use std::io::{BufReader, BufRead};
 use std::fs::File;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::prelude::RawFd;
-
-fn get_bridge(bridge_ptr: jlong) -> Arc<Mutex<AndroidBridge>> {
-  assert_ne!(bridge_ptr, 0);
-  let brige_ptr = unsafe { std::mem::transmute::<jlong, *const Mutex<AndroidBridge>>(bridge_ptr) };
-  unsafe { Arc::from_raw(brige_ptr) }
-}
 
 fn setup_log() {
   let mut pipe: [RawFd; 2] = Default::default();
@@ -64,7 +59,7 @@ fn setup_log() {
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onCreateNative(env: *mut jni::sys::JNIEnv, class: JClass, asset_manager: JObject) -> jlong {
+pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onCreateNative(env: *mut jni::sys::JNIEnv, class: JClass, asset_manager: JObject) {
   setup_log();
 
   let tag = CString::new("RS").unwrap();
@@ -74,37 +69,39 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onCreateNative(
   }
 
   let asset_manager = unsafe { AAssetManager_fromJava(unsafe { std::mem::transmute(env) }, *asset_manager as *mut c_void) };
-  let bridge = AndroidBridge::new(asset_manager);
-  let ptr = Arc::into_raw(bridge);
-  unsafe { std::mem::transmute::<*const Mutex<AndroidBridge>, jlong>(ptr) }
+  unsafe {
+    let mut bridge = BRIDGE.lock();
+    bridge.set_asset_manager(NonNull::new(asset_manager).expect("Passed AssetManager is null."));
+  }
 }
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onDestroyNative(env: JNIEnv, class: JClass, bridge: jlong) {
-  get_bridge(bridge);
+pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onDestroyNative(env: JNIEnv, class: JClass) {
+  unsafe {
+    let mut bridge = BRIDGE.lock();
+    bridge.clear();
+  }
 }
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChangedNative(env: *mut jni::sys::JNIEnv, class: JClass, bridge: jlong, surface: JObject) {
-  let bridge = get_bridge(bridge);
+pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChangedNative(env: *mut jni::sys::JNIEnv, class: JClass, surface: JObject) {
   let mut is_engine_running = true;
-  {
-    let mut bridge_guard = bridge.lock().unwrap();
+  unsafe {
+    let mut bridge_guard = BRIDGE.lock();
     is_engine_running = bridge_guard.native_window().is_some();
     let native_window_ptr = unsafe { ANativeWindow_fromSurface(std::mem::transmute(env), std::mem::transmute(*surface)) };
     let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
     let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
-    bridge_guard.change_native_window(native_window);
+    bridge_guard.set_native_window(native_window);
   }
 
   if !is_engine_running {
-    let platform = AndroidPlatform::with_bridge(&bridge);
+    let platform = AndroidPlatform::new();
     std::thread::spawn(move || {
       let mut engine = Engine::new(platform);
       engine.run();
     });
   }
-  std::mem::forget(bridge);
 }

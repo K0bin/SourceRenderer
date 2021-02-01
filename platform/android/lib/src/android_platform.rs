@@ -1,5 +1,6 @@
 use sourcerenderer_core::{Platform, Vec2I};
 use std::sync::{Arc, Mutex};
+use parking_lot::{Mutex as StaticMutex, const_mutex};
 use sourcerenderer_core::platform::{PlatformEvent, Window, WindowState, Input, Key};
 use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
@@ -14,47 +15,54 @@ use ash::vk::SurfaceKHR;
 use std::os::raw::c_void;
 use crate::io::AndroidIO;
 use ndk::asset::AssetManager;
+use std::ptr::NonNull;
+use ndk::event::Keycode::N;
+
+pub static mut BRIDGE: StaticMutex<AndroidBridge> = const_mutex(AndroidBridge {
+  native_window: None,
+  asset_manager: None
+});
 
 pub struct AndroidBridge {
   native_window: Option<NativeWindow>,
-  asset_manager: *mut AAssetManager
+  asset_manager: Option<NonNull<AAssetManager>>
 }
 
 unsafe impl Send for AndroidBridge {}
 
 impl AndroidBridge {
-  pub fn new(asset_manager: *mut AAssetManager) -> Arc<Mutex<Self>> {
-    Arc::new(Mutex::new(Self {
-      native_window: None,
-      asset_manager
-    }))
-  }
-
   pub fn native_window(&self) -> Option<&NativeWindow> {
     self.native_window.as_ref()
   }
 
-  pub fn asset_manager(&self) -> *mut AAssetManager {
+  pub fn asset_manager(&self) -> Option<NonNull<AAssetManager>> {
     self.asset_manager
   }
 
-  pub fn change_native_window(&mut self, window: NativeWindow) {
+  pub fn set_native_window(&mut self, window: NativeWindow) {
     self.native_window = Some(window);
+  }
+
+  pub fn set_asset_manager(&mut self, asset_manager: NonNull<AAssetManager>) {
+    self.asset_manager = Some(asset_manager);
+  }
+
+  pub fn clear(&mut self) {
+    self.asset_manager = None;
+    self.native_window = None;
   }
 }
 
 pub struct AndroidPlatform {
-  bridge: Arc<Mutex<AndroidBridge>>,
   input: Arc<AndroidInput>,
   window: AndroidWindow
 }
 
 impl AndroidPlatform {
-  pub fn with_bridge(bridge: &Arc<Mutex<AndroidBridge>>) -> Box<Self> {
+  pub fn new() -> Box<Self> {
     Box::new(Self {
-      bridge: bridge.clone(),
-      window: AndroidWindow::new(bridge),
-      input: Arc::new(AndroidInput {})
+      input: Arc::new(AndroidInput {}),
+      window: AndroidWindow::new()
     })
   }
 }
@@ -84,21 +92,21 @@ impl Platform for AndroidPlatform {
 }
 
 pub struct AndroidWindow {
-  bridge: Arc<Mutex<AndroidBridge>>
 }
 
 impl AndroidWindow {
-  pub fn new(bridge: &Arc<Mutex<AndroidBridge>>) -> Self {
+  pub fn new() -> Self {
     Self {
-      bridge: bridge.clone()
     }
   }
 }
 
 impl Window<AndroidPlatform> for AndroidWindow {
   fn create_surface(&self, graphics_instance: Arc<VkInstance>) -> Arc<VkSurface> {
-    let bridge_guard = self.bridge.lock().unwrap();
-    let window = bridge_guard.native_window.as_ref().expect("Can not create a vulkan surface without an Android surface");
+    let window = unsafe {
+      let bridge = BRIDGE.lock();
+      bridge.native_window.clone()
+    }.expect("Can not create a vulkan surface without an Android surface");
 
     let instance_raw = graphics_instance.get_raw();
     let android_surface_loader = AndroidSurface::new(&instance_raw.entry, &instance_raw.instance);
@@ -112,8 +120,10 @@ impl Window<AndroidPlatform> for AndroidWindow {
   }
 
   fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> Arc<VkSwapchain> {
-    let bridge_guard = self.bridge.lock().unwrap();
-    let window = bridge_guard.native_window.as_ref().expect("Can not create a vulkan surface without an Android surface");
+    let window = unsafe {
+      let bridge = BRIDGE.lock();
+      bridge.native_window.clone()
+    }.expect("Can not create a vulkan surface without an Android surface");
 
     let device_inner = device.get_inner();
     return VkSwapchain::new(vsync, window.width() as u32, window.height() as u32, device_inner, surface).unwrap();

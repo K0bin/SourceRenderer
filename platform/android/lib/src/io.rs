@@ -10,7 +10,7 @@ use libc::{SEEK_CUR, SEEK_END, SEEK_SET, O_RDONLY};
 use std::path::Path;
 use std::ffi::CString;
 use sourcerenderer_core::platform::io::IO;
-use crate::android_platform::AndroidBridge;
+use crate::android_platform::{AndroidBridge, BRIDGE};
 use std::sync::{Mutex, Arc};
 
 pub struct AndroidIO {
@@ -20,12 +20,16 @@ pub struct AndroidIO {
 impl IO for AndroidIO {
   type File = AndroidAsset;
 
-  fn open_asset(&self, path: &Path) -> IOResult<Self::File> {
-    let guard = self.bridge.lock().unwrap();
-    AndroidAsset::open(guard.asset_manager(), path)
+  fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+    let asset_manager = unsafe {
+      let mut bridge = BRIDGE.lock();
+      bridge.asset_manager()
+    }.expect("Can not open asset, AssetManager is invalid");
+
+    AndroidAsset::open(asset_manager.as_ptr(), path)
   }
 
-  fn open_external_asset(&self, path: &Path) -> IOResult<Self::File> {
+  fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
     unimplemented!()
   }
 }
@@ -35,8 +39,9 @@ pub struct AndroidAsset {
 }
 
 impl AndroidAsset {
-  pub fn open(mgr: *mut AAssetManager, name: &Path) -> IOResult<Self> {
-    let name_c_str = CString::new(name.to_str().unwrap()).unwrap();
+  pub fn open<P: AsRef<Path>>(mgr: *mut AAssetManager, name: P) -> IOResult<Self> {
+    let path_ref: &Path = name.as_ref();
+    let name_c_str = CString::new(path_ref.to_str().unwrap()).unwrap();
     let asset = unsafe { AAssetManager_open(mgr, name_c_str.as_ptr(), O_RDONLY) };
     if asset == std::ptr::null_mut() {
       Err(IOError::new(ErrorKind::NotFound, "AAssetManager_open failed."))

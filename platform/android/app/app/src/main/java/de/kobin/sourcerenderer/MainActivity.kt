@@ -9,8 +9,6 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 
 class MainActivity : AppCompatActivity() {
-    private var nativeBridgePtr: Long = 0
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSustainedPerformanceMode(true)
@@ -28,7 +26,7 @@ class MainActivity : AppCompatActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     holder.surface.setFrameRate(0f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
                 }
-                onSurfaceChangedNative(nativeBridgePtr, holder.surface)
+                onSurfaceChangedNative(holder.surface)
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -37,15 +35,15 @@ class MainActivity : AppCompatActivity() {
         })
 
         System.loadLibrary("sourcerenderer");
-        this.nativeBridgePtr = onCreateNative(this.assets)
+        onCreateNative(this.assets)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        onDestroyNative(this.nativeBridgePtr)
+        onDestroyNative()
     }
 
-    private external fun onCreateNative(assetManager: AssetManager): Long
-    private external fun onSurfaceChangedNative(nativePtr: Long, surface: Surface): Long
-    private external fun onDestroyNative(nativePtr: Long)
+    private external fun onCreateNative(assetManager: AssetManager)
+    private external fun onSurfaceChangedNative(surface: Surface): Long
+    private external fun onDestroyNative()
 }
