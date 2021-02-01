@@ -11,6 +11,7 @@ use std::io::Read;
 use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use sourcerenderer_core::platform::io::IO;
 
 pub(super) const PASS_NAME: &str = "Prepass";
 pub(super) const OUTPUT_DS: &str = "PrepassDS";
@@ -91,14 +92,14 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
 
 pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<AtomicRefCell<View>>, drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let vertex_shader = {
-    let mut file = File::open(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
+    let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
     device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
   };
 
   let fragment_shader = {
-    let mut file = File::open(Path::new("shaders").join(Path::new("prepass.frag.spv"))).unwrap();
+    let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.frag.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
     device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))

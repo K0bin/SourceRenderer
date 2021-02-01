@@ -1,10 +1,11 @@
 use sourcerenderer_core::graphics::{PassInfo, PassType, PassInput, ComputeOutput, RenderPassCallbacks, CommandBuffer, PipelineBinding, BindingFrequency, ShaderType, Backend as GraphicsBackend, Device, ExternalResource, ExternalOutput, ExternalProducerType};
-use sourcerenderer_core::Matrix4;
+use sourcerenderer_core::{Matrix4, Platform};
 use std::sync::Arc;
 use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 use crate::renderer::LateLatchCamera;
+use sourcerenderer_core::platform::io::IO;
 
 const PASS_NAME: &str = "LateLatch";
 pub(super) const OUTPUT_CAMERA: &str = "Camera";
@@ -32,9 +33,9 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   }
 }
 
-pub(crate) fn build_pass<B: GraphicsBackend>(device: &Arc<B::Device>) -> (String, RenderPassCallbacks<B>) {
+pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let copy_camera_compute_shader = {
-    let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("copy_camera.comp.spv"))).unwrap();
+    let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("copy_camera.comp.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
     device.create_shader(ShaderType::ComputeShader, &bytes, Some("copy_camera.comp.spv"))
@@ -44,7 +45,7 @@ pub(crate) fn build_pass<B: GraphicsBackend>(device: &Arc<B::Device>) -> (String
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
       Arc::new(move |command_buffer_a, graph_resources| {
-        let command_buffer = command_buffer_a as &mut B::CommandBuffer;
+        let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&copy_camera_pipeline));
         command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, graph_resources.get_buffer(EXTERNAL_RING_BUFFER).expect("Failed to get graph resource"));
         command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, graph_resources.get_buffer(OUTPUT_CAMERA).expect("Failed to get graph resource"));

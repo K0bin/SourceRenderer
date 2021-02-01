@@ -16,6 +16,8 @@ use crate::camera::ActiveCamera;
 use crate::fps_camera::{FPSCamera, FPSCameraComponent};
 use crate::scene::DeltaTime;
 use std::f32;
+use sourcerenderer_core::platform::io::IO;
+use std::io::{Seek, SeekFrom, Read, Cursor};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -216,7 +218,15 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     },
   ];
 
-  let image = image::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("texture.png"))).expect("Failed to open texture");
+  let mut image_file = <P::IO as IO>::open_asset("texture.png").expect("Failed to open texture");
+  let length = image_file.seek(SeekFrom::End(0)).unwrap();
+  image_file.seek(SeekFrom::Start(0)).unwrap();
+  let mut data = Vec::<u8>::with_capacity(length as usize);
+  unsafe {
+    data.set_len(length as usize);
+  }
+  image_file.read_exact(&mut data).unwrap();
+  let image = image::load_from_memory(&data).unwrap();
   let data = image.to_rgba();
   let texture_info = TextureInfo {
     format: Format::RGBA8,
@@ -242,7 +252,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     cast_shadows: true,
     can_move: true,
     model_path: "cube_model".to_owned()
-  }, Transform::new(Vec3::new(0f32, 2f32, 0f32)), SpinningCube {}));
+  }, Transform::new(Vec3::new(0f32, 0f32, -5f32)), SpinningCube {}));
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32

@@ -104,7 +104,7 @@ impl<P: Platform> RendererInternal<P> {
     let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &view, &drawables, &lightmap);
     callbacks.insert(geometry_pass_name, geometry_pass_callback);
 
-    let (late_latch_pass_name, late_latch_pass_callback) = passes::late_latching::build_pass::<P::GraphicsBackend>(device);
+    let (late_latch_pass_name, late_latch_pass_callback) = passes::late_latching::build_pass::<P>(device);
     callbacks.insert(late_latch_pass_name, late_latch_pass_callback);
 
     let mut external_resources = HashMap::<String, ExternalResource<P::GraphicsBackend>>::new();

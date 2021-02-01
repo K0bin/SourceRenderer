@@ -267,7 +267,7 @@ impl VkRenderGraph {
             if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
               clear_values.push(vk::ClearValue {
                 color: vk::ClearColorValue {
-                  uint32: [0u32; 4]
+                  float32: [1f32; 4]
                 }
               });
             } else {
@@ -287,7 +287,7 @@ impl VkRenderGraph {
               } else {
                 clear_values.push(vk::ClearValue {
                   color: vk::ClearColorValue {
-                    uint32: [0u32; 4]
+                    float32: [1f32; 4]
                   }
                 });
               }
