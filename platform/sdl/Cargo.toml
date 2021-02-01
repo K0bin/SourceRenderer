@@ -3,6 +3,7 @@ name = "sourcerenderer_sdl"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 [dependencies]
 sdl2 = "0.34.2"
@@ -12,4 +13,5 @@ bitset-core = "0.1.1"
 sourcerenderer_bsp = { path = "../../valve_formats/bsp" }
 sourcerenderer_core = { path = "../../core" }
 sourcerenderer_vulkan = { path = "../../graphics/vulkan" }
+sourcerenderer_engine = { path = "../../engine" }
 
