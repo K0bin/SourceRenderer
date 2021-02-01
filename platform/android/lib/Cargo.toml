@@ -3,6 +3,7 @@ name = "sourcerenderer_android"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 [lib]
 name = "sourcerenderer"

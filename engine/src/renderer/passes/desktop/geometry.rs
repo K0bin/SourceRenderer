@@ -47,14 +47,14 @@ pub(in super::super::super) fn build_pass<P: Platform>(
   lightmap: &Arc<RendererTexture<P::GraphicsBackend>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
 
   let vertex_shader = {
-    let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.vert.spv"))).unwrap();
+    let mut file = File::open(Path::new("shaders").join(Path::new("textured.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
     device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
   };
 
   let fragment_shader = {
-    let mut file = File::open(Path::new("..").join(Path::new("..")).join(Path::new("engine")).join(Path::new("shaders")).join(Path::new("textured.frag.spv"))).unwrap();
+    let mut file = File::open(Path::new("shaders").join(Path::new("textured.frag.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
     device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
