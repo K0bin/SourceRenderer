@@ -1,5 +1,6 @@
 package de.kobin.sourcerenderer
 
+import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.view.Surface
@@ -23,6 +24,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    holder.surface.setFrameRate(0f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                }
                 onSurfaceChangedNative(nativeBridgePtr, holder.surface)
             }
 
