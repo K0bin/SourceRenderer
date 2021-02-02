@@ -17,7 +17,7 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.setDecorFitsSystemWindows(false)
             view.windowInsetsController?.apply {
-                this.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_BARS_BY_SWIPE
+                this.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 this.hide(WindowInsets.Type.statusBars()
                         or WindowInsets.Type.navigationBars()
                         or WindowInsets.Type.systemGestures()
@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
-                // TODO
+                onSurfaceChangedNative(null)
             }
         })
 
@@ -57,7 +57,17 @@ class MainActivity : AppCompatActivity() {
         onDestroyNative()
     }
 
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        if (super.onTouchEvent(event)) {
+            return true
+        }
+        event ?: return false
+        this.onTouchInputNative(event.x, event.y, event.actionIndex, event.actionMasked)
+        return true
+    }
+
     private external fun onCreateNative(assetManager: AssetManager)
-    private external fun onSurfaceChangedNative(surface: Surface): Long
+    private external fun onSurfaceChangedNative(surface: Surface?): Long
+    private external fun onTouchInputNative(x: Float, y: Float, fingerIndex: Int, eventType: Int)
     private external fun onDestroyNative()
 }

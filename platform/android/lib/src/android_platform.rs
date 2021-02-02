@@ -6,7 +6,7 @@ use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
 use sourcerenderer_core::graphics::Backend;
 use ndk::native_window::NativeWindow;
-use ndk_sys::AAssetManager;
+use ndk_sys::{AAssetManager, AInputQueue};
 
 use ash::extensions::khr::AndroidSurface;
 use ash::extensions::khr::Surface;
@@ -16,16 +16,19 @@ use std::os::raw::c_void;
 use crate::io::AndroidIO;
 use ndk::asset::AssetManager;
 use std::ptr::NonNull;
-use ndk::event::Keycode::N;
+use ndk::event::Keycode::{N, Mute};
+use crate::input::AndroidInput;
 
 pub static mut BRIDGE: StaticMutex<AndroidBridge> = const_mutex(AndroidBridge {
   native_window: None,
-  asset_manager: None
+  asset_manager: None,
+  input: None
 });
 
 pub struct AndroidBridge {
   native_window: Option<NativeWindow>,
-  asset_manager: Option<NonNull<AAssetManager>>
+  asset_manager: Option<NonNull<AAssetManager>>,
+  input: Option<Arc<AndroidInput>>
 }
 
 unsafe impl Send for AndroidBridge {}
@@ -39,15 +42,22 @@ impl AndroidBridge {
     self.asset_manager
   }
 
-  pub fn set_native_window(&mut self, window: NativeWindow) {
-    self.native_window = Some(window);
+  pub fn set_native_window(&mut self, window: Option<NativeWindow>) {
+    self.native_window = window;
   }
 
-  pub fn set_asset_manager(&mut self, asset_manager: NonNull<AAssetManager>) {
-    self.asset_manager = Some(asset_manager);
+  pub fn set_asset_manager(&mut self, asset_manager: Option<NonNull<AAssetManager>>) {
+    self.asset_manager = asset_manager;
   }
 
-  pub fn clear(&mut self) {
+  pub fn input(&mut self) -> &Arc<AndroidInput> {
+    if self.input.is_none() {
+      self.input = Some(Arc::new(AndroidInput::new()))
+    }
+    self.input.as_ref().unwrap()
+  }
+
+  pub fn clear_context_related(&mut self) {
     self.asset_manager = None;
     self.native_window = None;
   }
@@ -60,8 +70,15 @@ pub struct AndroidPlatform {
 
 impl AndroidPlatform {
   pub fn new() -> Box<Self> {
+    let input = {
+      let mut brige_guard = unsafe {
+        BRIDGE.lock()
+      };
+      brige_guard.input().clone()
+    };
+
     Box::new(Self {
-      input: Arc::new(AndroidInput {}),
+      input,
       window: AndroidWindow::new()
     })
   }
@@ -134,26 +151,5 @@ impl Window<AndroidPlatform> for AndroidWindow {
       width: 1280,
       height: 720
     }
-  }
-}
-
-pub struct AndroidInput {
-
-}
-
-impl Input for AndroidInput {
-  fn is_key_down(&self, key: Key) -> bool {
-    false
-  }
-
-  fn is_mouse_button_down(&self, button: u8) -> bool {
-    false
-  }
-
-  fn mouse_position(&self) -> Vec2I {
-    Vec2I::new(0, 0)
-  }
-
-  fn toggle_mouse_lock(&self, enabled: bool) {
   }
 }

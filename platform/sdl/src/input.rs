@@ -8,7 +8,7 @@ use sdl2::mouse::MouseUtil;
 use sdl2::keyboard::Scancode;
 
 use sourcerenderer_core::platform::{Input, Key, Window, WindowState};
-use sourcerenderer_core::Vec2I;
+use sourcerenderer_core::{Vec2I, Vec2};
 
 use crate::sdl_platform::SDLWindow;
 
@@ -33,6 +33,12 @@ impl Input for SDLInput {
   fn is_mouse_button_down(&self, button: u8) -> bool {
     let guard = self.inner.read().unwrap();
     guard.mouse_buttons.bit_test(button as usize)
+  }
+  fn is_finger_down(&self, finger_index: u32) -> bool {
+    false
+  }
+  fn finger_position(&self, finger_index: u32) -> Vec2 {
+    Vec2::new(0f32, 0f32)
   }
   fn mouse_position(&self) -> Vec2I {
     let guard = self.inner.read().unwrap();
