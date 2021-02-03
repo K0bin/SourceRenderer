@@ -7,11 +7,12 @@ use crate::pipeline::VkPipelineLayout;
 use std::collections::HashMap;
 use crate::raw::RawVkDevice;
 use crate::VkFence;
-use crate::sync::VkFenceState;
+use crate::sync::{VkFenceState, VkEvent};
 
 pub struct VkShared {
   semaphores: Pool<VkSemaphore>,
   fences: Pool<VkFenceInner>,
+  events: Pool<VkEvent>,
   buffers: BufferAllocator, // consider per thread
   descriptor_set_layouts: RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>>,
   pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>
@@ -21,12 +22,16 @@ impl VkShared {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
     let semaphores_device_clone = device.clone();
     let fences_device_clone = device.clone();
+    let events_device_clone = device.clone();
     Self {
       semaphores: Pool::new(Box::new(move ||
         VkSemaphore::new(&semaphores_device_clone)
       )),
       fences: Pool::new(Box::new(move ||
         VkFenceInner::new(&fences_device_clone)
+      )),
+      events: Pool::new(Box::new(move ||
+        VkEvent::new(&events_device_clone)
       )),
       buffers: BufferAllocator::new(device),
       descriptor_set_layouts: RwLock::new(HashMap::new()),
@@ -37,6 +42,15 @@ impl VkShared {
   #[inline]
   pub(crate) fn get_semaphore(&self) -> Arc<Recyclable<VkSemaphore>> {
     Arc::new(self.semaphores.get())
+  }
+
+  #[inline]
+  pub(crate) fn get_event(&self) -> Arc<Recyclable<VkEvent>> {
+    let event = self.events.get();
+    if event.is_signalled() {
+      event.reset();
+    }
+    Arc::new(event)
   }
 
   #[inline]

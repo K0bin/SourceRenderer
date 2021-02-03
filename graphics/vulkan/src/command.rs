@@ -501,6 +501,30 @@ impl VkCommandBuffer {
       self.device.cmd_pipeline_barrier(self.buffer, src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
     }
   }
+
+  pub fn wait_events(
+    &mut self,
+    events: &[vk::Event],
+    src_stage_mask: vk::PipelineStageFlags,
+    dst_stage_mask: vk::PipelineStageFlags,
+    memory_barriers: &[vk::MemoryBarrier],
+    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+    image_memory_barriers: &[vk::ImageMemoryBarrier]
+  ) {
+    unsafe {
+      self.device.cmd_wait_events(self.buffer, events, src_stage_mask, dst_stage_mask, memory_barriers, buffer_memory_barriers, image_memory_barriers);
+    }
+  }
+
+  pub fn signal_event(
+    &mut self,
+    event: vk::Event,
+    stage_mask: vk::PipelineStageFlags
+  ) {
+    unsafe {
+      self.device.cmd_set_event(self.buffer, event, stage_mask);
+    }
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -575,6 +599,27 @@ impl VkCommandBufferRecorder {
     buffer_memory_barriers: &[vk::BufferMemoryBarrier],
     image_memory_barriers: &[vk::ImageMemoryBarrier]) {
       self.item.as_mut().unwrap().barrier(src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
+  }
+
+  pub fn wait_events(
+    &mut self,
+    events: &[vk::Event],
+    src_stage_mask: vk::PipelineStageFlags,
+    dst_stage_mask: vk::PipelineStageFlags,
+    memory_barriers: &[vk::MemoryBarrier],
+    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+    image_memory_barriers: &[vk::ImageMemoryBarrier]
+  ) {
+    self.item.as_mut().unwrap().wait_events(events, src_stage_mask, dst_stage_mask, memory_barriers, buffer_memory_barriers, image_memory_barriers);
+  }
+
+
+  pub fn signal_event(
+    &mut self,
+    event: vk::Event,
+    stage_mask: vk::PipelineStageFlags
+  ) {
+    self.item.as_mut().unwrap().signal_event(event, stage_mask);
   }
 }
 

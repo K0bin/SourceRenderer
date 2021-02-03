@@ -175,3 +175,48 @@ impl Fence for VkFence {
     self.inner.await_signal();
   }
 }
+
+pub struct VkEvent {
+  device: Arc<RawVkDevice>,
+  event: vk::Event
+}
+
+impl VkEvent {
+  pub fn new(device: &Arc<RawVkDevice>) -> Self {
+    let event = unsafe {
+      device.create_event(&vk::EventCreateInfo {
+        flags: vk::EventCreateFlags::empty(),
+        ..Default::default()
+      }, None)
+    }.unwrap();
+    Self {
+      device: device.clone(),
+      event,
+    }
+  }
+
+  pub fn is_signalled(&self) -> bool {
+    unsafe {
+      self.device.get_event_status(self.event)
+    }.unwrap()
+  }
+
+  pub fn reset(&self) {
+    unsafe {
+      self.device.reset_event(self.event);
+    }
+  }
+
+  pub fn handle(&self) -> &vk::Event {
+    &self.event
+  }
+}
+
+impl Drop for VkEvent {
+  fn drop(&mut self) {
+    unsafe {
+      self.device.destroy_event(self.event, None);
+    }
+  }
+}
+
