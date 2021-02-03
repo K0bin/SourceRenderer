@@ -23,6 +23,8 @@ use crate::raw::RawVkDevice;
 use crate::VkSwapchain;
 use crate::VkCommandBufferRecorder;
 use rayon;
+use crate::sync::VkEvent;
+use sourcerenderer_core::pool::Recyclable;
 
 pub enum VkResource {
   Texture {
@@ -132,7 +134,9 @@ pub enum VkPass {
     renders_to_swapchain: bool,
     clear_values: Vec<vk::ClearValue>,
     callbacks: RenderPassCallbacks<VkBackend>,
-    resources: HashSet<String>
+    resources: HashSet<String>,
+    signal_event: Arc<Recyclable<VkEvent>>,
+    wait_for_events: Vec<vk::Event>
   },
   Compute {
     src_stage: vk::PipelineStageFlags,
@@ -140,7 +144,9 @@ pub enum VkPass {
     image_barriers: Vec<vk::ImageMemoryBarrier>,
     buffer_barriers: Vec<vk::BufferMemoryBarrier>,
     callbacks: RenderPassCallbacks<VkBackend>,
-    resources: HashSet<String>
+    resources: HashSet<String>,
+    signal_event: Arc<Recyclable<VkEvent>>,
+    wait_for_events: Vec<vk::Event>
   },
   Copy
 }
@@ -159,6 +165,11 @@ impl VkRenderGraph {
              swapchain: &Arc<VkSwapchain>,
              external_resources: Option<&HashMap<String, ExternalResource<VkBackend>>>) -> Self {
     let mut resources: HashMap<String, VkResource> = HashMap::new();
+    let mut events = Vec::<Arc<Recyclable<VkEvent>>>::new();
+    for _ in 0..template.passes.len() {
+      events.push(context.shared().get_event());
+    }
+
     let resource_metadata = template.resources();
     for (_name, attachment_info) in resource_metadata {
       // TODO: aliasing
@@ -342,6 +353,7 @@ impl VkRenderGraph {
             framebuffers.push(framebuffer);
           }
 
+          let mut wait_events = Vec::<vk::Event>::new();
           let mut src_stage = vk::PipelineStageFlags::empty();
           let mut dst_stage = vk::PipelineStageFlags::empty();
           let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
@@ -360,6 +372,8 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let texture = if !is_external {
+                  wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
+
                   let resource = resources.get(name.as_str()).unwrap();
                   let resource_texture = match resource {
                     VkResource::Texture { texture, .. } => texture,
@@ -413,6 +427,8 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let buffer = if !is_external {
+                  wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
+
                   let resource = resources.get(name.as_str()).unwrap();
                   let resource_buffer = match resource {
                     VkResource::Buffer { buffer, .. } => buffer,
@@ -446,6 +462,7 @@ impl VkRenderGraph {
 
           let callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
 
+          let index = finished_passes.len();
           finished_passes.push(Arc::new(VkPass::Graphics {
             framebuffers,
             src_stage,
@@ -456,13 +473,16 @@ impl VkRenderGraph {
             renders_to_swapchain: pass.renders_to_swapchain,
             renderpass: render_pass.clone(),
             clear_values,
-            resources: pass.resources.clone()
+            resources: pass.resources.clone(),
+            signal_event: events[index].clone(),
+            wait_for_events: wait_events
           }));
         },
 
         VkPassType::Compute {
           barriers
         } => {
+          let mut wait_events = Vec::<vk::Event>::new();
           let mut src_stage = vk::PipelineStageFlags::empty();
           let mut dst_stage = vk::PipelineStageFlags::empty();
           let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
@@ -481,6 +501,8 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let texture = if !is_external {
+                  wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
+
                   let resource = resources.get(name.as_str()).unwrap();
                   let resource_texture = match resource {
                     VkResource::Texture { texture, .. } => texture,
@@ -533,6 +555,8 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let buffer = if !is_external {
+                  wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
+
                   let resource = resources.get(name.as_str()).unwrap();
                   let resource_buffer = match resource {
                     VkResource::Buffer { buffer, .. } => buffer,
@@ -566,13 +590,16 @@ impl VkRenderGraph {
 
           let callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
 
+          let index = finished_passes.len();
           finished_passes.push(Arc::new(VkPass::Compute {
             src_stage,
             dst_stage,
             image_barriers,
             buffer_barriers,
             callbacks,
-            resources: pass.resources.clone()
+            resources: pass.resources.clone(),
+            signal_event: events[index].clone(),
+            wait_for_events: wait_events
           }))
         },
 
@@ -648,7 +675,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           renderpass,
           renders_to_swapchain,
           clear_values,
-          resources: pass_resource_names
+          resources: pass_resource_names,
+          wait_for_events,
+          signal_event
         } => {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
@@ -658,8 +687,12 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
           if *src_stage != vk::PipelineStageFlags::empty() || !buffer_barriers.is_empty() || !image_barriers.is_empty() {
-            cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
+            if wait_for_events.len() == 0 {
+              cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
                                &[], buffer_barriers, image_barriers);
+            } else {
+              cmd_buffer.wait_events(wait_for_events, *src_stage, *dst_stage, &[], buffer_barriers, image_barriers);
+            }
           }
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
@@ -713,6 +746,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           if *renders_to_swapchain {
             frame_local.track_semaphore(&prepare_semaphore);
           }
+          cmd_buffer.signal_event(*(signal_event.handle()), vk::PipelineStageFlags::ALL_GRAPHICS);
         }
 
         VkPass::Compute {
@@ -721,7 +755,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           buffer_barriers,
           image_barriers,
           callbacks,
-          resources: pass_resource_names
+          resources: pass_resource_names,
+          signal_event,
+          wait_for_events
         } => {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
@@ -731,8 +767,12 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
           if *src_stage != vk::PipelineStageFlags::empty() || !buffer_barriers.is_empty() || !image_barriers.is_empty() {
-            cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
-              &[], buffer_barriers, image_barriers);
+            if wait_for_events.len() == 0 {
+              cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
+                                 &[], buffer_barriers, image_barriers);
+            } else {
+              cmd_buffer.wait_events(wait_for_events, *src_stage, *dst_stage, &[], buffer_barriers, image_barriers);
+            }
           }
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
@@ -751,6 +791,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           }
 
           self.execute_cmd_buffer(&mut cmd_buffer, &mut frame_local, None, &[], &[]);
+          cmd_buffer.signal_event(*(signal_event.handle()), vk::PipelineStageFlags::COMPUTE_SHADER);
         }
 
         VkPass::Copy => {}
