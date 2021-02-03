@@ -1,5 +1,12 @@
 use crate::graphics::{Format, SampleCount};
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum PipelineStage {
+  VertexShader,
+  FragmentShader,
+  ComputeShader
+}
+
 #[derive(Clone)]
 pub enum SubpassOutput {
   Backbuffer {
@@ -133,7 +140,8 @@ pub enum PassType {
 #[derive(Clone)]
 pub struct PassInput {
   pub name: String,
-  pub is_local: bool
+  pub is_local: bool,
+  pub stage: PipelineStage
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]

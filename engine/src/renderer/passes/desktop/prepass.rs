@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, RenderPassTextureExtent, LoadAction, StoreAction, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, RenderPassTextureExtent, LoadAction, StoreAction, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil, PipelineStage};
 use std::sync::{Arc, Mutex};
 use crate::renderer::drawable::{View, RDrawable};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
@@ -69,7 +69,8 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
           inputs: vec![
             PassInput {
               name: LATE_LATCHING_CAMERA.to_string(),
-              is_local: false
+              is_local: false,
+              stage: PipelineStage::VertexShader
             }
           ],
           depth_stencil: DepthStencil::Output {

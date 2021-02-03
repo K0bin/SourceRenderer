@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{ComputeOutput, RenderPassTextureExtent, ExternalOutput, ExternalProducerType, DepthStencil, StoreOp};
+use sourcerenderer_core::graphics::{ComputeOutput, RenderPassTextureExtent, ExternalOutput, ExternalProducerType, DepthStencil, StoreOp, PipelineStage};
 use std::collections::{HashMap, VecDeque};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -100,7 +100,8 @@ pub struct ResourceMetadata {
   pub(super) last_used_in_pass_index: u32,
   pub(super) produced_in_pass_index: u32,
   pub(super) producer_pass_type: VkResourceProducerPassType,
-  pub(super) layout: vk::ImageLayout
+  pub(super) layout: vk::ImageLayout,
+  pub(super) used_in_stages: vk::PipelineStageFlags
 }
 
 impl ResourceMetadata {
@@ -110,7 +111,8 @@ impl ResourceMetadata {
       last_used_in_pass_index: 0,
       produced_in_pass_index: 0,
       producer_pass_type: VkResourceProducerPassType::Graphics,
-      layout: vk::ImageLayout::UNDEFINED
+      layout: vk::ImageLayout::UNDEFINED,
+      used_in_stages: vk::PipelineStageFlags::empty()
     }
   }
 }
@@ -230,7 +232,8 @@ impl VkRenderGraphTemplate {
               ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
               ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
               ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
-            }
+            },
+            used_in_stages: vk::PipelineStageFlags::empty()
           });
         }
         ExternalOutput::RenderTarget {
@@ -251,7 +254,8 @@ impl VkRenderGraphTemplate {
               ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
               ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
               ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
-            }
+            },
+            used_in_stages: vk::PipelineStageFlags::empty()
           });
         }
         ExternalOutput::DepthStencil {
@@ -272,7 +276,8 @@ impl VkRenderGraphTemplate {
               ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
               ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
               ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
-            }
+            },
+            used_in_stages: vk::PipelineStageFlags::empty()
           });
         }
       }
@@ -370,6 +375,7 @@ impl VkRenderGraphTemplate {
               } => {
                 let mut input_metadata = metadata.get_mut(ds_name).unwrap();
                 input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+                input_metadata.used_in_stages |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS;
               }
               DepthStencil::None => {}
             }
@@ -377,6 +383,8 @@ impl VkRenderGraphTemplate {
             for input in &subpass.inputs {
               let mut input_metadata = metadata.get_mut(&input.name).unwrap();
               input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+              assert_ne!(input.stage, PipelineStage::ComputeShader);
+              input_metadata.used_in_stages |= pipeline_stage_to_vk(input.stage);
             }
           }
         },
@@ -450,6 +458,8 @@ impl VkRenderGraphTemplate {
           for input in inputs {
             let mut input_metadata = metadata.get_mut(&input.name).unwrap();
             input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+            assert_eq!(input.stage, PipelineStage::ComputeShader);
+            input_metadata.used_in_stages |= vk::PipelineStageFlags::COMPUTE_SHADER;
           }
         },
         _ => unimplemented!()
@@ -652,7 +662,7 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST
                 },
-                dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
+                dst_stage_mask: metadata.used_in_stages,
                 src_access_mask: if is_depth_stencil {
                   vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
                 } else {
@@ -678,14 +688,14 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST
                 },
-                dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
+                dst_stage_mask: metadata.used_in_stages,
                 src_access_mask: match metadata.producer_pass_type {
                   VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
                   VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
                   VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
                   VkResourceProducerPassType::Host => vk::AccessFlags::HOST_WRITE
                 },
-                dst_access_mask: vk::AccessFlags::MEMORY_READ,
+                dst_access_mask: vk::AccessFlags::SHADER_READ,
                 dependency_flags: vk::DependencyFlags::empty()
               }
             }
@@ -700,13 +710,13 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST
                 },
-                dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
+                dst_stage_mask: metadata.used_in_stages,
                 src_access_mask: if *is_depth_stencil {
                   vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
                 } else {
                   match metadata.producer_pass_type {
                     VkResourceProducerPassType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                    VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
+                    VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE ,
                     VkResourceProducerPassType::Copy => vk::AccessFlags::TRANSFER_WRITE,
                     VkResourceProducerPassType::Host => vk::AccessFlags::HOST_WRITE
                   }
@@ -726,7 +736,7 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::TRANSFER,
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST
                 },
-                dst_stage_mask: vk::PipelineStageFlags::ALL_GRAPHICS,
+                dst_stage_mask: metadata.used_in_stages,
                 src_access_mask: match metadata.producer_pass_type {
                   VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
                   VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
@@ -767,7 +777,7 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
                 },
-                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                dst_stage: metadata.used_in_stages,
                 src_queue_family_index: 0,
                 dst_queue_family_index: 0
               }
@@ -788,7 +798,7 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
                 },
-                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                dst_stage: metadata.used_in_stages,
                 src_queue_family_index: 0,
                 dst_queue_family_index: 0
               }
@@ -809,7 +819,7 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
                 },
-                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                dst_stage: metadata.used_in_stages,
                 src_queue_family_index: 0,
                 dst_queue_family_index: 0
               }
@@ -837,7 +847,7 @@ impl VkRenderGraphTemplate {
                   VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
                   VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
                 },
-                dst_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                dst_stage: metadata.used_in_stages,
                 src_queue_family_index: 0,
                 dst_queue_family_index: 0
               }
@@ -1026,7 +1036,7 @@ impl VkRenderGraphTemplate {
               VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
               VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
             },
-            dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
+            dst_stage: metadata.used_in_stages,
             src_queue_family_index: 0,
             dst_queue_family_index: 0
           }
@@ -1047,7 +1057,7 @@ impl VkRenderGraphTemplate {
               VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
               VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST
             },
-            dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
+            dst_stage: metadata.used_in_stages,
             src_queue_family_index: 0,
             dst_queue_family_index: 0
           }
@@ -1069,7 +1079,7 @@ impl VkRenderGraphTemplate {
               VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
               _ => unimplemented!()
             },
-            dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
+            dst_stage: metadata.used_in_stages,
             src_queue_family_index: 0,
             dst_queue_family_index: 0
           }
@@ -1097,7 +1107,7 @@ impl VkRenderGraphTemplate {
               VkResourceProducerPassType::Copy => vk::PipelineStageFlags::empty(),
               VkResourceProducerPassType::Host => vk::PipelineStageFlags::HOST,
             },
-            dst_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
+            dst_stage: metadata.used_in_stages,
             src_queue_family_index: 0,
             dst_queue_family_index: 0
           }
@@ -1178,5 +1188,13 @@ fn load_action_to_vk(load_action: LoadAction) -> vk::AttachmentLoadOp {
     LoadAction::DontCare => vk::AttachmentLoadOp::DONT_CARE,
     LoadAction::Load => vk::AttachmentLoadOp::LOAD,
     LoadAction::Clear => vk::AttachmentLoadOp::CLEAR
+  }
+}
+
+fn pipeline_stage_to_vk(pipeline_stage: PipelineStage) -> vk::PipelineStageFlags {
+  match pipeline_stage {
+    PipelineStage::ComputeShader => vk::PipelineStageFlags::COMPUTE_SHADER,
+    PipelineStage::VertexShader => vk::PipelineStageFlags::VERTEX_SHADER,
+    PipelineStage::FragmentShader => vk::PipelineStageFlags::VERTEX_SHADER,
   }
 }
