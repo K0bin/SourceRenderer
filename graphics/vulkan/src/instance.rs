@@ -70,10 +70,7 @@ impl VkInstance {
 
     let mut extension_names_c: Vec<CString> = instance_extensions
       .iter()
-      .map(|ext| {
-        println!("requesting extension: {:?}", ext);
-        CString::new(*ext).unwrap() }
-      )
+      .map(|ext| CString::new(*ext).unwrap())
       .collect();
     if supports_debug_utils {
       extension_names_c.push(CString::from(ash::extensions::ext::DebugUtils::name()));
