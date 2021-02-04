@@ -49,7 +49,9 @@ impl<P: Platform> Renderer<P> {
     let c_swapchain = swapchain.clone();
     let c_asset_manager = asset_manager.clone();
 
-    std::thread::spawn(move || {
+    std::thread::Builder::new()
+      .name("RenderThread".to_string())
+      .spawn(move || {
       let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, receiver, simulation_tick_rate, c_renderer.primary_camera());
       loop {
         internal.render();

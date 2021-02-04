@@ -60,7 +60,7 @@ impl Scene {
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
     let c_input = input.clone();
-    thread::spawn(move || {
+    thread::Builder::new().name("GameThread".to_string()).spawn(move || {
       let mut world = World::default();
       let mut fixed_schedule = Schedule::builder();
       let mut schedule = Schedule::builder();

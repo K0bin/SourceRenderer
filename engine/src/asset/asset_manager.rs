@@ -167,7 +167,7 @@ impl<P: Platform> AssetManager<P> {
     let thread_count = 1;
     for _ in 0..thread_count {
       let c_manager = Arc::downgrade(&manager);
-      thread::spawn(move || asset_manager_thread_fn(c_manager));
+      std::thread::Builder::new().name("AssetManagerThread".to_string()).spawn(move || asset_manager_thread_fn(c_manager));
     }
 
     manager
