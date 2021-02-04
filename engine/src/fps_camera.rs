@@ -13,7 +13,6 @@ use crate::renderer::LateLatchCamera;
 pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
   systems.add_system(retrieve_fps_camera_rotation_system::<P>());
   systems.add_system(fps_camera_movement_system::<P>());
-  systems.add_system(update_fps_camera_position_system::<P>());
 }
 
 pub struct FPSCameraComponent {
@@ -61,12 +60,6 @@ pub fn fps_camera_rotation<P: Platform>(input: &Arc<P::Input>, fps_camera: &mut 
 #[filter(component::<Camera>() & component::<FPSCameraComponent>())]
 fn retrieve_fps_camera_rotation<P: Platform>(#[resource] late_latch_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>, transform: &mut Transform) {
   transform.rotation = late_latch_camera.rotation();
-}
-
-#[system(for_each)]
-#[filter(component::<Camera>() & component::<FPSCameraComponent>())]
-fn update_fps_camera_position<P: Platform>(#[resource] late_latch_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>, transform: &mut Transform) {
-  late_latch_camera.update_position(transform.position);
 }
 
 #[system(for_each)]
