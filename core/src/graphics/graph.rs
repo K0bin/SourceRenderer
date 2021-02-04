@@ -41,13 +41,14 @@ pub trait RenderGraph<B: Backend> {
 }
 
 pub trait RenderGraphResources<B: Backend> : Send + Sync {
-  fn get_buffer(&self, name: &str) -> Result<&Arc<B::Buffer>, RenderGraphResourceError>;
-  fn get_texture(&self, name: &str) -> Result<&Arc<B::TextureShaderResourceView>, RenderGraphResourceError>;
+  fn get_buffer(&self, name: &str, history: bool) -> Result<&Arc<B::Buffer>, RenderGraphResourceError>;
+  fn get_texture(&self, name: &str, history: bool) -> Result<&Arc<B::TextureShaderResourceView>, RenderGraphResourceError>;
 }
 
 #[derive(Debug)]
 pub enum RenderGraphResourceError {
   WrongResourceType,
   NotFound,
+  NoHistory,
   NotAllowed
 }

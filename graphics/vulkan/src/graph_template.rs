@@ -34,6 +34,7 @@ pub struct VkPassTemplate {
 pub enum VkBarrierTemplate {
   Image {
     name: String,
+    is_history: bool,
     old_layout: vk::ImageLayout,
     new_layout: vk::ImageLayout,
     src_access_mask: vk::AccessFlags,
@@ -45,6 +46,7 @@ pub enum VkBarrierTemplate {
   },
   Buffer {
     name: String,
+    is_history: bool,
     src_access_mask: vk::AccessFlags,
     dst_access_mask: vk::AccessFlags,
     src_stage: vk::PipelineStageFlags,
@@ -98,6 +100,8 @@ pub enum VkResourceTemplate {
 pub struct ResourceMetadata {
   pub(super) template: VkResourceTemplate,
   pub(super) last_used_in_pass_index: u32,
+  pub(super) history_first_used_in_pass_index: Option<u32>,
+  pub(super) history_last_used_in_pass_index: Option<u32>,
   pub(super) produced_in_pass_index: u32,
   pub(super) producer_pass_type: VkResourceProducerPassType,
   pub(super) layout: vk::ImageLayout,
@@ -109,6 +113,8 @@ impl ResourceMetadata {
     ResourceMetadata {
       template,
       last_used_in_pass_index: 0,
+      history_first_used_in_pass_index: None,
+      history_last_used_in_pass_index: None,
       produced_in_pass_index: 0,
       producer_pass_type: VkResourceProducerPassType::Graphics,
       layout: vk::ImageLayout::UNDEFINED,
@@ -159,9 +165,7 @@ impl VkRenderGraphTemplate {
     let mut reordered_passes_queue: VecDeque<PassInfo> = VecDeque::from_iter(reordered_passes);
     let mut pass_index: u32 = 0;
     let mut pass_opt = reordered_passes_queue.pop_front();
-    while pass_opt.is_some() {
-      let pass = pass_opt.unwrap();
-
+    while let Some(pass) = pass_opt {
       match &pass.pass_type {
         PassType::Graphics {
           ref subpasses
@@ -179,9 +183,33 @@ impl VkRenderGraphTemplate {
         },
         _ => unimplemented!()
       }
-
       pass_opt = reordered_passes_queue.pop_front();
       pass_index += 1;
+    }
+
+    for pass in &mut passes {
+      let mut barriers = match &mut pass.pass_type {
+        VkPassType::Graphics {
+          barriers, ..
+        } => barriers,
+        VkPassType::Compute {
+          barriers
+        } => barriers,
+        _ => unimplemented!()
+      };
+      for barrier in barriers {
+        match barrier {
+          VkBarrierTemplate::Image {
+            name, is_history, old_layout, ..
+          } => {
+            let metadata = attachment_metadata.get(name).unwrap();
+            if *is_history {
+              *old_layout = metadata.layout;
+            }
+          }
+          _ => {}
+        }
+      }
     }
 
     Self {
@@ -220,6 +248,8 @@ impl VkRenderGraphTemplate {
           metadata.insert(name.clone(), ResourceMetadata {
             template: VkResourceTemplate::ExternalBuffer,
             last_used_in_pass_index: 0,
+            history_first_used_in_pass_index: None,
+            history_last_used_in_pass_index: None,
             produced_in_pass_index: 0,
             producer_pass_type: match producer_type {
               ExternalProducerType::Graphics => VkResourceProducerPassType::Graphics,
@@ -242,6 +272,8 @@ impl VkRenderGraphTemplate {
           metadata.insert(name.clone(), ResourceMetadata {
             template: VkResourceTemplate::ExternalTexture { is_depth_stencil: false },
             last_used_in_pass_index: 0,
+            history_first_used_in_pass_index: None,
+            history_last_used_in_pass_index: None,
             produced_in_pass_index: 0,
             producer_pass_type: match producer_type {
               ExternalProducerType::Graphics => VkResourceProducerPassType::Graphics,
@@ -264,6 +296,8 @@ impl VkRenderGraphTemplate {
           metadata.insert(name.clone(), ResourceMetadata {
             template: VkResourceTemplate::ExternalTexture { is_depth_stencil: true },
             last_used_in_pass_index: 0,
+            history_first_used_in_pass_index: None,
+            history_last_used_in_pass_index: None,
             produced_in_pass_index: 0,
             producer_pass_type: match producer_type {
               ExternalProducerType::Graphics => VkResourceProducerPassType::Graphics,
@@ -368,13 +402,21 @@ impl VkRenderGraphTemplate {
                     is_backbuffer: false
                   }))
                   .produced_in_pass_index = reordered_passes.len() as u32;
-
               }
               DepthStencil::Input {
-                name: ds_name, ..
+                name: ds_name, is_history, ..
               } => {
                 let mut input_metadata = metadata.get_mut(ds_name).unwrap();
-                input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+                if *is_history {
+                  if input_metadata.history_first_used_in_pass_index.is_none() || input_metadata.history_first_used_in_pass_index.unwrap() < reordered_passes.len() as u32 {
+                    input_metadata.history_first_used_in_pass_index = Some(reordered_passes.len() as u32);
+                  }
+                  if input_metadata.history_last_used_in_pass_index.is_none() || input_metadata.history_last_used_in_pass_index.unwrap() > reordered_passes.len() as u32 {
+                    input_metadata.history_last_used_in_pass_index = Some(reordered_passes.len() as u32);
+                  }
+                } else {
+                  input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+                }
                 input_metadata.used_in_stages |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS;
               }
               DepthStencil::None => {}
@@ -382,7 +424,16 @@ impl VkRenderGraphTemplate {
 
             for input in &subpass.inputs {
               let mut input_metadata = metadata.get_mut(&input.name).unwrap();
-              input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+              if input.is_history {
+                if input_metadata.history_first_used_in_pass_index.is_none() || input_metadata.history_first_used_in_pass_index.unwrap() < reordered_passes.len() as u32 {
+                  input_metadata.history_first_used_in_pass_index = Some(reordered_passes.len() as u32);
+                }
+                if input_metadata.history_last_used_in_pass_index.is_none() || input_metadata.history_last_used_in_pass_index.unwrap() > reordered_passes.len() as u32 {
+                  input_metadata.history_last_used_in_pass_index = Some(reordered_passes.len() as u32);
+                }
+              } else {
+                input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+              }
               assert_ne!(input.stage, PipelineStage::ComputeShader);
               input_metadata.used_in_stages |= pipeline_stage_to_vk(input.stage);
             }
@@ -457,7 +508,16 @@ impl VkRenderGraphTemplate {
 
           for input in inputs {
             let mut input_metadata = metadata.get_mut(&input.name).unwrap();
-            input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+            if input.is_history {
+              if input_metadata.history_first_used_in_pass_index.is_none() || input_metadata.history_first_used_in_pass_index.unwrap() < reordered_passes.len() as u32 {
+                input_metadata.history_first_used_in_pass_index = Some(reordered_passes.len() as u32);
+              }
+              if input_metadata.history_last_used_in_pass_index.is_none() || input_metadata.history_last_used_in_pass_index.unwrap() > reordered_passes.len() as u32 {
+                input_metadata.history_last_used_in_pass_index = Some(reordered_passes.len() as u32);
+              }
+            } else {
+              input_metadata.last_used_in_pass_index = reordered_passes.len() as u32;
+            }
             assert_eq!(input.stage, PipelineStage::ComputeShader);
             input_metadata.used_in_stages |= vk::PipelineStageFlags::COMPUTE_SHADER;
           }
@@ -618,7 +678,6 @@ impl VkRenderGraphTemplate {
           metadata.last_used_in_subpass_index = subpass_index as u32;
         }
       }
-      // TODO: transition non attachment images
     }
 
     let mut use_subpass_dependencies = true;
@@ -631,7 +690,7 @@ impl VkRenderGraphTemplate {
           _ => false
         };
         let subpass_metadata = subpass_attachment_metadata.get(input.name.as_str()).unwrap();
-        use_subpass_dependencies &= is_buffer || subpass_metadata.last_used_in_subpass_index != vk::SUBPASS_EXTERNAL;
+        use_subpass_dependencies &= !input.is_history && (is_buffer || subpass_metadata.produced_in_subpass_index != vk::SUBPASS_EXTERNAL);
       }
     }
 
@@ -647,13 +706,13 @@ impl VkRenderGraphTemplate {
         let subpass_metadata = &subpass_attachment_metadata[input.name.as_str()];
 
         if subpass_metadata.produced_in_subpass_index != vk::SUBPASS_EXTERNAL || use_subpass_dependencies {
-          dependencies.push(match &metadata.template {
+          match &metadata.template {
             VkResourceTemplate::Texture { format, is_backbuffer, .. } => {
               if *is_backbuffer {
                 panic!("Using the backbuffer as a pass input is not allowed.");
               }
               let is_depth_stencil = format.is_depth() || format.is_stencil();
-              vk::SubpassDependency {
+              dependencies.push(vk::SubpassDependency {
                 src_subpass: subpass_metadata.produced_in_subpass_index,
                 dst_subpass: subpass_index as u32,
                 src_stage_mask: match metadata.producer_pass_type {
@@ -675,11 +734,11 @@ impl VkRenderGraphTemplate {
                 },
                 dst_access_mask: if input.is_local { vk::AccessFlags::COLOR_ATTACHMENT_READ } else { vk::AccessFlags::SHADER_READ },
                 dependency_flags: if input.is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
-              }
+              });
             }
 
             VkResourceTemplate::Buffer { .. } => {
-              vk::SubpassDependency {
+              dependencies.push(vk::SubpassDependency {
                 src_subpass: subpass_metadata.produced_in_subpass_index,
                 dst_subpass: subpass_index as u32,
                 src_stage_mask: match metadata.producer_pass_type {
@@ -697,11 +756,11 @@ impl VkRenderGraphTemplate {
                 },
                 dst_access_mask: vk::AccessFlags::SHADER_READ,
                 dependency_flags: vk::DependencyFlags::empty()
-              }
+              });
             }
 
             VkResourceTemplate::ExternalTexture { is_depth_stencil, .. } => {
-              vk::SubpassDependency {
+              dependencies.push(vk::SubpassDependency {
                 src_subpass: subpass_metadata.produced_in_subpass_index,
                 dst_subpass: subpass_index as u32,
                 src_stage_mask: match metadata.producer_pass_type {
@@ -723,11 +782,11 @@ impl VkRenderGraphTemplate {
                 },
                 dst_access_mask: if input.is_local { vk::AccessFlags::COLOR_ATTACHMENT_READ } else { vk::AccessFlags::SHADER_READ },
                 dependency_flags: if input.is_local { vk::DependencyFlags::BY_REGION } else { vk::DependencyFlags::empty() }
-              }
+              });
             }
 
             VkResourceTemplate::ExternalBuffer { .. } => {
-              vk::SubpassDependency {
+              dependencies.push(vk::SubpassDependency {
                 src_subpass: subpass_metadata.produced_in_subpass_index,
                 dst_subpass: subpass_index as u32,
                 src_stage_mask: match metadata.producer_pass_type {
@@ -745,9 +804,9 @@ impl VkRenderGraphTemplate {
                 },
                 dst_access_mask: vk::AccessFlags::MEMORY_READ,
                 dependency_flags: vk::DependencyFlags::empty()
-              }
+              });
             }
-          });
+          }
         } else {
           barriers.push(match &metadata.template {
             VkResourceTemplate::Texture { format, is_backbuffer, .. } => {
@@ -758,6 +817,7 @@ impl VkRenderGraphTemplate {
               let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
               VkBarrierTemplate::Image {
                 name: input.name.clone(),
+                is_history: input.is_history,
                 old_layout,
                 new_layout: metadata.layout,
                 src_access_mask: if is_depth_stencil {
@@ -785,6 +845,7 @@ impl VkRenderGraphTemplate {
             VkResourceTemplate::Buffer { .. } => {
               VkBarrierTemplate::Buffer {
                 name: input.name.clone(),
+                is_history: input.is_history,
                 src_access_mask: match metadata.producer_pass_type {
                   VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
                   VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
@@ -806,6 +867,7 @@ impl VkRenderGraphTemplate {
             VkResourceTemplate::ExternalBuffer => {
               VkBarrierTemplate::Buffer {
                 name: input.name.clone(),
+                is_history: input.is_history,
                 src_access_mask: match metadata.producer_pass_type {
                   VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
                   VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
@@ -828,6 +890,7 @@ impl VkRenderGraphTemplate {
               let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
               VkBarrierTemplate::Image {
                 name: input.name.clone(),
+                is_history: input.is_history,
                 old_layout,
                 new_layout: metadata.layout,
                 src_access_mask: if *is_depth_stencil {
@@ -932,7 +995,7 @@ impl VkRenderGraphTemplate {
 
         let metadata = attachment_metadata.get(*name).unwrap();
         if !is_used && subpass_metadata.produced_in_subpass_index < subpass_index as u32
-          && (metadata.last_used_in_pass_index > pass_index || subpass_metadata.last_used_in_subpass_index > subpass_index as u32) {
+          && (metadata.last_used_in_pass_index > pass_index || metadata.history_last_used_in_pass_index.is_some() && metadata.history_last_used_in_pass_index.unwrap() > pass_index || subpass_metadata.last_used_in_subpass_index > subpass_index as u32) {
           preserve_attachments.push(subpass_metadata.render_pass_attachment_index);
         }
       }
@@ -1017,6 +1080,7 @@ impl VkRenderGraphTemplate {
           let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
           VkBarrierTemplate::Image {
             name: input.name.clone(),
+            is_history: input.is_history,
             old_layout,
             new_layout: metadata.layout,
             src_access_mask: match metadata.producer_pass_type {
@@ -1044,6 +1108,7 @@ impl VkRenderGraphTemplate {
         VkResourceTemplate::Buffer { .. } => {
           VkBarrierTemplate::Buffer {
             name: input.name.clone(),
+            is_history: input.is_history,
             src_access_mask: match metadata.producer_pass_type {
               VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
               VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
@@ -1065,6 +1130,7 @@ impl VkRenderGraphTemplate {
         VkResourceTemplate::ExternalBuffer => {
           VkBarrierTemplate::Buffer {
             name: input.name.clone(),
+            is_history: input.is_history,
             src_access_mask: match metadata.producer_pass_type {
               VkResourceProducerPassType::Graphics => vk::AccessFlags::SHADER_WRITE,
               VkResourceProducerPassType::Compute => vk::AccessFlags::SHADER_WRITE,
@@ -1088,6 +1154,7 @@ impl VkRenderGraphTemplate {
           let old_layout = std::mem::replace(&mut metadata.layout, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
           VkBarrierTemplate::Image {
             name: input.name.clone(),
+            is_history: input.is_history,
             old_layout,
             new_layout: metadata.layout,
             src_access_mask: if *is_depth_stencil {
@@ -1141,7 +1208,12 @@ impl VkRenderGraphTemplate {
               if let Some(index) = index_opt {
                 passes_since_ready = min(index.produced_in_pass_index, passes_since_ready);
               } else {
-                is_ready = false;
+                if input.is_history {
+                  // history resource
+                  passes_since_ready = min(0, passes_since_ready);
+                } else {
+                  is_ready = false;
+                }
               }
             }
 
@@ -1158,7 +1230,12 @@ impl VkRenderGraphTemplate {
             if let Some(index) = index_opt {
               passes_since_ready = min(index.produced_in_pass_index, passes_since_ready);
             } else {
-              is_ready = false;
+              if input.is_history {
+                // history resource
+                passes_since_ready = min(0, passes_since_ready);
+              } else {
+                is_ready = false;
+              }
             }
           }
 

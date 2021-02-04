@@ -70,6 +70,13 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
             PassInput {
               name: LATE_LATCHING_CAMERA.to_string(),
               is_local: false,
+              is_history: false,
+              stage: PipelineStage::VertexShader
+            },
+            PassInput {
+              name: LATE_LATCHING_CAMERA.to_string(),
+              is_local: false,
+              is_history: true,
               stage: PipelineStage::VertexShader
             }
           ],
@@ -195,8 +202,9 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
           extent: Vec2UI::new(9999, 9999),
         }]);
 
-        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA).expect("Failed to get graph resource"));
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
+        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
+        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(LATE_LATCHING_CAMERA, true).expect("Failed to get graph resource"));
+        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
         for drawable in drawables.iter() {
           let model_constant_buffer = command_buffer.upload_dynamic_data(PrepassModelCB {
             model: drawable.transform,

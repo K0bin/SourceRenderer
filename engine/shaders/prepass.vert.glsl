@@ -8,8 +8,10 @@ layout(location = 0) out vec3 out_position;
 layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec3 out_oldPosition;
 
-layout(set = 2, binding = 0) uniform LowFrequencyUbo {
+layout(set = 2, binding = 0) uniform CurrentLowFrequencyUbo {
     mat4 viewProjection;
+};
+layout(set = 2, binding = 1) uniform PreviousLowFrequencyUbo {
     mat4 oldViewProjection;
 };
 

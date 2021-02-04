@@ -38,7 +38,8 @@ pub enum DepthStencil {
     stencil_store_action: StoreAction
   },
   Input {
-    name: String
+    name: String,
+    is_history: bool
   },
   None
 }
@@ -141,7 +142,8 @@ pub enum PassType {
 pub struct PassInput {
   pub name: String,
   pub is_local: bool,
-  pub stage: PipelineStage
+  pub stage: PipelineStage,
+  pub is_history: bool
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]

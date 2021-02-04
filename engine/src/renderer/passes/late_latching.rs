@@ -19,6 +19,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
         PassInput {
           name: EXTERNAL_RING_BUFFER.to_string(),
           is_local: false,
+          is_history: false,
           stage: PipelineStage::ComputeShader
         }
       ],
@@ -48,8 +49,8 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
       Arc::new(move |command_buffer_a, graph_resources| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&copy_camera_pipeline));
-        command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, graph_resources.get_buffer(EXTERNAL_RING_BUFFER).expect("Failed to get graph resource"));
-        command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, graph_resources.get_buffer(OUTPUT_CAMERA).expect("Failed to get graph resource"));
+        command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, graph_resources.get_buffer(EXTERNAL_RING_BUFFER, false).expect("Failed to get graph resource"));
+        command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, graph_resources.get_buffer(OUTPUT_CAMERA, false).expect("Failed to get graph resource"));
         command_buffer.finish_binding();
         command_buffer.dispatch(1, 1, 1);
       })
