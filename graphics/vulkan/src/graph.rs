@@ -650,6 +650,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
+      if self.swapchain.state() != VkSwapchainState::Okay {
+        return Err(());
+      }
+
       let result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
       if result.is_err() || !result.unwrap().1 && false {
         return Err(())
@@ -802,10 +806,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let mut frame_context = thread_context.get_frame_local();
 
     if self.renders_to_swapchain {
-      let result = self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
-      if result.is_err() || !result.unwrap() && false {
-        return Err(());
-      }
+      self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
+      let c_graphics_queue = self.graphics_queue.clone();
+      rayon::spawn(move || c_graphics_queue.process_submissions());
 
       frame_context.track_semaphore(&cmd_semaphore);
     }

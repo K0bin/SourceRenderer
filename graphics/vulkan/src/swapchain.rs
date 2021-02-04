@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::cmp::{min, max};
 
+use crossbeam_utils::atomic::AtomicCell;
+
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
 
@@ -16,6 +18,13 @@ use crate::texture::VkTextureView;
 
 use ash::prelude::VkResult;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum VkSwapchainState {
+  Okay,
+  Suboptimal,
+  SurfaceLost
+}
+
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
   views: Vec<Arc<VkTextureView>>,
@@ -24,7 +33,8 @@ pub struct VkSwapchain {
   instance: Arc<RawVkInstance>,
   surface: Arc<VkSurface>,
   device: Arc<RawVkDevice>,
-  vsync: bool
+  vsync: bool,
+  state: AtomicCell<VkSwapchainState>
 }
 
 impl VkSwapchain {
@@ -115,7 +125,8 @@ impl VkSwapchain {
         instance: device.instance.clone(),
         surface: surface.clone(),
         device: device.clone(),
-        vsync
+        vsync,
+        state: AtomicCell::new(VkSwapchainState::Okay)
       }))
     }
   }
@@ -202,6 +213,14 @@ impl VkSwapchain {
 
   pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
     unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }
+  }
+
+  pub fn set_state(&self, state: VkSwapchainState) {
+    self.state.store(state);
+  }
+
+  pub fn state(&self) -> VkSwapchainState {
+    self.state.load()
   }
 }
 
