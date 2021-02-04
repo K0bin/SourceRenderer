@@ -22,6 +22,7 @@ use ash::prelude::VkResult;
 pub enum VkSwapchainState {
   Okay,
   Suboptimal,
+  OutOfDate
   SurfaceLost
 }
 

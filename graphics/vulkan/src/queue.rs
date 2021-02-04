@@ -184,6 +184,7 @@ impl VkQueue {
               },
               Err(err) => {
                 match err {
+                  vk::Result::ERROR_OUT_OF_DATE_KHR => { swapchain.set_state(VkSwapchainState::OutOfDate); }
                   vk::Result::ERROR_SURFACE_LOST_KHR => { swapchain.set_state(VkSwapchainState::SurfaceLost); }
                   _ => { panic!("Present failed: {:?}", err); }
                 }
