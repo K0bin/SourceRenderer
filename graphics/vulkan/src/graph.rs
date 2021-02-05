@@ -26,7 +26,6 @@ use rayon;
 use crate::sync::VkEvent;
 use sourcerenderer_core::pool::Recyclable;
 use crate::swapchain::VkSwapchainState;
-use bitflags::_core::option::Option::Some;
 
 pub enum VkResource {
   Texture {
@@ -455,7 +454,7 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let (texture, texture_b) = if !is_external {
-                  if !*is_history && false {
+                  if !pass.has_history_resources && !pass.has_external_resources {
                     wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
                   }
 
@@ -523,7 +522,7 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let (buffer, buffer_b) = if !is_external {
-                  if !*is_history && false {
+                  if !pass.has_history_resources && !pass.has_external_resources {
                     wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
                   }
 
@@ -622,7 +621,7 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let (texture, texture_b) = if !is_external {
-                  if !*is_history && false {
+                  if !pass.has_history_resources && !pass.has_external_resources {
                     wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
                   }
 
@@ -690,7 +689,7 @@ impl VkRenderGraph {
                   _ => panic!("Mismatched resource type")
                 };
                 let (buffer, buffer_b) = if !is_external {
-                  if !*is_history && false {
+                  if !pass.has_history_resources && !pass.has_external_resources {
                     wait_events.push(*(events[metadata.produced_in_pass_index as usize].handle()));
                   }
 
@@ -826,20 +825,18 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       match pass as &VkPass {
         VkPass::Graphics {
           framebuffers,
-          framebuffers_b,
           src_stage,
           dst_stage,
           image_barriers,
           buffer_barriers,
-          image_barriers_b,
-          buffer_barriers_b,
           callbacks,
           renderpass,
           renders_to_swapchain,
           clear_values,
           resources: pass_resource_names,
           wait_for_events,
-          signal_event
+          signal_event,
+          ..
         } => {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
@@ -916,12 +913,11 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           dst_stage,
           buffer_barriers,
           image_barriers,
-          image_barriers_b,
-          buffer_barriers_b,
           callbacks,
           resources: pass_resource_names,
           signal_event,
-          wait_for_events
+          wait_for_events,
+          ..
         } => {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
