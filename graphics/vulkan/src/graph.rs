@@ -197,7 +197,11 @@ impl VkRenderGraph {
 
     let resource_metadata = template.resources();
     for (_name, attachment_info) in resource_metadata {
-      let has_history_resource = attachment_info.history_first_used_in_pass_index.is_some() && attachment_info.history_first_used_in_pass_index.unwrap() >= attachment_info.produced_in_pass_index;
+      let has_history_resource = if let Some(history_usage) = attachment_info.history_usage.as_ref() {
+        history_usage.first_used_in_pass_index >= attachment_info.produced_in_pass_index
+      } else {
+        false
+      };
       // TODO: aliasing
       match &attachment_info.template {
         // TODO: transient
