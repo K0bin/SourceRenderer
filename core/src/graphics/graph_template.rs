@@ -4,7 +4,8 @@ use crate::graphics::{Format, SampleCount};
 pub enum PipelineStage {
   VertexShader,
   FragmentShader,
-  ComputeShader
+  ComputeShader,
+  Copy
 }
 
 #[derive(Clone)]
@@ -45,7 +46,7 @@ pub enum DepthStencil {
 }
 
 #[derive(Clone)]
-pub enum ComputeOutput {
+pub enum Output {
   RenderTarget {
     name: String,
     format: Format,
@@ -65,7 +66,7 @@ pub enum ComputeOutput {
   },
   Backbuffer {
     clear: bool
-   },
+  },
   Buffer {
     name: String,
     format: Option<Format>,
@@ -130,11 +131,11 @@ pub enum PassType {
   },
   Compute {
     inputs: Vec<PassInput>,
-    outputs: Vec<ComputeOutput>
+    outputs: Vec<Output>
   },
-  Transfer {
+  Copy {
     inputs: Vec<PassInput>,
-    outputs: Vec<ComputeOutput>
+    outputs: Vec<Output>
   },
 }
 

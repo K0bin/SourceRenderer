@@ -187,9 +187,9 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
         let view = c_view.borrow();
 
         let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<PrepassCameraCB>(PrepassCameraCB {
-            view_projection: view.camera_matrix,
-            old_view_projection: view.old_camera_matrix
-          }, BufferUsage::CONSTANT);
+          view_projection: view.camera_matrix,
+          old_view_projection: view.old_camera_matrix
+        }, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         command_buffer.set_viewports(&[Viewport {
           position: Vec2::new(0.0f32, 0.0f32),

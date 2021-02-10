@@ -488,6 +488,71 @@ impl VkCommandBuffer {
     }
   }
 
+
+  pub(crate) fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pipeline.is_some());
+    debug_assert!(self.render_pass.is_none());
+    let src_info = src_texture.get_info();
+    let dst_info = dst_texture.get_info();
+    let mut src_aspect = vk::ImageAspectFlags::empty();
+    if src_info.format.is_stencil() {
+      src_aspect |= vk::ImageAspectFlags::STENCIL;
+    }
+    if src_info.format.is_depth() {
+      src_aspect |= vk::ImageAspectFlags::DEPTH;
+    }
+    if src_aspect.is_empty() {
+      src_aspect = vk::ImageAspectFlags::COLOR;
+    }
+    let mut dst_aspect = vk::ImageAspectFlags::empty();
+    if dst_info.format.is_stencil() {
+      dst_aspect |= vk::ImageAspectFlags::STENCIL;
+    }
+    if dst_info.format.is_depth() {
+      dst_aspect |= vk::ImageAspectFlags::DEPTH;
+    }
+    if dst_aspect.is_empty() {
+      dst_aspect = vk::ImageAspectFlags::COLOR;
+    }
+
+    unsafe {
+      self.device.cmd_blit_image(self.buffer, *src_texture.get_handle(), vk::ImageLayout::TRANSFER_SRC_OPTIMAL, *dst_texture.get_handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+      &[vk::ImageBlit {
+        src_subresource: vk::ImageSubresourceLayers {
+          aspect_mask: src_aspect,
+          mip_level: src_mip_level,
+          base_array_layer: src_array_layer,
+          layer_count: 1
+        },
+        src_offsets: [vk::Offset3D {
+          x: 0,
+          y: 0,
+          z: 0
+        }, vk::Offset3D {
+          x: src_info.width as i32,
+          y: src_info.height as i32,
+          z: src_info.depth as i32,
+        }],
+        dst_subresource: vk::ImageSubresourceLayers {
+          aspect_mask: dst_aspect,
+          mip_level: dst_mip_level,
+          base_array_layer: dst_array_layer,
+          layer_count: 1
+        },
+        dst_offsets: [vk::Offset3D {
+          x: 0,
+          y: 0,
+          z: 0
+        }, vk::Offset3D {
+          x: dst_info.width as i32,
+          y: dst_info.height as i32,
+          z: dst_info.depth as i32,
+        }]
+      }], vk::Filter::LINEAR);
+    }
+  }
+
   pub(crate) fn barrier(
     &mut self,
     src_stage_mask: vk::PipelineStageFlags,
@@ -598,7 +663,7 @@ impl VkCommandBufferRecorder {
     memory_barriers: &[vk::MemoryBarrier],
     buffer_memory_barriers: &[vk::BufferMemoryBarrier],
     image_memory_barriers: &[vk::ImageMemoryBarrier]) {
-      self.item.as_mut().unwrap().barrier(src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
+    self.item.as_mut().unwrap().barrier(src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
   }
 
   pub fn wait_events(
@@ -703,6 +768,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
     self.item.as_mut().unwrap().dispatch(group_count_x, group_count_y, group_count_z);
+  }
+
+  #[inline(always)]
+  fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
+    self.item.as_mut().unwrap().blit(src_texture, dst_array_layer, dst_mip_level, dst_texture, dst_array_layer, dst_mip_level);
   }
 }
 

@@ -48,6 +48,7 @@ pub trait CommandBuffer<B: Backend> {
   fn begin_label(&mut self, label: &str);
   fn end_label(&mut self);
   fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
+  fn blit(&mut self, src_texture: &Arc<B::Texture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<B::Texture>, dst_array_layer: u32, dst_mip_level: u32);
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]

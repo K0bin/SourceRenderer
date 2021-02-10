@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{PassInfo, PassType, PassInput, ComputeOutput, RenderPassCallbacks, CommandBuffer, PipelineBinding, BindingFrequency, ShaderType, Backend as GraphicsBackend, Device, ExternalResource, ExternalOutput, ExternalProducerType, PipelineStage};
+use sourcerenderer_core::graphics::{PassInfo, PassType, PassInput, Output, RenderPassCallbacks, CommandBuffer, PipelineBinding, BindingFrequency, ShaderType, Backend as GraphicsBackend, Device, ExternalResource, ExternalOutput, ExternalProducerType, PipelineStage};
 use sourcerenderer_core::{Matrix4, Platform};
 use std::sync::Arc;
 use std::fs::File;
@@ -24,7 +24,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
         }
       ],
       outputs: vec![
-        ComputeOutput::Buffer {
+        Output::Buffer {
           name: OUTPUT_CAMERA.to_string(),
           format: None,
           size: std::mem::size_of::<Matrix4>() as u32,
