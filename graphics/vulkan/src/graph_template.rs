@@ -601,7 +601,6 @@ impl VkRenderGraphTemplate {
                 ..Default::default()
               }
             );
-            metadata.layout = vk::ImageLayout::PRESENT_SRC_KHR;
           },
 
           SubpassOutput::RenderTarget {
