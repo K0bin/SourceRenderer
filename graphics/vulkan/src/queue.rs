@@ -98,7 +98,7 @@ impl VkQueue {
         } => {
           if fence.is_none() && wait_semaphores.len() == 0 && signal_semaphores.len() == 0 {
             if let Some(last_info) = batch.last_mut() {
-              if last_info.wait_semaphore_count == 0 && last_info.signal_semaphore_count == 0 {
+              if last_info.wait_semaphore_count == 0 && last_info.signal_semaphore_count == 0 && command_buffers.len() < command_buffers.capacity() {
                 command_buffers.push(command_buffer);
                 last_info.command_buffer_count += 1;
                 append = true;
@@ -107,18 +107,6 @@ impl VkQueue {
           }
 
           if !append {
-            command_buffers.push(command_buffer);
-            let submit = vk::SubmitInfo {
-              wait_semaphore_count: wait_semaphores.len() as u32,
-              p_wait_semaphores: wait_semaphores.as_ptr(),
-              p_wait_dst_stage_mask: wait_stages.as_ptr(),
-              command_buffer_count: 1,
-              p_command_buffers: unsafe { command_buffers.as_ptr().offset(command_buffers.len() as isize - 1) },
-              signal_semaphore_count: signal_semaphores.len() as u32,
-              p_signal_semaphores: signal_semaphores.as_ptr(),
-              ..Default::default()
-            };
-
             if fence.is_some() {
               if !batch.is_empty() {
                 unsafe {
@@ -130,6 +118,17 @@ impl VkQueue {
                 batch.clear();
                 command_buffers.clear();
               }
+
+              let submit = vk::SubmitInfo {
+                wait_semaphore_count: wait_semaphores.len() as u32,
+                p_wait_semaphores: wait_semaphores.as_ptr(),
+                p_wait_dst_stage_mask: wait_stages.as_ptr(),
+                command_buffer_count: 1,
+                p_command_buffers: unsafe { &command_buffer as *const vk::CommandBuffer },
+                signal_semaphore_count: signal_semaphores.len() as u32,
+                p_signal_semaphores: signal_semaphores.as_ptr(),
+                ..Default::default()
+              };
 
               let fence = fence.unwrap();
               fence.mark_submitted();
@@ -151,6 +150,18 @@ impl VkQueue {
                 batch.clear();
                 command_buffers.clear();
               }
+
+              command_buffers.push(command_buffer);
+              let submit = vk::SubmitInfo {
+                wait_semaphore_count: wait_semaphores.len() as u32,
+                p_wait_semaphores: wait_semaphores.as_ptr(),
+                p_wait_dst_stage_mask: wait_stages.as_ptr(),
+                command_buffer_count: 1,
+                p_command_buffers: unsafe { command_buffers.as_ptr().offset(command_buffers.len() as isize - 1) },
+                signal_semaphore_count: signal_semaphores.len() as u32,
+                p_signal_semaphores: signal_semaphores.as_ptr(),
+                ..Default::default()
+              };
               batch.push(submit);
             }
           }
@@ -195,13 +206,13 @@ impl VkQueue {
           }
         }
       }
+    }
 
-      if !batch.is_empty() {
-        unsafe {
-          let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
-          if result.is_err() {
-            panic!("Submit failed: {:?}", result);
-          }
+    if !batch.is_empty() {
+      unsafe {
+        let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
+        if result.is_err() {
+          panic!("Submit failed: {:?}", result);
         }
       }
     }
