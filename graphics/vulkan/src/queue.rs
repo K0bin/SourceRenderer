@@ -166,6 +166,8 @@ impl VkQueue {
                 panic!("Submit failed: {:?}", result);
               }
             }
+            batch.clear();
+            command_buffers.clear();
           }
 
           let present_info = vk::PresentInfoKHR {
