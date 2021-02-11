@@ -142,10 +142,14 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChange
   engine_ptr: jlong,
   surface: JObject
 ) {
-  let native_window_ptr = unsafe { ANativeWindow_fromSurface(std::mem::transmute(env), std::mem::transmute(*surface)) };
-  let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
-  let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
   let engine = engine_from_long(engine_ptr);
+  if surface.is_null() {
+
+  } else {
+    let native_window_ptr = unsafe { ANativeWindow_fromSurface(std::mem::transmute(env), std::mem::transmute(*surface)) };
+    let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
+    let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
+  }
 
   // TODO
 }
