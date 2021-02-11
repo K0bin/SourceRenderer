@@ -11,6 +11,7 @@ use std::hash::{Hash, Hasher};
 use crate::pipeline::VkPipelineLayout;
 use std::ffi::c_void;
 use crate::VkAdapterExtensionSupport;
+use smallvec::SmallVec;
 
 // TODO: clean up descriptor management
 // TODO: determine descriptor and set counts
@@ -55,8 +56,9 @@ impl VkDescriptorSetLayout {
     let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
     let mut binding_infos: [Option<VkDescriptorSetBindingInfo>; 16] = Default::default();
 
-    for (index, binding) in bindings.iter().enumerate() {
-      binding_infos[index] = Some(binding.clone());
+    println!("LAYOUT");
+    for binding in bindings.iter() {
+      binding_infos[binding.index as usize] = Some(binding.clone());
 
       vk_bindings.push(vk::DescriptorSetLayoutBinding {
         binding: binding.index,
@@ -65,6 +67,8 @@ impl VkDescriptorSetLayout {
         stage_flags: binding.shader_stage,
         p_immutable_samplers: std::ptr::null()
       });
+
+      println!("Binding: {:?} at slot: {:?}", binding.descriptor_type, binding.index);
 
       vk_template_entries.push(vk::DescriptorUpdateTemplateEntry {
         dst_binding: binding.index,
@@ -256,14 +260,15 @@ impl VkDescriptorSet {
 
     match layout.template {
       None => {
-        let mut writes: [vk::WriteDescriptorSet; 16] = Default::default();
-        let mut writes_len = 0usize;
+        let mut writes: SmallVec<[vk::WriteDescriptorSet; 16]> = Default::default();
+        let mut image_writes: SmallVec<[vk::DescriptorImageInfo; 16]> = Default::default();
+        let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; 16]> = Default::default();
         for (binding, resource) in bindings.iter().enumerate() {
           if layout.binding_infos[binding].is_none() {
             continue;
           }
 
-          let mut write = &mut writes[writes_len];
+          let mut write = vk::WriteDescriptorSet::default();
           write.dst_set = set;
           write.dst_binding = binding as u32;
           write.dst_array_element = 0;
@@ -276,7 +281,8 @@ impl VkDescriptorSet {
                 offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
                 range: buffer.get_offset_and_length().1 as vk::DeviceSize
               };
-              write.p_buffer_info = &buffer_info;
+              buffer_writes.push(buffer_info);
+              write.p_buffer_info = unsafe { buffer_writes.as_ptr().offset(buffer_writes.len() as isize - 1) };
               write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER };
             },
             VkBoundResource::UniformBuffer(buffer) => {
@@ -285,7 +291,8 @@ impl VkDescriptorSet {
                 offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
                 range: buffer.get_offset_and_length().1 as vk::DeviceSize
               };
-              write.p_buffer_info = &buffer_info;
+              buffer_writes.push(buffer_info);
+              write.p_buffer_info = unsafe { buffer_writes.as_ptr().offset(buffer_writes.len() as isize - 1) };
               write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER };
             },
             VkBoundResource::SampledTexture(texture) => {
@@ -294,27 +301,27 @@ impl VkDescriptorSet {
                 sampler: *texture.get_sampler_handle().unwrap(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
-              write.p_image_info = &texture_info;
+              image_writes.push(texture_info);
+              write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
               write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
             },
-            _ => {}
+            _ => unimplemented!()
           }
           assert_eq!(layout.binding_infos[binding].as_ref().unwrap().descriptor_type, write.descriptor_type);
-          writes_len += 1;
+          writes.push(write);
         }
         unsafe {
-          device.update_descriptor_sets(&writes[0..writes_len], &[]);
+          device.update_descriptor_sets(&writes, &[]);
         }
       },
       Some(template) => {
-        let mut entries: [VkDescriptorEntry; 16] = Default::default();
-        let mut entries_len = 0usize;
+        let mut entries: SmallVec<[VkDescriptorEntry; 16]> = Default::default();
 
         for (binding, resource) in bindings.iter().enumerate() {
           if layout.binding_infos[binding].is_none() {
             continue;
           }
-          let mut entry = &mut entries[entries_len];
+          let mut entry = VkDescriptorEntry::default();
           match resource {
             VkBoundResource::StorageBuffer(buffer) => {
               entry.buffer = vk::DescriptorBufferInfo {
@@ -339,10 +346,10 @@ impl VkDescriptorSet {
             },
             _ => {}
           }
-          entries_len += 1;
+          entries.push(entry);
         }
         unsafe {
-          device.update_descriptor_set_with_template(set, template, (&entries as *const VkDescriptorEntry) as *const c_void);
+          device.update_descriptor_set_with_template(set, template, entries.as_ptr() as *const c_void);
         }
       }
     }
