@@ -5,8 +5,7 @@ use crate::graphics;
 
 mod input;
 pub mod io;
-pub use input::Input;
-pub use input::Key;
+pub use input::{Input, Key, InputState, InputCommands};
 
 #[derive(PartialEq)]
 pub enum PlatformEvent {
@@ -25,12 +24,9 @@ pub enum GraphicsApi {
 pub trait Platform: 'static + Sized {
   type GraphicsBackend: graphics::Backend + Send + Sync;
   type Window: Window<Self>;
-  type Input: Input;
   type IO: io::IO;
 
-  fn input(&self) -> &Arc<Self::Input>;
-  fn window(&mut self) -> &Self::Window;
-  fn handle_events(&mut self) -> PlatformEvent;
+  fn window(&self) -> &Self::Window;
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<<Self::GraphicsBackend as graphics::Backend>::Instance>, Box<dyn Error>>;
 }
 

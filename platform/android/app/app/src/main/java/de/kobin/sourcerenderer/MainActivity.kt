@@ -4,9 +4,12 @@ import android.content.res.AssetManager
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import android.view.*
 
 class MainActivity : AppCompatActivity() {
+    private var enginePtr: Long = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSustainedPerformanceMode(true)
@@ -33,28 +36,35 @@ class MainActivity : AppCompatActivity() {
         val holder = view.holder
         holder.addCallback(object: SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
-                // handled by surfaceChanged
+                if (this@MainActivity.enginePtr != 0L) {
+                    Log.e("MainActivity", "Engine initialized when surfaceCreated was called.")
+                    return
+                }
+                this@MainActivity.enginePtr = startEngineNative(holder.surface)
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     holder.surface.setFrameRate(0f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
                 }
-                onSurfaceChangedNative(holder.surface)
+                if (this@MainActivity.enginePtr == 0L) {
+                    return
+                }
+                onSurfaceChangedNative(this@MainActivity.enginePtr, holder.surface)
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
-                onSurfaceChangedNative(null)
+                if (this@MainActivity.enginePtr == 0L) {
+                    return
+                }
+                onSurfaceChangedNative(this@MainActivity.enginePtr, null)
             }
         })
-
-        System.loadLibrary("sourcerenderer");
-        onCreateNative(this.assets)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        onDestroyNative()
+        onDestroyNative(this.enginePtr)
     }
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
@@ -66,8 +76,8 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    private external fun onCreateNative(assetManager: AssetManager)
-    private external fun onSurfaceChangedNative(surface: Surface?): Long
+    private external fun startEngineNative(surface: Surface): Long
+    private external fun onSurfaceChangedNative(enginePtr: Long, surface: Surface?): Long
     private external fun onTouchInputNative(x: Float, y: Float, fingerIndex: Int, eventType: Int)
-    private external fun onDestroyNative()
+    private external fun onDestroyNative(enginePtr: Long)
 }

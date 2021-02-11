@@ -1,7 +1,7 @@
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use sourcerenderer_core::platform::Platform;
+use sourcerenderer_core::platform::{Platform, InputState, InputCommands};
 
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_core::platform::PlatformEvent;
@@ -25,7 +25,6 @@ use ash::version::InstanceV1_0;
 use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
 
-use crate::SDLInput;
 use std::time::SystemTime;
 
 pub struct SDLPlatform {
@@ -33,7 +32,7 @@ pub struct SDLPlatform {
   video_subsystem: VideoSubsystem,
   event_pump: EventPump,
   window: SDLWindow,
-  input: Arc<SDLInput>
+  input_state: Mutex<InputCommands>
 }
 
 pub struct SDLWindow {
@@ -55,8 +54,44 @@ impl SDLPlatform {
       video_subsystem,
       event_pump,
       window,
-      input: Arc::new(SDLInput::new())
+      input_state: Mutex::new(InputCommands::default())
     });
+  }
+
+  pub(crate) fn handle_events(&mut self) -> PlatformEvent {
+    let mut before = SystemTime::now();
+
+    let mut counter = 0;
+    for event in self.event_pump.poll_iter() {
+      counter += 1;
+      match event {
+        Event::Quit {..} |
+        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+          self.window.is_active = false;
+          return PlatformEvent::Quit;
+        },
+        _ => {}
+      }
+    }
+
+    let mut after = SystemTime::now();
+
+    let diff = after.duration_since(before).unwrap();
+    if diff.as_millis() > 16 {
+      println!("Polling took ages?! {:?}, counted {} events", diff.as_millis(), counter);
+    }
+    before = after;
+    after = SystemTime::now();
+    let diff = after.duration_since(before).unwrap();
+    if diff.as_millis() > 16 {
+      println!("Updating input took ages?! {:?}", diff.as_millis());
+    }
+    return PlatformEvent::Continue;
+  }
+
+  pub(crate) fn process_input(&self, input_commands: InputCommands) -> InputState {
+    let mut input_guard = self.input_state.lock().unwrap();
+    crate::input::process(&mut input_guard, input_commands, &self.event_pump, &self.sdl_context.mouse(), &self.window)
   }
 }
 
@@ -91,47 +126,10 @@ impl SDLWindow {
 impl Platform for SDLPlatform {
   type Window = SDLWindow;
   type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
-  type Input = SDLInput;
   type IO = crate::io::StdIO;
 
-  fn input(&self) -> &Arc<SDLInput> {
-    &self.input
-  }
-
-  fn window(&mut self) -> &SDLWindow {
+  fn window(&self) -> &SDLWindow {
     return &self.window;
-  }
-
-  fn handle_events(&mut self) -> PlatformEvent {
-    let mut before = SystemTime::now();
-
-    let mut counter = 0;
-    for event in self.event_pump.poll_iter() {
-      counter += 1;
-      match event {
-        Event::Quit {..} |
-        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-          self.window.is_active = false;
-          return PlatformEvent::Quit;
-        },
-        _ => {}
-      }
-    }
-
-    let mut after = SystemTime::now();
-
-    let diff = after.duration_since(before).unwrap();
-    if diff.as_millis() > 16 {
-      println!("Polling took ages?! {:?}, counted {} events", diff.as_millis(), counter);
-    }
-    before = after;
-    self.input.update(&self.event_pump, &self.sdl_context.mouse(), &self.window);
-    after = SystemTime::now();
-    let diff = after.duration_since(before).unwrap();
-    if diff.as_millis() > 16 {
-      println!("Updating input took ages?! {:?}", diff.as_millis());
-    }
-    return PlatformEvent::Continue;
   }
 
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {

@@ -1,8 +1,8 @@
 use std::sync::Arc;
-use sourcerenderer_core::platform::{Input, Key};
+use sourcerenderer_core::platform::{Input, Key, InputState};
 use crate::Transform;
 use crate::Camera;
-use sourcerenderer_core::{Quaternion, Vec3, Platform, Vec2};
+use sourcerenderer_core::{Quaternion, Vec3, Platform, Vec2, Vec2I};
 use nalgebra::Unit;
 use legion::systems::Builder;
 use legion::{component, World};
@@ -36,8 +36,7 @@ impl FPSCamera {
   }
 }
 
-pub fn fps_camera_rotation<P: Platform>(input: &Arc<P::Input>, fps_camera: &mut FPSCamera, _delta_time: f32) -> Quaternion {
-  input.toggle_mouse_lock(true);
+pub fn fps_camera_rotation<P: Platform>(input: &InputState, fps_camera: &mut FPSCamera, _delta_time: f32) -> Quaternion {
   let mouse_delta = input.mouse_position();
   let touch_position = input.finger_position(0);
   let touch_delta = if fps_camera.last_touch_position.x.abs() > 0.1f32 && fps_camera.last_touch_position.y.abs() > 0.1f32 {
@@ -64,7 +63,7 @@ fn retrieve_fps_camera_rotation<P: Platform>(#[resource] late_latch_camera: &Arc
 
 #[system(for_each)]
 #[filter(component::<Camera>() & component::<FPSCameraComponent>())]
-fn fps_camera_movement<P: Platform>(#[resource] input: &Arc<P::Input>, transform: &mut Transform, #[resource] tick_rate: &TickRate) {
+fn fps_camera_movement<P: Platform>(#[resource] input: &InputState, transform: &mut Transform, #[resource] tick_rate: &TickRate) {
   let mut movement_vector = Vec3::new(0f32, 0f32, 0f32);
   if input.is_key_down(Key::W) {
     movement_vector.z += 1f32;

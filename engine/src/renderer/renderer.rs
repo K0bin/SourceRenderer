@@ -39,8 +39,7 @@ impl<P: Platform> Renderer<P> {
   pub fn run(window: &P::Window,
              device: &Arc<<P::GraphicsBackend as Backend>::Device>,
              swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-             asset_manager: &Arc<AssetManager<P>>,
-             simulation_tick_rate: u32) -> Arc<Renderer<P>> {
+             asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
     let (sender, receiver) = unbounded::<RendererCommand>();
     let renderer = Arc::new(Renderer::new(sender.clone(), device, window));
 
@@ -52,7 +51,7 @@ impl<P: Platform> Renderer<P> {
     std::thread::Builder::new()
       .name("RenderThread".to_string())
       .spawn(move || {
-      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, receiver, simulation_tick_rate, c_renderer.primary_camera());
+      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, receiver, c_renderer.primary_camera());
       loop {
         internal.render();
       }

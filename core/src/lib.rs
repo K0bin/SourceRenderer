@@ -7,6 +7,7 @@ extern crate crossbeam_utils;
 extern crate num_cpus;
 extern crate nalgebra;
 extern crate rayon;
+extern crate bitset_core;
 
 pub mod graphics;
 pub mod platform;

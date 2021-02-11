@@ -1,4 +1,4 @@
-use sourcerenderer_core::platform::{Platform, PlatformEvent, WindowState};
+use sourcerenderer_core::platform::{Platform, PlatformEvent, WindowState, InputState, InputCommands};
 use std::{time::SystemTime, sync::{Arc}};
 
 use sourcerenderer_core::{Vec2, ThreadPoolBuilder};
@@ -9,66 +9,44 @@ use sourcerenderer_core::platform::Window;
 use crate::asset::{AssetManager, AssetType};
 use crate::asset::loaders::CSGODirectoryContainer;
 use crate::renderer::Renderer;
-use crate::scene::Scene;
+use crate::scene::Game;
 use crate::fps_camera::{FPSCamera, fps_camera_rotation};
 
 const TICK_RATE: u32 = 5;
 
 pub struct Engine<P: Platform> {
-    platform: Box<P>
+  renderer: Arc<Renderer<P>>,
+  game: Arc<Game<P>>
 }
 
 impl<P: Platform> Engine<P> {
-  pub fn new(platform: Box<P>) -> Box<Engine<P>> {
-    return Box::new(Engine {
-      platform
-    });
-  }
-
-  pub fn run(&mut self) {
+  pub fn run(platform: &P) -> Self {
     let cores = num_cpus::get();
     ThreadPoolBuilder::new().num_threads(cores - 2).build_global().unwrap();
 
-    let instance = self.platform.create_graphics(true).expect("Failed to initialize graphics");
-    let surface = self.platform.window().create_surface(instance.clone());
+    let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
+    let surface = platform.window().create_surface(instance.clone());
 
     let mut adapters = instance.list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
-    let swapchain = Arc::new(self.platform.window().create_swapchain(true, &device, &surface));
+    let swapchain = Arc::new(platform.window().create_swapchain(true, &device, &surface));
     let asset_manager = AssetManager::<P>::new(&device);
-    let renderer = Renderer::<P>::run(self.platform.window(), &device, &swapchain, &asset_manager, TICK_RATE);
-    Scene::run::<P>(&renderer, &asset_manager, self.platform.input(), TICK_RATE);
-
-    let mut fps_camera = FPSCamera::new();
-    let mut last_iter_time = SystemTime::now();
-    let event_tick_rate = 256;
-    'event_loop: loop {
-      let now = SystemTime::now();
-      let delta = now.duration_since(last_iter_time).unwrap();
-
-      if delta.as_millis() < ((1000 + event_tick_rate - 1) / event_tick_rate) as u128 {
-        if event_tick_rate < 500 {
-          std::thread::yield_now();
-        } else {
-          continue;
-        }
-      }
-      last_iter_time = now;
-
-      let event = self.platform.handle_events();
-      if event == PlatformEvent::Quit {
-        break 'event_loop;
-      }
-      let window_state = self.platform.window().state();
-      let has_focus = match &window_state {
-        WindowState::Visible { focussed, .. } => *focussed,
-        WindowState::FullScreen { .. } => true,
-        _ => false
-      };
-      renderer.set_window_state(window_state);
-      if has_focus {
-        renderer.primary_camera().update_rotation(fps_camera_rotation::<P>(self.platform.input(), &mut fps_camera, delta.as_secs_f32()));
-      }
+    let renderer = Renderer::<P>::run(platform.window(), &device, &swapchain, &asset_manager);
+    let game = Game::<P>::run(&renderer, &asset_manager, TICK_RATE);
+    Self {
+      renderer,
+      game
     }
+  }
+
+  pub fn update_window_state(&self, state: WindowState) {
+    self.renderer.set_window_state(state);
+  }
+
+  pub fn receive_input_commands(&self) -> InputCommands {
+    self.game.receive_input_commands()
+  }
+  pub fn update_input_state(&self, input: InputState) {
+    self.game.update_input_state(input);
   }
 }

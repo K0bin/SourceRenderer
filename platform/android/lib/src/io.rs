@@ -10,23 +10,20 @@ use libc::{SEEK_CUR, SEEK_END, SEEK_SET, O_RDONLY};
 use std::path::Path;
 use std::ffi::CString;
 use sourcerenderer_core::platform::io::IO;
-use crate::android_platform::{AndroidBridge, BRIDGE};
+use crate::android_platform::ASSET_MANAGER;
 use std::sync::{Mutex, Arc};
 
-pub struct AndroidIO {
-  bridge: Arc<Mutex<AndroidBridge>>
-}
+pub struct AndroidIO {}
 
 impl IO for AndroidIO {
   type File = AndroidAsset;
 
   fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
     let asset_manager = unsafe {
-      let mut bridge = BRIDGE.lock();
-      bridge.asset_manager()
-    }.expect("Can not open asset, AssetManager is invalid");
+      ASSET_MANAGER
+    };
 
-    AndroidAsset::open(asset_manager.as_ptr(), path)
+    AndroidAsset::open(asset_manager, path)
   }
 
   fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {

@@ -14,4 +14,4 @@ sourcerenderer_bsp = { path = "../../valve_formats/bsp" }
 sourcerenderer_core = { path = "../../core" }
 sourcerenderer_vulkan = { path = "../../graphics/vulkan" }
 sourcerenderer_engine = { path = "../../engine" }
-
+lazy_static = "1.4.0"

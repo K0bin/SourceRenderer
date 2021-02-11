@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -13,8 +13,16 @@ use crate::fps_camera;
 use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader};
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
+use sourcerenderer_core::platform::{InputState, InputCommands};
+use crate::fps_camera::{fps_camera_rotation, FPSCamera};
 
-pub struct Scene {}
+pub struct TimeStampedInputState(InputState, SystemTime);
+
+pub struct Game<P: Platform> {
+  input_state: Mutex<TimeStampedInputState>,
+  fps_camera: Mutex<FPSCamera>,
+  late_latch_camera: Arc<LateLatchCamera<P::GraphicsBackend>>
+}
 
 pub struct TickDuration(pub Duration);
 pub struct TickRate(pub u32);
@@ -36,11 +44,10 @@ impl LayoutFilter for FilterAll {
   }
 }
 
-impl Scene {
-  pub fn run<P: Platform>(renderer: &Arc<Renderer<P>>,
+impl<P: Platform> Game<P> {
+  pub fn run(renderer: &Arc<Renderer<P>>,
                           asset_manager: &Arc<AssetManager<P>>,
-                          input: &Arc<P::Input>,
-                          tick_rate: u32) {
+                          tick_rate: u32) -> Arc<Self> {
     asset_manager.add_loader(Box::new(BspLevelLoader::new()));
     asset_manager.add_loader(Box::new(VPKContainerLoader::new()));
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
@@ -57,16 +64,20 @@ impl Scene {
     }
     let mut level = asset_manager.load_level("de_overpass.bsp").unwrap();
 
+    let game = Arc::new(Self {
+      input_state: Mutex::new(TimeStampedInputState(InputState::default(), SystemTime::now())),
+      late_latch_camera: renderer.primary_camera().clone(),
+      fps_camera: Mutex::new(FPSCamera::new())
+    });
+
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
-    let c_input = input.clone();
+    let c_game = game.clone();
     thread::Builder::new().name("GameThread".to_string()).spawn(move || {
       let mut world = World::default();
       let mut fixed_schedule = Schedule::builder();
       let mut schedule = Schedule::builder();
       let mut resources = Resources::default();
-
-      resources.insert(c_input);
 
       crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, &c_asset_manager);
       fps_camera::install::<P>(&mut world, &mut fixed_schedule);
@@ -90,6 +101,11 @@ impl Scene {
       loop {
         while c_renderer.is_saturated() {}
 
+        {
+          let input_guard = c_game.input_state.lock().unwrap();
+          resources.insert((input_guard.0).clone());
+        }
+
         let now = SystemTime::now();
 
         // run fixed step systems first
@@ -109,5 +125,27 @@ impl Scene {
         schedule.execute(&mut world, &mut resources);
       }
     });
+
+    game
+  }
+
+  pub fn update_input_state(&self, input_state: InputState) {
+    {
+      let mut input_guard = self.input_state.lock().unwrap();
+      let now = SystemTime::now();
+      let delta = now.duration_since(input_guard.1).unwrap();
+      {
+        let mut fps_camera = self.fps_camera.lock().unwrap();
+        self.late_latch_camera.update_rotation(fps_camera_rotation::<P>(&input_state, &mut fps_camera, delta.as_secs_f32()));
+      }
+
+      *input_guard = TimeStampedInputState(input_state, now);
+    }
+  }
+
+  pub fn receive_input_commands(&self) -> InputCommands {
+    let mut commands = InputCommands::new();
+    commands.lock_mouse(true);
+    commands
   }
 }

@@ -29,7 +29,6 @@ pub(super) struct RendererInternal<P: Platform> {
   view: Arc<AtomicRefCell<View>>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
-  simulation_tick_rate: u32,
   last_tick: SystemTime,
   primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
   assets: RendererAssets<P>
@@ -43,7 +42,6 @@ impl<P: Platform> RendererInternal<P> {
     asset_manager: &Arc<AssetManager<P>>,
     sender: Sender<RendererCommand>,
     receiver: Receiver<RendererCommand>,
-    simulation_tick_rate: u32,
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>) -> Self {
 
     let mut assets = RendererAssets::new(device);
@@ -62,7 +60,6 @@ impl<P: Platform> RendererInternal<P> {
       view,
       sender,
       receiver,
-      simulation_tick_rate,
       last_tick: SystemTime::now(),
       primary_camera: primary_camera.clone(),
       assets,
