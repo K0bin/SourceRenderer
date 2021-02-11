@@ -56,7 +56,6 @@ impl VkDescriptorSetLayout {
     let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
     let mut binding_infos: [Option<VkDescriptorSetBindingInfo>; 16] = Default::default();
 
-    println!("LAYOUT");
     for binding in bindings.iter() {
       binding_infos[binding.index as usize] = Some(binding.clone());
 
@@ -67,8 +66,6 @@ impl VkDescriptorSetLayout {
         stage_flags: binding.shader_stage,
         p_immutable_samplers: std::ptr::null()
       });
-
-      println!("Binding: {:?} at slot: {:?}", binding.descriptor_type, binding.index);
 
       vk_template_entries.push(vk::DescriptorUpdateTemplateEntry {
         dst_binding: binding.index,
