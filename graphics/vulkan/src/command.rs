@@ -388,7 +388,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::UniformBuffer(buffer.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::StorageBuffer(buffer.clone()));
     self.trackers.track_buffer(buffer);
   }
 
