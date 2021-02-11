@@ -64,7 +64,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        onDestroyNative(this.enginePtr)
+        if (this.enginePtr != 0L) {
+            onDestroyNative(this.enginePtr)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
