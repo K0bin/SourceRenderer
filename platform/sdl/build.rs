@@ -65,14 +65,6 @@ fn main() {
         }
         lib_dir.push("lib");
         dll_dir.push("dll");
-        if target.contains("x86_64") {
-            lib_dir.push("64");
-            dll_dir.push("64");
-        }
-        else {
-            lib_dir.push("32");
-            dll_dir.push("32");
-        }
         println!("cargo:rustc-link-search=all={}", lib_dir.display());
         for entry in std::fs::read_dir(dll_dir).expect("Can't read DLL dir")  {
             let entry_path = entry.expect("Invalid fs entry").path();

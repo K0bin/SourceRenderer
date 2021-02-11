@@ -1,1 +1,3 @@
-msvc/
+SDL2.dll
+.vscode/
+shaders/
