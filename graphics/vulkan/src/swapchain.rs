@@ -89,7 +89,11 @@ impl VkSwapchain {
         present_mode,
         image_sharing_mode: vk::SharingMode::EXCLUSIVE,
         pre_transform: capabilities.current_transform,
-        composite_alpha: vk::CompositeAlphaFlagsKHR::OPAQUE,
+        composite_alpha: if capabilities.supported_composite_alpha.contains(vk::CompositeAlphaFlagsKHR::OPAQUE) {
+          vk::CompositeAlphaFlagsKHR::OPAQUE
+        } else {
+          vk::CompositeAlphaFlagsKHR::INHERIT
+        },
         clipped: vk::TRUE,
         old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |swapchain| *swapchain),
         ..Default::default()
