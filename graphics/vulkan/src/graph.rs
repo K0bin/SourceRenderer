@@ -917,6 +917,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let prepare_semaphore = self.thread_manager.get_shared().get_semaphore();
     let cmd_semaphore = self.thread_manager.get_shared().get_semaphore();
     let cmd_fence = self.thread_manager.get_shared().get_fence();
+    let mut thread_local = self.thread_manager.get_thread_local();
+    let mut frame_local = thread_local.get_frame_local();
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
@@ -925,17 +927,25 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       }
 
       let result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
-      if result.is_err() || !result.unwrap().1 && false {
+      if result.is_err() {
+        match result.err().unwrap() {
+          vk::Result::ERROR_OUT_OF_DATE_KHR => { self.swapchain.set_state(VkSwapchainState::OutOfDate); }
+          vk::Result::ERROR_SURFACE_LOST_KHR => { self.swapchain.set_state(VkSwapchainState::SurfaceLost); }
+          _ => { panic!("Acquiring image failed"); }
+        }
         return Err(())
+      } else if !result.unwrap().1 && false {
+        // recreate it next frame but go ahead now
+        self.swapchain.set_state(VkSwapchainState::Suboptimal);
       }
+
+      frame_local.track_semaphore(&prepare_semaphore);
       let (index, _) = result.unwrap();
       image_index = index
     }
 
     let framebuffer_index = image_index as usize;
     for pass in &self.passes {
-      let mut thread_local = self.thread_manager.get_thread_local();
-      let mut frame_local = thread_local.get_frame_local();
       let mut cmd_buffer = frame_local.get_command_buffer(CommandBufferType::PRIMARY);
 
       match pass as &VkPass {
@@ -1022,10 +1032,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             None
           };
 
+
+          frame_local.track_semaphore(&cmd_semaphore);
           self.execute_cmd_buffer(&mut cmd_buffer, &mut frame_local, fence, &wait_semaphores, &signal_semaphores);
-          if *renders_to_swapchain {
-            frame_local.track_semaphore(&prepare_semaphore);
-          }
           cmd_buffer.signal_event(*(signal_event.handle()), vk::PipelineStageFlags::ALL_GRAPHICS);
         }
 
@@ -1083,15 +1092,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       }
     }
 
-    let mut thread_context = self.thread_manager.get_thread_local();
-    let mut frame_context = thread_context.get_frame_local();
-
     if self.renders_to_swapchain {
       self.graphics_queue.present(&self.swapchain, image_index, &[&cmd_semaphore]);
       let c_graphics_queue = self.graphics_queue.clone();
       rayon::spawn(move || c_graphics_queue.process_submissions());
-
-      frame_context.track_semaphore(&cmd_semaphore);
     }
 
     // A-B swap for history resources

@@ -102,7 +102,11 @@ impl VkSwapchain {
         ..Default::default()
       };
 
-      let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).unwrap();
+      let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).map_err(|e|
+      match e {
+        vk::Result::ERROR_SURFACE_LOST_KHR => SwapchainError::SurfaceLost,
+        _ => SwapchainError::Other
+      })?;
       let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
       let textures: Vec<Arc<VkTexture>> = swapchain_images
         .iter()
