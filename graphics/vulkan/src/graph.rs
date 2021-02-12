@@ -8,7 +8,7 @@ use ash::vk;
 
 use crate::thread_manager::{VkThreadManager, VkFrameLocal};
 
-use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions};
+use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions, SwapchainError};
 use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
@@ -911,7 +911,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     VkRenderGraph::new(&old.device, &old.thread_manager, &old.graphics_queue, &old.compute_queue, &old.transfer_queue, &old.template, &old.info, swapchain, old.external_resources.as_ref())
   }
 
-  fn render(&mut self) -> Result<(), ()> {
+  fn render(&mut self) -> Result<(), SwapchainError> {
     self.thread_manager.begin_frame();
 
     let prepare_semaphore = self.thread_manager.get_shared().get_semaphore();
@@ -922,18 +922,27 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
-      if self.swapchain.state() != VkSwapchainState::Okay {
-        return Err(());
+      let swapchain_state = self.swapchain.state();
+      if swapchain_state != VkSwapchainState::Okay {
+        return Err(match swapchain_state {
+          VkSwapchainState::SurfaceLost => SwapchainError::SurfaceLost,
+          _ => SwapchainError::Other
+        });
       }
 
       let result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
       if result.is_err() {
-        match result.err().unwrap() {
-          vk::Result::ERROR_OUT_OF_DATE_KHR => { self.swapchain.set_state(VkSwapchainState::OutOfDate); }
-          vk::Result::ERROR_SURFACE_LOST_KHR => { self.swapchain.set_state(VkSwapchainState::SurfaceLost); }
+        return Err(match result.err().unwrap() {
+          vk::Result::ERROR_OUT_OF_DATE_KHR => {
+            self.swapchain.set_state(VkSwapchainState::OutOfDate);
+            SwapchainError::Other
+          }
+          vk::Result::ERROR_SURFACE_LOST_KHR => {
+            self.swapchain.set_state(VkSwapchainState::SurfaceLost);
+            SwapchainError::SurfaceLost
+          }
           _ => { panic!("Acquiring image failed"); }
-        }
-        return Err(())
+        });
       } else if !result.unwrap().1 && false {
         // recreate it next frame but go ahead now
         self.swapchain.set_state(VkSwapchainState::Suboptimal);

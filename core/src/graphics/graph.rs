@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::ops::Fn;
 
-use crate::graphics::Backend;
+use crate::graphics::{Backend, SwapchainError};
 use crate::graphics::command::InnerCommandBufferProvider;
 
 pub type RegularRenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer, &dyn RenderGraphResources<B>)) + Send + Sync;
@@ -37,7 +37,7 @@ impl<B: Backend> Clone for ExternalResource<B> {
 
 pub trait RenderGraph<B: Backend> {
   fn recreate(old: &Self, swapchain: &Arc<B::Swapchain>) -> Self;
-  fn render(&mut self) -> Result<(), ()>;
+  fn render(&mut self) -> Result<(), SwapchainError>;
 }
 
 pub struct TextureDimensions {
