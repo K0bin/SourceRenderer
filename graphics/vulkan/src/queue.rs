@@ -191,6 +191,7 @@ impl VkQueue {
           };
           unsafe {
             let result = swapchain.get_loader().queue_present(vk_queue, &present_info);
+            swapchain.set_presented_image(image_index);
             match result {
               Ok(suboptimal) => {
                 swapchain.set_state(if suboptimal { VkSwapchainState::Suboptimal } else { VkSwapchainState::Okay });

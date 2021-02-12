@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::cmp::{min, max};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crossbeam_utils::atomic::AtomicCell;
 
@@ -35,7 +36,9 @@ pub struct VkSwapchain {
   surface: Arc<VkSurface>,
   device: Arc<RawVkDevice>,
   vsync: bool,
-  state: AtomicCell<VkSwapchainState>
+  state: AtomicCell<VkSwapchainState>,
+  acquired_image: AtomicU32,
+  presented_image: AtomicU32
 }
 
 impl VkSwapchain {
@@ -131,7 +134,9 @@ impl VkSwapchain {
         surface: surface.clone(),
         device: device.clone(),
         vsync,
-        state: AtomicCell::new(VkSwapchainState::Okay)
+        state: AtomicCell::new(VkSwapchainState::Okay),
+        presented_image: AtomicU32::new(0),
+        acquired_image: AtomicU32::new(0)
       }))
     }
   }
@@ -217,7 +222,16 @@ impl VkSwapchain {
   }
 
   pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
-    unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }
+    while self.presented_image.load(Ordering::SeqCst) != self.acquired_image.load(Ordering::SeqCst) {}
+    let result = unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) };
+    if let Ok((image, _)) = result {
+      self.acquired_image.store(image, Ordering::SeqCst);
+    }
+    result
+  }
+
+  pub(crate) fn set_presented_image(&self, presented_image_index: u32) {
+    self.presented_image.store(presented_image_index, Ordering::SeqCst);
   }
 
   pub fn set_state(&self, state: VkSwapchainState) {
