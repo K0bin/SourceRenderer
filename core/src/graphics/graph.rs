@@ -40,9 +40,19 @@ pub trait RenderGraph<B: Backend> {
   fn render(&mut self) -> Result<(), ()>;
 }
 
+pub struct TextureDimensions {
+  pub width: u32,
+  pub height: u32,
+  pub depth: u32,
+  pub array_count: u32,
+  pub mip_levels: u32
+}
+
 pub trait RenderGraphResources<B: Backend> : Send + Sync {
   fn get_buffer(&self, name: &str, history: bool) -> Result<&Arc<B::Buffer>, RenderGraphResourceError>;
   fn get_texture(&self, name: &str, history: bool) -> Result<&Arc<B::TextureShaderResourceView>, RenderGraphResourceError>;
+
+  fn texture_dimensions(&self, name: &str) -> Result<TextureDimensions, RenderGraphResourceError>;
 }
 
 #[derive(Debug)]

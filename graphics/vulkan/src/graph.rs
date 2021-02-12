@@ -8,7 +8,7 @@ use ash::vk;
 
 use crate::thread_manager::{VkThreadManager, VkFrameLocal};
 
-use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource};
+use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions};
 use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
@@ -75,10 +75,15 @@ pub struct VkRenderGraphResources<'a> {
   resources: &'a HashMap<String, VkResource>,
   external_resources: &'a Option<HashMap<String, ExternalResource<VkBackend>>>,
   pass_resource_names: &'a HashSet<String>,
+  swapchain: &'a VkSwapchain,
+  swapchain_image_index: u32
 }
 
 impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
   fn get_buffer(&self, name: &str, history: bool) -> Result<&Arc<VkBufferSlice>, RenderGraphResourceError> {
+    if !self.pass_resource_names.contains(name) {
+      return Err(RenderGraphResourceError::NotAllowed);
+    }
     let resource = self.resources.get(name);
     if resource.is_none() {
       let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
@@ -90,9 +95,6 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
       } else {
         Err(RenderGraphResourceError::NotFound)
       };
-    }
-    if !self.pass_resource_names.contains(name) {
-      return Err(RenderGraphResourceError::NotAllowed);
     }
     match resource.unwrap() {
       VkResource::Buffer {
@@ -111,6 +113,14 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
   }
 
   fn get_texture(&self, name: &str, history: bool) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
+    if !self.pass_resource_names.contains(name) {
+      return Err(RenderGraphResourceError::NotAllowed);
+    }
+
+    if name == BACK_BUFFER_ATTACHMENT_NAME {
+      return Ok(&self.swapchain.get_views()[self.swapchain_image_index as usize]);
+    }
+
     let resource = self.resources.get(name);
     if resource.is_none() {
       let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
@@ -123,9 +133,6 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
         Err(RenderGraphResourceError::NotFound)
       };
     }
-    if !self.pass_resource_names.contains(name) {
-      return Err(RenderGraphResourceError::NotAllowed);
-    }
     match resource.unwrap() {
       VkResource::Texture {
         view, view_b, ..
@@ -137,6 +144,55 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
         } else {
           Err(RenderGraphResourceError::NoHistory)
         }
+      },
+      _ => Err(RenderGraphResourceError::WrongResourceType)
+    }
+  }
+
+  fn texture_dimensions(&self, name: &str) -> Result<TextureDimensions, RenderGraphResourceError> {
+    if name == BACK_BUFFER_ATTACHMENT_NAME {
+      return Ok(TextureDimensions {
+        width: self.swapchain.get_width(),
+        height: self.swapchain.get_height(),
+        depth: 1,
+        array_count: 1,
+        mip_levels: 1
+      });
+    };
+
+    let resource = self.resources.get(name);
+    if resource.is_none() {
+      let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
+      return if external.is_some() {
+        match external.unwrap() {
+          ExternalResource::Texture(view) => {
+            let info = view.texture().get_info();
+            Ok(TextureDimensions {
+              width: info.width,
+              height: info.height,
+              depth: info.depth,
+              array_count: info.array_length,
+              mip_levels: info.mip_levels
+            })
+          },
+          _ => Err(RenderGraphResourceError::WrongResourceType)
+        }
+      } else {
+        Err(RenderGraphResourceError::NotFound)
+      };
+    }
+    match resource.unwrap() {
+      VkResource::Texture {
+        view, ..
+      } => {
+        let info = view.texture().get_info();
+        Ok(TextureDimensions {
+          width: info.width,
+          height: info.height,
+          depth: info.depth,
+          array_count: info.array_length,
+          mip_levels: info.mip_levels
+        })
       },
       _ => Err(RenderGraphResourceError::WrongResourceType)
     }
@@ -904,7 +960,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
             external_resources: &self.external_resources,
-            pass_resource_names
+            pass_resource_names,
+            swapchain: self.swapchain.as_ref(),
+            swapchain_image_index: image_index
           };
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
@@ -989,7 +1047,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources = VkRenderGraphResources {
             resources: &self.resources,
             external_resources: &self.external_resources,
-            pass_resource_names
+            pass_resource_names,
+            swapchain: self.swapchain.as_ref(),
+            swapchain_image_index: image_index
           };
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
