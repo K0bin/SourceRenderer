@@ -23,7 +23,7 @@ const EVENT_TICK_RATE: u32 = 512;
 
 fn main() {
   let mut platform = SDLPlatform::new(GraphicsApi::Vulkan);
-  let mut engine = Box::new(Engine::run(platform.as_ref()));
+  let mut engine = Box::new(Engine::run(platform));
   let mut last_iter_time = SystemTime::now();
   'event_loop: loop {
     let now = SystemTime::now();
@@ -38,14 +38,12 @@ fn main() {
     }
     last_iter_time = now;
 
-    let event = platform.handle_events();
+    let event = engine.platform().handle_events();
     if event == PlatformEvent::Quit {
       break 'event_loop;
     }
-    let window_state = platform.window().state();
-    engine.update_window_state(window_state);
     let input_commands = engine.receive_input_commands();
-    let input = platform.process_input(input_commands);
-    engine.update_input_state(input);
+    engine.platform().process_input(input_commands);
+    engine.poll_platform();
   }
 }

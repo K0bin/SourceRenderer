@@ -28,6 +28,7 @@ pub trait Platform: 'static + Sized {
 
   fn window(&self) -> &Self::Window;
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<<Self::GraphicsBackend as graphics::Backend>::Instance>, Box<dyn Error>>;
+  fn input_state(&self) -> InputState;
 }
 
 #[derive(Clone)]

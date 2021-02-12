@@ -30,7 +30,7 @@ use std::os::unix::prelude::RawFd;
 use std::cell::{RefCell, RefMut};
 use std::borrow::BorrowMut;
 use sourcerenderer_core::platform::{WindowState, InputState};
-use sourcerenderer_core::Vec2;
+use sourcerenderer_core::{Vec2, Platform};
 
 lazy_static! {
   static ref TAG: CString = {
@@ -107,7 +107,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onDestroyNative
     let mut engine_box = Box::from_raw(engine_ptr);
     {
       let mut engine_mut = (*engine_box).borrow_mut();
-      engine_mut.update_window_state(WindowState::Exited);
+      *engine_mut.platform().window_mut().state_mut() = WindowState::Exited;
     }
     // engine box gets dropped
   }
@@ -125,7 +125,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_startEngineNati
   let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
   let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
   let platform = AndroidPlatform::new(native_window);
-  let mut engine = Box::new(RefCell::new(Engine::run(platform.as_ref())));
+  let mut engine = Box::new(RefCell::new(Engine::run(platform)));
   println!("Engine started");
   unsafe {
     std::mem::transmute(Box::into_raw(engine))
@@ -169,24 +169,27 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onTouchInputNat
   const ANDROID_EVENT_TYPE_UP: i32 = 1;
   const ANDROID_EVENT_TYPE_MOVE: i32 = 2;
 
-  let mut input = InputState::new();
-  match event_type {
-    ANDROID_EVENT_TYPE_POINTER_DOWN |
-    ANDROID_EVENT_TYPE_DOWN => {
-      input.set_finger_position(finger_index as u32, Vec2::new(x, y));
-      input.set_finger_down(finger_index as u32, true);
+  let mut engine = engine_from_long(engine_ptr);
+
+  {
+    let mut input = engine.platform().input_state();
+    match event_type {
+      ANDROID_EVENT_TYPE_POINTER_DOWN |
+      ANDROID_EVENT_TYPE_DOWN => {
+        input.set_finger_position(finger_index as u32, Vec2::new(x, y));
+        input.set_finger_down(finger_index as u32, true);
+      }
+      ANDROID_EVENT_TYPE_POINTER_UP |
+      ANDROID_EVENT_TYPE_UP => {
+        input.set_finger_position(finger_index as u32, Vec2::new(0f32, 0f32));
+        input.set_finger_down(finger_index as u32, false);
+      }
+      ANDROID_EVENT_TYPE_MOVE => {
+        input.set_finger_position(finger_index as u32, Vec2::new(x, y));
+      }
+      _ => {}
     }
-    ANDROID_EVENT_TYPE_POINTER_UP |
-    ANDROID_EVENT_TYPE_UP => {
-      input.set_finger_position(finger_index as u32, Vec2::new(0f32, 0f32));
-      input.set_finger_down(finger_index as u32, false);
-    }
-    ANDROID_EVENT_TYPE_MOVE => {
-      input.set_finger_position(finger_index as u32, Vec2::new(x, y));
-    }
-    _ => {}
   }
 
-  let engine = engine_from_long(engine_ptr);
-  engine.update_input_state(input);
+  engine.poll_platform();
 }

@@ -16,11 +16,12 @@ const TICK_RATE: u32 = 5;
 
 pub struct Engine<P: Platform> {
   renderer: Arc<Renderer<P>>,
-  game: Arc<Game<P>>
+  game: Arc<Game<P>>,
+  platform: Box<P>
 }
 
 impl<P: Platform> Engine<P> {
-  pub fn run(platform: &P) -> Self {
+  pub fn run(platform: Box<P>) -> Self {
     let cores = num_cpus::get();
     ThreadPoolBuilder::new().num_threads(cores - 2).build_global().unwrap();
 
@@ -35,18 +36,20 @@ impl<P: Platform> Engine<P> {
     let game = Game::<P>::run(&renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
-      game
+      game,
+      platform
     }
-  }
-
-  pub fn update_window_state(&self, state: WindowState) {
-    self.renderer.set_window_state(state);
   }
 
   pub fn receive_input_commands(&self) -> InputCommands {
     self.game.receive_input_commands()
   }
-  pub fn update_input_state(&self, input: InputState) {
-    self.game.update_input_state(input);
+
+  pub fn platform(&mut self) -> &mut P {
+    &mut self.platform
+  }
+  pub fn poll_platform(&self) {
+    self.game.update_input_state(self.platform.input_state());
+    self.renderer.set_window_state(self.platform.window().state());
   }
 }

@@ -26,13 +26,15 @@ use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
 
 use std::time::SystemTime;
+use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 
 pub struct SDLPlatform {
   sdl_context: Sdl,
   video_subsystem: VideoSubsystem,
   event_pump: EventPump,
   window: SDLWindow,
-  input_state: Mutex<InputCommands>
+  input_commands: InputCommands,
+  input_state: InputState
 }
 
 pub struct SDLWindow {
@@ -54,7 +56,8 @@ impl SDLPlatform {
       video_subsystem,
       event_pump,
       window,
-      input_state: Mutex::new(InputCommands::default())
+      input_commands: InputCommands::default(),
+      input_state: InputState::default()
     });
   }
 
@@ -89,9 +92,8 @@ impl SDLPlatform {
     return PlatformEvent::Continue;
   }
 
-  pub(crate) fn process_input(&self, input_commands: InputCommands) -> InputState {
-    let mut input_guard = self.input_state.lock().unwrap();
-    crate::input::process(&mut input_guard, input_commands, &self.event_pump, &self.sdl_context.mouse(), &self.window)
+  pub(crate) fn process_input(&mut self, input_commands: InputCommands) {
+    self.input_state = crate::input::process(&mut self.input_commands, input_commands, &self.event_pump, &self.sdl_context.mouse(), &self.window);
   }
 }
 
@@ -135,6 +137,10 @@ impl Platform for SDLPlatform {
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     let extensions = self.window.vulkan_instance_extensions().unwrap();
     return Ok(Arc::new(VkInstance::new(&extensions, debug_layers)));
+  }
+
+  fn input_state(&self) -> InputState {
+    self.input_state.clone()
   }
 }
 

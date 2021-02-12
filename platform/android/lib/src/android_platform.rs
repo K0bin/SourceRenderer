@@ -1,7 +1,7 @@
 use sourcerenderer_core::{Platform, Vec2I};
 use std::sync::{Arc, Mutex};
 use parking_lot::{Mutex as StaticMutex, const_mutex};
-use sourcerenderer_core::platform::{PlatformEvent, Window, WindowState, Input, Key};
+use sourcerenderer_core::platform::{PlatformEvent, Window, WindowState, Input, Key, InputState};
 use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
 use sourcerenderer_core::graphics::Backend;
@@ -21,14 +21,24 @@ use ndk::event::Keycode::{N, Mute};
 pub static mut ASSET_MANAGER: *mut AAssetManager = std::ptr::null_mut();
 
 pub struct AndroidPlatform {
-  window: AndroidWindow
+  window: AndroidWindow,
+  input_state: InputState
 }
 
 impl AndroidPlatform {
   pub fn new(native_window: NativeWindow) -> Box<Self> {
     Box::new(Self {
-      window: AndroidWindow::new(native_window)
+      window: AndroidWindow::new(native_window),
+      input_state: Default::default()
     })
+  }
+
+  pub(crate) fn input_state(&mut self) -> &mut InputState {
+    &mut self.input_state
+  }
+
+  pub(crate) fn window_mut(&mut self) -> &mut AndroidWindow {
+    &mut self.window
   }
 }
 
@@ -44,17 +54,31 @@ impl Platform for AndroidPlatform {
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     Ok(Arc::new(VkInstance::new(&["VK_KHR_surface", "VK_KHR_android_surface"], debug_layers)))
   }
+
+  fn input_state(&self) -> InputState {
+    self.input_state.clone()
+  }
 }
 
 pub struct AndroidWindow {
-  native_window: NativeWindow
+  native_window: NativeWindow,
+  window_state: WindowState
 }
 
 impl AndroidWindow {
   pub fn new(native_window: NativeWindow) -> Self {
+    let window_state = WindowState::FullScreen {
+      width: native_window.width() as u32,
+      height: native_window.height() as u32
+    };
     Self {
-      native_window
+      native_window,
+      window_state
     }
+  }
+
+  pub(crate) fn state_mut(&mut self) -> &mut WindowState {
+    &mut self.window_state
   }
 }
 
@@ -77,9 +101,6 @@ impl Window<AndroidPlatform> for AndroidWindow {
   }
 
   fn state(&self) -> WindowState {
-    WindowState::FullScreen {
-      width: 1280,
-      height: 720
-    }
+    self.window_state.clone()
   }
 }
