@@ -191,9 +191,10 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
           old_view_projection: view.old_camera_matrix
         }, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+        let dimensions = graph_resources.texture_dimensions(OUTPUT_DS).unwrap();
         command_buffer.set_viewports(&[Viewport {
           position: Vec2::new(0.0f32, 0.0f32),
-          extent: Vec2::new(1280.0f32, 720.0f32),
+          extent: Vec2::new(dimensions.width as f32, dimensions.height as f32),
           min_depth: 0.0f32,
           max_depth: 1.0f32
         }]);
