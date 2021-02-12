@@ -206,13 +206,12 @@ impl Adapter<VkBackend> for VkAdapter {
       };
       let vk_device = self.instance.instance.create_device(self.physical_device, &device_create_info, None).unwrap();
 
-      /*let vk_graphics_queue = vk_device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32);
-      let vk_compute_queue = vk_device.get_device_queue(compute_queue_info.queue_family_index as u32, compute_queue_info.queue_index as u32);
-      let vk_transfer_queue = vk_device.get_device_queue(transfer_queue_info.queue_family_index as u32, transfer_queue_info.queue_index as u32);
+      let capabilities = surface.get_capabilities(&self.physical_device).unwrap();
+      let mut max_image_count = capabilities.max_image_count;
+      if max_image_count == 0 {
+        max_image_count = 99; // whatever
+      }
 
-      let graphics_queue = VkQueue::new(graphics_queue_info, vk_graphics_queue, device.clone());
-      let compute_queue = VkQueue::new(compute_queue_info, vk_compute_queue, device.clone());
-      let transfer_queue = VkQueue::new(transfer_queue_info, vk_transfer_queue, device.clone());*/
 
       VkDevice::new(
         vk_device,
@@ -221,7 +220,8 @@ impl Adapter<VkBackend> for VkAdapter {
         graphics_queue_info,
         compute_queue_info,
         transfer_queue_info,
-        self.extensions)
+        self.extensions,
+        max_image_count)
     };
   }
 

@@ -42,7 +42,8 @@ impl VkDevice {
     graphics_queue_info: VkQueueInfo,
     compute_queue_info: Option<VkQueueInfo>,
     transfer_queue_info: Option<VkQueueInfo>,
-    extensions: VkAdapterExtensionSupport) -> Self {
+    extensions: VkAdapterExtensionSupport,
+    max_surface_image_count: u32) -> Self {
 
     let allocator_info = vk_mem::AllocatorCreateInfo {
       physical_device,
@@ -83,7 +84,7 @@ impl VkDevice {
       Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
     });
 
-    let context = Arc::new(VkThreadManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, 3));
+    let context = Arc::new(VkThreadManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, min(3, max_surface_image_count)));
 
     let transfer = VkTransfer::new(&raw, &graphics_queue, &transfer_queue, &shared);
 
