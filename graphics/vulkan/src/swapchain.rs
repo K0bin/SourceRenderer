@@ -105,7 +105,7 @@ impl VkSwapchain {
         .iter()
         .map(|image|
           Arc::new(VkTexture::from_image(device, *image, TextureInfo {
-            format: Format::BGRA8UNorm,
+            format: surface_vk_format_to_core(format.format),
             width,
             height,
             array_length: 1u32,
@@ -262,4 +262,12 @@ pub(crate) enum VkSwapchainAcquireResult<'a> {
   },
   Broken,
   DeviceLost
+}
+
+fn surface_vk_format_to_core(format: vk::Format) -> Format {
+  match format {
+    vk::Format::B8G8R8A8_UNORM => Format::BGRA8UNorm,
+    vk::Format::R8G8B8A8_UNORM => Format::RGBA8,
+    _ => panic!("Unsupported format: {:?}", format)
+  }
 }
