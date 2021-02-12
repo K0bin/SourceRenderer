@@ -1,5 +1,6 @@
 use std::env;
 use std::path::{PathBuf, Path};
+use std::collections::HashMap;
 
 fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
   where F: Fn(&Path) -> bool {
@@ -29,6 +30,26 @@ fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
     println!("cargo:rerun-if-changed={}", entry.path().to_str().unwrap());
     std::fs::copy(&entry.path(), &dst_path).expect(format!("Failed to copy file over: {:?} to {:?}", entry.path(), &dst_path).as_str());
   }
+}
+
+fn find_ndk() -> Option<PathBuf> {
+  if let Some(path) = env::var_os("ANDROID_NDK_HOME") {
+    return Some(PathBuf::from(path));
+  };
+
+  if let Some(path) = env::var_os("NDK_HOME") {
+    return Some(PathBuf::from(path));
+  };
+
+  if let Some(sdk_path) = env::var_os("ANDROID_SDK_HOME") {
+    let ndk_path = PathBuf::from(&sdk_path).join("ndk");
+    let highest_ndk = std::fs::read_dir(ndk_path).ok().and_then(|read_dir| read_dir.filter_map(|it| it.ok()).max_by_key(|it| it.file_name()));
+    if let Some(v) = highest_ndk {
+      return Some(v.path());
+    }
+  };
+
+  None
 }
 
 fn main() {
@@ -69,4 +90,49 @@ fn main() {
     dst_path.push(shader.file_name());
     std::fs::copy(shader.path(), dst_path).expect("Failed to copy shader over");
   }
+
+  // Copy libc++_shared over
+  let ndk_path = find_ndk().expect("Can't find Android NDK, try setting the environment variable ANDROID_NDK_HOME.");
+  let target = env::var("TARGET").expect("Can't determine target triple.");
+
+  let mut target_mapping = HashMap::<&'static str, &'static str>::new();
+  target_mapping.insert("aarch64-linux-android", "arm64-v8a");
+  target_mapping.insert("x86_64-linux-android", "x86_64");
+
+  let mut lib_path = ndk_path.clone();
+  lib_path.push("toolchains");
+  lib_path.push("llvm");
+  lib_path.push("prebuilt");
+
+  #[cfg(target_os = "windows")]
+  let mut host_os = "windows".to_string();
+  #[cfg(target_os = "linux")]
+    let mut host_os = "linux".to_string();
+  #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+  panic!("Building on this os is currently unsupported.");
+  #[cfg(target_arch = "x86_64")]
+    {
+      host_os += "-x86_64";
+    }
+  #[cfg(not(target_arch = "x86_64"))]
+    panic!("Building on this architecture is currently unsupported.");
+
+  lib_path.push(host_os);
+  lib_path.push("sysroot");
+  lib_path.push("usr");
+  lib_path.push("lib");
+  lib_path.push(&target);
+  lib_path.push("libc++_shared.so");
+
+  let mut lib_dest_dir = manifest_dir.clone();
+  lib_dest_dir.pop();
+  lib_dest_dir.push("app");
+  lib_dest_dir.push("app");
+  lib_dest_dir.push("src");
+  lib_dest_dir.push("main");
+  lib_dest_dir.push("jniLibs");
+  lib_dest_dir.push(target_mapping.get(target.as_str()).expect("Failed to map LLVM target triple to Android jniLibs directory."));
+  lib_dest_dir.push("libc++_shared.so");
+
+  std::fs::copy(lib_path, lib_dest_dir).expect("Failed to copy file over.");
 }

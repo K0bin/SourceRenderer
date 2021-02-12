@@ -14,3 +14,4 @@
 .cxx
 local.properties
 app/src/main/jniLibs/**/libsourcerenderer.so
+app/src/main/jniLibs/**/libc++_shared.so
