@@ -159,11 +159,11 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChange
 pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onTouchInputNative(
   _env: *mut jni::sys::JNIEnv,
   _class: JClass,
+  engine_ptr: jlong,
   x: jfloat,
   y: jfloat,
   finger_index: jint,
-  event_type: jint,
-  engine_ptr: jlong
+  event_type: jint
 ) {
   const ANDROID_EVENT_TYPE_POINTER_DOWN: i32 = 5;
   const ANDROID_EVENT_TYPE_POINTER_UP: i32 = 6;

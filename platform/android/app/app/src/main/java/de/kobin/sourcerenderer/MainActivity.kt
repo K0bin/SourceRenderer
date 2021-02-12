@@ -74,12 +74,12 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         event ?: return false
-        this.onTouchInputNative(event.x, event.y, event.actionIndex, event.actionMasked)
+        this.onTouchInputNative(this.enginePtr, event.x, event.y, event.actionIndex, event.actionMasked)
         return true
     }
 
     private external fun startEngineNative(surface: Surface): Long
     private external fun onSurfaceChangedNative(enginePtr: Long, surface: Surface?): Long
-    private external fun onTouchInputNative(x: Float, y: Float, fingerIndex: Int, eventType: Int)
+    private external fun onTouchInputNative(enginePtr: Long, x: Float, y: Float, fingerIndex: Int, eventType: Int)
     private external fun onDestroyNative(enginePtr: Long)
 }
