@@ -29,8 +29,8 @@ use std::os::unix::io::FromRawFd;
 use std::os::unix::prelude::RawFd;
 use std::cell::{RefCell, RefMut};
 use std::borrow::BorrowMut;
-use sourcerenderer_core::platform::{WindowState, InputState};
-use sourcerenderer_core::Vec2;
+use sourcerenderer_core::platform::{WindowState, InputState, Window};
+use sourcerenderer_core::{Vec2, Platform};
 
 lazy_static! {
   static ref TAG: CString = {
@@ -142,14 +142,15 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChange
 ) {
   let engine = engine_from_long(engine_ptr);
   if surface.is_null() {
-
+    engine.replace_window(None);
   } else {
     let native_window_ptr = unsafe { ANativeWindow_fromSurface(std::mem::transmute(env), std::mem::transmute(*surface)) };
     let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
     let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
-  }
 
-  // TODO
+    let platform = AndroidPlatform::new(native_window);
+    //engine.replace_window(Some(platform.window()));
+  }
 }
 
 #[no_mangle]

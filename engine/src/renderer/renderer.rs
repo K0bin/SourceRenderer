@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use crossbeam_channel::{Sender, unbounded};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
-use sourcerenderer_core::graphics::Backend;
+use sourcerenderer_core::graphics::{Backend, Surface, Swapchain};
 use sourcerenderer_core::Matrix4;
 
 use crate::asset::AssetManager;
@@ -22,17 +22,19 @@ pub struct Renderer<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   window_state: Mutex<WindowState>,
   queued_frames_counter: AtomicUsize,
-  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>
+  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
+  surface: Mutex<Option<Arc<<P::GraphicsBackend as Backend>::Surface>>>
 }
 
 impl<P: Platform> Renderer<P> {
-  fn new(sender: Sender<RendererCommand>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window) -> Self {
+  fn new(sender: Sender<RendererCommand>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>) -> Self {
     Self {
       sender,
       device: device.clone(),
       window_state: Mutex::new(window.state()),
       queued_frames_counter: AtomicUsize::new(0),
-      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref()))
+      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref())),
+      surface: Mutex::new(Some(swapchain.surface().clone()))
     }
   }
 
@@ -41,7 +43,7 @@ impl<P: Platform> Renderer<P> {
              swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
              asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
     let (sender, receiver) = unbounded::<RendererCommand>();
-    let renderer = Arc::new(Renderer::new(sender.clone(), device, window));
+    let renderer = Arc::new(Renderer::new(sender.clone(), device, window, swapchain));
 
     let c_device = device.clone();
     let c_renderer = renderer.clone();
@@ -108,12 +110,21 @@ impl<P: Platform> Renderer<P> {
     }
   }
 
+  pub fn change_surface(&self, surface: Option<&Arc<<P::GraphicsBackend as Backend>::Surface>>) {
+    let mut guard = self.surface.lock().unwrap();
+    *guard = surface.map(|s| s.clone());
+  }
+
   pub fn is_saturated(&self) -> bool {
     self.queued_frames_counter.load(Ordering::SeqCst) > 2
   }
 
   pub(super) fn window_state(&self) -> &Mutex<WindowState> {
     &self.window_state
+  }
+
+  pub(super) fn surface(&self) -> &Mutex<Option<Arc<<P::GraphicsBackend as Backend>::Surface>>> {
+    &self.surface
   }
 
   pub(super) fn dec_queued_frames_counter(&self) -> usize {

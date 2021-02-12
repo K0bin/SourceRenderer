@@ -7,6 +7,7 @@ use crate::raw::*;
 use std::sync::Arc;
 
 use ash::prelude::VkResult;
+use ash::version::InstanceV1_0;
 
 pub struct VkSurface {
   surface: vk::SurfaceKHR,
@@ -59,6 +60,14 @@ impl Drop for VkSurface {
     }
   }
 }
+
+impl PartialEq for VkSurface {
+  fn eq(&self, other: &Self) -> bool {
+    self.instance.instance.handle() == other.instance.instance.handle() && self.surface == other.surface
+  }
+}
+
+impl Eq for VkSurface {}
 
 impl Surface for VkSurface {
 

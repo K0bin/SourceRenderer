@@ -16,7 +16,8 @@ const TICK_RATE: u32 = 5;
 
 pub struct Engine<P: Platform> {
   renderer: Arc<Renderer<P>>,
-  game: Arc<Game<P>>
+  game: Arc<Game<P>>,
+  instance: Arc<<P::GraphicsBackend as Backend>::Instance>
 }
 
 impl<P: Platform> Engine<P> {
@@ -27,7 +28,7 @@ impl<P: Platform> Engine<P> {
     let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
-    let mut adapters = instance.list_adapters();
+    let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let swapchain = Arc::new(platform.window().create_swapchain(true, &device, &surface));
     let asset_manager = AssetManager::<P>::new(&device);
@@ -35,7 +36,8 @@ impl<P: Platform> Engine<P> {
     let game = Game::<P>::run(&renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
-      game
+      game,
+      instance
     }
   }
 
@@ -48,5 +50,13 @@ impl<P: Platform> Engine<P> {
   }
   pub fn update_input_state(&self, input: InputState) {
     self.game.update_input_state(input);
+  }
+  pub fn replace_window(&self, window: Option<&P::Window>) {
+    if let Some(window) = window {
+      let surface = window.create_surface(self.instance.clone());
+      self.renderer.change_surface(Some(&surface));
+    } else {
+      self.renderer.change_surface(None);
+    }
   }
 }

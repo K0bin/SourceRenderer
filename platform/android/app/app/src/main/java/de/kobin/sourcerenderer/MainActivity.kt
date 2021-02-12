@@ -37,6 +37,7 @@ class MainActivity : AppCompatActivity() {
         holder.addCallback(object: SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 if (this@MainActivity.enginePtr != 0L) {
+                    onSurfaceChangedNative(this@MainActivity.enginePtr, holder.surface)
                     Log.e("MainActivity", "Engine initialized when surfaceCreated was called.")
                     return
                 }

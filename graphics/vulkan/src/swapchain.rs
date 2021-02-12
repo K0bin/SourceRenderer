@@ -6,11 +6,11 @@ use crossbeam_utils::atomic::AtomicCell;
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
 
-use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError};
+use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError, Surface};
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
 
-use crate::VkSurface;
+use crate::{VkSurface, VkBackend};
 use crate::raw::{RawVkInstance, RawVkDevice};
 use crate::VkTexture;
 use crate::VkSemaphore;
@@ -88,7 +88,7 @@ impl VkSwapchain {
         image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
         present_mode,
         image_sharing_mode: vk::SharingMode::EXCLUSIVE,
-        pre_transform: capabilities.current_transform,
+        pre_transform: vk::SurfaceTransformFlagsKHR::IDENTITY, //capabilities.current_transform,
         composite_alpha: vk::CompositeAlphaFlagsKHR::OPAQUE,
         clipped: vk::TRUE,
         old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |swapchain| *swapchain),
@@ -233,9 +233,13 @@ impl Drop for VkSwapchain {
   }
 }
 
-impl Swapchain for VkSwapchain {
+impl Swapchain<VkBackend> for VkSwapchain {
   fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
     VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(&old.swapchain))
+  }
+
+  fn recreate_for_surface(old: &Self, surface: &Arc<VkSurface>, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
+    VkSwapchain::new_internal(old.vsync, width, height, &old.device, surface, Some(&old.swapchain))
   }
 
   fn sample_count(&self) -> SampleCount {
@@ -244,6 +248,10 @@ impl Swapchain for VkSwapchain {
 
   fn format(&self) -> Format {
     self.textures.first().unwrap().get_info().format
+  }
+
+  fn surface(&self) -> &Arc<VkSurface> {
+    &self.surface
   }
 }
 

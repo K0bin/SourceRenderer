@@ -5,7 +5,7 @@ use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::{AssetManager, Asset};
 use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, RenderPassCallbacks, PassInput, Output, ExternalOutput, ExternalProducerType, ExternalResource};
+use sourcerenderer_core::graphics::{Backend, ShaderType, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, RenderPassCallbacks, PassInput, Output, ExternalOutput, ExternalProducerType, ExternalResource, Surface};
 use std::collections::{HashMap};
 use crate::renderer::{DrawableType, View};
 use sourcerenderer_core::platform::WindowState;
@@ -17,6 +17,8 @@ use crate::renderer::drawable::{RDrawable, RDrawableType};
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_bsp::LumpType::TextureInfo;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use sourcerenderer_vulkan::VkSwapchain;
+use sourcerenderer_core::graphics::CullMode::Back;
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
@@ -232,6 +234,19 @@ impl<P: Platform> RendererInternal<P> {
 
     self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
+
+    {
+      let surface = self.renderer.surface();
+      let mut surface_guard = surface.lock().unwrap();
+      if let Some(surface_guard) = surface_guard.as_ref() {
+        if self.swapchain.surface() != &*surface_guard {
+          println!("Swapping out surface");
+          self.swapchain = <P::GraphicsBackend as Backend>::Swapchain::recreate_for_surface(self.swapchain.as_ref(), &surface_guard, swapchain_width, swapchain_height).unwrap();
+        }
+      } else {
+        return;
+      }
+    }
 
     let result = self.graph.render();
     if result.is_err() {
