@@ -33,9 +33,9 @@ impl VkBuffer {
     let mut queue_families = SmallVec::<[u32; 2]>::new();
     let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
     if buffer_usage.contains(BufferUsage::COPY_SRC) {
-      sharing_mode = vk::SharingMode::CONCURRENT;
       queue_families.push(device.graphics_queue_info.queue_family_index as u32);
       if let Some(info) = device.transfer_queue_info {
+        sharing_mode = vk::SharingMode::CONCURRENT;
         queue_families.push(info.queue_family_index as u32);
       }
     }
