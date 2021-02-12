@@ -15,3 +15,4 @@
 local.properties
 app/src/main/jniLibs/**/libsourcerenderer.so
 app/src/main/jniLibs/**/libc++_shared.so
+app/src/main/jniLibs/**/libVkLayer_khronos_validation.so

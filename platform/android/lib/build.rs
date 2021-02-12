@@ -99,13 +99,8 @@ fn main() {
   target_mapping.insert("aarch64-linux-android", "arm64-v8a");
   target_mapping.insert("x86_64-linux-android", "x86_64");
 
-  let mut lib_path = ndk_path.clone();
-  lib_path.push("toolchains");
-  lib_path.push("llvm");
-  lib_path.push("prebuilt");
-
   #[cfg(target_os = "windows")]
-  let mut host_os = "windows".to_string();
+    let mut host_os = "windows".to_string();
   #[cfg(target_os = "linux")]
     let mut host_os = "linux".to_string();
   #[cfg(not(any(target_os = "windows", target_os = "linux")))]
@@ -115,24 +110,48 @@ fn main() {
       host_os += "-x86_64";
     }
   #[cfg(not(target_arch = "x86_64"))]
-    panic!("Building on this architecture is currently unsupported.");
+  panic!("Building on this architecture is currently unsupported.");
 
-  lib_path.push(host_os);
-  lib_path.push("sysroot");
-  lib_path.push("usr");
-  lib_path.push("lib");
-  lib_path.push(&target);
-  lib_path.push("libc++_shared.so");
+  let mut libcpp_src = ndk_path.clone();
+  libcpp_src.push("toolchains");
+  libcpp_src.push("llvm");
+  libcpp_src.push("prebuilt");
 
-  let mut lib_dest_dir = manifest_dir.clone();
-  lib_dest_dir.pop();
-  lib_dest_dir.push("app");
-  lib_dest_dir.push("app");
-  lib_dest_dir.push("src");
-  lib_dest_dir.push("main");
-  lib_dest_dir.push("jniLibs");
-  lib_dest_dir.push(target_mapping.get(target.as_str()).expect("Failed to map LLVM target triple to Android jniLibs directory."));
-  lib_dest_dir.push("libc++_shared.so");
+  libcpp_src.push(host_os);
+  libcpp_src.push("sysroot");
+  libcpp_src.push("usr");
+  libcpp_src.push("lib");
+  libcpp_src.push(&target);
+  libcpp_src.push("libc++_shared.so");
 
-  std::fs::copy(lib_path, lib_dest_dir).expect("Failed to copy file over.");
+  let mut lib_path = manifest_dir.clone();
+  lib_path.pop();
+  lib_path.push("app");
+  lib_path.push("app");
+  lib_path.push("src");
+  lib_path.push("main");
+  lib_path.push("jniLibs");
+  lib_path.push(target_mapping.get(target.as_str()).expect("Failed to map LLVM target triple to Android jniLibs directory."));
+  let mut libcpp_dst = lib_path.clone();
+  libcpp_dst.push("libc++_shared.so");
+
+  std::fs::copy(libcpp_src, libcpp_dst).expect("Failed to copy file over.");
+
+  let profile = env::var("PROFILE").unwrap_or_else(|_| "release".to_string());
+  if profile == "debug" {
+    // Copy validation layers
+    let mut validation_layer_src = ndk_path.clone();
+    validation_layer_src.push("sources");
+    validation_layer_src.push("third_party");
+    validation_layer_src.push("vulkan");
+    validation_layer_src.push("src");
+    validation_layer_src.push("build-android");
+    validation_layer_src.push("jniLibs");
+    validation_layer_src.push(target_mapping.get(target.as_str()).expect("Failed to map LLVM target triple to Android jniLibs directory."));
+    validation_layer_src.push("libVkLayer_khronos_validation.so");
+
+    let mut validation_layer_dst = lib_path.clone();
+    validation_layer_dst.push("libVkLayer_khronos_validation.so");
+    std::fs::copy(validation_layer_src, validation_layer_dst).expect("Failed to copy file over.");
+  }
 }
