@@ -14,10 +14,8 @@ use std::ffi::{CString, CStr};
 use jni::JNIEnv;
 use jni::objects::{JClass, JString, JObject};
 use jni::sys::{jstring, jlong, jint, jfloat};
-use ndk_sys::__android_log_print;
-use ndk_sys::android_LogPriority_ANDROID_LOG_VERBOSE;
-use ndk_sys::android_LogPriority_ANDROID_LOG_ERROR;
-use ndk_sys::{AAssetManager_fromJava, AInputQueue};
+use ndk_sys::{AAssetManager_fromJava, AInputQueue,
+              android_LogPriority_ANDROID_LOG_DEBUG, __android_log_print};
 use crate::android_platform::{AndroidPlatform, ASSET_MANAGER};
 use sourcerenderer_engine::Engine;
 use std::sync::{Arc, Mutex};
@@ -59,7 +57,7 @@ fn setup_log() {
           break;
         } else if let Ok(msg) = CString::new(buffer.clone()) {
           unsafe {
-            __android_log_print(android_LogPriority_ANDROID_LOG_VERBOSE as i32, TAG.as_ptr(), msg.as_ptr());
+            __android_log_print(android_LogPriority_ANDROID_LOG_DEBUG as i32, TAG.as_ptr(), msg.as_ptr());
           }
         }
       }
@@ -180,11 +178,10 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onTouchInputNat
     }
     ANDROID_EVENT_TYPE_POINTER_UP |
     ANDROID_EVENT_TYPE_UP => {
-      input.set_finger_position(finger_index as u32, Vec2::new(x, y));
+      input.set_finger_position(finger_index as u32, Vec2::new(0f32, 0f32));
       input.set_finger_down(finger_index as u32, false);
     }
     ANDROID_EVENT_TYPE_MOVE => {
-      println!("Move event for finger: {:?}, pos: {:?}", finger_index, Vec2::new(x, y));
       input.set_finger_position(finger_index as u32, Vec2::new(x, y));
     }
     _ => {}
