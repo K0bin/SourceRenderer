@@ -191,7 +191,26 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn wait_for_idle(&self) {
-    unsafe { self.device.device.device_wait_idle(); }
+    let c_graphics_queue = self.graphics_queue.clone();
+    let graphics_join = std::thread::spawn(move || c_graphics_queue.wait_for_idle() );
+
+    let transfer_join = self.transfer_queue.as_ref().map(|q| {
+      let c_queue = q.clone();
+      std::thread::spawn(move || c_queue.wait_for_idle())
+    });
+
+    let compute_join = self.compute_queue.as_ref().map(|q| {
+      let c_queue = q.clone();
+      std::thread::spawn(move || c_queue.wait_for_idle())
+    });
+
+    graphics_join.join();
+    if let Some(join) = transfer_join {
+      join.join();
+    }
+    if let Some(join) = compute_join {
+      join.join();
+    }
   }
 
   fn create_render_graph_template(&self, graph_info: &RenderGraphTemplateInfo) -> Arc<<VkBackend as Backend>::RenderGraphTemplate> {

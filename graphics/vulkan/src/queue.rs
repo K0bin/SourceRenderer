@@ -274,6 +274,14 @@ impl VkQueue {
     let mut guard = self.queue.lock().unwrap();
     guard.virtual_queue.push(submission);
   }
+
+  pub(crate) fn wait_for_idle(&self) {
+    self.process_submissions();
+    let queue_guard = self.queue.lock().unwrap();
+    unsafe {
+      self.device.queue_wait_idle(queue_guard.queue);
+    }
+  }
 }
 
 // Vulkan queues are implicitly freed with the logical device
