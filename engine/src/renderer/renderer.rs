@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use crossbeam_channel::{Sender, unbounded};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
-use sourcerenderer_core::graphics::Backend;
+use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
 use crate::asset::AssetManager;
@@ -19,29 +19,34 @@ use crate::renderer::camera::LateLatchCamera;
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
+  instance: Arc<<P::GraphicsBackend as Backend>::Instance>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   window_state: Mutex<WindowState>,
   queued_frames_counter: AtomicUsize,
-  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>
+  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
+  surface: Mutex<Arc<<P::GraphicsBackend as Backend>::Surface>>
 }
 
 impl<P: Platform> Renderer<P> {
-  fn new(sender: Sender<RendererCommand>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window) -> Self {
+  fn new(sender: Sender<RendererCommand>, instance: &Arc<<P::GraphicsBackend as Backend>::Instance>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window, surface: &Arc<<P::GraphicsBackend as Backend>::Surface>) -> Self {
     Self {
       sender,
+      instance: instance.clone(),
       device: device.clone(),
       window_state: Mutex::new(window.state()),
       queued_frames_counter: AtomicUsize::new(0),
-      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref()))
+      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref())),
+      surface: Mutex::new(surface.clone())
     }
   }
 
   pub fn run(window: &P::Window,
+             instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
              device: &Arc<<P::GraphicsBackend as Backend>::Device>,
              swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
              asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
     let (sender, receiver) = unbounded::<RendererCommand>();
-    let renderer = Arc::new(Renderer::new(sender.clone(), device, window));
+    let renderer = Arc::new(Renderer::new(sender.clone(), instance, device, window, swapchain.surface()));
 
     let c_device = device.clone();
     let c_renderer = renderer.clone();
@@ -116,7 +121,19 @@ impl<P: Platform> Renderer<P> {
     &self.window_state
   }
 
+  pub(crate) fn change_surface(&self, surface: &Arc<<P::GraphicsBackend as Backend>::Surface>) {
+    let mut surface_guard = self.surface.lock().unwrap();
+    *surface_guard = surface.clone();
+  }
+  pub(super) fn surface(&self) -> MutexGuard<Arc<<P::GraphicsBackend as Backend>::Surface>> {
+    self.surface.lock().unwrap()
+  }
+
   pub(super) fn dec_queued_frames_counter(&self) -> usize {
     self.queued_frames_counter.fetch_sub(1, Ordering::SeqCst)
+  }
+
+  pub(crate) fn instance(&self) -> &Arc<<P::GraphicsBackend as Backend>::Instance> {
+    &self.instance
   }
 }

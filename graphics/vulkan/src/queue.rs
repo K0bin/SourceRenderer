@@ -194,7 +194,9 @@ impl VkQueue {
             swapchain.set_presented_image(image_index);
             match result {
               Ok(suboptimal) => {
-                swapchain.set_state(if suboptimal { VkSwapchainState::Suboptimal } else { VkSwapchainState::Okay });
+                if suboptimal {
+                  swapchain.set_state(VkSwapchainState::Suboptimal);
+                }
               },
               Err(err) => {
                 match err {

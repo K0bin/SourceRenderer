@@ -7,11 +7,11 @@ use crossbeam_utils::atomic::AtomicCell;
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
 
-use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError};
+use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError, Backend};
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
 
-use crate::VkSurface;
+use crate::{VkSurface, VkBackend};
 use crate::raw::{RawVkInstance, RawVkDevice};
 use crate::VkTexture;
 use crate::VkSemaphore;
@@ -24,7 +24,8 @@ pub enum VkSwapchainState {
   Okay,
   Suboptimal,
   OutOfDate,
-  SurfaceLost
+  SurfaceLost,
+  Retired
 }
 
 pub struct VkSwapchain {
@@ -38,11 +39,11 @@ pub struct VkSwapchain {
   vsync: bool,
   state: AtomicCell<VkSwapchainState>,
   acquired_image: AtomicU32,
-  presented_image: AtomicU32
+  presented_image: AtomicU32,
 }
 
 impl VkSwapchain {
-  fn new_internal(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>, old_swapchain: Option<&vk::SwapchainKHR>) -> Result<Arc<Self>, SwapchainError> {
+  fn new_internal(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>, old_swapchain: Option<&Self>) -> Result<Arc<Self>, SwapchainError> {
     let vk_device = &device.device;
     let instance = &device.instance;
 
@@ -98,9 +99,13 @@ impl VkSwapchain {
           vk::CompositeAlphaFlagsKHR::INHERIT
         },
         clipped: vk::TRUE,
-        old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |swapchain| *swapchain),
+        old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |swapchain| *swapchain.get_handle()),
         ..Default::default()
       };
+
+      if let Some(old_swapchain) = old_swapchain {
+        old_swapchain.set_state(VkSwapchainState::Retired);
+      }
 
       let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).map_err(|e|
       match e {
@@ -129,6 +134,7 @@ impl VkSwapchain {
         })
         .collect();
 
+      println!("New swapchain!");
       Ok(Arc::new(VkSwapchain {
         textures,
         views: swapchain_image_views,
@@ -228,8 +234,21 @@ impl VkSwapchain {
   pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
     while self.presented_image.load(Ordering::SeqCst) != self.acquired_image.load(Ordering::SeqCst) {}
     let result = unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) };
-    if let Ok((image, _)) = result {
+    if let Ok((image, is_optimal)) = result {
+      if !is_optimal && false {
+        self.set_state(VkSwapchainState::Suboptimal);
+      }
       self.acquired_image.store(image, Ordering::SeqCst);
+    } else {
+      match result.err().unwrap() {
+        vk::Result::ERROR_SURFACE_LOST_KHR => {
+          self.set_state(VkSwapchainState::SurfaceLost);
+        }
+        vk::Result::ERROR_OUT_OF_DATE_KHR => {
+          self.set_state(VkSwapchainState::OutOfDate);
+        }
+        _ => {}
+      }
     }
     result
   }
@@ -239,7 +258,10 @@ impl VkSwapchain {
   }
 
   pub fn set_state(&self, state: VkSwapchainState) {
-    self.state.store(state);
+    let old = self.state.swap(state);
+    if old != state {
+      println!("Swapchain state changed from {:?} to: {:?}", old, state);
+    }
   }
 
   pub fn state(&self) -> VkSwapchainState {
@@ -255,9 +277,23 @@ impl Drop for VkSwapchain {
   }
 }
 
-impl Swapchain for VkSwapchain {
+impl Swapchain<VkBackend> for VkSwapchain {
   fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
-    VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(&old.swapchain))
+    println!("recreating swapchain");
+    let old_sc_state = old.state();
+    assert_ne!(old_sc_state, VkSwapchainState::SurfaceLost);
+
+    if old.state() == VkSwapchainState::Retired {
+      println!("swapchain was retired, recreating from scratch");
+      VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, None)
+    } else {
+      VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(&old))
+    }
+  }
+
+  fn recreate_on_surface(old: &Self, surface: &Arc<VkSurface>, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
+    println!("recreating swapchain on new surface");
+    VkSwapchain::new_internal(old.vsync, width, height, &old.device, surface, None)
   }
 
   fn sample_count(&self) -> SampleCount {
@@ -266,6 +302,10 @@ impl Swapchain for VkSwapchain {
 
   fn format(&self) -> Format {
     self.textures.first().unwrap().get_info().format
+  }
+
+  fn surface(&self) -> &Arc<VkSurface> {
+    &self.surface
   }
 }
 

@@ -28,11 +28,11 @@ impl<P: Platform> Engine<P> {
     let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
-    let mut adapters = instance.list_adapters();
+    let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let swapchain = Arc::new(platform.window().create_swapchain(true, &device, &surface));
     let asset_manager = AssetManager::<P>::new(&device);
-    let renderer = Renderer::<P>::run(platform.window(), &device, &swapchain, &asset_manager);
+    let renderer = Renderer::<P>::run(platform.window(), &instance, &device, &swapchain, &asset_manager);
     let game = Game::<P>::run(&renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
@@ -48,8 +48,14 @@ impl<P: Platform> Engine<P> {
   pub fn platform(&mut self) -> &mut P {
     &mut self.platform
   }
+
   pub fn poll_platform(&self) {
     self.game.update_input_state(self.platform.input_state());
     self.renderer.set_window_state(self.platform.window().state());
+    if self.platform.is_window_dirty() {
+      println!("Window is dirty");
+      let surface = self.platform.window().create_surface(self.renderer.instance().clone());
+      self.renderer.change_surface(&surface);
+    }
   }
 }

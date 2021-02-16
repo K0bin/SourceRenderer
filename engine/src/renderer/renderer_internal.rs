@@ -237,19 +237,33 @@ impl<P: Platform> RendererInternal<P> {
     if result.is_err() {
       self.device.wait_for_idle();
 
-      if result.err().unwrap() == SwapchainError::SurfaceLost {
+      let new_swapchain = if result.err().unwrap() == SwapchainError::SurfaceLost {
         // No point in trying to recreate with the old surface
-        return;
-      }
-      let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, swapchain_width, swapchain_height);
-      if new_swapchain_result.is_err() {
-        return;
-      }
-      let new_swapchain = new_swapchain_result.unwrap();
+        let renderer_surface = self.renderer.surface();
+        if &*renderer_surface != self.graph.swapchain().surface() {
+          println!("Recreating on a different surface");
+          let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &*renderer_surface, swapchain_width, swapchain_height);
+          if new_swapchain_result.is_err() {
+            println!("Recreating with surface failed");
+            return;
+          }
+          new_swapchain_result.unwrap()
+        } else {
+          return;
+        }
+      } else {
+        println!("Recreating with state: {:?}", result.err().unwrap());
+        let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, swapchain_width, swapchain_height);
+        if new_swapchain_result.is_err() {
+          println!("Recreating failed");
+          return;
+        }
+        new_swapchain_result.unwrap()
+      };
+
       if new_swapchain.format() != self.swapchain.format() || new_swapchain.sample_count() != self.swapchain.sample_count() {
         panic!("Swapchain format or sample count changed. Can not recreate render graph.");
       }
-
       let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
       self.swapchain = new_swapchain;
       self.graph = new_graph;

@@ -6,7 +6,7 @@ use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
 use sourcerenderer_core::graphics::Backend;
 use ndk::native_window::NativeWindow;
-use ndk_sys::{AAssetManager, AInputQueue};
+use ndk_sys::{AAssetManager, AInputQueue, ANativeWindow_release};
 
 use ash::extensions::khr::AndroidSurface;
 use ash::extensions::khr::Surface;
@@ -22,14 +22,16 @@ pub static mut ASSET_MANAGER: *mut AAssetManager = std::ptr::null_mut();
 
 pub struct AndroidPlatform {
   window: AndroidWindow,
-  input_state: InputState
+  input_state: InputState,
+  is_window_dirty: bool
 }
 
 impl AndroidPlatform {
   pub fn new(native_window: NativeWindow) -> Box<Self> {
     Box::new(Self {
       window: AndroidWindow::new(native_window),
-      input_state: Default::default()
+      input_state: Default::default(),
+      is_window_dirty: false
     })
   }
 
@@ -39,6 +41,10 @@ impl AndroidPlatform {
 
   pub(crate) fn window_mut(&mut self) -> &mut AndroidWindow {
     &mut self.window
+  }
+
+  pub(crate) fn mark_window_dirty(&mut self) {
+    self.is_window_dirty = true;
   }
 }
 
@@ -57,6 +63,10 @@ impl Platform for AndroidPlatform {
 
   fn input_state(&self) -> InputState {
     self.input_state.clone()
+  }
+
+  fn is_window_dirty(&self) -> bool {
+    self.is_window_dirty
   }
 }
 
@@ -79,6 +89,18 @@ impl AndroidWindow {
 
   pub(crate) fn state_mut(&mut self) -> &mut WindowState {
     &mut self.window_state
+  }
+
+  pub(crate) fn native_window(&self) -> &NativeWindow {
+    &self.native_window
+  }
+}
+
+impl Drop for AndroidWindow {
+  fn drop(&mut self) {
+    unsafe {
+      ANativeWindow_release(self.native_window.ptr().as_ptr());
+    }
   }
 }
 

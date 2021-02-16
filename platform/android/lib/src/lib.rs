@@ -16,7 +16,7 @@ use jni::objects::{JClass, JString, JObject};
 use jni::sys::{jstring, jlong, jint, jfloat};
 use ndk_sys::{AAssetManager_fromJava, AInputQueue,
               android_LogPriority_ANDROID_LOG_DEBUG, __android_log_print};
-use crate::android_platform::{AndroidPlatform, ASSET_MANAGER};
+use crate::android_platform::{AndroidPlatform, ASSET_MANAGER, AndroidWindow};
 use sourcerenderer_engine::Engine;
 use std::sync::{Arc, Mutex};
 use std::os::raw::c_void;
@@ -140,16 +140,18 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChange
   engine_ptr: jlong,
   surface: JObject
 ) {
-  let engine = engine_from_long(engine_ptr);
+  let mut engine = engine_from_long(engine_ptr);
   if surface.is_null() {
-
+    return;
   } else {
     let native_window_ptr = unsafe { ANativeWindow_fromSurface(std::mem::transmute(env), std::mem::transmute(*surface)) };
     let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
     let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
-  }
 
-  // TODO
+    if &native_window != engine.platform().window().native_window() {
+      *engine.platform().window_mut() = AndroidWindow::new(native_window);
+    }
+  }
 }
 
 #[no_mangle]

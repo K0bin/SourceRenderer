@@ -934,18 +934,13 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       if result.is_err() {
         return Err(match result.err().unwrap() {
           vk::Result::ERROR_OUT_OF_DATE_KHR => {
-            self.swapchain.set_state(VkSwapchainState::OutOfDate);
             SwapchainError::Other
           }
           vk::Result::ERROR_SURFACE_LOST_KHR => {
-            self.swapchain.set_state(VkSwapchainState::SurfaceLost);
             SwapchainError::SurfaceLost
           }
           _ => { panic!("Acquiring image failed"); }
         });
-      } else if !result.unwrap().1 && false {
-        // recreate it next frame but go ahead now
-        self.swapchain.set_state(VkSwapchainState::Suboptimal);
       }
 
       frame_local.track_semaphore(&prepare_semaphore);
@@ -1175,6 +1170,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     self.thread_manager.end_frame(&cmd_fence);
     Ok(())
+  }
+
+  fn swapchain(&self) -> &Arc<VkSwapchain> {
+    &self.swapchain
   }
 }
 

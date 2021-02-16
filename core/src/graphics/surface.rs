@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::graphics::{SampleCount, Format};
+use crate::graphics::{SampleCount, Format, Backend};
+use crate::Platform;
 
 pub trait Surface {
 
@@ -13,8 +14,10 @@ pub enum SwapchainError {
   Other
 }
 
-pub trait Swapchain : Sized {
+pub trait Swapchain<B: Backend> : Sized {
   fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError>;
+  fn recreate_on_surface(old: &Self, surface: &Arc<B::Surface>, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError>;
   fn sample_count(&self) -> SampleCount;
   fn format(&self) -> Format;
+  fn surface(&self) -> &Arc<B::Surface>;
 }

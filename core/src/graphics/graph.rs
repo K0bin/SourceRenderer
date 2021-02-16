@@ -38,6 +38,7 @@ impl<B: Backend> Clone for ExternalResource<B> {
 pub trait RenderGraph<B: Backend> {
   fn recreate(old: &Self, swapchain: &Arc<B::Swapchain>) -> Self;
   fn render(&mut self) -> Result<(), SwapchainError>;
+  fn swapchain(&self) -> &Arc<B::Swapchain>;
 }
 
 pub struct TextureDimensions {

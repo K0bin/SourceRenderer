@@ -15,8 +15,8 @@ pub trait Backend: 'static + Sized {
   type Instance: Instance<Self> + Send + Sync;
   type Adapter: Adapter<Self> + Send + Sync;
   type Device: Device<Self> + Send + Sync;
-  type Surface: Surface + Send + Sync;
-  type Swapchain: Swapchain + Send + Sync;
+  type Surface: Surface + Send + Sync + PartialEq + Eq;
+  type Swapchain: Swapchain<Self> + Send + Sync;
   type CommandBuffer: CommandBuffer<Self>;
   type CommandBufferSubmission: Send + Sync;
   type Texture: Texture + Send + Sync;

@@ -7,11 +7,14 @@ use crate::raw::*;
 use std::sync::Arc;
 
 use ash::prelude::VkResult;
+use ash::version::InstanceV1_0;
+use std::sync::atomic::AtomicBool;
 
 pub struct VkSurface {
   surface: vk::SurfaceKHR,
   surface_loader: SurfaceLoader,
-  instance: Arc<RawVkInstance>
+  instance: Arc<RawVkInstance>,
+  is_lost: AtomicBool
 }
 
 impl VkSurface {
@@ -19,7 +22,8 @@ impl VkSurface {
     return VkSurface {
       surface,
       surface_loader,
-      instance: instance.clone()
+      instance: instance.clone(),
+      is_lost: AtomicBool::new(false)
     };
   }
 
@@ -51,6 +55,14 @@ impl VkSurface {
     }
   }
 }
+
+impl PartialEq for VkSurface {
+  fn eq(&self, other: &Self) -> bool {
+    self.instance.instance.handle() == other.instance.instance.handle() && self.surface == other.surface
+  }
+}
+
+impl Eq for VkSurface {}
 
 impl Drop for VkSurface {
   fn drop(&mut self) {

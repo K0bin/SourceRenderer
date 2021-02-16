@@ -36,17 +36,16 @@ class MainActivity : AppCompatActivity() {
         val holder = view.holder
         holder.addCallback(object: SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    holder.surface.setFrameRate(0f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                }
                 if (this@MainActivity.enginePtr != 0L) {
-                    Log.e("MainActivity", "Engine initialized when surfaceCreated was called.")
                     return
                 }
                 this@MainActivity.enginePtr = startEngineNative(holder.surface)
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    holder.surface.setFrameRate(0f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
-                }
                 if (this@MainActivity.enginePtr == 0L) {
                     return
                 }

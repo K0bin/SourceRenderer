@@ -14,7 +14,6 @@
         <activity android:name="de.kobin.sourcerenderer.MainActivity"
             android:configChanges="density|fontScale|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:preferMinimalPostProcessing="true"
-            android:launchMode="singleInstance"
             android:documentLaunchMode="always"
             android:screenOrientation="landscape"
             android:windowSoftInputMode="stateHidden">
