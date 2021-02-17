@@ -24,7 +24,7 @@ pub enum Resource {
 }
 
 impl<R: Read + Seek> VtfTexture<R> {
-  pub fn check_file<T: Read + Seek>(mut reader: &mut T) -> IOResult<bool> {
+  pub fn check_file<T: Read + Seek>(reader: &mut T) -> IOResult<bool> {
     Header::check_file(reader)
   }
 
@@ -34,7 +34,7 @@ impl<R: Read + Seek> VtfTexture<R> {
     let thumbnail = resource_offsets.get(&Resource::Thumbnail).and_then(|offset| {
       reader.seek(SeekFrom::Start(*offset as u64)).ok()?;
       let size = calculate_image_size(header.low_res_image_width as u32, header.low_res_image_height as u32, 1, header.low_res_image_format) as usize;
-      let mut buffer = reader.read_data(size).ok()?;
+      let buffer = reader.read_data(size).ok()?;
       Some(Thumbnail {
         data: buffer,
         width: header.low_res_image_width as u32,
@@ -123,7 +123,7 @@ impl<R: Read + Seek> VtfTexture<R> {
       && calculate_image_size(header.low_res_image_width as u32, header.low_res_image_height as u32, 1, header.low_res_image_format) > 0;
     let mut resource_offsets = HashMap::<Resource, u32>::new();
     if header.version[0] > 7 || header.version[0] == 7 && header.version[1] >= 3 {
-      for i in 0 .. header.num_resources {
+      for _ in 0 .. header.num_resources {
         let a = reader.read_u8()?;
         let b = reader.read_u8()?;
         let c = reader.read_u8()?;

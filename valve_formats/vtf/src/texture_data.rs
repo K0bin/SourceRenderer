@@ -1,5 +1,4 @@
 use crate::image_format::ImageFormat;
-use std::fmt::Debug;
 
 pub struct MipMap {
   pub frames: Vec<Frame>,

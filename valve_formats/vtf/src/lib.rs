@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
@@ -10,12 +12,6 @@ mod texture_flags;
 mod thumbnail;
 mod texture;
 mod read_util;
-
-use self::read_util::*;
-use self::image_format::FormatSizeInfo;
-use self::image_format::ImageFormatInfo;
-use self::image_format::calculate_image_size;
-use self::image_format::is_image_format_supported;
 
 pub use self::image_format::ImageFormat;
 pub use self::texture_data::*;

@@ -3,10 +3,6 @@ use crate::texture_flags::TextureFlags;
 use std::io::{Read, Result as IOResult, Error as IOError, Seek, SeekFrom, ErrorKind};
 use crate::read_util::PrimitiveRead;
 
-const SIZE_73: u32 = 80;
-const SIZE_72: u32 = 80;
-const SIZE_71: u32 = 64;
-
 const EXPECTED_SIGNATURE: u32 = 0x00465456;
 
 pub struct Header {
@@ -58,13 +54,13 @@ pub struct Header {
 }
 
 impl Header {
-  pub(super) fn check_file<T: Read + Seek>(mut reader: &mut T) -> IOResult<bool> {
+  pub(super) fn check_file<T: Read + Seek>(reader: &mut T) -> IOResult<bool> {
     let signature = reader.read_u32()?;
     Ok(signature == EXPECTED_SIGNATURE)
   }
 
 
-  pub fn read<T: Read + Seek>(mut reader: &mut T) -> IOResult<Self> {
+  pub fn read<T: Read + Seek>(reader: &mut T) -> IOResult<Self> {
     let signature = reader.read_u32()?;
     if signature != EXPECTED_SIGNATURE {
       return Err(IOError::new(ErrorKind::Other, "File is not a VTF file"));
