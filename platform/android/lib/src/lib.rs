@@ -92,6 +92,8 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_App_initNative(
     ASSET_MANAGER = asset_manager;
   }
 
+  Engine::<AndroidPlatform>::initialize_global();
+
   println!("Initialized application.");
 }
 

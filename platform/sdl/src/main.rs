@@ -22,6 +22,7 @@ mod io;
 const EVENT_TICK_RATE: u32 = 512;
 
 fn main() {
+  Engine::<SDLPlatform>::initialize_global();
   let mut platform = SDLPlatform::new(GraphicsApi::Vulkan);
   let mut engine = Box::new(Engine::run(platform));
   let mut last_iter_time = SystemTime::now();

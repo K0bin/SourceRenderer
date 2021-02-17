@@ -21,10 +21,12 @@ pub struct Engine<P: Platform> {
 }
 
 impl<P: Platform> Engine<P> {
-  pub fn run(platform: Box<P>) -> Self {
+  pub fn initialize_global() {
     let cores = num_cpus::get();
     ThreadPoolBuilder::new().num_threads(cores - 2).build_global().unwrap();
+  }
 
+  pub fn run(platform: Box<P>) -> Self {
     let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
