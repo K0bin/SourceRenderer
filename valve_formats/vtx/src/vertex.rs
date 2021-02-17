@@ -1,8 +1,4 @@
 use std::io::{Read, Result as IOResult};
-use std::ffi::CString;
-use std::os::raw::c_char;
-
-use nalgebra::{Vector3, Vector4, Quaternion, Matrix3x4};
 
 use crate::PrimitiveRead;
 
@@ -16,7 +12,7 @@ pub struct Vertex {
 }
 
 impl Vertex {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let bone_weight_index = [
       read.read_u8()?,
       read.read_u8()?,
