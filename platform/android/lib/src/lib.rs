@@ -69,11 +69,9 @@ fn setup_log() {
 fn engine_from_long<'a>(engine_ptr: jlong) -> RefMut<'a, Engine<AndroidPlatform>> {
   assert_ne!(engine_ptr, 0);
   unsafe {
-    let box_ptr = std::mem::transmute::<jlong, *mut RefCell<Engine<AndroidPlatform>>>(engine_ptr);
-    let engine_box = Box::from_raw(box_ptr);
-    let engine: RefMut<Engine<AndroidPlatform>> = (*engine_box).borrow_mut();
+    let ptr = std::mem::transmute::<jlong, *mut RefCell<Engine<AndroidPlatform>>>(engine_ptr);
+    let engine: RefMut<Engine<AndroidPlatform>> = (*ptr).borrow_mut();
     let engine_ref = std::mem::transmute::<RefMut<Engine<AndroidPlatform>>, RefMut<'a, Engine<AndroidPlatform>>>(engine);
-    std::mem::forget(engine_box);
     engine_ref
   }
 }
