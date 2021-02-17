@@ -1,5 +1,4 @@
 use std::io::{Read, Result as IOResult};
-use crate::lump_data::{LumpData, LumpType};
 use crate::PrimitiveRead;
 
 pub struct Visibility {
@@ -8,7 +7,7 @@ pub struct Visibility {
 }
 
 impl Visibility {
-  pub fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let num_clusters = reader.read_i32()?;
     let mut byte_offsets: [Box<[i32]>; 2] = [
       Box::new([0i32; 0]),

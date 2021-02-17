@@ -1,7 +1,5 @@
 use std::io::{Read, Result as IOResult};
-use crate::lump_data::{LumpData, LumpType};
 use crate::{PrimitiveRead, StringRead};
-use std::ffi::CString;
 use nalgebra::Vector3;
 use crate::lump_data::leaf::ColorRGBExp32;
 
@@ -16,7 +14,7 @@ impl StaticPropDict {
     1936749168 // sprp
   }
 
-  pub fn read(mut read: &mut dyn Read, version: u16) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read, version: u16) -> IOResult<Self> {
     let dict_entries = read.read_i32()?;
     let mut names = Vec::<String>::with_capacity(dict_entries as usize);
     for _ in 0..dict_entries {
@@ -71,7 +69,7 @@ pub struct StaticProp {
 }
 
 impl StaticProp {
-  pub fn read(mut read: &mut dyn Read, version: u16) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read, version: u16) -> IOResult<Self> {
     let origin = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let angles = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let prop_type = read.read_u16()?;

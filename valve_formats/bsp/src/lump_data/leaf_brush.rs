@@ -19,7 +19,7 @@ impl LumpData for LeafBrush {
     2
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let brush = reader.read_u16()?;
     return Ok(Self {
       index: brush

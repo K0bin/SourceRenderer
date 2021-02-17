@@ -24,7 +24,7 @@ impl LumpData for BrushModel {
     48
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let min = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let max = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let origin = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);

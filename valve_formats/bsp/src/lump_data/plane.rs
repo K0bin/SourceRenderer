@@ -22,7 +22,7 @@ impl LumpData for Plane {
     20
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let normal = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let dist = reader.read_f32()?;
     let edge_type = reader.read_i32()?;

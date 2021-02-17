@@ -21,7 +21,7 @@ impl LumpData for DispVert {
     20
   }
 
-  fn read(mut read: &mut dyn Read, version: i32) -> IOResult<Self> {
+  fn read(read: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let vec = Vector3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let dist = read.read_f32()?;
     let alpha = read.read_f32()?;

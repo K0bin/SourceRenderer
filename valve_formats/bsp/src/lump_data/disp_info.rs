@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use std::io::{Read, Result as IOResult, Error as IOError, ErrorKind, Cursor};
+use std::io::{Read, Result as IOResult, Error as IOError, ErrorKind};
 use crate::{PrimitiveRead, LumpData, LumpType};
 
 pub struct DispInfo {
@@ -41,7 +41,7 @@ impl LumpData for DispInfo {
     176
   }
 
-  fn read(mut read: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(read: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let start_position = Vector3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let disp_vert_start = read.read_i32()?;
     let disp_tri_start = read.read_i32()?;
@@ -101,7 +101,7 @@ impl DispNeighbor {
     self.corner_to_corner() && self.sub_neighbors[0].neighbor_span == NeighborSpan::CornerToCorner
   }
 
-  pub fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let sub_neighbors = [DispSubNeighbor::read(reader)?, DispSubNeighbor::read(reader)?];
     Ok(Self {
       sub_neighbors
@@ -121,7 +121,7 @@ impl DispSubNeighbor {
     self.neighbor_index != 0xffff
   }
 
-  pub fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let neighbor_index = reader.read_u16()?;
     let neighbor_orientation = reader.read_u8()?;
 
@@ -158,7 +158,7 @@ pub struct DispCornerNeighbors {
 }
 
 impl DispCornerNeighbors {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let neighbors = [read.read_u16()?, read.read_u16()?, read.read_u16()?, read.read_u16()?];
     let num_neighbors = read.read_u8()?;
     if num_neighbors > 4 {

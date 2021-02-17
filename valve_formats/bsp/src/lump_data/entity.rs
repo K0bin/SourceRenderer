@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::io::{Read, Result as IOResult};
-use crate::lump_data::{LumpData, LumpType};
-use crate::PrimitiveRead;
 use crate::StringRead;
 
 pub struct Entities {
@@ -9,7 +7,7 @@ pub struct Entities {
 }
 
 impl Entities {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Entities> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Entities> {
     let mut entities = Vec::<Entity>::new();
     let text = read.read_null_terminated_string().unwrap();
 

@@ -19,7 +19,7 @@ impl LumpData for Edge {
     4
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let vertex_index = [
       reader.read_u16()?,
       reader.read_u16()?

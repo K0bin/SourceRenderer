@@ -19,7 +19,7 @@ impl LumpData for SurfaceEdge {
     4
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let edge = reader.read_i32()?;
     return Ok(Self {
       index: edge

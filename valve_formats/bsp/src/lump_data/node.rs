@@ -26,7 +26,7 @@ impl LumpData for Node {
     32
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let plane_number = reader.read_i32()?;
     let children: [i32; 2] = [
       reader.read_i32()?,

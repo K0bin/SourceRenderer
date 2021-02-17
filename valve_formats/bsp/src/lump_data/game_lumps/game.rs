@@ -1,7 +1,5 @@
 use std::io::{Read, Result as IOResult, Seek, SeekFrom, Cursor, Error as IOError, ErrorKind};
-use crate::lump_data::{LumpData, LumpType};
 use crate::read_util::PrimitiveRead;
-use std::ffi::CString;
 use crate::lump_data::game_lumps::StaticPropDict;
 
 pub struct GameLumps {
@@ -9,7 +7,7 @@ pub struct GameLumps {
 }
 
 impl GameLumps {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let lump_count = read.read_i32()?;
     let mut game_lumps = Vec::<GameLump>::new();
     for _ in 0..lump_count {
@@ -21,15 +19,15 @@ impl GameLumps {
     })
   }
 
-  pub(crate) fn read_static_prop_dict<R: Read + Seek>(&self, mut read: &mut R) -> IOResult<StaticPropDict> {
+  pub(crate) fn read_static_prop_dict<R: Read + Seek>(&self, read: &mut R) -> IOResult<StaticPropDict> {
     for lump in self.game_lumps.as_ref() {
       if lump.id == StaticPropDict::id() {
-        read.seek(SeekFrom::Start(lump.file_offset as u64));
+        read.seek(SeekFrom::Start(lump.file_offset as u64))?;
         let mut data = Vec::with_capacity(lump.file_length as usize);
         unsafe  {
           data.set_len(lump.file_length as usize);
         }
-        read.read_exact(&mut data);
+        read.read_exact(&mut data)?;
         let mut cursor = Cursor::new(data);
         let static_props = StaticPropDict::read(&mut cursor, lump.version)?;
         return Ok(static_props);
@@ -49,7 +47,7 @@ pub struct GameLump {
 }
 
 impl GameLump {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let id = read.read_u32()?;
     let flags = read.read_u16()?;
     let version = read.read_u16()?;

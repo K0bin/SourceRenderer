@@ -1,7 +1,6 @@
 use super::leaf::ColorRGBExp32;
 use std::io::{Read, Result as IOResult};
 use crate::lump_data::{LumpData, LumpType};
-use crate::PrimitiveRead;
 
 #[repr(C)]
 pub struct Lighting {

@@ -44,7 +44,7 @@ impl LumpData for TextureInfo {
     72
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let texture_vecs_s = Vector4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let texture_vecs_t = Vector4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let lightmap_vecs_s = Vector4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);

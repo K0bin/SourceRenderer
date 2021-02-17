@@ -67,7 +67,7 @@ impl LumpData for Brush {
     12
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let first_side = reader.read_i32()?;
     let sides_count = reader.read_i32()?;
     let contents = reader.read_u32()?;

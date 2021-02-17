@@ -23,7 +23,6 @@ pub use crate::lump_data::vertex_normal_index::VertexNormalIndex;
 pub use crate::lump_data::visibility::Visibility;
 pub use crate::game_lumps::GameLumps;
 pub use crate::lump_data::entity::Entities;
-use crate::lump_data::entity::parse_key_value;
 
 pub use self::brush::Brush;
 pub use self::leaf::Leaf;

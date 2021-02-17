@@ -1,6 +1,5 @@
 use crate::map_header::{MapHeader};
-use std::io::{Seek, SeekFrom, Read, Result as IOResult, Cursor};
-use std::fs::File;
+use std::io::{Seek, SeekFrom, Read, Result as IOResult};
 use crate::lump_data::{Brush, Node, Leaf, Face,
                        Plane, Edge, BrushSide, LumpData,
                        TextureInfo, LeafFace, LeafBrush,
@@ -8,7 +7,6 @@ use crate::lump_data::{Brush, Node, Leaf, Face,
                        VertexNormalIndex, VertexNormal,
                        TextureDataStringTable, TextureStringData};
 use crate::{LumpType, BrushModel, RawDataRead, PakFile, DispTri, DispInfo, DispVert, Lighting, Visibility, GameLumps, Entities};
-use crate::LumpType::GameLump;
 use crate::lump_data::game_lumps::StaticPropDict;
 
 pub struct Map<R: Read + Seek> {
@@ -20,7 +18,7 @@ pub struct Map<R: Read + Seek> {
 
 impl<R: Read + Seek> Map<R> {
   pub fn read(name: &str, mut reader: R) -> IOResult<Map<R>> {
-    reader.seek(SeekFrom::Start(0));
+    reader.seek(SeekFrom::Start(0))?;
     let header = MapHeader::read(&mut reader)?;
     let game_lumps = Self::read_game_lump(&header, &mut reader)?;
     return Ok(Map {

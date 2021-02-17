@@ -34,7 +34,7 @@ impl LumpData for Face {
     56
   }
 
-  fn read(mut reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let plane_number = reader.read_u16()?;
     let size = reader.read_u8()?;
     let is_on_node = reader.read_u8()? != 0;

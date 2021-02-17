@@ -18,7 +18,7 @@ impl LumpData for DispTri {
     2
   }
 
-  fn read(mut read: &mut dyn Read, version: i32) -> IOResult<Self> {
+  fn read(read: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let tags = read.read_u16()?;
     Ok(Self {
       tags: DispTriTags::from_bits(tags).unwrap()

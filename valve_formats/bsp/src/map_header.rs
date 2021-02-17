@@ -12,7 +12,7 @@ pub struct MapHeader {
 }
 
 impl MapHeader {
-  pub fn read(mut reader: &mut dyn Read) -> IOResult<MapHeader> {
+  pub fn read(reader: &mut dyn Read) -> IOResult<MapHeader> {
     let identifier = reader.read_i32()?;
     let version = reader.read_i32()?;
     let mut lumps: [Lump; LUMP_COUNT] = [

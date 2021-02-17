@@ -10,7 +10,7 @@ pub struct Lump {
 }
 
 impl Lump {
-  pub fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let file_offset = reader.read_i32()?;
     let file_length = reader.read_i32()?;
     let version = reader.read_i32()?;

@@ -1,4 +1,4 @@
-use crate::{LumpData, LumpType, RawDataRead};
+use crate::RawDataRead;
 use std::io::{Read, Result as IOResult};
 use std::ffi::CStr;
 
@@ -7,7 +7,7 @@ pub struct TextureStringData {
 }
 
 impl TextureStringData {
-  pub fn read(mut read: &mut dyn Read, length: u32) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read, length: u32) -> IOResult<Self> {
     let data = read.read_data(length as usize)?;
     Ok(Self {
       data

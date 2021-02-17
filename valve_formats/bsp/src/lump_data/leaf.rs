@@ -34,7 +34,7 @@ pub struct Leaf {
 }
 
 impl ColorRGBExp32 {
-  pub(super) fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+  pub(super) fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let r = reader.read_u8()?;
     let g = reader.read_u8()?;
     let b = reader.read_u8()?;
@@ -58,7 +58,7 @@ impl ColorRGBExp32 {
 }
 
 impl CompressedLightCube {
-  fn read(mut reader: &mut dyn Read) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read) -> IOResult<Self> {
     let mut colors: [ColorRGBExp32; 6] = [Default::default(); 6];
     for i in 0..6 {
       let color = ColorRGBExp32::read(reader)?;
@@ -86,7 +86,7 @@ impl LumpData for Leaf {
     }
   }
 
-  fn read(mut reader: &mut dyn Read, version: i32) -> IOResult<Self> {
+  fn read(reader: &mut dyn Read, version: i32) -> IOResult<Self> {
     let contents = reader.read_u32()?;
     let cluster = reader.read_i16()?;
     let area_flags = reader.read_u16()?;
@@ -110,14 +110,12 @@ impl LumpData for Leaf {
     let first_leaf_brush = reader.read_u16()?;
     let leaf_brushes_count = reader.read_u16()?;
     let leaf_water_data_id = reader.read_i16()?;
-    let mut padding: i16 = 0;
     let mut ambient_lighting: CompressedLightCube = Default::default();
     if version <= 19 {
       let ambient_lighting_res = CompressedLightCube::read(reader)?;
       ambient_lighting = ambient_lighting_res;
     }
-    let padding_res = reader.read_i16()?;
-    padding = padding_res;
+    let padding = reader.read_i16()?;
 
     return Ok(Self {
       contents: BrushContents::new(contents),
