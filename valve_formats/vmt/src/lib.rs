@@ -1,13 +1,14 @@
 mod read_util;
 
 use std::collections::HashMap;
-use std::io::{Read, Result as IOResult, Error as IOError};
+use std::io::{Read, Error as IOError};
 use crate::read_util::RawDataRead;
 
 pub const SHADER_LIGHT_MAPPED_GENERIC: &'static str = "lightmappedgeneric";
 pub const BASE_TEXTURE_NAME: &'static str = "basetexture";
 pub const PATCH: &'static str = "patch";
 pub const PATCH_INCLUDE: &'static str = "include";
+#[allow(dead_code)]
 const PATCH_INSERT: &'static str = "insert";
 
 #[derive(Debug)]
@@ -22,11 +23,11 @@ pub struct VMTMaterial {
 }
 
 impl VMTMaterial {
-  pub fn new(mut reader: &mut Read, length: u32) -> Result<Self, VMTError> {
+  pub fn new(reader: &mut dyn Read, length: u32) -> Result<Self, VMTError> {
     let mut values = HashMap::<String, String>::new();
 
     let data = reader.read_data(length as usize).map_err(|e| VMTError::IOError(e))?;
-    let mut text = String::from_utf8(data.to_vec()).map_err(|e| VMTError::FileError("Could not read text".to_string()))?;
+    let mut text = String::from_utf8(data.to_vec()).map_err(|_e| VMTError::FileError("Could not read text".to_string()))?;
     text = text.replace("\r\n", "\n");
     text = text.replace('\t', " ");
     text = text.trim_end_matches("\0").to_string();
