@@ -262,7 +262,7 @@ impl AsnParser {
 
   pub fn next_sequence(&mut self) -> Result<u32, BerDecodeError> {
     let position = self.current_position();
-    let mut b = self.get_next_octet()?;
+    let b = self.get_next_octet()?;
     if b != 0x30 {
       return Err(BerDecodeError {
         message: format!("Expected Sequence. Specified Identifier: {}", b),
@@ -309,7 +309,7 @@ impl AsnParser {
 
   pub fn next_integer(&mut self) -> Result<Box<[u8]>, BerDecodeError> {
     let position = self.current_position();
-    let mut b = self.get_next_octet()?;
+    let b = self.get_next_octet()?;
     if b != 0x02 {
       return Err(BerDecodeError {
         message: format!("Expected Sequence. Specified Identifier: {}", b),
@@ -330,7 +330,7 @@ impl AsnParser {
 
   pub fn next_oid(&mut self) -> Result<Box<[u8]>, BerDecodeError> {
     let position = self.current_position();
-    let mut b = self.get_next_octet()?;
+    let b = self.get_next_octet()?;
     if b != 0x06 {
       return Err(BerDecodeError {
         message: format!("Expected Sequence. Specified Identifier: {}", b),

@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 const TABLE: [u32; 256] = [
   0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419,
   0x706AF48F, 0xE963A535, 0x9E6495A3, 0x0EDB8832, 0x79DCB8A4,
@@ -53,6 +54,7 @@ const TABLE: [u32; 256] = [
   0x2D02EF8D
 ];
 
+#[allow(dead_code)]
 pub fn compute(buffer: &[u8]) -> u32 {
   buffer.iter().fold(0u32, |current, t| (current >> 8) ^ (TABLE[((*t as u32) ^ (current & 0xff)) as usize] as u32))
 }

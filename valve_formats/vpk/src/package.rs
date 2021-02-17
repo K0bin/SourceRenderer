@@ -1,4 +1,4 @@
-use std::io::{Read, BufReader, BufRead, Seek, Error as IOError, SeekFrom};
+use std::io::{Read, BufReader, Seek, Error as IOError, SeekFrom};
 use std::fs::File;
 use package_entry::PackageEntry;
 use std::collections::HashMap;

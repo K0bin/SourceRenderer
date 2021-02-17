@@ -38,8 +38,6 @@ mod archive_md5_section_entry;
 mod package_entry;
 mod read_util;
 
-use utilities::*;
-
 pub use self::package::Package;
 pub use self::package::PackageError;
 pub use self::package_entry::PackageEntry;
