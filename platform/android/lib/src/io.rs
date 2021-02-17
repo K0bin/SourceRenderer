@@ -11,7 +11,6 @@ use std::path::Path;
 use std::ffi::CString;
 use sourcerenderer_core::platform::io::IO;
 use crate::android_platform::ASSET_MANAGER;
-use std::sync::{Mutex, Arc};
 
 pub struct AndroidIO {}
 
@@ -26,7 +25,7 @@ impl IO for AndroidIO {
     AndroidAsset::open(asset_manager, path)
   }
 
-  fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+  fn open_external_asset<P: AsRef<Path>>(_path: P) -> IOResult<Self::File> {
     unimplemented!()
   }
 }

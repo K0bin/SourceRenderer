@@ -1,22 +1,16 @@
-use sourcerenderer_core::{Platform, Vec2I};
-use std::sync::{Arc, Mutex};
-use parking_lot::{Mutex as StaticMutex, const_mutex};
-use sourcerenderer_core::platform::{PlatformEvent, Window, WindowState, Input, Key, InputState};
+use sourcerenderer_core::Platform;
+use std::sync::Arc;
+use sourcerenderer_core::platform::{Window, WindowState, InputState};
 use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
-use sourcerenderer_core::graphics::Backend;
 use ndk::native_window::NativeWindow;
-use ndk_sys::{AAssetManager, AInputQueue, ANativeWindow_release};
+use ndk_sys::{AAssetManager, ANativeWindow_release};
 
 use ash::extensions::khr::AndroidSurface;
 use ash::extensions::khr::Surface;
 use ash::vk;
-use ash::vk::SurfaceKHR;
 use std::os::raw::c_void;
 use crate::io::AndroidIO;
-use ndk::asset::AssetManager;
-use std::ptr::NonNull;
-use ndk::event::Keycode::{N, Mute};
 
 pub static mut ASSET_MANAGER: *mut AAssetManager = std::ptr::null_mut();
 

@@ -10,15 +10,14 @@ extern crate lazy_static;
 mod android_platform;
 mod io;
 
-use std::ffi::{CString, CStr};
+use std::ffi::CString;
 use jni::JNIEnv;
-use jni::objects::{JClass, JString, JObject};
-use jni::sys::{jstring, jlong, jint, jfloat};
-use ndk_sys::{AAssetManager_fromJava, AInputQueue,
+use jni::objects::{JClass, JObject};
+use jni::sys::{jlong, jint, jfloat};
+use ndk_sys::{AAssetManager_fromJava,
               android_LogPriority_ANDROID_LOG_DEBUG, __android_log_print};
 use crate::android_platform::{AndroidPlatform, ASSET_MANAGER, AndroidWindow};
 use sourcerenderer_engine::Engine;
-use std::sync::{Arc, Mutex};
 use std::os::raw::c_void;
 use ndk_sys::ANativeWindow_fromSurface;
 use std::ptr::NonNull;
@@ -28,8 +27,7 @@ use std::fs::File;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::prelude::RawFd;
 use std::cell::{RefCell, RefMut};
-use std::borrow::BorrowMut;
-use sourcerenderer_core::platform::{WindowState, InputState};
+use sourcerenderer_core::platform::WindowState;
 use sourcerenderer_core::{Vec2, Platform};
 
 lazy_static! {
@@ -85,7 +83,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_App_initNative(
 ) {
   setup_log();
 
-  let asset_manager = unsafe { AAssetManager_fromJava(unsafe { std::mem::transmute(env) }, *asset_manager as *mut c_void) };
+  let asset_manager = unsafe { AAssetManager_fromJava(std::mem::transmute(env), *asset_manager as *mut c_void) };
   unsafe {
     ASSET_MANAGER = asset_manager;
   }
@@ -104,7 +102,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onDestroyNative
 ) {
   unsafe {
     let engine_ptr = std::mem::transmute::<jlong, *mut RefCell<Engine<AndroidPlatform>>>(engine_ptr);
-    let mut engine_box = Box::from_raw(engine_ptr);
+    let engine_box = Box::from_raw(engine_ptr);
     {
       let mut engine_mut = (*engine_box).borrow_mut();
       *engine_mut.platform().window_mut().state_mut() = WindowState::Exited;
@@ -125,7 +123,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_startEngineNati
   let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
   let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
   let platform = AndroidPlatform::new(native_window);
-  let mut engine = Box::new(RefCell::new(Engine::run(platform)));
+  let engine = Box::new(RefCell::new(Engine::run(platform)));
   println!("Engine started");
   unsafe {
     std::mem::transmute(Box::into_raw(engine))
@@ -175,7 +173,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onTouchInputNat
   let mut engine = engine_from_long(engine_ptr);
 
   {
-    let mut input = engine.platform().input_state();
+    let input = engine.platform().input_state();
     match event_type {
       ANDROID_EVENT_TYPE_POINTER_DOWN |
       ANDROID_EVENT_TYPE_DOWN => {
