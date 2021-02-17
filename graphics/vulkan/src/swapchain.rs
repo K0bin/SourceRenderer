@@ -143,11 +143,6 @@ impl VkSwapchain {
             vk::Result::ERROR_SURFACE_LOST_KHR => {
               surface.mark_lost();
               SwapchainError::SurfaceLost
-            },
-            vk::Result::ERROR_OUT_OF_DATE_KHR => {
-              // I guess we can not recreate the SC on OUT_OF_DATE
-              surface.mark_lost();
-              SwapchainError::SurfaceLost
             }
             _ => { panic!("Creating swapchain failed {:?}, old swapchain is: {:?}", e, swapchain_create_info.old_swapchain); }
           }
@@ -290,6 +285,12 @@ impl VkSwapchain {
           self.set_state(VkSwapchainState::Retired);
         }
         vk::Result::ERROR_OUT_OF_DATE_KHR => {
+          #[cfg(target_os = "android")]
+            {
+              // I guess we can not recreate the SC on OUT_OF_DATE
+              self.surface.mark_lost();
+            }
+
           self.set_state(VkSwapchainState::OutOfDate);
         }
         _ => {

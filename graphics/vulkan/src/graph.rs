@@ -934,7 +934,11 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       if result.is_err() {
         return Err(match result.err().unwrap() {
           vk::Result::ERROR_OUT_OF_DATE_KHR => {
-            SwapchainError::Other
+            if cfg!(target_os = "android") {
+              SwapchainError::SurfaceLost
+            } else {
+              SwapchainError::Other
+            }
           }
           vk::Result::ERROR_SURFACE_LOST_KHR => {
             SwapchainError::SurfaceLost
