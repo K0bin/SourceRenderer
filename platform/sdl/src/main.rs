@@ -9,11 +9,11 @@ extern crate bitset_core;
 extern crate lazy_static;
 
 use sourcerenderer_engine::Engine;
-use sourcerenderer_core::platform::{GraphicsApi, PlatformEvent, WindowState, Window};
+use sourcerenderer_core::platform::{GraphicsApi, PlatformEvent};
 
 pub use sdl_platform::SDLPlatform;
 use std::time::SystemTime;
-use sourcerenderer_core::Platform;
+
 
 mod sdl_platform;
 mod input;
@@ -23,7 +23,7 @@ const EVENT_TICK_RATE: u32 = 512;
 
 fn main() {
   Engine::<SDLPlatform>::initialize_global();
-  let mut platform = SDLPlatform::new(GraphicsApi::Vulkan);
+  let platform = SDLPlatform::new(GraphicsApi::Vulkan);
   let mut engine = Box::new(Engine::run(platform));
   let mut last_iter_time = SystemTime::now();
   'event_loop: loop {

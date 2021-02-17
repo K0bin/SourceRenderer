@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use sourcerenderer_core::platform::{Platform, InputState, InputCommands};
 
@@ -26,7 +26,7 @@ use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
 
 use std::time::SystemTime;
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+
 
 pub struct SDLPlatform {
   sdl_context: Sdl,

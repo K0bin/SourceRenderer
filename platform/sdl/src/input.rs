@@ -1,14 +1,14 @@
-use std::sync::RwLock;
+
 use std::collections::HashMap;
 
-use bitset_core::BitSet;
+
 
 use sdl2::EventPump;
 use sdl2::mouse::MouseUtil;
-use sdl2::keyboard::{Scancode, KeyboardState};
+use sdl2::keyboard::{Scancode};
 
-use sourcerenderer_core::platform::{Input, Key, Window, WindowState, InputState, InputCommands};
-use sourcerenderer_core::{Vec2I, Vec2};
+use sourcerenderer_core::platform::{Key, Window, WindowState, InputState, InputCommands};
+use sourcerenderer_core::{Vec2I};
 
 use crate::sdl_platform::SDLWindow;
 
