@@ -22,7 +22,6 @@ pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   graph: <P::GraphicsBackend as Backend>::RenderGraph,
-  swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   asset_manager: Arc<AssetManager<P>>,
   lightmap: Arc<RendererTexture<P::GraphicsBackend>>,
   drawables: Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>,
@@ -55,7 +54,6 @@ impl<P: Platform> RendererInternal<P> {
       renderer: renderer.clone(),
       device: device.clone(),
       graph,
-      swapchain: swapchain.clone(),
       asset_manager: asset_manager.clone(),
       view,
       sender,
@@ -241,10 +239,10 @@ impl<P: Platform> RendererInternal<P> {
         // No point in trying to recreate with the old surface
         let renderer_surface = self.renderer.surface();
         if &*renderer_surface != self.graph.swapchain().surface() {
-          println!("Recreating on a different surface");
-          let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &*renderer_surface, swapchain_width, swapchain_height);
+          println!("Recreating swapchain on a different surface");
+          let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.graph.swapchain(), &*renderer_surface, swapchain_width, swapchain_height);
           if new_swapchain_result.is_err() {
-            println!("Recreating with surface failed");
+            println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
             return;
           }
           new_swapchain_result.unwrap()
@@ -252,20 +250,19 @@ impl<P: Platform> RendererInternal<P> {
           return;
         }
       } else {
-        println!("Recreating with state: {:?}", result.err().unwrap());
-        let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, swapchain_width, swapchain_height);
+        println!("Recreating swapchain");
+        let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.graph.swapchain(), swapchain_width, swapchain_height);
         if new_swapchain_result.is_err() {
-          println!("Recreating failed");
+          println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
           return;
         }
         new_swapchain_result.unwrap()
       };
 
-      if new_swapchain.format() != self.swapchain.format() || new_swapchain.sample_count() != self.swapchain.sample_count() {
+      if new_swapchain.format() != self.graph.swapchain().format() || new_swapchain.sample_count() != self.graph.swapchain().sample_count() {
         panic!("Swapchain format or sample count changed. Can not recreate render graph.");
       }
       let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
-      self.swapchain = new_swapchain;
       self.graph = new_graph;
       let _ = self.graph.render();
     }

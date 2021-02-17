@@ -51,13 +51,13 @@ impl<P: Platform> Engine<P> {
     &mut self.platform
   }
 
+  pub fn notify_window_changed(&self) {
+    let surface = self.platform.window().create_surface(self.renderer.instance().clone());
+    self.renderer.change_surface(&surface);
+  }
+
   pub fn poll_platform(&self) {
     self.game.update_input_state(self.platform.input_state());
     self.renderer.set_window_state(self.platform.window().state());
-    if self.platform.is_window_dirty() {
-      println!("Window is dirty");
-      let surface = self.platform.window().create_surface(self.renderer.instance().clone());
-      self.renderer.change_surface(&surface);
-    }
   }
 }

@@ -5,7 +5,7 @@ use std::iter::*;
 use ash::vk;
 use ash::version::{DeviceV1_0};
 
-use sourcerenderer_core::graphics::{CommandBufferType};
+use sourcerenderer_core::graphics::{CommandBufferType, Swapchain};
 
 
 use crate::raw::RawVkDevice;
@@ -181,8 +181,9 @@ impl VkQueue {
             command_buffers.clear();
           }
 
+          let swapchain_handle = swapchain.get_handle();
           let present_info = vk::PresentInfoKHR {
-            p_swapchains: swapchain.get_handle(),
+            p_swapchains: &*swapchain_handle,
             swapchain_count: 1,
             p_image_indices: &image_index as *const u32,
             p_wait_semaphores: wait_semaphores.as_ptr(),
@@ -201,7 +202,7 @@ impl VkQueue {
               Err(err) => {
                 match err {
                   vk::Result::ERROR_OUT_OF_DATE_KHR => { swapchain.set_state(VkSwapchainState::OutOfDate); }
-                  vk::Result::ERROR_SURFACE_LOST_KHR => { swapchain.set_state(VkSwapchainState::SurfaceLost); }
+                  vk::Result::ERROR_SURFACE_LOST_KHR => { swapchain.surface().mark_lost(); }
                   _ => { panic!("Present failed: {:?}", err); }
                 }
               }

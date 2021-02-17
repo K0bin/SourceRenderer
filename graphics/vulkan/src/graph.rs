@@ -8,7 +8,7 @@ use ash::vk;
 
 use crate::thread_manager::{VkThreadManager, VkFrameLocal};
 
-use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions, SwapchainError};
+use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions, SwapchainError, Swapchain};
 use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
@@ -922,12 +922,12 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
+      if self.swapchain.surface().is_lost() {
+        return Err(SwapchainError::SurfaceLost);
+      }
       let swapchain_state = self.swapchain.state();
       if swapchain_state != VkSwapchainState::Okay {
-        return Err(match swapchain_state {
-          VkSwapchainState::SurfaceLost => SwapchainError::SurfaceLost,
-          _ => SwapchainError::Other
-        });
+        return Err(SwapchainError::Other);
       }
 
       let result = self.swapchain.prepare_back_buffer(&prepare_semaphore);

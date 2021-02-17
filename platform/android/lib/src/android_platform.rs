@@ -23,15 +23,13 @@ pub static mut ASSET_MANAGER: *mut AAssetManager = std::ptr::null_mut();
 pub struct AndroidPlatform {
   window: AndroidWindow,
   input_state: InputState,
-  is_window_dirty: bool
 }
 
 impl AndroidPlatform {
   pub fn new(native_window: NativeWindow) -> Box<Self> {
     Box::new(Self {
       window: AndroidWindow::new(native_window),
-      input_state: Default::default(),
-      is_window_dirty: false
+      input_state: Default::default()
     })
   }
 
@@ -41,10 +39,6 @@ impl AndroidPlatform {
 
   pub(crate) fn window_mut(&mut self) -> &mut AndroidWindow {
     &mut self.window
-  }
-
-  pub(crate) fn mark_window_dirty(&mut self) {
-    self.is_window_dirty = true;
   }
 }
 
@@ -63,10 +57,6 @@ impl Platform for AndroidPlatform {
 
   fn input_state(&self) -> InputState {
     self.input_state.clone()
-  }
-
-  fn is_window_dirty(&self) -> bool {
-    self.is_window_dirty
   }
 }
 
@@ -106,6 +96,8 @@ impl Drop for AndroidWindow {
 
 impl Window<AndroidPlatform> for AndroidWindow {
   fn create_surface(&self, graphics_instance: Arc<VkInstance>) -> Arc<VkSurface> {
+    // thankfully, VkSurfaceKHR keeps a reference to the NativeWindow internally so I dont have to deal with that
+
     let instance_raw = graphics_instance.get_raw();
     let android_surface_loader = AndroidSurface::new(&instance_raw.entry, &instance_raw.instance);
     let surface = unsafe { android_surface_loader.create_android_surface(&vk::AndroidSurfaceCreateInfoKHR {

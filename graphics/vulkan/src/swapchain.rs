@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::cmp::{min, max};
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -24,14 +24,13 @@ pub enum VkSwapchainState {
   Okay,
   Suboptimal,
   OutOfDate,
-  SurfaceLost,
   Retired
 }
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
   views: Vec<Arc<VkTextureView>>,
-  swapchain: vk::SwapchainKHR,
+  swapchain: Mutex<vk::SwapchainKHR>,
   swapchain_loader: SwapchainLoader,
   instance: Arc<RawVkInstance>,
   surface: Arc<VkSurface>,
@@ -44,6 +43,10 @@ pub struct VkSwapchain {
 
 impl VkSwapchain {
   fn new_internal(vsync: bool, width: u32, height: u32, device: &Arc<RawVkDevice>, surface: &Arc<VkSurface>, old_swapchain: Option<&Self>) -> Result<Arc<Self>, SwapchainError> {
+    if surface.is_lost() {
+      return Err(SwapchainError::SurfaceLost);
+    }
+
     let vk_device = &device.device;
     let instance = &device.instance;
 
@@ -51,18 +54,42 @@ impl VkSwapchain {
       let physical_device = device.physical_device;
       let present_modes = match surface.get_present_modes(&physical_device) {
         Ok(present_modes) => present_modes,
-        Err(_e) => return Err(SwapchainError::SurfaceLost)
+        Err(e) =>  {
+          match e {
+            vk::Result::ERROR_SURFACE_LOST_KHR => {
+              surface.mark_lost();
+              return Err(SwapchainError::SurfaceLost);
+            }
+            _ => { panic!("Could not get surface modes: {:?}", e); }
+          }
+        }
       };
       let present_mode = VkSwapchain::pick_present_mode(vsync, present_modes);
       let swapchain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
       let capabilities = match surface.get_capabilities(&physical_device) {
         Ok(capabilities) => capabilities,
-        Err(_e) => return Err(SwapchainError::SurfaceLost)
+        Err(e) =>  {
+          match e {
+            vk::Result::ERROR_SURFACE_LOST_KHR => {
+              surface.mark_lost();
+              return Err(SwapchainError::SurfaceLost);
+            }
+            _ => { panic!("Could not get surface capabilities: {:?}", e); }
+          }
+        }
       };
       let formats = match surface.get_formats(&physical_device) {
         Ok(format) => format,
-        Err(_e) => return Err(SwapchainError::SurfaceLost)
+        Err(e) =>  {
+          match e {
+            vk::Result::ERROR_SURFACE_LOST_KHR => {
+              surface.mark_lost();
+              return Err(SwapchainError::SurfaceLost);
+            }
+            _ => { panic!("Could not get surface formats: {:?}", e); }
+          }
+        }
       };
       let format = VkSwapchain::pick_format(&formats);
 
@@ -82,36 +109,51 @@ impl VkSwapchain {
 
       let image_count = VkSwapchain::pick_image_count(&capabilities, 3);
 
-      let swapchain_create_info = vk::SwapchainCreateInfoKHR {
-        surface: *surface.get_surface_handle(),
-        min_image_count: image_count,
-        image_format: format.format,
-        image_color_space: format.color_space,
-        image_extent: extent,
-        image_array_layers: 1,
-        image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
-        present_mode,
-        image_sharing_mode: vk::SharingMode::EXCLUSIVE,
-        pre_transform: capabilities.current_transform,
-        composite_alpha: if capabilities.supported_composite_alpha.contains(vk::CompositeAlphaFlagsKHR::OPAQUE) {
-          vk::CompositeAlphaFlagsKHR::OPAQUE
-        } else {
-          vk::CompositeAlphaFlagsKHR::INHERIT
-        },
-        clipped: vk::TRUE,
-        old_swapchain: old_swapchain.map_or(vk::SwapchainKHR::null(), |swapchain| *swapchain.get_handle()),
-        ..Default::default()
+      let swapchain = {
+        let old_guard = old_swapchain.map(|sc| {
+          sc.set_state(VkSwapchainState::Retired);
+          sc.get_handle()
+        });
+
+        let surface_handle = surface.get_surface_handle();
+
+        let mut swapchain_create_info = vk::SwapchainCreateInfoKHR {
+          surface: *surface_handle,
+          min_image_count: image_count,
+          image_format: format.format,
+          image_color_space: format.color_space,
+          image_extent: extent,
+          image_array_layers: 1,
+          image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
+          present_mode,
+          image_sharing_mode: vk::SharingMode::EXCLUSIVE,
+          pre_transform: capabilities.current_transform,
+          composite_alpha: if capabilities.supported_composite_alpha.contains(vk::CompositeAlphaFlagsKHR::OPAQUE) {
+            vk::CompositeAlphaFlagsKHR::OPAQUE
+          } else {
+            vk::CompositeAlphaFlagsKHR::INHERIT
+          },
+          clipped: vk::TRUE,
+          old_swapchain: old_guard.as_ref().map_or(vk::SwapchainKHR::null(), |old_guard| **old_guard),
+          ..Default::default()
+        };
+
+        swapchain_loader.create_swapchain(&swapchain_create_info, None).map_err(|e| {
+          match e {
+            vk::Result::ERROR_SURFACE_LOST_KHR => {
+              surface.mark_lost();
+              SwapchainError::SurfaceLost
+            },
+            vk::Result::ERROR_OUT_OF_DATE_KHR => {
+              // I guess we can not recreate the SC on OUT_OF_DATE
+              surface.mark_lost();
+              SwapchainError::SurfaceLost
+            }
+            _ => { panic!("Creating swapchain failed {:?}, old swapchain is: {:?}", e, swapchain_create_info.old_swapchain); }
+          }
+        })?
       };
 
-      if let Some(old_swapchain) = old_swapchain {
-        old_swapchain.set_state(VkSwapchainState::Retired);
-      }
-
-      let swapchain = swapchain_loader.create_swapchain(&swapchain_create_info, None).map_err(|e|
-      match e {
-        vk::Result::ERROR_SURFACE_LOST_KHR => SwapchainError::SurfaceLost,
-        _ => SwapchainError::Other
-      })?;
       let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
       let textures: Vec<Arc<VkTexture>> = swapchain_images
         .iter()
@@ -134,11 +176,10 @@ impl VkSwapchain {
         })
         .collect();
 
-      println!("New swapchain!");
       Ok(Arc::new(VkSwapchain {
         textures,
         views: swapchain_image_views,
-        swapchain,
+        swapchain: Mutex::new(swapchain),
         swapchain_loader,
         instance: device.instance.clone(),
         surface: surface.clone(),
@@ -211,8 +252,8 @@ impl VkSwapchain {
     return &self.swapchain_loader;
   }
 
-  pub fn get_handle(&self) -> &vk::SwapchainKHR {
-    return &self.swapchain;
+  pub fn get_handle(&self) -> MutexGuard<vk::SwapchainKHR> {
+    return self.swapchain.lock().unwrap();
   }
 
   pub fn get_textures(&self) -> &[Arc<VkTexture>] {
@@ -233,7 +274,10 @@ impl VkSwapchain {
 
   pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
     while self.presented_image.load(Ordering::SeqCst) != self.acquired_image.load(Ordering::SeqCst) {}
-    let result = unsafe { self.swapchain_loader.acquire_next_image(self.swapchain, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) };
+    let result = {
+      let swapchain_handle = self.get_handle();
+      unsafe { self.swapchain_loader.acquire_next_image(*swapchain_handle, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }
+    };
     if let Ok((image, is_optimal)) = result {
       if !is_optimal && false {
         self.set_state(VkSwapchainState::Suboptimal);
@@ -242,12 +286,15 @@ impl VkSwapchain {
     } else {
       match result.err().unwrap() {
         vk::Result::ERROR_SURFACE_LOST_KHR => {
-          self.set_state(VkSwapchainState::SurfaceLost);
+          self.surface.mark_lost();
+          self.set_state(VkSwapchainState::Retired);
         }
         vk::Result::ERROR_OUT_OF_DATE_KHR => {
           self.set_state(VkSwapchainState::OutOfDate);
         }
-        _ => {}
+        _ => {
+          panic!("Unknown error in prepare_back_buffer: {:?}", result.err().unwrap());
+        }
       }
     }
     result
@@ -258,10 +305,7 @@ impl VkSwapchain {
   }
 
   pub fn set_state(&self, state: VkSwapchainState) {
-    let old = self.state.swap(state);
-    if old != state {
-      println!("Swapchain state changed from {:?} to: {:?}", old, state);
-    }
+    self.state.store(state);
   }
 
   pub fn state(&self) -> VkSwapchainState {
@@ -271,20 +315,16 @@ impl VkSwapchain {
 
 impl Drop for VkSwapchain {
   fn drop(&mut self) {
+    let swapchain = self.swapchain.lock().unwrap();
     unsafe {
-      self.swapchain_loader.destroy_swapchain(self.swapchain, None)
+      self.swapchain_loader.destroy_swapchain(*swapchain, None)
     }
   }
 }
 
 impl Swapchain<VkBackend> for VkSwapchain {
   fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
-    println!("recreating swapchain");
-    let old_sc_state = old.state();
-    assert_ne!(old_sc_state, VkSwapchainState::SurfaceLost);
-
     if old.state() == VkSwapchainState::Retired {
-      println!("swapchain was retired, recreating from scratch");
       VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, None)
     } else {
       VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(&old))
@@ -292,7 +332,6 @@ impl Swapchain<VkBackend> for VkSwapchain {
   }
 
   fn recreate_on_surface(old: &Self, surface: &Arc<VkSurface>, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
-    println!("recreating swapchain on new surface");
     VkSwapchain::new_internal(old.vsync, width, height, &old.device, surface, None)
   }
 

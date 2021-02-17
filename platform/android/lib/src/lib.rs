@@ -150,6 +150,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChange
 
     if &native_window != engine.platform().window().native_window() {
       *engine.platform().window_mut() = AndroidWindow::new(native_window);
+      engine.notify_window_changed();
     }
   }
 }

@@ -142,10 +142,6 @@ impl Platform for SDLPlatform {
   fn input_state(&self) -> InputState {
     self.input_state.clone()
   }
-
-  fn is_window_dirty(&self) -> bool {
-    false
-  }
 }
 
 impl Window<SDLPlatform> for SDLWindow {
