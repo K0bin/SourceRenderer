@@ -1,7 +1,5 @@
-use crate::asset::{AssetLoader, AssetType, Asset};
-use sourcerenderer_core::Platform;
-use std::path::{Path, PathBuf};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetContainer, AssetFile, AssetFileData};
+use std::path::PathBuf;
+use crate::asset::asset_manager::{AssetContainer, AssetFile, AssetFileData};
 use crate::asset::loaders::csgo_loader::CSGOMapLoaderError::CSGONotFound;
 use regex::Regex;
 use std::fs::File;

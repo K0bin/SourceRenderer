@@ -1,32 +1,22 @@
 
-use sourcerenderer_core::{Platform, Quaternion, Vec4, Vec2I};
+use sourcerenderer_core::{Platform, Quaternion, Vec4};
 use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model, AssetManager};
-use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
-use sourcerenderer_bsp::{Map, Node, Leaf, SurfaceEdge, LeafBrush, LeafFace, Vertex, Face, Edge,
-                         Plane, TextureData, TextureInfo, TextureStringData, TextureDataStringTable,
-                         BrushModel, DispVert, DispTri, DispInfo, NeighborEdge, DispSubNeighbor,
-                         SurfaceFlags};
-use std::sync::Mutex;
+use sourcerenderer_bsp::{Map, Face, DispVert, DispInfo, SurfaceFlags};
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, LoadedAsset, AssetLoaderProgress, AssetLoadPriority};
-use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureShaderResourceViewInfo, Filter, AddressMode, Backend};
-use legion::world::SubWorld;
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, AssetLoaderProgress, AssetLoadPriority};
+use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureShaderResourceViewInfo, Filter, AddressMode};
 use legion::{World, WorldOptions};
 use crate::renderer::StaticRenderableComponent;
 use crate::Transform;
-use nalgebra::{UnitQuaternion, Unit};
 use regex::Regex;
 use crate::asset::loaders::csgo_loader::CSGO_MAP_NAME_PATTERN;
 use std::io::BufReader;
-use std::io::Cursor;
 use std::collections::HashSet;
-use crate::asset::loaders::vpk_container::new_vpk_container;
 use crate::asset::loaders::PakFileContainer;
 use super::BspLumps;
-use std::cell::RefCell;
 use crate::asset::loaders::bsp::lightmap_packer::LightmapPacker;
 
 // REFERENCE
@@ -265,9 +255,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
-  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
-    let path = asset_file.path.clone();
     let file = match asset_file.data {
       AssetFileData::File(file) => file,
       _ => unreachable!("hi")
@@ -291,7 +280,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let disp_infos = map.read_disp_infos().unwrap();
     let disp_verts = map.read_disp_verts().unwrap();
     let disp_tris = map.read_disp_tris().unwrap();
-    let mut pakfile = map.read_pakfile().unwrap();
+    let pakfile = map.read_pakfile().unwrap();
     let lighting = map.read_lighting().unwrap();
     let visibility = map.read_visibility().unwrap();
     let static_props = map.read_static_props().unwrap();
@@ -370,11 +359,9 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     }
 
     let vertex_buffer_temp = manager.graphics_device().upload_data_slice(&brush_vertices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let index_buffer_temp = manager.graphics_device().upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     let vertex_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<super::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
     let index_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<u32>() * brush_indices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
     let _vertex_buffer_fence = manager.graphics_device().init_buffer(&vertex_buffer_temp, &vertex_buffer);
-    let index_buffer_fence = manager.graphics_device().init_buffer(&index_buffer_temp, &index_buffer);
 
     let mut world = World::new(WorldOptions::default());
     for (index, (ranges_start, ranges_count)) in per_model_range_offsets.iter().enumerate() {

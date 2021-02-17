@@ -1,9 +1,8 @@
-use std::io::{BufReader, Cursor, Error as IOError, ErrorKind as IOErrorKind, Read, Seek};
-use std::fs::File;
+use std::io::{BufReader, Cursor, Read, Seek};
 
 use sourcerenderer_vpk::{Package, PackageError};
-use crate::asset::{AssetLoader, Asset, AssetManager, AssetLoaderProgress};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer, AssetLoadPriority};
+use crate::asset::{AssetLoader, AssetManager, AssetLoaderProgress};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetContainer, AssetLoadPriority};
 use sourcerenderer_core::Platform;
 use regex::Regex;
 use std::path::Path;
@@ -63,7 +62,6 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
   }
 
   fn load(&self, file: AssetFile, manager: &AssetManager<P>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
-    let path = file.path.clone();
     let container = new_vpk_container(file).unwrap();
     manager.add_container_with_progress(container, Some(progress));
     Ok(AssetLoaderResult {

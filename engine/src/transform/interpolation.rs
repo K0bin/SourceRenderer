@@ -3,7 +3,6 @@ use super::GlobalTransform;
 use legion::systems::{Builder, CommandBuffer};
 use legion::{Entity, component};
 use crate::scene::{TickDuration, TickDelta};
-use std::time::SystemTime;
 use nalgebra::Matrix3;
 
 pub struct PreviousGlobalTransform(pub Matrix4);

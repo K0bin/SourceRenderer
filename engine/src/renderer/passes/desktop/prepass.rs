@@ -1,15 +1,11 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, RenderPassTextureExtent, LoadAction, StoreAction, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil, PipelineStage};
-use std::sync::{Arc, Mutex};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil, PipelineStage, StoreAction, LoadAction, RenderPassTextureExtent};
+use std::sync::Arc;
 use crate::renderer::drawable::{View, RDrawable};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
-use crate::renderer::DrawableType;
 use crate::renderer::drawable::RDrawableType;
-use crate::asset::AssetManager;
-use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
-use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::io::IO;
 
@@ -98,7 +94,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   }
 }
 
-pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<AtomicRefCell<View>>, drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
+pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, _view: &Arc<AtomicRefCell<View>>, drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let vertex_shader = {
     let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
@@ -176,7 +172,6 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
   };
   let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, PASS_NAME, 0);
 
-  let c_view = view.clone();
   let c_drawables = drawables.clone();
 
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
@@ -184,12 +179,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
       Arc::new(move |command_buffer_a, graph_resources| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         let drawables = c_drawables.borrow();
-        let view = c_view.borrow();
 
-        let camera_constant_buffer: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> = (command_buffer as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer).upload_dynamic_data::<PrepassCameraCB>(PrepassCameraCB {
-          view_projection: view.camera_matrix,
-          old_view_projection: view.old_camera_matrix
-        }, BufferUsage::CONSTANT);
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         let dimensions = graph_resources.texture_dimensions(OUTPUT_DS).unwrap();
         command_buffer.set_viewports(&[Viewport {

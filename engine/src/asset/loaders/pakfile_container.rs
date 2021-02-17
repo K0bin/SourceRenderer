@@ -1,6 +1,5 @@
-use sourcerenderer_bsp::zip::*;
 use crate::asset::asset_manager::{AssetContainer, AssetFile, AssetFileData};
-use std::io::{Cursor, Read, Seek};
+use std::io::Cursor;
 use sourcerenderer_bsp::PakFile;
 use std::sync::Mutex;
 

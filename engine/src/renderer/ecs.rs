@@ -2,12 +2,9 @@ use crate::renderer::{Drawable, DrawableType};
 use std::collections::HashSet;
 use legion::{Entity, IntoQuery, maybe_changed, EntityStore};
 
-use crate::asset::AssetKey;
-
 use legion::systems::Builder;
 use legion::component;
 use legion::world::SubWorld;
-use crate::transform::GlobalTransform;
 use crate::{ActiveCamera, Camera};
 use crate::renderer::Renderer;
 use std::sync::Arc;

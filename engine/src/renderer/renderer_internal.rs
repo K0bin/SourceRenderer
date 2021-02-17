@@ -1,21 +1,19 @@
-use std::sync::{Arc, Mutex};
-use crate::renderer::{Renderer, Drawable};
+use std::sync::Arc;
+use crate::renderer::Renderer;
 use crossbeam_channel::{Sender, Receiver, TryRecvError};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
-use crate::asset::{AssetManager, Asset};
-use sourcerenderer_core::{Platform, Matrix4, Vec2, Vec3, Quaternion, Vec2UI, Vec2I};
-use sourcerenderer_core::graphics::{Backend, ShaderType, SampleCount, RenderPassTextureExtent, Format, PassInfo, PassType, GraphicsSubpassInfo, SubpassOutput, LoadAction, StoreAction, Device, RenderGraphTemplateInfo, GraphicsPipelineInfo, Swapchain, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, FillMode, CullMode, FrontFace, RasterizerInfo, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, BufferUsage, CommandBuffer, PipelineBinding, Viewport, Scissor, BindingFrequency, RenderGraphInfo, RenderGraph, RenderPassCallbacks, PassInput, Output, ExternalOutput, ExternalProducerType, ExternalResource, SwapchainError};
-use std::collections::{HashMap};
+use crate::asset::AssetManager;
+use sourcerenderer_core::Platform;
+use sourcerenderer_core::graphics::{SwapchainError, RenderGraphInfo, RenderPassCallbacks, RenderGraphTemplateInfo, PassInfo, Backend, RenderGraph, Swapchain, Device, ExternalResource};
+use std::collections::HashMap;
 use crate::renderer::{DrawableType, View};
 use sourcerenderer_core::platform::WindowState;
-use nalgebra::{Matrix3};
 
 use crate::renderer::camera::LateLatchCamera;
 use crate::renderer::passes;
 use crate::renderer::drawable::{RDrawable, RDrawableType};
 use crate::renderer::renderer_assets::*;
-use sourcerenderer_bsp::LumpType::TextureInfo;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 
 pub(super) struct RendererInternal<P: Platform> {
@@ -203,10 +201,7 @@ impl<P: Platform> RendererInternal<P> {
       state_guard.clone()
     };
 
-    let mut swapchain_width = 0u32;
-    let mut swapchain_height = 0u32;
-
-    match state {
+    let (swapchain_width, swapchain_height) = match state {
       WindowState::Minimized => {
         std::thread::sleep(Duration::new(1, 0));
         return;
@@ -214,19 +209,17 @@ impl<P: Platform> RendererInternal<P> {
       WindowState::FullScreen {
         width, height
       } => {
-        swapchain_width = width;
-        swapchain_height = height;
+        (width, height)
       },
       WindowState::Visible {
         width, height, focussed: _focussed
       } => {
-        swapchain_width = width;
-        swapchain_height = height;
+        (width, height)
       },
       WindowState::Exited => {
         return;
       }
-    }
+    };
 
     self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();

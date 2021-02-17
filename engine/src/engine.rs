@@ -1,16 +1,13 @@
-use sourcerenderer_core::platform::{Platform, PlatformEvent, WindowState, InputState, InputCommands};
-use std::{time::SystemTime, sync::{Arc}};
+use sourcerenderer_core::platform::{Platform, InputCommands};
+use std::sync::Arc;
 
-use sourcerenderer_core::{Vec2, ThreadPoolBuilder};
-use sourcerenderer_core::Vec3;
+use sourcerenderer_core::ThreadPoolBuilder;
 use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::platform::Window;
 
-use crate::asset::{AssetManager, AssetType};
-use crate::asset::loaders::CSGODirectoryContainer;
+use crate::asset::AssetManager;
 use crate::renderer::Renderer;
 use crate::scene::Game;
-use crate::fps_camera::{FPSCamera, fps_camera_rotation};
 
 const TICK_RATE: u32 = 5;
 

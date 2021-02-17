@@ -1,11 +1,10 @@
-use std::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
-use std::sync::{Arc, RwLock, RwLockReadGuard, Mutex};
-use std::collections::{HashMap, VecDeque, HashSet};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, RwLock, Mutex};
+use std::collections::{VecDeque, HashSet};
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::graphics;
-use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureInfo, Format, SampleCount, TextureShaderResourceViewInfo, Filter, AddressMode};
-use nalgebra::Vector4;
+use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureInfo, TextureShaderResourceViewInfo, Filter, AddressMode};
 use std::hash::Hash;
 
 use std::sync::Weak;
@@ -167,7 +166,7 @@ impl<P: Platform> AssetManager<P> {
     let thread_count = 1;
     for _ in 0..thread_count {
       let c_manager = Arc::downgrade(&manager);
-      std::thread::Builder::new().name("AssetManagerThread".to_string()).spawn(move || asset_manager_thread_fn(c_manager));
+      std::thread::Builder::new().name("AssetManagerThread".to_string()).spawn(move || asset_manager_thread_fn(c_manager)).unwrap();
     }
 
     manager
@@ -271,7 +270,7 @@ impl<P: Platform> AssetManager<P> {
           path: path.to_owned(),
           fence,
           priority
-        });
+        }).unwrap();
       }
       Asset::Texture(texture) => {
         self.renderer_sender.send(LoadedAsset {
@@ -279,7 +278,7 @@ impl<P: Platform> AssetManager<P> {
           path: path.to_owned(),
           fence,
           priority
-        });
+        }).unwrap();
       }
       Asset::Mesh(mesh) => {
         self.renderer_sender.send(LoadedAsset {
@@ -287,7 +286,7 @@ impl<P: Platform> AssetManager<P> {
           path: path.to_owned(),
           fence,
           priority
-        });
+        }).unwrap();
       }
       Asset::Model(model) => {
         self.renderer_sender.send(LoadedAsset {
@@ -295,7 +294,7 @@ impl<P: Platform> AssetManager<P> {
           path: path.to_owned(),
           fence,
           priority
-        });
+        }).unwrap();
       }
       _ => unimplemented!()
     }
@@ -332,7 +331,7 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn load_level(&self, path: &str) -> Option<World> {
-    let mut file_opt = self.load_file(path);
+    let file_opt = self.load_file(path);
     if file_opt.is_none() {
       println!("Could not load file: {:?}", path);
       return None;
@@ -356,7 +355,7 @@ impl<P: Platform> AssetManager<P> {
       println!("Could not load file: {:?}", path);
       return None;
     }
-    let mut assets = assets_opt.unwrap();
+    let assets = assets_opt.unwrap();
     let level = assets.level;
     progress.finished.fetch_add(1, Ordering::SeqCst);
     while level.is_some() && !progress.is_done() {}
@@ -384,8 +383,8 @@ impl<P: Platform> AssetManager<P> {
     let loader_opt = loaders.iter().find(|loader| {
       let loader_matches = loader.matches(file);
       match &mut file.data {
-        AssetFileData::File(file) => { file.seek(SeekFrom::Start(start)); }
-        AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Start(start)); }
+        AssetFileData::File(file) => { file.seek(SeekFrom::Start(start)).unwrap(); }
+        AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Start(start)).unwrap(); }
       }
       loader_matches
     });
@@ -433,14 +432,6 @@ impl<P: Platform> AssetManager<P> {
 }
 
 fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
-  let device = {
-    let mgr_opt = asset_manager.upgrade();
-    if mgr_opt.is_none() {
-      return;
-    }
-    let mgr = mgr_opt.unwrap();
-    mgr.device.clone()
-  };
   loop {
     {
       let mgr_opt = asset_manager.upgrade();

@@ -2,10 +2,9 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 use sourcerenderer_core::graphics::{Backend, Device, Fence};
-use crate::asset::{Mesh, Model, Material, AssetManager, Asset, AssetLoadPriority};
+use crate::asset::{Mesh, Model, Material, AssetManager, Asset};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };
-use nalgebra::Vector4;
 
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use std::option::Option::Some;

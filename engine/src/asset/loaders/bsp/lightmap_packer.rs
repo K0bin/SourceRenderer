@@ -1,5 +1,5 @@
 use sourcerenderer_bsp::Lighting;
-use sourcerenderer_core::graphics::{Texture, Device, TextureInfo, Format, SampleCount, MemoryUsage, BufferUsage};
+use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, MemoryUsage, BufferUsage};
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use std::sync::Arc;
 use std::option::Option::Some;
@@ -41,7 +41,7 @@ impl LightmapPacker {
     let texture_rect = Rect::new(lightmap_width, lightmap_height);
     let size = (lightmap_width * lightmap_height) as usize;
     let mut data = Vec::<u32>::with_capacity(size);
-    for i in 0..size {
+    for _i in 0..size {
       data.push(0); // this is slow and stupid
     }
 

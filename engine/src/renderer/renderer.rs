@@ -60,7 +60,7 @@ impl<P: Platform> Renderer<P> {
       loop {
         internal.render();
       }
-    });
+    }).unwrap();
     renderer
   }
 

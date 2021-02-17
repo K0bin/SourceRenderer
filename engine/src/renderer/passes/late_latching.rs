@@ -1,7 +1,6 @@
 use sourcerenderer_core::graphics::{PassInfo, PassType, PassInput, Output, RenderPassCallbacks, CommandBuffer, PipelineBinding, BindingFrequency, ShaderType, Backend as GraphicsBackend, Device, ExternalResource, ExternalOutput, ExternalProducerType, PipelineStage};
 use sourcerenderer_core::{Matrix4, Platform};
 use std::sync::Arc;
-use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 use crate::renderer::LateLatchCamera;

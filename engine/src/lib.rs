@@ -16,7 +16,6 @@ extern crate regex;
 extern crate bitvec;
 
 pub use self::engine::Engine;
-use sourcerenderer_core::{Vec3, Vec2};
 pub use transform::Transform;
 pub use transform::Parent;
 pub use camera::Camera;

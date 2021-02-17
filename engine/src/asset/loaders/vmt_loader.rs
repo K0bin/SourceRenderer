@@ -1,5 +1,5 @@
 use crate::asset::{AssetLoader, Asset, AssetType, AssetManager};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, LoadedAsset, AssetContainer, AssetLoaderProgress, AssetLoadPriority};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetLoaderProgress, AssetLoadPriority};
 use sourcerenderer_core::Platform;
 use sourcerenderer_vmt::VMTMaterial;
 use std::io::{BufReader, Seek};
@@ -38,7 +38,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
         cursor.seek(SeekFrom::Start(current)).unwrap();
         VMTMaterial::new(&mut cursor, len as u32)
       }
-    }.map_err(|_| ())?;;
+    }.map_err(|_| ())?;
 
     if vmt_material.is_patch() {
       let base_path = vmt_material.get_patch_base().unwrap().replace('\\', "/").to_lowercase();

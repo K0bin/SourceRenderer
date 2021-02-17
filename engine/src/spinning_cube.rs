@@ -1,6 +1,5 @@
 use legion::{World, Resources, component};
 use crate::{Transform, Camera};
-use std::path::Path;
 use sourcerenderer_core::graphics::{Format, TextureInfo, SampleCount};
 use nalgebra::{Unit};
 use image::GenericImageView;
@@ -13,11 +12,11 @@ use crate::renderer::StaticRenderableComponent;
 use legion::systems::Builder as SystemBuilder;
 
 use crate::camera::ActiveCamera;
-use crate::fps_camera::{FPSCamera, FPSCameraComponent};
+use crate::fps_camera::FPSCameraComponent;
 use crate::scene::DeltaTime;
 use std::f32;
 use sourcerenderer_core::platform::io::IO;
-use std::io::{Seek, SeekFrom, Read, Cursor};
+use std::io::{Seek, SeekFrom, Read};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -227,7 +226,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
   }
   image_file.read_exact(&mut data).unwrap();
   let image = image::load_from_memory(&data).unwrap();
-  let data = image.to_rgba();
+  let data = image.to_rgba8();
   let texture_info = TextureInfo {
     format: Format::RGBA8,
     width: image.width(),

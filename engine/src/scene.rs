@@ -10,7 +10,7 @@ use crate::renderer::*;
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;
-use crate::asset::loaders::{CSGODirectoryContainer, BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader};
+use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader, CSGODirectoryContainer};
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use sourcerenderer_core::platform::{InputState, InputCommands};
@@ -39,7 +39,7 @@ pub struct Tick(u64);
 
 pub struct FilterAll {}
 impl LayoutFilter for FilterAll {
-  fn matches_layout(&self, components: &[ComponentTypeId]) -> FilterResult {
+  fn matches_layout(&self, _components: &[ComponentTypeId]) -> FilterResult {
     FilterResult::Match(true)
   }
 }
@@ -95,7 +95,7 @@ impl<P: Platform> Game<P> {
 
       resources.insert(c_renderer.primary_camera().clone());
 
-      let tick_duration = Duration::new(0, (1_000_000_000 / tick_rate));
+      let tick_duration = Duration::new(0, 1_000_000_000 / tick_rate);
       resources.insert(TickRate(tick_rate));
       resources.insert(TickDuration(tick_duration));
 
@@ -130,7 +130,7 @@ impl<P: Platform> Game<P> {
         resources.insert(DeltaTime(delta));
         schedule.execute(&mut world, &mut resources);
       }
-    });
+    }).unwrap();
 
     game
   }

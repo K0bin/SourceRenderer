@@ -1,7 +1,5 @@
 use sourcerenderer_core::{Matrix4};
 
-use crate::asset::AssetKey;
-
 use legion::Entity;
 use std::sync::Arc;
 use std::f32;
