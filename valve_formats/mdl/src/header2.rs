@@ -1,8 +1,4 @@
 use std::io::{Read, Result as IOResult};
-use std::ffi::CString;
-use std::os::raw::c_char;
-
-use nalgebra::Vector3;
 
 use crate::PrimitiveRead;
 
@@ -18,7 +14,7 @@ pub struct Header2 {
 }
 
 impl Header2 {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let src_bone_transform_count = read.read_i32()?;
     let src_bone_transform_index = read.read_i32()?;
 

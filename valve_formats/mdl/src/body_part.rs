@@ -1,10 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use std::ffi::CString;
-use std::os::raw::c_char;
 
-use nalgebra::{Vector3, Vector4, Quaternion, Matrix3x4};
-
-use crate::{PrimitiveRead, Model};
+use crate::PrimitiveRead;
 
 pub struct BodyPart {
   pub name_index: u64,
@@ -14,7 +10,7 @@ pub struct BodyPart {
 }
 
 impl BodyPart {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let name_index = read.read_i32()?;
     let models_count = read.read_i32()?;
     let base = read.read_i32()?;

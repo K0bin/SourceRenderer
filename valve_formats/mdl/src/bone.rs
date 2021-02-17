@@ -1,8 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use std::ffi::CString;
-use std::os::raw::c_char;
 
-use nalgebra::{Vector3, Vector4, Quaternion, Matrix3x4};
+use nalgebra::{Vector3, Quaternion, Matrix3x4};
 
 use crate::PrimitiveRead;
 
@@ -29,7 +27,7 @@ pub struct Bone {
 }
 
 impl Bone {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let name_index = read.read_i32()?;
     let parent = read.read_i32()?;
     let mut bone_controller = [0i32; 6];

@@ -1,8 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use std::ffi::CString;
-use std::os::raw::c_char;
 
-use nalgebra::{Vector3, Vector4, Quaternion, Matrix3x4};
+use nalgebra::Vector3;
 
 use crate::PrimitiveRead;
 
@@ -26,7 +24,7 @@ pub struct MeshVertexData {
 }
 
 impl MeshVertexData {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let model_vertex_data = read.read_i32()?;
     let mut lod_vertices = [0i32; 8];
     for i in 0..8 {
@@ -40,7 +38,7 @@ impl MeshVertexData {
 }
 
 impl Mesh {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let material = read.read_i32()?;
     let model_index = read.read_i32()?;
     let vertices_count = read.read_i32()?;

@@ -1,10 +1,6 @@
 use std::io::{Read, Result as IOResult};
-use std::ffi::CString;
-use std::os::raw::c_char;
 
-use nalgebra::{Vector3, Vector4, Quaternion, Matrix3x4};
-
-use crate::{PrimitiveRead, StringRead, Mesh};
+use crate::{PrimitiveRead, StringRead};
 
 pub struct Model {
   pub name: String,
@@ -31,7 +27,7 @@ pub struct ModelVertexData {
 }
 
 impl ModelVertexData {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let mut data = [0u8; 8];
     read.read_exact(&mut data)?;
     Ok(Self {
@@ -41,7 +37,7 @@ impl ModelVertexData {
 }
 
 impl Model {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let name = read.read_fixed_length_null_terminated_string(64).unwrap();
     let model_type = read.read_i32()?;
     let bounding_radius = read.read_f32()?;

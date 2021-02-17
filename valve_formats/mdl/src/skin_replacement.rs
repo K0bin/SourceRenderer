@@ -1,9 +1,5 @@
 use std::io::{Read, Result as IOResult, Cursor, ErrorKind};
-use std::ffi::CString;
-use std::os::raw::c_char;
 use std::collections::HashMap;
-
-use nalgebra::Vector3;
 
 use crate::PrimitiveRead;
 
@@ -17,7 +13,7 @@ pub struct SkinReplacementTable {
 }
 
 impl SkinReplacementTable {
-  pub fn read(mut read: &mut dyn Read, skin_families_count: i32, skins_count: i32) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read, skin_families_count: i32, skins_count: i32) -> IOResult<Self> {
     let len = (skin_families_count * skins_count * 2) as usize;
     let mut data = Vec::with_capacity(len);
     unsafe {
