@@ -56,7 +56,7 @@ impl VkTexture {
             object_handle: image.as_raw(),
             p_object_name: name_cstring.as_ptr(),
             ..Default::default()
-          });
+          }).unwrap();
         }
       }
     }
@@ -85,7 +85,7 @@ impl VkTexture {
 impl Drop for VkTexture {
   fn drop(&mut self) {
     if let Some(alloc) = &self.allocation {
-      self.device.allocator.destroy_image(self.image, alloc);
+      self.device.allocator.destroy_image(self.image, alloc).unwrap();
     }
   }
 }

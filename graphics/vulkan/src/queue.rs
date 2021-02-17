@@ -18,8 +18,6 @@ use crate::{VkShared};
 use crate::VkCommandBufferSubmission;
 use crate::transfer::VkTransferCommandBuffer;
 use crate::buffer::BufferAllocator;
-use ash::prelude::VkResult;
-use std::collections::VecDeque;
 use smallvec::SmallVec;
 
 #[derive(Clone, Debug, Copy)]
@@ -124,7 +122,7 @@ impl VkQueue {
                 p_wait_semaphores: wait_semaphores.as_ptr(),
                 p_wait_dst_stage_mask: wait_stages.as_ptr(),
                 command_buffer_count: 1,
-                p_command_buffers: unsafe { &command_buffer as *const vk::CommandBuffer },
+                p_command_buffers: &command_buffer as *const vk::CommandBuffer,
                 signal_semaphore_count: signal_semaphores.len() as u32,
                 p_signal_semaphores: signal_semaphores.as_ptr(),
                 ..Default::default()
@@ -282,7 +280,7 @@ impl VkQueue {
     self.process_submissions();
     let queue_guard = self.queue.lock().unwrap();
     unsafe {
-      self.device.queue_wait_idle(queue_guard.queue);
+      self.device.queue_wait_idle(queue_guard.queue).unwrap();
     }
   }
 }

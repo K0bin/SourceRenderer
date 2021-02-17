@@ -7,7 +7,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
 
-use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError, Backend};
+use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError};
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
 
@@ -117,7 +117,7 @@ impl VkSwapchain {
 
         let surface_handle = surface.get_surface_handle();
 
-        let mut swapchain_create_info = vk::SwapchainCreateInfoKHR {
+        let swapchain_create_info = vk::SwapchainCreateInfoKHR {
           surface: *surface_handle,
           min_image_count: image_count,
           image_format: format.format,

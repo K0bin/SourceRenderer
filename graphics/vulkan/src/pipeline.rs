@@ -125,7 +125,7 @@ impl VkShader {
             object_handle: shader_module.as_raw(),
             p_object_name: name_cstring.as_ptr(),
             ..Default::default()
-          });
+          }).unwrap();
         }
       }
     }

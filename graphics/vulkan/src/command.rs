@@ -170,7 +170,7 @@ impl VkCommandBuffer {
       let begin_info = vk::CommandBufferBeginInfo {
         ..Default::default()
       };
-      self.device.begin_command_buffer(self.buffer, &begin_info);
+      self.device.begin_command_buffer(self.buffer, &begin_info).unwrap();
     }
   }
 
@@ -178,7 +178,7 @@ impl VkCommandBuffer {
     assert_eq!(self.state, VkCommandBufferState::Recording);
     self.state = VkCommandBufferState::Finished;
     unsafe {
-      self.device.end_command_buffer(self.buffer);
+      self.device.end_command_buffer(self.buffer).unwrap();
     }
   }
 
@@ -430,8 +430,6 @@ impl VkCommandBuffer {
     if descriptor_sets_count != 0 {
       unsafe {
         self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
-        offsets_count = 0;
-        descriptor_sets_count = 0;
       }
     }
   }
@@ -595,7 +593,7 @@ impl VkCommandBuffer {
 impl Drop for VkCommandBuffer {
   fn drop(&mut self) {
     if self.state == VkCommandBufferState::Submitted {
-      unsafe { self.device.device_wait_idle(); }
+      unsafe { self.device.device_wait_idle() }.unwrap();
     }
   }
 }
@@ -615,7 +613,7 @@ impl Drop for VkCommandBufferRecorder {
       return;
     }
     let item = std::mem::replace(&mut self.item, Option::None).unwrap();
-    self.sender.send(item);
+    self.sender.send(item).unwrap();
   }
 }
 
@@ -772,7 +770,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 
   #[inline(always)]
   fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
-    self.item.as_mut().unwrap().blit(src_texture, dst_array_layer, dst_mip_level, dst_texture, dst_array_layer, dst_mip_level);
+    self.item.as_mut().unwrap().blit(src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
   }
 }
 
@@ -809,6 +807,6 @@ impl VkCommandBufferSubmission {
 impl Drop for VkCommandBufferSubmission {
   fn drop(&mut self) {
     let item = std::mem::replace(&mut self.item, None).unwrap();
-    self.sender.send(item);
+    self.sender.send(item).unwrap();
   }
 }

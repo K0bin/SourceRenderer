@@ -5,8 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 use ash::version::DeviceV1_0;
 use crate::buffer::VkBufferSlice;
-use crate::{VkFence};
-use crossbeam_channel::{Sender, Receiver, unbounded};
+use crate::VkFence;
 use rayon;
 
 use sourcerenderer_core::graphics::Texture;
@@ -346,7 +345,7 @@ impl VkTransfer {
     unsafe {
       self.device.begin_command_buffer(*cmd_buffer.get_handle(), &vk::CommandBufferBeginInfo {
         ..Default::default()
-      });
+      }).unwrap();
     }
 
     // commit pre barriers
@@ -414,7 +413,7 @@ impl VkTransfer {
     }
 
     unsafe {
-      self.device.end_command_buffer(*cmd_buffer.get_handle());
+      self.device.end_command_buffer(*cmd_buffer.get_handle()).unwrap();
     }
 
     cmd_buffer.mark_used();
@@ -481,7 +480,7 @@ impl VkTransferCommandBuffer {
           object_handle: cmd_buffer.as_raw(),
           p_object_name: name_cstring.as_ptr(),
           ..Default::default()
-        });
+        }).unwrap();
       }
     }
 
@@ -520,7 +519,7 @@ impl VkTransferCommandBuffer {
     debug_assert!(!fence.is_signalled());
     self.fence = fence.clone();
     unsafe {
-      self.device.reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES);
+      self.device.reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES).unwrap();
     }
     self.trackers.reset();
     self.is_used = false;

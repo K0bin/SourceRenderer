@@ -2,7 +2,6 @@
 
 extern crate sourcerenderer_core;
 
-#[macro_use]
 extern crate ash;
 
 extern crate vk_mem;

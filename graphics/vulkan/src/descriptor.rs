@@ -199,7 +199,7 @@ impl VkDescriptorPool {
     }
     let guard = self.get_handle();
     unsafe {
-      self.device.reset_descriptor_pool(*guard, vk::DescriptorPoolResetFlags::empty());
+      self.device.reset_descriptor_pool(*guard, vk::DescriptorPoolResetFlags::empty()).unwrap();
     }
   }
 

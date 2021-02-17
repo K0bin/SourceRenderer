@@ -204,12 +204,12 @@ impl Device<VkBackend> for VkDevice {
       std::thread::spawn(move || c_queue.wait_for_idle())
     });
 
-    graphics_join.join();
+    graphics_join.join().unwrap();
     if let Some(join) = transfer_join {
-      join.join();
+      join.join().unwrap();
     }
     if let Some(join) = compute_join {
-      join.join();
+      join.join().unwrap();
     }
   }
 

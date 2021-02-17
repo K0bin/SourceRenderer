@@ -144,7 +144,7 @@ impl VkThreadLocal {
     debug_assert!(frame >= self.frame_counter);
     let length = self.frames.len();
     if frame > self.frame_counter && frame >= self.frames.len() as u64 {
-      let mut frame_ref = &mut self.frames[frame as usize % length];
+      let frame_ref = &mut self.frames[frame as usize % length];
       frame_ref.reset();
     }
     self.frame_counter = frame;
@@ -152,7 +152,7 @@ impl VkThreadLocal {
 
   pub fn get_frame_local(&mut self) -> &mut VkFrameLocal {
     let length = self.frames.len();
-    let mut frame_local = &mut self.frames[self.frame_counter as usize % length];
+    let frame_local = &mut self.frames[self.frame_counter as usize % length];
     frame_local.set_frame(self.frame_counter);
     frame_local
   }
@@ -194,14 +194,14 @@ impl VkFrameLocal {
 
 impl Drop for VkFrameLocal {
   fn drop(&mut self) {
-    unsafe { self.device.device_wait_idle(); }
+    unsafe { self.device.device_wait_idle().unwrap(); }
   }
 }
 
 impl InnerCommandBufferProvider<VkBackend> for VkThreadManager {
   fn get_inner_command_buffer(&self) -> VkCommandBufferRecorder {
     let mut thread_context = self.get_thread_local();
-    let mut frame_context = thread_context.get_frame_local();
+    let frame_context = thread_context.get_frame_local();
     frame_context.get_command_buffer(CommandBufferType::SECONDARY)
   }
 }

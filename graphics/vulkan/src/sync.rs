@@ -11,10 +11,7 @@ use crate::raw::RawVkDevice;
 
 use sourcerenderer_core::graphics::Fence;
 use sourcerenderer_core::pool::{Recyclable};
-use std::hash::{Hash, Hasher};
-use ash::vk::Handle;
-use crate::ash::version::InstanceV1_0;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::hash::Hash;
 use std::sync::Mutex;
 use crossbeam_utils::atomic::AtomicCell;
 
@@ -73,7 +70,7 @@ impl VkFenceInner {
     };
     let fence = unsafe { vk_device.create_fence(&info, None).unwrap() };
     unsafe {
-      vk_device.reset_fences(&[fence]);
+      vk_device.reset_fences(&[fence]).unwrap();
     }
     return Self {
       device: device.clone(),
@@ -87,7 +84,7 @@ impl VkFenceInner {
     self.state.store(VkFenceState::Ready);
     let fence_guard = self.fence.lock().unwrap();
     unsafe {
-      vk_device.reset_fences(&[*fence_guard]);
+      vk_device.reset_fences(&[*fence_guard]).unwrap();
     }
   }
 
@@ -99,7 +96,7 @@ impl VkFenceInner {
     let vk_device = &self.device.device;
     let fence_guard = self.fence.lock().unwrap();
     unsafe {
-      vk_device.wait_for_fences(&[*fence_guard], true, std::u64::MAX);
+      vk_device.wait_for_fences(&[*fence_guard], true, std::u64::MAX).unwrap();
     }
     self.state.store(VkFenceState::Signalled);
   }
@@ -203,7 +200,7 @@ impl VkEvent {
 
   pub fn reset(&self) {
     unsafe {
-      self.device.reset_event(self.event);
+      self.device.reset_event(self.event).unwrap();
     }
   }
 

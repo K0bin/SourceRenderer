@@ -686,7 +686,7 @@ impl VkRenderGraph {
         },
 
         VkPassType::ComputeCopy {
-          barriers, is_compute
+          barriers, is_compute: _
         } => {
           let framebuffer_count = if pass.renders_to_swapchain { swapchain_views.len() } else { 1 };
 
@@ -958,7 +958,6 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
       match pass as &VkPass {
         VkPass::Graphics {
-          name,
           framebuffers,
           src_stage,
           dst_stage,
@@ -1047,7 +1046,6 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
         }
 
         VkPass::ComputeCopy {
-          name,
           src_stage,
           dst_stage,
           buffer_barriers,
@@ -1148,8 +1146,6 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             *buffer_barriers_b = Some(std::mem::replace(buffer_barriers, temp));
           }
         }
-
-        _ => unimplemented!()
       }
     }
 

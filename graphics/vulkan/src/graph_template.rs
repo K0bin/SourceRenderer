@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Output, RenderPassTextureExtent, ExternalOutput, ExternalProducerType, DepthStencil, StoreOp, PipelineStage};
+use sourcerenderer_core::graphics::{Output, RenderPassTextureExtent, ExternalOutput, ExternalProducerType, DepthStencil, PipelineStage};
 use std::collections::{HashMap, VecDeque};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -15,7 +15,6 @@ use crate::VkRenderPass;
 use std::cmp::min;
 use std::iter::FromIterator;
 use ash::vk::{AttachmentStoreOp, AttachmentLoadOp};
-use std::fs::metadata;
 
 const EMPTY_PIPELINE_STAGE_FLAGS: vk::PipelineStageFlags = vk::PipelineStageFlags::empty();
 
@@ -197,12 +196,12 @@ impl VkRenderGraphTemplate {
     }
 
     for pass in &mut passes {
-      let mut barriers = match &mut pass.pass_type {
+      let barriers = match &mut pass.pass_type {
         VkPassType::Graphics {
           barriers, ..
         } => barriers,
         VkPassType::ComputeCopy {
-          barriers, is_compute
+          barriers, is_compute: _
         } => barriers
       };
       for barrier in barriers {
@@ -377,8 +376,7 @@ impl VkRenderGraphTemplate {
                         is_backbuffer: true
                       }))
                       .produced_in_pass_index = reordered_passes.len() as u32;
-                },
-                _ => {}
+                }
               }
             }
 
@@ -604,7 +602,7 @@ impl VkRenderGraphTemplate {
           },
 
           SubpassOutput::RenderTarget {
-            name, format, samples, extent, depth, levels, external, load_action, store_action
+            name, format, samples, external, load_action, store_action, ..
           } => {
             let metadata = attachment_metadata.get(name.as_str()).unwrap();
             pass_has_history_resources |= metadata.history_usage.is_some();
@@ -1188,7 +1186,7 @@ impl VkRenderGraphTemplate {
     let old_stage = std::mem::replace(&mut resource_metadata.current_pipeline_stage, pipeline_stage);
     let old_layout = std::mem::replace(&mut resource_metadata.layout, layout);
     let discard = old_layout == vk::ImageLayout::UNDEFINED;
-    let mut dirty = std::mem::replace(&mut resource_metadata.is_dirty, false);
+    let dirty = std::mem::replace(&mut resource_metadata.is_dirty, false);
     if !dirty && resource_metadata.layout == old_layout {
       return None;
     }
@@ -1379,9 +1377,12 @@ impl VkRenderGraphTemplate {
       }
     }
 
+    /*
     let mut post_barriers = Vec::<VkBarrierTemplate>::new();
     if uses_backbuffer {
     }
+    TODO
+    */
 
     VkPassTemplate {
       name: name.to_string(),
