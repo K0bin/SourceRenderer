@@ -59,11 +59,11 @@ impl<T: Debug> std::fmt::Debug for Recyclable<T> {
 pub struct Pool<T> {
   receiver: Receiver<T>,
   sender: Sender<T>,
-  initializer: Box<Fn() -> T + Send + Sync>
+  initializer: Box<dyn Fn() -> T + Send + Sync>
 }
 
 impl<T> Pool<T> {
-  pub fn new(initializer: Box<Fn() -> T + Send + Sync>) -> Self {
+  pub fn new(initializer: Box<dyn Fn() -> T + Send + Sync>) -> Self {
     let (sender, receiver) = unbounded();
 
     Self {

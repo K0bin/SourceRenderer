@@ -1,4 +1,4 @@
-use crate::{Vec2UI, Vec2I, Vec2};
+use crate::{Vec2I, Vec2};
 use bitset_core::BitSet;
 
 #[derive(Copy, Clone, Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]

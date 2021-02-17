@@ -5,13 +5,26 @@ use std::ops::Fn;
 use crate::graphics::{Backend, SwapchainError};
 use crate::graphics::command::InnerCommandBufferProvider;
 
-pub type RegularRenderPassCallback<B: Backend> = dyn (Fn(&mut B::CommandBuffer, &dyn RenderGraphResources<B>)) + Send + Sync;
-pub type InternallyThreadedRenderPassCallback<B: Backend> = dyn (Fn(&Arc<dyn InnerCommandBufferProvider<B>>, &dyn RenderGraphResources<B>) -> Vec<B::CommandBufferSubmission>) + Send + Sync;
-
-#[derive(Clone)]
 pub enum RenderPassCallbacks<B: Backend> {
-  Regular(Vec<Arc<RegularRenderPassCallback<B>>>),
-  InternallyThreaded(Vec<Arc<InternallyThreadedRenderPassCallback<B>>>),
+  Regular(Vec<Arc<dyn (Fn(&mut B::CommandBuffer, &dyn RenderGraphResources<B>)) + Send + Sync>>),
+  InternallyThreaded(Vec<Arc<dyn (Fn(&Arc<dyn InnerCommandBufferProvider<B>>, &dyn RenderGraphResources<B>) -> Vec<B::CommandBufferSubmission>) + Send + Sync>>),
+}
+
+impl<B: Backend> Clone for RenderPassCallbacks<B> {
+  fn clone(&self) -> Self {
+    match self {
+      Self::Regular(vec) => {
+        Self::Regular(
+          vec.iter().map(|c| c.clone()).collect()
+        )
+      }
+      Self::InternallyThreaded(vec) => {
+        Self::InternallyThreaded(
+          vec.iter().map(|c| c.clone()).collect()
+        )
+      }
+    }
+  }
 }
 
 #[derive(Clone)]

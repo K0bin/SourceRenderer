@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::graphics::{SampleCount, Format, Backend};
-use crate::Platform;
 
 pub trait Surface {
 

@@ -44,7 +44,6 @@
 //! have been removed. We segment the concurrency logic from the rest of the code to
 //! keep the tricky parts small and easy to audit.
 
-#![no_std]
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
 
