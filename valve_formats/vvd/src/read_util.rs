@@ -1,5 +1,4 @@
-use std::io::{Seek, Read, Result as IOResult, Error as IOError};
-use std::ffi::{CString, NulError};
+use std::io::{Read, Result as IOResult, Error as IOError};
 use std::string::FromUtf8Error;
 
 #[derive(Debug)]
@@ -10,9 +9,10 @@ pub enum StringReadError {
 
 pub trait StringRead {
   fn read_null_terminated_string(&mut self) -> Result<String, StringReadError>;
+  fn read_fixed_length_null_terminated_string(&mut self, length: u32) -> Result<String, StringReadError>;
 }
 
-impl<T: Read> StringRead for T {
+impl<T: Read + ?Sized> StringRead for T {
   fn read_null_terminated_string(&mut self) -> Result<String, StringReadError> {
     let mut buffer = Vec::<u8>::new();
     loop {
@@ -24,13 +24,27 @@ impl<T: Read> StringRead for T {
     }
     String::from_utf8(buffer).map_err(|e| StringReadError::StringConstructionError(e))
   }
+
+  fn read_fixed_length_null_terminated_string(&mut self, length: u32) -> Result<String, StringReadError> {
+    let mut buffer = Vec::<u8>::with_capacity(length as usize);
+    unsafe { buffer.set_len(length as usize); }
+    self.read_exact(&mut buffer).map_err(|e| StringReadError::IOError(e))?;
+    for i in 0..buffer.len() {
+      let char = buffer[i];
+      if char == 0 {
+        buffer.resize(i, 0u8);
+        break;
+      }
+    }
+    String::from_utf8(buffer).map_err(|e| StringReadError::StringConstructionError(e))
+  }
 }
 
 pub trait RawDataRead {
   fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>>;
 }
 
-impl<T: Read> RawDataRead for T {
+impl<T: Read + ?Sized> RawDataRead for T {
   fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>> {
     let mut buffer = Vec::with_capacity(len);
     unsafe { buffer.set_len(len); }
@@ -52,7 +66,7 @@ pub trait PrimitiveRead {
   fn read_f64(&mut self) -> IOResult<f64>;
 }
 
-impl<T: Read> PrimitiveRead for T {
+impl<T: Read + ?Sized> PrimitiveRead for T {
   fn read_u8(&mut self) -> IOResult<u8> {
     let mut buffer = [0u8; 1];
     self.read_exact(&mut buffer)?;

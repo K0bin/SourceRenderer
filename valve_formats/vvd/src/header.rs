@@ -1,8 +1,4 @@
 use std::io::{Read, Result as IOResult};
-use std::ffi::CString;
-use std::os::raw::c_char;
-
-use nalgebra::{Vector3, Vector4, Quaternion, Matrix3x4};
 
 use crate::PrimitiveRead;
 
@@ -19,7 +15,7 @@ pub struct Header {
 }
 
 impl Header {
-  pub fn read(mut read: &mut dyn Read) -> IOResult<Self> {
+  pub fn read(read: &mut dyn Read) -> IOResult<Self> {
     let id = read.read_i32()?;
     let version = read.read_i32()?;
     let checksum = read.read_i32()?;
