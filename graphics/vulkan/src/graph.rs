@@ -238,6 +238,7 @@ unsafe impl Send for VkPass {}
 unsafe impl Sync for VkPass {}
 
 impl VkRenderGraph {
+  #[allow(unused_assignments, unused_variables)] // TODO
   pub fn new(device: &Arc<RawVkDevice>,
              context: &Arc<VkThreadManager>,
              graphics_queue: &Arc<VkQueue>,

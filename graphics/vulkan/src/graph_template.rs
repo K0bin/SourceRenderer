@@ -556,6 +556,7 @@ impl VkRenderGraphTemplate {
     return reordered_passes;
   }
 
+  #[allow(unused_assignments, unused_variables)] // TODO
   fn build_render_pass(passes: &Vec<GraphicsSubpassInfo>,
                        name: &str,
                        device: &Arc<RawVkDevice>,
@@ -755,11 +756,12 @@ impl VkRenderGraphTemplate {
               if *is_backbuffer {
                 panic!("Using the backbuffer as a pass input is not allowed.");
               }
+              let is_depth_stencil = format.is_depth() || format.is_stencil();
               let dependency = Self::build_texture_subpass_dependency(
                 subpass_index as u32,
                 metadata,
                 subpass_metadata,
-                format.is_depth() || format.is_stencil(),
+                is_depth_stencil,
                 input.is_local
               );
               if let Some(dependency) = dependency {
@@ -780,11 +782,12 @@ impl VkRenderGraphTemplate {
             }
 
             VkResourceTemplate::ExternalTexture { is_depth_stencil, .. } => {
+              let is_depth_stencil = *is_depth_stencil;
               let dependency = Self::build_texture_subpass_dependency(
                 subpass_index as u32,
                 metadata,
                 subpass_metadata,
-                *is_depth_stencil,
+                is_depth_stencil,
                 false
               );
               if let Some(dependency) = dependency {
@@ -810,10 +813,11 @@ impl VkRenderGraphTemplate {
               if *is_backbuffer {
                 panic!("Using the backbuffer as a pass input is not allowed.");
               }
+              let is_depth_stencil = format.is_depth() || format.is_stencil();
               let barrier = Self::build_texture_barrier(
                 &input.name,
                 metadata,
-                format.is_depth() || format.is_stencil(),
+                is_depth_stencil,
                 input.is_history,
                 vk::PipelineStageFlags::ALL_GRAPHICS,
                 vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
@@ -846,10 +850,11 @@ impl VkRenderGraphTemplate {
               }
             }
             VkResourceTemplate::ExternalTexture { is_depth_stencil } => {
+              let is_depth_stencil = *is_depth_stencil;
               let barrier = Self::build_texture_barrier(
                 &input.name,
                 metadata,
-                *is_depth_stencil,
+                is_depth_stencil,
                 input.is_history,
                 vk::PipelineStageFlags::ALL_GRAPHICS,
                 vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
@@ -1336,10 +1341,11 @@ impl VkRenderGraphTemplate {
           if *is_backbuffer {
             panic!("Using the backbuffer as a pass input is not allowed.");
           }
+          let is_depth_stencil = format.is_depth() || format.is_stencil();
           let barrier = Self::build_texture_barrier(
             &input.name,
             metadata,
-            format.is_depth() || format.is_stencil(),
+            is_depth_stencil,
             input.is_history,
             stage,
             layout
@@ -1361,11 +1367,11 @@ impl VkRenderGraphTemplate {
           }
         }
         VkResourceTemplate::ExternalTexture { is_depth_stencil } => {
-
+          let is_depth_stencil = *is_depth_stencil;
           let barrier = Self::build_texture_barrier(
             &input.name,
             metadata,
-            *is_depth_stencil,
+            is_depth_stencil,
             input.is_history,
             stage,
             layout
