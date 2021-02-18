@@ -57,7 +57,7 @@ impl LumpData for Face {
     let primitives_count = reader.read_u16()?;
     let first_primitive_id = reader.read_u16()?;
     let smoothing_group = reader.read_u32()?;
-    return Ok(Self {
+    Ok(Self {
       plane_index: plane_number,
       size,
       is_on_node,
@@ -75,6 +75,6 @@ impl LumpData for Face {
       primitives_count,
       first_primitive_id,
       smoothing_group
-    });
+    })
   }
 }

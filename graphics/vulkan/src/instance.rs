@@ -100,7 +100,7 @@ impl VkInstance {
         ..Default::default()
     };
 
-    return unsafe {
+    unsafe {
       let instance = entry.create_instance(&instance_create_info, None).unwrap();
 
       let debug_utils = if supports_debug_utils {
@@ -128,11 +128,11 @@ impl VkInstance {
           debug_utils
         })
       }
-    };
+    }
   }
 
   pub fn get_raw(&self) -> &Arc<RawVkInstance> {
-    return &self.raw;
+    &self.raw
   }
 
   unsafe extern "system" fn debug_callback(
@@ -162,6 +162,6 @@ impl Instance<VkBackend> for VkInstance {
       .into_iter()
       .map(|phys_dev| Arc::new(VkAdapter::new(instance_ref.clone(), phys_dev)) as Arc<VkAdapter>).collect();
 
-    return adapters;
+    adapters
   }
 }

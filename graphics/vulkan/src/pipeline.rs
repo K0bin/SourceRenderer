@@ -37,7 +37,7 @@ use std::os::raw::c_char;
 
 #[inline]
 pub(crate) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
-  return match input_rate {
+  match input_rate {
     InputRate::PerVertex => vk::VertexInputRate::VERTEX,
     InputRate::PerInstance => vk::VertexInputRate::INSTANCE
   }
@@ -65,6 +65,7 @@ impl Hash for VkShader {
 }
 
 impl VkShader {
+  #[allow(clippy::size_of_in_element_count)]
   pub fn new(device: &Arc<RawVkDevice>, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Self {
     let create_info = vk::ShaderModuleCreateInfo {
       code_size: bytecode.len(),
@@ -81,7 +82,7 @@ impl VkShader {
     let mut sets: HashMap<u32, Vec<VkDescriptorSetBindingInfo>> = HashMap::new();
     for resource in resources.sampled_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -90,7 +91,7 @@ impl VkShader {
     }
     for resource in resources.subpass_inputs {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -99,7 +100,7 @@ impl VkShader {
     }
     for resource in resources.uniform_buffers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
@@ -108,7 +109,7 @@ impl VkShader {
     }
     for resource in resources.storage_buffers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
-      let set = sets.entry(set_index).or_insert(Vec::new());
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER },
@@ -130,22 +131,22 @@ impl VkShader {
       }
     }
 
-    return VkShader {
+    VkShader {
       shader_type,
       shader_module,
       device: device.clone(),
       descriptor_set_bindings: sets
-    };
+    }
   }
 
   fn get_shader_module(&self) -> vk::ShaderModule {
-    return self.shader_module.clone();
+    self.shader_module
   }
 }
 
 impl Shader for VkShader {
   fn get_shader_type(&self) -> ShaderType {
-    return self.shader_type;
+    self.shader_type
   }
 }
 
@@ -174,27 +175,27 @@ impl PartialEq for VkPipeline {
 const SHADER_ENTRY_POINT_NAME: &str = "main";
 
 pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
-  return match shader_type {
+  match shader_type {
     ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
     ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
     ShaderType::GeometryShader => vk::ShaderStageFlags::GEOMETRY,
     ShaderType::TessellationControlShader => vk::ShaderStageFlags::TESSELLATION_CONTROL,
     ShaderType::TessellationEvaluationShader => vk::ShaderStageFlags::TESSELLATION_EVALUATION,
     ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE
-  };
+  }
 }
 
 pub fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
-  return match samples {
+  match samples {
     SampleCount::Samples1 => vk::SampleCountFlags::TYPE_1,
     SampleCount::Samples2 => vk::SampleCountFlags::TYPE_2,
     SampleCount::Samples4 => vk::SampleCountFlags::TYPE_4,
     SampleCount::Samples8 => vk::SampleCountFlags::TYPE_8,
-  };
+  }
 }
 
 pub fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
-  return match compare_func {
+  match compare_func {
     CompareFunc::Always => vk::CompareOp::ALWAYS,
     CompareFunc::NotEqual => vk::CompareOp::NOT_EQUAL,
     CompareFunc::Never => vk::CompareOp::NEVER,
@@ -203,11 +204,11 @@ pub fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
     CompareFunc::Equal => vk::CompareOp::EQUAL,
     CompareFunc::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
     CompareFunc::Greater => vk::CompareOp::GREATER,
-  };
+  }
 }
 
 pub fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
-  return match stencil_op {
+  match stencil_op {
     StencilOp::Decrease => vk::StencilOp::DECREMENT_AND_WRAP,
     StencilOp::Increase => vk::StencilOp::INCREMENT_AND_WRAP,
     StencilOp::DecreaseClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
@@ -216,11 +217,11 @@ pub fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
     StencilOp::Keep => vk::StencilOp::KEEP,
     StencilOp::Replace => vk::StencilOp::REPLACE,
     StencilOp::Zero => vk::StencilOp::ZERO
-  };
+  }
 }
 
 pub fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
-  return match logic_op {
+  match logic_op {
     LogicOp::And => vk::LogicOp::AND,
     LogicOp::AndInverted => vk::LogicOp::AND_INVERTED,
     LogicOp::AndReversed => vk::LogicOp::AND_REVERSE,
@@ -237,11 +238,11 @@ pub fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
     LogicOp::OrReverse => vk::LogicOp::OR_REVERSE,
     LogicOp::Set => vk::LogicOp::SET,
     LogicOp::Xor => vk::LogicOp::XOR,
-  };
+  }
 }
 
 pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
-  return match blend_factor {
+  match blend_factor {
     BlendFactor::ConstantColor => vk::BlendFactor::CONSTANT_COLOR,
     BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
     BlendFactor::DstColor => vk::BlendFactor::DST_COLOR,
@@ -257,17 +258,17 @@ pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
     BlendFactor::SrcAlphaSaturate => vk::BlendFactor::SRC_ALPHA_SATURATE,
     BlendFactor::SrcColor => vk::BlendFactor::SRC_COLOR,
     BlendFactor::Zero => vk::BlendFactor::ZERO,
-  };
+  }
 }
 
 pub fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
-  return match blend_op {
+  match blend_op {
     BlendOp::Add => vk::BlendOp::ADD,
     BlendOp::Max => vk::BlendOp::MAX,
     BlendOp::Min => vk::BlendOp::MIN,
     BlendOp::ReverseSubtract => vk::BlendOp::REVERSE_SUBTRACT,
     BlendOp::Subtract => vk::BlendOp::SUBTRACT
-  };
+  }
 }
 
 pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
@@ -277,7 +278,7 @@ pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorCom
   colors |= components_bits.rotate_left(ColorComponents::GREEN.bits().trailing_zeros() - vk::ColorComponentFlags::G.as_raw().trailing_zeros()) & vk::ColorComponentFlags::G.as_raw();
   colors |= components_bits.rotate_left(ColorComponents::BLUE.bits().trailing_zeros() - vk::ColorComponentFlags::B.as_raw().trailing_zeros()) & vk::ColorComponentFlags::B.as_raw();
   colors |= components_bits.rotate_left(ColorComponents::ALPHA.bits().trailing_zeros() - vk::ColorComponentFlags::A.as_raw().trailing_zeros()) & vk::ColorComponentFlags::A.as_raw();
-  return vk::ColorComponentFlags::from_raw(colors);
+  vk::ColorComponentFlags::from_raw(colors)
 }
 
 #[derive(Hash, Eq, PartialEq)]
@@ -543,7 +544,7 @@ impl VkPipeline {
       let cache_lock = shared.get_descriptor_set_layouts();
       let existing_set_layout = {
         let cache = cache_lock.read().unwrap();
-        cache.get(&hash).map(|entry| entry.clone())
+        cache.get(&hash).cloned()
       };
       let set_layout = existing_set_layout.unwrap_or_else(|| {
         let mut cache = cache_lock.write().unwrap();
@@ -565,7 +566,7 @@ impl VkPipeline {
     let cache_lock = shared.get_pipeline_layouts();
     let existing_handle = {
       let cache = cache_lock.read().unwrap();
-      cache.get(&hash).map(|entry| entry.clone())
+      cache.get(&hash).cloned()
     };
     let layout = existing_handle.unwrap_or_else(|| {
       let mut cache = cache_lock.write().unwrap();
@@ -620,12 +621,12 @@ impl VkPipeline {
     let pipeline = unsafe {
       vk_device.create_graphics_pipelines(vk::PipelineCache::null(), &[ pipeline_create_info ], None).unwrap()[0]
     };
-    return VkPipeline {
+    Self {
       pipeline,
       device: device.clone(),
       layout,
       is_graphics: true
-    };
+    }
   }
 
   pub fn new_compute(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, shared: &VkShared) -> Self {
@@ -661,7 +662,7 @@ impl VkPipeline {
       let cache_lock = shared.get_descriptor_set_layouts();
       let existing_set_layout = {
         let cache = cache_lock.read().unwrap();
-        cache.get(&hash).map(|entry| entry.clone())
+        cache.get(&hash).cloned()
       };
       let set_layout = existing_set_layout.unwrap_or_else(|| {
         let mut cache = cache_lock.write().unwrap();
@@ -683,7 +684,7 @@ impl VkPipeline {
     let cache_lock = shared.get_pipeline_layouts();
     let existing_handle = {
       let cache = cache_lock.read().unwrap();
-      cache.get(&hash).map(|entry| entry.clone())
+      cache.get(&hash).cloned()
     };
     let layout = existing_handle.unwrap_or_else(|| {
       let mut cache = cache_lock.write().unwrap();
@@ -703,17 +704,17 @@ impl VkPipeline {
       device.create_compute_pipelines(vk::PipelineCache::null(), &[ pipeline_create_info ], None).unwrap()[0]
     };
 
-    return VkPipeline {
+    VkPipeline {
       pipeline,
       device: device.clone(),
       layout,
       is_graphics: false
-    };
+    }
   }
 
   #[inline]
   pub(crate) fn get_handle(&self) -> &vk::Pipeline {
-    return &self.pipeline;
+    &self.pipeline
   }
 
   #[inline]

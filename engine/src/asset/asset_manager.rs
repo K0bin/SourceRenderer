@@ -178,7 +178,7 @@ impl<P: Platform> AssetManager<P> {
 
   pub fn add_mesh(&self, path: &str, vertex_buffer_data: &[u8], index_buffer_data: &[u8]) {
     let vertex_buffer = self.device.upload_data_slice(vertex_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::VERTEX | BufferUsage::COPY_SRC);
-    let index_buffer = if index_buffer_data.len() != 0 {
+    let index_buffer = if !index_buffer_data.is_empty() {
       Some(self.device.upload_data_slice(index_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::INDEX | BufferUsage::COPY_SRC))
     } else {
       None
@@ -188,7 +188,7 @@ impl<P: Platform> AssetManager<P> {
       indices: index_buffer,
       parts: vec![MeshRange {
         start: 0,
-        count: if index_buffer_data.len() == 0 { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
+        count: if index_buffer_data.is_empty() { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
       }]
     });
     self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal, None);
@@ -375,11 +375,11 @@ impl<P: Platform> AssetManager<P> {
     file_opt
   }
 
-  fn find_loader<'a>(file: &mut AssetFile, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a Box<dyn AssetLoader<P>>> {
+  fn find_loader<'a>(file: &mut AssetFile, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a dyn AssetLoader<P>> {
     let start = match &mut file.data {
       AssetFileData::File(file) => { file.seek(SeekFrom::Current(0)) }
       AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Current(0)) }
-    }.expect(format!("Failed to read file: {:?}", file.path.as_str()).as_str());
+    }.unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
     let loader_opt = loaders.iter().find(|loader| {
       let loader_matches = loader.matches(file);
       match &mut file.data {
@@ -388,7 +388,7 @@ impl<P: Platform> AssetManager<P> {
       }
       loader_matches
     });
-    loader_opt
+    loader_opt.map(|b| b.as_ref())
   }
 
   fn load_asset(&self, mut file: AssetFile, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) {

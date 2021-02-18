@@ -136,7 +136,7 @@ impl Platform for SDLPlatform {
 
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     let extensions = self.window.vulkan_instance_extensions().unwrap();
-    return Ok(Arc::new(VkInstance::new(&extensions, debug_layers)));
+    Ok(Arc::new(VkInstance::new(&extensions, debug_layers)))
   }
 
   fn input_state(&self) -> InputState {

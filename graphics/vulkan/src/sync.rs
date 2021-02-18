@@ -29,14 +29,14 @@ impl VkSemaphore {
     let semaphore = unsafe {
       device.create_semaphore(&info, None)
     }.unwrap();
-    return VkSemaphore {
+    VkSemaphore {
       semaphore,
       device: device.clone()
-    };
+    }
   }
 
   pub fn get_handle(&self) -> &vk::Semaphore {
-    return &self.semaphore;
+    &self.semaphore
   }
 }
 
@@ -72,11 +72,11 @@ impl VkFenceInner {
     unsafe {
       vk_device.reset_fences(&[fence]).unwrap();
     }
-    return Self {
+    Self {
       device: device.clone(),
       state: AtomicCell::new(VkFenceState::Ready),
       fence: Mutex::new(fence)
-    };
+    }
   }
 
   pub fn reset(&self) {
@@ -89,7 +89,7 @@ impl VkFenceInner {
   }
 
   pub fn get_handle(&self) -> MutexGuard<vk::Fence> {
-    return self.fence.lock().unwrap();
+    self.fence.lock().unwrap()
   }
 
   pub fn await_signal(&self) {

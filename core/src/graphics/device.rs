@@ -30,7 +30,7 @@ pub trait Device<B: Backend> {
   fn upload_data<T>(&self, data: &T, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn upload_data_slice<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn upload_data_raw(&self, data: &[u8], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer>;
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>, name: Option<&str>) -> Arc<B::Shader>;
+  fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<B::Shader>;
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;
   fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> Arc<B::TextureShaderResourceView>;
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, graph_template: &B::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<B::GraphicsPipeline>;

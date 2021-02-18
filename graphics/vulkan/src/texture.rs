@@ -69,16 +69,16 @@ impl VkTexture {
   }
 
   pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, info: TextureInfo) -> Self {
-    return VkTexture {
+    VkTexture {
       image,
       device: device.clone(),
       info,
       allocation: None
-    };
+    }
   }
 
   pub fn get_handle(&self) -> &vk::Image {
-    return &self.image;
+    &self.image
   }
 }
 
@@ -181,7 +181,7 @@ impl VkTextureView {
       anisotropy_enable: (info.max_anisotropy.abs() >= 1.0f32) as u32,
       max_anisotropy: info.max_anisotropy,
       compare_enable: info.compare_op.is_some() as u32,
-      compare_op: info.compare_op.map_or(vk::CompareOp::ALWAYS, |comp| compare_func_to_vk(comp)),
+      compare_op: info.compare_op.map_or(vk::CompareOp::ALWAYS, compare_func_to_vk),
       min_lod: info.min_lod,
       max_lod: info.max_lod,
       border_color: vk::BorderColor::INT_OPAQUE_BLACK,
@@ -228,12 +228,12 @@ impl VkTextureView {
       ..Default::default()
     };
     let view = unsafe { device.create_image_view(&vk_info, None).unwrap() };
-    return VkTextureView {
+    VkTextureView {
       texture: texture.clone(),
       view,
       sampler: None,
       device: device.clone()
-    };
+    }
   }
 
   #[inline]

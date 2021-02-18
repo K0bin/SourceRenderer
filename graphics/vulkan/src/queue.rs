@@ -56,7 +56,7 @@ enum VkVirtualSubmission {
 
 impl VkQueue {
   pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, shared: &Arc<VkShared>) -> Self {
-    return VkQueue {
+    Self {
       info,
       queue: Mutex::new(VkQueueInner {
         virtual_queue: Vec::new(),
@@ -64,19 +64,19 @@ impl VkQueue {
       }),
       device: device.clone(),
       shared: shared.clone()
-    };
+    }
   }
 
   pub fn get_queue_family_index(&self) -> u32 {
-    return self.info.queue_family_index as u32;
+    self.info.queue_family_index as u32
   }
 
   pub fn create_command_pool(&self, buffer_allocator: &Arc<BufferAllocator>) -> VkCommandPool {
-    return VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.shared, buffer_allocator);
+    VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.shared, buffer_allocator)
   }
 
   pub fn supports_presentation(&self) -> bool {
-    return self.info.supports_presentation;
+    self.info.supports_presentation
   }
 
   pub fn process_submissions(&self) {
@@ -94,7 +94,7 @@ impl VkQueue {
         VkVirtualSubmission::CommandBuffer {
           command_buffer, wait_semaphores, wait_stages, signal_semaphores, fence
         } => {
-          if fence.is_none() && wait_semaphores.len() == 0 && signal_semaphores.len() == 0 {
+          if fence.is_none() && wait_semaphores.is_empty() && signal_semaphores.is_empty() {
             if let Some(last_info) = batch.last_mut() {
               if last_info.wait_semaphore_count == 0 && last_info.signal_semaphore_count == 0 && command_buffers.len() < command_buffers.capacity() {
                 command_buffers.push(command_buffer);
@@ -105,7 +105,7 @@ impl VkQueue {
           }
 
           if !append {
-            if fence.is_some() {
+            if let Some(fence) = fence {
               if !batch.is_empty() {
                 unsafe {
                   let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
@@ -128,7 +128,6 @@ impl VkQueue {
                 ..Default::default()
               };
 
-              let fence = fence.unwrap();
               fence.mark_submitted();
               let fence_handle = fence.get_handle();
               unsafe {
@@ -244,9 +243,9 @@ impl VkQueue {
 
     let mut cmd_buffer_mut = command_buffer;
     cmd_buffer_mut.mark_submitted();
-    let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
-    let signal_semaphore_handles = signal_semaphores.into_iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
-    let stage_masks = wait_semaphores.into_iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<SmallVec<[vk::PipelineStageFlags; 4]>>();
+    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let signal_semaphore_handles = signal_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let stage_masks = wait_semaphores.iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<SmallVec<[vk::PipelineStageFlags; 4]>>();
 
     let vk_cmd_buffer = *cmd_buffer_mut.get_handle();
     let submission = VkVirtualSubmission::CommandBuffer {
@@ -254,7 +253,7 @@ impl VkQueue {
       wait_semaphores: wait_semaphore_handles,
       wait_stages: stage_masks,
       signal_semaphores: signal_semaphore_handles,
-      fence: fence.map(|f| f.clone())
+      fence: fence.cloned()
     };
 
     let mut guard = self.queue.lock().unwrap();
@@ -265,7 +264,7 @@ impl VkQueue {
     if wait_semaphores.len() > 4 {
       panic!("Can only wait for 4 semaphores.");
     }
-    let wait_semaphore_handles = wait_semaphores.into_iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
 
     let submission = VkVirtualSubmission::Present {
       wait_semaphores: wait_semaphore_handles,

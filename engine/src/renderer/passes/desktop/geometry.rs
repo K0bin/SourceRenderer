@@ -62,8 +62,8 @@ pub(in super::super::super) fn build_pass<P: Platform>(
   };
 
   let pipeline_info: GraphicsPipelineInfo<P::GraphicsBackend> = GraphicsPipelineInfo {
-    vs: vertex_shader.clone(),
-    fs: Some(fragment_shader.clone()),
+    vs: vertex_shader,
+    fs: Some(fragment_shader),
     gs: None,
     tcs: None,
     tes: None,

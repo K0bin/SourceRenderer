@@ -162,8 +162,8 @@ impl VkRenderGraphTemplate {
 
     let mut attachment_metadata = HashMap::<String, ResourceMetadata>::new();
     let mut passes: Vec<VkPassTemplate> = Vec::new();
-    let mut pass_infos = info.passes.clone();
-    let reordered_passes = VkRenderGraphTemplate::reorder_passes(&mut pass_infos, &mut attachment_metadata, &info.external_resources, info.swapchain_format, info.swapchain_sample_count);
+    let pass_infos = info.passes.clone();
+    let reordered_passes = VkRenderGraphTemplate::reorder_passes(&pass_infos, &mut attachment_metadata, &info.external_resources, info.swapchain_format, info.swapchain_sample_count);
 
     let mut reordered_passes_queue: VecDeque<PassInfo> = VecDeque::from_iter(reordered_passes);
     let mut pass_index: u32 = 0;
@@ -239,12 +239,12 @@ impl VkRenderGraphTemplate {
     self.does_render_to_frame_buffer
   }
 
-  fn reorder_passes(passes: &Vec<PassInfo>,
+  fn reorder_passes(passes: &[PassInfo],
                     metadata: &mut HashMap<String, ResourceMetadata>,
-                    external_resources: &Vec<ExternalOutput>,
+                    external_resources: &[ExternalOutput],
                     swapchain_format: Format,
                     swapchain_samples: SampleCount) -> Vec<PassInfo> {
-    let mut passes_mut = passes.clone();
+    let mut passes_mut = passes.to_owned();
     let mut reordered_passes = vec![];
 
     for external in external_resources {
@@ -553,11 +553,12 @@ impl VkRenderGraphTemplate {
       }
       reordered_passes.push(pass);
     }
-    return reordered_passes;
+
+    reordered_passes
   }
 
   #[allow(unused_assignments, unused_variables)] // TODO
-  fn build_render_pass(passes: &Vec<GraphicsSubpassInfo>,
+  fn build_render_pass(passes: &[GraphicsSubpassInfo],
                        name: &str,
                        device: &Arc<RawVkDevice>,
                        pass_index: u32,

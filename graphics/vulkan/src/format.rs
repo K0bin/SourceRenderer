@@ -3,7 +3,7 @@ use ash::vk;
 use sourcerenderer_core::graphics::Format;
 
 pub fn format_to_vk(format: Format) -> vk::Format {
-  return match format {
+  match format {
     Format::RGBA8 => vk::Format::R8G8B8A8_UNORM,
     Format::R32Float => vk::Format::R32_SFLOAT,
     Format::RG32Float => vk::Format::R32G32_SFLOAT,
@@ -21,5 +21,5 @@ pub fn format_to_vk(format: Format) -> vk::Format {
     Format::DXT3 => vk::Format::BC2_UNORM_BLOCK,
     Format::DXT5 => vk::Format::BC3_UNORM_BLOCK,
     _ => vk::Format::R8G8B8A8_UINT
-  };
+  }
 }

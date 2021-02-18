@@ -35,7 +35,7 @@ impl<R: Read + Seek + Send + Sync> AssetContainer for VPKContainer<R> {
   fn load(&self, path: &str) -> Option<AssetFile> {
     let entry = self.package.find_entry(path);
     entry
-      .and_then(|entry| Some(self.package.read_entry(entry, false).unwrap()))
+      .map(|entry| self.package.read_entry(entry, false).unwrap())
       .map(|data| AssetFile {
         path: path.to_string(),
         data: AssetFileData::Memory(Cursor::new(data))

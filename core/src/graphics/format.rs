@@ -25,22 +25,18 @@ pub enum Format {
 
 impl Format {
   pub fn is_depth(&self) -> bool {
-    match self {
+    matches!(self,
       Format::D32
       | Format::D16
       | Format::D16S8
       | Format::D24S8
-      | Format::D32S8 => true,
-      _ => false
-    }
+      | Format::D32S8)
   }
 
   pub fn is_stencil(&self) -> bool {
-    match self {
-      | Format::D16S8
+    matches!(self,
+      Format::D16S8
       | Format::D24S8
-      | Format::D32S8 => true,
-      _ => false
-    }
+      | Format::D32S8)
   }
 }

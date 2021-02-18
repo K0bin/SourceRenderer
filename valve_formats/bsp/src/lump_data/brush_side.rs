@@ -26,11 +26,11 @@ impl LumpData for BrushSide {
     let texture_info = reader.read_i16()?;
     let displacement_info = reader.read_i16()?;
     let is_bevel_plane = reader.read_i16()? != 0;
-    return Ok(Self {
+    Ok(Self {
       plane_number,
       texture_info,
       displacement_info,
       is_bevel_plane
-    });
+    })
   }
 }

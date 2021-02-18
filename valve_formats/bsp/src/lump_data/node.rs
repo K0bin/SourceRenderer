@@ -50,7 +50,7 @@ impl LumpData for Node {
     let area = reader.read_u16()?;
     let padding = reader.read_u16()?;
 
-    return Ok(Self {
+    Ok(Self {
       plane_number,
       children,
       mins,
@@ -59,6 +59,6 @@ impl LumpData for Node {
       faces_count,
       area,
       padding,
-    });
+    })
   }
 }

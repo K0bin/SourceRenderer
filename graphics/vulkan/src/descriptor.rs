@@ -265,11 +265,13 @@ impl VkDescriptorSet {
             continue;
           }
 
-          let mut write = vk::WriteDescriptorSet::default();
-          write.dst_set = set;
-          write.dst_binding = binding as u32;
-          write.dst_array_element = 0;
-          write.descriptor_count = 1;
+          let mut write = vk::WriteDescriptorSet {
+            dst_set: set,
+            dst_binding: binding as u32,
+            dst_array_element: 0,
+            descriptor_count: 0,
+            ..Default::default()
+          };
 
           match resource {
             VkBoundResource::StorageBuffer(buffer) => {
@@ -514,7 +516,7 @@ impl VkBindingManager {
       });
     }
     let mut set_binding = VkDescriptorSetBinding {
-      set: set.clone(),
+      set,
       dynamic_offsets: Default::default(),
       dynamic_offset_count: 0
     };
@@ -533,7 +535,7 @@ impl VkBindingManager {
         }
       })
     }
-    return Some(set_binding);
+    Some(set_binding)
   }
 
   pub fn finish(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout) -> [Option<VkDescriptorSetBinding>; 4] {
@@ -554,7 +556,7 @@ impl VkBindingManager {
       return;
     }
 
-    for (_, entries) in &mut self.permanent_cache {
+    for entries in &mut self.permanent_cache.values_mut() {
       entries.retain(|entry| {
         frame - entry.last_used_frame >= Self::MAX_FRAMES_SET_UNUSED
       });

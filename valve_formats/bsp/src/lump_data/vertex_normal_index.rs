@@ -21,8 +21,8 @@ impl LumpData for VertexNormalIndex {
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let index = reader.read_u32()?;
-    return Ok(Self {
+    Ok(Self {
       index
-    });
+    })
   }
 }

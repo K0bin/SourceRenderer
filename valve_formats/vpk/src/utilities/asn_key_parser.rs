@@ -62,8 +62,7 @@ impl AsnKeyParser {
     if first.len() != second.len() {
       return false;
     }
-
-    !first.iter().enumerate().find(|(i, t)| **t != second[*i]).is_some()
+    !first.iter().enumerate().any(|(i, t)| *t != second[i])
   }
 
   pub fn parse_rsa_public_key(&mut self) -> Result<RSAParameters, BerDecodeError> {
@@ -231,7 +230,7 @@ impl AsnParser {
     }
 
     let values: Vec<u8> = self.octets.drain(0..octet_count as usize).collect();
-    return Ok(values.into_boxed_slice());
+    Ok(values.into_boxed_slice())
   }
 
   pub fn is_next_null(&self) -> bool {

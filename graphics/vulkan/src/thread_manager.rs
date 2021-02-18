@@ -65,7 +65,7 @@ impl VkThreadManager {
              transfer_queue: &Option<Arc<VkQueue>>,
              shared: &Arc<VkShared>,
              max_prepared_frames: u32) -> Self {
-    return VkThreadManager {
+    VkThreadManager {
       device: device.clone(),
       threads: ThreadLocal::new(),
       graphics_queue: graphics_queue.clone(),
@@ -75,7 +75,7 @@ impl VkThreadManager {
       max_prepared_frames,
       frame_counter: AtomicU64::new(0),
       prepared_frames: Mutex::new(VecDeque::new())
-    };
+    }
   }
 
   pub fn begin_frame(&self) {
@@ -131,13 +131,13 @@ impl VkThreadLocal {
       frames.push(VkFrameLocal::new(device, graphics_queue, compute_queue, transfer_queue, &buffer_allocator))
     }
 
-    return VkThreadLocal {
+    VkThreadLocal {
       device: device.clone(),
       frames,
       frame_counter: 0u64,
       buffer_allocator,
       disable_send_sync: PhantomData
-    };
+    }
   }
 
   fn set_frame(&mut self, frame: u64) {

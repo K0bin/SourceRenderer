@@ -28,10 +28,10 @@ impl MapHeader {
       let lump = Lump::read(reader)?;
       lumps[i] = lump;
     }
-    return Ok(MapHeader {
+    Ok(MapHeader {
       identifier,
       version,
       lumps,
-    });
+    })
   }
 }

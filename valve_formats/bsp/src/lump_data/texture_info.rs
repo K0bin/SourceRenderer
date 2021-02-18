@@ -53,13 +53,13 @@ impl LumpData for TextureInfo {
     let flags = SurfaceFlags::from_bits(flags_bits).unwrap();
     let texture_data = reader.read_i32()?;
 
-    return Ok(Self {
+    Ok(Self {
       texture_vecs_s,
       texture_vecs_t,
       lightmap_vecs_s,
       lightmap_vecs_t,
       flags,
       texture_data
-    });
+    })
   }
 }

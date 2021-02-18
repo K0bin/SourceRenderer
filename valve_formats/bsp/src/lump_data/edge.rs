@@ -24,8 +24,8 @@ impl LumpData for Edge {
       reader.read_u16()?,
       reader.read_u16()?
     ];
-    return Ok(Self {
+    Ok(Self {
       vertex_index
-    });
+    })
   }
 }

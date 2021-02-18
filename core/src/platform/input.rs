@@ -67,10 +67,10 @@ impl InputState {
     self.mouse_buttons.bit_test(mouse_button as usize)
   }
   pub fn mouse_position(&self) -> Vec2I {
-    self.mouse_pos.clone()
+    self.mouse_pos
   }
   pub fn finger_position(&self, finger_index: u32) -> Vec2 {
-    self.finger_pos[finger_index as usize].clone()
+    self.finger_pos[finger_index as usize]
   }
 }
 

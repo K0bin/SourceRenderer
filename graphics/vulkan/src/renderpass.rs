@@ -21,7 +21,7 @@ impl VkRenderPass {
   }
 
   pub fn get_handle(&self) -> &vk::RenderPass {
-    return &self.render_pass;
+    &self.render_pass
   }
 }
 

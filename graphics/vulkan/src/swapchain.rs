@@ -50,7 +50,7 @@ impl VkSwapchain {
     let vk_device = &device.device;
     let instance = &device.instance;
 
-    return unsafe {
+    unsafe {
       let physical_device = device.physical_device;
       let present_modes = match surface.get_present_modes(&physical_device) {
         Ok(present_modes) => present_modes,
@@ -203,7 +203,7 @@ impl VkSwapchain {
   }
 
   pub fn pick_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
-    return if formats.len() == 1 && formats[0].format == vk::Format::UNDEFINED {
+    if formats.len() == 1 && formats[0].format == vk::Format::UNDEFINED {
       vk::SurfaceFormatKHR {
         format: vk::Format::B8G8R8A8_UNORM,
         color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR
@@ -232,23 +232,23 @@ impl VkSwapchain {
       if let Some(mode) = present_modes
         .iter()
         .filter(|&&mode| mode == vk::PresentModeKHR::IMMEDIATE)
-        .nth(0) {
+        .next() {
         return *mode;
       }
     }
 
-    return *present_modes
+    *present_modes
       .iter()
       .filter(|&&mode| mode == vk::PresentModeKHR::FIFO)
-      .nth(0).expect("No compatible present mode found");
+      .next().expect("No compatible present mode found")
   }
 
   pub fn get_loader(&self) -> &SwapchainLoader {
-    return &self.swapchain_loader;
+    &self.swapchain_loader
   }
 
   pub fn get_handle(&self) -> MutexGuard<vk::SwapchainKHR> {
-    return self.swapchain.lock().unwrap();
+    self.swapchain.lock().unwrap()
   }
 
   pub fn get_textures(&self) -> &[Arc<VkTexture>] {
@@ -256,7 +256,7 @@ impl VkSwapchain {
   }
 
   pub fn get_views(&self) -> &[Arc<VkTextureView>] {
-    return &self.views[..];
+    &self.views[..]
   }
 
   pub fn get_width(&self) -> u32 {
@@ -267,6 +267,7 @@ impl VkSwapchain {
     self.textures.first().unwrap().get_info().height
   }
 
+  #[allow(clippy::logic_bug)]
   pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
     while self.presented_image.load(Ordering::SeqCst) != self.acquired_image.load(Ordering::SeqCst) {}
     let result = {

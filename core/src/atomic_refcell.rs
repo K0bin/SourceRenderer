@@ -46,6 +46,8 @@
 
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
+#![allow(clippy::redundant_field_names)]
+#![allow(clippy::should_implement_trait)]
 
 use core::cell::UnsafeCell;
 use core::cmp;

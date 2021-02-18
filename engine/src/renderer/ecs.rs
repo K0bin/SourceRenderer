@@ -44,8 +44,8 @@ fn renderer<P: Platform>(world: &mut SubWorld,
   let camera_entry = world.entry_ref(active_camera.0).ok();
   let transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<InterpolatedTransform>().ok());
   let camera_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<Camera>().ok());
-  if camera_component.is_some() && transform_component.is_some() {
-    renderer.update_camera_transform(transform_component.unwrap().0, camera_component.unwrap().fov);
+  if let (Some(camera_component), Some(transform_component)) = (camera_component, transform_component) {
+    renderer.update_camera_transform(transform_component.0, camera_component.fov);
   }
 
   let mut static_components_query = <(Entity, &StaticRenderableComponent, &InterpolatedTransform)>::query();
@@ -73,7 +73,7 @@ fn renderer<P: Platform>(world: &mut SubWorld,
     .filter(component::<StaticRenderableComponent>() & maybe_changed::<InterpolatedTransform>());
 
   for (entity, transform) in static_components_update_transforms_query.iter(world) {
-    renderer.update_transform(*entity, transform.0.clone());
+    renderer.update_transform(*entity, transform.0);
   }
 
   registered_static_renderables.0.retain(|entity| {

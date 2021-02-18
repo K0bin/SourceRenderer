@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::io::{Read, Error as IOError};
 use crate::read_util::RawDataRead;
 
-pub const SHADER_LIGHT_MAPPED_GENERIC: &'static str = "lightmappedgeneric";
-pub const BASE_TEXTURE_NAME: &'static str = "basetexture";
-pub const PATCH: &'static str = "patch";
-pub const PATCH_INCLUDE: &'static str = "include";
+pub const SHADER_LIGHT_MAPPED_GENERIC: &str = "lightmappedgeneric";
+pub const BASE_TEXTURE_NAME: &str = "basetexture";
+pub const PATCH: &str = "patch";
+pub const PATCH_INCLUDE: &str = "include";
 #[allow(dead_code)]
-const PATCH_INSERT: &'static str = "insert";
+const PATCH_INSERT: &str = "insert";
 
 #[derive(Debug)]
 pub enum VMTError {
@@ -26,11 +26,11 @@ impl VMTMaterial {
   pub fn new(reader: &mut dyn Read, length: u32) -> Result<Self, VMTError> {
     let mut values = HashMap::<String, String>::new();
 
-    let data = reader.read_data(length as usize).map_err(|e| VMTError::IOError(e))?;
+    let data = reader.read_data(length as usize).map_err(VMTError::IOError)?;
     let mut text = String::from_utf8(data.to_vec()).map_err(|_e| VMTError::FileError("Could not read text".to_string()))?;
     text = text.replace("\r\n", "\n");
     text = text.replace('\t', " ");
-    text = text.trim_end_matches("\0").to_string();
+    text = text.trim_end_matches('\0').to_string();
     let block_start = text.find('{').ok_or_else(|| VMTError::FileError("Could not find start of material block".to_string()))?;
     let shader_name = remove_comments(&text[0 .. block_start]).replace("\"", "").trim().to_lowercase();
 
@@ -40,7 +40,7 @@ impl VMTMaterial {
 
     let block_end = text.find('}').ok_or_else(|| VMTError::FileError("Could not find end of material block".to_string()))?;
     let block = &text[block_start .. block_end];
-    let lines = block.split("\n");
+    let lines = block.split('\n');
     for line in lines {
       let trimmed_line = line.trim().replace(&['$', '%', '"', '\''][..], "");
       if trimmed_line.is_empty() || trimmed_line == "{" || trimmed_line == "}" || trimmed_line == PATCH_INCLUDE {
@@ -98,9 +98,9 @@ fn remove_comments(text: &str) -> &str {
     return text;
   }
   let comment_start = comment_start.unwrap() + 2;
-  let comment_end = text[comment_start..].find("\n");
-  if comment_end.is_some() {
-    &text[comment_start .. (comment_end.unwrap() - comment_start)]
+  let comment_end = text[comment_start..].find('\n');
+  if let Some(comment_end) = comment_end {
+    &text[comment_start .. (comment_end - comment_start)]
   } else {
     &text[comment_start ..]
   }

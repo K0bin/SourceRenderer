@@ -20,6 +20,7 @@ pub trait Buffer {
     where Self: Sized, T: 'static + Send + Sync + Sized + Clone;
   fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
     where Self: Sized, T: 'static + Send + Sync + Sized + Clone;
+
   unsafe fn map_unsafe(&self, invalidate: bool) -> Option<*mut u8>;
   unsafe fn unmap_unsafe(&self, flush: bool);
 

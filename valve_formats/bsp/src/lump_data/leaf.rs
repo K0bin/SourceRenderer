@@ -39,12 +39,12 @@ impl ColorRGBExp32 {
     let g = reader.read_u8()?;
     let b = reader.read_u8()?;
     let exponent = reader.read_i8()?;
-    return Ok(Self {
+    Ok(Self {
       r,
       g,
       b,
       exponent,
-    });
+    })
   }
 
   pub fn to_u32_color(&self) -> u32 {
@@ -117,7 +117,7 @@ impl LumpData for Leaf {
     }
     let padding = reader.read_i16()?;
 
-    return Ok(Self {
+    Ok(Self {
       contents: BrushContents::new(contents),
       cluster,
       area,
@@ -131,6 +131,6 @@ impl LumpData for Leaf {
       leaf_water_data_id,
       ambient_lighting,
       padding,
-    });
+    })
   }
 }

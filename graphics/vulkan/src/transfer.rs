@@ -6,7 +6,6 @@ use std::collections::VecDeque;
 use ash::version::DeviceV1_0;
 use crate::buffer::VkBufferSlice;
 use crate::VkFence;
-use rayon;
 
 use sourcerenderer_core::graphics::Texture;
 use std::cmp::{max, min};

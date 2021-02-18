@@ -21,12 +21,12 @@ impl<R: Read + Seek> Map<R> {
     reader.seek(SeekFrom::Start(0))?;
     let header = MapHeader::read(&mut reader)?;
     let game_lumps = Self::read_game_lump(&header, &mut reader)?;
-    return Ok(Map {
+    Ok(Map {
       name: name.to_owned(),
       header,
       game_lumps,
       reader,
-    });
+    })
   }
 
   pub fn read_game_lump(header: &MapHeader, read: &mut R) -> IOResult<GameLumps> {

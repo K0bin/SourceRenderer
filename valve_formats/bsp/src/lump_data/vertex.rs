@@ -22,8 +22,8 @@ impl LumpData for Vertex {
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let vec3 = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    return Ok(Self {
+    Ok(Self {
       position: vec3
-    });
+    })
   }
 }

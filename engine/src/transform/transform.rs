@@ -115,7 +115,7 @@ fn propagade_transforms(entity: &Entity,
   let transform_dirty = entry.get_component::<TransformDirty>().unwrap();
   let dirty = parent_dirty || transform_dirty.0;
   let new_global_transform = if dirty {
-    Some(GlobalTransform(parent_transform.clone() * Matrix4::from(transform)))
+    Some(GlobalTransform(*parent_transform * Matrix4::from(transform)))
   } else {
     None
   };

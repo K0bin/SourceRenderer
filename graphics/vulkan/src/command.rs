@@ -30,6 +30,7 @@ use crate::descriptor::{VkBindingManager, VkBoundResource};
 use crate::texture::VkTextureView;
 use crate::lifetime_tracker::VkLifetimeTrackers;
 
+#[allow(clippy::vec_box)]
 pub struct VkCommandPool {
   raw: Arc<RawVkCommandPool>,
   primary_buffers: Vec<Box<VkCommandBuffer>>,
@@ -51,7 +52,7 @@ impl VkCommandPool {
 
     let (sender, receiver) = unbounded();
 
-    return Self {
+    Self {
       raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
       primary_buffers: Vec::new(),
       secondary_buffers: Vec::new(),
@@ -60,7 +61,7 @@ impl VkCommandPool {
       shared: shared.clone(),
       queue_family_index,
       buffer_allocator: buffer_allocator.clone()
-    };
+    }
   }
 
   pub fn get_command_buffer(&mut self, frame: u64, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
@@ -72,7 +73,7 @@ impl VkCommandPool {
 
     let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, self.queue_family_index, &self.shared, &self.buffer_allocator)));
     buffer.begin(frame);
-    return VkCommandBufferRecorder::new(buffer, self.sender.clone());
+    VkCommandBufferRecorder::new(buffer, self.sender.clone())
   }
 }
 
@@ -128,7 +129,7 @@ impl VkCommandBuffer {
       ..Default::default()
     };
     let mut buffers = unsafe { device.allocate_command_buffers(&buffers_create_info) }.unwrap();
-    return VkCommandBuffer {
+    VkCommandBuffer {
       buffer: buffers.pop().unwrap(),
       pool: pool.clone(),
       device: device.clone(),
@@ -143,11 +144,11 @@ impl VkCommandBuffer {
       descriptor_manager: VkBindingManager::new(device),
       buffer_allocator: buffer_allocator.clone(),
       frame: 0
-    };
+    }
   }
 
   pub fn get_handle(&self) -> &vk::CommandBuffer {
-    return &self.buffer;
+    &self.buffer
   }
 
   pub fn get_type(&self) -> CommandBufferType {

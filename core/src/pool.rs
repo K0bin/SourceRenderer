@@ -76,13 +76,13 @@ impl<T> Pool<T> {
   pub fn get(&self) -> Recyclable<T> {
     let item = self.receiver.try_recv().ok();
 
-    return item.map_or_else(|| Recyclable {
+    item.map_or_else(|| Recyclable {
       item: MaybeUninit::new((self.initializer)()),
       sender: self.sender.clone()
     }, |i| Recyclable {
       item: MaybeUninit::new(i),
       sender: self.sender.clone()
-    });
+    })
   }
 }
 

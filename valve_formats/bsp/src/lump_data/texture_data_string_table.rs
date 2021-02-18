@@ -19,6 +19,6 @@ impl LumpData for TextureDataStringTable {
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
     let value = reader.read_i32()?;
-    return Ok(Self(value));
+    Ok(Self(value))
   }
 }

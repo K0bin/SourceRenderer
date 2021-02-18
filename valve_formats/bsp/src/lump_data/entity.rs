@@ -13,13 +13,13 @@ impl Entities {
 
     let mut remaining_text = text.as_str();
     loop {
-      let block_begin = remaining_text.find("{");
+      let block_begin = remaining_text.find('{');
       if block_begin.is_none() {
         break;
       }
       let block_begin = block_begin.unwrap();
       remaining_text = &remaining_text[block_begin + 1..];
-      let block_end = remaining_text.find("}").expect("Unfinished block");
+      let block_end = remaining_text.find('}').expect("Unfinished block");
       let block = &remaining_text[..block_end];
       entities.push(Entity {
         key_values: parse_key_value(block, true)
@@ -61,9 +61,9 @@ impl Entity {
 pub fn parse_key_value(text: &str, turn_keys_lower_case: bool) -> HashMap<String, String> {
   let mut data = HashMap::<String, String>::new();
   let text = text.replace("\r\n", "\n");
-  let lines = text.trim().split("\n");
+  let lines = text.trim().split('\n');
   for line in lines {
-    let space_pos = line.find(" ").unwrap();
+    let space_pos = line.find(' ').unwrap();
     let key = (&line[..space_pos]).trim().trim_matches('\"').trim();
     let value = (&line[space_pos + 1..]).trim().trim_matches('\"').trim();
     let owned_key = if turn_keys_lower_case {

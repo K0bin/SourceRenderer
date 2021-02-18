@@ -96,7 +96,7 @@ impl VkBuffer {
   }
 
   pub fn get_handle(&self) -> &vk::Buffer {
-    return &self.buffer;
+    &self.buffer
   }
 
   fn return_slice(&self, slice: VkBufferSlice) {
@@ -146,7 +146,7 @@ impl Buffer for VkBufferSlice {
         allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
       }
     }
-    return self.buffer.map_ptr.map(|ptr| ptr.add(self.offset));
+    self.buffer.map_ptr.map(|ptr| ptr.add(self.offset))
   }
 
   unsafe fn unmap_unsafe(&self, flush: bool) {
@@ -179,7 +179,7 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   flags |= usage_bits.rotate_right(BufferUsage::UNIFORM_TEXEL.bits().trailing_zeros() - VkUsage::UNIFORM_TEXEL_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_TEXEL_BUFFER.as_raw();
   flags |= usage_bits.rotate_right(BufferUsage::COPY_SRC.bits().trailing_zeros() - VkUsage::TRANSFER_SRC.as_raw().trailing_zeros()) & VkUsage::TRANSFER_SRC.as_raw();
   flags |= usage_bits.rotate_right(BufferUsage::COPY_DST.bits().trailing_zeros() - VkUsage::TRANSFER_DST.as_raw().trailing_zeros()) & VkUsage::TRANSFER_DST.as_raw();
-  return vk::BufferUsageFlags::from_raw(flags);
+  vk::BufferUsageFlags::from_raw(flags)
 }
 
 fn align_up(value: usize, alignment: usize) -> usize {
@@ -320,7 +320,7 @@ impl BufferAllocator {
     BufferAllocator {
       device: device.clone(),
       buffers: Mutex::new(buffers),
-      device_limits: limits2.properties.limits.clone()
+      device_limits: limits2.properties.limits
     }
   }
 

@@ -64,7 +64,7 @@ impl<R: Read + Seek> VtfTexture<R> {
       let level_height = max(1, self.header.height >> reversed_level) as u32;
       let level_image_size = calculate_image_size(level_width, level_height, 1, self.header.high_res_image_format) as u64;
       let frames_count = self.header.frames as u64;
-      let faces_count = 1 as u64; // TODO
+      let faces_count = 1u64; // TODO
       let slices_count = max(1, self.header.depth as u64); // does this perhaps scale with the mip level in some cases?
       offset += level_image_size * frames_count * faces_count * slices_count;
     }

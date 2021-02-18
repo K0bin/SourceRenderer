@@ -31,13 +31,13 @@ impl LumpData for BrushModel {
     let head_node = reader.read_i32()?;
     let first_face = reader.read_i32()?;
     let num_faces = reader.read_i32()?;
-    return Ok(Self {
+    Ok(Self {
       min,
       max,
       origin,
       head_node,
       first_face,
       num_faces
-    });
+    })
   }
 }

@@ -16,19 +16,19 @@ impl<T: Read + ?Sized> StringRead for T {
   fn read_null_terminated_string(&mut self) -> Result<String, StringReadError> {
     let mut buffer = Vec::<u8>::new();
     loop {
-      let char = self.read_u8().map_err(|e| StringReadError::IOError(e))?;
+      let char = self.read_u8().map_err(StringReadError::IOError)?;
       if char == 0 {
         break;
       }
       buffer.push(char);
     }
-    String::from_utf8(buffer).map_err(|e| StringReadError::StringConstructionError(e))
+    String::from_utf8(buffer).map_err(StringReadError::StringConstructionError)
   }
 
   fn read_fixed_length_null_terminated_string(&mut self, length: u32) -> Result<String, StringReadError> {
     let mut buffer = Vec::<u8>::with_capacity(length as usize);
     unsafe { buffer.set_len(length as usize); }
-    self.read_exact(&mut buffer).map_err(|e| StringReadError::IOError(e))?;
+    self.read_exact(&mut buffer).map_err(StringReadError::IOError)?;
     for i in 0..buffer.len() {
       let char = buffer[i];
       if char == 0 {
@@ -36,7 +36,7 @@ impl<T: Read + ?Sized> StringRead for T {
         break;
       }
     }
-    String::from_utf8(buffer).map_err(|e| StringReadError::StringConstructionError(e))
+    String::from_utf8(buffer).map_err(StringReadError::StringConstructionError)
   }
 }
 

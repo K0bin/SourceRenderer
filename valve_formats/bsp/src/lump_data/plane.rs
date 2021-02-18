@@ -26,10 +26,10 @@ impl LumpData for Plane {
     let normal = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let dist = reader.read_f32()?;
     let edge_type = reader.read_i32()?;
-    return Ok(Self {
+    Ok(Self {
       normal,
       dist,
       edge_type
-    });
+    })
   }
 }

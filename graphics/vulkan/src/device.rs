@@ -61,10 +61,10 @@ impl VkDevice {
       allocator,
       physical_device,
       instance: instance.clone(),
-      extensions: extensions.clone(),
-      graphics_queue_info: graphics_queue_info.clone(),
-      transfer_queue_info: transfer_queue_info.clone(),
-      compute_queue_info: compute_queue_info.clone()
+      extensions,
+      graphics_queue_info,
+      transfer_queue_info,
+      compute_queue_info
     });
 
     let shared = Arc::new(VkShared::new(&raw));
@@ -76,32 +76,32 @@ impl VkDevice {
 
     let compute_queue = compute_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
+      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared))
     });
 
     let transfer_queue = transfer_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info.clone(), vk_queue, &raw, &shared))
+      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared))
     });
 
     let context = Arc::new(VkThreadManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, min(3, max_surface_image_count)));
 
     let transfer = VkTransfer::new(&raw, &graphics_queue, &transfer_queue, &shared);
 
-    return VkDevice {
-      device: raw.clone(),
+    VkDevice {
+      device: raw,
       graphics_queue,
       compute_queue,
       transfer_queue,
       extensions,
       context,
       transfer
-    };
+    }
   }
 
   #[inline]
   pub fn get_inner(&self) -> &Arc<RawVkDevice> {
-    return &self.device;
+    &self.device
   }
 
   #[inline]
@@ -158,20 +158,20 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(slice)
   }
 
-  fn create_shader(&self, shader_type: ShaderType, bytecode: &Vec<u8>, name: Option<&str>) -> Arc<VkShader> {
-    return Arc::new(VkShader::new(&self.device, shader_type, bytecode, name));
+  fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<VkShader> {
+    Arc::new(VkShader::new(&self.device, shader_type, bytecode, name))
   }
 
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<VkTexture> {
-    return Arc::new(VkTexture::new(&self.device, info, name, vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST));
+    Arc::new(VkTexture::new(&self.device, info, name, vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST))
   }
 
   fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Arc<VkTextureView> {
-    return Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, info));
+    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, info))
   }
 
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, graph_template: &<VkBackend as Backend>::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
-    let pass = graph_template.passes.iter().find(|pass| pass.name.as_str() == pass_name).expect(format!("Can not find pass {} in render graph.", pass_name).as_str());
+    let pass = graph_template.passes.iter().find(|pass| pass.name.as_str() == pass_name).unwrap_or_else(|| panic!("Can not find pass {} in render graph.", pass_name));
     match &pass.pass_type {
       VkPassType::Graphics {
         render_pass, ..
@@ -229,12 +229,12 @@ impl Device<VkBackend> for VkDevice {
     self.transfer.init_texture(texture, buffer, mip_level, array_layer);
   }
 
-  fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
-    self.transfer.init_buffer(src_buffer, dst_buffer);
-  }
-
   fn init_texture_async(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Option<Arc<VkFence>> {
     self.transfer.init_texture_async(texture, buffer, mip_level, array_layer)
+  }
+
+  fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
+    self.transfer.init_buffer(src_buffer, dst_buffer);
   }
 
   fn flush_transfers(&self) {
@@ -247,10 +247,10 @@ impl Device<VkBackend> for VkDevice {
 }
 
 pub fn memory_usage_to_vma(memory_usage: MemoryUsage) -> vk_mem::MemoryUsage {
-  return match memory_usage {
+  match memory_usage {
     MemoryUsage::CpuOnly => vk_mem::MemoryUsage::CpuOnly,
     MemoryUsage::GpuOnly => vk_mem::MemoryUsage::GpuOnly,
     MemoryUsage::CpuToGpu => vk_mem::MemoryUsage::CpuToGpu,
     MemoryUsage::GpuToCpu => vk_mem::MemoryUsage::GpuToCpu,
-  };
+  }
 }

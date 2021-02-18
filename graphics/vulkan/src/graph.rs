@@ -87,8 +87,8 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
     let resource = self.resources.get(name);
     if resource.is_none() {
       let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
-      return if external.is_some() {
-        match external.unwrap() {
+      return if let Some(external) = external {
+        match external {
           ExternalResource::Buffer(buffer) => Ok(buffer),
           _ => Err(RenderGraphResourceError::WrongResourceType)
         }
@@ -124,8 +124,8 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
     let resource = self.resources.get(name);
     if resource.is_none() {
       let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
-      return if external.is_some() {
-        match external.unwrap() {
+      return if let Some(external) = external {
+        match external {
           ExternalResource::Texture(view) => Ok(view),
           _ => Err(RenderGraphResourceError::WrongResourceType)
         }
@@ -163,8 +163,8 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
     let resource = self.resources.get(name);
     if resource.is_none() {
       let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
-      return if external.is_some() {
-        match external.unwrap() {
+      return if let Some(external) = external {
+        match external {
           ExternalResource::Texture(view) => {
             let info = view.texture().get_info();
             Ok(TextureDimensions {
@@ -255,7 +255,7 @@ impl VkRenderGraph {
     }
 
     let resource_metadata = template.resources();
-    for (_name, attachment_info) in resource_metadata {
+    for attachment_info in resource_metadata.values() {
       let has_history_resource = if let Some(history_usage) = attachment_info.history_usage.as_ref() {
         history_usage.first_used_in_pass_index >= attachment_info.produced_in_pass_index
       } else {
@@ -550,7 +550,7 @@ impl VkRenderGraph {
                   } else {
                     let resource = external_resources
                         .and_then(|r| r.get(name.as_str()))
-                        .expect(format!("Can't find resource {}", name).as_str());
+                        .unwrap_or_else(|| panic!("Can't find resource {}", name));
                     let resource_view = match resource {
                       ExternalResource::Texture(view) => view,
                       _ => unreachable!()
@@ -581,7 +581,7 @@ impl VkRenderGraph {
                     },
                     ..Default::default()
                   };
-                  let mut image_barrier_b = image_barrier.clone();
+                  let mut image_barrier_b = image_barrier;
 
                   if let Some(texture_b) = texture_b {
                     uses_history_resources = true;
@@ -621,7 +621,7 @@ impl VkRenderGraph {
                   } else {
                     let resource = external_resources
                         .and_then(|r| r.get(name.as_str()))
-                        .expect(format!("Can't find resource {}", name).as_str());
+                        .unwrap_or_else(|| panic!("Can't find resource {}", name));
                     let resource_buffer = match resource {
                       ExternalResource::Buffer(buffer) => buffer,
                       _ => unreachable!()
@@ -640,7 +640,7 @@ impl VkRenderGraph {
                     size: length as u64,
                     ..Default::default()
                   };
-                  let mut buffer_barrier_b = buffer_barrier.clone();
+                  let mut buffer_barrier_b = buffer_barrier;
 
                   if let Some(buffer_b) = buffer_b {
                     uses_history_resources = true;
@@ -745,7 +745,7 @@ impl VkRenderGraph {
                   } else {
                     let resource = external_resources
                         .and_then(|r| r.get(name.as_str()))
-                        .expect(format!("Can't find resource {}", name).as_str());
+                        .unwrap_or_else(|| panic!("Can't find resource {}", name));
                     let resource_view = match resource {
                       ExternalResource::Texture(view) => view,
                       _ => unreachable!()
@@ -776,7 +776,7 @@ impl VkRenderGraph {
                     },
                     ..Default::default()
                   };
-                  let mut image_barrier_b = image_barrier.clone();
+                  let mut image_barrier_b = image_barrier;
 
                   if let Some(texture_b) = texture_b {
                     has_history_resources = true;
@@ -815,7 +815,7 @@ impl VkRenderGraph {
                   } else {
                     let resource = external_resources
                         .and_then(|r| r.get(name.as_str()))
-                        .expect(format!("Can't find resource {}", name).as_str());
+                        .unwrap_or_else(|| panic!("Can't find resource {}", name));
                     let resource_buffer = match resource {
                       ExternalResource::Buffer(buffer) => buffer,
                       _ => unreachable!()
@@ -834,7 +834,7 @@ impl VkRenderGraph {
                     size: length as u64,
                     ..Default::default()
                   };
-                  let mut buffer_barrier_b = buffer_barrier.clone();
+                  let mut buffer_barrier_b = buffer_barrier;
 
                   if let Some(buffer_b) = buffer_b {
                     has_history_resources = true;
@@ -890,7 +890,7 @@ impl VkRenderGraph {
       transfer_queue: transfer_queue.clone(),
       renders_to_swapchain: template.renders_to_swapchain(),
       info: info.clone(),
-      external_resources: external_resources.map(|external_resources| external_resources.clone())
+      external_resources: external_resources.cloned()
     }
   }
 
@@ -985,7 +985,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
           if *src_stage != vk::PipelineStageFlags::empty() || !buffer_barriers.is_empty() || !image_barriers.is_empty() {
-            if wait_for_events.len() == 0 {
+            if wait_for_events.is_empty() {
               cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
                                  &[], &buffer_barriers[framebuffer_index], &image_barriers[framebuffer_index]);
             } else {
@@ -1070,7 +1070,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
           if *src_stage != vk::PipelineStageFlags::empty() || !buffer_barriers.is_empty() || !image_barriers.is_empty() {
-            if wait_for_events.len() == 0 {
+            if wait_for_events.is_empty() {
               cmd_buffer.barrier(*src_stage, *dst_stage, vk::DependencyFlags::empty(),
                                  &[], &buffer_barriers[framebuffer_index], &image_barriers[framebuffer_index]);
             } else {
@@ -1150,7 +1150,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
       }
     }
 
-    for (_name, resource) in &mut self.resources {
+    for resource in &mut self.resources.values_mut() {
       match resource {
         VkResource::Texture { view, view_b, texture, texture_b, .. } => {
           if view_b.is_some() {

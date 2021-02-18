@@ -31,24 +31,24 @@ pub struct InputAssemblerElement {
 
 impl Default for ShaderInputElement {
   fn default() -> ShaderInputElement {
-    return ShaderInputElement {
+    ShaderInputElement {
       input_assembler_binding: 0,
       location_vk_mtl: 0,
       semantic_name_d3d: String::new(),
       semantic_index_d3d: 0,
       offset: 0,
       format: Format::Unknown,
-    };
+    }
   }
 }
 
 impl Default for InputAssemblerElement {
   fn default() -> InputAssemblerElement {
-    return InputAssemblerElement {
+    InputAssemblerElement {
       binding: 0,
       input_rate: InputRate::PerVertex,
       stride: 0
-    };
+    }
   }
 }
 
@@ -96,12 +96,12 @@ pub struct RasterizerInfo {
 
 impl Default for RasterizerInfo {
   fn default() -> Self {
-    return RasterizerInfo {
+    RasterizerInfo {
       fill_mode: FillMode::Fill,
       cull_mode: CullMode::Back,
       front_face: FrontFace::Clockwise,
       sample_count: SampleCount::Samples1
-    };
+    }
   }
 }
 
@@ -139,12 +139,12 @@ pub struct StencilInfo {
 
 impl Default for StencilInfo {
   fn default() -> Self {
-    return StencilInfo {
+    StencilInfo {
         fail_op: StencilOp::Keep,
         depth_fail_op: StencilOp::Keep,
         pass_op: StencilOp::Keep,
         func: CompareFunc::Always
-    };
+    }
   }
 }
 
@@ -162,7 +162,7 @@ pub struct DepthStencilInfo {
 
 impl Default for DepthStencilInfo {
   fn default() -> Self {
-    return DepthStencilInfo {
+    DepthStencilInfo {
       depth_test_enabled: true,
       depth_write_enabled: true,
       depth_func: CompareFunc::Less,
@@ -171,7 +171,7 @@ impl Default for DepthStencilInfo {
       stencil_write_mask: 0,
       stencil_front: StencilInfo::default(),
       stencil_back: StencilInfo::default()
-    };
+    }
   }
 }
 
@@ -223,7 +223,7 @@ pub enum BlendOp {
   Max
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(Clone)]
 pub struct BlendInfo {
   pub alpha_to_coverage_enabled: bool,
   pub logic_op_enabled: bool,
@@ -243,17 +243,30 @@ impl Hash for BlendInfo {
   }
 }
 
+impl PartialEq for BlendInfo {
+  fn eq(&self, other: &Self) -> bool {
+    self.alpha_to_coverage_enabled == other.alpha_to_coverage_enabled
+    && self.logic_op_enabled == other.logic_op_enabled
+    && self.logic_op == other.logic_op
+    && self.attachments == other.attachments
+    && (self.constants[0] - other.constants[0]).abs() < 0.01f32
+    && (self.constants[1] - other.constants[1]).abs() < 0.01f32
+    && (self.constants[2] - other.constants[2]).abs() < 0.01f32
+    && (self.constants[3] - other.constants[3]).abs() < 0.01f32
+  }
+}
+
 impl Eq for BlendInfo {}
 
 impl Default for BlendInfo {
   fn default() -> Self {
-    return BlendInfo {
+    BlendInfo {
       alpha_to_coverage_enabled: false,
       logic_op_enabled: false,
       logic_op: LogicOp::And,
       attachments: Vec::new(),
       constants: [0f32, 0f32, 0f32, 0f32]
-    };
+    }
   }
 }
 
@@ -280,7 +293,7 @@ pub struct AttachmentBlendInfo {
 
 impl Default for AttachmentBlendInfo {
   fn default() -> Self {
-    return AttachmentBlendInfo {
+    AttachmentBlendInfo {
       blend_enabled: false,
       src_color_blend_factor: BlendFactor::ConstantColor,
       dst_color_blend_factor: BlendFactor::ConstantColor,
@@ -289,7 +302,7 @@ impl Default for AttachmentBlendInfo {
       dst_alpha_blend_factor: BlendFactor::ConstantColor,
       alpha_blend_op: BlendOp::Add,
       write_mask: ColorComponents::RED | ColorComponents::GREEN | ColorComponents::BLUE | ColorComponents::ALPHA
-    };
+    }
   }
 }
 

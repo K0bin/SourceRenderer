@@ -20,22 +20,22 @@ pub struct VkSurface {
 
 impl VkSurface {
   pub fn new(instance: &Arc<RawVkInstance>, surface: vk::SurfaceKHR, surface_loader: SurfaceLoader) -> Self {
-    return VkSurface {
+    Self {
       surface: Mutex::new(surface),
       surface_loader,
       instance: instance.clone(),
       is_lost: AtomicBool::new(false)
-    };
+    }
   }
 
   #[inline]
   pub fn get_surface_handle(&self) -> MutexGuard<vk::SurfaceKHR> {
-    return self.surface.lock().unwrap();
+    self.surface.lock().unwrap()
   }
 
   #[inline]
   pub fn get_surface_loader(&self) -> &SurfaceLoader {
-    return &self.surface_loader;
+    &self.surface_loader
   }
 
   pub(crate) fn get_capabilities(&self, physical_device: &vk::PhysicalDevice) -> VkResult<vk::SurfaceCapabilitiesKHR> {

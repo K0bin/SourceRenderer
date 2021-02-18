@@ -24,13 +24,13 @@ impl LumpData for TextureData {
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    return Ok(Self {
+    Ok(Self {
       reflectivity: Vector3::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?),
       name_string_table_id: reader.read_i32()?,
       width: reader.read_i32()?,
       height: reader.read_i32()?,
       view_width: reader.read_i32()?,
       view_height: reader.read_i32()?
-    });
+    })
   }
 }

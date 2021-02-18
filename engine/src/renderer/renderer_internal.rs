@@ -104,11 +104,9 @@ impl<P: Platform> RendererInternal<P> {
     let (camera_resource_name, camera_resource) = passes::late_latching::external_resource(primary_camera);
     external_resources.insert(camera_resource_name, camera_resource);
 
-    let graph = device.create_render_graph(&graph_template, &RenderGraphInfo {
+    device.create_render_graph(&graph_template, &RenderGraphInfo {
       pass_callbacks: callbacks
-    }, swapchain, Some(&external_resources));
-
-    graph
+    }, swapchain, Some(&external_resources))
   }
 
   fn receive_messages(&mut self) {
@@ -116,15 +114,13 @@ impl<P: Platform> RendererInternal<P> {
     let mut view = self.view.borrow_mut();
 
     let message_res = self.receiver.try_recv();
-    if let Some(err) = message_res.as_ref().err() {
-      if let TryRecvError::Disconnected = err {
-        panic!("Rendering channel closed");
-      }
+    if let Some(TryRecvError::Disconnected) = message_res.as_ref().err() {
+      panic!("Rendering channel closed");
     }
     let mut message_opt = message_res.ok();
 
     while message_opt.is_some() {
-      let message = std::mem::replace(&mut message_opt, None).unwrap();
+      let message = message_opt.take().unwrap();
       match message {
         RendererCommand::EndFrame => {
           self.renderer.dec_queued_frames_counter();
@@ -161,7 +157,7 @@ impl<P: Platform> RendererInternal<P> {
               } => {
                 let model = self.assets.get_model(model_path);
                 RDrawableType::Static {
-                  model: model,
+                  model,
                   receive_shadows: *receive_shadows,
                   cast_shadows: *cast_shadows,
                   can_move: *can_move
@@ -186,10 +182,8 @@ impl<P: Platform> RendererInternal<P> {
       }
 
       let message_res = self.receiver.try_recv();
-      if let Some(err) = message_res.as_ref().err() {
-        if let TryRecvError::Disconnected = err {
-          panic!("Rendering channel closed");
-        }
+      if let Some(TryRecvError::Disconnected) = message_res.as_ref().err() {
+        panic!("Rendering channel closed");
       }
       message_opt = message_res.ok();
     }

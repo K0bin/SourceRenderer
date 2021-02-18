@@ -7,7 +7,6 @@ use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };
 
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use std::option::Option::Some;
 
 pub(super) struct RendererTexture<B: Backend> {
   pub(super) view: AtomicRefCell<Arc<B::TextureShaderResourceView>>
@@ -97,7 +96,7 @@ impl<P: Platform> RendererAssets<P> {
 
   pub fn integrate_material(&mut self, material_path: &str, material: &Material) -> Arc<RendererMaterial<P::GraphicsBackend>> {
     let albedo = self.textures.get(&material.albedo_texture_path)
-      .map(|m| m.clone())
+      .cloned()
       .or_else(|| {
         let zero_view = self.zero_view.clone();
         Some(self.integrate_texture(&material.albedo_texture_path, &zero_view))
@@ -105,7 +104,7 @@ impl<P: Platform> RendererAssets<P> {
 
     let existing_material = self.materials.get(material_path);
     if let Some(existing_material) = existing_material {
-      *existing_material.albedo.borrow_mut() = albedo.clone();
+      *existing_material.albedo.borrow_mut() = albedo;
       return existing_material.clone();
     }
 
@@ -117,15 +116,10 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub fn integrate_model(&mut self, model_path: &str, model: &Model) -> Option<Arc<RendererModel<P::GraphicsBackend>>> {
-    let mesh = self.meshes.get(&model.mesh_path);
-    if mesh.is_none() {
-      return None;
-    }
-    let mesh = mesh.unwrap().clone();
+    let mesh = self.meshes.get(&model.mesh_path).cloned()?;
     let mut renderer_materials = Vec::<Arc<RendererMaterial<P::GraphicsBackend>>>::new();
     for material in &model.material_paths {
-      let renderer_material = self.materials.get(material)
-        .map(|m| m.clone())
+      let renderer_material = self.materials.get(material).cloned()
         .or_else(|| {
         Some(self.integrate_material(material, &Material {
           albedo_texture_path: "NULL".to_string()
@@ -136,7 +130,7 @@ impl<P: Platform> RendererAssets<P> {
 
     let renderer_model = Arc::new(RendererModel {
       materials: renderer_materials.into_boxed_slice(),
-      mesh: mesh.clone()
+      mesh
     });
     self.models.insert(model_path.to_owned(), renderer_model.clone());
     Some(renderer_model)
@@ -144,13 +138,13 @@ impl<P: Platform> RendererAssets<P> {
 
   pub fn get_model(&self, model_path: &str) -> Arc<RendererModel<P::GraphicsBackend>> {
     self.models.get(model_path)
-      .map(|m| m.clone())
+      .cloned()
       .expect("Model not yet loaded")
   }
 
   pub fn get_texture(&self, texture_path: &str) -> Arc<RendererTexture<P::GraphicsBackend>> {
     self.textures.get(texture_path)
-      .map(|t| t.clone())
+      .cloned()
       .expect("Texture not yet loaded")
   }
 
@@ -198,10 +192,10 @@ impl<P: Platform> RendererAssets<P> {
     while asset_opt.is_some() {
       let asset = asset_opt.unwrap();
       let fence = asset.fence.as_ref();
-      if fence.is_some() {
+      if let Some(fence) = fence {
         // delay the adding of assets with an associated fence by at least one frame
         // to avoid the race mentioned above
-        self.delayed_assets.push((fence.unwrap().clone(), asset.path.clone(), asset.asset));
+        self.delayed_assets.push((fence.clone(), asset.path.clone(), asset.asset));
         asset_opt = asset_manager.receive_render_asset();
         continue;
       }

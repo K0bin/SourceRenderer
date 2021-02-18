@@ -68,7 +68,7 @@ impl BspLevelLoader {
       (0, 0)
     };
 
-    let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
+    let material_brush_indices = &mut brush_indices.entry(tex_name).or_default();
     let plane = &temp.planes[face.plane_index as usize];
     let root_vertex = brush_vertices.len() as u32;
 
@@ -130,7 +130,7 @@ impl BspLevelLoader {
     let tex_offset = &temp.tex_data_string_table[tex_data.name_string_table_id as usize];
     let tex_name = temp.tex_string_data.get_string_at(tex_offset.0 as u32).to_str().unwrap().replace('\\', "/").to_lowercase();
     let plane = &temp.planes[face.plane_index as usize];
-    let material_brush_indices = &mut brush_indices.entry(tex_name.clone()).or_default();
+    let material_brush_indices = &mut brush_indices.entry(tex_name).or_default();
 
     let (lightmap_offset_x, lightmap_offset_y) = if face.light_offset >= 0 {
       debug_assert!(face.light_offset % 4 == 0);

@@ -16,11 +16,11 @@ impl Lump {
     let version = reader.read_i32()?;
     let four_cc = reader.read_i32()?;
 
-    return Ok(Self {
+    Ok(Self {
       file_offset,
       file_length,
       version,
       four_cc,
-    });
+    })
   }
 }

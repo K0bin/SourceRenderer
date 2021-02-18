@@ -67,19 +67,19 @@ impl VkAdapter {
       };
     }
 
-    return VkAdapter {
+    VkAdapter {
       instance,
       physical_device,
       properties,
       extensions
-    };
+    }
   }
 
   pub fn get_physical_device_handle(&self) -> &vk::PhysicalDevice {
-    return &self.physical_device;
+    &self.physical_device
   }
 
-  pub fn get_raw_instance(&self) -> &Arc<RawVkInstance> { return &self.instance; }
+  pub fn get_raw_instance(&self) -> &Arc<RawVkInstance> { &self.instance }
 }
 
 // Vulkan physical devices are implicitly freed with the instance
@@ -154,18 +154,18 @@ impl Adapter<VkBackend> for VkAdapter {
         ..Default::default()
       });
 
-      if compute_queue_info.is_some() {
+      if let Some(compute_queue_info) = compute_queue_info {
         queue_create_descs.push(vk::DeviceQueueCreateInfo {
-          queue_family_index: compute_queue_info.unwrap().queue_family_index as u32,
+          queue_family_index: compute_queue_info.queue_family_index as u32,
           queue_count: 1,
           p_queue_priorities: &1.0f32 as *const f32,
           ..Default::default()
         });
       }
 
-      if transfer_queue_info.is_some() {
+      if let Some(transfer_queue_info) = transfer_queue_info {
         queue_create_descs.push(vk::DeviceQueueCreateInfo {
-          queue_family_index: transfer_queue_info.unwrap().queue_family_index as u32,
+          queue_family_index: transfer_queue_info.queue_family_index as u32,
           queue_count: 1,
           p_queue_priorities: &1.0f32 as *const f32,
           ..Default::default()

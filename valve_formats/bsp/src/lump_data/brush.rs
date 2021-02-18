@@ -71,10 +71,10 @@ impl LumpData for Brush {
     let first_side = reader.read_i32()?;
     let sides_count = reader.read_i32()?;
     let contents = reader.read_u32()?;
-    return Ok(Self {
+    Ok(Self {
       first_side,
       sides_count,
         contents: BrushContents { bits: contents }
-    });
+    })
   }
 }
