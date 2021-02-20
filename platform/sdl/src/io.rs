@@ -11,7 +11,7 @@ impl IO for StdIO {
     std::fs::File::open(path)
   }
 
-  fn open_external_asset<P: AsRef<Path>>(_path: P) -> IOResult<Self::File> {
-    unimplemented!()
+  fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+    std::fs::File::open(path)
   }
 }
