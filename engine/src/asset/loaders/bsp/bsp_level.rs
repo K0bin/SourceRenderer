@@ -250,12 +250,12 @@ impl BspLevelLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for BspLevelLoader {
-  fn matches(&self, file: &mut AssetFile) -> bool {
+  fn matches(&self, file: &mut AssetFile<P>) -> bool {
     let file_name = Path::new(&file.path).file_name();
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
-  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, asset_file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
     let file = match asset_file.data {
       AssetFileData::File(file) => file,
@@ -287,7 +287,6 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     let entities = map.read_entities().unwrap();
 
     let temp = BspLumps {
-      map,
       map_name: name.to_string(),
       nodes,
       leafs,

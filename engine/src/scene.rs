@@ -67,8 +67,8 @@ impl<P: Platform> Game<P> {
         }
         asset_manager.load_level("de_overpass.bsp").unwrap()
       };
-    #[cfg(target_os = "android")]
-      let mut level = World::default();
+    /*#[cfg(target_os = "android")]
+      let mut level = World::default();*/
 
     let game = Arc::new(Self {
       input_state: Mutex::new(TimeStampedInputState(InputState::default(), SystemTime::now())),

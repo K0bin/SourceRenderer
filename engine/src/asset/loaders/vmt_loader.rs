@@ -18,11 +18,11 @@ impl VMTMaterialLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
-  fn matches(&self, file: &mut AssetFile) -> bool {
+  fn matches(&self, file: &mut AssetFile<P>) -> bool {
     file.path.starts_with("materials/") && file.path.ends_with(".vmt")
   }
 
-  fn load(&self, asset_file: AssetFile, manager: &AssetManager<P>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, asset_file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = asset_file.path.clone();
     let mut vmt_material = match asset_file.data {
       AssetFileData::File(file) => {

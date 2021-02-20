@@ -57,7 +57,7 @@ impl VTFTextureLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
-  fn matches(&self, file: &mut AssetFile) -> bool {
+  fn matches(&self, file: &mut AssetFile<P>) -> bool {
     if !file.path.ends_with(".vtf") {
       return false;
     }
@@ -72,7 +72,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
     }
   }
 
-  fn load(&self, file: AssetFile, manager: &AssetManager<P>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = file.path.clone();
     let (texture_view, fence) = match file.data {
       AssetFileData::File(file) => {

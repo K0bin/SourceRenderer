@@ -1,5 +1,4 @@
-use std::io::{Read, BufReader, Seek, Error as IOError, SeekFrom};
-use std::fs::File;
+use std::io::{Read, BufReader, Seek, Error as IOError, Result as IOResult, SeekFrom};
 use package_entry::PackageEntry;
 use std::collections::HashMap;
 use archive_md5_section_entry::ArchiveMD5SectionEntry;
@@ -16,7 +15,8 @@ pub enum PackageError {
   FileError(String)
 }
 
-pub struct Package<R: Read + Seek> {
+pub struct Package<R>
+  where R : Read + Seek {
   reader: Mutex<R>,
   is_dir_vpk: bool,
   header_size: u32,
@@ -61,6 +61,8 @@ pub struct Package<R: Read + Seek> {
 
   /// The archive MD5 checksum section entries. Also known as cache line hashes.
   archive_md5_entries: Vec<ArchiveMD5SectionEntry>,
+
+  open_file_callback: Box<dyn Send + Sync + Fn(&str) -> IOResult<R>>
 }
 
 pub const MAGIC: u32 = 0x55AA1234;
@@ -68,7 +70,8 @@ pub const MAGIC: u32 = 0x55AA1234;
 /// Always '/' as per Valve's vpk implementation.
 pub const DIRECTORY_SEPARATOR: &str = "/";
 
-impl<R: Read + Seek> Package<R> {
+impl<R> Package<R>
+  where R : Read + Seek {
   /// Gets the File Name
   pub fn file_name(&self) -> &str {
     self.file_name.as_str()
@@ -153,8 +156,8 @@ impl<R: Read + Seek> Package<R> {
     (file_name_str.to_string(), false)
   }
 
-  pub fn read(file_name: &str, mut input: R) -> Result<Self, PackageError> {
-    let (file_name, is_dir_vpk) = Package::<R>::sanitize_file_name(file_name);
+  pub fn read<F: 'static + Send + Sync + Fn(&str) -> IOResult<R>>(file_name: &str, mut input: R, open_file_callback: F) -> Result<Self, PackageError> {
+    let (file_name, is_dir_vpk) = Self::sanitize_file_name(file_name);
 
     if input.read_u32().map_err(PackageError::IOError)? != MAGIC {
       return Err(PackageError::FileError("Given file is not a VPK.".to_string()));
@@ -182,14 +185,14 @@ impl<R: Read + Seek> Package<R> {
 
     let header_size = input.seek(SeekFrom::Current(0)).map_err(PackageError::IOError)? as u32;
 
-    let entries = Package::read_entries(&mut input)?;
+    let entries = Self::read_entries(&mut input)?;
 
     let (archive_md5_entries, tree_checksum, archive_md5_entries_checksum, whole_file_checksum, public_key, signature) =
       if version == 2 {
         input.seek(SeekFrom::Current(file_data_section_size as i64)).map_err(PackageError::IOError)?;
-        let archive_md5_entries = Package::<R>::read_archive_md5_section(&mut input, archive_md5_section_size)?;
-        let (tree_checksum, archive_md5_entries_checksum, whole_file_checksum) = Package::<R>::read_other_md5_section(&mut input, other_md5_section_size)?;
-        let (public_key, signature) = Package::<R>::read_signature_section(&mut input, signature_section_size)?;
+        let archive_md5_entries = Self::read_archive_md5_section(&mut input, archive_md5_section_size)?;
+        let (tree_checksum, archive_md5_entries_checksum, whole_file_checksum) = Self::read_other_md5_section(&mut input, other_md5_section_size)?;
+        let (public_key, signature) = Self::read_signature_section(&mut input, signature_section_size)?;
         (archive_md5_entries, tree_checksum, archive_md5_entries_checksum, whole_file_checksum, public_key, signature)
       } else {
         Default::default()
@@ -212,7 +215,8 @@ impl<R: Read + Seek> Package<R> {
       public_key,
       signature,
       entries,
-      archive_md5_entries
+      archive_md5_entries,
+      open_file_callback: Box::new(open_file_callback)
     })
   }
 
@@ -274,7 +278,10 @@ impl<R: Read + Seek> Package<R> {
 
         let offset = entry.offset;
         let file_name = format!("{}_{:03}.vpk", self.file_name, entry.archive_index);
-        let mut reader = BufReader::new(File::open(file_name).map_err(PackageError::IOError)?);
+
+        let file = (self.open_file_callback)(&file_name);
+
+        let mut reader = BufReader::new(file.map_err(PackageError::IOError)?);
         reader.seek(SeekFrom::Start(offset as u64)).map_err(PackageError::IOError)?;
         reader.read_exact(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(PackageError::IOError)?;
       } else {

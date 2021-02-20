@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex};
 use std::collections::{VecDeque, HashSet};
-use sourcerenderer_core::platform::Platform;
+use sourcerenderer_core::platform::{Platform, io::IO};
 use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::graphics;
 use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureInfo, TextureShaderResourceViewInfo, Filter, AddressMode};
@@ -11,8 +11,7 @@ use std::sync::Weak;
 use std::thread;
 use std::time::Duration;
 use legion::World;
-use std::fs::File;
-use std::io::{Cursor, Seek, SeekFrom};
+use std::io::{Cursor, Seek, SeekFrom, Read, Result as IOResult};
 
 use crossbeam_channel::{unbounded, Sender, Receiver};
 
@@ -77,19 +76,57 @@ pub struct Material {
   pub albedo_texture_path: String
 }
 
-pub struct AssetFile {
+pub struct AssetFile<P: Platform> {
   pub path: String,
-  pub data: AssetFileData
+  pub data: AssetFileData<P>
 }
 
-pub enum AssetFileData {
-  File(File),
+impl<P: Platform> Read for AssetFile<P> {
+  fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
+    self.data.read(buf)
+  }
+}
+
+impl<P: Platform> Seek for AssetFile<P> {
+  fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
+    self.data.seek(pos)
+  }
+}
+
+pub enum AssetFileData<P: Platform> {
+  File(<P::IO as IO>::File),
   Memory(Cursor<Box<[u8]>>)
 }
 
-pub trait AssetContainer
-  : Send + Sync  {
-  fn load(&self, path: &str) -> Option<AssetFile>;
+impl<P: Platform> Read for AssetFileData<P> {
+  fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
+    match self {
+      AssetFileData::File(file) => {
+        file.read(buf)
+      }
+      AssetFileData::Memory(cursor) => {
+        cursor.read(buf)
+      }
+    }
+  }
+}
+
+impl<P: Platform> Seek for AssetFileData<P> {
+  fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
+    match self {
+      AssetFileData::File(file) => {
+        file.seek(pos)
+      }
+      AssetFileData::Memory(cursor) => {
+        cursor.seek(pos)
+      }
+    }
+  }
+}
+
+pub trait AssetContainer<P: Platform>
+  : Send + Sync {
+  fn load(&self, path: &str) -> Option<AssetFile<P>>;
 }
 
 pub struct AssetLoaderProgress {
@@ -115,8 +152,8 @@ pub enum AssetLoadPriority {
 
 pub trait AssetLoader<P: Platform>
   : Send + Sync {
-  fn matches(&self, file: &mut AssetFile) -> bool;
-  fn load(&self, file: AssetFile, manager: &AssetManager<P>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()>;
+  fn matches(&self, file: &mut AssetFile<P>) -> bool;
+  fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()>;
 }
 
 pub enum Asset<P: Platform> {
@@ -142,7 +179,7 @@ impl<P: Platform> Clone for Asset<P> {
 pub struct AssetManager<P: Platform> {
   device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
   load_queue: Mutex<VecDeque<AssetLoadRequest>>,
-  containers: RwLock<Vec<Box<dyn AssetContainer>>>,
+  containers: RwLock<Vec<Box<dyn AssetContainer<P>>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
   loaded_assets: Mutex<HashSet<String>>,
   renderer_sender: Sender<LoadedAsset<P>>,
@@ -233,11 +270,11 @@ impl<P: Platform> AssetManager<P> {
     self.add_asset(path, Asset::Texture(srv), AssetLoadPriority::Normal, None);
   }
 
-  pub fn add_container(&self, container: Box<dyn AssetContainer>) {
+  pub fn add_container(&self, container: Box<dyn AssetContainer<P>>) {
     self.add_container_with_progress(container, None)
   }
 
-  pub fn add_container_with_progress(&self, container: Box<dyn AssetContainer>, progress: Option<&Arc<AssetLoaderProgress>>) {
+  pub fn add_container_with_progress(&self, container: Box<dyn AssetContainer<P>>, progress: Option<&Arc<AssetLoaderProgress>>) {
     let mut containers = self.containers.write().unwrap();
     containers.push(container);
     if let Some(progress) = progress {
@@ -330,7 +367,7 @@ impl<P: Platform> AssetManager<P> {
     progress
   }
 
-  pub fn load_level(&self, path: &str) -> Option<World> {
+  pub fn load_level(self: &Arc<Self>, path: &str) -> Option<World> {
     let file_opt = self.load_file(path);
     if file_opt.is_none() {
       println!("Could not load file: {:?}", path);
@@ -362,9 +399,9 @@ impl<P: Platform> AssetManager<P> {
     level
   }
 
-  pub fn load_file(&self, path: &str) -> Option<AssetFile> {
+  pub fn load_file(&self, path: &str) -> Option<AssetFile<P>> {
     let containers = self.containers.read().unwrap();
-    let mut file_opt: Option<AssetFile> = None;
+    let mut file_opt: Option<AssetFile<P>> = None;
     for container in containers.iter() {
       let container_file_opt = container.load(path);
       if container_file_opt.is_some() {
@@ -372,10 +409,13 @@ impl<P: Platform> AssetManager<P> {
         break;
       }
     }
+    if file_opt.is_none() {
+      println!("Could not find file: {:?}", path);
+    }
     file_opt
   }
 
-  fn find_loader<'a>(file: &mut AssetFile, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a dyn AssetLoader<P>> {
+  fn find_loader<'a>(file: &mut AssetFile<P>, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a dyn AssetLoader<P>> {
     let start = match &mut file.data {
       AssetFileData::File(file) => { file.seek(SeekFrom::Current(0)) }
       AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Current(0)) }
@@ -391,7 +431,7 @@ impl<P: Platform> AssetManager<P> {
     loader_opt.map(|b| b.as_ref())
   }
 
-  fn load_asset(&self, mut file: AssetFile, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) {
+  fn load_asset(self: &Arc<Self>, mut file: AssetFile<P>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) {
     let path = file.path.clone();
 
     let loaders = self.loaders.read().unwrap();
