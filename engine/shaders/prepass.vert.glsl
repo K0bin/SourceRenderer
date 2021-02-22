@@ -14,6 +14,9 @@ layout(set = 2, binding = 0) uniform CurrentLowFrequencyUbo {
 layout(set = 2, binding = 1) uniform PreviousLowFrequencyUbo {
     mat4 oldViewProjection;
 };
+layout(set = 2, binding = 2) uniform SwapchainTransformLowFrequencyUbo {
+    mat4 swapchain_transform;
+};
 
 layout(set = 0, binding = 0) uniform HighFrequencyUbo {
     mat4 model;
@@ -23,7 +26,7 @@ layout(set = 0, binding = 0) uniform HighFrequencyUbo {
 void main(void) {
     vec4 pos = vec4(in_pos, 1);
 
-    vec4 transformedPos = (viewProjection * model) * pos;
+    vec4 transformedPos = (swapchain_transform * (viewProjection * model)) * pos;
     transformedPos.y = -transformedPos.y;
 
     vec4 transformedOldPos = (oldViewProjection * oldModel) * pos;

@@ -18,6 +18,8 @@ use crate::VkSemaphore;
 use crate::texture::VkTextureView;
 
 use ash::prelude::VkResult;
+use ash::vk::SurfaceTransformFlagsKHR;
+use sourcerenderer_core::{Matrix4, Vec3};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum VkSwapchainState {
@@ -39,6 +41,7 @@ pub struct VkSwapchain {
   state: AtomicCell<VkSwapchainState>,
   acquired_image: AtomicU32,
   presented_image: AtomicU32,
+  transform_matrix: Matrix4
 }
 
 impl VkSwapchain {
@@ -94,7 +97,7 @@ impl VkSwapchain {
       let format = VkSwapchain::pick_format(&formats);
 
       let (width, height) = VkSwapchain::pick_extent(&capabilities, width, height);
-      let extent = vk::Extent2D {
+      let mut extent = vk::Extent2D {
         width,
         height
       };
@@ -106,6 +109,60 @@ impl VkSwapchain {
       if !capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT) {
         panic!("Rendering to the surface is not supported.");
       }
+
+      let (matrix, transform) = match capabilities.current_transform {
+        SurfaceTransformFlagsKHR::ROTATE_90 => {
+          (
+            Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2),
+            SurfaceTransformFlagsKHR::ROTATE_90
+          )
+        }
+        SurfaceTransformFlagsKHR::ROTATE_180 => {
+          (
+            Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::PI),
+            SurfaceTransformFlagsKHR::ROTATE_180
+          )
+        }
+        SurfaceTransformFlagsKHR::ROTATE_270 => {
+          (
+            Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2 * 3f32),
+            SurfaceTransformFlagsKHR::ROTATE_270
+          )
+        }
+        SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR => {
+          (
+            Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32)),
+            SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR
+          )
+        }
+        SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90 => {
+          (
+            Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32)) *
+              Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2),
+            SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90
+          )
+        }
+        SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180 => {
+          (
+            Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32)) *
+              Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::PI),
+            SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180
+          )
+        }
+        SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270 => {
+          (
+            Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32)) *
+              Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2 * 3f32),
+            SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270
+          )
+        }
+        _ => {
+          (
+            Matrix4::identity(),
+            SurfaceTransformFlagsKHR::IDENTITY
+          )
+        }
+      };
 
       let image_count = VkSwapchain::pick_image_count(&capabilities, 3);
 
@@ -127,7 +184,7 @@ impl VkSwapchain {
           image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
           present_mode,
           image_sharing_mode: vk::SharingMode::EXCLUSIVE,
-          pre_transform: capabilities.current_transform,
+          pre_transform: transform,
           composite_alpha: if capabilities.supported_composite_alpha.contains(vk::CompositeAlphaFlagsKHR::OPAQUE) {
             vk::CompositeAlphaFlagsKHR::OPAQUE
           } else {
@@ -182,7 +239,8 @@ impl VkSwapchain {
         vsync,
         state: AtomicCell::new(VkSwapchainState::Okay),
         presented_image: AtomicU32::new(0),
-        acquired_image: AtomicU32::new(0)
+        acquired_image: AtomicU32::new(0),
+        transform_matrix: matrix
       }))
     }
   }
@@ -312,6 +370,10 @@ impl VkSwapchain {
 
   pub fn state(&self) -> VkSwapchainState {
     self.state.load()
+  }
+
+  pub fn transform(&self) -> &Matrix4 {
+    &self.transform_matrix
   }
 }
 

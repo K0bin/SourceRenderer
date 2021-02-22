@@ -180,6 +180,9 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         let drawables = c_drawables.borrow();
 
+        let transform_constant_buffer = command_buffer.upload_dynamic_data(*graph_resources.swapchain_transform(), BufferUsage::CONSTANT);
+        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
+
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         let dimensions = graph_resources.texture_dimensions(OUTPUT_DS).unwrap();
         command_buffer.set_viewports(&[Viewport {

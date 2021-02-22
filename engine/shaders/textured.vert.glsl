@@ -14,6 +14,9 @@ layout(location = 2) out vec2 out_lightmap_uv;
 layout(set = 2, binding = 0) uniform LowFrequencyUbo {
     mat4 viewProjection;
 };
+layout(set = 2, binding = 1) uniform SwapchainTransformLowFrequencyUbo {
+    mat4 swapchain_transform;
+};
 
 layout(set = 0, binding = 0) uniform HighFrequencyUbo {
     mat4 model;
@@ -23,6 +26,6 @@ void main(void) {
   out_uv = in_uv;
   out_lightmap_uv = in_lightmap_uv;
   out_normal = in_normal;
-  gl_Position = (viewProjection * model) * vec4(in_pos, 1);
+  gl_Position = (swapchain_transform * (viewProjection * model)) * vec4(in_pos, 1);
   gl_Position.y = -gl_Position.y;
 }

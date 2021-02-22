@@ -26,6 +26,7 @@ use rayon;
 use crate::sync::VkEvent;
 use sourcerenderer_core::pool::Recyclable;
 use crate::swapchain::VkSwapchainState;
+use sourcerenderer_core::Matrix4;
 
 pub enum VkResource {
   Texture {
@@ -196,6 +197,10 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
       },
       _ => Err(RenderGraphResourceError::WrongResourceType)
     }
+  }
+
+  fn swapchain_transform(&self) -> &Matrix4 {
+    self.swapchain.transform()
   }
 }
 
@@ -388,7 +393,7 @@ impl VkRenderGraph {
             if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
               clear_values.push(vk::ClearValue {
                 color: vk::ClearColorValue {
-                  float32: [1f32; 4]
+                  float32: [0f32; 4]
                 }
               });
             } else {
