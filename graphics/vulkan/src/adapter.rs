@@ -146,11 +146,12 @@ impl Adapter<VkBackend> for VkAdapter {
         }
       );
 
+      let priority = 1.0f32;
       let mut queue_create_descs: Vec<vk::DeviceQueueCreateInfo> = Vec::new();
       queue_create_descs.push(vk::DeviceQueueCreateInfo {
         queue_family_index: graphics_queue_info.queue_family_index as u32,
         queue_count: 1,
-        p_queue_priorities: &1.0f32 as *const f32,
+        p_queue_priorities: &priority as *const f32,
         ..Default::default()
       });
 
@@ -158,7 +159,7 @@ impl Adapter<VkBackend> for VkAdapter {
         queue_create_descs.push(vk::DeviceQueueCreateInfo {
           queue_family_index: compute_queue_info.queue_family_index as u32,
           queue_count: 1,
-          p_queue_priorities: &1.0f32 as *const f32,
+          p_queue_priorities: &priority as *const f32,
           ..Default::default()
         });
       }
@@ -167,7 +168,7 @@ impl Adapter<VkBackend> for VkAdapter {
         queue_create_descs.push(vk::DeviceQueueCreateInfo {
           queue_family_index: transfer_queue_info.queue_family_index as u32,
           queue_count: 1,
-          p_queue_priorities: &1.0f32 as *const f32,
+          p_queue_priorities: &priority as *const f32,
           ..Default::default()
         });
       }
