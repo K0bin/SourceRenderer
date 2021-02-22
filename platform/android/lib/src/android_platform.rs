@@ -4,15 +4,13 @@ use sourcerenderer_core::platform::{Window, WindowState, InputState};
 use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
 use ndk::native_window::NativeWindow;
-use ndk_sys::{AAssetManager, ANativeWindow_release};
+use ndk_sys::{ANativeWindow_release};
 
 use ash::extensions::khr::AndroidSurface;
 use ash::extensions::khr::Surface;
 use ash::vk;
 use std::os::raw::c_void;
 use crate::io::AndroidIO;
-
-pub static mut ASSET_MANAGER: *mut AAssetManager = std::ptr::null_mut();
 
 pub struct AndroidPlatform {
   window: AndroidWindow,

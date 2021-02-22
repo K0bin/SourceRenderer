@@ -21,12 +21,12 @@ pub enum CSGOMapLoaderError {
 }
 
 impl CSGODirectoryContainer {
-  pub fn new(path: &str) -> Result<Self, CSGOMapLoaderError> {
+  pub fn new<P: Platform>(path: &str) -> Result<Self, CSGOMapLoaderError> {
     let mut exe_path = PathBuf::new();
     exe_path.push(path.to_owned());
     exe_path.push("csgo.exe");
 
-    if !exe_path.exists() {
+    if !<P::IO as IO>::external_asset_exists(exe_path) {
       return Err(CSGONotFound);
     }
 

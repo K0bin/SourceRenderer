@@ -1,14 +1,19 @@
 package de.kobin.sourcerenderer
 
-import android.content.res.AssetManager
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import android.view.*
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.documentfile.provider.DocumentFile
 
 class MainActivity : AppCompatActivity() {
     private var enginePtr: Long = 0
+
+    private var csgoDirUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +38,8 @@ class MainActivity : AppCompatActivity() {
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
         }
 
+        //askForCsgoDirectory()
+
         val holder = view.holder
         holder.addCallback(object: SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -42,7 +49,7 @@ class MainActivity : AppCompatActivity() {
                 if (this@MainActivity.enginePtr != 0L) {
                     return
                 }
-                this@MainActivity.enginePtr = startEngineNative(holder.surface)
+                this@MainActivity.enginePtr = startEngineNative(holder.surface!!)
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -73,8 +80,32 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         event ?: return false
+        if (this.enginePtr == 0L) {
+            return false
+        }
         this.onTouchInputNative(this.enginePtr, event.x, event.y, event.actionIndex, event.actionMasked)
         return true
+    }
+
+    private fun askForCsgoDirectory() {
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri ?: return@registerForActivityResult
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            this.csgoDirUri = uri
+
+            val tree = DocumentFile.fromTreeUri(applicationContext, uri)!!
+            val file = tree.listFiles().firstOrNull { it != null } ?: return@registerForActivityResult
+            val filePath = file.uri.toString()
+            var csgoDir = if (file.name != null) {
+                filePath.substring(0, filePath.lastIndexOf(file.name!!))
+            } else {
+                filePath
+            }
+            if (csgoDir.endsWith("%2F")) {
+                csgoDir = csgoDir.substring(0, csgoDir.length - "%2F".length)
+            }
+            this.csgoDirUri = Uri.parse(csgoDir)
+        }.launch(null)
     }
 
     private external fun startEngineNative(surface: Surface): Long

@@ -398,7 +398,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     }
 
     for material in materials_to_load {
-      manager.request_asset(&material, AssetType::Material, AssetLoadPriority::Low);
+      //manager.request_asset(&material, AssetType::Material, AssetLoadPriority::Low);
     }
 
     manager.add_container(pakfile_container);

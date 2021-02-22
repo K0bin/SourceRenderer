@@ -57,18 +57,19 @@ impl<P: Platform> Game<P> {
         let csgo_path = "/run/media/robin/System/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive";
     #[cfg(target_os = "windows")]
         let csgo_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive";
+    #[cfg(target_os = "android")]
+      let csgo_path = "content://com.android.externalstorage.documents/tree/primary%3Agames%2Fcsgo/document/primary%3Agames%2Fcsgo";
 
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-      let mut level = {
-        asset_manager.add_container(Box::new(CSGODirectoryContainer::new(csgo_path).unwrap()));
-        let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
-        while !progress.is_done() {
-          // wait until our container is loaded
-        }
-        asset_manager.load_level("de_overpass.bsp").unwrap()
-      };
-    /*#[cfg(target_os = "android")]
-      let mut level = World::default();*/
+    println!("Csgo path: {:?}", csgo_path);
+
+    let mut level = {
+      asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
+      let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
+      while !progress.is_done() {
+        // wait until our container is loaded
+      }
+      asset_manager.load_level("de_overpass.bsp").unwrap()
+    };
 
     let game = Arc::new(Self {
       input_state: Mutex::new(TimeStampedInputState(InputState::default(), SystemTime::now())),

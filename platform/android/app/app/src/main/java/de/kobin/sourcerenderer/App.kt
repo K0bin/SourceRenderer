@@ -7,6 +7,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        IO.applicationContext = this.applicationContext
         System.loadLibrary("sourcerenderer")
         initNative(this.assets)
     }

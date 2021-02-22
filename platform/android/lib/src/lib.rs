@@ -14,11 +14,9 @@ use std::ffi::CString;
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject};
 use jni::sys::{jlong, jint, jfloat};
-use ndk_sys::{AAssetManager_fromJava,
-              android_LogPriority_ANDROID_LOG_DEBUG, __android_log_print};
-use crate::android_platform::{AndroidPlatform, ASSET_MANAGER, AndroidWindow};
+use ndk_sys::{android_LogPriority_ANDROID_LOG_DEBUG, __android_log_print};
+use crate::android_platform::{AndroidPlatform, AndroidWindow};
 use sourcerenderer_engine::Engine;
-use std::os::raw::c_void;
 use ndk_sys::ANativeWindow_fromSurface;
 use std::ptr::NonNull;
 use ndk::native_window::NativeWindow;
@@ -77,17 +75,12 @@ fn engine_from_long<'a>(engine_ptr: jlong) -> RefMut<'a, Engine<AndroidPlatform>
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern "system" fn Java_de_kobin_sourcerenderer_App_initNative(
-  env: *mut jni::sys::JNIEnv,
+  env: jni::JNIEnv,
   _class: JClass,
   asset_manager: JObject
 ) {
   setup_log();
-
-  let asset_manager = unsafe { AAssetManager_fromJava(std::mem::transmute(env), *asset_manager as *mut c_void) };
-  unsafe {
-    ASSET_MANAGER = asset_manager;
-  }
-
+  io::initialize_globals(env, asset_manager);
   Engine::<AndroidPlatform>::initialize_global();
 
   println!("Initialized application.");
@@ -119,6 +112,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_startEngineNati
   _class: JClass,
   surface: JObject
 ) -> jlong {
+  assert!(!surface.is_null());
   let native_window_ptr = unsafe { ANativeWindow_fromSurface(std::mem::transmute(env), std::mem::transmute(*surface)) };
   let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
   let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
