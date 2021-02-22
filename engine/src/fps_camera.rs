@@ -27,7 +27,7 @@ pub struct FPSCamera {
 impl FPSCamera {
   pub fn new() -> Self {
     FPSCamera {
-      sensitivity: 1.0f32,
+      sensitivity: 10.0f32,
       pitch: 0f32,
       yaw: 0f32,
       last_touch_position: Vec2::new(0f32, 0f32)
@@ -38,7 +38,8 @@ impl FPSCamera {
 pub fn fps_camera_rotation<P: Platform>(input: &InputState, fps_camera: &mut FPSCamera, _delta_time: f32) -> Quaternion {
   let mouse_delta = input.mouse_position();
   let touch_position = input.finger_position(0);
-  let touch_delta = if fps_camera.last_touch_position.x.abs() > 0.1f32 && fps_camera.last_touch_position.y.abs() > 0.1f32 {
+  let touch_delta = if fps_camera.last_touch_position.x.abs() > 0.1f32 && fps_camera.last_touch_position.y.abs() > 0.1f32
+    && touch_position.x.abs() > 0.1f32 && touch_position.y.abs() > 0.1f32 {
     touch_position - fps_camera.last_touch_position
   } else {
     Vec2::new(0f32, 0f32)
