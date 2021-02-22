@@ -57,7 +57,8 @@ struct VkTransferCommands {
   used_cmd_buffers: VecDeque<Box<VkTransferCommandBuffer>>,
   pool: Arc<RawVkCommandPool>,
   fence: Arc<VkFence>,
-  queue_name: &'static str
+  queue_name: &'static str,
+  queue_family_index: u32
 }
 
 impl VkTransfer {
@@ -85,7 +86,8 @@ impl VkTransfer {
         post_barriers: Vec::new(),
         used_cmd_buffers: VecDeque::new(),
         fence: transfer_fence,
-        queue_name: "Transfer"
+        queue_name: "Transfer",
+        queue_family_index: transfer_queue.get_queue_family_index()
       })
     } else {
       None
@@ -100,7 +102,8 @@ impl VkTransfer {
           pool: graphics_pool,
           used_cmd_buffers: VecDeque::new(),
           fence: graphics_fence,
-          queue_name: "Graphics"
+          queue_name: "Graphics",
+          queue_family_index: graphics_queue.get_queue_family_index()
         },
         transfer: transfer_commands
       }),
@@ -337,7 +340,7 @@ impl VkTransfer {
       cmd_buffer
     } else {
       Box::new({
-        VkTransferCommandBuffer::new(&self.device, &commands.pool, &commands.fence, commands.queue_name)
+        VkTransferCommandBuffer::new(&self.device, &commands.pool, &commands.fence, commands.queue_name, commands.queue_family_index)
       })
     };
     debug_assert!(!cmd_buffer.is_used());
@@ -455,11 +458,12 @@ pub struct VkTransferCommandBuffer {
   device: Arc<RawVkDevice>,
   trackers: VkLifetimeTrackers,
   fence: Arc<VkFence>,
-  is_used: bool
+  is_used: bool,
+  queue_family_index: u32
 }
 
 impl VkTransferCommandBuffer {
-  pub(super) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, fence: &Arc<VkFence>, queue_name: &str) -> Self {
+  pub(super) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, fence: &Arc<VkFence>, queue_name: &str, queue_family_index: u32) -> Self {
     debug_assert!(!fence.is_signalled());
     let buffer_info = vk::CommandBufferAllocateInfo {
       command_pool: ***pool,
@@ -488,7 +492,8 @@ impl VkTransferCommandBuffer {
       device: device.clone(),
       fence: fence.clone(),
       trackers: VkLifetimeTrackers::new(),
-      is_used: false
+      is_used: false,
+      queue_family_index
     }
   }
 
@@ -508,6 +513,10 @@ impl VkTransferCommandBuffer {
 
   pub(super) fn is_used(&self) -> bool {
     self.is_used
+  }
+
+  pub(super) fn queue_family_index(&self) -> u32 {
+    self.queue_family_index
   }
 
   pub(super) fn reset(&mut self, fence: &Arc<VkFence>) {

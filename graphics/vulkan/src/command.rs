@@ -803,6 +803,10 @@ impl VkCommandBufferSubmission {
   pub(crate) fn command_buffer_type(&self) -> CommandBufferType {
     self.item.as_ref().unwrap().command_buffer_type
   }
+
+  pub(crate) fn queue_family_index(&self) -> u32 {
+    self.item.as_ref().unwrap().queue_family_index
+  }
 }
 
 impl Drop for VkCommandBufferSubmission {

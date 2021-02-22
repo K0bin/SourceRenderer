@@ -221,6 +221,7 @@ impl VkQueue {
 
   pub fn submit_transfer(&self, command_buffer: &VkTransferCommandBuffer) {
     debug_assert!(!command_buffer.get_fence().is_signalled());
+    debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
 
     let vk_cmd_buffer = *command_buffer.get_handle();
     let submission = VkVirtualSubmission::CommandBuffer {
@@ -236,6 +237,7 @@ impl VkQueue {
 
   pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
     assert_eq!(command_buffer.command_buffer_type(), CommandBufferType::PRIMARY);
+    debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
     debug_assert!(fence.is_none() || !fence.unwrap().is_signalled());
     if wait_semaphores.len() > 4 || signal_semaphores.len() > 4 {
       panic!("Can only signal and wait for 4 semaphores each.");
