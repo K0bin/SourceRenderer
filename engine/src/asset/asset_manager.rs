@@ -178,12 +178,17 @@ impl<P: Platform> Clone for Asset<P> {
 
 pub struct AssetManager<P: Platform> {
   device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
-  load_queue: Mutex<VecDeque<AssetLoadRequest>>,
+  inner: Mutex<AssetManagerInner>,
   containers: RwLock<Vec<Box<dyn AssetContainer<P>>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
-  loaded_assets: Mutex<HashSet<String>>,
   renderer_sender: Sender<LoadedAsset<P>>,
   renderer_receiver: Receiver<LoadedAsset<P>>
+}
+
+struct AssetManagerInner {
+  load_queue: VecDeque<AssetLoadRequest>,
+  requested_assets: HashSet<String>,
+  loaded_assets: HashSet<String>
 }
 
 impl<P: Platform> AssetManager<P> {
@@ -192,10 +197,13 @@ impl<P: Platform> AssetManager<P> {
 
     let manager = Arc::new(Self {
       device: device.clone(),
-      load_queue: Mutex::new(VecDeque::new()),
+      inner: Mutex::new(AssetManagerInner {
+        load_queue: VecDeque::new(),
+        loaded_assets: HashSet::new(),
+        requested_assets: HashSet::new()
+      }),
       loaders: RwLock::new(Vec::new()),
       containers: RwLock::new(Vec::new()),
-      loaded_assets: Mutex::new(HashSet::new()),
       renderer_sender,
       renderer_receiver
     });
@@ -293,8 +301,9 @@ impl<P: Platform> AssetManager<P> {
 
   pub fn add_asset_with_progress(&self, path: &str, asset: Asset<P>, progress: Option<&Arc<AssetLoaderProgress>>, priority: AssetLoadPriority, fence: Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>) {
     {
-      let mut loaded = self.loaded_assets.lock().unwrap();
-      loaded.insert(path.to_string());
+      let mut inner = self.inner.lock().unwrap();
+      inner.loaded_assets.insert(path.to_string());
+      inner.requested_assets.remove(path);
     }
 
     if let Some(progress) = progress {
@@ -348,16 +357,14 @@ impl<P: Platform> AssetManager<P> {
     }), |p| p.clone());
     progress.expected.fetch_add(1, Ordering::SeqCst);
 
-    {
-      let loaded_assets = self.loaded_assets.lock().unwrap();
-      if loaded_assets.contains(path) {
-        progress.finished.fetch_add(1, Ordering::SeqCst);
-        return progress;
-      }
+    let mut inner = self.inner.lock().unwrap();
+    if inner.loaded_assets.contains(path) || inner.requested_assets.contains(path) {
+      progress.finished.fetch_add(1, Ordering::SeqCst);
+      return progress;
     }
+    inner.requested_assets.insert(path.to_owned());
 
-    let mut queue_guard = self.load_queue.lock().unwrap();
-    queue_guard.push_back(AssetLoadRequest {
+    inner.load_queue.push_back(AssetLoadRequest {
       asset_type,
       path: path.to_owned(),
       progress: progress.clone(),
@@ -411,6 +418,10 @@ impl<P: Platform> AssetManager<P> {
     }
     if file_opt.is_none() {
       println!("Could not find file: {:?}", path);
+      {
+        let mut inner = self.inner.lock().unwrap();
+        inner.requested_assets.remove(path);
+      }
     }
     file_opt
   }
@@ -438,6 +449,10 @@ impl<P: Platform> AssetManager<P> {
     let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
     if loader_opt.is_none() {
       progress.finished.fetch_add(1, Ordering::SeqCst);
+      {
+        let mut inner = self.inner.lock().unwrap();
+        inner.requested_assets.remove(&path);
+      }
       println!("Could not find loader for file: {:?}", path.as_str());
       return;
     }
@@ -446,6 +461,10 @@ impl<P: Platform> AssetManager<P> {
     let assets_opt = loader.load(file, self, priority, progress);
     if assets_opt.is_err() {
       progress.finished.fetch_add(1, Ordering::SeqCst);
+      {
+        let mut inner = self.inner.lock().unwrap();
+        inner.requested_assets.remove(&path);
+      }
       println!("Could not load file: {:?}", path.as_str());
       return;
       // dunno, error i guess
@@ -457,13 +476,13 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn notify_loaded(&self, path: &str) {
-    let mut loaded_assets = self.loaded_assets.lock().unwrap();
-    loaded_assets.insert(path.to_string());
+    let mut inner = self.inner.lock().unwrap();
+    inner.loaded_assets.insert(path.to_string());
   }
 
   pub fn notify_unloaded(&self, path: &str) {
-    let mut loaded_assets = self.loaded_assets.lock().unwrap();
-    loaded_assets.remove(path);
+    let mut inner = self.inner.lock().unwrap();
+    inner.loaded_assets.remove(path);
   }
 
   pub fn flush(&self) {
@@ -480,8 +499,8 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       }
       let mgr = mgr_opt.unwrap();
       let request_opt = {
-        let mut queue = mgr.load_queue.lock().unwrap();
-        queue.pop_front()
+        let mut inner = mgr.inner.lock().unwrap();
+        inner.load_queue.pop_front()
       };
 
       if request_opt.is_none() {
