@@ -11,10 +11,9 @@ use std::path::Path;
 use std::ffi::CString;
 use sourcerenderer_core::platform::io::IO;
 use jni::{JavaVM, JNIEnv};
-use jni::objects::{JValue, JClass, JObject, JStaticMethodID, GlobalRef};
+use jni::objects::{JValue, JObject, JStaticMethodID, GlobalRef};
 use std::fs::File;
 use std::os::unix::io::FromRawFd;
-use jni::sys::{jclass, jmethodID};
 use jni::signature::JavaType;
 use ndk_sys::AAssetManager_fromJava;
 use jni::signature::Primitive;
@@ -34,6 +33,7 @@ pub fn initialize_globals(env: JNIEnv, asset_manager: JObject) {
     let global_ref = env.new_global_ref(io_class).unwrap();
     IO_OPEN_FILE_METHOD = MaybeUninit::new(std::mem::transmute(env.get_static_method_id(&global_ref, "openFile", "(Ljava/lang/String;)I").unwrap()));
     IO_CLASS = MaybeUninit::new(global_ref);
+    // retrieving those on a native thread doesn't work so the NDK docs recommend keeping a global reference
   }
 }
 

@@ -1,5 +1,5 @@
 use sourcerenderer_core::platform::io::IO;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::io::Result as IOResult;
 
 pub struct StdIO {}
