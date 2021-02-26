@@ -97,7 +97,7 @@ impl VkSwapchain {
       let format = VkSwapchain::pick_format(&formats);
 
       let (width, height) = VkSwapchain::pick_extent(&capabilities, width, height);
-      let mut extent = vk::Extent2D {
+      let extent = vk::Extent2D {
         width,
         height
       };
