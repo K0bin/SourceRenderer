@@ -1,7 +1,7 @@
 use sourcerenderer_core::{Matrix4, Vec3, Quaternion};
 use super::GlobalTransform;
 use legion::systems::{Builder, CommandBuffer};
-use legion::{Entity, component};
+use legion::{Entity, component, maybe_changed};
 use crate::scene::{TickDuration, TickDelta};
 use nalgebra::Matrix3;
 
@@ -17,6 +17,7 @@ pub fn install(fixed_rate_systems: &mut Builder, systems: &mut Builder) {
 }
 
 #[system(for_each)]
+#[filter(maybe_changed::<GlobalTransform>())]
 fn update_previous_global_transform(transform: &GlobalTransform,
                                     entity: &Entity,
                                     command_buffer: &mut CommandBuffer) {
@@ -24,6 +25,7 @@ fn update_previous_global_transform(transform: &GlobalTransform,
 }
 
 #[system(for_each)]
+#[filter(maybe_changed::<GlobalTransform>())]
 fn interpolate_transform(
   transform: &GlobalTransform,
   previous_transform: &PreviousGlobalTransform,
