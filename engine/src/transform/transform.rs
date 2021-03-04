@@ -96,11 +96,11 @@ fn update_global_transforms(world: &SubWorld,
     .filter(component::<Transform>() & !component::<Parent>());
 
   for (entity,) in root_transforms_query.iter(world) {
-    propagade_transforms(entity, &Matrix4::identity(), false, world, command_buffer);
+    propagate_transforms(entity, &Matrix4::identity(), false, world, command_buffer);
   }
 }
 
-fn propagade_transforms(entity: &Entity,
+fn propagate_transforms(entity: &Entity,
                         parent_transform: &Matrix4,
                         parent_dirty: bool,
                         world: &SubWorld,
@@ -126,7 +126,7 @@ fn propagade_transforms(entity: &Entity,
   let children_opt = entry.get_component::<Children>();
   if let Ok(children) = children_opt {
     for child in &children.0 {
-      propagade_transforms(child, &global_transform.0, dirty, world, command_buffer);
+      propagate_transforms(child, &global_transform.0, dirty, world, command_buffer);
     }
   }
 
@@ -161,7 +161,6 @@ fn maintain_children(command_buffer: &mut CommandBuffer, world: &mut SubWorld, #
 
       command_buffer.add_component(*entity, PreviousParent(parent.0));
     } else {
-      println!("remove");
       command_buffer.remove(*entity);
     }
 
@@ -196,7 +195,6 @@ fn maintain_children(command_buffer: &mut CommandBuffer, world: &mut SubWorld, #
 
       command_buffer.add_component(*entity, PreviousParent(parent.0));
     } else {
-      println!("remove");
       command_buffer.remove(*entity);
     }
   }
