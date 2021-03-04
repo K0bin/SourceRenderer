@@ -168,10 +168,10 @@ impl VkCommandBuffer {
     self.state = VkCommandBufferState::Recording;
     self.frame = frame;
     unsafe {
-      let begin_info = vk::CommandBufferBeginInfo {
+      self.device.begin_command_buffer(self.buffer, &vk::CommandBufferBeginInfo {
+        flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
         ..Default::default()
-      };
-      self.device.begin_command_buffer(self.buffer, &begin_info).unwrap();
+      }).unwrap();
     }
   }
 

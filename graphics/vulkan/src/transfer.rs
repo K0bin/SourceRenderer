@@ -346,6 +346,7 @@ impl VkTransfer {
     debug_assert!(!cmd_buffer.is_used());
     unsafe {
       self.device.begin_command_buffer(*cmd_buffer.get_handle(), &vk::CommandBufferBeginInfo {
+        flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
         ..Default::default()
       }).unwrap();
     }
