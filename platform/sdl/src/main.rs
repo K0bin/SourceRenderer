@@ -19,26 +19,11 @@ mod sdl_platform;
 mod input;
 mod io;
 
-const EVENT_TICK_RATE: u32 = 512;
-
 fn main() {
   Engine::<SDLPlatform>::initialize_global();
   let platform = SDLPlatform::new(GraphicsApi::Vulkan);
   let mut engine = Box::new(Engine::run(platform));
-  let mut last_iter_time = SystemTime::now();
   'event_loop: loop {
-    let now = SystemTime::now();
-    let delta = now.duration_since(last_iter_time).unwrap();
-
-    if delta.as_millis() < ((1000 + EVENT_TICK_RATE - 1) / EVENT_TICK_RATE) as u128 {
-      if EVENT_TICK_RATE < 500 {
-        std::thread::yield_now();
-      } else {
-        continue;
-      }
-    }
-    last_iter_time = now;
-
     let event = engine.platform().handle_events();
     if event == PlatformEvent::Quit {
       break 'event_loop;

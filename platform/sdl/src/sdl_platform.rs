@@ -62,11 +62,8 @@ impl SDLPlatform {
   }
 
   pub(crate) fn handle_events(&mut self) -> PlatformEvent {
-    let mut before = SystemTime::now();
-
-    let mut counter = 0;
-    for event in self.event_pump.poll_iter() {
-      counter += 1;
+    let mut event_opt = Some(self.event_pump.wait_event());
+    while let Some(event) = event_opt {
       match event {
         Event::Quit {..} |
         Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
@@ -75,19 +72,8 @@ impl SDLPlatform {
         },
         _ => {}
       }
-    }
 
-    let mut after = SystemTime::now();
-
-    let diff = after.duration_since(before).unwrap();
-    if diff.as_millis() > 16 {
-      println!("Polling took ages?! {:?}, counted {} events", diff.as_millis(), counter);
-    }
-    before = after;
-    after = SystemTime::now();
-    let diff = after.duration_since(before).unwrap();
-    if diff.as_millis() > 16 {
-      println!("Updating input took ages?! {:?}", diff.as_millis());
+      event_opt = self.event_pump.poll_event();
     }
     return PlatformEvent::Continue;
   }
