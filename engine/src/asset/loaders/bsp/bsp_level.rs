@@ -248,6 +248,13 @@ impl BspLevelLoader {
   fn fixup_normal(normal: &Vec3) -> Vec3 {
     Vec3::new(-normal.x, -normal.z, normal.y)
   }
+
+  fn fixup_rotation(rotation: &Vec3) -> Quaternion {
+    const DEG_TO_RAD: f32 = std::f32::consts::PI / 180f32;
+    // Source rotations are in the following order: Pitch Yaw Roll (Y Z X)
+    // We need them in the following order: Pitch Yaw Roll (X Y Z)
+    Quaternion::from_euler_angles(rotation.x * DEG_TO_RAD, rotation.y * DEG_TO_RAD, rotation.z * DEG_TO_RAD)
+  }
 }
 
 impl<P: Platform> AssetLoader<P> for BspLevelLoader {
@@ -256,7 +263,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
-  fn load(&self, asset_file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, asset_file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
     let file = match asset_file.data {
       AssetFileData::File(file) => file,
@@ -397,6 +404,24 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       );
 
       model_index += 1;
+    }
+
+    for prop in temp.static_props.props.as_ref() {
+      let name = &temp.static_props.names.as_ref()[prop.prop_type as usize];
+      manager.request_asset_with_progress(name, AssetType::Model, AssetLoadPriority::Normal, Some(&progress));
+      world.push(
+        (StaticRenderableComponent {
+          model_path: name.clone(),
+          receive_shadows: true,
+          cast_shadows: true,
+          can_move: false
+        },
+         Transform {
+           position: Self::fixup_position(&prop.origin),
+           scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+           rotation: Self::fixup_rotation(&prop.angles),
+         })
+      );
     }
 
     for material in materials_to_load {

@@ -1,12 +1,12 @@
-use std::io::{Read, Result as IOResult};
+use std::io::{Read, Result as IOResult, Error as IOError, ErrorKind};
 use crate::{PrimitiveRead, StringRead};
 use nalgebra::Vector3;
 use crate::lump_data::leaf::ColorRGBExp32;
 
 pub struct StaticPropDict {
-  names: Box<[String]>,
-  leaves: Box<[u16]>,
-  props: Box<[StaticProp]>
+  pub names: Box<[String]>,
+  pub leaves: Box<[u16]>,
+  pub props: Box<[StaticProp]>
 }
 
 impl StaticPropDict {
@@ -42,6 +42,19 @@ impl StaticPropDict {
   }
 }
 
+bitflags! {
+  pub struct StaticPropFlags: u8 {
+    const FADES = 1;
+    const USE_LIGHTING_ORIGIN = 2;
+    const NO_DRAW = 4;
+    const IGNORE_NORMALS = 8;
+    const NO_SHADOW = 0x10;
+    const UNUSED = 0x20;
+    const NO_PER_VERTEX_LIGHTING = 0x40;
+    const NO_SELF_SHADOWING = 0x80;
+  }
+}
+
 pub struct StaticProp {
   pub origin: Vector3<f32>,
   pub angles: Vector3<f32>,
@@ -49,8 +62,8 @@ pub struct StaticProp {
   pub prop_type: u16,
   pub first_leaf: u16,
   pub leaf_count: u16,
-  pub solid: u8,
-  pub flags: u8,
+  pub solid: bool,
+  pub flags: StaticPropFlags,
   pub skin: i32,
   pub fade_min_dist: f32,
   pub fade_max_dist: f32,
@@ -75,8 +88,8 @@ impl StaticProp {
     let prop_type = read.read_u16()?;
     let first_leaf = read.read_u16()?;
     let leaf_count = read.read_u16()?;
-    let solid = read.read_u8()?;
-    let flags = read.read_u8()?;
+    let solid = read.read_u8()? != 0;
+    let flags = StaticPropFlags::from_bits(read.read_u8()?).ok_or_else(|| IOError::new(ErrorKind::Other, "Unrecognized static prop flags."))?;
     let skin = read.read_i32()?;
     let fade_min_dist = read.read_f32()?;
     let fade_max_dist = read.read_f32()?;
@@ -107,15 +120,19 @@ impl StaticProp {
       if version >= 7 {
         diffuse_modulation = ColorRGBExp32::read(read)?;
       }
-      if version == 9 || version == 10 {
-        disable_x360 = read.read_u32()? != 0;
+
+      disable_x360 = read.read_u8()? != 0;
+      for _ in 0..3 {
+        read.read_u8()?;
       }
+
       if version >= 10 {
         flags_ex = read.read_u32()?;
-        if version >= 11 {
-          uniform_scale = read.read_f32()?;
-        }
       }
+      if version >= 11 {
+        uniform_scale = read.read_f32()?;
+      }
+
     }
 
     Ok(Self {

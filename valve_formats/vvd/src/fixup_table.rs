@@ -5,7 +5,7 @@ use crate::PrimitiveRead;
 pub struct VertexFileFixup {
   pub lod: i32,
   pub source_vertex_id: i32,
-  pub vertexes_count: i32
+  pub vertices_count: i32
 }
 
 impl VertexFileFixup {
@@ -16,7 +16,7 @@ impl VertexFileFixup {
     Ok(Self {
       lod,
       source_vertex_id,
-      vertexes_count
+      vertices_count: vertexes_count
     })
   }
 }

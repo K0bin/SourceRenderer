@@ -8,6 +8,9 @@ extern crate sourcerenderer_bsp;
 extern crate sourcerenderer_vpk;
 extern crate sourcerenderer_vtf;
 extern crate sourcerenderer_vmt;
+extern crate sourcerenderer_mdl;
+extern crate sourcerenderer_vvd;
+extern crate sourcerenderer_vtx;
 #[macro_use]
 extern crate legion;
 extern crate regex;

@@ -18,7 +18,7 @@ mod body_part;
 mod model;
 mod mesh;
 
-pub(crate) use self::read_util::*;
+pub use self::read_util::*;
 pub use self::header::{Header, StudioHDRFlags};
 pub use self::header2::Header2;
 pub use self::texture::Texture;

@@ -70,7 +70,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
       return Err(());
     }
     let albedo = albedo_opt.unwrap();
-    let albedo_path = "materials/".to_string() + albedo.to_lowercase().replace('\\', "/").as_str() + ".vtf";
+    let albedo_path = "materials/".to_string() + albedo.to_lowercase().replace('\\', "/").as_str().trim_matches('/').trim_end_matches(".vtf") + ".vtf";
     let material = Material {
       albedo_texture_path: albedo_path.clone()
     };

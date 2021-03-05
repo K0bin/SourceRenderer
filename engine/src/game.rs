@@ -10,7 +10,7 @@ use crate::renderer::*;
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;
-use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader, CSGODirectoryContainer};
+use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader, CSGODirectoryContainer, MDLModelLoader};
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use sourcerenderer_core::platform::{InputState, InputCommands};
@@ -54,9 +54,9 @@ impl<P: Platform> Game<P> {
     asset_manager.add_loader(Box::new(VPKContainerLoader::new()));
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
     asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
+    asset_manager.add_loader(Box::new(MDLModelLoader::new()));
 
     let csgo_path = "";
-
     #[cfg(target_os = "linux")]
         //let csgo_path = "~/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
         let csgo_path = "/run/media/robin/System/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive";

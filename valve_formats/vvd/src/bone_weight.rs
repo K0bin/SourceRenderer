@@ -2,6 +2,7 @@ use std::io::{Read, Result as IOResult};
 
 use crate::PrimitiveRead;
 
+#[derive(Clone)]
 pub struct BoneWeight {
   pub weight: [f32; 3],
   pub bone: [i8; 3],

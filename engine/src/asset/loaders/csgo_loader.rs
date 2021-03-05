@@ -40,6 +40,10 @@ impl CSGODirectoryContainer {
 }
 
 impl<P: Platform> AssetContainer<P> for CSGODirectoryContainer {
+  fn contains(&self, path: &str) -> bool {
+    return self.map_name_regex.is_match(path) || self.primary_pak_name_regex.is_match(path) || self.pak_name_regex.is_match(path);
+  }
+
   fn load(&self, path: &str) -> Option<AssetFile<P>> {
     let actual_path = if self.map_name_regex.is_match(path) {
       let mut actual_path = PathBuf::new();

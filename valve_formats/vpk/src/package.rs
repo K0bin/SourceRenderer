@@ -222,7 +222,7 @@ impl<R> Package<R>
 
   /// Searches for a given file entry in the file list.
   pub fn find_entry(&self, file_path: &str) -> Option<&PackageEntry> {
-    let file_path = file_path.replace("\\", DIRECTORY_SEPARATOR);
+    let file_path = file_path.replace("\\", DIRECTORY_SEPARATOR).to_lowercase();
     let last_separator = file_path.rfind(DIRECTORY_SEPARATOR);
     let (file_name, directory) = if let Some(last_separator) = last_separator {
       (&file_path[last_separator + 1 ..], &file_path[.. last_separator])
@@ -337,9 +337,9 @@ impl<R> Package<R>
           let len = input.read_u32().map_err(PackageError::IOError)?;
 
           let mut entry = PackageEntry {
-            file_name,
-            directory_name: directory_name.clone(),
-            type_name: type_name.clone(),
+            file_name: file_name.to_lowercase(),
+            directory_name: directory_name.to_lowercase(),
+            type_name: type_name.to_lowercase(),
             crc32,
             small_data: Vec::new().into_boxed_slice(),
             archive_index,

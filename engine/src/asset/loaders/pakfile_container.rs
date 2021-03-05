@@ -17,10 +17,14 @@ impl PakFileContainer {
 }
 
 impl<P: Platform> AssetContainer<P> for PakFileContainer {
-  fn load(&self, path: &str) -> Option<AssetFile<P>> {
-    let name = path;
+  fn contains(&self, path: &str) -> bool {
     let mut guard = self.pakfile.lock().unwrap();
-    let data = guard.read_entry(name)?;
+    guard.contains_entry(path)
+  }
+
+  fn load(&self, path: &str) -> Option<AssetFile<P>> {
+    let mut guard = self.pakfile.lock().unwrap();
+    let data = guard.read_entry(path)?;
     Some(AssetFile {
       path: path.to_string(),
       data: AssetFileData::Memory(Cursor::new(data))

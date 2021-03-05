@@ -31,6 +31,10 @@ pub fn new_vpk_container<P: Platform>(asset_manager: &Arc<AssetManager<P>>, asse
 }
 
 impl<P: Platform> AssetContainer<P> for VPKContainer<P> {
+  fn contains(&self, path: &str) -> bool {
+    self.package.find_entry(path).is_some()
+  }
+
   fn load(&self, path: &str) -> Option<AssetFile<P>> {
     let entry = self.package.find_entry(path);
     entry

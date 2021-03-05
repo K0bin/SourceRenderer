@@ -4,6 +4,7 @@ use nalgebra::{Vector2, Vector3};
 
 use crate::{PrimitiveRead, BoneWeight};
 
+#[derive(Clone)]
 pub struct Vertex {
   pub bone_weights: BoneWeight,
   pub vec_position: Vector3<f32>,

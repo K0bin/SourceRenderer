@@ -119,6 +119,9 @@ impl<P: Platform> Seek for AssetFileData<P> {
 
 pub trait AssetContainer<P: Platform>
   : Send + Sync {
+  fn contains(&self, path: &str) -> bool {
+    self.load(path).is_some()
+  }
   fn load(&self, path: &str) -> Option<AssetFile<P>>;
 }
 
@@ -375,6 +378,16 @@ impl<P: Platform> AssetManager<P> {
       }
     }
     file_opt
+  }
+
+  pub fn file_exists(&self, path: &str) -> bool {
+    let containers = self.containers.read().unwrap();
+    for container in containers.iter() {
+      if container.contains(path) {
+        return true;
+      }
+    }
+    return false;
   }
 
   fn find_loader<'a>(file: &mut AssetFile<P>, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a dyn AssetLoader<P>> {

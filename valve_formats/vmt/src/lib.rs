@@ -5,6 +5,11 @@ use std::io::{Read, Error as IOError};
 use crate::read_util::RawDataRead;
 
 pub const SHADER_LIGHT_MAPPED_GENERIC: &str = "lightmappedgeneric";
+pub const SHADER_VERTEX_LIT_GENERIC: &str = "vertexlitgeneric";
+pub const SHADER_UNLIT_GENERIC: &str = "unlitgeneric";
+pub const SHADER_ENVMAP_TINT: &str = "envmaptint";
+pub const SHADER_WORLD_VERTEX_TRANSITION: &str = "worldvertextransition";
+pub const SHADER_WATER: &str = "water";
 pub const BASE_TEXTURE_NAME: &str = "basetexture";
 pub const PATCH: &str = "patch";
 pub const PATCH_INCLUDE: &str = "include";
@@ -32,9 +37,23 @@ impl VMTMaterial {
     text = text.replace('\t', " ");
     text = text.trim_end_matches('\0').to_string();
     let block_start = text.find('{').ok_or_else(|| VMTError::FileError("Could not find start of material block".to_string()))?;
-    let shader_name = remove_comments(&text[0 .. block_start]).replace("\"", "").trim().to_lowercase();
 
-    if shader_name != SHADER_LIGHT_MAPPED_GENERIC && shader_name != PATCH {
+    let mut shader_name: String = String::new();
+    let shader_name_lines = (&text[..block_start]).split('\n');
+    for line in shader_name_lines {
+      let line = remove_line_comments(line);
+      if !line.trim().is_empty() {
+        shader_name = line.replace("\"", "").trim().to_lowercase();
+      }
+    }
+
+    if shader_name != SHADER_LIGHT_MAPPED_GENERIC
+      && shader_name != PATCH
+      && shader_name != SHADER_UNLIT_GENERIC
+      && shader_name != SHADER_VERTEX_LIT_GENERIC
+      && shader_name != SHADER_ENVMAP_TINT
+      && shader_name != SHADER_WORLD_VERTEX_TRANSITION
+      && shader_name != SHADER_WATER {
       println!("Found unsupported shader: \"{}\"", shader_name);
     }
 
@@ -53,7 +72,7 @@ impl VMTMaterial {
       }
       let key_end = key_end_opt.unwrap();
       let key = (&trimmed_line[.. key_end]).trim().to_lowercase();
-      let value = remove_comments(&trimmed_line[key_end + 1 ..]).trim().to_string();
+      let value = remove_line_comments(&trimmed_line[key_end + 1 ..]).trim().to_string();
       values.insert(key, value);
     }
 
@@ -92,16 +111,10 @@ impl VMTMaterial {
   }
 }
 
-fn remove_comments(text: &str) -> &str {
+fn remove_line_comments(text: &str) -> &str {
   let comment_start = text.find("//");
   if comment_start.is_none() {
     return text;
   }
-  let comment_start = comment_start.unwrap() + 2;
-  let comment_end = text[comment_start..].find('\n');
-  if let Some(comment_end) = comment_end {
-    &text[comment_start .. (comment_end - comment_start)]
-  } else {
-    &text[comment_start ..]
-  }
+  &text[..comment_start.unwrap()]
 }

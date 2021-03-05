@@ -28,3 +28,6 @@ default = ["threading", "late-latching"]
 late-latching = []
 threading = ["legion/parallel"]
 web = ["legion/wasm-bindgen"]
+
+[profile.release]
+debug = true
