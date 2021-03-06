@@ -1,0 +1,39 @@
+{
+  "name": "sourcerenderer-web-site",
+  "version": "0.1.0",
+  "description": "Render source engine maps in the browser",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "start": "webpack serve"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/K0bin/SourceRenderer.git"
+  },
+  "keywords": [
+    "webassembly",
+    "wasm",
+    "rust",
+    "webpack"
+  ],
+  "author": "Robin Kertels <robin.kertels@gmail.com>",
+  "license": "(MIT)",
+  "bugs": {
+    "url": "https://github.com/K0bin/SourceRenderer/issues"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "^8.0.0",
+    "sourcerenderer_web": "file:../lib/pkg",
+    "ts-loader": "^8.0.17",
+    "typescript": "^4.2.3",
+    "webpack": "^5.24.3",
+    "webpack-cli": "^4.5.0",
+    "webpack-dev-server": "^3.11.2",
+    "workbox-webpack-plugin": "^6.1.1"
+  },
+  "dependencies": {
+    "dependency-tree": "^8.0.0",
+    "workbox-core": "^6.1.1"
+  }
+}
