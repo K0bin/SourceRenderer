@@ -28,7 +28,6 @@ module.exports = {
       skipWaiting: true,
     })
   ],
-  mode: 'development',
   experiments:  {
     syncWebAssembly: true
   }
