@@ -6,4 +6,4 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1.2.1"
-nalgebra = "0.22.0"
+nalgebra = "0.25.3"

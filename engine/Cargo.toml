@@ -6,7 +6,7 @@ build = "build.rs"
 edition = "2018"
 
 [dependencies]
-nalgebra = "0.22.0"
+nalgebra = "0.25.3"
 num_cpus = "1.13.0"
 sourcerenderer_core = { path = "../core" }
 image = "0.23.13"
@@ -19,9 +19,9 @@ sourcerenderer_vmt = { path = "../valve_formats/vmt" }
 sourcerenderer_mdl = { path = "../valve_formats/mdl" }
 sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
-legion = "0.3.1"
+legion = "0.4.0"
 regex = "1.4.2"
-bitvec = "0.20.1"
+bitvec = "0.21.1"
 
 [dependencies.async-std]
 version = "1.6.1"
