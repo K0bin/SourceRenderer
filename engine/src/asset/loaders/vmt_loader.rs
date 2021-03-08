@@ -2,8 +2,7 @@ use crate::asset::{AssetLoader, Asset, AssetType, AssetManager};
 use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetLoaderProgress, AssetLoadPriority};
 use sourcerenderer_core::Platform;
 use sourcerenderer_vmt::VMTMaterial;
-use std::io::{BufReader, Seek};
-use async_std::io::SeekFrom;
+use std::io::{BufReader, Seek, SeekFrom};
 use crate::asset::Material;
 use std::sync::Arc;
 

@@ -22,7 +22,3 @@ sourcerenderer_vvd = { path = "../valve_formats/vvd" }
 legion = "0.4.0"
 regex = "1.4.2"
 bitvec = "0.21.1"
-
-[dependencies.async-std]
-version = "1.6.1"
-features = ["unstable"]

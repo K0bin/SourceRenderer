@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 extern crate num_cpus;
 extern crate sourcerenderer_core;
-extern crate async_std;
 extern crate image;
 extern crate crossbeam_channel;
 extern crate crossbeam_utils;
