@@ -9,7 +9,6 @@ edition = "2018"
 nalgebra = "0.22.0"
 num_cpus = "1.13.0"
 sourcerenderer_core = { path = "../core" }
-sourcerenderer_vulkan = { path = "../graphics/vulkan" }
 image = "0.23.13"
 crossbeam-channel = "0.5.0"
 crossbeam-utils = "0.8.0"
