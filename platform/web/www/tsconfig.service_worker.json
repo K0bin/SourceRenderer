@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2017", "webworker"],
+  },
+  "include": [
+    "./src/service_worker.ts"
+  ],
+  "exclude": []
+}

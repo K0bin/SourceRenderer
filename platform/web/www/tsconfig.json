@@ -1,12 +1,21 @@
 {
-    "compilerOptions": {
-      "outDir": "./dist/",
-      "noImplicitAny": true,
-      "module": "es6",
-      "target": "es5",
-      "jsx": "react",
-      "allowJs": true,
-      "lib": ["dom"],
-      "moduleResolution": "node"
-  }
+  "compilerOptions": {
+    "outDir": "./dist/",
+    "noImplicitAny": true,
+    "module": "es2015",
+    "target": "ES2017",
+    "jsx": "react",
+    "allowJs": true,
+    "lib": ["ES2017", "dom"],
+    "moduleResolution": "node",
+    "strict": true,
+    "sourceMap": true,
+    "removeComments": true,
+    "rootDir": ".",
+    "rootDirs": [".", "./dist"]
+  },
+  "exclude": [
+    "./src/service_worker.ts",
+    "./dist/"
+  ]
 }

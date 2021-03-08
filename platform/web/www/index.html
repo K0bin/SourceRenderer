@@ -2,11 +2,12 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Hello wasm-pack!</title>
+    <title>SourceRenderer</title>
     <link rel="manifest" href="manifest.json">
+    <script type="module" src="/wasm_lib/sourcerenderer_web.js"></script>
   </head>
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
-    <script src="./bundle.js"></script>
+    <script type="module" src="./src/index.js"></script>
   </body>
 </html>
