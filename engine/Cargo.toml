@@ -19,6 +19,10 @@ sourcerenderer_vmt = { path = "../valve_formats/vmt" }
 sourcerenderer_mdl = { path = "../valve_formats/mdl" }
 sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
-legion = "0.4.0"
+legion = { version = "0.4.0", default-features = false, features=["crossbeam-events", "codegen"] }
 regex = "1.4.2"
 bitvec = "0.21.1"
+
+[features]
+default = ["legion/parallel"]
+web = ["legion/wasm-bindgen"]

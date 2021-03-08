@@ -25,9 +25,6 @@ use ash::version::InstanceV1_0;
 use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
 
-use std::time::SystemTime;
-
-
 pub struct SDLPlatform {
   sdl_context: Sdl,
   video_subsystem: VideoSubsystem,

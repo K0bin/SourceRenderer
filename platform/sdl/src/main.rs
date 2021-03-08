@@ -12,8 +12,6 @@ use sourcerenderer_engine::Engine;
 use sourcerenderer_core::platform::{GraphicsApi, PlatformEvent};
 
 pub use sdl_platform::SDLPlatform;
-use std::time::SystemTime;
-
 
 mod sdl_platform;
 mod input;

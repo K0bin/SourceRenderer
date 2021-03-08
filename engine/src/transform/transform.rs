@@ -81,7 +81,7 @@ fn mark_transforms_dirty_because_parent(dirty: &mut TransformDirty) {
   dirty.0 = true;
 }
 
-#[system(par_for_each)]
+#[system(for_each)]
 fn mark_transforms_clean(dirty: &mut TransformDirty) {
   dirty.0 = false;
 }

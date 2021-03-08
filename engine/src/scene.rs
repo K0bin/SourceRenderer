@@ -52,6 +52,9 @@ impl<P: Platform> Game<P> {
     asset_manager.add_loader(Box::new(VPKContainerLoader::new()));
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
     asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
+
+    let csgo_path = "";
+
     #[cfg(target_os = "linux")]
         //let csgo_path = "~/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
         let csgo_path = "/run/media/robin/System/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive";

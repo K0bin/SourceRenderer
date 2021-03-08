@@ -7,4 +7,4 @@ edition = "2018"
 [dependencies]
 bitflags = "1.2.1"
 nalgebra = "0.25.3"
-zip = "0.5.8"
+zip = { version = "0.5.11", default-features = false, default_features = false, features = ["deflate"] }
