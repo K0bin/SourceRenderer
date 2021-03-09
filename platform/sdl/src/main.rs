@@ -24,6 +24,7 @@ fn main() {
   'event_loop: loop {
     let event = engine.platform().handle_events();
     if event == PlatformEvent::Quit {
+      engine.poll_platform();
       break 'event_loop;
     }
     let input_commands = engine.receive_input_commands();
