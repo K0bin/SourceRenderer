@@ -27,4 +27,4 @@ mod camera;
 pub mod fps_camera;
 
 mod renderer;
-mod scene;
+mod game;

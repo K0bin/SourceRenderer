@@ -13,7 +13,7 @@ use legion::systems::Builder as SystemBuilder;
 
 use crate::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
-use crate::scene::DeltaTime;
+use crate::game::DeltaTime;
 use std::f32;
 use sourcerenderer_core::platform::io::IO;
 use std::io::{Seek, SeekFrom, Read};

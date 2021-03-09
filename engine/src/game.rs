@@ -14,7 +14,7 @@ use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use sourcerenderer_core::platform::{InputState, InputCommands};
-use crate::fps_camera::{fps_camera_rotation, FPSCamera};
+use crate::fps_camera::{calculate_fps_camera_rotation, FPSCamera};
 
 pub struct TimeStampedInputState(InputState, SystemTime);
 
@@ -143,10 +143,14 @@ impl<P: Platform> Game<P> {
     {
       let mut input_guard = self.input_state.lock().unwrap();
       let now = SystemTime::now();
-      let delta = now.duration_since(input_guard.1).unwrap();
+
+      #[cfg(feature = "late-latching")]
       {
-        let mut fps_camera = self.fps_camera.lock().unwrap();
-        self.late_latch_camera.update_rotation(fps_camera_rotation::<P>(&input_state, &mut fps_camera, delta.as_secs_f32()));
+        let delta = now.duration_since(input_guard.1).unwrap();
+        {
+          let mut fps_camera = self.fps_camera.lock().unwrap();
+          self.late_latch_camera.update_rotation(calculate_fps_camera_rotation::<P>(&input_state, &mut fps_camera, delta.as_secs_f32()));
+        }
       }
 
       *input_guard = TimeStampedInputState(input_state, now);

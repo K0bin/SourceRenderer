@@ -6,7 +6,7 @@ use sourcerenderer_core::{Quaternion, Vec3, Platform, Vec2};
 use legion::systems::Builder;
 use legion::{component, World};
 
-use crate::scene::TickRate;
+use crate::game::TickRate;
 use crate::renderer::LateLatchCamera;
 
 pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {

@@ -7,7 +7,7 @@ use sourcerenderer_core::platform::Window;
 
 use crate::asset::AssetManager;
 use crate::renderer::Renderer;
-use crate::scene::Game;
+use crate::game::Game;
 
 const TICK_RATE: u32 = 5;
 

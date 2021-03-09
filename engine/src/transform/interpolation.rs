@@ -2,7 +2,7 @@ use sourcerenderer_core::{Matrix4, Vec3, Quaternion};
 use super::GlobalTransform;
 use legion::systems::{Builder, CommandBuffer};
 use legion::{Entity, component, maybe_changed};
-use crate::scene::{TickDuration, TickDelta};
+use crate::game::{TickDuration, TickDelta};
 use nalgebra::Matrix3;
 
 pub struct PreviousGlobalTransform(pub Matrix4);
