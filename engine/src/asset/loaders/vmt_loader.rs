@@ -71,12 +71,12 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     }
     let albedo = albedo_opt.unwrap();
     let albedo_path = "materials/".to_string() + albedo.to_lowercase().replace('\\', "/").as_str() + ".vtf";
-    let material = Arc::new(Material {
+    let material = Material {
       albedo_texture_path: albedo_path.clone()
-    });
+    };
 
     manager.request_asset_with_progress(&albedo_path, AssetType::Texture, priority, Some(progress));
-    manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress), priority, None);
+    manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress), priority);
 
     Ok(AssetLoaderResult {
       level: None

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::graphics::{Backend, Device, Fence};
-use crate::asset::{Mesh, Model, Material, AssetManager, Asset};
+use sourcerenderer_core::graphics::{Backend, Device, Fence, TextureShaderResourceView};
+use crate::asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };
 
@@ -17,18 +17,34 @@ pub(super) struct RendererMaterial<B: Backend> {
 }
 
 pub(super) struct RendererModel<B: Backend> {
-  pub(super) mesh: Arc<Mesh<B>>,
+  pub(super) mesh: Arc<RendererMesh<B>>,
   pub(super) materials: Box<[Arc<RendererMaterial<B>>]>
+}
+
+pub(super) struct RendererMesh<B: Backend> {
+  pub(super) vertices: Arc<B::Buffer>,
+  pub(super) indices: Option<Arc<B::Buffer>>,
+  pub(super) parts: Box<[MeshRange]>
+}
+
+
+struct DelayedAsset<B: Backend> {
+  fence: Arc<B::Fence>,
+  path: String,
+  asset: DelayedAssetType<B>
+}
+enum DelayedAssetType<B: Backend> {
+  TextureView(Arc<B::TextureShaderResourceView>)
 }
 
 pub(super) struct RendererAssets<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   models: HashMap<String, Arc<RendererModel<P::GraphicsBackend>>>,
-  meshes: HashMap<String, Arc<Mesh<P::GraphicsBackend>>>,
+  meshes: HashMap<String, Arc<RendererMesh<P::GraphicsBackend>>>,
   materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
   textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
   zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>,
-  delayed_assets: Vec<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Asset<P>)>
+  delayed_assets: Vec<DelayedAsset<P::GraphicsBackend>>
 }
 
 impl<P: Platform> RendererAssets<P> {
@@ -89,9 +105,62 @@ impl<P: Platform> RendererAssets<P> {
     renderer_texture
   }
 
-  pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: &Arc<Mesh<P::GraphicsBackend>>) -> Arc<Mesh<P::GraphicsBackend>> {
-    self.meshes.insert(mesh_path.to_owned(), mesh.clone());
-    mesh.clone()
+  pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: Mesh) {
+    let vertex_buffer = self.device.create_buffer(
+      std::mem::size_of_val(&mesh.vertices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
+    let temp_vertex_buffer = self.device.upload_data_raw(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    self.device.init_buffer(&temp_vertex_buffer, &vertex_buffer);
+    let index_buffer = mesh.indices.map(|indices| {
+      let buffer = self.device.create_buffer(
+      std::mem::size_of_val(&indices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
+      let temp_buffer = self.device.upload_data_raw(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+      self.device.init_buffer(&temp_buffer, &buffer);
+      buffer
+    });
+
+    let mesh = Arc::new(RendererMesh {
+      vertices: vertex_buffer,
+      indices: index_buffer,
+      parts: mesh.parts.into_iter().cloned().collect() // TODO: change base type to boxed slice
+    });
+    self.meshes.insert(mesh_path.to_owned(), mesh);
+  }
+
+  pub fn upload_texture(&mut self, texture_path: &str, texture: Texture, do_async: bool) -> (Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
+    let gpu_texture = self.device.create_texture(&texture.info, Some(texture_path));
+    let subresources = texture.info.array_length * texture.info.mip_levels;
+    let mut fence = Option::<Arc<<P::GraphicsBackend as Backend>::Fence>>::None;
+    for subresource in 0..subresources {
+      let mip_level = subresource % texture.info.mip_levels;
+      let array_index = subresource / texture.info.array_length;
+      let init_buffer = self.device.upload_data_raw(
+        &texture.data[subresource as usize][..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+      if do_async {
+        fence = self.device.init_texture_async(&gpu_texture, &init_buffer, mip_level, array_index);
+      } else {
+        self.device.init_texture(&gpu_texture, &init_buffer, mip_level, array_index);
+      }
+    }
+    let view = self.device.create_shader_resource_view(
+      &gpu_texture, &TextureShaderResourceViewInfo {
+          base_mip_level: 0,
+          mip_level_length: texture.info.mip_levels,
+          base_array_level: 0,
+          array_level_length: texture.info.array_length,
+          mag_filter: Filter::Linear,
+          min_filter: Filter::Linear,
+          mip_filter: Filter::Linear,
+          address_mode_u: AddressMode::Repeat,
+          address_mode_v: AddressMode::Repeat,
+          address_mode_w: AddressMode::Repeat,
+          mip_bias: 0f32,
+          max_anisotropy: 0f32,
+          compare_op: None,
+          min_lod: 0f32,
+          max_lod: 0f32,
+    });
+
+    (view, fence)
   }
 
   pub fn integrate_material(&mut self, material_path: &str, material: &Material) -> Arc<RendererMaterial<P::GraphicsBackend>> {
@@ -161,53 +230,51 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {
-    let mut retained_delayed_assets = Vec::<(Arc<<P::GraphicsBackend as Backend>::Fence>, String, Asset<P>)>::new();
-    let mut ready_delayed_assets = Vec::<(String, Asset<P>)>::new();
-    for (fence, name, asset) in self.delayed_assets.drain(..) {
-      if fence.is_signaled() {
-        ready_delayed_assets.push((name, asset));
+    let mut retained_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
+    let mut ready_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
+    for delayed_asset in self.delayed_assets.drain(..) {
+      if delayed_asset.fence.is_signaled() {
+        ready_delayed_assets.push(delayed_asset);
       } else {
-        retained_delayed_assets.push((fence, name, asset));
+        retained_delayed_assets.push(delayed_asset);
       }
     }
     self.delayed_assets.extend(retained_delayed_assets);
 
-    // has to be called after deciding which fences have gotten signalled
-    // to avoid an unlikely timing problem where the fence isn't ready yet when we
-    // flush the transfers but becomes signalled after that just in time for the renderer
-    // to decide to use the associated assets
-    self.device.flush_transfers();
-
-    for (name, asset) in ready_delayed_assets {
-      match &asset {
-        Asset::Texture(texture) => { self.integrate_texture(&name, texture); }
-        Asset::Material(material) => { self.integrate_material(&name, material); }
-        Asset::Mesh(mesh) => { self.integrate_mesh(&name, mesh); }
-        Asset::Model(model) => { self.integrate_model(&name, model); }
-        _ => unimplemented!()
+    for delayed_asset in ready_delayed_assets.drain(..) {
+      match &delayed_asset.asset {
+        DelayedAssetType::TextureView(view) => {
+          self.integrate_texture(&delayed_asset.path, view);
+        }
       }
     }
 
     let mut asset_opt = asset_manager.receive_render_asset();
     while asset_opt.is_some() {
       let asset = asset_opt.unwrap();
-      let fence = asset.fence.as_ref();
-      if let Some(fence) = fence {
-        // delay the adding of assets with an associated fence by at least one frame
-        // to avoid the race mentioned above
-        self.delayed_assets.push((fence.clone(), asset.path.clone(), asset.asset));
-        asset_opt = asset_manager.receive_render_asset();
-        continue;
-      }
-
-      match &asset.asset {
-        Asset::Texture(texture) => { self.integrate_texture(&asset.path, texture); }
-        Asset::Material(material) => { self.integrate_material(&asset.path, material); }
+      match asset.asset {
+        Asset::Material(material) => { self.integrate_material(&asset.path, &material); }
+        Asset::Model(model) => { self.integrate_model(&asset.path, &model); }
         Asset::Mesh(mesh) => { self.integrate_mesh(&asset.path, mesh); }
-        Asset::Model(model) => { self.integrate_model(&asset.path, model); }
+        Asset::Texture(texture) => {
+          let do_async = asset.priority == AssetLoadPriority::Low;
+          let (view, fence) = self.upload_texture(&asset.path, texture, do_async);
+          if let Some(fence) = fence {
+            self.delayed_assets.push(DelayedAsset {
+              fence,
+              path: asset.path.to_string(),
+              asset: DelayedAssetType::TextureView(view)
+            });
+          } else {
+            self.integrate_texture(&asset.path, &view);
+          }
+        }
         _ => unimplemented!()
       }
       asset_opt = asset_manager.receive_render_asset();
     }
+
+    // Make sure the work initializing the resources actually gets submitted
+    self.device.flush_transfers();
   }
 }

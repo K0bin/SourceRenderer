@@ -7,6 +7,8 @@ pub use asset_manager::AssetType;
 pub use asset_manager::AssetKey;
 pub use asset_manager::AssetManager;
 pub use asset_manager::Mesh;
+pub use asset_manager::MeshRange;
+pub use asset_manager::Texture;
 pub use asset_manager::Model;
 pub use asset_manager::Material;
 pub use asset_manager::AssetLoaderProgress;

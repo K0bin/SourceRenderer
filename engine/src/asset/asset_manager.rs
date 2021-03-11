@@ -24,10 +24,9 @@ pub struct AssetLoadRequest {
   priority: AssetLoadPriority
 }
 
-pub struct LoadedAsset<P: Platform> {
+pub struct LoadedAsset {
   pub path: String,
-  pub asset: Asset<P>,
-  pub fence: Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>,
+  pub asset: Asset,
   pub priority: AssetLoadPriority
 }
 
@@ -49,20 +48,15 @@ pub struct MeshRange {
   pub count: u32
 }
 
-pub struct Mesh<B: GraphicsBackend> {
-  pub vertices: Arc<B::Buffer>,
-  pub indices: Option<Arc<B::Buffer>>,
-  pub parts: Vec<MeshRange>
+pub struct Texture {
+  pub info: TextureInfo,
+  pub data: Box<[Box<[u8]>]>
 }
 
-impl<B: GraphicsBackend> Clone for Mesh<B> {
-  fn clone(&self) -> Self {
-    Self {
-      vertices: self.vertices.clone(),
-      indices: self.indices.clone(),
-      parts: self.parts.clone()
-    }
-  }
+pub struct Mesh {
+  pub indices: Option<Box<[u8]>>,
+  pub vertices: Box<[u8]>,
+  pub parts: Box<[MeshRange]>
 }
 
 #[derive(Clone)]
@@ -156,24 +150,12 @@ pub trait AssetLoader<P: Platform>
   fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()>;
 }
 
-pub enum Asset<P: Platform> {
-  Texture(Arc<<P::GraphicsBackend as graphics::Backend>::TextureShaderResourceView>),
-  Mesh(Arc<Mesh<P::GraphicsBackend>>),
-  Model(Arc<Model>),
+pub enum Asset {
+  Texture(Texture),
+  Mesh(Mesh),
+  Model(Model),
   Sound,
-  Material(Arc<Material>)
-}
-
-impl<P: Platform> Clone for Asset<P> {
-  fn clone(&self) -> Self {
-    match self {
-      Asset::Texture(tex) => Asset::Texture(tex.clone()),
-      Asset::Mesh(mesh) => Asset::Mesh(mesh.clone()),
-      Asset::Model(model) => Asset::Model(model.clone()),
-      Asset::Sound => Asset::Sound,
-      Asset::Material(mat) => Asset::Material(mat.clone())
-    }
-  }
+  Material(Material)
 }
 
 pub struct AssetManager<P: Platform> {
@@ -181,8 +163,8 @@ pub struct AssetManager<P: Platform> {
   inner: Mutex<AssetManagerInner>,
   containers: RwLock<Vec<Box<dyn AssetContainer<P>>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
-  renderer_sender: Sender<LoadedAsset<P>>,
-  renderer_receiver: Receiver<LoadedAsset<P>>
+  renderer_sender: Sender<LoadedAsset>,
+  renderer_receiver: Receiver<LoadedAsset>
 }
 
 struct AssetManagerInner {
@@ -221,61 +203,39 @@ impl<P: Platform> AssetManager<P> {
     &self.device
   }
 
-  pub fn add_mesh(&self, path: &str, vertex_buffer_data: &[u8], index_buffer_data: &[u8]) {
-    let vertex_buffer = self.device.upload_data_slice(vertex_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::VERTEX | BufferUsage::COPY_SRC);
-    let index_buffer = if !index_buffer_data.is_empty() {
-      Some(self.device.upload_data_slice(index_buffer_data, MemoryUsage::CpuToGpu, BufferUsage::INDEX | BufferUsage::COPY_SRC))
-    } else {
-      None
+  pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, index_buffer_data: Box<[u8]>) {
+    let range = MeshRange {
+      start: 0,
+      count: if index_buffer_data.is_empty() { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
     };
-    let mesh = Arc::new(Mesh {
-      vertices: vertex_buffer,
-      indices: index_buffer,
-      parts: vec![MeshRange {
-        start: 0,
-        count: if index_buffer_data.is_empty() { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
-      }]
-    });
-    self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal, None);
+    let mesh = Mesh {
+      vertices: vertex_buffer_data,
+      indices: if !index_buffer_data.is_empty() { Some(index_buffer_data) } else { None },
+      parts: vec![range].into_boxed_slice()
+    };
+    self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
   }
 
   pub fn add_material(&self, path: &str, albedo: &str) {
-    let material = Arc::new(Material {
+    let material = Material {
       albedo_texture_path: albedo.to_string()
-    });
-    self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal, None);
+    };
+    self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
   }
 
   pub fn add_model(&self, path: &str, mesh_path: &str, material_paths: &[&str]) {
-    let model = Arc::new(Model {
+    let model = Model {
       mesh_path: mesh_path.to_string(),
       material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect()
-    });
-    self.add_asset(path, Asset::Model(model), AssetLoadPriority::Normal, None);
+    };
+    self.add_asset(path, Asset::Model(model), AssetLoadPriority::Normal);
   }
 
-  pub fn add_texture(&self, path: &str, info: &TextureInfo, texture_data: &[u8]) {
-    let src_buffer = self.device.upload_data_raw(texture_data, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let texture = self.device.create_texture(info, Some(path));
-    self.device.init_texture(&texture, &src_buffer, 0, 0);
-    let srv = self.device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::Repeat,
-      address_mode_v: AddressMode::Repeat,
-      address_mode_w: AddressMode::Repeat,
-      mip_bias: 0.0,
-      max_anisotropy: 0.0,
-      compare_op: None,
-      min_lod: 0.0,
-      max_lod: 0.0
-    });
-    self.add_asset(path, Asset::Texture(srv), AssetLoadPriority::Normal, None);
+  pub fn add_texture(&self, path: &str, info: &TextureInfo, texture_data: Box<[u8]>) {
+    self.add_asset(path, Asset::Texture(Texture {
+      info: info.clone(),
+      data: Box::new([texture_data.to_vec().into_boxed_slice()]),
+    }), AssetLoadPriority::Normal);
   }
 
   pub fn add_container(&self, container: Box<dyn AssetContainer<P>>) {
@@ -295,11 +255,11 @@ impl<P: Platform> AssetManager<P> {
     loaders.push(loader);
   }
 
-  pub fn add_asset(&self, path: &str, asset: Asset<P>, priority: AssetLoadPriority, fence: Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>) {
-    self.add_asset_with_progress(path, asset, None, priority, fence)
+  pub fn add_asset(&self, path: &str, asset: Asset, priority: AssetLoadPriority) {
+    self.add_asset_with_progress(path, asset, None, priority)
   }
 
-  pub fn add_asset_with_progress(&self, path: &str, asset: Asset<P>, progress: Option<&Arc<AssetLoaderProgress>>, priority: AssetLoadPriority, fence: Option<Arc<<P::GraphicsBackend as GraphicsBackend>::Fence>>) {
+  pub fn add_asset_with_progress(&self, path: &str, asset: Asset, progress: Option<&Arc<AssetLoaderProgress>>, priority: AssetLoadPriority) {
     {
       let mut inner = self.inner.lock().unwrap();
       inner.loaded_assets.insert(path.to_string());
@@ -314,15 +274,6 @@ impl<P: Platform> AssetManager<P> {
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Material(material),
           path: path.to_owned(),
-          fence,
-          priority
-        }).unwrap();
-      }
-      Asset::Texture(texture) => {
-        self.renderer_sender.send(LoadedAsset {
-          asset: Asset::Texture(texture),
-          path: path.to_owned(),
-          fence,
           priority
         }).unwrap();
       }
@@ -330,7 +281,13 @@ impl<P: Platform> AssetManager<P> {
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Mesh(mesh),
           path: path.to_owned(),
-          fence,
+          priority
+        }).unwrap();
+      }
+      Asset::Texture(texture) => {
+        self.renderer_sender.send(LoadedAsset {
+          asset: Asset::Texture(texture),
+          path: path.to_owned(),
           priority
         }).unwrap();
       }
@@ -338,7 +295,6 @@ impl<P: Platform> AssetManager<P> {
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Model(model),
           path: path.to_owned(),
-          fence,
           priority
         }).unwrap();
       }
@@ -471,7 +427,7 @@ impl<P: Platform> AssetManager<P> {
     }
   }
 
-  pub fn receive_render_asset(&self) -> Option<LoadedAsset<P>> {
+  pub fn receive_render_asset(&self) -> Option<LoadedAsset> {
     self.renderer_receiver.try_recv().ok()
   }
 
@@ -483,10 +439,6 @@ impl<P: Platform> AssetManager<P> {
   pub fn notify_unloaded(&self, path: &str) {
     let mut inner = self.inner.lock().unwrap();
     inner.loaded_assets.remove(path);
-  }
-
-  pub fn flush(&self) {
-    self.device.flush_transfers();
   }
 }
 

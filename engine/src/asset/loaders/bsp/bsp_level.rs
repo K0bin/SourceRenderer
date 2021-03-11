@@ -1,13 +1,14 @@
 
-use sourcerenderer_core::{Platform, Quaternion, Vec4};
-use crate::asset::{AssetLoader, AssetType, Asset, Mesh, Model, AssetManager};
-use std::path::Path;
+use sourcerenderer_core::{Platform, Quaternion, Vec4, graphics::{Format, SampleCount}};
+use crate::asset::{AssetLoader, AssetType, Asset, Model, AssetManager, Mesh};
+use core::slice;
+use std::{path::Path, u8};
 use std::sync::Arc;
-use sourcerenderer_bsp::{Map, Face, DispVert, DispInfo, SurfaceFlags};
+use sourcerenderer_bsp::{DispInfo, DispVert, Face, Map, SurfaceFlags};
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, AssetLoaderProgress, AssetLoadPriority};
-use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureShaderResourceViewInfo, Filter, AddressMode};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, AssetLoaderProgress, AssetLoadPriority, Texture};
+use sourcerenderer_core::graphics::{Device, TextureShaderResourceViewInfo, Filter, AddressMode, TextureInfo};
 use legion::{World, WorldOptions};
 use crate::renderer::StaticRenderableComponent;
 use crate::Transform;
@@ -17,7 +18,7 @@ use std::io::BufReader;
 use std::collections::HashSet;
 use crate::asset::loaders::PakFileContainer;
 use super::BspLumps;
-use crate::asset::loaders::bsp::lightmap_packer::LightmapPacker;
+use crate::asset::loaders::bsp::{lightmap_packer::LightmapPacker, Vertex};
 
 // REFERENCE
 // https://github.com/lewa-j/Unity-Source-Tools/blob/1c5dc0635cdc4c65775d4af2c4449be49639f46b/Assets/Code/Read/SourceBSPLoader.cs#L877
@@ -312,18 +313,17 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
     let pakfile_container = Box::new(PakFileContainer::new(pakfile));
 
-    let mut brush_vertices = Vec::<super::Vertex>::new();
-    let mut brush_indices = Vec::<u32>::new();
-    let mut mesh_ranges = Vec::<MeshRange>::new();
-
-    let mut per_material_indices = HashMap::<String, Vec<u32>>::new();
-    let mut per_model_range_offsets = Vec::<(usize, usize)>::new();
-    let mut per_model_materials = Vec::<Vec<String>>::new();
+    let mut world = World::new(WorldOptions::default());
     let mut materials_to_load = HashSet::<String>::new();
-
     let mut lightmap_packer = LightmapPacker::new(2048, 2048);
 
+    let mut model_index = 0;
     for model in &brush_models {
+      let mut brush_vertices = Vec::<super::Vertex>::new();
+      let mut brush_indices = Vec::<u32>::new();
+      let mut per_material_indices = HashMap::<String, Vec<u32>>::new();
+      let mut mesh_ranges = Vec::<MeshRange>::new();
+
       for face in &temp.faces[model.first_face as usize .. (model.first_face + model.num_faces) as usize] {
         if face.displacement_info != -1 {
           let disp_info = &temp.disp_infos[face.displacement_info as usize];
@@ -334,7 +334,6 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       }
 
       let mut materials = Vec::<String>::new();
-      let ranges_start = mesh_ranges.len();
       'materials: for (material, indices) in per_material_indices.drain() {
         if indices.is_empty() {
           continue 'materials;
@@ -353,34 +352,35 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
           count: count as u32
         });
       }
-      per_model_materials.push(materials);
-      per_model_range_offsets.push((ranges_start, mesh_ranges.len() - ranges_start));
-    }
 
-    let vertex_buffer_temp = manager.graphics_device().upload_data_slice(&brush_vertices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let index_buffer_temp = manager.graphics_device().upload_data_slice(&brush_indices, MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    let vertex_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<super::Vertex>() * brush_vertices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
-    let index_buffer = manager.graphics_device().create_buffer(std::mem::size_of::<u32>() * brush_indices.len(), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
-    let _vertex_buffer_fence = manager.graphics_device().init_buffer(&vertex_buffer_temp, &vertex_buffer);
-    let _index_buffer_fence = manager.graphics_device().init_buffer(&index_buffer_temp, &index_buffer);
+      let vertices_box = brush_vertices.clone().into_boxed_slice();
+      let vertices_count = brush_vertices.len();
+      let ptr = Box::into_raw(vertices_box);
+      let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, vertices_count * std::mem::size_of::<Vertex>()) as *mut [u8] };
+      let vertices_data = unsafe { Box::from_raw(data_ptr) };
 
-    let mut world = World::new(WorldOptions::default());
-    for (index, (ranges_start, ranges_count)) in per_model_range_offsets.iter().enumerate() {
-      let mesh = Arc::new(Mesh {
-        vertices: vertex_buffer.clone(),
-        indices: Some(index_buffer.clone()),
-        parts: mesh_ranges[*ranges_start .. *ranges_start + ranges_count].to_vec()
-      });
-      let mesh_name = format!("brushes_mesh_{}", index);
+      let indices_box = brush_indices.clone().into_boxed_slice();
+      let indices_count = brush_indices.len();
+      let ptr = Box::into_raw(indices_box);
+      let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, indices_count * std::mem::size_of::<u32>()) as *mut [u8] };
+      let indices_data = unsafe { Box::from_raw(data_ptr) };
 
-      manager.add_asset(&mesh_name, Asset::Mesh(mesh), AssetLoadPriority::Normal, None);
+      let mesh = Mesh {
+        vertices: vertices_data,
+        indices: Some(indices_data),
+        parts: mesh_ranges.into_boxed_slice()
+      };
 
-      let model_name = format!("brushes_model_{}", index);
-      let model = Arc::new(Model {
+      let mesh_name = format!("brushes_mesh_{}", model_index);
+
+      manager.add_asset(&mesh_name, Asset::Mesh(mesh), AssetLoadPriority::Normal);
+
+      let model_name = format!("brushes_model_{}", model_index);
+      let model = Model {
         mesh_path: mesh_name,
-        material_paths: per_model_materials[index].clone()
-      });
-      manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal, None);
+        material_paths: materials
+      };
+      manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal);
 
       world.push(
         (StaticRenderableComponent {
@@ -390,38 +390,41 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
           can_move: false
         },
          Transform {
-           position: brush_models[index].origin,
+           position: brush_models[model_index].origin,
            scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
            rotation: Quaternion::identity(),
          })
       );
+
+      model_index += 1;
     }
 
     for material in materials_to_load {
-      //manager.request_asset(&material, AssetType::Material, AssetLoadPriority::Low);
+      manager.request_asset(&material, AssetType::Material, AssetLoadPriority::Low);
     }
 
     manager.add_container(pakfile_container);
 
-    let lightmap = lightmap_packer.build_texture::<P::GraphicsBackend>(manager.graphics_device());
-    let lightmap_view = manager.graphics_device().create_shader_resource_view(&lightmap, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::Repeat,
-      address_mode_v: AddressMode::Repeat,
-      address_mode_w: AddressMode::Repeat,
-      mip_bias: 0.0,
-      max_anisotropy: 0.0,
-      compare_op: None,
-      min_lod: 0.0,
-      max_lod: 0.0
-    });
-    manager.add_asset("lightmap", Asset::Texture(lightmap_view), AssetLoadPriority::Normal, None);
+
+    let lightmap_info = TextureInfo {
+      format: Format::RGBA8,
+      width: lightmap_packer.texture_width(),
+      height: lightmap_packer.texture_height(),
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1
+    };
+    let samples = lightmap_packer.take_data();
+    let samples_len = samples.len();
+    let ptr = Box::into_raw(samples);
+    let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, samples_len * std::mem::size_of::<u32>()) as *mut [u8] };
+    let data = unsafe { Box::from_raw(data_ptr) };
+
+    manager.add_asset("lightmap", Asset::Texture(Texture {
+      info: lightmap_info,
+      data: Box::new([data])
+    }), AssetLoadPriority::Normal);
 
     Ok(AssetLoaderResult {
       level: Some(world)

@@ -231,27 +231,26 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     format: Format::RGBA8,
     width: image.width(),
     height: image.height(),
-    depth: 0,
+    depth: 1,
     mip_levels: 1,
     array_length: 1,
     samples: SampleCount::Samples1
   };
 
-  let triangle_data = unsafe { std::slice::from_raw_parts(triangle.as_ptr() as *const u8, triangle.len() * std::mem::size_of::<Vertex>()) };
-  let index_data = unsafe { std::slice::from_raw_parts(indices.as_ptr() as *const u8, indices.len() * std::mem::size_of::<u32>()) };
+  let triangle_data = unsafe { std::slice::from_raw_parts(triangle.as_ptr() as *const u8, std::mem::size_of_val(&triangle[..])) }.to_vec().into_boxed_slice();
+  let index_data = unsafe { std::slice::from_raw_parts(indices.as_ptr() as *const u8, std::mem::size_of_val(&indices[..])) }.to_vec().into_boxed_slice();
   asset_manager.add_mesh("cube_mesh", triangle_data, index_data);
-  asset_manager.add_texture("cube_texture_albedo", &texture_info, &data);
+  asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
   asset_manager.add_material("cube_material", "cube_texture_albedo");
   asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
-  asset_manager.flush();
 
   systems.add_system(spin_system());
-  world.push((StaticRenderableComponent {
+  /*world.push((StaticRenderableComponent {
     receive_shadows: true,
     cast_shadows: true,
     can_move: true,
     model_path: "cube_model".to_owned()
-  }, Transform::new(Vec3::new(0f32, 0f32, -5f32)), SpinningCube {}));
+  }, Transform::new(Vec3::new(0f32, 0f32, -5f32)), SpinningCube {}));*/
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32
