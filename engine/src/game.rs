@@ -109,8 +109,6 @@ impl<P: Platform> Game<P> {
       let mut last_tick_time = SystemTime::now();
       let mut last_iter_time = SystemTime::now();
       loop {
-        while c_renderer.is_saturated() {}
-
         {
           let input_guard = c_game.input_state.lock().unwrap();
           resources.insert((input_guard.0).clone());
