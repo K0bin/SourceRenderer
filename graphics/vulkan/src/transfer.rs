@@ -196,7 +196,7 @@ impl VkTransfer {
     guard.graphics.post_barriers.push((None, VkTransferBarrier::Buffer (
       vk::BufferMemoryBarrier {
         src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-        dst_access_mask: vk::AccessFlags::SHADER_READ,
+        dst_access_mask: vk::AccessFlags::MEMORY_READ,
         src_queue_family_index: self.graphics_queue.get_queue_family_index(),
         dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
         buffer: *dst_buffer.get_buffer().get_handle(),
@@ -532,5 +532,13 @@ impl VkTransferCommandBuffer {
     }
     self.trackers.reset();
     self.is_used = false;
+  }
+}
+
+impl Drop for VkTransferCommandBuffer {
+  fn drop(&mut self) {
+    if !self.trackers.is_empty() {
+      self.fence.await_signal();
+    }
   }
 }

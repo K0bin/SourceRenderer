@@ -66,4 +66,14 @@ impl VkLifetimeTrackers {
   pub(crate) fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
     self.texture_views.push(texture_view.clone());
   }
+
+  pub(crate) fn is_empty(&self) -> bool {
+    self.texture_views.is_empty()
+    && self.semaphores.is_empty()
+    && self.fences.is_empty()
+    && self.buffers.is_empty()
+    && self.textures.is_empty()
+    && self.render_passes.is_empty()
+    && self.frame_buffers.is_empty()
+  }
 }

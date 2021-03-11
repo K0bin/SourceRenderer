@@ -2,10 +2,11 @@
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
 
-use ash::vk;
+use ash::vk::{self, FramebufferCreateFlags, FramebufferCreateInfo};
 use ash::version::DeviceV1_0;
+use smallvec::SmallVec;
 
-use crate::raw::RawVkDevice;
+use crate::{raw::RawVkDevice, texture::VkTextureView};
 
 pub struct VkRenderPass {
   device: Arc<RawVkDevice>,
@@ -51,16 +52,36 @@ pub struct VkFrameBuffer {
   device: Arc<RawVkDevice>,
   frame_buffer: vk::Framebuffer,
   width: u32,
-  height: u32
+  height: u32,
+  render_pass: Arc<VkRenderPass>,
+  attachments: SmallVec<[Arc<VkTextureView>; 8]>
 }
 
 impl VkFrameBuffer {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, info: &vk::FramebufferCreateInfo) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, width: u32, height: u32, render_pass: &Arc<VkRenderPass>, attachments: &[&Arc<VkTextureView>]) -> Self {
+    let mut vk_attachments = SmallVec::<[vk::ImageView; 8]>::new();
+    let mut attachment_refs = SmallVec::<[Arc<VkTextureView>; 8]>::new();
+    for attachment in attachments {
+      vk_attachments.push(*attachment.get_view_handle());
+      attachment_refs.push((*attachment).clone());
+    }
+
     Self {
       device: device.clone(),
-      frame_buffer: unsafe { device.create_framebuffer(info, None).unwrap() },
-      width: info.width,
-      height: info.height
+      frame_buffer: unsafe { device.create_framebuffer(&vk::FramebufferCreateInfo {
+          flags: vk::FramebufferCreateFlags::empty(),
+          render_pass: *render_pass.get_handle(),
+          attachment_count: vk_attachments.len() as u32,
+          p_attachments: vk_attachments.as_ptr(),
+          width: width,
+          height: height,
+          layers: 1,
+          ..Default::default()
+      }, None).unwrap() },
+      width: width,
+      height: height,
+      attachments: attachment_refs,
+      render_pass: render_pass.clone()
     }
   }
 

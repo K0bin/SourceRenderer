@@ -381,8 +381,8 @@ impl VkRenderGraph {
           let mut width = u32::MAX;
           let mut height = u32::MAX;
           let framebuffer_count = if pass.renders_to_swapchain { swapchain_views.len() } else { 1 };
-          let mut framebuffer_attachments: Vec<Vec<vk::ImageView>> = Vec::with_capacity(framebuffer_count);
-          let mut history_framebuffer_attachments: Vec<Vec<vk::ImageView>> = Vec::with_capacity(framebuffer_count);
+          let mut framebuffer_attachments: Vec<Vec<Arc<VkTextureView>>> = Vec::with_capacity(framebuffer_count);
+          let mut history_framebuffer_attachments: Vec<Vec<Arc<VkTextureView>>> = Vec::with_capacity(framebuffer_count);
           for _ in 0..framebuffer_count {
             framebuffer_attachments.push(Vec::new());
             history_framebuffer_attachments.push(Vec::new());
@@ -436,9 +436,9 @@ impl VkRenderGraph {
             for i in 0..framebuffer_count {
               if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
                 framebuffer_attachments.get_mut(i).unwrap()
-                  .push(*swapchain_views[i].get_view_handle());
+                  .push(swapchain_views[i].clone());
                 history_framebuffer_attachments.get_mut(i).unwrap()
-                  .push(*swapchain_views[i].get_view_handle());
+                  .push(swapchain_views[i].clone());
               } else {
                 let resource = resources.get(pass_attachment.as_str()).unwrap();
                 let resource_view = match resource {
@@ -450,14 +450,14 @@ impl VkRenderGraph {
                   _ => unreachable!()
                 };
                 framebuffer_attachments.get_mut(i).unwrap()
-                  .push(*resource_view.get_view_handle());
+                  .push(resource_view.clone());
                 if let Some(view) = resource_history_view {
                   history_framebuffer_attachments.get_mut(i).unwrap()
-                    .push(*view.get_view_handle());
+                    .push(view.clone());
                   uses_history_resources = true;
                 } else {
                   history_framebuffer_attachments.get_mut(i).unwrap()
-                    .push(*resource_view.get_view_handle());
+                    .push(resource_view.clone());
                 }
               }
             }
@@ -469,31 +469,15 @@ impl VkRenderGraph {
 
           let mut framebuffers: Vec<Arc<VkFrameBuffer>> = Vec::with_capacity(framebuffer_attachments.len());
           for fb_attachments in framebuffer_attachments {
-            let framebuffer_info = vk::FramebufferCreateInfo {
-              render_pass: *render_pass.get_handle(),
-              attachment_count: fb_attachments.len() as u32,
-              p_attachments: fb_attachments.as_ptr(),
-              layers: 1,
-              width,
-              height,
-              ..Default::default()
-            };
-            let framebuffer = Arc::new(VkFrameBuffer::new(device, &framebuffer_info));
+            let attachment_refs: Vec<&Arc<VkTextureView>> = fb_attachments.iter().map(|a| a).collect();
+            let framebuffer = Arc::new(VkFrameBuffer::new(device, width, height, render_pass, &attachment_refs));
             framebuffers.push(framebuffer);
           }
           let history_framebuffers = if uses_history_resources {
             let mut history_framebuffers: Vec<Arc<VkFrameBuffer>> = Vec::with_capacity(history_framebuffer_attachments.len());
             for fb_attachments in history_framebuffer_attachments {
-              let framebuffer_info = vk::FramebufferCreateInfo {
-                render_pass: *render_pass.get_handle(),
-                attachment_count: fb_attachments.len() as u32,
-                p_attachments: fb_attachments.as_ptr(),
-                layers: 1,
-                width,
-                height,
-                ..Default::default()
-              };
-              let framebuffer = Arc::new(VkFrameBuffer::new(device, &framebuffer_info));
+              let attachment_refs: Vec<&Arc<VkTextureView>> = fb_attachments.iter().map(|a| a).collect();
+              let framebuffer = Arc::new(VkFrameBuffer::new(device, width, height, render_pass, &attachment_refs));
               history_framebuffers.push(framebuffer);
             }
             Some(history_framebuffers)
