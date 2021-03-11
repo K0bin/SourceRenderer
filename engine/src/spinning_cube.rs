@@ -3,7 +3,7 @@ use crate::{Transform, Camera};
 use sourcerenderer_core::graphics::{Format, TextureInfo, SampleCount};
 use nalgebra::{Unit};
 use image::GenericImageView;
-use crate::asset::AssetManager;
+use crate::asset::{AssetManager, MeshRange};
 use sourcerenderer_core::{Platform, Quaternion};
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::Vec2;
@@ -239,18 +239,21 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
 
   let triangle_data = unsafe { std::slice::from_raw_parts(triangle.as_ptr() as *const u8, std::mem::size_of_val(&triangle[..])) }.to_vec().into_boxed_slice();
   let index_data = unsafe { std::slice::from_raw_parts(indices.as_ptr() as *const u8, std::mem::size_of_val(&indices[..])) }.to_vec().into_boxed_slice();
-  asset_manager.add_mesh("cube_mesh", triangle_data, index_data);
+  asset_manager.add_mesh("cube_mesh", triangle_data, index_data, vec![MeshRange {
+    start: 0,
+    count: indices.len() as u32
+  }].into_boxed_slice());
   asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
   asset_manager.add_material("cube_material", "cube_texture_albedo");
   asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
 
   systems.add_system(spin_system());
-  /*world.push((StaticRenderableComponent {
+  world.push((StaticRenderableComponent {
     receive_shadows: true,
     cast_shadows: true,
     can_move: true,
     model_path: "cube_model".to_owned()
-  }, Transform::new(Vec3::new(0f32, 0f32, -5f32)), SpinningCube {}));*/
+  }, Transform::new(Vec3::new(0f32, 0f32, -5f32)), SpinningCube {}));
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32

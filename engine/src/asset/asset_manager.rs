@@ -203,15 +203,11 @@ impl<P: Platform> AssetManager<P> {
     &self.device
   }
 
-  pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, index_buffer_data: Box<[u8]>) {
-    let range = MeshRange {
-      start: 0,
-      count: if index_buffer_data.is_empty() { vertex_buffer_data.len() } else { index_buffer_data.len() } as u32
-    };
+  pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, index_buffer_data: Box<[u8]>, parts: Box<[MeshRange]>) {
     let mesh = Mesh {
       vertices: vertex_buffer_data,
       indices: if !index_buffer_data.is_empty() { Some(index_buffer_data) } else { None },
-      parts: vec![range].into_boxed_slice()
+      parts
     };
     self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
   }
