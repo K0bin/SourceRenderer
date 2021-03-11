@@ -6,10 +6,21 @@ use legion::systems::Builder;
 use legion::component;
 use legion::world::SubWorld;
 use crate::{ActiveCamera, Camera};
-use crate::renderer::Renderer;
 use std::sync::Arc;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Matrix4, Platform};
 use crate::transform::interpolation::InterpolatedTransform;
+
+#[cfg(feature = "threading")]
+use super::Renderer;
+
+pub trait RendererScene {
+  fn register_static_renderable(&self, renderable: Drawable);
+  fn unregister_static_renderable(&self, entity: Entity);
+  fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32);
+  fn update_transform(&self, entity: Entity, transform: Matrix4);
+  fn end_frame(&self);
+  fn is_saturated(&self) -> bool;
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct StaticRenderableComponent {
@@ -24,16 +35,17 @@ pub struct ActiveStaticRenderables(HashSet<Entity>);
 #[derive(Clone, Default, Debug)]
 pub struct RegisteredStaticRenderables(HashSet<Entity>);
 
+#[cfg(feature = "threading")]
 pub fn install<P: Platform>(systems: &mut Builder, renderer: &Arc<Renderer<P>>) {
-  systems.add_system(renderer_system::<P>(renderer.clone(), ActiveStaticRenderables(HashSet::new()), RegisteredStaticRenderables(HashSet::new())));
+  systems.add_system(renderer_system::<P, Renderer<P>>(renderer.clone(), ActiveStaticRenderables(HashSet::new()), RegisteredStaticRenderables(HashSet::new())));
 }
 
 #[system]
 #[read_component(StaticRenderableComponent)]
 #[read_component(InterpolatedTransform)]
 #[read_component(Camera)]
-fn renderer<P: Platform>(world: &mut SubWorld,
-            #[state] renderer: &Arc<Renderer<P>>,
+fn renderer<P: Platform, R: RendererScene + 'static>(world: &mut SubWorld,
+            #[state] renderer: &Arc<R>,
             #[state] active_static_renderables: &mut ActiveStaticRenderables,
             #[state] registered_static_renderables: &mut RegisteredStaticRenderables,
             #[resource] active_camera: &ActiveCamera) {

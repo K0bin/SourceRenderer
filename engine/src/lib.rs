@@ -13,13 +13,17 @@ extern crate legion;
 extern crate regex;
 extern crate bitvec;
 
+#[cfg(feature = "threading")]
 pub use self::engine::Engine;
+
 pub use transform::Transform;
 pub use transform::Parent;
 pub use camera::Camera;
 pub use camera::ActiveCamera;
 
+#[cfg(feature = "threading")]
 mod engine;
+
 mod asset;
 mod spinning_cube;
 mod transform;

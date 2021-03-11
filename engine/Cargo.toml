@@ -24,5 +24,7 @@ regex = "1.4.2"
 bitvec = "0.21.1"
 
 [features]
-default = ["legion/parallel"]
+default = ["threading", "late-latching"]
+late-latching = []
+threading = ["legion/parallel"]
 web = ["legion/wasm-bindgen"]

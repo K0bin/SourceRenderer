@@ -18,6 +18,7 @@ use crate::fps_camera::{calculate_fps_camera_rotation, FPSCamera};
 
 pub struct TimeStampedInputState(InputState, SystemTime);
 
+#[cfg(feature = "threading")]
 pub struct Game<P: Platform> {
   input_state: Mutex<TimeStampedInputState>,
   fps_camera: Mutex<FPSCamera>,
@@ -44,6 +45,7 @@ impl LayoutFilter for FilterAll {
   }
 }
 
+#[cfg(feature = "threading")]
 impl<P: Platform> Game<P> {
   pub fn run(renderer: &Arc<Renderer<P>>,
                           asset_manager: &Arc<AssetManager<P>>,

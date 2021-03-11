@@ -17,6 +17,8 @@ use legion::systems::Builder;
 use crate::renderer::RendererInternal;
 use crate::renderer::camera::LateLatchCamera;
 
+use super::ecs::RendererScene;
+
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
   instance: Arc<<P::GraphicsBackend as Backend>::Instance>,
@@ -74,47 +76,7 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn install(self: &Arc<Renderer<P>>, _world: &mut World, _resources: &mut Resources, systems: &mut Builder) {
-    crate::renderer::ecs::install(systems, self);
-  }
-
-  pub fn register_static_renderable(&self, renderable: Drawable) {
-    let result = self.sender.send(RendererCommand::Register(renderable));
-    if result.is_err() {
-      panic!("Sending message to render thread failed");
-    }
-  }
-
-  pub fn unregister_static_renderable(&self, entity: Entity) {
-    let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
-    if result.is_err() {
-      panic!("Sending message to render thread failed");
-    }
-  }
-
-  pub fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
-    let result = self.sender.send(RendererCommand::UpdateCameraTransform { camera_transform_mat, fov });
-    if result.is_err() {
-      panic!("Sending message to render thread failed");
-    }
-  }
-
-  pub fn update_transform(&self, entity: Entity, transform: Matrix4) {
-    let result = self.sender.send(RendererCommand::UpdateTransform { entity, transform_mat: transform });
-    if result.is_err() {
-      panic!("Sending message to render thread failed");
-    }
-  }
-
-  pub fn end_frame(&self) {
-    self.queued_frames_counter.fetch_add(1, Ordering::SeqCst);
-    let result = self.sender.send(RendererCommand::EndFrame);
-    if result.is_err() {
-      panic!("Sending message to render thread failed");
-    }
-  }
-
-  pub fn is_saturated(&self) -> bool {
-    self.queued_frames_counter.load(Ordering::SeqCst) > 2
+    crate::renderer::ecs::install::<P>(systems, self);
   }
 
   pub(super) fn window_state(&self) -> &Mutex<WindowState> {
@@ -135,5 +97,47 @@ impl<P: Platform> Renderer<P> {
 
   pub(crate) fn instance(&self) -> &Arc<<P::GraphicsBackend as Backend>::Instance> {
     &self.instance
+  }
+}
+
+impl<P: Platform> RendererScene for Renderer<P> {
+  fn register_static_renderable(&self, renderable: Drawable) {
+    let result = self.sender.send(RendererCommand::Register(renderable));
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  fn unregister_static_renderable(&self, entity: Entity) {
+    let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
+    let result = self.sender.send(RendererCommand::UpdateCameraTransform { camera_transform_mat, fov });
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  fn update_transform(&self, entity: Entity, transform: Matrix4) {
+    let result = self.sender.send(RendererCommand::UpdateTransform { entity, transform_mat: transform });
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  fn end_frame(&self) {
+    self.queued_frames_counter.fetch_add(1, Ordering::SeqCst);
+    let result = self.sender.send(RendererCommand::EndFrame);
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  fn is_saturated(&self) -> bool {
+    self.queued_frames_counter.load(Ordering::SeqCst) > 2
   }
 }
