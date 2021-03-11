@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
 
-use ash::vk::{self, FramebufferCreateFlags, FramebufferCreateInfo};
+use ash::vk;
 use ash::version::DeviceV1_0;
 use smallvec::SmallVec;
 

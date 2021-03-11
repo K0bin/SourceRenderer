@@ -4,9 +4,8 @@ use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, AssetFileData, A
 use std::io::{Cursor, BufReader};
 use sourcerenderer_vtf::{VtfTexture, ImageFormat as VTFTextureFormat};
 use std::fs::File;
-use sourcerenderer_core::graphics::{Device, TextureInfo, SampleCount, TextureShaderResourceViewInfo, Filter, AddressMode, MemoryUsage, BufferUsage};
+use sourcerenderer_core::graphics::{TextureInfo, SampleCount};
 use sourcerenderer_core::graphics::Format;
-use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use std::sync::Arc;
 
 pub struct VTFTextureLoader {

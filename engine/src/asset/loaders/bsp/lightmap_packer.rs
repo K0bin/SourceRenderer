@@ -1,7 +1,4 @@
 use sourcerenderer_bsp::Lighting;
-use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, MemoryUsage, BufferUsage};
-use sourcerenderer_core::graphics::Backend as GraphicsBackend;
-use std::sync::Arc;
 use std::option::Option::Some;
 
 const MARGIN: u32 = 2;

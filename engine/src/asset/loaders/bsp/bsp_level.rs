@@ -8,7 +8,7 @@ use sourcerenderer_bsp::{DispInfo, DispVert, Face, Map, SurfaceFlags};
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
 use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, AssetLoaderProgress, AssetLoadPriority, Texture};
-use sourcerenderer_core::graphics::{Device, TextureShaderResourceViewInfo, Filter, AddressMode, TextureInfo};
+use sourcerenderer_core::graphics::TextureInfo;
 use legion::{World, WorldOptions};
 use crate::renderer::StaticRenderableComponent;
 use crate::Transform;

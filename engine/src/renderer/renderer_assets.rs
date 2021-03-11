@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::graphics::{Backend, Device, Fence, TextureShaderResourceView};
+use sourcerenderer_core::graphics::{Backend, Device, Fence};
 use crate::asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };

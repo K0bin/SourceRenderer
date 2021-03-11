@@ -2,9 +2,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex};
 use std::collections::{VecDeque, HashSet};
 use sourcerenderer_core::platform::{Platform, io::IO};
-use sourcerenderer_core::graphics::Backend as GraphicsBackend;
 use sourcerenderer_core::graphics;
-use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage, TextureInfo, TextureShaderResourceViewInfo, Filter, AddressMode};
+use sourcerenderer_core::graphics::TextureInfo;
 use std::hash::Hash;
 
 use std::sync::Weak;
