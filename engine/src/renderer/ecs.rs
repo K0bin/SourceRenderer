@@ -35,9 +35,8 @@ pub struct ActiveStaticRenderables(HashSet<Entity>);
 #[derive(Clone, Default, Debug)]
 pub struct RegisteredStaticRenderables(HashSet<Entity>);
 
-#[cfg(feature = "threading")]
-pub fn install<P: Platform>(systems: &mut Builder, renderer: &Arc<Renderer<P>>) {
-  systems.add_system(renderer_system::<P, Renderer<P>>(renderer.clone(), ActiveStaticRenderables(HashSet::new()), RegisteredStaticRenderables(HashSet::new())));
+pub fn install<P: Platform, R: RendererScene + Send + Sync + 'static>(systems: &mut Builder, renderer: R) {
+  systems.add_system(renderer_system::<P, R>(renderer, ActiveStaticRenderables(HashSet::new()), RegisteredStaticRenderables(HashSet::new())));
 }
 
 #[system]
@@ -45,7 +44,7 @@ pub fn install<P: Platform>(systems: &mut Builder, renderer: &Arc<Renderer<P>>) 
 #[read_component(InterpolatedTransform)]
 #[read_component(Camera)]
 fn renderer<P: Platform, R: RendererScene + 'static>(world: &mut SubWorld,
-            #[state] renderer: &Arc<R>,
+            #[state] renderer: &R,
             #[state] active_static_renderables: &mut ActiveStaticRenderables,
             #[state] registered_static_renderables: &mut RegisteredStaticRenderables,
             #[resource] active_camera: &ActiveCamera) {

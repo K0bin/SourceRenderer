@@ -76,7 +76,7 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn install(self: &Arc<Renderer<P>>, _world: &mut World, _resources: &mut Resources, systems: &mut Builder) {
-    crate::renderer::ecs::install::<P>(systems, self);
+    crate::renderer::ecs::install::<P, Arc<Renderer<P>>>(systems, self.clone());
   }
 
   pub(super) fn window_state(&self) -> &Mutex<WindowState> {
@@ -100,7 +100,7 @@ impl<P: Platform> Renderer<P> {
   }
 }
 
-impl<P: Platform> RendererScene for Renderer<P> {
+impl<P: Platform> RendererScene for Arc<Renderer<P>> {
   fn register_static_renderable(&self, renderable: Drawable) {
     let result = self.sender.send(RendererCommand::Register(renderable));
     if result.is_err() {
