@@ -1,11 +1,11 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outFile": "./dist/service_worker.js",
+    "outFile": "./dist/game_worker.js",
     "lib": ["ES2017", "webworker"],
   },
   "include": [
-    "./src/service_worker.ts"
+    "./src/game_worker.ts"
   ],
   "exclude": []
 }

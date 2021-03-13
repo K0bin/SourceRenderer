@@ -1,21 +1,25 @@
 {
   "compilerOptions": {
-    "outDir": "./dist/",
+    "outFile": "./dist/index.js",
     "noImplicitAny": true,
-    "module": "es2015",
+    "module": "none",
     "target": "ES2017",
-    "jsx": "react",
     "allowJs": true,
     "lib": ["ES2017", "dom"],
     "moduleResolution": "node",
     "strict": true,
     "sourceMap": true,
     "removeComments": true,
-    "rootDir": ".",
-    "rootDirs": [".", "./dist"]
+    "rootDir": "./src/",
+    "baseUrl": "./src/",
+    "paths": {
+      "wasm-lib/*": ["../dist/wasm-lib/*"]
+    },
   },
   "exclude": [
     "./src/service_worker.ts",
+    "./src/game_worker.ts",
+    "./src/asset_worker.ts",
     "./dist/"
   ]
 }

@@ -4,9 +4,12 @@
   "description": "Render source engine maps in the browser",
   "main": "index.js",
   "scripts": {
-    "build": "cd ../lib && wasm-pack build -t web -d ../www/dist/wasm_lib && cd ../www && tsc && tsc -p tsconfig.service_worker.json && cp ./index.html ./dist/ && cp ./manifest.json ./dist/",
-    "copy_src": "cp -r ./src ./dist/",
-    "start": "npm run copy_src && npm run build && http-server ./dist"
+    "build_ts": "tsc && tsc -p tsconfig.service_worker.json && tsc -p tsconfig.game_worker.json && tsc -p tsconfig.asset_worker.json",
+    "build_rust": "cd ../lib && wasm-pack build -t no-modules -d ../www/dist/wasm_lib && cd ../www",
+    "copy_src": "cp -r ./src/ ./dist/",
+    "copy_static": "cp ./index.html ./dist/ && cp ./manifest.json ./dist/",
+    "build": "npm run build_rust && npm run build_ts && npm run copy_static",
+    "start": "npm run build && npm run copy_src && http-server ./dist"
   },
   "repository": {
     "type": "git",
