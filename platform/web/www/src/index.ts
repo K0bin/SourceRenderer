@@ -19,8 +19,6 @@ function animationFrame(time: DOMHighResTimeStamp) {
 if ('serviceWorker' in navigator) {
     // Use the window load event to keep the page load performant
     window.addEventListener('load', () => {
-        // TODO: offline cache doesnt really work for some reason
-        return;
         navigator.serviceWorker.register('./service_worker.js').then(registration => {
             console.log('ServiceWorker registered: ', registration);
           }).catch(registrationError => {
