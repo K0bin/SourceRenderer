@@ -1,10 +1,21 @@
 mod utils;
 mod web_engine;
+mod game;
+mod renderer;
+
+extern crate sourcerenderer_core;
+extern crate sourcerenderer_engine;
+extern crate legion;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use self::web_engine::WebEngine;
 use web_sys::{EventTarget, HtmlCanvasElement};
+use self::game::Game;
+use self::renderer::Renderer;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -19,7 +30,8 @@ pub fn start_engine(canvas: EventTarget) -> WebEngine {
   WebEngine::run(canvas.dyn_into::<HtmlCanvasElement>().unwrap())
 }
 
-#[wasm_bindgen(js_name = "render")]
-pub fn render(engine: &mut WebEngine) {
-  engine.render();
+#[wasm_bindgen(js_name = "startGameWorker")]
+pub fn start_game_worker() {
+  //Game::new()
+  unimplemented!()
 }
