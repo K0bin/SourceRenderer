@@ -24,21 +24,19 @@ fn update_previous_global_transform(transform: &GlobalTransform,
   command_buffer.add_component(*entity, PreviousGlobalTransform(transform.0));
 }
 
-#[system(for_each)]
+#[system(par_for_each)]
 fn interpolate_transform(
   transform: &GlobalTransform,
   previous_transform: &PreviousGlobalTransform,
-  interpolated_transform: &InterpolatedTransform,
+  interpolated_transform: &mut InterpolatedTransform,
   #[resource] tick_duration: &TickDuration,
-  #[resource] tick_delta: &TickDelta,
-  entity: &Entity,
-  command_buffer: &mut CommandBuffer) {
-  if interpolated_transform.0 == transform.0 {
+  #[resource] tick_delta: &TickDelta) {
+  if &interpolated_transform.0 == &transform.0 {
     return;
   }
   let frac = tick_delta.0.as_secs_f32() / tick_duration.0.as_secs_f32();
   let interpolated = interpolate_transform_matrix(&previous_transform.0, &transform.0, frac);
-  command_buffer.add_component(*entity, InterpolatedTransform(interpolated));
+  *interpolated_transform.0 = *interpolated;
 }
 
 #[system(for_each)]
