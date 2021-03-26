@@ -15,6 +15,7 @@ use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use sourcerenderer_core::platform::{InputState, InputCommands};
 use crate::fps_camera::{fps_camera_rotation, FPSCamera};
+use crate::renderer::RendererScene;
 
 pub struct TimeStampedInputState(InputState, SystemTime);
 
@@ -120,6 +121,10 @@ impl<P: Platform> Game<P> {
 
         // run fixed step systems first
         let mut tick_delta = now.duration_since(last_tick_time).unwrap();
+        if c_renderer.is_saturated() && tick_delta <= tick_duration {
+          std::thread::yield_now();
+        }
+
         while tick_delta >= tick_duration {
           last_tick_time += tick_duration;
           resources.insert(Tick(tick));

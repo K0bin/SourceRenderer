@@ -19,6 +19,7 @@ pub use self::drawable::Drawable;
 pub use self::drawable::DrawableType;
 pub use self::camera::LateLatchCamera;
 use self::drawable::View;
+pub use self::ecs::RendererScene;
 
 #[cfg(feature = "threading")]
 use self::renderer_internal::RendererInternal;
