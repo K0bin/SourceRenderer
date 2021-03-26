@@ -13,5 +13,5 @@ layout(set = 1, binding = 1) uniform sampler2D lightmap;
 void main(void) {
   vec4 lighting = texture(lightmap, in_lightmap_uv);
   vec4 tex = texture(tex, in_uv);
-  out_color = vec4(lighting.x * tex.x, lighting.y * tex.y, lighting.z * tex.z, 1);
+  out_color = vec4((lighting.x + 0.3) * tex.x, (lighting.y + 0.3) * tex.y, (lighting.z + 0.3) * tex.z, 1);
 }
