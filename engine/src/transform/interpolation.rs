@@ -24,7 +24,8 @@ fn update_previous_global_transform(transform: &GlobalTransform,
   command_buffer.add_component(*entity, PreviousGlobalTransform(transform.0));
 }
 
-#[system(par_for_each)]
+#[cfg_attr(feature = "threading", system(par_for_each))]
+#[cfg_attr(not(feature = "threading"), system(for_each))]
 fn interpolate_transform(
   transform: &GlobalTransform,
   previous_transform: &PreviousGlobalTransform,
