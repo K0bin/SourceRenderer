@@ -121,8 +121,8 @@ impl VkDevice {
 }
 
 impl Device<VkBackend> for VkDevice {
-  fn create_buffer(&self, length: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> {
-    Arc::new(self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, length))
+  fn create_buffer(&self, length: usize, memory_usage: MemoryUsage, usage: BufferUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
+    Arc::new(self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, length, name))
   }
 
   fn upload_data<T>(&self, data: &T, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> where T: 'static + Send + Sync + Sized + Clone {
@@ -149,7 +149,7 @@ impl Device<VkBackend> for VkDevice {
 
   fn upload_data_raw(&self, data: &[u8], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> {
     assert_ne!(memory_usage, MemoryUsage::GpuOnly);
-    let slice = self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, data.len());
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, data.len(), None);
     unsafe {
       let ptr = slice.map_unsafe(false).expect("Failed to map buffer slice");
       std::ptr::copy(data.as_ptr(), ptr, min(data.len(), slice.get_offset_and_length().1));

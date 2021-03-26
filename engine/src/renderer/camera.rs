@@ -24,7 +24,7 @@ pub struct LateLatchCamera<B: Backend> {
 impl<B: Backend> LateLatchCamera<B> {
   pub fn new(device: &B::Device) -> Self {
     Self {
-      buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuOnly, BufferUsage::STORAGE),
+      buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuOnly, BufferUsage::STORAGE, None),
       read_counter: AtomicU32::new(0),
       write_counter: AtomicU32::new(0),
       position: AtomicCell::new(Vec3::new(0f32, 0f32, 0f32)),

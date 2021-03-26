@@ -106,13 +106,16 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: Mesh) {
+    let vb_name = mesh_path.to_string() + "_vertices";
+    let ib_name = mesh_path.to_string() + "_indices";
+
     let vertex_buffer = self.device.create_buffer(
-      std::mem::size_of_val(&mesh.vertices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX);
+      std::mem::size_of_val(&mesh.vertices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX, Some(&vb_name));
     let temp_vertex_buffer = self.device.upload_data_raw(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     self.device.init_buffer(&temp_vertex_buffer, &vertex_buffer);
     let index_buffer = mesh.indices.map(|indices| {
       let buffer = self.device.create_buffer(
-      std::mem::size_of_val(&indices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX);
+      std::mem::size_of_val(&indices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX, Some(&ib_name));
       let temp_buffer = self.device.upload_data_raw(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
       self.device.init_buffer(&temp_buffer, &buffer);
       buffer

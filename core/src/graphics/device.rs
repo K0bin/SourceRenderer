@@ -26,7 +26,7 @@ pub trait Adapter<B: Backend> {
 }
 
 pub trait Device<B: Backend> {
-  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer>;
+  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage, name: Option<&str>) -> Arc<B::Buffer>;
   fn upload_data<T>(&self, data: &T, memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn upload_data_slice<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn upload_data_raw(&self, data: &[u8], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer>;

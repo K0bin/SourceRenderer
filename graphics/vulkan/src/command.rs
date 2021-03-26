@@ -437,7 +437,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn upload_dynamic_data<T>(&self, data: T, usage: BufferUsage) -> Arc<VkBufferSlice>
     where T: 'static + Send + Sync + Sized + Clone {
-    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of::<T>());
+    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of::<T>(), None);
     unsafe {
       let ptr = slice.map_unsafe(false).expect("Failed to map buffer");
       *(ptr as *mut T) = data;

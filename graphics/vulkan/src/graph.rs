@@ -348,9 +348,9 @@ impl VkRenderGraph {
           name, format, size, clear
         } => {
           let allocator = context.get_shared().get_buffer_allocator();
-          let buffer = Arc::new(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, *size as usize));
+          let buffer = Arc::new(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, *size as usize, Some(name)));
           let buffer_b = if has_history_resource {
-            Some(Arc::new(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, *size as usize)))
+            Some(Arc::new(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, *size as usize, Some(name))))
           } else {
             None
           };

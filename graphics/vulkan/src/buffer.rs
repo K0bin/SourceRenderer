@@ -3,6 +3,8 @@ use std::cmp::max;
 use std::hash::{Hash, Hasher};
 use std::collections::{VecDeque, BTreeMap};
 use std::fmt::Debug;
+use std::ffi::CString;
+use ash::vk::Handle;
 
 use sourcerenderer_core::graphics::{Buffer, BufferUsage, MemoryUsage, MappedBuffer, MutMappedBuffer};
 
@@ -29,7 +31,7 @@ unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, slice_size: usize, slices: usize, memory_usage: MemoryUsage, buffer_usage: BufferUsage, allocator: &vk_mem::Allocator) -> Arc<Self> {
+  pub fn new(device: &Arc<RawVkDevice>, slice_size: usize, slices: usize, memory_usage: MemoryUsage, buffer_usage: BufferUsage, allocator: &vk_mem::Allocator, name: Option<&str>) -> Arc<Self> {
     let mut queue_families = SmallVec::<[u32; 2]>::new();
     let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
     if buffer_usage.contains(BufferUsage::COPY_SRC) {
@@ -53,6 +55,19 @@ impl VkBuffer {
       ..Default::default()
     };
     let (buffer, allocation, allocation_info) = allocator.create_buffer(&buffer_info, &allocation_info).expect("Failed to create buffer.");
+    if let Some(name) = name {
+      if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        let name_cstring = CString::new(name).unwrap();
+        unsafe {
+          debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+            object_type: vk::ObjectType::BUFFER,
+            object_handle: buffer.as_raw(),
+            p_object_name: name_cstring.as_ptr(),
+            ..Default::default()
+          }).unwrap();
+        }
+      }
+    }
 
     let map_ptr: Option<*mut u8> = if memory_usage != MemoryUsage::GpuOnly {
       Some(allocator.map_memory(&allocation).unwrap())
@@ -324,9 +339,9 @@ impl BufferAllocator {
     }
   }
 
-  pub fn get_slice(&self, memory_usage: MemoryUsage, buffer_usage: BufferUsage, length: usize) -> VkBufferSlice {
+  pub fn get_slice(&self, memory_usage: MemoryUsage, buffer_usage: BufferUsage, length: usize, name: Option<&str>) -> VkBufferSlice {
     if length > BIG_BUFFER_SLAB_SIZE {
-      let buffer = VkBuffer::new(&self.device, length, 1, memory_usage, buffer_usage, &self.device.allocator);
+      let buffer = VkBuffer::new(&self.device, length, 1, memory_usage, buffer_usage, &self.device.allocator, name);
       let mut guard = buffer.slices.lock().unwrap();
       let slice = guard.pop_front().unwrap();
       return slice;
@@ -365,7 +380,7 @@ impl BufferAllocator {
       BIG_BUFFER_SLAB_SIZE
     };
 
-    let buffer = VkBuffer::new(&self.device, slice_size, SLICED_BUFFER_SIZE / slice_size, memory_usage, buffer_usage, &self.device.allocator);
+    let buffer = VkBuffer::new(&self.device, slice_size, SLICED_BUFFER_SIZE / slice_size, memory_usage, buffer_usage, &self.device.allocator, None);
     let slice = {
       let mut buffer_guard = buffer.slices.lock().unwrap();
       buffer_guard.pop_front().unwrap()
