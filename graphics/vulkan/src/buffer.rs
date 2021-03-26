@@ -1,4 +1,4 @@
-use std::{fmt::Formatter, sync::{Arc, Mutex}};
+use std::{collections::HashMap, fmt::Formatter, sync::{Arc, Mutex}};
 use std::cmp::max;
 use std::hash::{Hash, Hasher};
 use std::collections::{VecDeque, BTreeMap};
@@ -309,7 +309,7 @@ const BUFFER_SLAB_SIZE: usize = 1024;
 const SMALL_BUFFER_SLAB_SIZE: usize = 512;
 const TINY_BUFFER_SLAB_SIZE: usize = 256;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 struct BufferKey {
   memory_usage: MemoryUsage,
   buffer_usage: BufferUsage
@@ -317,13 +317,13 @@ struct BufferKey {
 
 pub struct BufferAllocator {
   device: Arc<RawVkDevice>,
-  buffers: Mutex<BTreeMap<BufferKey, Vec<Arc<VkBuffer>>>>,
+  buffers: Mutex<HashMap<BufferKey, Vec<Arc<VkBuffer>>>>,
   device_limits: vk::PhysicalDeviceLimits
 }
 
 impl BufferAllocator {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
-    let buffers: BTreeMap<BufferKey, Vec<Arc<VkBuffer>>> = BTreeMap::new();
+    let buffers: HashMap<BufferKey, Vec<Arc<VkBuffer>>> = HashMap::new();
     let mut limits2 = vk::PhysicalDeviceProperties2 {
       ..Default::default()
     };
