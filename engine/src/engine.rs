@@ -24,12 +24,12 @@ impl<P: Platform> Engine<P> {
   }
 
   pub fn run(platform: Box<P>) -> Self {
-    let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
+    let instance = platform.create_graphics(false).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
     let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
-    let swapchain = Arc::new(platform.window().create_swapchain(true, &device, &surface));
+    let swapchain = Arc::new(platform.window().create_swapchain(false, &device, &surface));
     let asset_manager = AssetManager::<P>::new(&device);
     let renderer = Renderer::<P>::run(platform.window(), &instance, &device, &swapchain, &asset_manager);
     let game = Game::<P>::run(&renderer, &asset_manager, TICK_RATE);

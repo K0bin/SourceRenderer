@@ -15,6 +15,7 @@ extern crate sourcerenderer_vtx;
 extern crate legion;
 extern crate regex;
 extern crate bitvec;
+extern crate rayon;
 
 #[cfg(feature = "threading")]
 pub use self::engine::Engine;

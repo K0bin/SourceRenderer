@@ -6,10 +6,10 @@ use std::cmp::{min};
 
 use ash::vk;
 
-use crate::thread_manager::{VkThreadManager, VkFrameLocal};
+use crate::{command::VkInnerCommandBufferInfo, thread_manager::{VkThreadManager, VkFrameLocal}};
 
 use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions, SwapchainError, Swapchain};
-use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction};
+use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction, CommandBuffer};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo};
@@ -70,6 +70,19 @@ pub struct VkRenderGraph {
   renders_to_swapchain: bool,
   info: RenderGraphInfo<VkBackend>,
   external_resources: Option<HashMap<String, ExternalResource<VkBackend>>>
+}
+
+pub struct VkCommandBufferProvider {
+  inner_info: Option<VkInnerCommandBufferInfo>,
+  thread_manager: Arc<VkThreadManager>
+}
+
+impl InnerCommandBufferProvider<VkBackend> for VkCommandBufferProvider {
+  fn get_inner_command_buffer(&self) -> VkCommandBufferRecorder {
+    let mut thread_local = self.thread_manager.get_thread_local();
+    let frame_local = thread_local.get_frame_local();
+    frame_local.get_inner_command_buffer(self.inner_info.as_ref())
+  }
 }
 
 pub struct VkRenderGraphResources<'a> {
@@ -885,11 +898,11 @@ impl VkRenderGraph {
 
   fn execute_cmd_buffer(&self,
                         cmd_buffer: &mut VkCommandBufferRecorder,
-                        frame_local: &mut VkFrameLocal,
+                        frame_local: &VkFrameLocal,
                         fence: Option<&Arc<VkFence>>,
                         wait_semaphores: &[&VkSemaphore],
                         signal_semaphore: &[&VkSemaphore]) {
-    let finished_cmd_buffer = std::mem::replace(cmd_buffer, frame_local.get_command_buffer(CommandBufferType::PRIMARY));
+    let finished_cmd_buffer = std::mem::replace(cmd_buffer, frame_local.get_command_buffer());
     self.graphics_queue.submit(finished_cmd_buffer.finish(), fence, wait_semaphores, signal_semaphore);
     let c_queue = self.graphics_queue.clone();
     rayon::spawn(move || c_queue.process_submissions());
@@ -907,8 +920,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let prepare_semaphore = self.thread_manager.get_shared().get_semaphore();
     let cmd_semaphore = self.thread_manager.get_shared().get_semaphore();
     let cmd_fence = self.thread_manager.get_shared().get_fence();
-    let mut thread_local = self.thread_manager.get_thread_local();
-    let mut frame_local = thread_local.get_frame_local();
+    let thread_local = self.thread_manager.get_thread_local();
+    let frame_local = thread_local.get_frame_local();
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
@@ -944,7 +957,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
     let framebuffer_index = image_index as usize;
     for pass in &self.passes {
-      let mut cmd_buffer = frame_local.get_command_buffer(CommandBufferType::PRIMARY);
+      let mut cmd_buffer = frame_local.get_command_buffer();
 
       match pass as &VkPass {
         VkPass::Graphics {
@@ -995,11 +1008,19 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             }
             RenderPassCallbacks::InternallyThreaded(callbacks) => {
               cmd_buffer.begin_render_pass(&renderpass, &framebuffers[framebuffer_index], &clear_values, RenderpassRecordingMode::CommandBuffers);
-              let provider = self.thread_manager.clone() as Arc<dyn InnerCommandBufferProvider<VkBackend>>;
               for i in 0..callbacks.len() {
                 if i != 0 {
                   cmd_buffer.advance_subpass();
                 }
+                let inner_info = VkInnerCommandBufferInfo {
+                  render_pass: renderpass.clone(),
+                  frame_buffer: framebuffers[framebuffer_index].clone(),
+                  sub_pass: i as u32
+                };
+                let provider = VkCommandBufferProvider {
+                  inner_info: Some(inner_info),
+                  thread_manager: self.thread_manager.clone(),
+                };
                 let callback = &callbacks[i];
                 let inner_cmd_buffers = (callback)(&provider, graph_resources_ref);
                 for inner_cmd_buffer in inner_cmd_buffers {
@@ -1031,7 +1052,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
 
           frame_local.track_semaphore(&cmd_semaphore);
-          self.execute_cmd_buffer(&mut cmd_buffer, &mut frame_local, fence, &wait_semaphores, &signal_semaphores);
+          self.execute_cmd_buffer(&mut cmd_buffer, &frame_local, fence, &wait_semaphores, &signal_semaphores);
           cmd_buffer.signal_event(*(signal_event.handle()), vk::PipelineStageFlags::ALL_GRAPHICS);
         }
 
@@ -1073,7 +1094,10 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
               }
             }
             RenderPassCallbacks::InternallyThreaded(callbacks) => {
-              let provider = self.thread_manager.clone() as Arc<dyn InnerCommandBufferProvider<VkBackend>>;
+              let provider = VkCommandBufferProvider {
+                inner_info: None,
+                thread_manager: self.thread_manager.clone(),
+              };
               let callback = &callbacks[0];
               let inner_cmd_buffers = (callback)(&provider, graph_resources_ref);
               for inner_cmd_buffer in inner_cmd_buffers {
@@ -1082,7 +1106,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             }
           }
 
-          self.execute_cmd_buffer(&mut cmd_buffer, &mut frame_local, None, &[], &[]);
+          self.execute_cmd_buffer(&mut cmd_buffer, &frame_local, None, &[], &[]);
           cmd_buffer.signal_event(*(signal_event.handle()), vk::PipelineStageFlags::COMPUTE_SHADER);
         }
       }

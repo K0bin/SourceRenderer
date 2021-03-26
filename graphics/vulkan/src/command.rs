@@ -17,7 +17,7 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
-use crate::raw::RawVkDevice;
+use crate::{raw::RawVkDevice, thread_manager::VkFrame};
 use crate::VkRenderPass;
 use crate::VkFrameBuffer;
 use crate::VkPipeline;
@@ -64,15 +64,15 @@ impl VkCommandPool {
     }
   }
 
-  pub fn get_command_buffer(&mut self, frame: u64, command_buffer_type: CommandBufferType) -> VkCommandBufferRecorder {
-    let buffers = if command_buffer_type == CommandBufferType::PRIMARY {
-      &mut self.primary_buffers
-    } else {
-      &mut self.secondary_buffers
-    };
+  pub fn get_command_buffer(&mut self, frame: u64) -> VkCommandBufferRecorder {
+    let mut buffer = self.primary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::PRIMARY, self.queue_family_index, &self.shared, &self.buffer_allocator)));
+    buffer.begin(frame, None);
+    VkCommandBufferRecorder::new(buffer, self.sender.clone())
+  }
 
-    let mut buffer = buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, command_buffer_type, self.queue_family_index, &self.shared, &self.buffer_allocator)));
-    buffer.begin(frame);
+  pub fn get_inner_command_buffer(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) -> VkCommandBufferRecorder {
+    let mut buffer = self.secondary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::SECONDARY, self.queue_family_index, &self.shared, &self.buffer_allocator)));
+    buffer.begin(frame, inner_info);
     VkCommandBufferRecorder::new(buffer, self.sender.clone())
   }
 }
@@ -101,6 +101,12 @@ pub enum VkCommandBufferState {
   Recording,
   Finished,
   Submitted
+}
+
+pub struct VkInnerCommandBufferInfo {
+  pub render_pass: Arc<VkRenderPass>,
+  pub sub_pass: u32,
+  pub frame_buffer: Arc<VkFrameBuffer>
 }
 
 pub struct VkCommandBuffer {
@@ -161,15 +167,31 @@ impl VkCommandBuffer {
     self.descriptor_manager.reset();
   }
 
-  pub(crate) fn begin(&mut self, frame: u64) {
+  pub(crate) fn begin(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) {
     assert_eq!(self.state, VkCommandBufferState::Ready);
     debug_assert!(frame >= self.frame );
 
     self.state = VkCommandBufferState::Recording;
     self.frame = frame;
+
+    let (flags, inhertiance_info) = if let Some(inner_info) = inner_info {
+      (
+        vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
+        vk::CommandBufferInheritanceInfo {
+          render_pass: *inner_info.render_pass.get_handle(),
+          subpass: inner_info.sub_pass,
+          framebuffer: *inner_info.frame_buffer.get_handle(),
+          ..Default::default()
+        }
+      )
+    } else {
+      (vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT, Default::default())
+    };
+
     unsafe {
       self.device.begin_command_buffer(self.buffer, &vk::CommandBufferBeginInfo {
-        flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+        flags,
+        p_inheritance_info: &inhertiance_info as *const vk::CommandBufferInheritanceInfo,
         ..Default::default()
       }).unwrap();
     }
@@ -645,14 +667,6 @@ impl VkCommandBufferRecorder {
     self.item.as_mut().unwrap().execute_inner_command_buffer(submission);
   }
 
-  pub fn finish(self) -> VkCommandBufferSubmission {
-    assert_eq!(self.item.as_ref().unwrap().state, VkCommandBufferState::Recording);
-    let mut mut_self = self;
-    let mut item = std::mem::replace(&mut mut_self.item, None).unwrap();
-    item.end();
-    VkCommandBufferSubmission::new(item, mut_self.sender.clone())
-  }
-
   #[inline(always)]
   pub(crate) fn barrier(
     &mut self,
@@ -772,6 +786,14 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
     self.item.as_mut().unwrap().blit(src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
+  }
+
+  fn finish(self) -> VkCommandBufferSubmission {
+    assert_eq!(self.item.as_ref().unwrap().state, VkCommandBufferState::Recording);
+    let mut mut_self = self;
+    let mut item = std::mem::replace(&mut mut_self.item, None).unwrap();
+    item.end();
+    VkCommandBufferSubmission::new(item, mut_self.sender.clone())
   }
 }
 
