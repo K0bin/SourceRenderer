@@ -159,7 +159,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(
         let chunks = drawables.par_chunks(256);
         chunks.map(|chunk| {
           let mut command_buffer = command_buffer_provider.get_inner_command_buffer();
-          let transform_constant_buffer = command_buffer.upload_dynamic_data(*graph_resources.swapchain_transform(), BufferUsage::CONSTANT);
+          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[*graph_resources.swapchain_transform()], BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, &transform_constant_buffer);
 
           command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
@@ -177,8 +177,9 @@ pub(in super::super::super) fn build_pass<P: Platform>(
 
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
           for drawable in chunk {
-            let model_constant_buffer = command_buffer.upload_dynamic_data(drawable.transform, BufferUsage::CONSTANT);
-            command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
+            /*let model_constant_buffer = command_buffer.upload_dynamic_data(&[drawable.transform], BufferUsage::CONSTANT);
+            command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);*/
+            command_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
 
             if let RDrawableType::Static {
               model, ..

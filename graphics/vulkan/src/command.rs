@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::min, sync::Arc};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::cmp::max;
@@ -9,7 +9,7 @@ use ash::version::DeviceV1_0;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
-use sourcerenderer_core::graphics::{Texture, BindingFrequency, MemoryUsage, Buffer, BufferUsage, PipelineBinding};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferUsage, MemoryUsage, PipelineBinding, ShaderType, Texture};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -17,13 +17,13 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
-use crate::{raw::RawVkDevice, thread_manager::VkFrame};
+use crate::raw::RawVkDevice;
 use crate::VkRenderPass;
 use crate::VkFrameBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;
 use crate::raw::*;
-use crate::{VkShared};
+use crate::VkShared;
 use crate::buffer::{VkBufferSlice, BufferAllocator};
 use crate::VkTexture;
 use crate::descriptor::{VkBindingManager, VkBoundResource};
@@ -433,11 +433,11 @@ impl VkCommandBuffer {
           if descriptor_sets_count != 0 {
             unsafe {
               self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
-              base_index = index as u32 + 1;
               offsets_count = 0;
               descriptor_sets_count = 0;
             }
           }
+          base_index = index as u32 + 1;
         },
         Some(set_binding) => {
           descriptor_sets[descriptor_sets_count] = *set_binding.set.get_handle();
@@ -457,15 +457,34 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn upload_dynamic_data<T>(&self, data: T, usage: BufferUsage) -> Arc<VkBufferSlice>
+  pub(crate) fn upload_dynamic_data<T>(&self, data: &[T], usage: BufferUsage) -> Arc<VkBufferSlice>
     where T: 'static + Send + Sync + Sized + Clone {
-    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of::<T>(), None);
+    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of_val(data), None);
     unsafe {
       let ptr = slice.map_unsafe(false).expect("Failed to map buffer");
-      *(ptr as *mut T) = data;
+      std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
       slice.unmap_unsafe(true);
     }
     Arc::new(slice)
+  }
+
+
+  pub(crate) fn upload_dynamic_data_inline<T>(&self, data: &[T], visible_for_shader_type: ShaderType)
+  where T: 'static + Send + Sync + Sized + Clone {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
+    let pipeline_layout = pipeline.get_layout();
+    let range = pipeline_layout.push_constant_range(visible_for_shader_type).expect("No push constants set up for shader");
+    let size = std::mem::size_of_val(data);
+    unsafe {
+      self.device.cmd_push_constants(
+        self.buffer,
+        *pipeline_layout.get_handle(),
+        range.stage_flags,
+        range.offset,
+        std::slice::from_raw_parts(data.as_ptr() as *const u8, min(size, range.size as usize))
+      );
+    }
   }
 
   pub(crate) fn begin_label(&self, label: &str) {
@@ -733,9 +752,15 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn upload_dynamic_data<T>(&mut self, data: T, usage: BufferUsage) -> Arc<VkBufferSlice>
+  fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Arc<VkBufferSlice>
     where T: 'static + Send + Sync + Sized + Clone {
     self.item.as_mut().unwrap().upload_dynamic_data(data, usage)
+  }
+
+  #[inline(always)]
+  fn upload_dynamic_data_inline<T>(&mut self, data: &[T], visible_for_shader_type: ShaderType)
+    where T: 'static + Send + Sync + Sized + Clone {
+    self.item.as_mut().unwrap().upload_dynamic_data_inline(data, visible_for_shader_type);
   }
 
   #[inline(always)]

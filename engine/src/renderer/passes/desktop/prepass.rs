@@ -180,7 +180,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         let drawables = c_drawables.borrow();
 
-        let transform_constant_buffer = command_buffer.upload_dynamic_data(*graph_resources.swapchain_transform(), BufferUsage::CONSTANT);
+        let transform_constant_buffer = command_buffer.upload_dynamic_data(&[*graph_resources.swapchain_transform()], BufferUsage::CONSTANT);
         command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
 
         command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
@@ -200,10 +200,10 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
         command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(LATE_LATCHING_CAMERA, true).expect("Failed to get graph resource"));
         //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
         for drawable in drawables.iter() {
-          let model_constant_buffer = command_buffer.upload_dynamic_data(PrepassModelCB {
+          let model_constant_buffer = command_buffer.upload_dynamic_data(&[PrepassModelCB {
             model: drawable.transform,
             old_model: drawable.old_transform
-          }, BufferUsage::CONSTANT);
+          }], BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
           command_buffer.finish_binding();
 

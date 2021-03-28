@@ -12,14 +12,14 @@ layout(location = 1) out vec2 out_uv;
 layout(location = 2) out vec2 out_lightmap_uv;
 
 layout(set = 2, binding = 0) uniform LowFrequencyUbo {
-    mat4 viewProjection;
+  mat4 viewProjection;
 };
 layout(set = 2, binding = 1) uniform SwapchainTransformLowFrequencyUbo {
-    mat4 swapchain_transform;
+  mat4 swapchain_transform;
 };
 
-layout(set = 0, binding = 0) uniform HighFrequencyUbo {
-    mat4 model;
+layout(push_constant) uniform VeryHighFrequencyUbo {
+  mat4 model;
 };
 
 void main(void) {

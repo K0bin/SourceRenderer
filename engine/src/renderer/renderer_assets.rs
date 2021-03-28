@@ -111,12 +111,12 @@ impl<P: Platform> RendererAssets<P> {
 
     let vertex_buffer = self.device.create_buffer(
       std::mem::size_of_val(&mesh.vertices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX, Some(&vb_name));
-    let temp_vertex_buffer = self.device.upload_data_raw(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     self.device.init_buffer(&temp_vertex_buffer, &vertex_buffer);
     let index_buffer = mesh.indices.map(|indices| {
       let buffer = self.device.create_buffer(
       std::mem::size_of_val(&indices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX, Some(&ib_name));
-      let temp_buffer = self.device.upload_data_raw(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+      let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
       self.device.init_buffer(&temp_buffer, &buffer);
       buffer
     });
@@ -136,7 +136,7 @@ impl<P: Platform> RendererAssets<P> {
     for subresource in 0..subresources {
       let mip_level = subresource % texture.info.mip_levels;
       let array_index = subresource / texture.info.array_length;
-      let init_buffer = self.device.upload_data_raw(
+      let init_buffer = self.device.upload_data(
         &texture.data[subresource as usize][..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
       if do_async {
         fence = self.device.init_texture_async(&gpu_texture, &init_buffer, mip_level, array_index);

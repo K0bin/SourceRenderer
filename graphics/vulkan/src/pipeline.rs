@@ -6,7 +6,7 @@ use ash::version::DeviceV1_0;
 
 use spirv_cross::{spirv, glsl};
 
-use sourcerenderer_core::graphics::{InputRate, BindingFrequency};
+use sourcerenderer_core::graphics::{BindingFrequency, InputRate};
 use sourcerenderer_core::graphics::GraphicsPipelineInfo;
 use sourcerenderer_core::graphics::ShaderType;
 use sourcerenderer_core::graphics::Shader;
@@ -47,7 +47,8 @@ pub struct VkShader {
   shader_type: ShaderType,
   shader_module: vk::ShaderModule,
   device: Arc<RawVkDevice>,
-  descriptor_set_bindings: HashMap<u32, Vec<VkDescriptorSetBindingInfo>>
+  descriptor_set_bindings: HashMap<u32, Vec<VkDescriptorSetBindingInfo>>,
+  push_constants_range: Option<vk::PushConstantRange>
 }
 
 impl PartialEq for VkShader {
@@ -80,6 +81,23 @@ impl VkShader {
     let resources = ast.get_shader_resources().expect("Failed to get resources");
 
     let mut sets: HashMap<u32, Vec<VkDescriptorSetBindingInfo>> = HashMap::new();
+
+    let push_constant_resource = resources.push_constant_buffers.first();
+    let push_constants_range = push_constant_resource.map(|resource| {
+      let buffer_ranges = ast.get_active_buffer_ranges(resource.id).unwrap();
+      let first_buffer_range = buffer_ranges.first().unwrap();
+      vk::PushConstantRange {
+        stage_flags: match shader_type {
+          ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
+          ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
+          ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+          _ => unimplemented!()
+        },
+        offset: 0u32,
+        size: first_buffer_range.range as u32,
+      }
+    });
+
     for resource in resources.sampled_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let set = sets.entry(set_index).or_insert_with(Vec::new);
@@ -135,7 +153,8 @@ impl VkShader {
       shader_type,
       shader_module,
       device: device.clone(),
-      descriptor_set_bindings: sets
+      descriptor_set_bindings: sets,
+      push_constants_range
     }
   }
 
@@ -293,6 +312,7 @@ impl VkPipeline {
     let vk_device = &device.device;
     let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
     let mut descriptor_set_layout_bindings: [Vec<VkDescriptorSetBindingInfo>; 4] = Default::default();
+    let mut push_constants_ranges = HashMap::<vk::ShaderStageFlags, vk::PushConstantRange>::new();
 
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -317,6 +337,9 @@ impl VkPipeline {
           }
         }
       }
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+      }
     }
 
     if let Some(shader) = info.info.fs.clone() {
@@ -338,6 +361,9 @@ impl VkPipeline {
             set.push(binding.clone());
           }
         }
+      }
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
       }
     }
 
@@ -361,6 +387,9 @@ impl VkPipeline {
           }
         }
       }
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+      }
     }
 
     if let Some(shader) = info.info.tes.clone() {
@@ -383,6 +412,9 @@ impl VkPipeline {
           }
         }
       }
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+      }
     }
 
     if let Some(shader) = info.info.tcs.clone() {
@@ -404,6 +436,9 @@ impl VkPipeline {
             set.push(binding.clone());
           }
         }
+      }
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
       }
     }
 
@@ -557,10 +592,25 @@ impl VkPipeline {
       }
     }
 
+    let offset = 0u32;
+    let mut remapped_push_constant_ranges = HashMap::<vk::ShaderStageFlags, vk::PushConstantRange>::new();
+    for (shader_flags, range) in push_constants_ranges {
+      remapped_push_constant_ranges.insert(shader_flags, vk::PushConstantRange {
+        offset,
+        size: range.size,
+        stage_flags: shader_flags
+      });
+    }
+
     let mut hasher = DefaultHasher::new();
     for (index, bindings) in descriptor_set_layout_bindings.iter().enumerate() {
       index.hash(&mut hasher);
       bindings.hash(&mut hasher);
+    }
+    for (_, range) in &remapped_push_constant_ranges {
+      range.stage_flags.hash(&mut hasher);
+      range.size.hash(&mut hasher);
+      range.offset.hash(&mut hasher);
     }
     let hash = hasher.finish();
     let cache_lock = shared.get_pipeline_layouts();
@@ -570,7 +620,7 @@ impl VkPipeline {
     };
     let layout = existing_handle.unwrap_or_else(|| {
       let mut cache = cache_lock.write().unwrap();
-      cache.insert(hash, Arc::new(VkPipelineLayout::new(&descriptor_set_layouts, device)));
+      cache.insert(hash, Arc::new(VkPipelineLayout::new(&descriptor_set_layouts, remapped_push_constant_ranges, device)));
       cache.get(&hash).unwrap().clone()
     });
 
@@ -674,11 +724,20 @@ impl VkPipeline {
         panic!("Non continous descriptor set ranges are unsupported.");
       }
     }
+    let mut push_constants_ranges = HashMap::<vk::ShaderStageFlags, vk::PushConstantRange>::new();
+    if let Some(push_constants_range) = &shader.push_constants_range {
+      push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+    }
 
     let mut hasher = DefaultHasher::new();
     for (index, bindings) in descriptor_set_layout_bindings.iter().enumerate() {
       index.hash(&mut hasher);
       bindings.hash(&mut hasher);
+    }
+    for (_, range) in &push_constants_ranges {
+      range.stage_flags.hash(&mut hasher);
+      range.size.hash(&mut hasher);
+      range.offset.hash(&mut hasher);
     }
     let hash = hasher.finish();
     let cache_lock = shared.get_pipeline_layouts();
@@ -688,7 +747,7 @@ impl VkPipeline {
     };
     let layout = existing_handle.unwrap_or_else(|| {
       let mut cache = cache_lock.write().unwrap();
-      cache.insert(hash, Arc::new(VkPipelineLayout::new(&descriptor_set_layouts, device)));
+      cache.insert(hash, Arc::new(VkPipelineLayout::new(&descriptor_set_layouts, push_constants_ranges, device)));
       cache.get(&hash).unwrap().clone()
     });
 
@@ -740,29 +799,37 @@ impl Drop for VkPipeline {
 pub(crate) struct VkPipelineLayout {
   device: Arc<RawVkDevice>,
   layout: vk::PipelineLayout,
-  descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 4]
+  descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 4],
+  push_constant_ranges: HashMap<vk::ShaderStageFlags, vk::PushConstantRange>
 }
 
 impl VkPipelineLayout {
-  pub fn new(descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 4], device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 4], push_constant_ranges: HashMap<vk::ShaderStageFlags, vk::PushConstantRange>, device: &Arc<RawVkDevice>) -> Self {
     let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts.iter()
       .filter(|descriptor_set_layout| descriptor_set_layout.is_some())
       .map(|descriptor_set_layout| {
         *descriptor_set_layout.as_ref().unwrap().get_handle()
       })
       .collect();
+
+    let ranges: Vec<vk::PushConstantRange> = push_constant_ranges.values().cloned().collect();
+
     let info = vk::PipelineLayoutCreateInfo {
       p_set_layouts: layouts.as_ptr(),
       set_layout_count: layouts.len() as u32,
+      p_push_constant_ranges: ranges.as_ptr(),
+      push_constant_range_count: ranges.len() as u32,
       ..Default::default()
     };
+
     let layout = unsafe {
       device.create_pipeline_layout(&info, None)
     }.unwrap();
     Self {
       device: device.clone(),
       layout,
-      descriptor_set_layouts: descriptor_set_layouts.clone()
+      descriptor_set_layouts: descriptor_set_layouts.clone(),
+      push_constant_ranges
     }
   }
 
@@ -774,6 +841,10 @@ impl VkPipelineLayout {
   #[inline]
   pub(crate) fn get_descriptor_set_layout(&self, index: u32) -> Option<&Arc<VkDescriptorSetLayout>> {
     self.descriptor_set_layouts[index as usize].as_ref()
+  }
+
+  pub(crate) fn push_constant_range(&self, shader_type: ShaderType) -> Option<&vk::PushConstantRange> {
+    self.push_constant_ranges.get(&shader_type_to_vk(shader_type))
   }
 }
 
