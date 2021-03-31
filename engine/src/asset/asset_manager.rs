@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, RwLock, Mutex, Condvar};
 use std::collections::{VecDeque, HashSet};
 use sourcerenderer_core::platform::{Platform, io::IO};
 use sourcerenderer_core::graphics;
@@ -169,7 +169,8 @@ pub struct AssetManager<P: Platform> {
   containers: RwLock<Vec<Box<dyn AssetContainer<P>>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
   renderer_sender: Sender<LoadedAsset>,
-  renderer_receiver: Receiver<LoadedAsset>
+  renderer_receiver: Receiver<LoadedAsset>,
+  cond_var: Arc<Condvar>
 }
 
 struct AssetManagerInner {
@@ -182,6 +183,8 @@ impl<P: Platform> AssetManager<P> {
   pub fn new(device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>) -> Arc<Self> {
     let (renderer_sender, renderer_receiver) = unbounded();
 
+    let cond_var = Arc::new(Condvar::new());
+
     let manager = Arc::new(Self {
       device: device.clone(),
       inner: Mutex::new(AssetManagerInner {
@@ -192,7 +195,8 @@ impl<P: Platform> AssetManager<P> {
       loaders: RwLock::new(Vec::new()),
       containers: RwLock::new(Vec::new()),
       renderer_sender,
-      renderer_receiver
+      renderer_receiver,
+      cond_var
     });
 
     let thread_count = 1;
@@ -315,19 +319,22 @@ impl<P: Platform> AssetManager<P> {
     }), |p| p.clone());
     progress.expected.fetch_add(1, Ordering::SeqCst);
 
-    let mut inner = self.inner.lock().unwrap();
-    if inner.loaded_assets.contains(path) || inner.requested_assets.contains(path) {
-      progress.finished.fetch_add(1, Ordering::SeqCst);
-      return progress;
-    }
-    inner.requested_assets.insert(path.to_owned());
+    {
+      let mut inner = self.inner.lock().unwrap();
+      if inner.loaded_assets.contains(path) || inner.requested_assets.contains(path) {
+        progress.finished.fetch_add(1, Ordering::SeqCst);
+        return progress;
+      }
+      inner.requested_assets.insert(path.to_owned());
 
-    inner.load_queue.push_back(AssetLoadRequest {
-      asset_type,
-      path: path.to_owned(),
-      progress: progress.clone(),
-      priority
-    });
+      inner.load_queue.push_back(AssetLoadRequest {
+        asset_type,
+        path: path.to_owned(),
+        progress: progress.clone(),
+        priority
+      });
+    }
+    self.cond_var.notify_all();
 
     progress
   }
@@ -455,35 +462,48 @@ impl<P: Platform> AssetManager<P> {
 }
 
 fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
-  loop {
-    {
-      let mgr_opt = asset_manager.upgrade();
-      if mgr_opt.is_none() {
-        break;
-      }
-      let mgr = mgr_opt.unwrap();
-      let request_opt = {
-        let mut inner = mgr.inner.lock().unwrap();
-        inner.load_queue.pop_front()
-      };
-
-      if request_opt.is_none() {
-        thread::sleep(Duration::new(3, 0));
-        continue;
-      }
-
-      let request = request_opt.unwrap();
-      {
-        let file_opt = mgr.load_file(&request.path);
-        if file_opt.is_none() {
-          request.progress.finished.fetch_add(1, Ordering::SeqCst);
-          continue;
-        }
-        let file = file_opt.unwrap();
-        mgr.load_asset(file, request.priority, &request.progress);
-      }
+  let cond_var = {
+    let mgr_opt = asset_manager.upgrade();
+    if mgr_opt.is_none() {
+      return;
     }
+    let mgr = mgr_opt.unwrap();
+    mgr.cond_var.clone()
+  };
 
-    thread::sleep(Duration::new(0, 10_000_000)); // 10ms
+  'asset_loop: loop {
+    let mgr_opt = asset_manager.upgrade();
+    if mgr_opt.is_none() {
+      break;
+    }
+    let mgr = mgr_opt.unwrap();
+    let request = {
+      let mut inner = mgr.inner.lock().unwrap();
+      let mut request_opt = inner.load_queue.pop_front();
+      let _ = cond_var.wait_timeout_while(
+        inner,
+        Duration::from_millis(2000),
+        |inner| {
+        if request_opt.is_some() {
+          return false;
+        }
+        request_opt = inner.load_queue.pop_front();
+        request_opt.is_none()
+      }).unwrap();
+      match request_opt {
+        Some(request) => request,
+        None => continue 'asset_loop
+      }
+    };
+
+    {
+      let file_opt = mgr.load_file(&request.path);
+      if file_opt.is_none() {
+        request.progress.finished.fetch_add(1, Ordering::SeqCst);
+        continue 'asset_loop;
+      }
+      let file = file_opt.unwrap();
+      mgr.load_asset(file, request.priority, &request.progress);
+    }
   }
 }
