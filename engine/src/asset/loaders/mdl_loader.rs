@@ -1,4 +1,4 @@
-use crate::asset::{AssetLoader, AssetLoaderProgress, AssetManager, AssetLoadPriority, Asset};
+use crate::{asset::{AssetLoader, AssetLoaderProgress, AssetManager, AssetLoadPriority, Asset}, math::BoundingBox};
 use std::sync::Arc;
 use std::io::{Seek, SeekFrom, Read, Result as IOResult, Error as IOError};
 use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, MeshRange};
@@ -220,7 +220,8 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     manager.add_asset(&vtx_path, Asset::Mesh(AssetMesh {
       indices: Some(indices_data),
       vertices: vertices_data,
-      parts: ranges.into_boxed_slice()
+      parts: ranges.into_boxed_slice(),
+      bounding_box: Some(BoundingBox::new(fixup_position(&header.hull_min), fixup_position(&header.hull_max)))
     }), AssetLoadPriority::Normal);
 
     manager.add_asset_with_progress(&file.path, Asset::Model(AssetModel {

@@ -85,7 +85,7 @@ pub(super) struct RDrawable<B: Backend> {
   pub(super) drawable_type: RDrawableType<B>,
   pub(super) entity: Entity,
   pub(super) transform: Matrix4,
-  pub(super) old_transform: Matrix4,
+  pub(super) old_transform: Matrix4
 }
 
 impl<B: Backend> RDrawable<B> {

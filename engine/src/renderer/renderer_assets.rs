@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 use sourcerenderer_core::graphics::{Backend, Device, Fence};
-use crate::asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange};
+use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };
 
@@ -24,7 +24,8 @@ pub(super) struct RendererModel<B: Backend> {
 pub(super) struct RendererMesh<B: Backend> {
   pub(super) vertices: Arc<B::Buffer>,
   pub(super) indices: Option<Arc<B::Buffer>>,
-  pub(super) parts: Box<[MeshRange]>
+  pub(super) parts: Box<[MeshRange]>,
+  pub(super) bounding_box: Option<BoundingBox>
 }
 
 
@@ -124,7 +125,8 @@ impl<P: Platform> RendererAssets<P> {
     let mesh = Arc::new(RendererMesh {
       vertices: vertex_buffer,
       indices: index_buffer,
-      parts: mesh.parts.into_iter().cloned().collect() // TODO: change base type to boxed slice
+      parts: mesh.parts.into_iter().cloned().collect(), // TODO: change base type to boxed slice
+      bounding_box: mesh.bounding_box
     });
     self.meshes.insert(mesh_path.to_owned(), mesh);
   }

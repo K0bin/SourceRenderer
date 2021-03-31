@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use std::{cmp::min, sync::{Arc, Mutex, atomic::{AtomicU32, Ordering}}};
 use crate::renderer::Renderer;
+use bitvec::prelude::*;
 use crossbeam_channel::{Sender, Receiver, TryRecvError};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
@@ -15,6 +16,8 @@ use crate::renderer::passes;
 use crate::renderer::drawable::{RDrawable, RDrawableType};
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use rayon::prelude::*;
+use crate::math::Frustum;
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
@@ -217,6 +220,7 @@ impl<P: Platform> RendererInternal<P> {
 
     self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
+    self.update_visibility();
 
     let result = self.graph.render();
     if result.is_err() {
@@ -253,5 +257,51 @@ impl<P: Platform> RendererInternal<P> {
       self.graph = new_graph;
       let _ = self.graph.render();
     }
+  }
+
+  fn update_visibility(&mut self) {
+    let drawables_ref = self.drawables.borrow();
+
+    let mut view_mut = self.view.borrow_mut();
+
+    let mut visible: BitVec = BitVec::with_capacity(drawables_ref.len());
+    unsafe {
+      visible.set_len(drawables_ref.len());
+    }
+    let visible_mutex = Mutex::new(visible);
+
+    let frustum = Frustum::new(self.primary_camera.z_near(), self.primary_camera.z_far(), self.primary_camera.fov(), self.primary_camera.aspect_ratio());
+    let camera_matrix = self.primary_camera.view();
+    const CHUNK_SIZE: usize = 64;
+    drawables_ref.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
+      let mut chunk_visible = bitarr![Lsb0, usize; 0; CHUNK_SIZE];
+      for (index, drawable) in chunk.iter().enumerate() {
+        let model_view_matrix = camera_matrix * drawable.transform;
+        let bounding_box = match &drawable.drawable_type {
+          RDrawableType::Static { model, .. } => &model.mesh.bounding_box,
+          RDrawableType::Skinned => unimplemented!()
+        };
+        if let Some(bounding_box) = bounding_box {
+          let is_visible = frustum.intersects(bounding_box, &model_view_matrix);
+          chunk_visible.set(index, is_visible);
+        } else {
+          chunk_visible.set(index, true);
+        }
+      }
+
+      {
+        let mut visible = visible_mutex.lock().unwrap();
+
+        let len = visible.len();
+        let src_len = if (chunk_index + 1) * CHUNK_SIZE > len {
+          len % CHUNK_SIZE
+        } else {
+          CHUNK_SIZE
+        };
+        visible[chunk_index * CHUNK_SIZE .. min((chunk_index + 1) * CHUNK_SIZE, len)].copy_from_bitslice(&chunk_visible[..src_len]);
+      }
+    });
+
+    view_mut.visible_drawables = visible_mutex.into_inner().unwrap();
   }
 }

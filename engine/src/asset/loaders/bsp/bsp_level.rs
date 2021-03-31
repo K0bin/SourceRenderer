@@ -19,6 +19,7 @@ use std::collections::HashSet;
 use crate::asset::loaders::PakFileContainer;
 use super::BspLumps;
 use crate::asset::loaders::bsp::{lightmap_packer::LightmapPacker, Vertex};
+use crate::math::BoundingBox;
 
 // REFERENCE
 // https://github.com/lewa-j/Unity-Source-Tools/blob/1c5dc0635cdc4c65775d4af2c4449be49639f46b/Assets/Code/Read/SourceBSPLoader.cs#L877
@@ -375,7 +376,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       let mesh = Mesh {
         vertices: vertices_data,
         indices: Some(indices_data),
-        parts: mesh_ranges.into_boxed_slice()
+        parts: mesh_ranges.into_boxed_slice(),
+        bounding_box: Some(BoundingBox::new(Self::fixup_position(&model.min), Self::fixup_position(&model.max)))
       };
 
       let mesh_name = format!("brushes_mesh_{}", model_index);

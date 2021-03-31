@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{cmp::max, sync::{Arc, Mutex, MutexGuard}};
 use crossbeam_channel::{Sender, unbounded};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
@@ -31,13 +31,21 @@ pub struct Renderer<P: Platform> {
 
 impl<P: Platform> Renderer<P> {
   fn new(sender: Sender<RendererCommand>, instance: &Arc<<P::GraphicsBackend as Backend>::Instance>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window, surface: &Arc<<P::GraphicsBackend as Backend>::Surface>) -> Self {
+    let window_state = window.state();
+    let (width, height) = match &window_state {
+        WindowState::Minimized => (0,0),
+        WindowState::Visible { width, height, focussed } => (*width, *height),
+        WindowState::FullScreen { width, height } => (*width, *height),
+        WindowState::Exited => (0,0)
+    };
+
     Self {
       sender,
       instance: instance.clone(),
       device: device.clone(),
       window_state: Mutex::new(window.state()),
       queued_frames_counter: AtomicUsize::new(0),
-      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref())),
+      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref(), (width as f32) / (max(1, height) as f32), std::f32::consts::FRAC_PI_2)),
       surface: Mutex::new(surface.clone())
     }
   }

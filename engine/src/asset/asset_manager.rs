@@ -14,6 +14,8 @@ use std::io::{Cursor, Seek, SeekFrom, Read, Result as IOResult};
 
 use crossbeam_channel::{unbounded, Sender, Receiver};
 
+use crate::math::BoundingBox;
+
 pub type AssetKey = usize;
 
 pub struct AssetLoadRequest {
@@ -55,7 +57,8 @@ pub struct Texture {
 pub struct Mesh {
   pub indices: Option<Box<[u8]>>,
   pub vertices: Box<[u8]>,
-  pub parts: Box<[MeshRange]>
+  pub parts: Box<[MeshRange]>,
+  pub bounding_box: Option<BoundingBox>
 }
 
 #[derive(Clone)]
@@ -209,7 +212,8 @@ impl<P: Platform> AssetManager<P> {
     let mesh = Mesh {
       vertices: vertex_buffer_data,
       indices: if !index_buffer_data.is_empty() { Some(index_buffer_data) } else { None },
-      parts
+      parts,
+      bounding_box: None
     };
     self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
   }

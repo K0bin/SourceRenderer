@@ -94,7 +94,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   }
 }
 
-pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, _view: &Arc<AtomicRefCell<View>>, drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
+pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<AtomicRefCell<View>>, drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let vertex_shader = {
     let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
@@ -173,6 +173,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
   let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, PASS_NAME, 0);
 
   let c_drawables = drawables.clone();
+  let c_view = view.clone();
 
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
@@ -199,7 +200,14 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
         command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
         command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(LATE_LATCHING_CAMERA, true).expect("Failed to get graph resource"));
         //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
-        for drawable in drawables.iter() {
+        let view_ref = c_view.borrow();
+        for (drawable_index, drawable) in drawables.iter().enumerate() {
+          let visible = &view_ref.visible_drawables;
+          let visible_bit = visible.get(drawable_index);
+          if visible_bit.is_some() && !*visible_bit.unwrap() {
+            continue;
+          }
+
           let model_constant_buffer = command_buffer.upload_dynamic_data(&[PrepassModelCB {
             model: drawable.transform,
             old_model: drawable.old_transform
