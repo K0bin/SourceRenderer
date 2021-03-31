@@ -35,7 +35,7 @@ android {
 
 task buildRust(type: Exec) {
     workingDir "../../lib"
-    commandLine "cargo", "ndk", "-t", "arm64-v8a", "-t", "x86_64", "-o", "../app/app/src/main/jniLibs", "build"
+    commandLine "cargo", "ndk", "-t", "arm64-v8a", "-t", "x86_64", "-o", "../app/app/src/main/jniLibs", "build", "--release"
 }
 
 tasks.whenTaskAdded { task ->
