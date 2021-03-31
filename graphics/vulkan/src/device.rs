@@ -122,7 +122,7 @@ impl VkDevice {
 
 impl Device<VkBackend> for VkDevice {
   fn create_buffer(&self, length: usize, memory_usage: MemoryUsage, usage: BufferUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
-    Arc::new(self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, length, name))
+    self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, length, name)
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> where T: 'static + Send + Sync + Sized + Clone {
@@ -133,7 +133,7 @@ impl Device<VkBackend> for VkDevice {
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
       slice.unmap_unsafe(true);
     }
-    Arc::new(slice)
+    slice
   }
 
   fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<VkShader> {

@@ -33,7 +33,7 @@ impl VkShared {
       events: Pool::new(Box::new(move ||
         VkEvent::new(&events_device_clone)
       )),
-      buffers: BufferAllocator::new(device),
+      buffers: BufferAllocator::new(device, true),
       descriptor_set_layouts: RwLock::new(HashMap::new()),
       pipeline_layouts: RwLock::new(HashMap::new())
     }

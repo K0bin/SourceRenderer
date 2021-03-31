@@ -36,7 +36,6 @@ A thread context manages frame contexts for a thread
 */
 pub struct VkThreadLocal {
   device: Arc<RawVkDevice>,
-  buffer_allocator: Arc<BufferAllocator>,
   frame_counter: RefCell<u64>,
   frames: Vec<VkFrameLocal>,
   disable_sync: PhantomData<*const u32>
@@ -131,18 +130,16 @@ impl VkThreadLocal {
          compute_queue: &Option<Arc<VkQueue>>,
          transfer_queue: &Option<Arc<VkQueue>>,
          max_prepared_frames: u32) -> Self {
-    let buffer_allocator = Arc::new(BufferAllocator::new(device));
 
     let mut frames: Vec<VkFrameLocal> = Vec::new();
     for _ in 0..max_prepared_frames {
-      frames.push(VkFrameLocal::new(device, graphics_queue, compute_queue, transfer_queue, &buffer_allocator))
+      frames.push(VkFrameLocal::new(device, graphics_queue, compute_queue, transfer_queue))
     }
 
     VkThreadLocal {
       device: device.clone(),
       frames,
       frame_counter: RefCell::new(0u64),
-      buffer_allocator,
       disable_sync: PhantomData
     }
   }
@@ -168,12 +165,14 @@ impl VkThreadLocal {
 }
 
 impl VkFrameLocal {
-  pub fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, _compute_queue: &Option<Arc<VkQueue>>, _transfer_queue: &Option<Arc<VkQueue>>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, _compute_queue: &Option<Arc<VkQueue>>, _transfer_queue: &Option<Arc<VkQueue>>) -> Self {
+    let buffer_allocator = Arc::new(BufferAllocator::new(device, false));
+    let command_pool = graphics_queue.create_command_pool(&buffer_allocator);
     Self {
       device: device.clone(),
-      buffer_allocator: buffer_allocator.clone(),
+      buffer_allocator,
       inner: RefCell::new(VkFrameLocalInner {
-        command_pool: graphics_queue.create_command_pool(buffer_allocator),
+        command_pool,
         life_time_trackers: VkLifetimeTrackers::new(),
         frame: 0
       }),
@@ -210,6 +209,7 @@ impl VkFrameLocal {
   }
 
   pub fn reset(&self) {
+    self.buffer_allocator.reset();
     let mut inner = self.inner.borrow_mut();
     inner.life_time_trackers.reset();
     inner.command_pool.reset();

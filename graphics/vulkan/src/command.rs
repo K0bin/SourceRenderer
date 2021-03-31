@@ -465,7 +465,7 @@ impl VkCommandBuffer {
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
       slice.unmap_unsafe(true);
     }
-    Arc::new(slice)
+    slice
   }
 
 
