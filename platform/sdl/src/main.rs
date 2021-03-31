@@ -22,9 +22,12 @@ fn main() {
   let platform = SDLPlatform::new(GraphicsApi::Vulkan);
   let mut engine = Box::new(Engine::run(platform));
   'event_loop: loop {
+    if !engine.is_running() {
+      break;
+    }
     let event = engine.platform().handle_events();
     if event == PlatformEvent::Quit {
-      engine.poll_platform();
+      engine.stop();
       break 'event_loop;
     }
     let input_commands = engine.receive_input_commands();

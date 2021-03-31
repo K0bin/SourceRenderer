@@ -1,7 +1,7 @@
-use std::{cmp::min, sync::{Arc, Mutex, atomic::{AtomicU32, Ordering}}};
+use std::{cmp::min, sync::{Arc, Mutex}};
 use crate::renderer::Renderer;
 use bitvec::prelude::*;
-use crossbeam_channel::{Sender, Receiver, TryRecvError};
+use crossbeam_channel::{Receiver, Sender};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
@@ -116,8 +116,8 @@ impl<P: Platform> RendererInternal<P> {
     let mut drawables = self.drawables.borrow_mut();
     let mut view = self.view.borrow_mut();
 
-    let message_res = self.receiver.try_recv();
-    if let Some(TryRecvError::Disconnected) = message_res.as_ref().err() {
+    let message_res = self.receiver.recv();
+    if message_res.is_err() {
       panic!("Rendering channel closed");
     }
     let mut message_opt = message_res.ok();
@@ -126,7 +126,6 @@ impl<P: Platform> RendererInternal<P> {
       let message = message_opt.take().unwrap();
       match message {
         RendererCommand::EndFrame => {
-          self.renderer.dec_queued_frames_counter();
           self.last_tick = SystemTime::now();
           break;
         }
@@ -184,8 +183,8 @@ impl<P: Platform> RendererInternal<P> {
         }
       }
 
-      let message_res = self.receiver.try_recv();
-      if let Some(TryRecvError::Disconnected) = message_res.as_ref().err() {
+      let message_res = self.receiver.recv();
+      if message_res.is_err() {
         panic!("Rendering channel closed");
       }
       message_opt = message_res.ok();
@@ -214,6 +213,7 @@ impl<P: Platform> RendererInternal<P> {
         (width, height)
       },
       WindowState::Exited => {
+        self.renderer.stop();
         return;
       }
     };
@@ -257,6 +257,7 @@ impl<P: Platform> RendererInternal<P> {
       self.graph = new_graph;
       let _ = self.graph.render();
     }
+    self.renderer.dec_queued_frames_counter();
   }
 
   fn update_visibility(&mut self) {
@@ -303,5 +304,11 @@ impl<P: Platform> RendererInternal<P> {
     });
 
     view_mut.visible_drawables = visible_mutex.into_inner().unwrap();
+  }
+}
+
+impl<P: Platform> Drop for RendererInternal<P> {
+  fn drop(&mut self) {
+    self.renderer.stop();
   }
 }

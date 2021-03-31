@@ -6,12 +6,8 @@ use legion::systems::Builder;
 use legion::component;
 use legion::world::SubWorld;
 use crate::{ActiveCamera, Camera};
-use std::sync::Arc;
 use sourcerenderer_core::{Matrix4, Platform};
 use crate::transform::interpolation::InterpolatedTransform;
-
-#[cfg(feature = "threading")]
-use super::Renderer;
 
 pub trait RendererScene {
   fn register_static_renderable(&self, renderable: Drawable);
@@ -20,6 +16,7 @@ pub trait RendererScene {
   fn update_transform(&self, entity: Entity, transform: Matrix4);
   fn end_frame(&self);
   fn is_saturated(&self) -> bool;
+  fn is_running(&self) -> bool;
 }
 
 #[derive(Clone, Debug, PartialEq)]

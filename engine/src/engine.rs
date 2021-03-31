@@ -5,7 +5,7 @@ use sourcerenderer_core::ThreadPoolBuilder;
 use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::platform::Window;
 
-use crate::asset::AssetManager;
+use crate::{asset::AssetManager, renderer::RendererScene};
 use crate::renderer::Renderer;
 use crate::game::Game;
 
@@ -56,5 +56,21 @@ impl<P: Platform> Engine<P> {
   pub fn poll_platform(&self) {
     self.game.update_input_state(self.platform.input_state());
     self.renderer.set_window_state(self.platform.window().state());
+    if !self.game.is_running() || !self.renderer.is_running() {
+      self.stop(); // if just one system dies, kill the others too
+    }
+  }
+
+  pub fn stop(&self) {
+    self.game.stop();
+    self.renderer.stop();
+  }
+
+  pub fn is_running(&self) -> bool {
+    if !self.game.is_running() || !self.renderer.is_running() {
+      self.stop(); // if just one system dies, kill the others too
+      return false;
+    }
+    return true;
   }
 }

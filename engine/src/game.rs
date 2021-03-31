@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -23,7 +23,8 @@ pub struct TimeStampedInputState(InputState, SystemTime);
 pub struct Game<P: Platform> {
   input_state: Mutex<TimeStampedInputState>,
   fps_camera: Mutex<FPSCamera>,
-  late_latch_camera: Arc<LateLatchCamera<P::GraphicsBackend>>
+  late_latch_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
+  is_running: AtomicBool
 }
 
 pub struct TickDuration(pub Duration);
@@ -80,7 +81,8 @@ impl<P: Platform> Game<P> {
     let game = Arc::new(Self {
       input_state: Mutex::new(TimeStampedInputState(InputState::default(), SystemTime::now())),
       late_latch_camera: renderer.primary_camera().clone(),
-      fps_camera: Mutex::new(FPSCamera::new())
+      fps_camera: Mutex::new(FPSCamera::new()),
+      is_running: AtomicBool::new(true)
     });
 
     let c_renderer = renderer.clone();
@@ -112,6 +114,9 @@ impl<P: Platform> Game<P> {
       let mut last_tick_time = SystemTime::now();
       let mut last_iter_time = SystemTime::now();
       loop {
+        if !c_game.is_running() {
+          break;
+        }
         {
           let input_guard = c_game.input_state.lock().unwrap();
           resources.insert((input_guard.0).clone());
@@ -166,5 +171,13 @@ impl<P: Platform> Game<P> {
     let mut commands = InputCommands::new();
     commands.lock_mouse(true);
     commands
+  }
+
+  pub fn is_running(&self) -> bool {
+    self.is_running.load(Ordering::SeqCst)
+  }
+
+  pub fn stop(&self) {
+    self.is_running.store(false, Ordering::SeqCst);
   }
 }

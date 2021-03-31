@@ -1,4 +1,4 @@
-use std::{cmp::max, sync::{Arc, Mutex, MutexGuard}};
+use std::{cmp::max, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
 use crossbeam_channel::{Sender, unbounded};
 
 use sourcerenderer_core::platform::{Platform, Window, WindowState};
@@ -26,7 +26,8 @@ pub struct Renderer<P: Platform> {
   window_state: Mutex<WindowState>,
   queued_frames_counter: AtomicUsize,
   primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
-  surface: Mutex<Arc<<P::GraphicsBackend as Backend>::Surface>>
+  surface: Mutex<Arc<<P::GraphicsBackend as Backend>::Surface>>,
+  is_running: AtomicBool
 }
 
 impl<P: Platform> Renderer<P> {
@@ -34,7 +35,7 @@ impl<P: Platform> Renderer<P> {
     let window_state = window.state();
     let (width, height) = match &window_state {
         WindowState::Minimized => (0,0),
-        WindowState::Visible { width, height, focussed } => (*width, *height),
+        WindowState::Visible { width, height, focussed: _focussed } => (*width, *height),
         WindowState::FullScreen { width, height } => (*width, *height),
         WindowState::Exited => (0,0)
     };
@@ -46,7 +47,8 @@ impl<P: Platform> Renderer<P> {
       window_state: Mutex::new(window.state()),
       queued_frames_counter: AtomicUsize::new(0),
       primary_camera: Arc::new(LateLatchCamera::new(device.as_ref(), (width as f32) / (max(1, height) as f32), std::f32::consts::FRAC_PI_2)),
-      surface: Mutex::new(surface.clone())
+      surface: Mutex::new(surface.clone()),
+      is_running: AtomicBool::new(true)
     }
   }
 
@@ -68,6 +70,9 @@ impl<P: Platform> Renderer<P> {
       .spawn(move || {
       let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, receiver, c_renderer.primary_camera());
       loop {
+        if !c_renderer.is_running.load(Ordering::SeqCst) {
+          break;
+        }
         internal.render();
       }
     }).unwrap();
@@ -105,6 +110,10 @@ impl<P: Platform> Renderer<P> {
 
   pub(crate) fn instance(&self) -> &Arc<<P::GraphicsBackend as Backend>::Instance> {
     &self.instance
+  }
+
+  pub fn stop(&self) {
+    self.is_running.store(false, Ordering::SeqCst);
   }
 }
 
@@ -146,6 +155,10 @@ impl<P: Platform> RendererScene for Arc<Renderer<P>> {
   }
 
   fn is_saturated(&self) -> bool {
-    self.queued_frames_counter.load(Ordering::SeqCst) > 2
+    self.queued_frames_counter.load(Ordering::SeqCst) > 1
+  }
+
+  fn is_running(&self) -> bool {
+    self.is_running.load(Ordering::SeqCst)
   }
 }
