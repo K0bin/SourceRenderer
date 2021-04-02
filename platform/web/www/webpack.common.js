@@ -3,7 +3,7 @@ const Path = require('path');
 const WorkboxPlugin = require('workbox-webpack-plugin');
 
 module.exports = {
-  stats: 'verbose',
+  stats: 'detailed',
   entry: {
     main: {
       import: "./bootstrap.js",
