@@ -13,8 +13,7 @@ extern crate serde_derive;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use self::web_engine::WebEngine;
-use web_sys::{EventTarget, HtmlCanvasElement};
-use self::game::Game;
+use web_sys::{EventTarget, HtmlCanvasElement, Worker};
 use self::renderer::Renderer;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -30,8 +29,16 @@ pub fn start_engine(canvas: EventTarget) -> WebEngine {
   WebEngine::run(canvas.dyn_into::<HtmlCanvasElement>().unwrap())
 }
 
-#[wasm_bindgen(js_name = "startGameWorker")]
+/*#[wasm_bindgen(js_name = "startGameWorker")]
 pub fn start_game_worker() {
   //Game::new()
   unimplemented!()
+}*/
+
+#[wasm_bindgen(raw_module = "../../www/src/lib.ts")]
+extern "C" {
+  #[wasm_bindgen(js_name = "startGameWorker", catch)]
+  pub fn start_game_worker() -> Result<Worker, JsValue>;
+  #[wasm_bindgen(js_name = "startAssetWorker", catch)]
+  pub fn start_asset_worker() -> Result<Worker, JsValue>;
 }

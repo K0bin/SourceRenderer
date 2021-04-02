@@ -1,19 +1,19 @@
-/// <reference path="../dist/wasm_lib/sourcerenderer_web.d.ts" />
+import * as wasm from "sourcerenderer_web";
+import * as lib from "./lib.ts";
 
-let engine: wasm_bindgen.WebEngine | null = null;
+let engine: wasm.WebEngine | null = null;
 
-loadWebAssemblyAndStart();
+start();
 
-async function loadWebAssemblyAndStart() {
-  await wasm_bindgen("../wasm_lib/sourcerenderer_web_bg.wasm");
+function start() {
   const canvas = document.getElementById("canvas")! as HTMLCanvasElement;
-  engine = wasm_bindgen.startEngine(canvas);
+  engine = wasm.startEngine(canvas);
 }
 
 if ('serviceWorker' in navigator) {
     // Use the window load event to keep the page load performant
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service_worker.js').then(registration => {
+        navigator.serviceWorker.register('./service_worker.bundle.js').then(registration => {
             console.log('ServiceWorker registered: ', registration);
           }).catch(registrationError => {
             console.log('ServiceWorker registration failed: ', registrationError);

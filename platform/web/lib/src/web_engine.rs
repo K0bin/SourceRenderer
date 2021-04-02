@@ -1,7 +1,7 @@
 use wasm_bindgen::{prelude::*, closure::Closure, JsCast};
 use web_sys::{HtmlCanvasElement, Worker, Window, window};
 use std::{rc::Rc, cell::RefCell};
-use crate::Renderer;
+use crate::{Renderer, start_asset_worker, start_game_worker};
 
 #[wasm_bindgen]
 pub struct WebEngine {
@@ -13,8 +13,8 @@ pub struct WebEngine {
 
 impl WebEngine {
   pub fn run(canvas: HtmlCanvasElement) -> Self {
-    let game_worker = Worker::new("./game_worker.js").unwrap();
-    let asset_worker = Worker::new("./asset_worker.js").unwrap();
+    let game_worker = unsafe { start_game_worker().unwrap() };
+    let asset_worker = unsafe { start_asset_worker().unwrap() };
 
     let renderer = Rc::new(RefCell::new(Renderer::new()));
 
@@ -49,8 +49,8 @@ impl Drop for WebEngine {
   }
 }
 
-fn request_animation_frame(callback: &Closure<FnMut()>) {
+fn request_animation_frame(callback: &Closure<dyn FnMut()>) {
   window()
     .unwrap()
-    .request_animation_frame(callback.as_ref().unchecked_ref());
+    .request_animation_frame(callback.as_ref().unchecked_ref()).unwrap();
 }

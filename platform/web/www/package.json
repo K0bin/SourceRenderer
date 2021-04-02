@@ -4,12 +4,9 @@
   "description": "Render source engine maps in the browser",
   "main": "index.js",
   "scripts": {
-    "build_ts": "tsc && tsc -p tsconfig.service_worker.json && tsc -p tsconfig.game_worker.json && tsc -p tsconfig.asset_worker.json",
-    "build_rust": "cd ../lib && wasm-pack build -t no-modules -d ../www/dist/wasm_lib && cd ../www",
-    "copy_src": "cp -r ./src/ ./dist/",
-    "copy_static": "cp ./index.html ./dist/ && cp ./manifest.json ./dist/",
-    "build": "npm run build_rust && npm run build_ts && npm run copy_static",
-    "start": "npm run build && npm run copy_src && http-server ./dist"
+    "build_rust": "cd ../lib && wasm-pack build",
+    "build": "webpack --config webpack.dev.js",
+    "start": "webpack serve --config webpack.dev.js"
   },
   "repository": {
     "type": "git",
@@ -27,7 +24,13 @@
     "url": "https://github.com/K0bin/SourceRenderer/issues"
   },
   "devDependencies": {
+    "copy-webpack-plugin": "^8.0.0",
+    "sourcerenderer_web": "file:../lib/pkg",
+    "ts-loader": "^8.0.17",
     "typescript": "^4.2.3",
-    "http-server": "^0.12.3"
+    "webpack": "^5.30.0",
+    "webpack-cli": "^4.6.0",
+    "webpack-dev-server": "^3.11.2",
+    "workbox-webpack-plugin": "^6.1.2"
   }
 }

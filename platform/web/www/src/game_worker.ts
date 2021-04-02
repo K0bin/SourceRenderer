@@ -1,12 +1,15 @@
-/// <reference path="../dist/wasm_lib/sourcerenderer_web.d.ts" />
+import * as wasm from "sourcerenderer_web";
+import * as lib from "./lib.ts";
 
-self.importScripts("../wasm_lib/sourcerenderer_web.js");
+let engine: wasm.WebEngine | null = null;
 
-loadWebAssemblyAndStart();
+start();
 
-async function loadWebAssemblyAndStart() {
-  await wasm_bindgen("../wasm_lib/sourcerenderer_web_bg.wasm");
-  // TODO: do stuff
+function start() {
 }
 
-console.log("GameWorker started.");
+self.onmessage = (msg: MessageEvent) => {
+
+};
+
+console.log("game worker started.");

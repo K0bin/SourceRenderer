@@ -30,7 +30,7 @@ mod engine;
 
 mod asset;
 mod spinning_cube;
-mod transform;
+pub mod transform;
 mod camera;
 pub mod fps_camera;
 mod math;

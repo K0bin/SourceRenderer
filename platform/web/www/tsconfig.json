@@ -1,25 +1,13 @@
 {
   "compilerOptions": {
-    "outFile": "./dist/index.js",
     "noImplicitAny": true,
-    "module": "none",
+    "module": "ES2020",
     "target": "ES2017",
-    "allowJs": true,
     "lib": ["ES2017", "dom"],
+    "allowJs": false,
     "moduleResolution": "node",
     "strict": true,
     "sourceMap": true,
-    "removeComments": true,
-    "rootDir": "./src/",
-    "baseUrl": "./src/",
-    "paths": {
-      "wasm-lib/*": ["../dist/wasm-lib/*"]
-    },
-  },
-  "exclude": [
-    "./src/service_worker.ts",
-    "./src/game_worker.ts",
-    "./src/asset_worker.ts",
-    "./dist/"
-  ]
+    "removeComments": true
+  }
 }
