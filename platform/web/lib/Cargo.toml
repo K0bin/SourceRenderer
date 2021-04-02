@@ -45,6 +45,7 @@ features = [
   'WebGlTexture',
   'Window',
   'Worker',
+  'DedicatedWorkerGlobalScope'
 ]
 
 [dev-dependencies]

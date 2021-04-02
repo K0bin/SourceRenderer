@@ -15,6 +15,7 @@ use wasm_bindgen::JsCast;
 use self::web_engine::WebEngine;
 use web_sys::{EventTarget, HtmlCanvasElement, Worker};
 use self::renderer::Renderer;
+use game::Game;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -26,7 +27,14 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 pub fn start_engine(canvas: EventTarget) -> WebEngine {
   // must use extremely generic type here and to avoid typescript errors
   // when loading the wasm module on a web worker where DOM types dont exist
+  utils::set_panic_hook();
   WebEngine::run(canvas.dyn_into::<HtmlCanvasElement>().unwrap())
+}
+
+#[wasm_bindgen(js_name = "startGameWorker")]
+pub fn start_game(tick_rate: u32) -> Game {
+  utils::set_panic_hook();
+  Game::run(tick_rate)
 }
 
 /*#[wasm_bindgen(js_name = "startGameWorker")]

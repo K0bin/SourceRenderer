@@ -1,7 +1,3 @@
-
-use wasm_bindgen::{prelude::*, closure::Closure, JsCast};
-use web_sys::{HtmlCanvasElement, Worker, Window, window};
-use std::{rc::Rc, cell::RefCell};
 pub struct Renderer {
   is_running: bool
 }

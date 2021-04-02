@@ -1,20 +1,21 @@
 use wasm_bindgen::{prelude::*, closure::Closure, JsCast};
-use web_sys::{HtmlCanvasElement, Worker, Window, window};
+use web_sys::{HtmlCanvasElement, Worker, window};
 use std::{rc::Rc, cell::RefCell};
 use crate::{Renderer, start_asset_worker, start_game_worker};
 
 #[wasm_bindgen]
 pub struct WebEngine {
-  game_worker: Worker,
-  asset_worker: Worker,
+  _game_worker: Worker,
+  _asset_worker: Worker,
   renderer: Rc<RefCell<Renderer>>,
+  _frame: u32,
   _render_callback: Rc<RefCell<Option<Closure<dyn FnMut()>>>>
 }
 
 impl WebEngine {
-  pub fn run(canvas: HtmlCanvasElement) -> Self {
-    let game_worker = unsafe { start_game_worker().unwrap() };
-    let asset_worker = unsafe { start_asset_worker().unwrap() };
+  pub fn run(_canvas: HtmlCanvasElement) -> Self {
+    let game_worker = start_game_worker().unwrap();
+    let asset_worker = start_asset_worker().unwrap();
 
     let renderer = Rc::new(RefCell::new(Renderer::new()));
 
@@ -29,15 +30,17 @@ impl WebEngine {
       }
 
       renderer_mut.render();
+      //renderer_mut.frame += 1;
       request_animation_frame(c_closure.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));
 
     request_animation_frame(closure.borrow().as_ref().unwrap());
 
     Self {
-      game_worker,
-      asset_worker,
+      _game_worker: game_worker,
+      _asset_worker: asset_worker,
       renderer,
+      _frame: 0,
       _render_callback: closure
     }
   }
