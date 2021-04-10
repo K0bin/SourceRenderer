@@ -16,6 +16,7 @@ extern crate legion;
 extern crate regex;
 extern crate bitvec;
 extern crate rayon;
+extern crate smallvec;
 
 #[cfg(feature = "threading")]
 pub use self::engine::Engine;
@@ -35,5 +36,5 @@ mod camera;
 pub mod fps_camera;
 mod math;
 
-mod renderer;
+pub mod renderer;
 mod game;

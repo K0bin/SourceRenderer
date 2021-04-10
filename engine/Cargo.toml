@@ -23,6 +23,7 @@ legion = { version = "0.4.0", default-features = false, features=["crossbeam-eve
 regex = "1.4.2"
 bitvec = "0.21.1"
 rayon = "1.5"
+smallvec = "1.6.1"
 
 [features]
 default = ["threading", "late-latching"]

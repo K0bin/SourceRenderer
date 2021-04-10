@@ -8,6 +8,7 @@ use std::io::Read;
 use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::io::IO;
+use rayon::prelude::*;
 
 pub(super) const PASS_NAME: &str = "Prepass";
 pub(super) const OUTPUT_DS: &str = "PrepassDS";
@@ -175,58 +176,57 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
   let c_drawables = drawables.clone();
   let c_view = view.clone();
 
-  (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
+  (PASS_NAME.to_string(), RenderPassCallbacks::InternallyThreaded(
     vec![
-      Arc::new(move |command_buffer_a, graph_resources| {
-        let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
+      Arc::new(move |command_buffer_provider, graph_resources| {
         let drawables = c_drawables.borrow();
 
-        let transform_constant_buffer = command_buffer.upload_dynamic_data(&[*graph_resources.swapchain_transform()], BufferUsage::CONSTANT);
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
-
-        command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
-        let dimensions = graph_resources.texture_dimensions(OUTPUT_DS).unwrap();
-        command_buffer.set_viewports(&[Viewport {
-          position: Vec2::new(0.0f32, 0.0f32),
-          extent: Vec2::new(dimensions.width as f32, dimensions.height as f32),
-          min_depth: 0.0f32,
-          max_depth: 1.0f32
-        }]);
-        command_buffer.set_scissors(&[Scissor {
-          position: Vec2I::new(0, 0),
-          extent: Vec2UI::new(9999, 9999),
-        }]);
-
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(LATE_LATCHING_CAMERA, true).expect("Failed to get graph resource"));
-        //command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_constant_buffer);
+        const CHUNK_SIZE: usize = 256;
         let view_ref = c_view.borrow();
-        for (drawable_index, drawable) in drawables.iter().enumerate() {
-          let visible = &view_ref.visible_drawables;
-          let visible_bit = visible.get(drawable_index);
-          if visible_bit.is_some() && !*visible_bit.unwrap() {
-            continue;
-          }
+        let chunks = view_ref.drawable_parts.par_chunks(CHUNK_SIZE);
+        chunks.map(|chunk| {
+          let mut command_buffer = command_buffer_provider.get_inner_command_buffer();
 
-          let model_constant_buffer = command_buffer.upload_dynamic_data(&[PrepassModelCB {
-            model: drawable.transform,
-            old_model: drawable.old_transform
-          }], BufferUsage::CONSTANT);
-          command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
-          command_buffer.finish_binding();
+          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[*graph_resources.swapchain_transform()], BufferUsage::CONSTANT);
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
 
-          if let RDrawableType::Static {
-            model, ..
-          } = &drawable.drawable_type {
-            let mesh = &model.mesh;
+          command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+          let dimensions = graph_resources.texture_dimensions(OUTPUT_DS).unwrap();
+          command_buffer.set_viewports(&[Viewport {
+            position: Vec2::new(0.0f32, 0.0f32),
+            extent: Vec2::new(dimensions.width as f32, dimensions.height as f32),
+            min_depth: 0.0f32,
+            max_depth: 1.0f32
+          }]);
+          command_buffer.set_scissors(&[Scissor {
+            position: Vec2I::new(0, 0),
+            extent: Vec2UI::new(9999, 9999),
+          }]);
 
-            command_buffer.set_vertex_buffer(&mesh.vertices);
-            if mesh.indices.is_some() {
-              command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
-            }
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(LATE_LATCHING_CAMERA, true).expect("Failed to get graph resource"));
 
-            for i in 0..mesh.parts.len() {
-              let range = &mesh.parts[i];
+          for part in chunk.into_iter() {
+            let drawable = &drawables[part.drawable_index];
+
+            let model_constant_buffer = command_buffer.upload_dynamic_data(&[PrepassModelCB {
+              model: drawable.transform,
+              old_model: drawable.old_transform
+            }], BufferUsage::CONSTANT);
+            command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
+            command_buffer.finish_binding();
+
+            if let RDrawableType::Static {
+              model, ..
+            } = &drawable.drawable_type {
+              let mesh = &model.mesh;
+
+              command_buffer.set_vertex_buffer(&mesh.vertices);
+              if mesh.indices.is_some() {
+                command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
+              }
+
+              let range = &mesh.parts[part.part_index];
 
               if mesh.indices.is_some() {
                 command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
@@ -235,7 +235,9 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
               }
             }
           }
-        }
+
+          command_buffer.finish()
+        }).collect()
       })
     ]))
 }

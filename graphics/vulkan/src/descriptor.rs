@@ -451,15 +451,16 @@ impl VkBindingManager {
 
   pub(crate) fn bind(&mut self, frequency: BindingFrequency, slot: u32, binding: VkBoundResource) {
     let bindings_table = &mut self.bindings[frequency as usize];
-    let existing_binding = &bindings_table[slot as usize];
+    let existing_binding = &mut bindings_table[slot as usize];
     if existing_binding != &binding {
       self.dirty.insert(DirtyDescriptorSets::from(frequency));
-      bindings_table[slot as usize] = binding;
+      *existing_binding = binding;
     }
   }
 
-  fn find_compatible_set(&mut self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResource; 16], use_permanent_cache: bool, use_dynamic_offsets: bool) -> Option<Arc<VkDescriptorSet>> {
+  fn find_compatible_set(&mut self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, frequency: BindingFrequency, use_permanent_cache: bool, use_dynamic_offsets: bool) -> Option<Arc<VkDescriptorSet>> {
     let cache = if use_permanent_cache { &mut self.permanent_cache } else { &mut self.transient_cache };
+    let bindings = self.bindings.get(frequency as usize).unwrap();
 
     let mut entry_opt = cache
         .get_mut(layout)
@@ -496,11 +497,10 @@ impl VkBindingManager {
       return None;
     }
 
-    let bindings_option = self.bindings.get(frequency as usize);
     let layout = layout_option.unwrap();
-    let bindings = bindings_option.unwrap().clone();
-    let cached_set = self.find_compatible_set(frame, layout, &bindings, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
+    let cached_set = self.find_compatible_set(frame, layout, frequency, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
 
+    let bindings = self.bindings.get(frequency as usize).unwrap();
     let mut is_new = false;
     let set = cached_set.unwrap_or_else(|| {
       let pool = if frequency == BindingFrequency::Rarely { &self.permanent_pool } else { &self.transient_pool };
@@ -539,6 +539,9 @@ impl VkBindingManager {
   }
 
   pub fn finish(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout) -> [Option<VkDescriptorSetBinding>; 4] {
+    if self.dirty.is_empty() {
+      return Default::default();
+    }
     self.clean(frame);
 
     let mut set_bindings: [Option<VkDescriptorSetBinding>; 4] = Default::default();
@@ -546,6 +549,8 @@ impl VkBindingManager {
     set_bindings[BindingFrequency::PerFrame as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerFrame);
     set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerMaterial);
     set_bindings[BindingFrequency::Rarely as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::Rarely);
+
+    self.dirty = DirtyDescriptorSets::empty();
     set_bindings
   }
 

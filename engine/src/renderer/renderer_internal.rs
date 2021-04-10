@@ -10,10 +10,10 @@ use sourcerenderer_core::graphics::{SwapchainError, RenderGraphInfo, RenderPassC
 use std::collections::HashMap;
 use crate::renderer::{DrawableType, View};
 use sourcerenderer_core::platform::WindowState;
-
+use smallvec::SmallVec;
 use crate::renderer::camera::LateLatchCamera;
 use crate::renderer::passes;
-use crate::renderer::drawable::{RDrawable, RDrawableType};
+use crate::renderer::drawable::{RDrawable, RDrawableType, DrawablePart};
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use rayon::prelude::*;
@@ -221,6 +221,7 @@ impl<P: Platform> RendererInternal<P> {
     self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
     self.update_visibility();
+    self.reorder();
 
     let result = self.graph.render();
     if result.is_err() {
@@ -262,20 +263,18 @@ impl<P: Platform> RendererInternal<P> {
 
   fn update_visibility(&mut self) {
     let drawables_ref = self.drawables.borrow();
-
     let mut view_mut = self.view.borrow_mut();
 
-    let mut visible: BitVec = BitVec::with_capacity(drawables_ref.len());
-    unsafe {
-      visible.set_len(drawables_ref.len());
-    }
-    let visible_mutex = Mutex::new(visible);
+    let mut existing_parts = std::mem::replace(&mut view_mut.drawable_parts, Vec::new());
+    // take out vector, creating a new one doesn't allocate until we push an element to it.
+    existing_parts.clear();
+    let visible_parts = Mutex::new(existing_parts);
 
     let frustum = Frustum::new(self.primary_camera.z_near(), self.primary_camera.z_far(), self.primary_camera.fov(), self.primary_camera.aspect_ratio());
     let camera_matrix = self.primary_camera.view();
     const CHUNK_SIZE: usize = 64;
     drawables_ref.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
-      let mut chunk_visible = bitarr![Lsb0, usize; 0; CHUNK_SIZE];
+      let mut chunk_visible_parts = SmallVec::<[DrawablePart; 64]>::new();
       for (index, drawable) in chunk.iter().enumerate() {
         let model_view_matrix = camera_matrix * drawable.transform;
         let bounding_box = match &drawable.drawable_type {
@@ -284,26 +283,56 @@ impl<P: Platform> RendererInternal<P> {
         };
         if let Some(bounding_box) = bounding_box {
           let is_visible = frustum.intersects(bounding_box, &model_view_matrix);
-          chunk_visible.set(index, is_visible);
-        } else {
-          chunk_visible.set(index, true);
+          if !is_visible {
+            continue;
+          }
+          let drawable_index = chunk_index * CHUNK_SIZE + index;
+          match &drawable.drawable_type {
+            RDrawableType::Static { model, .. } => {
+              for part_index in 0..model.mesh.parts.len() {
+                if chunk_visible_parts.len() == chunk_visible_parts.capacity() {
+                  let mut global_parts = visible_parts.lock().unwrap();
+                  global_parts.extend_from_slice(&chunk_visible_parts[..]);
+                  chunk_visible_parts.clear();
+                }
+
+                chunk_visible_parts.push(DrawablePart {
+                  drawable_index,
+                  part_index
+                });
+              }
+            }
+            RDrawableType::Skinned => unimplemented!()
+          }
         }
       }
 
-      {
-        let mut visible = visible_mutex.lock().unwrap();
-
-        let len = visible.len();
-        let src_len = if (chunk_index + 1) * CHUNK_SIZE > len {
-          len % CHUNK_SIZE
-        } else {
-          CHUNK_SIZE
-        };
-        visible[chunk_index * CHUNK_SIZE .. min((chunk_index + 1) * CHUNK_SIZE, len)].copy_from_bitslice(&chunk_visible[..src_len]);
-      }
+      let mut global_parts = visible_parts.lock().unwrap();
+      global_parts.extend_from_slice(&chunk_visible_parts[..]);
+      chunk_visible_parts.clear();
     });
 
-    view_mut.visible_drawables = visible_mutex.into_inner().unwrap();
+    view_mut.drawable_parts = visible_parts.into_inner().unwrap();
+  }
+
+  fn reorder(&mut self) {
+    let drawables = self.drawables.borrow();
+
+    let mut view_mut = self.view.borrow_mut();
+    view_mut.drawable_parts.sort_by(|a, b| {
+      let drawable_a = &drawables[a.drawable_index];
+      let drawable_b = &drawables[b.drawable_index];
+
+      let material_a = match &drawable_a.drawable_type {
+          RDrawableType::Static { model, .. } => &model.materials[a.part_index],
+          RDrawableType::Skinned => unimplemented!()
+      }.as_ref();
+      let material_b = match &drawable_b.drawable_type {
+          RDrawableType::Static { model, .. } => &model.materials[b.part_index],
+          RDrawableType::Skinned => unimplemented!()
+      }.as_ref();
+      return material_a.cmp(material_b);
+    });
   }
 }
 

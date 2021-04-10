@@ -156,11 +156,10 @@ pub(in super::super::super) fn build_pass<P: Platform>(
     vec![
       Arc::new(move |command_buffer_provider, graph_resources| {
         let drawables = c_drawables.borrow();
+        let view_ref = c_view.borrow();
         const CHUNK_SIZE: usize = 256;
-        let chunks = drawables.par_chunks(CHUNK_SIZE);
-        chunks.enumerate().map(|(chunk_index, chunk)| {
-          let chunk_offset = chunk_index * CHUNK_SIZE;
-
+        let chunks = view_ref.drawable_parts.par_chunks(CHUNK_SIZE);
+        chunks.map(|chunk| {
           let mut command_buffer = command_buffer_provider.get_inner_command_buffer();
           let transform_constant_buffer = command_buffer.upload_dynamic_data(&[*graph_resources.swapchain_transform()], BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, &transform_constant_buffer);
@@ -179,15 +178,8 @@ pub(in super::super::super) fn build_pass<P: Platform>(
           }]);
 
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
-          let view_ref = c_view.borrow();
-          for (in_chunk_index, drawable) in chunk.into_iter().enumerate() {
-            let drawable_index = chunk_offset + in_chunk_index;
-
-            let visible = &view_ref.visible_drawables;
-            let visible_bit = visible.get(drawable_index);
-            if visible_bit.is_some() && !*visible_bit.unwrap() {
-              continue;
-            }
+          for part in chunk.into_iter() {
+            let drawable = &drawables[part.drawable_index];
 
             /*let model_constant_buffer = command_buffer.upload_dynamic_data(&[drawable.transform], BufferUsage::CONSTANT);
             command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);*/
@@ -203,22 +195,20 @@ pub(in super::super::super) fn build_pass<P: Platform>(
                 command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
               }
 
-              for i in 0..mesh.parts.len() {
-                let range = &mesh.parts[i];
-                let material = &model.materials[i];
-                let texture = material.albedo.borrow();
-                let albedo_view = texture.view.borrow();
-                command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
+              let range = &mesh.parts[part.part_index];
+              let material = &model.materials[part.part_index];
+              let texture = material.albedo.borrow();
+              let albedo_view = texture.view.borrow();
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
 
-                let lightmap_ref = c_lightmap.view.borrow();
-                command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref);
-                command_buffer.finish_binding();
+              let lightmap_ref = c_lightmap.view.borrow();
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref);
+              command_buffer.finish_binding();
 
-                if mesh.indices.is_some() {
-                  command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
-                } else {
-                  command_buffer.draw(range.count, range.start);
-                }
+              if mesh.indices.is_some() {
+                command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+              } else {
+                command_buffer.draw(range.count, range.start);
               }
             }
           }

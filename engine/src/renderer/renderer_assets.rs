@@ -16,6 +16,26 @@ pub(super) struct RendererMaterial<B: Backend> {
   pub(super) albedo: AtomicRefCell<Arc<RendererTexture<B>>>
 }
 
+impl<B: Backend> PartialEq for RendererMaterial<B> {
+  fn eq(&self, other: &Self) -> bool {
+    self.albedo.as_ptr() == other.albedo.as_ptr()
+  }
+}
+
+impl<B: Backend> Eq for RendererMaterial<B> {}
+
+impl<B: Backend> PartialOrd for RendererMaterial<B> {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    self.albedo.as_ptr().partial_cmp(&other.albedo.as_ptr())
+  }
+}
+
+impl<B: Backend> Ord for RendererMaterial<B> {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    self.albedo.as_ptr().cmp(&other.albedo.as_ptr())
+  }
+}
+
 pub(super) struct RendererModel<B: Backend> {
   pub(super) mesh: Arc<RendererMesh<B>>,
   pub(super) materials: Box<[Arc<RendererMaterial<B>>]>
