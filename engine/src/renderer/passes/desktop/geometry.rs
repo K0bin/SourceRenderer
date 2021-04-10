@@ -157,7 +157,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(
       Arc::new(move |command_buffer_provider, graph_resources| {
         let drawables = c_drawables.borrow();
         let view_ref = c_view.borrow();
-        const CHUNK_SIZE: usize = 256;
+        const CHUNK_SIZE: usize = 128;
         let chunks = view_ref.drawable_parts.par_chunks(CHUNK_SIZE);
         chunks.map(|chunk| {
           let mut command_buffer = command_buffer_provider.get_inner_command_buffer();

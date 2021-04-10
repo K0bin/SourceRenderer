@@ -181,12 +181,11 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
       Arc::new(move |command_buffer_provider, graph_resources| {
         let drawables = c_drawables.borrow();
 
-        const CHUNK_SIZE: usize = 256;
+        const CHUNK_SIZE: usize = 128;
         let view_ref = c_view.borrow();
         let chunks = view_ref.drawable_parts.par_chunks(CHUNK_SIZE);
         chunks.map(|chunk| {
           let mut command_buffer = command_buffer_provider.get_inner_command_buffer();
-
           let transform_constant_buffer = command_buffer.upload_dynamic_data(&[*graph_resources.swapchain_transform()], BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
 
