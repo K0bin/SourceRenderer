@@ -85,8 +85,7 @@ impl VkShader {
     let push_constant_resource = resources.push_constant_buffers.first();
     let push_constants_range = push_constant_resource.map(|resource| {
       let buffer_ranges = ast.get_active_buffer_ranges(resource.id).unwrap();
-      let first_buffer_range = buffer_ranges.first().unwrap();
-      vk::PushConstantRange {
+      let mut push_constant_range = vk::PushConstantRange {
         stage_flags: match shader_type {
           ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
           ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
@@ -94,8 +93,17 @@ impl VkShader {
           _ => unimplemented!()
         },
         offset: 0u32,
-        size: first_buffer_range.range as u32,
+        size: 0,
+      };
+      for range in buffer_ranges {
+        push_constant_range.size += range.range as u32;
       }
+
+      if push_constant_range.size > 128 {
+        panic!("Shader push constants exceed the size limit of 128 bytes");
+      }
+
+      push_constant_range
     });
 
     for resource in resources.sampled_images {

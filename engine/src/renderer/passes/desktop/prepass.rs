@@ -100,14 +100,14 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
     let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
-    device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
+    device.create_shader(ShaderType::VertexShader, &bytes, Some("prepass.vert.spv"))
   };
 
   let fragment_shader = {
     let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.frag.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
-    device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
+    device.create_shader(ShaderType::FragmentShader, &bytes, Some("prepass.frag.spv"))
   };
 
   let pipeline_info: GraphicsPipelineInfo<P::GraphicsBackend> = GraphicsPipelineInfo {
@@ -204,16 +204,15 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
 
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(LATE_LATCHING_CAMERA, true).expect("Failed to get graph resource"));
+          command_buffer.finish_binding();
 
           for part in chunk.into_iter() {
             let drawable = &drawables[part.drawable_index];
 
-            let model_constant_buffer = command_buffer.upload_dynamic_data(&[PrepassModelCB {
+            command_buffer.upload_dynamic_data_inline(&[PrepassModelCB {
               model: drawable.transform,
               old_model: drawable.old_transform
-            }], BufferUsage::CONSTANT);
-            command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);
-            command_buffer.finish_binding();
+            }], ShaderType::VertexShader);
 
             if let RDrawableType::Static {
               model, ..

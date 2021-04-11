@@ -18,7 +18,7 @@ layout(set = 2, binding = 2) uniform SwapchainTransformLowFrequencyUbo {
     mat4 swapchain_transform;
 };
 
-layout(set = 0, binding = 0) uniform HighFrequencyUbo {
+layout(push_constant) uniform VeryHighFrequencyUbo {
     mat4 model;
     mat4 oldModel;
 };
