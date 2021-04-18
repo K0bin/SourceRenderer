@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil, PipelineStage, BACK_BUFFER_ATTACHMENT_NAME, InnerCommandBufferProvider};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil, PipelineStage, BACK_BUFFER_ATTACHMENT_NAME, InnerCommandBufferProvider, StoreAction, LoadAction, RenderPassTextureExtent};
 use std::sync::Arc;
 use crate::renderer::drawable::{View, RDrawable};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -13,6 +13,7 @@ use rayon::prelude::*;
 
 const PASS_NAME: &str = "Geometry";
 const OUTPUT_DS: &str = "DS";
+pub const OUTPUT_IMAGE: &str = "OutputImage";
 
 pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   PassInfo {
@@ -20,8 +21,19 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
     pass_type: PassType::Graphics {
       subpasses: vec![
         GraphicsSubpassInfo {
-          outputs: vec![SubpassOutput::Backbuffer {
-            clear: true
+          outputs: vec![SubpassOutput::RenderTarget {
+            name: OUTPUT_IMAGE.to_string(),
+            format: Format::RGBA8,
+            samples: SampleCount::Samples1,
+            extent: RenderPassTextureExtent::RelativeToSwapchain {
+              width: 1f32,
+              height: 1f32
+            },
+            depth: 1,
+            levels: 1,
+            external: false,
+            load_action: LoadAction::Clear,
+            store_action: StoreAction::Store
           }],
           inputs: vec![
             PassInput {

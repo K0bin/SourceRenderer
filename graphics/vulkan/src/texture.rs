@@ -3,9 +3,9 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode};
+use sourcerenderer_core::graphics::{AddressMode, Filter, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
 
-use crate::raw::RawVkDevice;
+use crate::{VkBackend, raw::RawVkDevice};
 use crate::format::format_to_vk;
 
 use crate::pipeline::{samples_to_vk, compare_func_to_vk};
@@ -262,7 +262,17 @@ impl Drop for VkTextureView {
   }
 }
 
-impl TextureShaderResourceView for VkTextureView {}
+impl TextureShaderResourceView<VkBackend> for VkTextureView {
+  fn texture(&self) -> &Arc<VkTexture> {
+    &self.texture
+  }
+}
+
+impl TextureUnorderedAccessView<VkBackend> for VkTextureView {
+  fn texture(&self) -> &Arc<VkTexture> {
+    &self.texture
+  }
+}
 
 impl Hash for VkTextureView {
   fn hash<H: Hasher>(&self, state: &mut H) {

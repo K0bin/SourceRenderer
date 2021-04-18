@@ -79,7 +79,7 @@ pub struct VkCommandBufferProvider {
 
 impl InnerCommandBufferProvider<VkBackend> for VkCommandBufferProvider {
   fn get_inner_command_buffer(&self) -> VkCommandBufferRecorder {
-    let mut thread_local = self.thread_manager.get_thread_local();
+    let thread_local = self.thread_manager.get_thread_local();
     let frame_local = thread_local.get_frame_local();
     frame_local.get_inner_command_buffer(self.inner_info.as_ref())
   }
@@ -93,40 +93,8 @@ pub struct VkRenderGraphResources<'a> {
   swapchain_image_index: u32
 }
 
-impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
-  fn get_buffer(&self, name: &str, history: bool) -> Result<&Arc<VkBufferSlice>, RenderGraphResourceError> {
-    if !self.pass_resource_names.contains(name) {
-      return Err(RenderGraphResourceError::NotAllowed);
-    }
-    let resource = self.resources.get(name);
-    if resource.is_none() {
-      let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
-      return if let Some(external) = external {
-        match external {
-          ExternalResource::Buffer(buffer) => Ok(buffer),
-          _ => Err(RenderGraphResourceError::WrongResourceType)
-        }
-      } else {
-        Err(RenderGraphResourceError::NotFound)
-      };
-    }
-    match resource.unwrap() {
-      VkResource::Buffer {
-        buffer, buffer_b, ..
-      } => {
-        if !history {
-          Ok(buffer)
-        } else if let Some(buffer_b) = buffer_b {
-          Ok(buffer_b)
-        } else {
-          Err(RenderGraphResourceError::NoHistory)
-        }
-      },
-      _ => Err(RenderGraphResourceError::WrongResourceType)
-    }
-  }
-
-  fn get_texture(&self, name: &str, history: bool) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
+impl<'a> VkRenderGraphResources<'a> {
+  fn get_texture_view(&self, name: &str, history: bool) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
     if !self.pass_resource_names.contains(name) {
       return Err(RenderGraphResourceError::NotAllowed);
     }
@@ -155,6 +123,40 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
           Ok(view)
         } else if let Some(view_b) = view_b {
           Ok(view_b)
+        } else {
+          Err(RenderGraphResourceError::NoHistory)
+        }
+      },
+      _ => Err(RenderGraphResourceError::WrongResourceType)
+    }
+  }
+}
+
+impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
+  fn get_buffer(&self, name: &str, history: bool) -> Result<&Arc<VkBufferSlice>, RenderGraphResourceError> {
+    if !self.pass_resource_names.contains(name) {
+      return Err(RenderGraphResourceError::NotAllowed);
+    }
+    let resource = self.resources.get(name);
+    if resource.is_none() {
+      let external = self.external_resources.as_ref().and_then(|external_resources| external_resources.get(name));
+      return if let Some(external) = external {
+        match external {
+          ExternalResource::Buffer(buffer) => Ok(buffer),
+          _ => Err(RenderGraphResourceError::WrongResourceType)
+        }
+      } else {
+        Err(RenderGraphResourceError::NotFound)
+      };
+    }
+    match resource.unwrap() {
+      VkResource::Buffer {
+        buffer, buffer_b, ..
+      } => {
+        if !history {
+          Ok(buffer)
+        } else if let Some(buffer_b) = buffer_b {
+          Ok(buffer_b)
         } else {
           Err(RenderGraphResourceError::NoHistory)
         }
@@ -214,6 +216,14 @@ impl<'a> RenderGraphResources<VkBackend> for VkRenderGraphResources<'a> {
 
   fn swapchain_transform(&self) -> &Matrix4 {
     self.swapchain.transform()
+  }
+
+  fn get_texture_srv(&self, name: &str, history: bool) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
+    self.get_texture_view(name, history)
+  }
+
+  fn get_texture_uav(&self, name: &str, history: bool) -> Result<&Arc<VkTextureView>, RenderGraphResourceError> {
+    self.get_texture_view(name, history)
   }
 }
 

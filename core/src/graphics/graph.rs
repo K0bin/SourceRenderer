@@ -68,7 +68,8 @@ pub struct TextureDimensions {
 
 pub trait RenderGraphResources<B: Backend> : Send + Sync {
   fn get_buffer(&self, name: &str, history: bool) -> Result<&Arc<B::Buffer>, RenderGraphResourceError>;
-  fn get_texture(&self, name: &str, history: bool) -> Result<&Arc<B::TextureShaderResourceView>, RenderGraphResourceError>;
+  fn get_texture_srv(&self, name: &str, history: bool) -> Result<&Arc<B::TextureShaderResourceView>, RenderGraphResourceError>;
+  fn get_texture_uav(&self, name: &str, history: bool) -> Result<&Arc<B::TextureUnorderedAccessView>, RenderGraphResourceError>;
 
   fn texture_dimensions(&self, name: &str) -> Result<TextureDimensions, RenderGraphResourceError>;
   fn swapchain_transform(&self) -> &Matrix4;

@@ -31,7 +31,6 @@ pub struct VkPassTemplate {
   pub renders_to_swapchain: bool,
   pub has_history_resources: bool,
   pub has_external_resources: bool,
-  pub has_backbuffer: bool,
   pub resources: HashSet<String>,
 }
 
@@ -156,9 +155,10 @@ impl VkRenderGraphTemplate {
 
     let mut did_render_to_backbuffer = false;
 
-    // TODO: figure out threading
     // TODO: more generic support for external images / one time rendering
     // TODO: (async) compute
+    // TODO: barrier to init history resources
+    // TODO: barrier to present after compute pass
 
     let mut attachment_metadata = HashMap::<String, ResourceMetadata>::new();
     let mut passes: Vec<VkPassTemplate> = Vec::new();
@@ -169,28 +169,19 @@ impl VkRenderGraphTemplate {
     let mut pass_index: u32 = 0;
     let mut pass_opt = reordered_passes_queue.pop_front();
     while let Some(pass) = pass_opt {
-      match &pass.pass_type {
+      let render_graph_pass = match &pass.pass_type {
         PassType::Graphics {
           ref subpasses
-        } => {
-          // build subpasses, requires the attachment indices populated before
-          let render_graph_pass = Self::build_render_pass(subpasses, &pass.name, device, pass_index, &mut attachment_metadata, info.swapchain_format, info.swapchain_sample_count);
-          did_render_to_backbuffer |= render_graph_pass.renders_to_swapchain;
-          passes.push(render_graph_pass);
-        },
+        } => Self::build_render_pass(subpasses, &pass.name, device, pass_index, &mut attachment_metadata, info.swapchain_format, info.swapchain_sample_count),
         PassType::Compute {
           inputs, outputs
-        } => {
-          let render_graph_pass = Self::build_compute_copy_pass(inputs, outputs, &pass.name, device, pass_index, &mut attachment_metadata, info.swapchain_format, info.swapchain_sample_count, true);
-          passes.push(render_graph_pass);
-        },
+        } => Self::build_compute_copy_pass(inputs, outputs, &pass.name, device, pass_index, &mut attachment_metadata, info.swapchain_format, info.swapchain_sample_count, true),
         PassType::Copy {
           inputs, outputs
-        } => {
-          let render_graph_pass = Self::build_compute_copy_pass(inputs, outputs, &pass.name, device, pass_index, &mut attachment_metadata, info.swapchain_format, info.swapchain_sample_count, false);
-          passes.push(render_graph_pass);
-        }
-      }
+        } => Self::build_compute_copy_pass(inputs, outputs, &pass.name, device, pass_index, &mut attachment_metadata, info.swapchain_format, info.swapchain_sample_count, false),
+      };
+      did_render_to_backbuffer |= render_graph_pass.renders_to_swapchain;
+      passes.push(render_graph_pass);
       pass_opt = reordered_passes_queue.pop_front();
       pass_index += 1;
     }
@@ -1101,7 +1092,6 @@ impl VkRenderGraphTemplate {
       renders_to_swapchain: pass_renders_to_backbuffer,
       has_history_resources: pass_has_history_resources,
       has_external_resources: pass_has_external_resources,
-      has_backbuffer: false,
       resources: used_resources,
       name: name.to_owned(),
       pass_type: VkPassType::Graphics {
@@ -1293,11 +1283,12 @@ impl VkRenderGraphTemplate {
     let mut uses_backbuffer = false;
 
     let (stage, layout) = if is_compute {
-      (vk::PipelineStageFlags::COMPUTE_SHADER, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+      (vk::PipelineStageFlags::COMPUTE_SHADER, vk::ImageLayout::GENERAL)
     } else {
       (vk::PipelineStageFlags::TRANSFER, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
     };
 
+    let mut barriers = Vec::<VkBarrierTemplate>::new();
     for output in outputs {
       used_resources.insert(match output {
         Output::Buffer { name, .. } => {
@@ -1322,7 +1313,6 @@ impl VkRenderGraphTemplate {
       });
     }
 
-    let mut barriers = Vec::<VkBarrierTemplate>::new();
     for input in inputs {
       used_resources.insert(input.name.clone());
       let metadata = attachment_metadata.get_mut(&input.name).unwrap();
@@ -1384,12 +1374,7 @@ impl VkRenderGraphTemplate {
       }
     }
 
-    /*
-    let mut post_barriers = Vec::<VkBarrierTemplate>::new();
-    if uses_backbuffer {
-    }
-    TODO
-    */
+    println!("Pass: {:?} uses backbuffer: {:?}", name, uses_backbuffer);
 
     VkPassTemplate {
       name: name.to_string(),
@@ -1397,10 +1382,9 @@ impl VkRenderGraphTemplate {
         barriers,
         is_compute
       },
-      renders_to_swapchain: false,
+      renders_to_swapchain: uses_backbuffer,
       has_history_resources: uses_history_resources,
       has_external_resources: uses_external_resources,
-      has_backbuffer: uses_backbuffer,
       resources: used_resources
     }
   }

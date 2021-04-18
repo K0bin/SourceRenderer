@@ -1,4 +1,5 @@
-use crate::graphics::{Format, SampleCount, CompareFunc};
+use crate::graphics::{Format, SampleCount, CompareFunc, Backend};
+use std::sync::Arc;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
@@ -48,6 +49,10 @@ pub struct TextureShaderResourceViewInfo {
   pub max_lod: f32,
 }
 
-pub trait TextureShaderResourceView {
+pub trait TextureShaderResourceView<B: Backend> {
+  fn texture(&self) -> &Arc<B::Texture>;
+}
 
+pub trait TextureUnorderedAccessView<B: Backend> {
+  fn texture(&self) -> &Arc<B::Texture>;
 }

@@ -77,7 +77,7 @@ impl VkShader {
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
 
     let module = spirv::Module::from_words(unsafe { std::slice::from_raw_parts(bytecode.as_ptr() as *const u32, bytecode.len() / std::mem::size_of::<u32>()) });
-    let ast = spirv::Ast::<glsl::Target>::parse(&module).expect("Failed to parse shader with SPIR-V Cross");
+    let mut ast = spirv::Ast::<glsl::Target>::parse(&module).expect("Failed to parse shader with SPIR-V Cross");
     let resources = ast.get_shader_resources().expect("Failed to get resources");
 
     let mut sets: HashMap<u32, Vec<VkDescriptorSetBindingInfo>> = HashMap::new();
@@ -112,7 +112,8 @@ impl VkShader {
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        shader_stage: shader_type_to_vk(shader_type)
+        shader_stage: shader_type_to_vk(shader_type),
+        writable: false
       });
     }
     for resource in resources.subpass_inputs {
@@ -121,7 +122,8 @@ impl VkShader {
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        shader_stage: shader_type_to_vk(shader_type)
+        shader_stage: shader_type_to_vk(shader_type),
+        writable: false
       });
     }
     for resource in resources.uniform_buffers {
@@ -130,7 +132,8 @@ impl VkShader {
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
-        shader_stage: shader_type_to_vk(shader_type)
+        shader_stage: shader_type_to_vk(shader_type),
+        writable: false
       });
     }
     for resource in resources.storage_buffers {
@@ -139,7 +142,18 @@ impl VkShader {
       set.push(VkDescriptorSetBindingInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER },
-        shader_stage: shader_type_to_vk(shader_type)
+        shader_stage: shader_type_to_vk(shader_type),
+        writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true)
+      });
+    }
+    for resource in resources.storage_images {
+      let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
+      set.push(VkDescriptorSetBindingInfo {
+        index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+        descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
+        shader_stage: shader_type_to_vk(shader_type),
+        writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true)
       });
     }
 

@@ -415,6 +415,12 @@ impl VkCommandBuffer {
     self.trackers.track_buffer(buffer);
   }
 
+  pub(crate) fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::StorageTexture(texture.clone()));
+    self.trackers.track_texture_view(texture);
+  }
+
   pub(crate) fn finish_binding(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let mut offsets: [u32; 16] = Default::default();
@@ -786,6 +792,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
     self.item.as_mut().unwrap().bind_storage_buffer(frequency, binding, buffer);
+  }
+
+  #[inline(always)]
+  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+    self.item.as_mut().unwrap().bind_storage_texture(frequency, binding, texture);
   }
 
   #[inline(always)]

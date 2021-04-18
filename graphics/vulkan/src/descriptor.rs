@@ -40,7 +40,8 @@ impl From<BindingFrequency> for DirtyDescriptorSets {
 pub(crate) struct VkDescriptorSetBindingInfo {
   pub(crate) shader_stage: vk::ShaderStageFlags,
   pub(crate) index: u32,
-  pub(crate) descriptor_type: vk::DescriptorType
+  pub(crate) descriptor_type: vk::DescriptorType,
+  pub(crate) writable: bool
 }
 
 pub(crate) struct VkDescriptorSetLayout {
@@ -261,9 +262,11 @@ impl VkDescriptorSet {
         let mut image_writes: SmallVec<[vk::DescriptorImageInfo; 16]> = Default::default();
         let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; 16]> = Default::default();
         for (binding, resource) in bindings.iter().enumerate() {
-          if layout.binding_infos[binding].is_none() {
+          let binding_info = &layout.binding_infos[binding];
+          if binding_info.is_none() {
             continue;
           }
+          let binding_info = binding_info.as_ref().unwrap();
 
           let mut write = vk::WriteDescriptorSet {
             dst_set: set,
@@ -283,6 +286,16 @@ impl VkDescriptorSet {
               buffer_writes.push(buffer_info);
               write.p_buffer_info = unsafe { buffer_writes.as_ptr().offset(buffer_writes.len() as isize - 1) };
               write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER };
+            },
+            VkBoundResource::StorageTexture(texture) => {
+              let texture_info = vk::DescriptorImageInfo {
+                image_view: *texture.get_view_handle(),
+                sampler: *texture.get_sampler_handle().unwrap(),
+                image_layout: if !binding_info.writable { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL } else { vk::ImageLayout::GENERAL }
+              };
+              image_writes.push(texture_info);
+              write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
+              write.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
             },
             VkBoundResource::UniformBuffer(buffer) => {
               let buffer_info = vk::DescriptorBufferInfo {
@@ -317,9 +330,11 @@ impl VkDescriptorSet {
         let mut entries: SmallVec<[VkDescriptorEntry; 16]> = Default::default();
 
         for (binding, resource) in bindings.iter().enumerate() {
-          if layout.binding_infos[binding].is_none() {
+          let binding_info = &layout.binding_infos[binding];
+          if binding_info.is_none() {
             continue;
           }
+          let binding_info = binding_info.as_ref().unwrap();
           let mut entry = VkDescriptorEntry::default();
           match resource {
             VkBoundResource::StorageBuffer(buffer) => {
@@ -341,6 +356,13 @@ impl VkDescriptorSet {
                 image_view: *texture.get_view_handle(),
                 sampler: *texture.get_sampler_handle().unwrap(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+              };
+            },
+            VkBoundResource::StorageTexture(texture) => {
+              entry.image = vk::DescriptorImageInfo {
+                image_view: *texture.get_view_handle(),
+                sampler: vk::Sampler::null(),
+                image_layout: vk::ImageLayout::GENERAL
               };
             },
             _ => {}
@@ -391,6 +413,7 @@ pub(crate) enum VkBoundResource {
   None,
   UniformBuffer(Arc<VkBufferSlice>),
   StorageBuffer(Arc<VkBufferSlice>),
+  StorageTexture(Arc<VkTextureView>),
   SampledTexture(Arc<VkTextureView>)
 }
 

@@ -106,7 +106,7 @@ impl VkSwapchain {
         return Err(SwapchainError::ZeroExtents);
       }
 
-      if !capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT) {
+      if !capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT) || !capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::STORAGE) {
         panic!("Rendering to the surface is not supported.");
       }
 
@@ -181,7 +181,7 @@ impl VkSwapchain {
           image_color_space: format.color_space,
           image_extent: extent,
           image_array_layers: 1,
-          image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
+          image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE,
           present_mode,
           image_sharing_mode: vk::SharingMode::EXCLUSIVE,
           pre_transform: transform,

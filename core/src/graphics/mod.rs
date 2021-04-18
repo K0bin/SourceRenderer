@@ -23,7 +23,7 @@ pub use self::command::Scissor;
 pub use self::backend::Backend;
 pub use self::command::BindingFrequency;
 pub use self::command::PipelineBinding;
-pub use self::texture::{TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode};
+pub use self::texture::{TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode, TextureUnorderedAccessView};
 pub use self::sync::Fence;
 pub use self::graph_template::*;
 pub use self::graph::*;
