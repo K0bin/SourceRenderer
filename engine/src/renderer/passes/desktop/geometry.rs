@@ -22,8 +22,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
       subpasses: vec![
         GraphicsSubpassInfo {
           outputs: vec![
-            SubpassOutput::Backbuffer { clear: true },
-            /*SubpassOutput::RenderTarget {
+            SubpassOutput::RenderTarget {
             name: OUTPUT_IMAGE.to_string(),
             format: Format::RGBA8,
             samples: SampleCount::Samples1,
@@ -36,7 +35,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
             external: false,
             load_action: LoadAction::Clear,
             store_action: StoreAction::Store
-          }*/],
+          }],
           inputs: vec![
             PassInput {
               name: LATE_LATCHING_CAMERA.to_string(),

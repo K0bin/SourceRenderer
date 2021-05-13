@@ -1,9 +1,8 @@
 use sourcerenderer_core::graphics::{PassInfo, PassType, PassInput, Output, RenderPassCallbacks, CommandBuffer, PipelineBinding, BindingFrequency, ShaderType, Backend as GraphicsBackend, Device, ExternalResource, ExternalOutput, ExternalProducerType, PipelineStage};
-use sourcerenderer_core::{Matrix4, Platform};
+use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
-use crate::renderer::LateLatchCamera;
 use sourcerenderer_core::platform::io::IO;
 use crate::renderer::passes::desktop::geometry::OUTPUT_IMAGE;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;

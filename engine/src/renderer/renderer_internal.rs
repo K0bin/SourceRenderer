@@ -80,7 +80,7 @@ impl<P: Platform> RendererInternal<P> {
       passes::late_latching::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::prepass::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::geometry::build_pass_template::<P::GraphicsBackend>(),
-      //passes::desktop::taa::build_pass_template::<P::GraphicsBackend>()
+      passes::desktop::taa::build_pass_template::<P::GraphicsBackend>()
     ];
 
     let external_resources = vec![
@@ -104,8 +104,8 @@ impl<P: Platform> RendererInternal<P> {
     let (late_latch_pass_name, late_latch_pass_callback) = passes::late_latching::build_pass::<P>(device);
     callbacks.insert(late_latch_pass_name, late_latch_pass_callback);
 
-    /*let (taa_pass_name, late_latch_pass_callback) = passes::desktop::taa::build_pass::<P>(device);
-    callbacks.insert(taa_pass_name, late_latch_pass_callback);*/
+    let (taa_pass_name, late_latch_pass_callback) = passes::desktop::taa::build_pass::<P>(device);
+    callbacks.insert(taa_pass_name, late_latch_pass_callback);
 
     let mut external_resources = HashMap::<String, ExternalResource<P::GraphicsBackend>>::new();
     let (camera_resource_name, camera_resource) = passes::late_latching::external_resource(primary_camera);
