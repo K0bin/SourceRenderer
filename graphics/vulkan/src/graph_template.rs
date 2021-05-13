@@ -610,6 +610,12 @@ impl VkRenderGraphTemplate {
 
           for input in inputs {
             let mut input_metadata = metadata.get_mut(&input.name).unwrap();
+            let is_buffer = match &input_metadata.template {
+              VkResourceTemplate::Buffer {..} => true,
+              VkResourceTemplate::ExternalBuffer {..} => true,
+              VkResourceTemplate::Texture {..} => false,
+              VkResourceTemplate::ExternalTexture {..} => true,
+            };
             if input.is_history {
               if let Some(history_usage) = input_metadata.history.as_mut() {
                 if history_usage.pass_range.first_used_in_pass_index > reordered_passes.len() as u32 {
@@ -621,14 +627,14 @@ impl VkRenderGraphTemplate {
                 history_usage.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
                   stage: vk::PipelineStageFlags::COMPUTE_SHADER,
                   access: vk::AccessFlags::SHADER_READ,
-                  layout: vk::ImageLayout::UNDEFINED,
+                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::GENERAL },
                 });
               } else {
                 let mut accesses = HashMap::<u32, ResourceAccess>::new();
                 accesses.insert(reordered_passes.len() as u32, ResourceAccess {
                   stage: vk::PipelineStageFlags::COMPUTE_SHADER,
                   access: vk::AccessFlags::SHADER_READ,
-                  layout: vk::ImageLayout::UNDEFINED,
+                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::GENERAL },
                 });
                 input_metadata.history = Some(HistoryResourceMetadata {
                   pass_range: ResourcePassRange {
@@ -644,7 +650,7 @@ impl VkRenderGraphTemplate {
               input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
                 stage: vk::PipelineStageFlags::COMPUTE_SHADER,
                 access: vk::AccessFlags::SHADER_READ,
-                layout: vk::ImageLayout::UNDEFINED,
+                layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::GENERAL },
               });
             }
             assert_eq!(input.stage, PipelineStage::ComputeShader);
@@ -1225,7 +1231,7 @@ impl VkRenderGraphTemplate {
     }
 
     let discard = current_access.layout == vk::ImageLayout::UNDEFINED;
-    if (discard) {
+    if discard {
       src_stage = dst_stage;
       src_access = vk::AccessFlags::empty();
       dst_access = vk::AccessFlags::empty();
@@ -1318,7 +1324,7 @@ impl VkRenderGraphTemplate {
       (pass_access, current_access)
     };
 
-    if current_access.access.is_empty() && current_access.layout == pass_access.layout {
+    if current_access.access.is_empty() && current_access.layout == pass_access.layout && name != BACK_BUFFER_ATTACHMENT_NAME {
       return None;
     }
 

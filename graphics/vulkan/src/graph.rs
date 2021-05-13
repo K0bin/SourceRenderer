@@ -466,7 +466,7 @@ impl VkRenderGraph {
       'barriers: for barrier in &pass.barriers {
         match barrier {
           VkBarrierTemplate::Image { name, is_history, old_layout, .. } => {
-            if !is_history || initialized_history_resources.contains(name) {
+            if !is_history || initialized_history_resources.contains(name) || *old_layout == vk::ImageLayout::UNDEFINED {
               continue 'barriers;
             }
             let resource = resources.get(name).unwrap();
@@ -515,8 +515,8 @@ impl VkRenderGraph {
     if !image_barriers.is_empty() {
       let mut cmd_buffer = context.get_thread_local().get_frame_local().get_command_buffer();
       cmd_buffer.barrier(
-        vk::PipelineStageFlags::all(),
-        vk::PipelineStageFlags::all(),
+        vk::PipelineStageFlags::ALL_COMMANDS,
+        vk::PipelineStageFlags::ALL_COMMANDS,
         vk::DependencyFlags::empty(),
         &[],
         &[],
@@ -707,6 +707,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
               cmd_buffer.end_render_pass();
             }
           }
+
+          let cmd_semaphore = self.thread_manager.get_shared().get_semaphore();
           let prepare_semaphores = [prepare_semaphore.as_ref().as_ref()];
           let cmd_semaphores = [cmd_semaphore.as_ref().as_ref()];
 
@@ -729,7 +731,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
 
           frame_local.track_semaphore(&cmd_semaphore);
-          self.execute_cmd_buffer(&mut cmd_buffer, &frame_local, fence, &wait_semaphores, &signal_semaphores);
+          self.execute_cmd_buffer(&mut cmd_buffer, &frame_local, fence, wait_semaphores, signal_semaphores);
         }
 
         VkPass::ComputeCopy {
@@ -771,7 +773,68 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             }
           }
 
-          self.execute_cmd_buffer(&mut cmd_buffer, &frame_local, None, &[], &[]);
+          if *renders_to_swapchain {
+            // TRANSITION TO PRESENT
+
+            let is_compute = match &template.pass_type {
+              VkPassType::ComputeCopy { is_compute } => *is_compute,
+              _ => unreachable!()
+            };
+            let src_stage = if is_compute { vk::PipelineStageFlags::COMPUTE_SHADER } else { vk::PipelineStageFlags::TRANSFER };
+            let old_layout = if is_compute { vk::ImageLayout::GENERAL } else { vk::ImageLayout::TRANSFER_DST_OPTIMAL };
+            let src_access = if is_compute { vk::AccessFlags::SHADER_WRITE } else { vk::AccessFlags::TRANSFER_WRITE };
+            let view = &self.swapchain.get_views()[framebuffer_index];
+            let texture = view.texture();
+            cmd_buffer.barrier(src_stage, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[], &[], &[
+              vk::ImageMemoryBarrier {
+                src_access_mask: src_access,
+                dst_access_mask: vk::AccessFlags::MEMORY_READ,
+                src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                old_layout,
+                new_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+                subresource_range: vk::ImageSubresourceRange {
+                  aspect_mask: if texture.get_info().format.is_depth() && texture.get_info().format.is_stencil() {
+                    vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+                  } else if texture.get_info().format.is_depth() {
+                    vk::ImageAspectFlags::DEPTH
+                  } else {
+                    vk::ImageAspectFlags::COLOR
+                  },
+                  base_mip_level: 0,
+                  level_count: texture.get_info().mip_levels,
+                  base_array_layer: 0,
+                  layer_count: texture.get_info().array_length
+                },
+                image: *texture.get_handle(),
+                ..Default::default()
+              }
+            ])
+          }
+
+          let prepare_semaphores = [prepare_semaphore.as_ref().as_ref()];
+          let cmd_semaphores = [cmd_semaphore.as_ref().as_ref()];
+
+          let wait_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
+            &prepare_semaphores
+          } else {
+            &[]
+          };
+          let signal_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
+            &cmd_semaphores
+          } else {
+            &[]
+          };
+
+          let fence = if *renders_to_swapchain {
+            Some(&cmd_fence)
+          } else {
+            None
+          };
+
+
+          frame_local.track_semaphore(&cmd_semaphore);
+          self.execute_cmd_buffer(&mut cmd_buffer, &frame_local, fence, wait_semaphores, signal_semaphores);
         }
       }
     }
