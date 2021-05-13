@@ -33,6 +33,7 @@ pub struct VkPassTemplate {
   pub has_history_resources: bool,
   pub has_external_resources: bool,
   pub resources: HashSet<String>,
+  pub barriers: Vec<VkBarrierTemplate>
 }
 
 #[derive(Clone)]
@@ -64,11 +65,9 @@ pub enum VkBarrierTemplate {
 pub enum VkPassType {
   Graphics {
     render_pass: Arc<VkRenderPass>,
-    attachments: Vec<String>,
-    barriers: Vec<VkBarrierTemplate>
+    attachments: Vec<String>
   },
   ComputeCopy {
-    barriers: Vec<VkBarrierTemplate>,
     is_compute: bool
   }
 }
@@ -200,30 +199,6 @@ impl VkRenderGraphTemplate {
       passes.push(render_graph_pass);
       pass_opt = reordered_passes_queue.pop_front();
       pass_index += 1;
-    }
-
-    for pass in &mut passes {
-      let barriers = match &mut pass.pass_type {
-        VkPassType::Graphics {
-          barriers, ..
-        } => barriers,
-        VkPassType::ComputeCopy {
-          barriers, is_compute: _
-        } => barriers
-      };
-      for barrier in barriers {
-        match barrier {
-          VkBarrierTemplate::Image {
-            name, is_history, old_layout, ..
-          } => {
-            let metadata = attachment_metadata.get(name.as_str()).unwrap();
-            if *is_history {
-              *old_layout = metadata.current_access.layout;
-            }
-          }
-          _ => {}
-        }
-      }
     }
 
     Self {
@@ -1218,10 +1193,10 @@ impl VkRenderGraphTemplate {
       has_external_resources: pass_has_external_resources,
       resources: used_resources,
       name: name.to_owned(),
+      barriers,
       pass_type: VkPassType::Graphics {
         render_pass,
-        attachments: used_attachments,
-        barriers
+        attachments: used_attachments
       }
     }
   }
@@ -1536,8 +1511,8 @@ impl VkRenderGraphTemplate {
 
     VkPassTemplate {
       name: name.to_string(),
+      barriers,
       pass_type: VkPassType::ComputeCopy {
-        barriers,
         is_compute
       },
       renders_to_swapchain: uses_backbuffer,

@@ -374,21 +374,13 @@ impl VkRenderGraph {
     for pass in passes {
       match &pass.pass_type {
         VkPassType::Graphics {
-          render_pass, attachments, barriers
+          render_pass, attachments
         } => {
           let mut clear_values = Vec::<vk::ClearValue>::new();
 
           let mut width = u32::MAX;
           let mut height = u32::MAX;
-          let framebuffer_count = if pass.renders_to_swapchain { swapchain_views.len() } else { 1 };
-          let mut framebuffer_attachments: Vec<Vec<Arc<VkTextureView>>> = Vec::with_capacity(framebuffer_count);
-          let mut history_framebuffer_attachments: Vec<Vec<Arc<VkTextureView>>> = Vec::with_capacity(framebuffer_count);
-          for _ in 0..framebuffer_count {
-            framebuffer_attachments.push(Vec::new());
-            history_framebuffer_attachments.push(Vec::new());
-          }
 
-          let mut uses_history_resources = false;
           for pass_attachment in attachments {
             if pass_attachment == BACK_BUFFER_ATTACHMENT_NAME {
               clear_values.push(vk::ClearValue {
@@ -451,10 +443,8 @@ impl VkRenderGraph {
         },
 
         VkPassType::ComputeCopy {
-          barriers, is_compute: _
+          is_compute: _
         } => {
-          let framebuffer_count = if pass.renders_to_swapchain { swapchain_views.len() } else { 1 };
-
           let callbacks: RenderPassCallbacks<VkBackend> = info.pass_callbacks[&pass.name].clone();
 
           let index = finished_passes.len();
@@ -466,6 +456,72 @@ impl VkRenderGraph {
           })
         }
       }
+    }
+
+    // Initial transition for history images
+    // TODO: clear them
+    let mut initialized_history_resources = HashSet::<String>::new();
+    let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
+    for pass in &template.passes {
+      'barriers: for barrier in &pass.barriers {
+        match barrier {
+          VkBarrierTemplate::Image { name, is_history, old_layout, .. } => {
+            if !is_history || initialized_history_resources.contains(name) {
+              continue 'barriers;
+            }
+            let resource = resources.get(name).unwrap();
+            let texture = match resource {
+              VkResource::Texture { texture_b, .. } => {
+                texture_b.as_ref().unwrap()
+              },
+              _ => unreachable!()
+            };
+            let format = texture.get_info().format;
+            let mut aspect = vk::ImageAspectFlags::empty();
+            if !format.is_depth() && !format.is_stencil() {
+              aspect = vk::ImageAspectFlags::COLOR;
+            } else {
+              if format.is_depth() {
+                aspect |= vk::ImageAspectFlags::DEPTH;
+              }
+              if format.is_stencil() {
+                aspect |= vk::ImageAspectFlags::STENCIL;
+              }
+            }
+
+            image_barriers.push(vk::ImageMemoryBarrier {
+              src_access_mask: vk::AccessFlags::empty(),
+              dst_access_mask: vk::AccessFlags::empty(),
+              old_layout: vk::ImageLayout::UNDEFINED,
+              new_layout: *old_layout,
+              src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+              dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+              image: *texture.get_handle(),
+              subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: aspect,
+                base_mip_level: 0,
+                level_count: 1,
+                layer_count: 1,
+                base_array_layer: 0
+              },
+              ..Default::default()
+            });
+            initialized_history_resources.insert(name.clone());
+          },
+          _ => {}
+        }
+      }
+    }
+    if !image_barriers.is_empty() {
+      let mut cmd_buffer = context.get_thread_local().get_frame_local().get_command_buffer();
+      cmd_buffer.barrier(
+        vk::PipelineStageFlags::all(),
+        vk::PipelineStageFlags::all(),
+        vk::DependencyFlags::empty(),
+        &[],
+        &[],
+      &image_barriers);
+      graphics_queue.submit(cmd_buffer.finish(), None, &[], &[]);
     }
 
     Self {
@@ -576,9 +632,9 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
           let mut clear_values = SmallVec::<[vk::ClearValue; 16]>::new();
+          emit_barrier(&mut cmd_buffer, &template.barriers, &self.resources, &self.external_resources, &self.swapchain.get_views()[framebuffer_index]);
           match &template.pass_type {
-            VkPassType::Graphics { barriers, attachments, .. } => {
-              emit_barrier(&mut cmd_buffer, barriers, &self.resources, &self.external_resources, &self.swapchain.get_views()[framebuffer_index]);
+            VkPassType::Graphics { attachments, .. } => {
 
               for attachment in attachments {
                 if attachment == BACK_BUFFER_ATTACHMENT_NAME {
@@ -694,12 +750,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           let graph_resources_ref: &'static VkRenderGraphResources = unsafe { std::mem::transmute(&graph_resources) };
 
           let template = &self.template.passes[index];
-          match &template.pass_type {
-            VkPassType::ComputeCopy { barriers, .. } => {
-              emit_barrier(&mut cmd_buffer, barriers, &self.resources, &self.external_resources, &self.swapchain.get_views()[framebuffer_index]);
-            },
-            _ => unreachable!()
-          }
+          emit_barrier(&mut cmd_buffer, &template.barriers, &self.resources, &self.external_resources, &self.swapchain.get_views()[framebuffer_index]);
 
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
