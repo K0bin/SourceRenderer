@@ -272,7 +272,7 @@ impl VkDescriptorSet {
             dst_set: set,
             dst_binding: binding as u32,
             dst_array_element: 0,
-            descriptor_count: 0,
+            descriptor_count: 1,
             ..Default::default()
           };
 
@@ -334,7 +334,6 @@ impl VkDescriptorSet {
           if binding_info.is_none() {
             continue;
           }
-          let binding_info = binding_info.as_ref().unwrap();
           let mut entry = VkDescriptorEntry::default();
           match resource {
             VkBoundResource::StorageBuffer(buffer) => {
