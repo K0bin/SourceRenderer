@@ -1361,6 +1361,18 @@ impl VkRenderGraphTemplate {
       src_stage = dst_stage;
       src_access = vk::AccessFlags::empty();
       dst_access = vk::AccessFlags::empty();
+    } else {
+      if src_access != vk::AccessFlags::empty() {
+        // Flush + invalidate caches
+        // Collect all future usages of the texture
+        for access in resource_metadata.pass_accesses.values() {
+          dst_stage |= access.stage;
+          dst_access |= access.access;
+        }
+      } else {
+        // Only a layout transition
+        dst_stage = pass_access.stage;
+      }
     }
 
     current_access.access = vk::AccessFlags::empty();
@@ -1369,6 +1381,7 @@ impl VkRenderGraphTemplate {
 
     assert_ne!(dst_stage, vk::PipelineStageFlags::empty());
     assert_ne!(src_stage, vk::PipelineStageFlags::empty());
+    assert!((src_access == vk::AccessFlags::empty() && dst_access == vk::AccessFlags::empty()) || (src_access != vk::AccessFlags::empty() && dst_access != vk::AccessFlags::empty()));
 
     Some(vk::SubpassDependency {
       src_subpass: subpass_metadata.produced_in_subpass_index,
@@ -1393,7 +1406,7 @@ impl VkRenderGraphTemplate {
       (pass_access, current_access)
     };
 
-    if current_access.access.is_empty() && current_access.layout == pass_access.layout {
+    if current_access.access.is_empty() {
       return None;
     }
 
@@ -1402,17 +1415,19 @@ impl VkRenderGraphTemplate {
 
     let mut dst_stage = vk::PipelineStageFlags::empty();
     let mut dst_access = vk::AccessFlags::empty();
-    // Collect all future usages of the texture
-    for access in resource_metadata.pass_accesses.values() {
-      dst_stage |= access.stage;
-      dst_access |= access.access;
-    }
 
     let discard = current_access.layout == vk::ImageLayout::UNDEFINED;
     if discard {
+      dst_stage = pass_access.stage;
       src_stage = dst_stage;
       src_access = vk::AccessFlags::empty();
       dst_access = vk::AccessFlags::empty();
+    } else {
+      // Collect all future usages of the texture
+      for access in resource_metadata.pass_accesses.values() {
+        dst_stage |= access.stage;
+        dst_access |= access.access;
+      }
     }
 
     current_access.access = vk::AccessFlags::empty();
@@ -1421,6 +1436,7 @@ impl VkRenderGraphTemplate {
 
     assert_ne!(dst_stage, vk::PipelineStageFlags::empty());
     assert_ne!(src_stage, vk::PipelineStageFlags::empty());
+    assert!((src_access == vk::AccessFlags::empty() && dst_access == vk::AccessFlags::empty()) || (src_access != vk::AccessFlags::empty() && dst_access != vk::AccessFlags::empty()));
 
     Some(vk::SubpassDependency {
       src_subpass: subpass_metadata.produced_in_subpass_index,
@@ -1459,17 +1475,25 @@ impl VkRenderGraphTemplate {
 
     let mut dst_stage = vk::PipelineStageFlags::empty();
     let mut dst_access = vk::AccessFlags::empty();
-    // Collect all future usages of the texture
-    for access in resource_metadata.pass_accesses.values() {
-      dst_stage |= access.stage;
-      dst_access |= access.access;
-    }
 
     let discard = current_access.layout == vk::ImageLayout::UNDEFINED;
     if discard {
+      dst_stage = pass_access.stage;
       src_stage = dst_stage;
       src_access = vk::AccessFlags::empty();
       dst_access = vk::AccessFlags::empty();
+    } else {
+      if src_access != vk::AccessFlags::empty() {
+        // Flush + invalidate caches
+        // Collect all future usages of the texture
+        for access in resource_metadata.pass_accesses.values() {
+          dst_stage |= access.stage;
+          dst_access |= access.access;
+        }
+      } else {
+        // Only a layout transition
+        dst_stage = pass_access.stage;
+      }
     }
 
     let old_layout = current_access.layout;
@@ -1481,6 +1505,7 @@ impl VkRenderGraphTemplate {
 
     assert_ne!(dst_stage, vk::PipelineStageFlags::empty());
     assert_ne!(src_stage, vk::PipelineStageFlags::empty());
+    assert!((src_access == vk::AccessFlags::empty() && dst_access == vk::AccessFlags::empty()) || (src_access != vk::AccessFlags::empty() && dst_access != vk::AccessFlags::empty()));
 
     Some(VkBarrierTemplate::Image {
       name: name.to_string(),
@@ -1533,6 +1558,7 @@ impl VkRenderGraphTemplate {
 
     assert_ne!(dst_stage, vk::PipelineStageFlags::empty());
     assert_ne!(src_stage, vk::PipelineStageFlags::empty());
+    assert!((src_access == vk::AccessFlags::empty() && dst_access == vk::AccessFlags::empty()) || (src_access != vk::AccessFlags::empty() && dst_access != vk::AccessFlags::empty()));
 
     Some(VkBarrierTemplate::Buffer {
       name: name.to_string(),
