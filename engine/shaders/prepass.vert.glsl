@@ -4,9 +4,9 @@
 layout(location = 0) in vec3 in_pos;
 layout(location = 1) in vec3 in_normal;
 
-layout(location = 0) out vec3 out_position;
+layout(location = 0) out vec4 out_position;
 layout(location = 1) out vec3 out_normal;
-layout(location = 2) out vec3 out_oldPosition;
+layout(location = 2) out vec4 out_oldPosition;
 
 layout(set = 2, binding = 0) uniform CurrentLowFrequencyUbo {
     mat4 viewProjection;
@@ -33,7 +33,7 @@ void main(void) {
     transformedOldPos.y = -transformedOldPos.y;
 
     out_normal = in_normal;
-    out_position = transformedPos.xyz;
-    out_oldPosition = transformedOldPos.xyz;
+    out_position = transformedPos;
+    out_oldPosition = transformedOldPos;
     gl_Position = transformedPos;
 }
