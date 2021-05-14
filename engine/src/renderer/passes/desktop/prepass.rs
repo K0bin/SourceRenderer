@@ -51,7 +51,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
             },
             SubpassOutput::RenderTarget {
               name: OUTPUT_MOTION.to_string(),
-              format: Format::RGBA32Float,
+              format: Format::RG32Float,
               samples: SampleCount::Samples1,
               extent: RenderPassTextureExtent::RelativeToSwapchain {
                 width: 1f32, height: 1f32

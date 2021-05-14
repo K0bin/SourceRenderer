@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
-use crate::renderer::passes::desktop::geometry::OUTPUT_IMAGE;
+use crate::renderer::passes::desktop::{geometry::OUTPUT_IMAGE, prepass::OUTPUT_MOTION};
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 
 const PASS_NAME: &str = "TAA";
@@ -28,6 +28,12 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
           usage: InputUsage::Sampled,
           is_history: true,
         },
+        PassInput {
+          name: OUTPUT_MOTION.to_string(),
+          stage: PipelineStage::ComputeShader,
+          usage: InputUsage::Sampled,
+          is_history: false
+        }
       ],
       outputs: vec![
         Output::RenderTarget {
@@ -86,6 +92,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
         command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, graph_resources.get_texture_srv(OUTPUT_IMAGE, false).expect("Failed to get graph resource"));
         command_buffer.bind_texture_view(BindingFrequency::PerDraw, 1, graph_resources.get_texture_srv(HISTORY_BUFFER_NAME, true).expect("Failed to get graph resource"));
         command_buffer.bind_storage_texture(BindingFrequency::PerDraw, 2, graph_resources.get_texture_uav(HISTORY_BUFFER_NAME, false).expect("Failed to get graph resource"));
+        command_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, graph_resources.get_texture_srv(OUTPUT_MOTION, false).expect("Failed to get graph resource"));
         command_buffer.finish_binding();
 
         let dimensions = graph_resources.texture_dimensions(OUTPUT_IMAGE).unwrap();
