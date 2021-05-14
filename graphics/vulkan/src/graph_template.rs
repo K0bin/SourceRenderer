@@ -1324,7 +1324,7 @@ impl VkRenderGraphTemplate {
       (pass_access, current_access)
     };
 
-    if current_access.access.is_empty() && current_access.layout == pass_access.layout && name != BACK_BUFFER_ATTACHMENT_NAME {
+    if current_access.access.is_empty() && current_access.layout == pass_access.layout {
       return None;
     }
 
@@ -1440,21 +1440,58 @@ impl VkRenderGraphTemplate {
       used_resources.insert(match output {
         Output::Buffer { name, .. } => {
           let metadata = attachment_metadata.get_mut(name).unwrap();
+          let barrier = Self::build_buffer_barrier(
+            name,
+            metadata,
+            false,
+            pass_index
+          );
+          if let Some(barrier) = barrier {
+            barriers.push(barrier);
+          }
           uses_history_resources |= metadata.history.is_some();
           name.clone()
         },
         Output::Backbuffer { .. } => {
+          let metadata = attachment_metadata.get_mut(BACK_BUFFER_ATTACHMENT_NAME).unwrap();
           uses_backbuffer = true;
+          let barrier = Self::build_texture_barrier(
+            BACK_BUFFER_ATTACHMENT_NAME,
+            metadata,
+            false,
+            pass_index
+          );
+          if let Some(barrier) = barrier {
+            barriers.push(barrier);
+          }
           BACK_BUFFER_ATTACHMENT_NAME.to_string()
         },
         Output::DepthStencil { name, .. } => {
           let metadata = attachment_metadata.get_mut(name).unwrap();
           uses_history_resources |= metadata.history.is_some();
+          let barrier = Self::build_texture_barrier(
+            name,
+            metadata,
+            false,
+            pass_index
+          );
+          if let Some(barrier) = barrier {
+            barriers.push(barrier);
+          }
           name.clone()
         },
         Output::RenderTarget { name, .. } => {
           let metadata = attachment_metadata.get_mut(name).unwrap();
           uses_history_resources |= metadata.history.is_some();
+          let barrier = Self::build_texture_barrier(
+            name,
+            metadata,
+            false,
+            pass_index
+          );
+          if let Some(barrier) = barrier {
+            barriers.push(barrier);
+          }
           name.clone()
         }
       });
