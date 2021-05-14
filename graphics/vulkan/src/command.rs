@@ -537,7 +537,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(self.pipeline.is_some());
+    debug_assert!(self.pipeline.is_none());
     debug_assert!(self.render_pass.is_none());
     let src_info = src_texture.get_info();
     let dst_info = dst_texture.get_info();

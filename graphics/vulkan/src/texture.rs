@@ -228,10 +228,34 @@ impl VkTextureView {
       ..Default::default()
     };
     let view = unsafe { device.create_image_view(&vk_info, None).unwrap() };
+
+    let sampler_create_info = vk::SamplerCreateInfo {
+      mag_filter: vk::Filter::LINEAR,
+      min_filter: vk::Filter::LINEAR,
+      mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+      address_mode_u: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+      address_mode_v: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+      address_mode_w: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+      mip_lod_bias: 0.0f32,
+      anisotropy_enable: vk::FALSE,
+      max_anisotropy: 1.0f32,
+      compare_enable: vk::FALSE,
+      compare_op: vk::CompareOp::ALWAYS,
+      min_lod: 0.0f32,
+      max_lod: 1.0f32,
+      border_color: vk::BorderColor::INT_OPAQUE_BLACK,
+      unnormalized_coordinates: 0,
+      ..Default::default()
+    };
+    let sampler = unsafe {
+      device.create_sampler(&sampler_create_info, None)
+    }.unwrap();
+
+
     VkTextureView {
       texture: texture.clone(),
       view,
-      sampler: None,
+      sampler: Some(sampler),
       device: device.clone()
     }
   }

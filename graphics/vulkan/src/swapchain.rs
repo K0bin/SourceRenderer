@@ -181,7 +181,7 @@ impl VkSwapchain {
           image_color_space: format.color_space,
           image_extent: extent,
           image_array_layers: 1,
-          image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE,
+          image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_DST,
           present_mode,
           image_sharing_mode: vk::SharingMode::EXCLUSIVE,
           pre_transform: transform,

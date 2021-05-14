@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Output, RenderPassTextureExtent, ExternalOutput, ExternalProducerType, DepthStencil, PipelineStage};
+use sourcerenderer_core::graphics::{DepthStencil, ExternalOutput, ExternalProducerType, InputUsage, Output, PipelineStage, RenderPassTextureExtent};
 use std::collections::{HashMap, VecDeque};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -175,7 +175,7 @@ impl VkRenderGraphTemplate {
     // Prepare access for history resource barriers
     for resource in &mut attachment_metadata.values_mut() {
       if let Some(history) = resource.history.as_mut() {
-        let (_, pass_access) = history.pass_accesses.iter().max_by_key(|(pass_index, _)| **pass_index).unwrap();
+        let (_, pass_access) = resource.pass_accesses.iter().max_by_key(|(pass_index, _)| **pass_index).unwrap();
         history.current_access = pass_access.clone();
       }
     }
@@ -627,14 +627,14 @@ impl VkRenderGraphTemplate {
                 history_usage.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
                   stage: vk::PipelineStageFlags::COMPUTE_SHADER,
                   access: vk::AccessFlags::SHADER_READ,
-                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::GENERAL },
+                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else if input.usage == InputUsage::Storage { vk::ImageLayout::GENERAL } else { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL },
                 });
               } else {
                 let mut accesses = HashMap::<u32, ResourceAccess>::new();
                 accesses.insert(reordered_passes.len() as u32, ResourceAccess {
                   stage: vk::PipelineStageFlags::COMPUTE_SHADER,
                   access: vk::AccessFlags::SHADER_READ,
-                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::GENERAL },
+                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else if input.usage == InputUsage::Storage { vk::ImageLayout::GENERAL } else { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL },
                 });
                 input_metadata.history = Some(HistoryResourceMetadata {
                   pass_range: ResourcePassRange {
@@ -650,13 +650,139 @@ impl VkRenderGraphTemplate {
               input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
                 stage: vk::PipelineStageFlags::COMPUTE_SHADER,
                 access: vk::AccessFlags::SHADER_READ,
-                layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::GENERAL },
+                layout: if is_buffer { vk::ImageLayout::UNDEFINED } else if input.usage == InputUsage::Storage { vk::ImageLayout::GENERAL } else { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL },
               });
             }
             assert_eq!(input.stage, PipelineStage::ComputeShader);
           }
         },
-        _ => unimplemented!()
+        PassType::Copy {
+          inputs, outputs
+        } => {
+          for output in outputs {
+            match output {
+              Output::RenderTarget {
+                name, format, samples, extent, depth, levels, external, clear
+              } => {
+                let metadata_entry = metadata
+                    .entry(name.clone())
+                    .or_insert_with(|| ResourceMetadata::new(VkResourceTemplate::Texture {
+                      name: name.clone(),
+                      format: *format,
+                      samples: *samples,
+                      extent: extent.clone(),
+                      depth: *depth,
+                      levels: *levels,
+                      external: *external,
+                      load_action: if *clear { LoadAction::Clear } else { LoadAction::DontCare },
+                      store_action: StoreAction::Store,
+                      stencil_load_action: LoadAction::DontCare,
+                      stencil_store_action: StoreAction::DontCare,
+                      is_backbuffer: false
+                    }));
+                metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
+                  stage: vk::PipelineStageFlags::TRANSFER,
+                  access: vk::AccessFlags::TRANSFER_WRITE,
+                  layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                });
+              },
+              Output::Backbuffer {
+                clear
+              } => {
+                let metadata_entry = metadata
+                    .entry(BACK_BUFFER_ATTACHMENT_NAME.to_string())
+                    .or_insert_with(|| ResourceMetadata::new(VkResourceTemplate::Texture {
+                      name: BACK_BUFFER_ATTACHMENT_NAME.to_string(),
+                      format: Format::Unknown,
+                      samples: SampleCount::Samples1,
+                      extent: RenderPassTextureExtent::RelativeToSwapchain { width: 1.0f32, height: 1.0f32 },
+                      depth: 1,
+                      levels: 1,
+                      external: false,
+                      load_action: if *clear { LoadAction::Load } else { LoadAction::Clear },
+                      store_action: StoreAction::Store,
+                      stencil_load_action: LoadAction::DontCare,
+                      stencil_store_action: StoreAction::DontCare,
+                      is_backbuffer: true
+                    }));
+                metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
+                  stage: vk::PipelineStageFlags::TRANSFER,
+                  access: vk::AccessFlags::TRANSFER_WRITE,
+                  layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                });
+              },
+              Output::Buffer {
+                name, format, size, clear
+              } => {
+                let metadata_entry = metadata
+                    .entry(name.to_string())
+                    .or_insert_with(|| ResourceMetadata::new(VkResourceTemplate::Buffer {
+                      name: name.clone(),
+                      format: *format,
+                      size: *size,
+                      clear: *clear
+                    }));
+                metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
+                  stage: vk::PipelineStageFlags::TRANSFER,
+                  access: vk::AccessFlags::TRANSFER_WRITE,
+                  layout: vk::ImageLayout::UNDEFINED,
+                });
+              }
+              _ => {}
+            }
+          }
+
+          for input in inputs {
+            let mut input_metadata = metadata.get_mut(&input.name).unwrap();
+            let is_buffer = match &input_metadata.template {
+              VkResourceTemplate::Buffer {..} => true,
+              VkResourceTemplate::ExternalBuffer {..} => true,
+              VkResourceTemplate::Texture {..} => false,
+              VkResourceTemplate::ExternalTexture {..} => true,
+            };
+            if input.is_history {
+              if let Some(history_usage) = input_metadata.history.as_mut() {
+                if history_usage.pass_range.first_used_in_pass_index > reordered_passes.len() as u32 {
+                  history_usage.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
+                }
+                if history_usage.pass_range.last_used_in_pass_index < reordered_passes.len() as u32 {
+                  history_usage.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
+                }
+                history_usage.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
+                  stage: vk::PipelineStageFlags::TRANSFER,
+                  access: vk::AccessFlags::TRANSFER_READ,
+                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::TRANSFER_SRC_OPTIMAL },
+                });
+              } else {
+                let mut accesses = HashMap::<u32, ResourceAccess>::new();
+                accesses.insert(reordered_passes.len() as u32, ResourceAccess {
+                  stage: vk::PipelineStageFlags::TRANSFER,
+                  access: vk::AccessFlags::TRANSFER_READ,
+                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::TRANSFER_SRC_OPTIMAL },
+                });
+                input_metadata.history = Some(HistoryResourceMetadata {
+                  pass_range: ResourcePassRange {
+                    first_used_in_pass_index: reordered_passes.len() as u32,
+                    last_used_in_pass_index: reordered_passes.len() as u32,
+                  },
+                  current_access: Default::default(),
+                  pass_accesses: accesses
+                });
+              }
+            } else {
+              input_metadata.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
+              input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
+                stage: vk::PipelineStageFlags::TRANSFER,
+                access: vk::AccessFlags::TRANSFER_READ,
+                layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::TRANSFER_SRC_OPTIMAL },
+              });
+            }
+            assert_eq!(input.stage, PipelineStage::ComputeShader);
+          }
+        },
       }
       reordered_passes.push(pass);
     }
@@ -869,7 +995,7 @@ impl VkRenderGraphTemplate {
                 subpass_index as u32,
                 metadata,
                 subpass_metadata,
-                input.is_local,
+                input.usage == InputUsage::Local,
                 pass_index
               );
               if let Some(dependency) = dependency {
@@ -1616,7 +1742,27 @@ impl VkRenderGraphTemplate {
             best_pass_index_score = Some((pass_index as u32, passes_since_ready as u32));
           }
         },
-        _ => unimplemented!()
+        PassType::Copy {
+          inputs, ..
+        } => {
+          for input in inputs {
+            let index_opt = metadata.get(&input.name);
+            if let Some(index) = index_opt {
+              passes_since_ready = min(index.pass_range.first_used_in_pass_index, passes_since_ready);
+            } else {
+              if input.is_history {
+                // history resource
+                passes_since_ready = min(0, passes_since_ready);
+              } else {
+                is_ready = false;
+              }
+            }
+          }
+
+          if is_ready && (best_pass_index_score.is_none() || passes_since_ready > best_pass_index_score.unwrap().1 as u32) {
+            best_pass_index_score = Some((pass_index as u32, passes_since_ready as u32));
+          }
+        }
       }
     }
     pass_infos.remove(best_pass_index_score.expect("Invalid render graph").0 as usize)

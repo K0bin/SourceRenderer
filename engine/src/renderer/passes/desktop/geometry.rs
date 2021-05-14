@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, PassInfo, Format, SampleCount, SubpassOutput, GraphicsSubpassInfo, PassInput, PassType, GraphicsPipelineInfo, VertexLayoutInfo, InputAssemblerElement, InputRate, ShaderInputElement, RasterizerInfo, FillMode, CullMode, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, Device, RenderPassCallbacks, PipelineBinding, BufferUsage, Viewport, Scissor, BindingFrequency, CommandBuffer, ShaderType, PrimitiveType, DepthStencil, PipelineStage, BACK_BUFFER_ATTACHMENT_NAME, InnerCommandBufferProvider, StoreAction, LoadAction, RenderPassTextureExtent};
+use sourcerenderer_core::graphics::{AttachmentBlendInfo, BACK_BUFFER_ATTACHMENT_NAME, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InnerCommandBufferProvider, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::drawable::{View, RDrawable};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -39,7 +39,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
           inputs: vec![
             PassInput {
               name: LATE_LATCHING_CAMERA.to_string(),
-              is_local: false,
+              usage: InputUsage::Storage,
               is_history: false,
               stage: PipelineStage::VertexShader
             }

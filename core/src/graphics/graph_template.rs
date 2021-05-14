@@ -1,4 +1,4 @@
-use crate::graphics::{Format, SampleCount};
+use crate::{graphics::{Format, SampleCount}, platform::Input};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum PipelineStage {
@@ -139,11 +139,18 @@ pub enum PassType {
   },
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum InputUsage {
+  Storage,
+  Sampled,
+  Local
+}
+
 #[derive(Clone)]
 pub struct PassInput {
   pub name: String,
-  pub is_local: bool,
   pub stage: PipelineStage,
+  pub usage: InputUsage,
   pub is_history: bool
 }
 

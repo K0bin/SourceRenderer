@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{PassInfo, PassType, PassInput, Output, RenderPassCallbacks, CommandBuffer, PipelineBinding, BindingFrequency, ShaderType, Backend as GraphicsBackend, Device, ExternalResource, ExternalOutput, ExternalProducerType, PipelineStage};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, ExternalOutput, ExternalProducerType, ExternalResource, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, ShaderType};
 use sourcerenderer_core::{Matrix4, Platform};
 use std::sync::Arc;
 use std::path::Path;
@@ -17,7 +17,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
       inputs: vec![
         PassInput {
           name: EXTERNAL_RING_BUFFER.to_string(),
-          is_local: false,
+          usage: InputUsage::Storage,
           is_history: false,
           stage: PipelineStage::ComputeShader
         }
