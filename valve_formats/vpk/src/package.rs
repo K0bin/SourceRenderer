@@ -62,6 +62,8 @@ pub struct Package<R>
   /// The archive MD5 checksum section entries. Also known as cache line hashes.
   archive_md5_entries: Vec<ArchiveMD5SectionEntry>,
 
+  archive_files: Mutex<HashMap<u16, BufReader<R>>>,
+
   open_file_callback: Box<dyn Send + Sync + Fn(&str) -> IOResult<R>>
 }
 
@@ -187,6 +189,23 @@ impl<R> Package<R>
 
     let entries = Self::read_entries(&mut input)?;
 
+    let mut archive_files = HashMap::<u16, BufReader<R>>::new();
+    for (_name, entries) in &entries {
+      for entry in entries {
+        if archive_files.contains_key(&entry.archive_index) {
+          continue;
+        }
+
+        let file_name = format!("{}_{:03}.vpk", file_name, entry.archive_index);
+        let file = (open_file_callback)(&file_name);
+        if file.is_err() {
+          // apparently broken entries are a thing and supposed to be ignored I guess
+          continue;
+        }
+        archive_files.insert(entry.archive_index, BufReader::new(file.map_err(PackageError::IOError)?));
+      }
+    }
+
     let (archive_md5_entries, tree_checksum, archive_md5_entries_checksum, whole_file_checksum, public_key, signature) =
       if version == 2 {
         input.seek(SeekFrom::Current(file_data_section_size as i64)).map_err(PackageError::IOError)?;
@@ -216,6 +235,7 @@ impl<R> Package<R>
       signature,
       entries,
       archive_md5_entries,
+      archive_files: Mutex::new(archive_files),
       open_file_callback: Box::new(open_file_callback)
     })
   }
@@ -277,13 +297,10 @@ impl<R> Package<R>
         }
 
         let offset = entry.offset;
-        let file_name = format!("{}_{:03}.vpk", self.file_name, entry.archive_index);
-
-        let file = (self.open_file_callback)(&file_name);
-
-        let mut reader = BufReader::new(file.map_err(PackageError::IOError)?);
-        reader.seek(SeekFrom::Start(offset as u64)).map_err(PackageError::IOError)?;
-        reader.read_exact(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(PackageError::IOError)?;
+        let mut files = self.archive_files.lock().unwrap();
+        let file = files.get_mut(&entry.archive_index).unwrap();
+        file.seek(SeekFrom::Start(offset as u64)).map_err(PackageError::IOError)?;
+        file.read_exact(&mut output[entry.small_data.len() .. entry.small_data.len() + entry.len as usize]).map_err(PackageError::IOError)?;
       } else {
         let offset = self.header_size + self.tree_size + entry.offset;
         let mut reader = self.reader.lock().unwrap();
