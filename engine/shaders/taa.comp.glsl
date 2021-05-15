@@ -17,12 +17,8 @@ vec3 clamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColor) {
       continue;
     }
     vec3 sampleColor = texture(frame, coord).xyz;
-    neighborMax.x = max(neighborMax.x, sampleColor.x);
-    neighborMax.y = max(neighborMax.y, sampleColor.y);
-    neighborMax.z = max(neighborMax.z, sampleColor.z);
-    neighborMin.x = min(neighborMin.x, sampleColor.x);
-    neighborMin.y = min(neighborMin.y, sampleColor.y);
-    neighborMin.z = min(neighborMin.z, sampleColor.z);
+    neighborMax = max(neighborMax, sampleColor);
+    neighborMin = min(neighborMin, sampleColor);
   }
   for (int i = 0; i < 3; i++) {
     vec2 coord = texCoord + vec2(float(-1 + i), 1.0) * pixel;
@@ -30,12 +26,8 @@ vec3 clamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColor) {
       continue;
     }
     vec3 sampleColor = texture(frame, coord).xyz;
-    neighborMax.x = max(neighborMax.x, sampleColor.x);
-    neighborMax.y = max(neighborMax.y, sampleColor.y);
-    neighborMax.z = max(neighborMax.z, sampleColor.z);
-    neighborMin.x = min(neighborMin.x, sampleColor.x);
-    neighborMin.y = min(neighborMin.y, sampleColor.y);
-    neighborMin.z = min(neighborMin.z, sampleColor.z);
+    neighborMax = max(neighborMax, sampleColor);
+    neighborMin = min(neighborMin, sampleColor);
   }
   for (int i = 0; i < 2; i++) {
     vec2 coord = texCoord + vec2(float(-1 + i * 2), 0.0) * pixel;
@@ -43,12 +35,8 @@ vec3 clamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColor) {
       continue;
     }
     vec3 sampleColor = texture(frame, coord).xyz;
-    neighborMax.x = max(neighborMax.x, sampleColor.x);
-    neighborMax.y = max(neighborMax.y, sampleColor.y);
-    neighborMax.z = max(neighborMax.z, sampleColor.z);
-    neighborMin.x = min(neighborMin.x, sampleColor.x);
-    neighborMin.y = min(neighborMin.y, sampleColor.y);
-    neighborMin.z = min(neighborMin.z, sampleColor.z);
+    neighborMax = max(neighborMax, sampleColor);
+    neighborMin = min(neighborMin, sampleColor);
   }
   return clamp(historyColor, neighborMin, neighborMax);
 }
