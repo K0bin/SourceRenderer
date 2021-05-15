@@ -1369,7 +1369,7 @@ impl VkRenderGraphTemplate {
         dst_stage |= access.stage;
         dst_access |= access.access & !current_access.access;
       }
-      if !src_access.is_empty() {
+      if dst_access.is_empty() {
         src_access = vk::AccessFlags::empty();
       }
     } else {
@@ -1426,7 +1426,7 @@ impl VkRenderGraphTemplate {
       dst_stage |= access.stage;
       dst_access |= access.access & !current_access.access;
     }
-    if !src_access.is_empty() {
+    if dst_access.is_empty() {
       src_access = vk::AccessFlags::empty();
     }
 
@@ -1494,7 +1494,7 @@ impl VkRenderGraphTemplate {
         dst_stage |= access.stage;
         dst_access |= access.access & !current_access.access;
       }
-      if !src_access.is_empty() {
+      if dst_access.is_empty() {
         src_access = vk::AccessFlags::empty();
       }
     } else {
@@ -1561,7 +1561,7 @@ impl VkRenderGraphTemplate {
       dst_stage |= access.stage;
       dst_access |= access.access & !current_access.access;
     }
-    if !src_access.is_empty() {
+    if dst_access.is_empty() {
       src_access = vk::AccessFlags::empty();
     }
 
