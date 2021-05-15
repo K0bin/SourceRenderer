@@ -81,7 +81,8 @@ impl<P: Platform> RendererInternal<P> {
       passes::desktop::prepass::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::geometry::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::taa::build_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::taa::build_blit_pass_template::<P::GraphicsBackend>(),
+      passes::desktop::sharpen::build_pass_template::<P::GraphicsBackend>(),
+      passes::desktop::blit::build_blit_pass_template::<P::GraphicsBackend>(),
     ];
 
     let external_resources = vec![
@@ -108,8 +109,11 @@ impl<P: Platform> RendererInternal<P> {
     let (taa_pass_name, taa_pass_callback) = passes::desktop::taa::build_pass::<P>(device);
     callbacks.insert(taa_pass_name, taa_pass_callback);
 
-    let (taa_blit_pass_name, taa_blit_pass_callback) = passes::desktop::taa::build_blit_pass::<P>();
-    callbacks.insert(taa_blit_pass_name, taa_blit_pass_callback);
+    let (sharpen_pass_name, sharpen_pass_callback) = passes::desktop::sharpen::build_pass::<P>(device);
+    callbacks.insert(sharpen_pass_name, sharpen_pass_callback);
+
+    let (blit_pass_name, blit_pass_callback) = passes::desktop::blit::build_blit_pass::<P>();
+    callbacks.insert(blit_pass_name, blit_pass_callback);
 
     let mut external_resources = HashMap::<String, ExternalResource<P::GraphicsBackend>>::new();
     let (camera_resource_name, camera_resource) = passes::late_latching::external_resource(primary_camera);
