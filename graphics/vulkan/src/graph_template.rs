@@ -1341,7 +1341,6 @@ impl VkRenderGraphTemplate {
       (pass_access, current_access)
     };
 
-    // TODO: read after write?
     if current_access.access.is_empty() && current_access.layout == pass_access.layout {
       return None;
     }
@@ -1363,9 +1362,15 @@ impl VkRenderGraphTemplate {
     } else if src_access != vk::AccessFlags::empty() {
       // Flush + invalidate caches
       // Collect all future usages of the texture
-      for access in resource_metadata.pass_accesses.values() {
-        dst_stage |= access.stage & !current_access.stage;
+      for (resource_pass_index, access) in &resource_metadata.pass_accesses {
+        if *resource_pass_index == pass_index {
+          continue;
+        }
+        dst_stage |= access.stage;
         dst_access |= access.access & !current_access.access;
+      }
+      if !src_access.is_empty() {
+        src_access = vk::AccessFlags::empty();
       }
     } else {
       // Only a layout transition
@@ -1408,15 +1413,21 @@ impl VkRenderGraphTemplate {
     }
 
     let src_stage = current_access.stage;
-    let src_access = current_access.access;
+    let mut src_access = current_access.access;
 
     let mut dst_stage = vk::PipelineStageFlags::empty();
     let mut dst_access = vk::AccessFlags::empty();
 
     // Collect all future usages of the buffer
-    for access in resource_metadata.pass_accesses.values() {
-      dst_stage |= access.stage & !current_access.stage;
+    for (resource_pass_index, access) in &resource_metadata.pass_accesses {
+      if *resource_pass_index == pass_index {
+        continue;
+      }
+      dst_stage |= access.stage;
       dst_access |= access.access & !current_access.access;
+    }
+    if !src_access.is_empty() {
+      src_access = vk::AccessFlags::empty();
     }
 
     current_access.access = pass_access.access & write_access_mask();
@@ -1476,9 +1487,15 @@ impl VkRenderGraphTemplate {
     } else if src_access != vk::AccessFlags::empty() {
       // Flush + invalidate caches
       // Collect all future usages of the texture
-      for access in resource_metadata.pass_accesses.values() {
-        dst_stage |= access.stage & !current_access.stage;
+      for (resource_pass_index, access) in &resource_metadata.pass_accesses {
+        if *resource_pass_index == pass_index {
+          continue;
+        }
+        dst_stage |= access.stage;
         dst_access |= access.access & !current_access.access;
+      }
+      if !src_access.is_empty() {
+        src_access = vk::AccessFlags::empty();
       }
     } else {
       // Only a layout transition
@@ -1532,14 +1549,20 @@ impl VkRenderGraphTemplate {
     }
 
     let src_stage = current_access.stage;
-    let src_access = current_access.access;
+    let mut src_access = current_access.access;
 
     let mut dst_stage = vk::PipelineStageFlags::empty();
     let mut dst_access = vk::AccessFlags::empty();
     // Collect all future usages of the buffer
-    for access in resource_metadata.pass_accesses.values() {
-      dst_stage |= access.stage & !current_access.stage;
+    for (resource_pass_index, access) in &resource_metadata.pass_accesses {
+      if *resource_pass_index == pass_index {
+        continue;
+      }
+      dst_stage |= access.stage;
       dst_access |= access.access & !current_access.access;
+    }
+    if !src_access.is_empty() {
+      src_access = vk::AccessFlags::empty();
     }
 
     current_access.access = pass_access.access & write_access_mask();
