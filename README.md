@@ -6,10 +6,12 @@ The main goal of this project is to learn Rust and Vulkan.
 
 What's working:
 * extremely basic Vulkan forward renderer
+  * temporal anti aliasing
 * loading BSP levels
   * basic brush geometry
   * displacements (at least to some degree)
   * light maps
+  * static models (with incorrect rotation)
 * loading 2D VTF textures
 * loading the most basic VMT materials
-* somewhat broken FPS camera with somewhat broken late latching on the GPU
+* FPS camera with late latching on the GPU for minimal latency
