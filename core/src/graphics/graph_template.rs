@@ -143,7 +143,8 @@ pub enum PassType {
 pub enum InputUsage {
   Storage,
   Sampled,
-  Local
+  Local,
+  Copy
 }
 
 #[derive(Clone)]
