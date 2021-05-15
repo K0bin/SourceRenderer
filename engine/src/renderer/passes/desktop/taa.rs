@@ -1,6 +1,6 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, ShaderType, TextureUnorderedAccessView};
+use sourcerenderer_core::{Matrix4, Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, ShaderType, TextureUnorderedAccessView}};
 use sourcerenderer_core::Platform;
-use std::sync::Arc;
+use std::{sync::Arc, usize};
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
@@ -86,7 +86,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
   let copy_camera_pipeline = device.create_compute_pipeline(&taa_compute_shader);
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
-      Arc::new(move |command_buffer_a, graph_resources| {
+      Arc::new(move |command_buffer_a, graph_resources, _frame_counter| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&copy_camera_pipeline));
         command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, graph_resources.get_texture_srv(OUTPUT_IMAGE, false).expect("Failed to get graph resource"));
@@ -105,7 +105,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
 pub(crate) fn build_blit_pass<P: Platform>() -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   (BLIT_PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
-      Arc::new(move |command_buffer_a, graph_resources| {
+      Arc::new(move |command_buffer_a, graph_resources, _frame_counter| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         let history_view = graph_resources.get_texture_uav(HISTORY_BUFFER_NAME, false).expect("Failed to get graph resource");
         let history_texture = history_view.texture();
@@ -115,4 +115,32 @@ pub(crate) fn build_blit_pass<P: Platform>() -> (String, RenderPassCallbacks<P::
       })
     ]
   ))
+}
+
+pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
+  let width_frac = 1.0f32 / width as f32;
+  let height_frac = 1.0f32 / height as f32;
+  let mut halton_point = halton_point(index);
+  halton_point.x *= width_frac;
+  halton_point.y *= height_frac;
+  halton_point
+}
+
+pub(crate) fn halton_point(index: u32) -> Vec2 {
+  Vec2::new(
+    halton_sequence(index, 2) * 2f32 - 1f32, halton_sequence(index, 3) * 2f32 - 1f32
+  )
+}
+
+pub(crate) fn halton_sequence(mut index: u32, base: u32) -> f32 {
+  let mut f = 1.0f32;
+  let mut r = 0.0f32;
+
+  while index > 0 {
+    f = f / (base as f32);
+    r += f * (index as f32 % (base as f32));
+    index = (index as f32 / (base as f32)).floor() as u32;
+  }
+
+  return r;
 }

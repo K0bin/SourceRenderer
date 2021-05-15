@@ -45,7 +45,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
   let copy_camera_pipeline = device.create_compute_pipeline(&copy_camera_compute_shader);
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
-      Arc::new(move |command_buffer_a, graph_resources| {
+      Arc::new(move |command_buffer_a, graph_resources, _frame_counter| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&copy_camera_pipeline));
         command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, graph_resources.get_buffer(EXTERNAL_RING_BUFFER, false).expect("Failed to get graph resource"));

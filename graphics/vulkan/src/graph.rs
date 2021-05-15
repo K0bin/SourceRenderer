@@ -568,6 +568,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
     let thread_manager = self.thread_manager.clone(); // clone here so we don't borrow self and don't have to acquire the frame local over and over again
     let thread_local = thread_manager.get_thread_local();
     let frame_local = thread_local.get_frame_local();
+    let frame_counter = thread_manager.get_frame_counter();
     let mut image_index: u32 = 0;
 
     if self.renders_to_swapchain {
@@ -679,7 +680,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                   cmd_buffer.advance_subpass();
                 }
                 let callback = &callbacks[i];
-                (callback)(&mut cmd_buffer, graph_resources_ref);
+                (callback)(&mut cmd_buffer, graph_resources_ref, frame_counter);
               }
               cmd_buffer.end_render_pass();
             }
@@ -699,7 +700,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                   thread_manager: self.thread_manager.clone(),
                 };
                 let callback = &callbacks[i];
-                let inner_cmd_buffers = (callback)(&provider, graph_resources_ref);
+                let inner_cmd_buffers = (callback)(&provider, graph_resources_ref, frame_counter);
                 for inner_cmd_buffer in inner_cmd_buffers {
                   cmd_buffer.execute_inner_command_buffer(inner_cmd_buffer);
                 }
@@ -757,7 +758,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
               for callback in callbacks {
-                (callback)(&mut cmd_buffer, graph_resources_ref);
+                (callback)(&mut cmd_buffer, graph_resources_ref, frame_counter);
               }
             }
             RenderPassCallbacks::InternallyThreaded(callbacks) => {
@@ -766,7 +767,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                 thread_manager: self.thread_manager.clone(),
               };
               let callback = &callbacks[0];
-              let inner_cmd_buffers = (callback)(&provider, graph_resources_ref);
+              let inner_cmd_buffers = (callback)(&provider, graph_resources_ref, frame_counter);
               for inner_cmd_buffer in inner_cmd_buffers {
                 cmd_buffer.execute_inner_command_buffer(inner_cmd_buffer);
               }

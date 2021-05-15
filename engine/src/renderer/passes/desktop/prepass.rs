@@ -1,6 +1,6 @@
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
-use crate::renderer::drawable::{View, RDrawable};
+use crate::renderer::{drawable::{View, RDrawable}, passes::desktop::taa::{halton_point, scaled_halton_point}};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::drawable::RDrawableType;
 use std::path::Path;
@@ -95,6 +95,13 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
   }
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct FrameData {
+  swapchain_transform: Matrix4,
+  halton_point: Vec2
+}
+
 pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<AtomicRefCell<View>>, drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let vertex_shader = {
     let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
@@ -178,7 +185,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
 
   (PASS_NAME.to_string(), RenderPassCallbacks::InternallyThreaded(
     vec![
-      Arc::new(move |command_buffer_provider, graph_resources| {
+      Arc::new(move |command_buffer_provider, graph_resources, frame_counter| {
         let drawables = c_drawables.borrow();
 
         const CHUNK_SIZE: usize = 128;
@@ -186,11 +193,16 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
         let chunks = view_ref.drawable_parts.par_chunks(CHUNK_SIZE);
         chunks.map(|chunk| {
           let mut command_buffer = command_buffer_provider.get_inner_command_buffer();
-          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[*graph_resources.swapchain_transform()], BufferUsage::CONSTANT);
+          let dimensions = graph_resources.texture_dimensions(OUTPUT_DS).unwrap();
+          let per_frame = FrameData {
+            swapchain_transform: *graph_resources.swapchain_transform(),
+            halton_point: scaled_halton_point(dimensions.width, dimensions.height, (frame_counter % 8) as u32)
+          };
+
+          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
 
           command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
-          let dimensions = graph_resources.texture_dimensions(OUTPUT_DS).unwrap();
           command_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
             extent: Vec2::new(dimensions.width as f32, dimensions.height as f32),

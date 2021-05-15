@@ -14,8 +14,9 @@ layout(set = 2, binding = 0) uniform CurrentLowFrequencyUbo {
 layout(set = 2, binding = 1) uniform PreviousLowFrequencyUbo {
     mat4 oldViewProjection;
 };
-layout(set = 2, binding = 2) uniform SwapchainTransformLowFrequencyUbo {
-    mat4 swapchain_transform;
+layout(set = 2, binding = 2) uniform PerFrameUbo {
+    mat4 swapchainTransform;
+    vec2 jitterPoint;
 };
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
@@ -26,14 +27,23 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
 void main(void) {
     vec4 pos = vec4(in_pos, 1);
 
-    vec4 transformedPos = (swapchain_transform * (viewProjection * model)) * pos;
+    mat4 mvp = swapchainTransform * viewProjection * model;
+    vec4 transformedPos = mvp * pos;
     transformedPos.y = -transformedPos.y;
 
-    vec4 transformedOldPos = (oldViewProjection * oldModel) * pos;
+    vec4 transformedOldPos = (swapchainTransform * (oldViewProjection * oldModel)) * pos;
     transformedOldPos.y = -transformedOldPos.y;
 
     out_normal = in_normal;
     out_position = transformedPos;
     out_oldPosition = transformedOldPos;
-    gl_Position = transformedPos;
+
+    mat4 jitterMat;
+    jitterMat[0] = vec4(1.0, 0.0, 0.0, 0.0);
+    jitterMat[1] = vec4(0.0, 1.0, 0.0, 0.0);
+    jitterMat[2] = vec4(0.0, 0.0, 1.0, 0.0);
+    jitterMat[3] = vec4(jitterPoint.x, jitterPoint.y, 0.0, 1.0);
+    vec4 jitteredPoint = (jitterMat * mvp) * pos;
+    jitteredPoint.y = -jitteredPoint.y;
+    gl_Position = jitteredPoint;
 }

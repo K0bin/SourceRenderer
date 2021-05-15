@@ -6,8 +6,8 @@ use crate::graphics::{Backend, SwapchainError};
 use crate::graphics::command::InnerCommandBufferProvider;
 use crate::Matrix4;
 
-pub type RegularRenderPassCallback<B> = dyn (Fn(&mut <B as Backend>::CommandBuffer, &dyn RenderGraphResources<B>)) + Send + Sync;
-pub type InternallyThreadedRenderPassCallback<B> = dyn (Fn(&dyn InnerCommandBufferProvider<B>, &dyn RenderGraphResources<B>) -> Vec<<B as Backend>::CommandBufferSubmission>) + Send + Sync;
+pub type RegularRenderPassCallback<B> = dyn (Fn(&mut <B as Backend>::CommandBuffer, &dyn RenderGraphResources<B>, u64)) + Send + Sync;
+pub type InternallyThreadedRenderPassCallback<B> = dyn (Fn(&dyn InnerCommandBufferProvider<B>, &dyn RenderGraphResources<B>, u64) -> Vec<<B as Backend>::CommandBufferSubmission>) + Send + Sync;
 
 pub enum RenderPassCallbacks<B: Backend> {
   Regular(Vec<Arc<RegularRenderPassCallback<B>>>),

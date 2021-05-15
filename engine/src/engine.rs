@@ -24,7 +24,7 @@ impl<P: Platform> Engine<P> {
   }
 
   pub fn run(platform: Box<P>) -> Self {
-    let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
+    let instance = platform.create_graphics(false).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
     let mut adapters = instance.clone().list_adapters();
