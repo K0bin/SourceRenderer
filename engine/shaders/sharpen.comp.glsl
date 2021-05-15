@@ -31,7 +31,7 @@ void main() {
       sharpened -= texture(frame, coord).xyz;
     }
 
-    float sharpeningIntensity = 0.5;
+    float sharpeningIntensity = 0.3;
     vec3 finalColor = mix(color, sharpened, sharpeningIntensity);
     imageStore(outputTexture, storageTexCoord, vec4(finalColor, 1.0));
 }
