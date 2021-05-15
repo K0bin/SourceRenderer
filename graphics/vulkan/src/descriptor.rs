@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use ash::vk;
-use crate::raw::RawVkDevice;
+use crate::{raw::RawVkDevice, texture::VkSampler};
 use ash::version::{DeviceV1_0, DeviceV1_1};
 use sourcerenderer_core::graphics::{BindingFrequency};
 use std::collections::HashMap;
@@ -290,7 +290,7 @@ impl VkDescriptorSet {
             VkBoundResource::StorageTexture(texture) => {
               let texture_info = vk::DescriptorImageInfo {
                 image_view: *texture.get_view_handle(),
-                sampler: *texture.get_sampler_handle().unwrap(),
+                sampler: vk::Sampler::null(),
                 image_layout: if !binding_info.writable { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL } else { vk::ImageLayout::GENERAL }
               };
               image_writes.push(texture_info);
@@ -307,10 +307,10 @@ impl VkDescriptorSet {
               write.p_buffer_info = unsafe { buffer_writes.as_ptr().offset(buffer_writes.len() as isize - 1) };
               write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER };
             },
-            VkBoundResource::SampledTexture(texture) => {
+            VkBoundResource::SampledTexture(texture, sampler) => {
               let texture_info = vk::DescriptorImageInfo {
                 image_view: *texture.get_view_handle(),
-                sampler: *texture.get_sampler_handle().unwrap(),
+                sampler: *sampler.get_handle(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
               image_writes.push(texture_info);
@@ -350,10 +350,10 @@ impl VkDescriptorSet {
                 range: buffer.get_offset_and_length().1 as vk::DeviceSize
               };
             },
-            VkBoundResource::SampledTexture(texture) => {
+            VkBoundResource::SampledTexture(texture, sampler) => {
               entry.image = vk::DescriptorImageInfo {
                 image_view: *texture.get_view_handle(),
-                sampler: *texture.get_sampler_handle().unwrap(),
+                sampler: *sampler.get_handle(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
             },
@@ -413,7 +413,7 @@ pub(crate) enum VkBoundResource {
   UniformBuffer(Arc<VkBufferSlice>),
   StorageBuffer(Arc<VkBufferSlice>),
   StorageTexture(Arc<VkTextureView>),
-  SampledTexture(Arc<VkTextureView>)
+  SampledTexture(Arc<VkTextureView>, Arc<VkSampler>)
 }
 
 impl Default for VkBoundResource {

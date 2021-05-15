@@ -36,6 +36,10 @@ pub struct TextureShaderResourceViewInfo {
   pub mip_level_length: u32,
   pub base_array_level: u32,
   pub array_level_length: u32,
+}
+
+#[derive(Clone)]
+pub struct SamplerInfo {
   pub mag_filter: Filter,
   pub min_filter: Filter,
   pub mip_filter: Filter,

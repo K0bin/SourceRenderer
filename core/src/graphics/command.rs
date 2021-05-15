@@ -45,7 +45,7 @@ pub trait CommandBuffer<B: Backend> {
     where T: 'static + Send + Sync + Sized + Clone;
   fn draw(&mut self, vertices: u32, offset: u32);
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureShaderResourceView>);
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureShaderResourceView>, sampler: &Arc<B::Sampler>);
   fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
   fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureUnorderedAccessView>);

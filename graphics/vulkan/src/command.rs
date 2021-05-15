@@ -17,7 +17,7 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
-use crate::raw::RawVkDevice;
+use crate::{raw::RawVkDevice, texture::VkSampler};
 use crate::VkRenderPass;
 use crate::VkFrameBuffer;
 use crate::VkPipeline;
@@ -397,10 +397,11 @@ impl VkCommandBuffer {
     self.trackers.track_texture(texture);
   }
 
-  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::SampledTexture(texture.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResource::SampledTexture(texture.clone(), sampler.clone()));
     self.trackers.track_texture_view(texture);
+    self.trackers.track_sampler(sampler);
   }
 
   pub(crate) fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
@@ -780,8 +781,8 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
-    self.item.as_mut().unwrap().bind_texture_view(frequency, binding, texture);
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
+    self.item.as_mut().unwrap().bind_texture_view(frequency, binding, texture, sampler);
   }
 
   #[inline(always)]

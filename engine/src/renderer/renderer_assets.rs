@@ -86,18 +86,7 @@ impl<P: Platform> RendererAssets<P> {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
-      array_level_length: 1,
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::Repeat,
-      address_mode_v: AddressMode::Repeat,
-      address_mode_w: AddressMode::Repeat,
-      mip_bias: 0.0,
-      max_anisotropy: 0.0,
-      compare_op: None,
-      min_lod: 0.0,
-      max_lod: 0.0
+      array_level_length: 1
     });
     device.flush_transfers();
 
@@ -171,18 +160,7 @@ impl<P: Platform> RendererAssets<P> {
           base_mip_level: 0,
           mip_level_length: texture.info.mip_levels,
           base_array_level: 0,
-          array_level_length: texture.info.array_length,
-          mag_filter: Filter::Linear,
-          min_filter: Filter::Linear,
-          mip_filter: Filter::Linear,
-          address_mode_u: AddressMode::Repeat,
-          address_mode_v: AddressMode::Repeat,
-          address_mode_w: AddressMode::Repeat,
-          mip_bias: 0f32,
-          max_anisotropy: 0f32,
-          compare_op: None,
-          min_lod: 0f32,
-          max_lod: 0f32,
+          array_level_length: texture.info.array_length
     });
 
     (view, fence)

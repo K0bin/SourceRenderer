@@ -3,6 +3,8 @@ use std::sync::Arc;
 use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend, ExternalResource};
 use std::collections::HashMap;
 
+use super::texture::SamplerInfo;
+
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
   Discrete,
@@ -33,6 +35,7 @@ pub trait Device<B: Backend> {
   fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> Arc<B::TextureShaderResourceView>;
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, graph_template: &B::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<B::GraphicsPipeline>;
   fn create_compute_pipeline(&self, shader: &Arc<B::Shader>) -> Arc<B::ComputePipeline>;
+  fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;
 
   fn wait_for_idle(&self);
 

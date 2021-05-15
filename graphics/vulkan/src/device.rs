@@ -4,7 +4,7 @@ use ash::vk;
 use ash::version::{DeviceV1_0};
 
 use sourcerenderer_core::graphics::*;
-use crate::queue::VkQueue;
+use crate::{queue::VkQueue, texture::VkSampler};
 use crate::queue::VkQueueInfo;
 use crate::VkBackend;
 use crate::VkAdapterExtensionSupport;
@@ -162,6 +162,10 @@ impl Device<VkBackend> for VkDevice {
       },
       _ => panic!("Pass by name: {} is not a graphics pass.", pass_name)
     }
+  }
+
+  fn create_sampler(&self, info: &SamplerInfo) -> Arc<VkSampler> {
+    Arc::new(VkSampler::new(&self.device, info))
   }
 
   fn create_compute_pipeline(&self, shader: &Arc<VkShader>) -> Arc<VkPipeline> {

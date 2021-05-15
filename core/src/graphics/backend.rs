@@ -23,6 +23,7 @@ pub trait Backend: 'static + Sized {
   type Texture: Texture + Send + Sync;
   type TextureShaderResourceView: TextureShaderResourceView<Self> + Send + Sync;
   type TextureUnorderedAccessView: TextureUnorderedAccessView<Self> + Send + Sync;
+  type Sampler: Send + Sync;
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
   type GraphicsPipeline: Send + Sync;

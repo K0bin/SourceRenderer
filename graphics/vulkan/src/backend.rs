@@ -1,4 +1,4 @@
-use crate::VkDevice;
+use crate::{VkDevice, texture::VkSampler};
 use crate::*;
 use crate::pipeline::VkShader;
 use crate::graph::VkRenderGraph;
@@ -26,5 +26,6 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type RenderGraphTemplate = VkRenderGraphTemplate;
   type TextureShaderResourceView = VkTextureView;
   type TextureUnorderedAccessView = VkTextureView;
+  type Sampler = VkSampler;
   type Fence = VkFence;
 }

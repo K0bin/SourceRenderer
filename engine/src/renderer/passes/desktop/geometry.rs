@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Matrix4, graphics::{AttachmentBlendInfo, BACK_BUFFER_ATTACHMENT_NAME, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InnerCommandBufferProvider, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport}};
+use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, BACK_BUFFER_ATTACHMENT_NAME, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InnerCommandBufferProvider, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport}};
 use std::sync::Arc;
 use crate::renderer::drawable::{View, RDrawable};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -169,6 +169,20 @@ pub(in super::super::super) fn build_pass<P: Platform>(
   };
   let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, PASS_NAME, 0);
 
+  let sampler = device.create_sampler(&SamplerInfo {
+    mag_filter: Filter::Linear,
+    min_filter: Filter::Linear,
+    mip_filter: Filter::Linear,
+    address_mode_u: AddressMode::Repeat,
+    address_mode_v: AddressMode::Repeat,
+    address_mode_w: AddressMode::Repeat,
+    mip_bias: 0.0,
+    max_anisotropy: 1.0,
+    compare_op: None,
+    min_lod: 0.0,
+    max_lod: 1.0,
+  });
+
   let c_drawables = drawables.clone();
   let c_lightmap = lightmap.clone();
   let c_view = view.clone();
@@ -224,10 +238,10 @@ pub(in super::super::super) fn build_pass<P: Platform>(
               let material = &model.materials[part.part_index];
               let texture = material.albedo.borrow();
               let albedo_view = texture.view.borrow();
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view);
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &sampler);
 
               let lightmap_ref = c_lightmap.view.borrow();
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref);
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &sampler);
               command_buffer.finish_binding();
 
               if mesh.indices.is_some() {

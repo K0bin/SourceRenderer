@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{AddressMode, Filter, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
 
 use crate::{VkBackend, raw::RawVkDevice};
 use crate::format::format_to_vk;
@@ -134,7 +134,6 @@ fn address_mode_to_vk(address_mode: AddressMode) -> vk::SamplerAddressMode {
 
 pub struct VkTextureView {
   view: vk::ImageView,
-  sampler: Option<vk::Sampler>,
   texture: Arc<VkTexture>,
   device: Arc<RawVkDevice>
 }
@@ -170,31 +169,8 @@ impl VkTextureView {
       device.create_image_view(&view_create_info, None)
     }.unwrap();
 
-    let sampler_create_info = vk::SamplerCreateInfo {
-      mag_filter: filter_to_vk(info.mag_filter),
-      min_filter: filter_to_vk(info.mag_filter),
-      mipmap_mode: filter_to_vk_mip(info.mip_filter),
-      address_mode_u: address_mode_to_vk(info.address_mode_u),
-      address_mode_v: address_mode_to_vk(info.address_mode_v),
-      address_mode_w: address_mode_to_vk(info.address_mode_u),
-      mip_lod_bias: info.mip_bias,
-      anisotropy_enable: (info.max_anisotropy.abs() >= 1.0f32) as u32,
-      max_anisotropy: info.max_anisotropy,
-      compare_enable: info.compare_op.is_some() as u32,
-      compare_op: info.compare_op.map_or(vk::CompareOp::ALWAYS, compare_func_to_vk),
-      min_lod: info.min_lod,
-      max_lod: info.max_lod,
-      border_color: vk::BorderColor::INT_OPAQUE_BLACK,
-      unnormalized_coordinates: 0,
-      ..Default::default()
-    };
-    let sampler = unsafe {
-      device.create_sampler(&sampler_create_info, None)
-    }.unwrap();
-
     Self {
       view,
-      sampler: Some(sampler),
       texture: texture.clone(),
       device: device.clone()
     }
@@ -229,33 +205,9 @@ impl VkTextureView {
     };
     let view = unsafe { device.create_image_view(&vk_info, None).unwrap() };
 
-    let sampler_create_info = vk::SamplerCreateInfo {
-      mag_filter: vk::Filter::LINEAR,
-      min_filter: vk::Filter::LINEAR,
-      mipmap_mode: vk::SamplerMipmapMode::LINEAR,
-      address_mode_u: vk::SamplerAddressMode::CLAMP_TO_EDGE,
-      address_mode_v: vk::SamplerAddressMode::CLAMP_TO_EDGE,
-      address_mode_w: vk::SamplerAddressMode::CLAMP_TO_EDGE,
-      mip_lod_bias: 0.0f32,
-      anisotropy_enable: vk::FALSE,
-      max_anisotropy: 1.0f32,
-      compare_enable: vk::FALSE,
-      compare_op: vk::CompareOp::ALWAYS,
-      min_lod: 0.0f32,
-      max_lod: 1.0f32,
-      border_color: vk::BorderColor::INT_OPAQUE_BLACK,
-      unnormalized_coordinates: 0,
-      ..Default::default()
-    };
-    let sampler = unsafe {
-      device.create_sampler(&sampler_create_info, None)
-    }.unwrap();
-
-
     VkTextureView {
       texture: texture.clone(),
       view,
-      sampler: Some(sampler),
       device: device.clone()
     }
   }
@@ -263,11 +215,6 @@ impl VkTextureView {
   #[inline]
   pub(crate) fn get_view_handle(&self) -> &vk::ImageView {
     &self.view
-  }
-
-  #[inline]
-  pub(crate) fn get_sampler_handle(&self) -> Option<&vk::Sampler> {
-    self.sampler.as_ref()
   }
 
   pub(crate) fn texture(&self) -> &Arc<VkTexture> {
@@ -279,9 +226,6 @@ impl Drop for VkTextureView {
   fn drop(&mut self) {
     unsafe {
       self.device.destroy_image_view(self.view, None);
-      if let Some(sampler) = self.sampler {
-        self.device.destroy_sampler(sampler, None);
-      }
     }
   }
 }
@@ -302,7 +246,6 @@ impl Hash for VkTextureView {
   fn hash<H: Hasher>(&self, state: &mut H) {
     self.texture.hash(state);
     self.view.hash(state);
-    self.sampler.hash(state);
   }
 }
 
@@ -310,8 +253,70 @@ impl PartialEq for VkTextureView {
   fn eq(&self, other: &Self) -> bool {
     self.texture == other.texture
     && self.view == other.view
-    && self.sampler == other.sampler
   }
 }
 
 impl Eq for VkTextureView {}
+
+pub struct VkSampler {
+  sampler: vk::Sampler,
+  device: Arc<RawVkDevice>
+}
+
+impl VkSampler {
+  pub fn new(device: &Arc<RawVkDevice>, info: &SamplerInfo) -> Self {
+    let sampler_create_info = vk::SamplerCreateInfo {
+      mag_filter: filter_to_vk(info.mag_filter),
+      min_filter: filter_to_vk(info.mag_filter),
+      mipmap_mode: filter_to_vk_mip(info.mip_filter),
+      address_mode_u: address_mode_to_vk(info.address_mode_u),
+      address_mode_v: address_mode_to_vk(info.address_mode_v),
+      address_mode_w: address_mode_to_vk(info.address_mode_u),
+      mip_lod_bias: info.mip_bias,
+      anisotropy_enable: (info.max_anisotropy.abs() >= 1.0f32) as u32,
+      max_anisotropy: info.max_anisotropy,
+      compare_enable: info.compare_op.is_some() as u32,
+      compare_op: info.compare_op.map_or(vk::CompareOp::ALWAYS, compare_func_to_vk),
+      min_lod: info.min_lod,
+      max_lod: info.max_lod,
+      border_color: vk::BorderColor::INT_OPAQUE_BLACK,
+      unnormalized_coordinates: 0,
+      ..Default::default()
+    };
+    let sampler = unsafe {
+      device.create_sampler(&sampler_create_info, None)
+    }.unwrap();
+
+    Self {
+      sampler,
+      device: device.clone()
+    }
+  }
+
+  #[inline]
+  pub(crate) fn get_handle(&self) -> &vk::Sampler {
+    &self.sampler
+  }
+}
+
+impl Drop for VkSampler {
+  fn drop(&mut self) {
+    unsafe {
+      self.device.destroy_sampler(self.sampler, None);
+    }
+  }
+}
+
+impl Hash for VkSampler {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.sampler.hash(state);
+  }
+}
+
+impl PartialEq for VkSampler {
+  fn eq(&self, other: &Self) -> bool {
+    self.sampler == other.sampler
+  }
+}
+
+impl Eq for VkSampler {}

@@ -1,4 +1,4 @@
-use sourcerenderer_core::{graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, ShaderType, TextureUnorderedAccessView}};
+use sourcerenderer_core::{graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, SamplerInfo, ShaderType, TextureUnorderedAccessView}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -49,13 +49,27 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
     device.create_shader(ShaderType::ComputeShader, &bytes, Some("sharpen.comp.spv"))
   };
 
+  let sampler = device.create_sampler(&SamplerInfo {
+    mag_filter: Filter::Linear,
+    min_filter: Filter::Linear,
+    mip_filter: Filter::Linear,
+    address_mode_u: AddressMode::Repeat,
+    address_mode_v: AddressMode::Repeat,
+    address_mode_w: AddressMode::Repeat,
+    mip_bias: 0.0,
+    max_anisotropy: 1.0,
+    compare_op: None,
+    min_lod: 0.0,
+    max_lod: 1.0,
+  });
+
   let sharpen_pipeline = device.create_compute_pipeline(&sharpen_compute_shader);
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
       Arc::new(move |command_buffer_a, graph_resources, _frame_counter| {
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&sharpen_pipeline));
-        command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, graph_resources.get_texture_srv(HISTORY_BUFFER_NAME, false).expect("Failed to get graph resource"));
+        command_buffer.bind_texture_view(BindingFrequency::PerDraw, 0, graph_resources.get_texture_srv(HISTORY_BUFFER_NAME, false).expect("Failed to get graph resource"), &sampler);
         command_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, graph_resources.get_texture_uav(SHARPEN_OUTPUT_NAME, false).expect("Failed to get graph resource"));
         command_buffer.finish_binding();
 

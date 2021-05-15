@@ -1,5 +1,5 @@
 use sourcerenderer_core::pool::Recyclable;
-use crate::{VkSemaphore, VkFence};
+use crate::{VkFence, VkSemaphore, texture::VkSampler};
 use std::sync::Arc;
 use crate::buffer::VkBufferSlice;
 use crate::{VkTexture, VkRenderPass};
@@ -13,7 +13,8 @@ pub struct VkLifetimeTrackers {
   textures: Vec<Arc<VkTexture>>,
   texture_views: Vec<Arc<VkTextureView>>,
   render_passes: Vec<Arc<VkRenderPass>>,
-  frame_buffers: Vec<Arc<VkFrameBuffer>>
+  frame_buffers: Vec<Arc<VkFrameBuffer>>,
+  samplers: Vec<Arc<VkSampler>>
 }
 
 impl VkLifetimeTrackers {
@@ -25,7 +26,8 @@ impl VkLifetimeTrackers {
       textures: Vec::new(),
       texture_views: Vec::new(),
       render_passes: Vec::new(),
-      frame_buffers: Vec::new()
+      frame_buffers: Vec::new(),
+      samplers: Vec::new()
     }
   }
 
@@ -37,6 +39,7 @@ impl VkLifetimeTrackers {
     self.texture_views.clear();
     self.render_passes.clear();
     self.frame_buffers.clear();
+    self.samplers.clear();
   }
 
   pub(crate) fn track_semaphore(&mut self, semaphore: &Arc<Recyclable<VkSemaphore>>) {
@@ -67,6 +70,10 @@ impl VkLifetimeTrackers {
     self.texture_views.push(texture_view.clone());
   }
 
+  pub(crate) fn track_sampler(&mut self, sampler: &Arc<VkSampler>) {
+    self.samplers.push(sampler.clone());
+  }
+
   pub(crate) fn is_empty(&self) -> bool {
     self.texture_views.is_empty()
     && self.semaphores.is_empty()
@@ -75,5 +82,6 @@ impl VkLifetimeTrackers {
     && self.textures.is_empty()
     && self.render_passes.is_empty()
     && self.frame_buffers.is_empty()
+    && self.samplers.is_empty()
   }
 }
