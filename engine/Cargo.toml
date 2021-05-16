@@ -6,7 +6,7 @@ build = "build.rs"
 edition = "2018"
 
 [dependencies]
-nalgebra = "0.25.3"
+nalgebra = "0.26.2"
 num_cpus = "1.13.0"
 sourcerenderer_core = { path = "../core" }
 image = "0.23.13"
@@ -21,7 +21,7 @@ sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
 legion = { version = "0.4.0", default-features = false, features=["crossbeam-events", "codegen"] }
 regex = "1.4.2"
-bitvec = "0.21.1"
+bitvec = "0.22.3"
 rayon = "1.5"
 smallvec = "1.6.1"
 
