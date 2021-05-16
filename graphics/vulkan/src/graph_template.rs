@@ -131,7 +131,8 @@ impl ResourceMetadata {
 pub struct HistoryResourceMetadata {
   pub(super) pass_range: ResourcePassRange,
   pass_accesses: HashMap<u32, ResourceAccess>,
-  current_access: ResourceAccess
+  current_access: ResourceAccess,
+  pub(super) initial_layout: vk::ImageLayout
 }
 
 #[derive(Debug, Clone, Default)]
@@ -178,6 +179,7 @@ impl VkRenderGraphTemplate {
         let (_, pass_access) = resource.pass_accesses.iter().max_by_key(|(pass_index, _)| **pass_index).unwrap();
         history.current_access = pass_access.clone();
         history.current_access.access &= write_access_mask();
+        history.initial_layout = history.current_access.layout;
       }
     }
 
@@ -471,6 +473,7 @@ impl VkRenderGraphTemplate {
                       },
                       pass_accesses: accesses,
                       current_access: ResourceAccess::default(),
+                      initial_layout: vk::ImageLayout::UNDEFINED
                     });
                   }
                 } else {
@@ -516,6 +519,7 @@ impl VkRenderGraphTemplate {
                     },
                     pass_accesses: accesses,
                     current_access: ResourceAccess::default(),
+                    initial_layout: vk::ImageLayout::UNDEFINED
                   });
                 }
               } else {
@@ -643,7 +647,8 @@ impl VkRenderGraphTemplate {
                     last_used_in_pass_index: reordered_passes.len() as u32,
                   },
                   current_access: Default::default(),
-                  pass_accesses: accesses
+                  pass_accesses: accesses,
+                  initial_layout: vk::ImageLayout::UNDEFINED
                 });
               }
             } else {
@@ -770,7 +775,8 @@ impl VkRenderGraphTemplate {
                     last_used_in_pass_index: reordered_passes.len() as u32,
                   },
                   current_access: Default::default(),
-                  pass_accesses: accesses
+                  pass_accesses: accesses,
+                  initial_layout: vk::ImageLayout::UNDEFINED
                 });
               }
             } else {

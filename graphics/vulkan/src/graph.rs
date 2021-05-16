@@ -462,55 +462,54 @@ impl VkRenderGraph {
     // TODO: clear them
     let mut initialized_history_resources = HashSet::<String>::new();
     let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
-    for pass in &template.passes {
-      'barriers: for barrier in &pass.barriers {
-        match barrier {
-          VkBarrierTemplate::Image { name, is_history, old_layout, .. } => {
-            if !is_history || initialized_history_resources.contains(name) || *old_layout == vk::ImageLayout::UNDEFINED {
-              continue 'barriers;
-            }
-            let resource = resources.get(name).unwrap();
-            let texture = match resource {
-              VkResource::Texture { texture_b, .. } => {
-                texture_b.as_ref().unwrap()
-              },
-              _ => unreachable!()
-            };
-            let format = texture.get_info().format;
-            let mut aspect = vk::ImageAspectFlags::empty();
-            if !format.is_depth() && !format.is_stencil() {
-              aspect = vk::ImageAspectFlags::COLOR;
-            } else {
-              if format.is_depth() {
-                aspect |= vk::ImageAspectFlags::DEPTH;
-              }
-              if format.is_stencil() {
-                aspect |= vk::ImageAspectFlags::STENCIL;
-              }
-            }
 
-            image_barriers.push(vk::ImageMemoryBarrier {
-              src_access_mask: vk::AccessFlags::empty(),
-              dst_access_mask: vk::AccessFlags::empty(),
-              old_layout: vk::ImageLayout::UNDEFINED,
-              new_layout: *old_layout,
-              src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-              dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-              image: *texture.get_handle(),
-              subresource_range: vk::ImageSubresourceRange {
-                aspect_mask: aspect,
-                base_mip_level: 0,
-                level_count: 1,
-                layer_count: 1,
-                base_array_layer: 0
-              },
-              ..Default::default()
-            });
-            initialized_history_resources.insert(name.clone());
-          },
-          _ => {}
+    for (name, metadata) in &template.resources {
+      if metadata.history.is_none() || initialized_history_resources.contains(name) {
+        continue;
+      }
+
+      let history = metadata.history.as_ref().unwrap();
+      if history.initial_layout == vk::ImageLayout::UNDEFINED {
+        continue;
+      }
+      let resource = resources.get(name).unwrap();
+      let texture = match resource {
+        VkResource::Texture { texture_b, .. } => {
+          texture_b.as_ref().unwrap()
+        },
+        _ => { continue; }
+      };
+      let format = texture.get_info().format;
+      let mut aspect = vk::ImageAspectFlags::empty();
+      if !format.is_depth() && !format.is_stencil() {
+        aspect = vk::ImageAspectFlags::COLOR;
+      } else {
+        if format.is_depth() {
+          aspect |= vk::ImageAspectFlags::DEPTH;
+        }
+        if format.is_stencil() {
+          aspect |= vk::ImageAspectFlags::STENCIL;
         }
       }
+
+      image_barriers.push(vk::ImageMemoryBarrier {
+        src_access_mask: vk::AccessFlags::empty(),
+        dst_access_mask: vk::AccessFlags::empty(),
+        old_layout: vk::ImageLayout::UNDEFINED,
+        new_layout: history.initial_layout,
+        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+        image: *texture.get_handle(),
+        subresource_range: vk::ImageSubresourceRange {
+          aspect_mask: aspect,
+          base_mip_level: 0,
+          level_count: 1,
+          layer_count: 1,
+          base_array_layer: 0
+        },
+        ..Default::default()
+      });
+      initialized_history_resources.insert(name.clone());
     }
     if !image_barriers.is_empty() {
       let mut cmd_buffer = context.get_thread_local().get_frame_local().get_command_buffer();
