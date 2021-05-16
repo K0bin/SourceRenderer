@@ -177,7 +177,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(
     address_mode_v: AddressMode::Repeat,
     address_mode_w: AddressMode::Repeat,
     mip_bias: 0.0,
-    max_anisotropy: 1.0,
+    max_anisotropy: 0.0,
     compare_op: None,
     min_lod: 0.0,
     max_lod: 1.0,
