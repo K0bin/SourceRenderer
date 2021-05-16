@@ -146,9 +146,6 @@ impl Adapter<VkBackend> for VkAdapter {
         }
       );
 
-      let transfer_queue_info: Option<VkQueueInfo> = None;
-      let compute_queue_info: Option<VkQueueInfo> = None;
-
       let priority = 1.0f32;
       let mut queue_create_descs: Vec<vk::DeviceQueueCreateInfo> = Vec::new();
       queue_create_descs.push(vk::DeviceQueueCreateInfo {
