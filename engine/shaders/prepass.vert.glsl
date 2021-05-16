@@ -34,7 +34,7 @@ void main(void) {
     vec4 transformedOldPos = (swapchainTransform * (oldViewProjection * oldModel)) * pos;
     transformedOldPos.y = -transformedOldPos.y;
 
-    out_normal = in_normal;
+    out_normal = (model * vec4(in_normal, 0)).xyz;
     out_position = transformedPos;
     out_oldPosition = transformedOldPos;
 
