@@ -367,7 +367,10 @@ impl<P: Platform> AssetManager<P> {
     let assets = assets_opt.unwrap();
     let level = assets.level;
     progress.finished.fetch_add(1, Ordering::SeqCst);
-    while level.is_some() && !progress.is_done() {}
+    if level.is_none() {
+      return None;
+    }
+    while !progress.is_done() {}
     level
   }
 
