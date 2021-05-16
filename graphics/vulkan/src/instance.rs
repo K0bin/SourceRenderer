@@ -20,7 +20,7 @@ pub struct VkInstance {
 
 impl VkInstance {
   pub fn new(instance_extensions: &[&str], debug_layers: bool) -> Self {
-    let entry: ash::Entry = ash::Entry::new().unwrap();
+    let entry: ash::Entry = unsafe { ash::Entry::new().unwrap() };
 
     let extensions = entry.enumerate_instance_extension_properties().unwrap();
     let layers = entry.enumerate_instance_layer_properties().unwrap();

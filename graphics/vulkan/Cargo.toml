@@ -5,7 +5,7 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-ash = "0.31.0"
+ash = "0.32.1"
 sourcerenderer_core = { path = "../../core" }
 vk-mem = "0.2.2"
 bitflags = "1.2.1"
