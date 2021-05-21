@@ -1,14 +1,18 @@
 #version 450
 
 layout(set = 0, binding = 0, std140) readonly buffer Cameras {
-    mat4 mats[16];
-    uint index;
+  mat4 proj[16];
+  mat4 view[16];
+  uint proj_index;
+  uint view_index;
 } cameras;
 
 layout(set = 0, binding = 1, std140) buffer Camera {
-    mat4 mat;
+  mat4 mat;
 } camera;
 
 void main() {
-    camera.mat = cameras.mats[cameras.index];
+  mat4 proj = cameras.proj[cameras.proj_index];
+  mat4 view = cameras.view[cameras.view_index];
+  camera.mat = proj * view;
 }
