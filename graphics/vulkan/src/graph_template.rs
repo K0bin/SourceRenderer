@@ -1,5 +1,5 @@
 use sourcerenderer_core::graphics::{DepthStencil, ExternalOutput, ExternalProducerType, InputUsage, Output, PipelineStage, RenderPassTextureExtent};
-use std::collections::{HashMap, VecDeque};
+use std::{cmp::max, collections::{HashMap, VecDeque}};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -1739,72 +1739,99 @@ impl VkRenderGraphTemplate {
     let mut best_pass_index_score: Option<(u32, u32)> = None;
     for (pass_index, pass) in pass_infos.iter().enumerate() {
       let mut is_ready = true;
-      let mut passes_since_ready = u32::MAX;
+      let mut youngest_dependency_pass = 0;
 
       match &pass.pass_type {
         PassType::Graphics {
           subpasses
         } => {
+          let mut renders_to_backbuffer = false;
           for subpass in subpasses {
             for input in &subpass.inputs {
               let index_opt = metadata.get(&input.name);
               if let Some(index) = index_opt {
-                passes_since_ready = min(index.pass_range.first_used_in_pass_index, passes_since_ready);
+                youngest_dependency_pass = max(index.pass_range.first_used_in_pass_index, youngest_dependency_pass);
               } else {
                 if input.is_history {
                   // history resource
-                  passes_since_ready = min(0, passes_since_ready);
+                  youngest_dependency_pass = max(0, youngest_dependency_pass);
                 } else {
                   is_ready = false;
                 }
               }
             }
+            for output in &subpass.outputs {
+              match output {
+                SubpassOutput::Backbuffer { .. } => { renders_to_backbuffer = true; }
+                SubpassOutput::RenderTarget { .. } => {}
+              }
+            }
 
-            if is_ready && (best_pass_index_score.is_none() || passes_since_ready > best_pass_index_score.unwrap().1 as u32) {
-              best_pass_index_score = Some((pass_index as u32, passes_since_ready as u32));
+            if renders_to_backbuffer && is_ready && best_pass_index_score.is_none() {
+              best_pass_index_score = Some((pass_index as u32, 0 as u32));
+            } else if is_ready && (best_pass_index_score.is_none() || youngest_dependency_pass < best_pass_index_score.unwrap().1 as u32) {
+              best_pass_index_score = Some((pass_index as u32, youngest_dependency_pass as u32));
             }
           }
         },
         PassType::Compute {
-          inputs, ..
+          inputs, outputs, ..
         } => {
+          let mut renders_to_backbuffer = false;
           for input in inputs {
             let index_opt = metadata.get(&input.name);
             if let Some(index) = index_opt {
-              passes_since_ready = min(index.pass_range.first_used_in_pass_index, passes_since_ready);
+              youngest_dependency_pass = max(index.pass_range.first_used_in_pass_index, youngest_dependency_pass);
             } else {
               if input.is_history {
                 // history resource
-                passes_since_ready = min(0, passes_since_ready);
+                youngest_dependency_pass = max(0, youngest_dependency_pass);
               } else {
                 is_ready = false;
               }
             }
           }
+          for output in outputs {
+            match output {
+              Output::Backbuffer { .. } => { renders_to_backbuffer = true; }
+              _ => {}
+            }
+          }
 
-          if is_ready && (best_pass_index_score.is_none() || passes_since_ready > best_pass_index_score.unwrap().1 as u32) {
-            best_pass_index_score = Some((pass_index as u32, passes_since_ready as u32));
+          if renders_to_backbuffer && is_ready && best_pass_index_score.is_none() {
+            best_pass_index_score = Some((pass_index as u32, 0 as u32));
+          } else if is_ready && (best_pass_index_score.is_none() || youngest_dependency_pass < best_pass_index_score.unwrap().1 as u32) {
+            best_pass_index_score = Some((pass_index as u32, youngest_dependency_pass as u32));
           }
         },
         PassType::Copy {
-          inputs, ..
+          inputs, outputs, ..
         } => {
+          let mut renders_to_backbuffer = false;
           for input in inputs {
             let index_opt = metadata.get(&input.name);
             if let Some(index) = index_opt {
-              passes_since_ready = min(index.pass_range.first_used_in_pass_index, passes_since_ready);
+              youngest_dependency_pass = max(index.pass_range.first_used_in_pass_index, youngest_dependency_pass);
             } else {
               if input.is_history {
                 // history resource
-                passes_since_ready = min(0, passes_since_ready);
+                youngest_dependency_pass = max(0, youngest_dependency_pass);
               } else {
                 is_ready = false;
               }
             }
           }
+          for output in outputs {
+            match output {
+              Output::Backbuffer { .. } => { renders_to_backbuffer = true; }
+              _ => {}
+            }
+          }
 
-          if is_ready && (best_pass_index_score.is_none() || passes_since_ready > best_pass_index_score.unwrap().1 as u32) {
-            best_pass_index_score = Some((pass_index as u32, passes_since_ready as u32));
+          if renders_to_backbuffer && is_ready && best_pass_index_score.is_none() {
+            best_pass_index_score = Some((pass_index as u32, 0 as u32));
+          } else if is_ready && (best_pass_index_score.is_none() || youngest_dependency_pass < best_pass_index_score.unwrap().1 as u32) {
+            best_pass_index_score = Some((pass_index as u32, youngest_dependency_pass as u32));
           }
         }
       }
