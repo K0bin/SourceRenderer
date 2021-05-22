@@ -26,7 +26,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
         Output::Buffer {
           name: OUTPUT_CAMERA.to_string(),
           format: None,
-          size: std::mem::size_of::<Matrix4>() as u32,
+          size: std::mem::size_of::<Matrix4>() as u32 * 2,
           clear: false
         }
       ]

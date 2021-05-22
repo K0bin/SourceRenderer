@@ -83,6 +83,7 @@ impl<P: Platform> RendererInternal<P> {
       passes::desktop::taa::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::sharpen::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::blit::build_blit_pass_template::<P::GraphicsBackend>(),
+      passes::desktop::clustering::build_pass_template::<P::GraphicsBackend>(),
     ];
 
     let external_resources = vec![
@@ -99,6 +100,9 @@ impl<P: Platform> RendererInternal<P> {
     let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
     let (pre_pass_name, pre_pass_callback) = passes::desktop::prepass::build_pass::<P>(device, &graph_template, &view, &drawables);
     callbacks.insert(pre_pass_name, pre_pass_callback);
+
+    let (clustering_pass_name, clustering_pass_callback) = passes::desktop::clustering::build_pass::<P>(device, &view);
+    callbacks.insert(clustering_pass_name, clustering_pass_callback);
 
     let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &view, &drawables, &lightmap);
     callbacks.insert(geometry_pass_name, geometry_pass_callback);
@@ -146,10 +150,11 @@ impl<P: Platform> RendererInternal<P> {
           view.camera_transform = camera_transform_mat;
           view.camera_fov = fov;
 
-          view.old_camera_matrix = view.camera_matrix;
+          view.old_camera_matrix = view.proj_matrix * view.view_matrix;
           let position = camera_transform_mat.column(3).xyz();
           self.primary_camera.update_position(position);
-          view.camera_matrix = self.primary_camera.get_camera();
+          view.view_matrix = self.primary_camera.view();
+          view.proj_matrix = self.primary_camera.proj();
         }
 
         RendererCommand::UpdateTransform { entity, transform_mat } => {

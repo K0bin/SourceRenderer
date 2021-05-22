@@ -100,10 +100,13 @@ impl<B: Backend> RDrawable<B> {
 
 #[derive(Clone)]
 pub(crate) struct View {
-  pub(super) camera_matrix: Matrix4,
+  pub(super) view_matrix: Matrix4,
+  pub(super) proj_matrix: Matrix4,
   pub(super) old_camera_matrix: Matrix4,
   pub(super) camera_transform: Matrix4,
   pub(super) camera_fov: f32,
+  pub(super) near_plane: f32,
+  pub(super) far_plane: f32,
   pub(super) drawable_parts: Vec<DrawablePart>
 }
 
@@ -112,8 +115,11 @@ impl Default for View {
     Self {
       camera_transform: Matrix4::identity(),
       old_camera_matrix: Matrix4::identity(),
-      camera_matrix: Matrix4::identity(),
+      view_matrix: Matrix4::identity(),
+      proj_matrix: Matrix4::identity(),
       camera_fov: f32::consts::PI / 2f32,
+      near_plane: 0.1f32,
+      far_plane: 10f32,
       drawable_parts: Vec::new()
     }
   }

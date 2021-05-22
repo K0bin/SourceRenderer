@@ -44,8 +44,7 @@ impl<B: Backend> LateLatchCamera<B> {
       z_near: 0.1f32,
       z_far: 1000f32
     };
-    let vertical_fov = 2f32 * ((late_letch_cam.fov / 2f32).tan() * (1f32 / late_letch_cam.aspect_ratio)).atan();
-    late_letch_cam.update_projection(Matrix4::new_perspective(late_letch_cam.aspect_ratio, vertical_fov, late_letch_cam.z_near, late_letch_cam.z_far));
+    late_letch_cam.update_projection(late_letch_cam.proj());
     late_letch_cam
   }
 
@@ -115,6 +114,11 @@ impl<B: Backend> LateLatchCamera<B> {
     let position = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
     let target = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
     Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32))
+  }
+
+  pub fn proj(&self) -> Matrix4 {
+    let vertical_fov = 2f32 * ((self.fov / 2f32).tan() * (1f32 / self.aspect_ratio)).atan();
+    Matrix4::new_perspective(self.aspect_ratio, vertical_fov, self.z_near, self.z_far)
   }
 
   pub fn get_camera(&self) -> Matrix4 {

@@ -8,11 +8,13 @@ layout(set = 0, binding = 0, std140) readonly buffer Cameras {
 } cameras;
 
 layout(set = 0, binding = 1, std140) buffer Camera {
-  mat4 mat;
+  mat4 viewProj;
+  mat4 invProj;
 } camera;
 
 void main() {
   mat4 proj = cameras.proj[cameras.proj_index];
   mat4 view = cameras.view[cameras.view_index];
-  camera.mat = proj * view;
+  camera.viewProj = proj * view;
+  camera.invProj = inverse(proj);
 }
