@@ -2,6 +2,7 @@ use crate::{graphics::{Format, SampleCount}, platform::Input};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum PipelineStage {
+  GraphicsShaders,
   VertexShader,
   FragmentShader,
   ComputeShader,

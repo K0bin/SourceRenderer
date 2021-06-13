@@ -1863,6 +1863,7 @@ fn pipeline_stage_to_vk(pipeline_stage: PipelineStage) -> vk::PipelineStageFlags
     PipelineStage::ComputeShader => vk::PipelineStageFlags::COMPUTE_SHADER,
     PipelineStage::VertexShader => vk::PipelineStageFlags::VERTEX_SHADER,
     PipelineStage::FragmentShader => vk::PipelineStageFlags::VERTEX_SHADER,
+    PipelineStage::GraphicsShaders => vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
     PipelineStage::Copy => vk::PipelineStageFlags::TRANSFER,
   }
 }
