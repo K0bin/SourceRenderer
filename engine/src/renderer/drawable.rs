@@ -6,96 +6,14 @@ use std::f32;
 use sourcerenderer_core::graphics::Backend;
 use crate::renderer::renderer_assets::*;
 
-pub enum DrawableType {
-  Static {
-    model_path: String,
-    receive_shadows: bool,
-    cast_shadows: bool,
-    can_move: bool
-  },
-  Skinned // TODO
-}
-
-impl Clone for DrawableType {
-  fn clone(&self) -> Self {
-    match self {
-      DrawableType::Static {
-        model_path, receive_shadows, cast_shadows, can_move
-      } => {
-        Self::Static {
-          model_path: model_path.clone(),
-          receive_shadows: *receive_shadows,
-          cast_shadows: *cast_shadows,
-          can_move: *can_move
-        }
-      },
-      _ => unimplemented!()
-    }
-  }
-}
-
-#[derive(Clone)]
-pub struct Drawable {
-  pub(super) drawable_type: DrawableType,
-  pub(super) entity: Entity,
-  pub(super) transform: Matrix4
-}
-
-impl Drawable {
-  pub fn new(entity: Entity, drawable_type: DrawableType, transform: Matrix4) -> Self {
-    Self {
-      entity,
-      drawable_type,
-      transform
-    }
-  }
-}
-
-pub(super) enum RDrawableType<B: Backend> {
-  Static {
-    model: Arc<RendererModel<B>>,
-    receive_shadows: bool,
-    cast_shadows: bool,
-    can_move: bool
-  },
-  Skinned // TODO
-}
-
-impl<B: Backend> Clone for RDrawableType<B> {
-  fn clone(&self) -> Self {
-    match self {
-      RDrawableType::Static {
-        model, receive_shadows, cast_shadows, can_move
-      } => {
-        Self::Static {
-          model: model.clone(),
-          receive_shadows: *receive_shadows,
-          cast_shadows: *cast_shadows,
-          can_move: *can_move
-        }
-      },
-      _ => unimplemented!()
-    }
-  }
-}
-
-#[derive(Clone)]
-pub(super) struct RDrawable<B: Backend> {
-  pub(super) drawable_type: RDrawableType<B>,
+pub(super) struct RendererStaticDrawable<B: Backend> {
   pub(super) entity: Entity,
   pub(super) transform: Matrix4,
-  pub(super) old_transform: Matrix4
-}
-
-impl<B: Backend> RDrawable<B> {
-  pub fn new(entity: Entity, drawable_type: RDrawableType<B>, transform: Matrix4) -> Self {
-    Self {
-      entity,
-      drawable_type,
-      transform,
-      old_transform: transform
-    }
-  }
+  pub(super) old_transform: Matrix4,
+  pub(super) model: Arc<RendererModel<B>>,
+  pub(super) receive_shadows: bool,
+  pub(super) cast_shadows: bool,
+  pub(super) can_move: bool
 }
 
 #[derive(Clone)]

@@ -1,8 +1,7 @@
 use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, BACK_BUFFER_ATTACHMENT_NAME, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InnerCommandBufferProvider, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport}};
 use std::sync::Arc;
-use crate::renderer::drawable::{View, RDrawable};
+use crate::renderer::{drawable::View, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
-use crate::renderer::drawable::RDrawableType;
 use crate::renderer::passes::desktop::taa::scaled_halton_point;
 use std::path::Path;
 use std::io::Read;
@@ -42,7 +41,19 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
               name: LATE_LATCHING_CAMERA.to_string(),
               usage: InputUsage::Storage,
               is_history: false,
-              stage: PipelineStage::VertexShader
+              stage: PipelineStage::GraphicsShaders
+            },
+            PassInput {
+              name: super::clustering::OUTPUT_CLUSTERS.to_string(),
+              usage: InputUsage::Storage,
+              is_history: false,
+              stage: PipelineStage::FragmentShader
+            },
+            PassInput {
+              name: super::light_binning::OUTPUT_LIGHT_BITMASKS.to_string(),
+              usage: InputUsage::Storage,
+              is_history: false,
+              stage: PipelineStage::FragmentShader
             }
           ],
           depth_stencil: DepthStencil::Input {
@@ -66,7 +77,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(
   device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
   graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>,
   view: &Arc<AtomicRefCell<View>>,
-  drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>,
+  scene: &Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>,
   lightmap: &Arc<RendererTexture<P::GraphicsBackend>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
 
   let vertex_shader = {
@@ -183,14 +194,15 @@ pub(in super::super::super) fn build_pass<P: Platform>(
     max_lod: 1.0,
   });
 
-  let c_drawables = drawables.clone();
+  let c_scene = scene.clone();
   let c_lightmap = lightmap.clone();
   let c_view = view.clone();
 
   (PASS_NAME.to_string(), RenderPassCallbacks::InternallyThreaded(
     vec![
       Arc::new(move |command_buffer_provider, graph_resources, frame_counter| {
-        let drawables = c_drawables.borrow();
+        let scene = c_scene.borrow();
+        let static_drawables = scene.static_drawables();
         let view_ref = c_view.borrow();
         const CHUNK_SIZE: usize = 128;
         let chunks = view_ref.drawable_parts.par_chunks(CHUNK_SIZE);
@@ -218,37 +230,34 @@ pub(in super::super::super) fn build_pass<P: Platform>(
 
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
           for part in chunk.into_iter() {
-            let drawable = &drawables[part.drawable_index];
+            let drawable = &static_drawables[part.drawable_index];
 
             /*let model_constant_buffer = command_buffer.upload_dynamic_data(&[drawable.transform], BufferUsage::CONSTANT);
             command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);*/
             command_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
 
-            if let RDrawableType::Static {
-              model, ..
-            } = &drawable.drawable_type {
-              let mesh = &model.mesh;
+            let model = &drawable.model;
+            let mesh = &model.mesh;
 
-              command_buffer.set_vertex_buffer(&mesh.vertices);
-              if mesh.indices.is_some() {
-                command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
-              }
+            command_buffer.set_vertex_buffer(&mesh.vertices);
+            if mesh.indices.is_some() {
+              command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
+            }
 
-              let range = &mesh.parts[part.part_index];
-              let material = &model.materials[part.part_index];
-              let texture = material.albedo.borrow();
-              let albedo_view = texture.view.borrow();
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &sampler);
+            let range = &mesh.parts[part.part_index];
+            let material = &model.materials[part.part_index];
+            let texture = material.albedo.borrow();
+            let albedo_view = texture.view.borrow();
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &sampler);
 
-              let lightmap_ref = c_lightmap.view.borrow();
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &sampler);
-              command_buffer.finish_binding();
+            let lightmap_ref = c_lightmap.view.borrow();
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &sampler);
+            command_buffer.finish_binding();
 
-              if mesh.indices.is_some() {
-                command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
-              } else {
-                command_buffer.draw(range.count, range.start);
-              }
+            if mesh.indices.is_some() {
+              command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+            } else {
+              command_buffer.draw(range.count, range.start);
             }
           }
           command_buffer.finish()

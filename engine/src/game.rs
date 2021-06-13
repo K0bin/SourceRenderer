@@ -14,8 +14,7 @@ use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use sourcerenderer_core::platform::{InputState, InputCommands};
-use crate::fps_camera::{fps_camera_rotation, FPSCamera};
-use crate::renderer::RendererScene;
+use crate::{fps_camera::{fps_camera_rotation, FPSCamera}, renderer::RendererInterface};
 
 pub struct TimeStampedInputState(InputState, SystemTime);
 

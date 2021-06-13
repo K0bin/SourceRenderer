@@ -5,8 +5,7 @@ use sourcerenderer_core::platform::{Platform, Window, WindowState};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
-use crate::asset::AssetManager;
-use crate::renderer::Drawable;
+use crate::{asset::AssetManager, transform::interpolation::InterpolatedTransform};
 
 use std::sync::atomic::{Ordering, AtomicUsize};
 
@@ -17,7 +16,7 @@ use legion::systems::Builder;
 use crate::renderer::RendererInternal;
 use crate::renderer::camera::LateLatchCamera;
 
-use super::ecs::RendererScene;
+use super::{StaticRenderableComponent, command::StaticDrawable, ecs::RendererInterface};
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
@@ -117,9 +116,9 @@ impl<P: Platform> Renderer<P> {
   }
 }
 
-impl<P: Platform> RendererScene for Arc<Renderer<P>> {
-  fn register_static_renderable(&self, renderable: Drawable) {
-    let result = self.sender.send(RendererCommand::Register(renderable));
+impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
+  fn register_static_renderable(&self, entity: Entity, transform: &InterpolatedTransform, renderable: &StaticRenderableComponent) {
+    let result = self.sender.send(RendererCommand::RegisterStatic(StaticDrawable::new(entity, transform.0, &renderable.model_path, renderable.receive_shadows, renderable.cast_shadows, renderable.can_move)));
     if result.is_err() {
       panic!("Sending message to render thread failed");
     }

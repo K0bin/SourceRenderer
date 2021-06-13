@@ -1,6 +1,5 @@
-use std::{cmp::min, sync::{Arc, Mutex}};
-use crate::renderer::Renderer;
-use bitvec::prelude::*;
+use std::sync::{Arc, Mutex};
+use crate::renderer::{Renderer, RendererStaticDrawable};
 use crossbeam_channel::{Receiver, Sender};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
@@ -8,16 +7,18 @@ use crate::asset::AssetManager;
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{SwapchainError, RenderGraphInfo, RenderPassCallbacks, RenderGraphTemplateInfo, PassInfo, Backend, RenderGraph, Swapchain, Device, ExternalResource};
 use std::collections::HashMap;
-use crate::renderer::{DrawableType, View};
+use crate::renderer::View;
 use sourcerenderer_core::platform::WindowState;
 use smallvec::SmallVec;
 use crate::renderer::camera::LateLatchCamera;
 use crate::renderer::passes;
-use crate::renderer::drawable::{RDrawable, RDrawableType, DrawablePart};
+use crate::renderer::drawable::DrawablePart;
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use rayon::prelude::*;
 use crate::math::Frustum;
+
+use super::renderer_scene::RendererScene;
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
@@ -25,7 +26,7 @@ pub(super) struct RendererInternal<P: Platform> {
   graph: <P::GraphicsBackend as Backend>::RenderGraph,
   asset_manager: Arc<AssetManager<P>>,
   lightmap: Arc<RendererTexture<P::GraphicsBackend>>,
-  drawables: Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>,
+  scene: Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>,
   view: Arc<AtomicRefCell<View>>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
@@ -47,14 +48,15 @@ impl<P: Platform> RendererInternal<P> {
     let mut assets = RendererAssets::new(device);
     let lightmap = assets.insert_placeholder_texture("lightmap");
 
-    let drawables = Arc::new(AtomicRefCell::new(Vec::new()));
+    let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
-    let graph = RendererInternal::<P>::build_graph(device, swapchain, &view, &drawables, &lightmap, &primary_camera);
+    let graph = RendererInternal::<P>::build_graph(device, swapchain, &view, &scene, &lightmap, &primary_camera);
 
     Self {
       renderer: renderer.clone(),
       device: device.clone(),
       graph,
+      scene,
       asset_manager: asset_manager.clone(),
       view,
       sender,
@@ -62,8 +64,7 @@ impl<P: Platform> RendererInternal<P> {
       last_tick: SystemTime::now(),
       primary_camera: primary_camera.clone(),
       assets,
-      lightmap,
-      drawables
+      lightmap
     }
   }
 
@@ -71,7 +72,7 @@ impl<P: Platform> RendererInternal<P> {
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     view: &Arc<AtomicRefCell<View>>,
-    drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>,
+    scene: &Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>,
     lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>)
     -> <P::GraphicsBackend as Backend>::RenderGraph {
@@ -98,13 +99,13 @@ impl<P: Platform> RendererInternal<P> {
     });
 
     let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
-    let (pre_pass_name, pre_pass_callback) = passes::desktop::prepass::build_pass::<P>(device, &graph_template, &view, &drawables);
+    let (pre_pass_name, pre_pass_callback) = passes::desktop::prepass::build_pass::<P>(device, &graph_template, &view, scene);
     callbacks.insert(pre_pass_name, pre_pass_callback);
 
     let (clustering_pass_name, clustering_pass_callback) = passes::desktop::clustering::build_pass::<P>(device, &view);
     callbacks.insert(clustering_pass_name, clustering_pass_callback);
 
-    let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &view, &drawables, &lightmap);
+    let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &view, scene, &lightmap);
     callbacks.insert(geometry_pass_name, geometry_pass_callback);
 
     let (late_latch_pass_name, late_latch_pass_callback) = passes::late_latching::build_pass::<P>(device);
@@ -129,7 +130,7 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   fn receive_messages(&mut self) {
-    let mut drawables = self.drawables.borrow_mut();
+    let mut scene = self.scene.borrow_mut();
     let mut view = self.view.borrow_mut();
 
     let message_res = self.receiver.recv();
@@ -158,45 +159,24 @@ impl<P: Platform> RendererInternal<P> {
         }
 
         RendererCommand::UpdateTransform { entity, transform_mat } => {
-          let element = drawables.iter_mut()
-            .find(|r| r.entity == entity);
-          // TODO optimize
-
-          if let Some(element) = element {
-            element.old_transform = element.transform;
-            element.transform = transform_mat;
-          }
+          scene.update_transform(&entity, transform_mat);
         }
 
-        RendererCommand::Register(drawable) => {
-          drawables.push(RDrawable {
-            drawable_type: match &drawable.drawable_type {
-              DrawableType::Static {
-                model_path, receive_shadows, cast_shadows, can_move
-              } => {
-                let model = self.assets.get_model(model_path);
-                RDrawableType::Static {
-                  model,
-                  receive_shadows: *receive_shadows,
-                  cast_shadows: *cast_shadows,
-                  can_move: *can_move
-                }
-              }
-              _ => unimplemented!()
-            },
+        RendererCommand::RegisterStatic(drawable) => {
+          let model = self.assets.get_model(&drawable.model_path);
+          scene.add_static_drawable(drawable.entity, RendererStaticDrawable::<P::GraphicsBackend> {
             entity: drawable.entity,
             transform: drawable.transform,
-            old_transform: drawable.transform
+            old_transform: drawable.transform,
+            model,
+            receive_shadows: drawable.receive_shadows,
+            cast_shadows: drawable.cast_shadows,
+            can_move: drawable.can_move
           });
         }
 
         RendererCommand::UnregisterStatic(entity) => {
-          let index = drawables.iter()
-            .position(|r| r.entity == entity);
-
-          if let Some(index) = index {
-            drawables.remove(index);
-          }
+          scene.remove_static_drawable(&entity);
         }
       }
 
@@ -279,7 +259,9 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   fn update_visibility(&mut self) {
-    let drawables_ref = self.drawables.borrow();
+    let scene = self.scene.borrow();
+    let static_meshes = scene.static_drawables();
+
     let mut view_mut = self.view.borrow_mut();
 
     let mut existing_parts = std::mem::replace(&mut view_mut.drawable_parts, Vec::new());
@@ -290,36 +272,29 @@ impl<P: Platform> RendererInternal<P> {
     let frustum = Frustum::new(self.primary_camera.z_near(), self.primary_camera.z_far(), self.primary_camera.fov(), self.primary_camera.aspect_ratio());
     let camera_matrix = self.primary_camera.view();
     const CHUNK_SIZE: usize = 64;
-    drawables_ref.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
+    static_meshes.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
       let mut chunk_visible_parts = SmallVec::<[DrawablePart; 64]>::new();
-      for (index, drawable) in chunk.iter().enumerate() {
-        let model_view_matrix = camera_matrix * drawable.transform;
-        let bounding_box = match &drawable.drawable_type {
-          RDrawableType::Static { model, .. } => &model.mesh.bounding_box,
-          RDrawableType::Skinned => unimplemented!()
-        };
+      for (index, static_mesh) in chunk.iter().enumerate() {
+        let model_view_matrix = camera_matrix * static_mesh.transform;
+        let model = &static_mesh.model;
+        let bounding_box = &model.mesh.bounding_box;
         if let Some(bounding_box) = bounding_box {
           let is_visible = frustum.intersects(bounding_box, &model_view_matrix);
           if !is_visible {
             continue;
           }
           let drawable_index = chunk_index * CHUNK_SIZE + index;
-          match &drawable.drawable_type {
-            RDrawableType::Static { model, .. } => {
-              for part_index in 0..model.mesh.parts.len() {
-                if chunk_visible_parts.len() == chunk_visible_parts.capacity() {
-                  let mut global_parts = visible_parts.lock().unwrap();
-                  global_parts.extend_from_slice(&chunk_visible_parts[..]);
-                  chunk_visible_parts.clear();
-                }
-
-                chunk_visible_parts.push(DrawablePart {
-                  drawable_index,
-                  part_index
-                });
-              }
+          for part_index in 0..model.mesh.parts.len() {
+            if chunk_visible_parts.len() == chunk_visible_parts.capacity() {
+              let mut global_parts = visible_parts.lock().unwrap();
+              global_parts.extend_from_slice(&chunk_visible_parts[..]);
+              chunk_visible_parts.clear();
             }
-            RDrawableType::Skinned => unimplemented!()
+
+            chunk_visible_parts.push(DrawablePart {
+              drawable_index,
+              part_index
+            });
           }
         }
       }
@@ -333,22 +308,27 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   fn reorder(&mut self) {
-    let drawables = self.drawables.borrow();
+    let scene = self.scene.borrow();
+    let static_meshes = scene.static_drawables();
 
     let mut view_mut = self.view.borrow_mut();
     view_mut.drawable_parts.sort_by(|a, b| {
-      let drawable_a = &drawables[a.drawable_index];
-      let drawable_b = &drawables[b.drawable_index];
-
-      let material_a = match &drawable_a.drawable_type {
-          RDrawableType::Static { model, .. } => &model.materials[a.part_index],
-          RDrawableType::Skinned => unimplemented!()
-      }.as_ref();
-      let material_b = match &drawable_b.drawable_type {
-          RDrawableType::Static { model, .. } => &model.materials[b.part_index],
-          RDrawableType::Skinned => unimplemented!()
-      }.as_ref();
-      return material_a.cmp(material_b);
+      // if the drawable index is greater than the amount of static meshes, it is a skinned mesh
+      let b_is_skinned = a.drawable_index > static_meshes.len();
+      let a_is_skinned = a.drawable_index > static_meshes.len();
+      return if b_is_skinned && a_is_skinned {
+        unimplemented!()
+      } else if b_is_skinned {
+        std::cmp::Ordering::Less
+      } else if a_is_skinned {
+        std::cmp::Ordering::Greater
+      } else {
+        let static_mesh_a = &static_meshes[a.drawable_index];
+        let static_mesh_b = &static_meshes[b.drawable_index];
+        let material_a = &static_mesh_a.model.materials[a.part_index];
+        let material_b = &static_mesh_b.model.materials[a.part_index];
+        material_a.cmp(material_b)
+      }
     });
   }
 }

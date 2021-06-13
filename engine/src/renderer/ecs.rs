@@ -1,4 +1,3 @@
-use crate::renderer::{Drawable, DrawableType};
 use std::collections::HashSet;
 use legion::{Entity, IntoQuery, maybe_changed, EntityStore};
 
@@ -9,8 +8,8 @@ use crate::{ActiveCamera, Camera};
 use sourcerenderer_core::{Matrix4, Platform};
 use crate::transform::interpolation::InterpolatedTransform;
 
-pub trait RendererScene {
-  fn register_static_renderable(&self, renderable: Drawable);
+pub trait RendererInterface {
+  fn register_static_renderable(&self, entity: Entity, transform: &InterpolatedTransform, renderable: &StaticRenderableComponent);
   fn unregister_static_renderable(&self, entity: Entity);
   fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32);
   fn update_transform(&self, entity: Entity, transform: Matrix4);
@@ -32,7 +31,7 @@ pub struct ActiveStaticRenderables(HashSet<Entity>);
 #[derive(Clone, Default, Debug)]
 pub struct RegisteredStaticRenderables(HashSet<Entity>);
 
-pub fn install<P: Platform, R: RendererScene + Send + Sync + 'static>(systems: &mut Builder, renderer: R) {
+pub fn install<P: Platform, R: RendererInterface + Send + Sync + 'static>(systems: &mut Builder, renderer: R) {
   systems.add_system(renderer_system::<P, R>(renderer, ActiveStaticRenderables(HashSet::new()), RegisteredStaticRenderables(HashSet::new())));
 }
 
@@ -40,7 +39,7 @@ pub fn install<P: Platform, R: RendererScene + Send + Sync + 'static>(systems: &
 #[read_component(StaticRenderableComponent)]
 #[read_component(InterpolatedTransform)]
 #[read_component(Camera)]
-fn renderer<P: Platform, R: RendererScene + 'static>(world: &mut SubWorld,
+fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
             #[state] renderer: &R,
             #[state] active_static_renderables: &mut ActiveStaticRenderables,
             #[state] registered_static_renderables: &mut RegisteredStaticRenderables,
@@ -63,13 +62,7 @@ fn renderer<P: Platform, R: RendererScene + 'static>(world: &mut SubWorld,
     }
 
     if !registered_static_renderables.0.contains(entity) {
-      renderer.register_static_renderable(Drawable::new(*entity, DrawableType::Static {
-          model_path: component.model_path.clone(),
-          receive_shadows: component.receive_shadows,
-          cast_shadows: component.cast_shadows,
-          can_move: component.can_move
-        }, transform.0)
-      );
+      renderer.register_static_renderable(*entity, transform, &component);
 
       registered_static_renderables.0.insert(*entity);
     }

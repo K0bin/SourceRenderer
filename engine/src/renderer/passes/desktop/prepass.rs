@@ -1,8 +1,7 @@
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
-use crate::renderer::{drawable::{View, RDrawable}, passes::desktop::taa::{halton_point, scaled_halton_point}};
+use crate::renderer::{RendererScene, drawable::View, passes::desktop::taa::scaled_halton_point};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
-use crate::renderer::drawable::RDrawableType;
 use std::path::Path;
 use std::io::Read;
 use crate::renderer::passes::late_latching::OUTPUT_CAMERA as LATE_LATCHING_CAMERA;
@@ -102,7 +101,7 @@ struct FrameData {
   halton_point: Vec2
 }
 
-pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<AtomicRefCell<View>>, drawables: &Arc<AtomicRefCell<Vec<RDrawable<P::GraphicsBackend>>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
+pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, graph_template: &Arc<<P::GraphicsBackend as GraphicsBackend>::RenderGraphTemplate>, view: &Arc<AtomicRefCell<View>>, scene: &Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
   let vertex_shader = {
     let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
@@ -180,13 +179,14 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
   };
   let pipeline = device.create_graphics_pipeline(&pipeline_info, &graph_template, PASS_NAME, 0);
 
-  let c_drawables = drawables.clone();
+  let c_scene = scene.clone();
   let c_view = view.clone();
 
   (PASS_NAME.to_string(), RenderPassCallbacks::InternallyThreaded(
     vec![
       Arc::new(move |command_buffer_provider, graph_resources, frame_counter| {
-        let drawables = c_drawables.borrow();
+        let scene = c_scene.borrow();
+        let static_drawables = scene.static_drawables();
 
         const CHUNK_SIZE: usize = 128;
         let view_ref = c_view.borrow();
@@ -219,30 +219,27 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
           command_buffer.finish_binding();
 
           for part in chunk.into_iter() {
-            let drawable = &drawables[part.drawable_index];
+            let drawable = &static_drawables[part.drawable_index];
+            let model = &drawable.model;
 
             command_buffer.upload_dynamic_data_inline(&[PrepassModelCB {
               model: drawable.transform,
               old_model: drawable.old_transform
             }], ShaderType::VertexShader);
 
-            if let RDrawableType::Static {
-              model, ..
-            } = &drawable.drawable_type {
-              let mesh = &model.mesh;
+            let mesh = &model.mesh;
 
-              command_buffer.set_vertex_buffer(&mesh.vertices);
-              if mesh.indices.is_some() {
-                command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
-              }
+            command_buffer.set_vertex_buffer(&mesh.vertices);
+            if mesh.indices.is_some() {
+              command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
+            }
 
-              let range = &mesh.parts[part.part_index];
+            let range = &mesh.parts[part.part_index];
 
-              if mesh.indices.is_some() {
-                command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
-              } else {
-                command_buffer.draw(range.count, range.start);
-              }
+            if mesh.indices.is_some() {
+              command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+            } else {
+              command_buffer.draw(range.count, range.start);
             }
           }
 

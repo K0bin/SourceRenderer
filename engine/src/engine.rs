@@ -5,7 +5,7 @@ use sourcerenderer_core::ThreadPoolBuilder;
 use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::platform::Window;
 
-use crate::{asset::AssetManager, renderer::RendererScene};
+use crate::{asset::AssetManager, renderer::RendererInterface};
 use crate::renderer::Renderer;
 use crate::game::Game;
 
