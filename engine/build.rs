@@ -22,12 +22,17 @@ fn main() {
       .arg("-V")
       .arg("-o")
       .arg(compiled_file_path)
-      .arg(path)
+      .arg(path.clone())
       .output()
-      .expect("Failed to compile shader");
+      .unwrap_or_else(|e| panic!("Failed to compile shader: {}\n{}", path.to_str().unwrap(), e.to_string()));
 
       if !output.status.success() {
-        panic!("Failed to compile shader");
+        let e = String::from_utf8(output.stdout);
+        if let Ok(e) = e {
+          panic!("Failed to compile shader: {}\n{}\n", path.to_str().unwrap(), e);
+        } else {
+          panic!("Failed to compile shader: {}", path.to_str().unwrap());
+        }
       }
     }
   );
