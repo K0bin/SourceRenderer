@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::hash::Hash;
 use legion::{Entity, IntoQuery, maybe_changed, EntityStore};
 
 use legion::systems::Builder;
@@ -11,6 +12,8 @@ use crate::transform::interpolation::InterpolatedTransform;
 pub trait RendererInterface {
   fn register_static_renderable(&self, entity: Entity, transform: &InterpolatedTransform, renderable: &StaticRenderableComponent);
   fn unregister_static_renderable(&self, entity: Entity);
+  fn register_point_light(&self, entity: Entity, transform: &InterpolatedTransform, point_light: &PointLightComponent);
+  fn unregister_point_light(&self, entity: Entity);
   fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32);
   fn update_transform(&self, entity: Entity, transform: Matrix4);
   fn end_frame(&self);
@@ -26,23 +29,35 @@ pub struct StaticRenderableComponent {
   pub can_move: bool
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct PointLightComponent {
+  pub intensity: f32
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct ActiveStaticRenderables(HashSet<Entity>);
 #[derive(Clone, Default, Debug)]
 pub struct RegisteredStaticRenderables(HashSet<Entity>);
+#[derive(Clone, Default, Debug)]
+pub struct ActivePointLights(HashSet<Entity>);
+#[derive(Clone, Default, Debug)]
+pub struct RegisteredPointLights(HashSet<Entity>);
 
 pub fn install<P: Platform, R: RendererInterface + Send + Sync + 'static>(systems: &mut Builder, renderer: R) {
-  systems.add_system(renderer_system::<P, R>(renderer, ActiveStaticRenderables(HashSet::new()), RegisteredStaticRenderables(HashSet::new())));
+  systems.add_system(renderer_system::<P, R>(renderer, ActiveStaticRenderables(HashSet::new()), RegisteredStaticRenderables(HashSet::new()), ActivePointLights(HashSet::new()), RegisteredPointLights(HashSet::new())));
 }
 
 #[system]
 #[read_component(StaticRenderableComponent)]
 #[read_component(InterpolatedTransform)]
+#[read_component(PointLightComponent)]
 #[read_component(Camera)]
 fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
             #[state] renderer: &R,
             #[state] active_static_renderables: &mut ActiveStaticRenderables,
             #[state] registered_static_renderables: &mut RegisteredStaticRenderables,
+            #[state] active_point_lights: &mut ActivePointLights,
+            #[state] registered_point_lights: &mut RegisteredPointLights,
             #[resource] active_camera: &ActiveCamera) {
   if renderer.is_saturated() {
     return;
@@ -80,6 +95,37 @@ fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
   registered_static_renderables.0.retain(|entity| {
     if !active_static_renderables.0.contains(entity) {
       renderer.unregister_static_renderable(*entity);
+      false
+    } else {
+      true
+    }
+  });
+
+  let mut point_lights_query = <(Entity, &PointLightComponent, &InterpolatedTransform)>::query();
+  for (entity, component, transform) in point_lights_query.iter(world) {
+    if active_point_lights.0.contains(entity) {
+      continue;
+    }
+
+    if !registered_point_lights.0.contains(entity) {
+      renderer.register_point_light(*entity, transform, &component);
+
+      registered_point_lights.0.insert(*entity);
+    }
+
+    active_point_lights.0.insert(*entity);
+  }
+
+  let mut point_lights_update_transforms_query = <(Entity, &InterpolatedTransform)>::query()
+    .filter(component::<PointLightComponent>() & maybe_changed::<InterpolatedTransform>());
+
+  for (entity, transform) in point_lights_update_transforms_query.iter(world) {
+    renderer.update_transform(*entity, transform.0);
+  }
+
+  registered_point_lights.0.retain(|entity| {
+    if !active_point_lights.0.contains(entity) {
+      renderer.unregister_point_light(*entity);
       false
     } else {
       true

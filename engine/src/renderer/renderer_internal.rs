@@ -4,7 +4,7 @@ use crossbeam_channel::{Receiver, Sender};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec4};
 use sourcerenderer_core::graphics::{SwapchainError, RenderGraphInfo, RenderPassCallbacks, RenderGraphTemplateInfo, PassInfo, Backend, RenderGraph, Swapchain, Device, ExternalResource};
 use std::collections::HashMap;
 use crate::renderer::View;
@@ -18,6 +18,7 @@ use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use rayon::prelude::*;
 use crate::math::Frustum;
 
+use super::PointLight;
 use super::renderer_scene::RendererScene;
 
 pub(super) struct RendererInternal<P: Platform> {
@@ -85,6 +86,7 @@ impl<P: Platform> RendererInternal<P> {
       passes::desktop::sharpen::build_pass_template::<P::GraphicsBackend>(),
       passes::desktop::blit::build_blit_pass_template::<P::GraphicsBackend>(),
       passes::desktop::clustering::build_pass_template::<P::GraphicsBackend>(),
+      passes::desktop::light_binning::build_pass_template::<P::GraphicsBackend>(),
     ];
 
     let external_resources = vec![
@@ -104,6 +106,9 @@ impl<P: Platform> RendererInternal<P> {
 
     let (clustering_pass_name, clustering_pass_callback) = passes::desktop::clustering::build_pass::<P>(device, &view);
     callbacks.insert(clustering_pass_name, clustering_pass_callback);
+
+    let (light_binning_pass_name, light_binning_pass_callback) = passes::desktop::light_binning::build_pass::<P>(device, &view, &scene);
+    callbacks.insert(light_binning_pass_name, light_binning_pass_callback);
 
     let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &view, scene, &lightmap);
     callbacks.insert(geometry_pass_name, geometry_pass_callback);
@@ -162,22 +167,37 @@ impl<P: Platform> RendererInternal<P> {
           scene.update_transform(&entity, transform_mat);
         }
 
-        RendererCommand::RegisterStatic(drawable) => {
-          let model = self.assets.get_model(&drawable.model_path);
-          scene.add_static_drawable(drawable.entity, RendererStaticDrawable::<P::GraphicsBackend> {
-            entity: drawable.entity,
-            transform: drawable.transform,
-            old_transform: drawable.transform,
+        RendererCommand::RegisterStatic {
+          model_path, entity, transform, receive_shadows, cast_shadows, can_move
+         } => {
+          let model = self.assets.get_model(&model_path);
+          scene.add_static_drawable(entity, RendererStaticDrawable::<P::GraphicsBackend> {
+            entity,
+            transform,
+            old_transform: transform,
             model,
-            receive_shadows: drawable.receive_shadows,
-            cast_shadows: drawable.cast_shadows,
-            can_move: drawable.can_move
+            receive_shadows,
+            cast_shadows,
+            can_move
           });
         }
 
         RendererCommand::UnregisterStatic(entity) => {
           scene.remove_static_drawable(&entity);
         }
+        RendererCommand::RegisterPointLight {
+          entity,
+          transform,
+          intensity
+        } => {
+          scene.add_point_light(entity, PointLight {
+            position: (transform * Vec4::new(0f32, 0f32, 0f32, 1f32)).xyz(),
+            intensity,
+          });
+        },
+        RendererCommand::UnregisterPointLight(entity) => {
+          scene.remove_point_light(&entity);
+        },
       }
 
       let message_res = self.receiver.recv();
@@ -326,7 +346,7 @@ impl<P: Platform> RendererInternal<P> {
         let static_mesh_a = &static_meshes[a.drawable_index];
         let static_mesh_b = &static_meshes[b.drawable_index];
         let material_a = &static_mesh_a.model.materials[a.part_index];
-        let material_b = &static_mesh_b.model.materials[a.part_index];
+        let material_b = &static_mesh_b.model.materials[b.part_index];
         material_a.cmp(material_b)
       }
     });

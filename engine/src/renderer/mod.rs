@@ -17,6 +17,7 @@ mod renderer_assets;
 pub use self::renderer::Renderer;
 
 pub use self::ecs::StaticRenderableComponent;
+pub use self::ecs::PointLightComponent;
 pub use self::drawable::DrawablePart;
 pub use self::camera::LateLatchCamera;
 use self::drawable::View;

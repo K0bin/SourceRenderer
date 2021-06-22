@@ -1,15 +1,16 @@
 use legion::{World, Resources, component};
+use sourcerenderer_core::platform::{InputState, Key};
 use crate::{Transform, Camera};
 use sourcerenderer_core::graphics::{Format, TextureInfo, SampleCount};
-use nalgebra::{Unit};
+use nalgebra::{Unit, UnitQuaternion};
 use image::GenericImageView;
 use crate::asset::{AssetManager, MeshRange};
 use sourcerenderer_core::{Platform, Quaternion};
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::Vec2;
 use std::sync::Arc;
-use crate::renderer::StaticRenderableComponent;
-use legion::systems::Builder as SystemBuilder;
+use crate::renderer::{PointLightComponent, StaticRenderableComponent};
+use legion::systems::{Builder as SystemBuilder, CommandBuffer};
 
 use crate::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
@@ -31,6 +32,10 @@ struct Vertex {
 struct SpinningCube {}
 
 pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, systems: &mut SystemBuilder, asset_manager: &Arc<AssetManager<P>>) {
+  systems.add_system(place_lights_system(PlaceLightsState {
+    was_space_down: false
+  }));
+
   let indices: [u32; 36] = [
     2, 1, 0, 0, 3, 2, // front
     4, 5, 6, 6, 7, 4, // back
@@ -217,7 +222,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     },
   ];
 
-  let mut image_file = <P::IO as IO>::open_asset("texture.png").expect("Failed to open texture");
+  /*let mut image_file = <P::IO as IO>::open_asset("texture.png").expect("Failed to open texture");
   let length = image_file.seek(SeekFrom::End(0)).unwrap();
   image_file.seek(SeekFrom::Start(0)).unwrap();
   let mut data = Vec::<u8>::with_capacity(length as usize);
@@ -235,7 +240,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     mip_levels: 1,
     array_length: 1,
     samples: SampleCount::Samples1
-  };
+  };*/
 
   let triangle_data = unsafe { std::slice::from_raw_parts(triangle.as_ptr() as *const u8, std::mem::size_of_val(&triangle[..])) }.to_vec().into_boxed_slice();
   let index_data = unsafe { std::slice::from_raw_parts(indices.as_ptr() as *const u8, std::mem::size_of_val(&indices[..])) }.to_vec().into_boxed_slice();
@@ -243,7 +248,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     start: 0,
     count: indices.len() as u32
   }].into_boxed_slice());
-  asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
+  //asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
   asset_manager.add_material("cube_material", "cube_texture_albedo");
   asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
 
@@ -266,4 +271,27 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
 #[filter(component::<SpinningCube>())]
 fn spin(transform: &mut Transform, #[resource] delta_time: &DeltaTime) {
   transform.rotation *= Quaternion::from_axis_angle(&Unit::new_unchecked(Vec3::new(0.0f32, 1.0f32, 0.0f32)), 1.0f32 * delta_time.secs());
+}
+
+
+pub struct PlaceLightsState {
+  was_space_down: bool
+}
+
+#[system(for_each)]
+#[filter(component::<FPSCameraComponent>())]
+fn place_lights(#[resource] input: &InputState, transform: &mut Transform, #[state] state: &mut PlaceLightsState, cmd_buffer: &mut CommandBuffer) {
+  if input.is_key_down(Key::Space) {
+    if !state.was_space_down {
+      println!("Adding light");
+      cmd_buffer.extend([(Transform {
+        position: transform.position,
+        rotation: UnitQuaternion::default(),
+        scale: Vec3::new(1f32, 1f32, 1f32),
+      }, PointLightComponent { intensity: 1.0f32 })]);
+    }
+    state.was_space_down = true;
+  } else {
+    state.was_space_down = false;
+  }
 }

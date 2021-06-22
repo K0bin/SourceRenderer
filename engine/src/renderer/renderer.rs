@@ -16,7 +16,7 @@ use legion::systems::Builder;
 use crate::renderer::RendererInternal;
 use crate::renderer::camera::LateLatchCamera;
 
-use super::{StaticRenderableComponent, command::StaticDrawable, ecs::RendererInterface};
+use super::{StaticRenderableComponent, ecs::{PointLightComponent, RendererInterface}};
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
@@ -118,7 +118,14 @@ impl<P: Platform> Renderer<P> {
 
 impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
   fn register_static_renderable(&self, entity: Entity, transform: &InterpolatedTransform, renderable: &StaticRenderableComponent) {
-    let result = self.sender.send(RendererCommand::RegisterStatic(StaticDrawable::new(entity, transform.0, &renderable.model_path, renderable.receive_shadows, renderable.cast_shadows, renderable.can_move)));
+    let result = self.sender.send(RendererCommand::RegisterStatic {
+      entity,
+      transform: transform.0,
+      model_path: renderable.model_path.to_string(),
+      receive_shadows: renderable.receive_shadows,
+      cast_shadows: renderable.cast_shadows,
+      can_move: renderable.can_move
+    });
     if result.is_err() {
       panic!("Sending message to render thread failed");
     }
@@ -126,6 +133,24 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
 
   fn unregister_static_renderable(&self, entity: Entity) {
     let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  fn register_point_light(&self, entity: Entity, transform: &InterpolatedTransform, component: &PointLightComponent) {
+    let result = self.sender.send(RendererCommand::RegisterPointLight {
+      entity,
+      transform: transform.0,
+      intensity: component.intensity
+    });
+    if result.is_err() {
+      panic!("Sending message to render thread failed");
+    }
+  }
+
+  fn unregister_point_light(&self, entity: Entity) {
+    let result = self.sender.send(RendererCommand::UnregisterPointLight(entity));
     if result.is_err() {
       panic!("Sending message to render thread failed");
     }

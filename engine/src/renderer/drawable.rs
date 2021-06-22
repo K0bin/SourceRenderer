@@ -37,7 +37,7 @@ impl Default for View {
       proj_matrix: Matrix4::identity(),
       camera_fov: f32::consts::PI / 2f32,
       near_plane: 0.1f32,
-      far_plane: 10f32,
+      far_plane: 100f32,
       drawable_parts: Vec::new()
     }
   }

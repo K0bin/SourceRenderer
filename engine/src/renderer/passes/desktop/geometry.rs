@@ -1,6 +1,7 @@
+use nalgebra::Vector2;
 use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, BACK_BUFFER_ATTACHMENT_NAME, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InnerCommandBufferProvider, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport}};
 use std::sync::Arc;
-use crate::renderer::{drawable::View, renderer_scene::RendererScene};
+use crate::renderer::{drawable::View, passes::desktop::{clustering::OUTPUT_CLUSTERS, light_binning::OUTPUT_LIGHT_BITMASKS}, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::passes::desktop::taa::scaled_halton_point;
 use std::path::Path;
@@ -70,7 +71,16 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
 #[derive(Debug, Clone, Copy)]
 struct FrameData {
   swapchain_transform: Matrix4,
-  halton_point: Vec2
+  halton_point: Vec2,
+  z_near: f32,
+  z_far: f32,
+  rt_size: Vector2::<u32>
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct LightInfo {
+  point_light_count: u32
 }
 
 pub(in super::super::super) fn build_pass<P: Platform>(
@@ -211,10 +221,13 @@ pub(in super::super::super) fn build_pass<P: Platform>(
           let dimensions = graph_resources.texture_dimensions(OUTPUT_IMAGE).unwrap();
           let per_frame = FrameData {
             swapchain_transform: *graph_resources.swapchain_transform(),
-            halton_point: scaled_halton_point(dimensions.width, dimensions.height, (frame_counter % 8) as u32)
+            halton_point: scaled_halton_point(dimensions.width, dimensions.height, (frame_counter % 8) as u32),
+            z_near: view_ref.near_plane,
+            z_far: view_ref.far_plane,
+            rt_size: Vector2::<u32>::new(dimensions.width, dimensions.height)
           };
           let transform_constant_buffer = command_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
-          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, &transform_constant_buffer);
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 6, &transform_constant_buffer);
 
           command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
           command_buffer.set_viewports(&[Viewport {
@@ -228,7 +241,18 @@ pub(in super::super::super) fn build_pass<P: Platform>(
             extent: Vec2UI::new(9999, 9999),
           }]);
 
-          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
+          let cluster_info_buffer = command_buffer.upload_dynamic_data(&[nalgebra::Vector3::<u32>::new(16, 9, 24)], BufferUsage::STORAGE);
+          let light_info_buffer = command_buffer.upload_dynamic_data(&[LightInfo {
+            point_light_count: scene.point_lights().len() as u32
+          }], BufferUsage::STORAGE);
+          let point_light_buffer = command_buffer.upload_dynamic_data(scene.point_lights(), BufferUsage::STORAGE);
+
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 0, &cluster_info_buffer);
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(OUTPUT_CLUSTERS, false).expect("Failed to get graph resource"));
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 3, &light_info_buffer);
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 4, &point_light_buffer);
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, graph_resources.get_buffer(OUTPUT_LIGHT_BITMASKS, false).expect("Failed to get graph resource"));
           for part in chunk.into_iter() {
             let drawable = &static_drawables[part.drawable_index];
 

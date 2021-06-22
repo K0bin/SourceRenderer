@@ -4,7 +4,7 @@ use sourcerenderer_core::graphics::{Backend, Device, MemoryUsage, BufferUsage, B
 use sourcerenderer_core::{Matrix4, Vec3, Quaternion};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crossbeam_utils::atomic::AtomicCell;
-use nalgebra::Point3;
+use nalgebra::{Point, Point3};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -42,7 +42,7 @@ impl<B: Backend> LateLatchCamera<B> {
       aspect_ratio,
       fov,
       z_near: 0.1f32,
-      z_far: 1000f32
+      z_far: 100f32
     };
     late_letch_cam.update_projection(late_letch_cam.proj());
     late_letch_cam
@@ -79,13 +79,9 @@ impl<B: Backend> LateLatchCamera<B> {
   }
 
   fn update_camera(&self, position: Vec3, rotation: Quaternion) {
-    let transform = Matrix4::new_translation(&position)
-        * Matrix4::new_rotation(rotation.axis_angle().map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| *axis * amount));
-
-    let position = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
-    let target = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
-
-    self.update_view(Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32)));
+    let position = Point3::<f32>::new(position.x, position.y, position.z);
+    let forward = rotation.transform_vector(&Vec3::new(0.0f32, 0.0f32, -1.0f32));
+    self.update_view(Matrix4::look_at_rh(&position, &(position + forward), &Vec3::new(0.0f32, 1.0f32, 0.0f32)));
   }
 
   fn update_view(&self, view: Matrix4) {
@@ -109,11 +105,9 @@ impl<B: Backend> LateLatchCamera<B> {
   pub fn view(&self) -> Matrix4 {
     let position = self.position.load();
     let rotation = self.rotation.load();
-    let transform = Matrix4::new_translation(&position)
-        * Matrix4::new_rotation(rotation.axis_angle().map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| *axis * amount));
-    let position = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 0.0f32));
-    let target = transform.transform_point(&Point3::new(0.0f32, 0.0f32, 1.0f32));
-    Matrix4::look_at_rh(&position, &target, &Vec3::new(0.0f32, 1.0f32, 0.0f32))
+    let position = Point3::<f32>::new(position.x, position.y, position.z);
+    let forward = rotation.transform_vector(&Vec3::new(0.0f32, 0.0f32, -1.0f32));
+    Matrix4::look_at_rh(&position, &(position + forward), &Vec3::new(0.0f32, 1.0f32, 0.0f32))
   }
 
   pub fn proj(&self) -> Matrix4 {

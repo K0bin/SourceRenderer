@@ -44,9 +44,9 @@ pub fn fps_camera_rotation<P: Platform>(input: &InputState, fps_camera: &mut FPS
   } else {
     Vec2::new(0f32, 0f32)
   };
-  fps_camera.pitch += mouse_delta.y as f32 / 20_000f32 * fps_camera.sensitivity;
+  fps_camera.pitch -= mouse_delta.y as f32 / 20_000f32 * fps_camera.sensitivity;
   fps_camera.yaw -= mouse_delta.x as f32 / 20_000f32 * fps_camera.sensitivity;
-  fps_camera.pitch += touch_delta.y / 20_000f32 * fps_camera.sensitivity;
+  fps_camera.pitch -= touch_delta.y / 20_000f32 * fps_camera.sensitivity;
   fps_camera.yaw -= touch_delta.x / 20_000f32 * fps_camera.sensitivity;
 
   fps_camera.pitch = fps_camera.pitch.max(-std::f32::consts::FRAC_PI_2 + 0.01f32).min(std::f32::consts::FRAC_PI_2 - 0.01f32);
@@ -66,10 +66,10 @@ fn retrieve_fps_camera_rotation<P: Platform>(#[resource] late_latch_camera: &Arc
 fn fps_camera_movement<P: Platform>(#[resource] input: &InputState, transform: &mut Transform, #[resource] tick_rate: &TickRate) {
   let mut movement_vector = Vec3::new(0f32, 0f32, 0f32);
   if input.is_key_down(Key::W) {
-    movement_vector.z += 1f32;
+    movement_vector.z -= 1f32;
   }
   if input.is_key_down(Key::S) {
-    movement_vector.z -= 1f32;
+    movement_vector.z += 1f32;
   }
   if input.is_key_down(Key::A) {
     movement_vector.x -= 1f32;
@@ -87,7 +87,7 @@ fn fps_camera_movement<P: Platform>(#[resource] input: &InputState, transform: &
   if movement_vector.x.abs() > 0.00001f32 || movement_vector.z.abs() > 0.00001f32 {
     let y = movement_vector.y;
     movement_vector = movement_vector.normalize();
-    movement_vector = Vec3::new(-movement_vector.x, 0.0f32, movement_vector.z).normalize();
+    movement_vector = Vec3::new(movement_vector.x, 0.0f32, movement_vector.z).normalize();
     movement_vector = transform.rotation.transform_vector(&movement_vector);
     movement_vector.y = y;
   }

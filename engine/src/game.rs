@@ -4,9 +4,10 @@ use std::time::{Duration, SystemTime};
 
 use legion::{World, Resources, Schedule};
 
-use sourcerenderer_core::Platform;
+use nalgebra::{Quaternion, UnitQuaternion};
+use sourcerenderer_core::{Platform, Vec3};
 
-use crate::renderer::*;
+use crate::{Transform, renderer::*};
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;
@@ -99,6 +100,14 @@ impl<P: Platform> Game<P> {
       transform::interpolation::install(&mut fixed_schedule, &mut schedule);
       transform::install(&mut fixed_schedule);
       c_renderer.install(&mut world, &mut resources, &mut schedule);
+
+      let point_light_entity = world.push((Transform {
+        position: Vec3::new(0f32, 0f32, 0f32),
+        rotation: UnitQuaternion::default(),
+        scale: Vec3::new(1f32, 1f32, 1f32),
+      }, PointLightComponent { intensity: 1.0f32 }));
+
+      println!("Point Light: {:?}", point_light_entity);
 
       world.move_from(&mut level, &FilterAll {});
 

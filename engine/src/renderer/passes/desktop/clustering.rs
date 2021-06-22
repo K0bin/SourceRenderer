@@ -1,4 +1,4 @@
-use nalgebra::{Vector3, Vector4};
+use nalgebra::{Vector2, Vector3, Vector4};
 use sourcerenderer_core::{Vec2UI, Vec4, atomic_refcell::{AtomicRef, AtomicRefCell}, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferUsage, CommandBuffer, Device, InputUsage, MemoryUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, Shader, ShaderType}};
 use sourcerenderer_core::{Matrix4, Platform};
 use std::{borrow::Borrow, cmp::max, sync::Arc};
@@ -38,14 +38,14 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct ShaderScreenToView {
-  tile_size: Vector4<u32>,
+  tile_size: Vec2UI,
   rt_dimensions: Vec2UI,
   z_near: f32,
   z_far: f32
 }
 
 pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, view: &Arc<AtomicRefCell<View>>) -> (String, RenderPassCallbacks<P::GraphicsBackend>) {
-  let copy_camera_compute_shader = {
+  let clustering_shader = {
     let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("clustering.comp.spv"))).unwrap();
     let mut bytes: Vec<u8> = Vec::new();
     file.read_to_end(&mut bytes).unwrap();
@@ -55,17 +55,16 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
   let c_view = view.clone();
   let c_device = device.clone();
 
-  let copy_camera_pipeline = device.create_compute_pipeline(&copy_camera_compute_shader);
+  let clustering_pipeline = device.create_compute_pipeline(&clustering_shader);
   (PASS_NAME.to_string(), RenderPassCallbacks::Regular(
     vec![
       Arc::new(move |command_buffer_a, graph_resources, _frame_counter| {
         let view_ref: AtomicRef<View> = c_view.as_ref().borrow();
 
-        let tile_count = Vector3::<u32>::new(16, 9, 24);
+        let cluster_count = Vector3::<u32>::new(16, 9, 24);
         let size = graph_resources.texture_dimensions(super::geometry::OUTPUT_IMAGE).unwrap();
-        let tile_size = max(((size.width as f32) / tile_count.x as f32).ceil() as u32, ((size.height as f32) / tile_count.y as f32).ceil() as u32);
         let screen_to_view = ShaderScreenToView {
-          tile_size: Vector4::<u32>::new(0, 0, 0, tile_size),
+          tile_size: Vec2UI::new(((size.width as f32) / cluster_count.x as f32).ceil() as u32, ((size.height as f32) / cluster_count.y as f32).ceil() as u32),
           rt_dimensions: Vec2UI::new(size.width, size.height),
           z_near: view_ref.near_plane,
           z_far: view_ref.far_plane
@@ -74,12 +73,12 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
         let screen_to_view_cbuffer = c_device.upload_data(&[screen_to_view], MemoryUsage::CpuOnly, BufferUsage::STORAGE);
 
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
-        command_buffer.set_pipeline(PipelineBinding::Compute(&copy_camera_pipeline));
+        command_buffer.set_pipeline(PipelineBinding::Compute(&clustering_pipeline));
         command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, graph_resources.get_buffer(OUTPUT_CLUSTERS, false).expect("Failed to get graph resource"));
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 1, &screen_to_view_cbuffer);
+        command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &screen_to_view_cbuffer);
         command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, graph_resources.get_buffer(super::super::late_latching::OUTPUT_CAMERA, false).expect("Failed to get graph resource"));
         command_buffer.finish_binding();
-        command_buffer.dispatch(tile_count.x, tile_count.y, tile_count.z);
+        command_buffer.dispatch(cluster_count.x, cluster_count.y, cluster_count.z);
       })
     ]
   ))
