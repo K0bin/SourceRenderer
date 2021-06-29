@@ -38,7 +38,7 @@ impl DeltaTime {
   }
 }
 
-pub struct Tick(u64);
+pub struct Tick(pub u64);
 
 pub struct FilterAll {}
 impl LayoutFilter for FilterAll {

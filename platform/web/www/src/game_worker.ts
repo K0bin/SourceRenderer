@@ -6,7 +6,7 @@ let game: wasm.Game | null = null;
 start();
 
 function start() {
-  game = wasm.startGameWorker(32);
+  game = wasm.gameWorkerMain(32);
 }
 
 console.log("game worker started.");

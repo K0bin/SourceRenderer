@@ -38,3 +38,6 @@ mod math;
 
 pub mod renderer;
 mod game;
+
+#[cfg(not(feature = "threading"))]
+pub use game::{DeltaTime, TickDelta, TickDuration, TickRate, Tick};

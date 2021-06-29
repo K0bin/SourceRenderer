@@ -31,17 +31,11 @@ pub fn start_engine(canvas: EventTarget) -> WebEngine {
   WebEngine::run(canvas.dyn_into::<HtmlCanvasElement>().unwrap())
 }
 
-#[wasm_bindgen(js_name = "startGameWorker")]
+#[wasm_bindgen(js_name = "gameWorkerMain")]
 pub fn start_game(tick_rate: u32) -> Game {
   utils::set_panic_hook();
   Game::run(tick_rate)
 }
-
-/*#[wasm_bindgen(js_name = "startGameWorker")]
-pub fn start_game_worker() {
-  //Game::new()
-  unimplemented!()
-}*/
 
 #[wasm_bindgen(raw_module = "../../www/src/lib.ts")]
 extern "C" {
