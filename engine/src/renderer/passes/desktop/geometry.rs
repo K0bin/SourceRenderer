@@ -44,12 +44,12 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
               is_history: false,
               stage: PipelineStage::GraphicsShaders
             },
-            PassInput {
+            /*PassInput {
               name: super::clustering::OUTPUT_CLUSTERS.to_string(),
               usage: InputUsage::Storage,
               is_history: false,
               stage: PipelineStage::FragmentShader
-            },
+            },*/
             PassInput {
               name: super::light_binning::OUTPUT_LIGHT_BITMASKS.to_string(),
               usage: InputUsage::Storage,
@@ -74,12 +74,10 @@ struct FrameData {
   halton_point: Vec2,
   z_near: f32,
   z_far: f32,
-  rt_size: Vector2::<u32>
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct LightInfo {
+  rt_size: Vector2::<u32>,
+  cluster_z_bias: f32,
+  cluster_z_scale: f32,
+  cluster_count: nalgebra::Vector3::<u32>,
   point_light_count: u32
 }
 
@@ -219,15 +217,25 @@ pub(in super::super::super) fn build_pass<P: Platform>(
         chunks.map(|chunk| {
           let mut command_buffer = command_buffer_provider.get_inner_command_buffer();
           let dimensions = graph_resources.texture_dimensions(OUTPUT_IMAGE).unwrap();
+
+          let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
+          let near = view_ref.near_plane;
+          let far = view_ref.far_plane;
+          let cluster_z_scale = (cluster_count.z as f32) / (far / near).log2();
+          let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
           let per_frame = FrameData {
             swapchain_transform: *graph_resources.swapchain_transform(),
             halton_point: scaled_halton_point(dimensions.width, dimensions.height, (frame_counter % 8) as u32),
             z_near: view_ref.near_plane,
             z_far: view_ref.far_plane,
-            rt_size: Vector2::<u32>::new(dimensions.width, dimensions.height)
+            rt_size: Vector2::<u32>::new(dimensions.width, dimensions.height),
+            cluster_z_bias,
+            cluster_z_scale,
+            cluster_count,
+            point_light_count: scene.point_lights().len() as u32
           };
           let transform_constant_buffer = command_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
-          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 6, &transform_constant_buffer);
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &transform_constant_buffer);
 
           command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
           command_buffer.set_viewports(&[Viewport {
@@ -241,18 +249,12 @@ pub(in super::super::super) fn build_pass<P: Platform>(
             extent: Vec2UI::new(9999, 9999),
           }]);
 
-          let cluster_info_buffer = command_buffer.upload_dynamic_data(&[nalgebra::Vector3::<u32>::new(16, 9, 24)], BufferUsage::STORAGE);
-          let light_info_buffer = command_buffer.upload_dynamic_data(&[LightInfo {
-            point_light_count: scene.point_lights().len() as u32
-          }], BufferUsage::STORAGE);
           let point_light_buffer = command_buffer.upload_dynamic_data(scene.point_lights(), BufferUsage::STORAGE);
 
-          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 0, &cluster_info_buffer);
-          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, graph_resources.get_buffer(OUTPUT_CLUSTERS, false).expect("Failed to get graph resource"));
-          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
-          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 3, &light_info_buffer);
-          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 4, &point_light_buffer);
-          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, graph_resources.get_buffer(OUTPUT_LIGHT_BITMASKS, false).expect("Failed to get graph resource"));
+          //command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 4, graph_resources.get_buffer(OUTPUT_CLUSTERS, false).expect("Failed to get graph resource"));
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer);
+          command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, graph_resources.get_buffer(OUTPUT_LIGHT_BITMASKS, false).expect("Failed to get graph resource"));
           for part in chunk.into_iter() {
             let drawable = &static_drawables[part.drawable_index];
 

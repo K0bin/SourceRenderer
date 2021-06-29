@@ -17,44 +17,40 @@ struct Cluster {
   vec4 maxPoint;
 };
 
-layout(std430, set = 2, binding = 0, std430) readonly buffer clusterInfo {
-  uvec3 clusterCount;
-};
-
-layout(std430, set = 2, binding = 1, std430) readonly buffer clusterAABB {
-  Cluster clusters[];
-};
-
-layout(std140, set = 2, binding = 2, std140) uniform CameraUbo {
+layout(std140, set = 2, binding = 0, std140) uniform CameraUbo {
   mat4 viewProj;
   mat4 invProj;
   mat4 view;
   mat4 proj;
 } camera;
 
-layout(std430, set = 2, binding = 3, std430) readonly buffer lightsBuffer {
-  uint pointLightCount;
-};
-
 struct PointLight {
   vec3 position;
   float intensity;
 };
-layout(std430, set = 2, binding = 4, std430) readonly buffer pointLightsBuffer {
+layout(std430, set = 2, binding = 1, std430) readonly buffer pointLightsBuffer {
   PointLight pointLights[];
 };
 
-layout (std430, set = 2, binding = 5) buffer lightBitmasksBuffer {
+layout (std430, set = 2, binding = 2) buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
-layout(set = 2, binding = 6) uniform PerFrameUbo {
+layout(set = 2, binding = 3) uniform PerFrameUbo {
   mat4 swapchainTransform;
   vec2 jitterPoint;
   float zNear;
   float zFar;
   uvec2 rtSize;
+  float clusterZBias;
+  float clusterZScale;
+  uvec3 clusterCount;
+  uint pointLightCount;
 };
+
+/*layout(std430, set = 2, binding = 4, std430) readonly buffer clusterAABB {
+  Cluster clusters[];
+};*/
 
 float linearizeDepth(float d, float zNear,float zFar);
 
@@ -62,12 +58,10 @@ void main(void) {
   vec2 tileSize = vec2(rtSize) / vec2(clusterCount.xy);
 
   float z = linearizeDepth(gl_FragCoord.z, zNear, zFar);
-  float scale = float(clusterCount.z) / log2(zFar / zNear);
-  float bias = -float(clusterCount.z) * log2(zNear) / log2(zFar / zNear);
   uvec3 clusterIndex3d = uvec3(
     uint(gl_FragCoord.x / tileSize.x),
     uint((rtSize.y - gl_FragCoord.y) / tileSize.y),
-    uint(max(0.0, log2(z) * scale + bias))
+    uint(max(0.0, log2(z) * clusterZScale + clusterZBias))
   );
 
   uint clusterIndex = clusterIndex3d.x +
