@@ -105,8 +105,7 @@ void main(void) {
         PointLight light = pointLights[i * 32 + bitIndex];
         vec3 fragToLight = in_worldPosition - light.position;
         vec3 lightDir = normalize(fragToLight);
-        vec3 absFragToLight = abs(fragToLight);
-        float lightSquaredDist = dot(absFragToLight, absFragToLight);
+        float lightSquaredDist = dot(fragToLight, fragToLight);
         lighting += max(0.0, dot(in_normal, normalize(lightDir)) * (light.intensity * 1.0 / lightSquaredDist));
       }
     }
