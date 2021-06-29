@@ -283,7 +283,6 @@ pub struct PlaceLightsState {
 fn place_lights(#[resource] input: &InputState, transform: &mut Transform, #[state] state: &mut PlaceLightsState, cmd_buffer: &mut CommandBuffer) {
   if input.is_key_down(Key::Space) {
     if !state.was_space_down {
-      println!("Adding light");
       cmd_buffer.extend([(Transform {
         position: transform.position,
         rotation: UnitQuaternion::default(),

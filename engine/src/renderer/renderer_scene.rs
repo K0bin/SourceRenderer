@@ -64,7 +64,6 @@ impl<B: Backend> RendererScene<B> {
   }
 
   pub(super) fn add_point_light(&mut self, entity: Entity, light: PointLight) {
-    println!("Added light");
     self.light_entity_map.insert(entity, self.point_lights.len());
     self.point_lights.push(light);
   }
