@@ -12,7 +12,6 @@ use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
 use crate::VkRenderPass;
-use std::cmp::min;
 use std::iter::FromIterator;
 use ash::vk::{AttachmentStoreOp, AttachmentLoadOp};
 
@@ -1360,10 +1359,10 @@ impl VkRenderGraphTemplate {
     let discard = current_access.layout == vk::ImageLayout::UNDEFINED;
     if discard {
       src_access = vk::AccessFlags::empty();
-      dst_access = vk::AccessFlags::empty();
+      dst_access = pass_access.access;
       dst_stage = pass_access.stage;
-      if src_stage.is_empty() {
-        src_stage = dst_stage;
+      if src_access.is_empty() {
+        src_stage = vk::PipelineStageFlags::TOP_OF_PIPE;
       }
     } else if src_access != vk::AccessFlags::empty() {
       // Flush + invalidate caches
@@ -1381,6 +1380,7 @@ impl VkRenderGraphTemplate {
     } else {
       // Only a layout transition
       dst_stage = pass_access.stage;
+      dst_access = pass_access.access;
     }
 
     current_access.access = pass_access.access & write_access_mask();
@@ -1485,10 +1485,11 @@ impl VkRenderGraphTemplate {
     let discard = current_access.layout == vk::ImageLayout::UNDEFINED;
     if discard {
       src_access = vk::AccessFlags::empty();
-      dst_access = vk::AccessFlags::empty();
+      dst_access = pass_access.access;
       dst_stage = pass_access.stage;
-      if src_stage.is_empty() {
-        src_stage = dst_stage;
+
+      if src_access.is_empty() {
+        src_stage = vk::PipelineStageFlags::TOP_OF_PIPE;
       }
     } else if src_access != vk::AccessFlags::empty() {
       // Flush + invalidate caches
@@ -1506,6 +1507,7 @@ impl VkRenderGraphTemplate {
     } else {
       // Only a layout transition
       dst_stage = pass_access.stage;
+      dst_access = pass_access.access;
     }
 
     let old_layout = current_access.layout;
