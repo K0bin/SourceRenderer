@@ -1,5 +1,6 @@
+use sourcerenderer_core::graphics::RenderPassInfo;
 use sourcerenderer_core::pool::{Pool, Recyclable};
-use crate::{VkSemaphore, VkFenceInner};
+use crate::{VkFenceInner, VkRenderPass, VkSemaphore};
 use crate::buffer::BufferAllocator;
 use std::sync::{RwLock, Arc};
 use crate::descriptor::VkDescriptorSetLayout;
@@ -15,7 +16,8 @@ pub struct VkShared {
   events: Pool<VkEvent>,
   buffers: BufferAllocator, // consider per thread
   descriptor_set_layouts: RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>>,
-  pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>
+  pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>,
+  render_passes: RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>>,
 }
 
 impl VkShared {
@@ -35,7 +37,8 @@ impl VkShared {
       )),
       buffers: BufferAllocator::new(device, true),
       descriptor_set_layouts: RwLock::new(HashMap::new()),
-      pipeline_layouts: RwLock::new(HashMap::new())
+      pipeline_layouts: RwLock::new(HashMap::new()),
+      render_passes: RwLock::new(HashMap::new())
     }
   }
 
@@ -72,6 +75,11 @@ impl VkShared {
   #[inline]
   pub(crate) fn get_pipeline_layouts(&self) -> &RwLock<HashMap<u64, Arc<VkPipelineLayout>>> {
     &self.pipeline_layouts
+  }
+
+  #[inline]
+  pub(crate) fn get_render_passes(&self) -> &RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>> {
+    &self.render_passes
   }
 
   #[inline]

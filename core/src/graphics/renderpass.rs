@@ -1,14 +1,16 @@
 use crate::graphics::Format;
 use crate::graphics::SampleCount;
 
-#[derive(Clone, Copy, PartialEq)]
+use super::ShaderType;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoadOp {
   Load,
   Clear,
   DontCare
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StoreOp {
   Store,
   DontCare
@@ -33,32 +35,49 @@ pub enum RenderpassRecordingMode {
   CommandBuffers
 }
 
-pub struct Attachment {
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct AttachmentInfo {
   pub format: Format,
   pub samples: SampleCount,
   pub load_op: LoadOp,
   pub store_op: StoreOp,
   pub stencil_load_op: LoadOp,
-  pub stencil_store_op: StoreOp,
-  pub initial_layout: ImageLayout,
-  pub final_layout: ImageLayout
+  pub stencil_store_op: StoreOp
 }
 
-pub struct Subpass {
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct SubpassInfo {
   pub input_attachments: Vec<AttachmentRef>,
   pub output_color_attachments: Vec<OutputAttachmentRef>,
-  pub output_resolve_attachments: Vec<AttachmentRef>,
-  pub depth_stencil_attachment: Option<AttachmentRef>,
-  pub preserve_unused_attachments: Vec<u32>
+  pub depth_stencil_attachment: Option<DepthStencilAttachmentRef>
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct DepthStencilAttachmentRef {
+  pub index: u32,
+  pub read_only: bool
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct OutputAttachmentRef {
-  pub layout: ImageLayout,
   pub index: u32,
   pub resolve_attachment_index: Option<u32>
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum RenderPassPipelineStage {
+  Vertex,
+  Fragment
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttachmentRef {
-  pub layout: ImageLayout,
-  pub index: u32
+  pub index: u32,
+  pub pipeline_stage: RenderPassPipelineStage
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct RenderPassInfo {
+  pub attachments: Vec<AttachmentInfo>,
+  pub subpasses: Vec<SubpassInfo>
 }

@@ -6,7 +6,7 @@ use ash::version::{DeviceV1_0};
 use sourcerenderer_core::graphics::*;
 use crate::{queue::VkQueue, texture::VkSampler};
 use crate::queue::VkQueueInfo;
-use crate::VkBackend;
+use crate::{VkBackend, VkRenderPass};
 use crate::VkAdapterExtensionSupport;
 use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
@@ -205,6 +205,28 @@ impl Device<VkBackend> for VkDevice {
                          swapchain: &Arc<<VkBackend as Backend>::Swapchain>,
                          external_resources: Option<&HashMap<String, ExternalResource<VkBackend>>>) -> <VkBackend as Backend>::RenderGraph {
     VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, template, info, swapchain, external_resources)
+  }
+
+
+  fn create_graphics_pipeline_1(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
+    let shared = self.context.get_shared();
+    let mut rp_opt = {
+      let render_passes = shared.get_render_passes().read().unwrap();
+      render_passes.get(renderpass_info).map(|rp_ref| rp_ref.clone())
+    };
+    if rp_opt.is_none() {
+      let rp = Arc::new(VkRenderPass::new_pipeline_compat(&self.device, renderpass_info));
+      let mut render_passes = shared.get_render_passes().write().unwrap();
+      render_passes.insert(renderpass_info.clone(), rp.clone());
+      rp_opt = Some(rp);
+    }
+    let rp = rp_opt.unwrap();
+    let vk_info = VkGraphicsPipelineInfo {
+      info,
+      render_pass: &rp,
+      sub_pass: subpass,
+    };
+    Arc::new(VkPipeline::new_graphics(&self.device, &vk_info, shared))
   }
 
   fn init_texture(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {

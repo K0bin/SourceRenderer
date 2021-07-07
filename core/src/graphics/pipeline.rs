@@ -78,7 +78,7 @@ pub enum FrontFace {
   Clockwise
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SampleCount {
   Samples1,
   Samples2,
