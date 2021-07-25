@@ -6,11 +6,13 @@ use std::cmp::{min, max};
 
 use ash::vk;
 use smallvec::SmallVec;
+use sourcerenderer_core::graphics::LoadOp;
+use sourcerenderer_core::graphics::StoreOp;
 
 use crate::{command::VkInnerCommandBufferInfo, thread_manager::{VkThreadManager, VkFrameLocal}};
 
 use sourcerenderer_core::graphics::{CommandBufferType, RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions, SwapchainError, Swapchain};
-use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, LoadAction, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, StoreAction, CommandBuffer};
+use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, CommandBuffer};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use sourcerenderer_core::graphics::{Texture, TextureInfo};
@@ -40,10 +42,6 @@ pub enum VkResource {
     depth: u32,
     levels: u32,
     external: bool,
-    load_action: LoadAction,
-    store_action: StoreAction,
-    stencil_load_action: LoadAction,
-    stencil_store_action: StoreAction,
     is_backbuffer: bool
   },
   Buffer {
@@ -272,8 +270,7 @@ impl VkRenderGraph {
         VkResourceTemplate::Texture {
           name, extent, format,
           depth, levels, samples,
-          external, load_action, store_action,
-          stencil_load_action, stencil_store_action, is_backbuffer
+          external, is_backbuffer
         } => {
           if *is_backbuffer {
             continue;
@@ -336,10 +333,6 @@ impl VkRenderGraph {
             depth: *depth,
             levels: *levels,
             external: *external,
-            load_action: *load_action,
-            store_action: *store_action,
-            stencil_load_action: *stencil_load_action,
-            stencil_store_action: *stencil_store_action,
             is_backbuffer: false
           });
         }
@@ -870,21 +863,6 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
   fn swapchain(&self) -> &Arc<VkSwapchain> {
     &self.swapchain
-  }
-}
-
-fn store_action_to_vk(store_action: StoreAction) -> vk::AttachmentStoreOp {
-  match store_action {
-    StoreAction::DontCare => vk::AttachmentStoreOp::DONT_CARE,
-    StoreAction::Store => vk::AttachmentStoreOp::STORE
-  }
-}
-
-fn load_action_to_vk(load_action: LoadAction) -> vk::AttachmentLoadOp {
-  match load_action {
-    LoadAction::DontCare => vk::AttachmentLoadOp::DONT_CARE,
-    LoadAction::Load => vk::AttachmentLoadOp::LOAD,
-    LoadAction::Clear => vk::AttachmentLoadOp::CLEAR
   }
 }
 

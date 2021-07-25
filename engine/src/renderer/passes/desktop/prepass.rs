@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{AttachmentBlendInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InputAssemblerElement, InputRate, InputUsage, LoadAction, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreAction, SubpassOutput, VertexLayoutInfo, Viewport};
+use sourcerenderer_core::graphics::{AttachmentBlendInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InputAssemblerElement, InputRate, InputUsage, LoadOp, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassOutput, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::{RendererScene, drawable::View, passes::desktop::taa::scaled_halton_point};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
@@ -45,8 +45,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
               depth: 1,
               levels: 1,
               external: false,
-              load_action: LoadAction::Clear,
-              store_action: StoreAction::Store
+              clear: true
             },
             SubpassOutput::RenderTarget {
               name: OUTPUT_MOTION.to_string(),
@@ -58,8 +57,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
               depth: 1,
               levels: 1,
               external: false,
-              load_action: LoadAction::Clear,
-              store_action: StoreAction::Store
+              clear: true
             },
           ],
           inputs: vec![
@@ -83,10 +81,7 @@ pub(crate) fn build_pass_template<B: GraphicsBackend>() -> PassInfo {
             extent: RenderPassTextureExtent::RelativeToSwapchain {
               width: 1f32, height: 1f32
             },
-            depth_load_action: LoadAction::Clear,
-            depth_store_action: StoreAction::Store,
-            stencil_load_action: LoadAction::DontCare,
-            stencil_store_action: StoreAction::DontCare
+            clear: true
           }
         }
       ],

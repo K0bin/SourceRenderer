@@ -27,14 +27,7 @@ pub struct VkRenderPass {
 }
 
 impl VkRenderPass {
-  pub fn new(device: &Arc<RawVkDevice>, info: &vk::RenderPassCreateInfo) -> Self {
-    Self {
-      device: device.clone(),
-      render_pass: unsafe { device.create_render_pass(info, None).unwrap() }
-    }
-  }
-
-  pub fn new_pipeline_compat(device: &Arc<RawVkDevice>, info: &RenderPassInfo) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, info: &RenderPassInfo) -> Self {
     let mut attachment_references = Vec::<vk::AttachmentReference>::new();
     let mut subpass_infos = Vec::<vk::SubpassDescription>::with_capacity(info.subpasses.len());
     let mut dependencies = Vec::<vk::SubpassDependency>::new();
@@ -47,18 +40,11 @@ impl VkRenderPass {
       }
 
       attachment_count += subpass.input_attachments.len();
-
-      for color_attachment in &subpass.output_color_attachments {
-        attachment_count += 1;
-        if color_attachment.resolve_attachment_index.is_some() {
-          attachment_count += 1;
-        }
-      }
+      attachment_count += subpass.output_color_attachments.len() * 2;
     }
 
     attachment_references.reserve_exact(attachment_count); // We must not allocate after this so the pointers stay valid
     preserve_attachments.reserve_exact(info.attachments.len() * info.subpasses.len());
-    
 
     let mut attachment_metadata = HashMap::<u32, VkRenderPassAttachmentMetadata>::new();
     let mut subpass_attachment_bitmasks = Vec::<u64>::new();
@@ -77,12 +63,7 @@ impl VkRenderPass {
         }
 
         if metadata.initial_layout.is_none() {
-          let attachment = info.attachments.get(input_attachment.index as usize).unwrap();
-          if attachment.load_op != LoadOp::Load {
-            metadata.initial_layout = Some(vk::ImageLayout::UNDEFINED);
-          } else {
-            metadata.initial_layout = Some(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-          }
+          metadata.initial_layout = Some(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
         }
         metadata.last_used_in_subpass = max(metadata.last_used_in_subpass, subpass_index as u32);
         metadata.final_layout = Some(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
@@ -92,12 +73,7 @@ impl VkRenderPass {
         let mut metadata = attachment_metadata.entry(color_attachment.index).or_default();
         metadata.produced_in_subpass = max(metadata.produced_in_subpass, subpass_index as u32);
         if metadata.initial_layout.is_none() {
-          let attachment = info.attachments.get(color_attachment.index as usize).unwrap();
-          if attachment.load_op != LoadOp::Load {
-            metadata.initial_layout = Some(vk::ImageLayout::UNDEFINED);
-          } else {
-            metadata.initial_layout = Some(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
-          }
+          metadata.initial_layout = Some(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
         }
         metadata.final_layout = Some(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
         *subpass_attachment_bitmask |= 1 << color_attachment.index;
@@ -106,12 +82,7 @@ impl VkRenderPass {
           let mut resolve_metadata = attachment_metadata.entry(resolve_attachment_index).or_default();
           resolve_metadata.produced_in_subpass = max(resolve_metadata.produced_in_subpass, subpass_index as u32);
           if resolve_metadata.initial_layout.is_none() {
-            let attachment = info.attachments.get(resolve_attachment_index as usize).unwrap();
-            if attachment.load_op != LoadOp::Load {
-              resolve_metadata.initial_layout = Some(vk::ImageLayout::UNDEFINED);
-            } else {
-              resolve_metadata.initial_layout = Some(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
-            }
+            resolve_metadata.initial_layout = Some(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
           }
           resolve_metadata.final_layout = Some(vk::ImageLayout::TRANSFER_DST_OPTIMAL);
           *subpass_attachment_bitmask |= 1 << resolve_attachment_index;
@@ -119,17 +90,12 @@ impl VkRenderPass {
       }
       if let Some(depth_stencil_attachment) = &subpass.depth_stencil_attachment {
         let mut depth_stencil_metadata = attachment_metadata.entry(depth_stencil_attachment.index).or_default();
-        let depth_stencil_attachment_info = info.attachments.get(depth_stencil_attachment.index as usize).unwrap();
         if depth_stencil_metadata.initial_layout.is_none() {
-          if depth_stencil_attachment_info.load_op != LoadOp::Load {
-            depth_stencil_metadata.initial_layout = Some(vk::ImageLayout::UNDEFINED);
+          depth_stencil_metadata.initial_layout = Some(if depth_stencil_attachment.read_only {
+            vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
           } else {
-            depth_stencil_metadata.initial_layout = Some(if depth_stencil_attachment.read_only {
-              vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-            } else {
-              vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-            });
-          }
+            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+          });
         } else {
           let mut dependency_opt = Some(build_depth_stencil_dependency(subpass_index as u32, depth_stencil_metadata.last_used_in_subpass, depth_stencil_metadata.initial_layout == Some(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)));
           dependency_opt = merge_dependencies(&mut dependencies[subpass_dependencies_start..], dependency_opt.unwrap());
@@ -138,7 +104,7 @@ impl VkRenderPass {
           }
         }
         if depth_stencil_attachment.read_only { 
-          depth_stencil_metadata.final_layout = Some(vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL);
+          depth_stencil_metadata.final_layout = Some(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL);
           depth_stencil_metadata.last_used_in_subpass = max(depth_stencil_metadata.last_used_in_subpass, subpass_index as u32);
         } else {
           depth_stencil_metadata.final_layout = Some(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
@@ -159,7 +125,7 @@ impl VkRenderPass {
       for input_attachment in &subpass.input_attachments {
         attachment_references.push(vk::AttachmentReference {
           attachment: input_attachment.index,
-          layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         });
         debug_assert_eq!(attachment_references.capacity(), attachment_count);        
       }
@@ -168,19 +134,12 @@ impl VkRenderPass {
       for color_attachment in &subpass.output_color_attachments {
         attachment_references.push(vk::AttachmentReference {
           attachment: color_attachment.index,
-          layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+          layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         });
         debug_assert_eq!(attachment_references.capacity(), attachment_count);
       }
       let p_resolve_attachments = unsafe { attachment_references.as_ptr().offset(attachment_references.len() as isize) };
       for color_attachment in &subpass.output_color_attachments {
-        for color_attachment in &subpass.output_color_attachments {
-          attachment_references.push(vk::AttachmentReference {
-            attachment: color_attachment.index,
-            layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-          });
-          debug_assert_eq!(attachment_references.capacity(), attachment_count);
-        }
         if let Some(resolve_attachment_index) = color_attachment.resolve_attachment_index {
           attachment_references.push(vk::AttachmentReference {
             attachment: resolve_attachment_index,
@@ -200,7 +159,11 @@ impl VkRenderPass {
         let p_depth_stencil_attachment = unsafe { attachment_references.as_ptr().offset(attachment_references.len() as isize) };
         attachment_references.push(vk::AttachmentReference {
           attachment: depth_stencil_attachment.index,
-          layout: vk::ImageLayout::UNDEFINED,
+          layout: if depth_stencil_attachment.read_only {
+            vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+          } else {
+            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+          },
         });
         debug_assert_eq!(attachment_references.capacity(), attachment_count);
         p_depth_stencil_attachment
@@ -213,7 +176,7 @@ impl VkRenderPass {
       for (index, _) in info.attachments.iter().enumerate() {
         let subpass_attachment_bitmask = subpass_attachment_bitmasks.get(subpass_index).unwrap();
         let metadata = attachment_metadata.get(&(index as u32)).unwrap();
-        if (subpass_attachment_bitmask & (index as u64)) == 0 && metadata.last_used_in_subpass > (subpass_index as u32) {
+        if (subpass_attachment_bitmask & (1u64 << index as u64)) == 0 && metadata.last_used_in_subpass > (subpass_index as u32) {
           preserve_attachments.push(index as u32);
         }
       }
@@ -352,7 +315,7 @@ fn load_op_to_vk(load_op: LoadOp) -> vk::AttachmentLoadOp {
   match load_op {
     LoadOp::Load => vk::AttachmentLoadOp::LOAD,
     LoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
-    LoadOp::DontCare => vk::AttachmentLoadOp::CLEAR,
+    LoadOp::DontCare => vk::AttachmentLoadOp::DONT_CARE,
   }
 }
 
@@ -364,6 +327,14 @@ fn store_op_to_vk(store_op: StoreOp) -> vk::AttachmentStoreOp {
 }
 
 fn build_dependency(subpass_index: u32, src_subpass: u32, format: Format, stage: RenderPassPipelineStage) -> vk::SubpassDependency {
+  let mut vk_pipeline_stages = vk::PipelineStageFlags::empty();
+  if stage.contains(RenderPassPipelineStage::FRAGMENT) {
+    vk_pipeline_stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+  }
+  if stage.contains(RenderPassPipelineStage::VERTEX) {
+    vk_pipeline_stages |= vk::PipelineStageFlags::VERTEX_SHADER;
+  }
+
   vk::SubpassDependency {
     src_subpass: src_subpass,
     dst_subpass: subpass_index,
@@ -372,10 +343,7 @@ fn build_dependency(subpass_index: u32, src_subpass: u32, format: Format, stage:
     } else {
       vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
     },
-    dst_stage_mask: match stage {
-      RenderPassPipelineStage::Vertex => vk::PipelineStageFlags::VERTEX_SHADER,
-      RenderPassPipelineStage::Fragment => vk::PipelineStageFlags::FRAGMENT_SHADER,
-    },
+    dst_stage_mask: vk_pipeline_stages,
     src_access_mask: if format.is_depth() || format.is_stencil() {
       vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
     } else {

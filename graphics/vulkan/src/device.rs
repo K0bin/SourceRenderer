@@ -196,7 +196,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_render_graph_template(&self, graph_info: &RenderGraphTemplateInfo) -> Arc<<VkBackend as Backend>::RenderGraphTemplate> {
-    Arc::new(VkRenderGraphTemplate::new(&self.device, graph_info))
+    Arc::new(VkRenderGraphTemplate::new(&self.device, &self.context, graph_info))
   }
 
   fn create_render_graph(&self,
@@ -215,7 +215,7 @@ impl Device<VkBackend> for VkDevice {
       render_passes.get(renderpass_info).map(|rp_ref| rp_ref.clone())
     };
     if rp_opt.is_none() {
-      let rp = Arc::new(VkRenderPass::new_pipeline_compat(&self.device, renderpass_info));
+      let rp = Arc::new(VkRenderPass::new(&self.device, renderpass_info));
       let mut render_passes = shared.get_render_passes().write().unwrap();
       render_passes.insert(renderpass_info.clone(), rp.clone());
       rp_opt = Some(rp);

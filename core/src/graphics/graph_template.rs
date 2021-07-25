@@ -1,5 +1,7 @@
 use crate::{graphics::{Format, SampleCount}, platform::Input};
 
+use super::{LoadOp, StoreOp};
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum PipelineStage {
   GraphicsShaders,
@@ -22,8 +24,7 @@ pub enum SubpassOutput {
     depth: u32,
     levels: u32,
     external: bool,
-    load_action: LoadAction,
-    store_action: StoreAction
+    clear: bool
   }
 }
 
@@ -34,10 +35,7 @@ pub enum DepthStencil {
     format: Format,
     samples: SampleCount,
     extent: RenderPassTextureExtent,
-    depth_load_action: LoadAction,
-    depth_store_action: StoreAction,
-    stencil_load_action: LoadAction,
-    stencil_store_action: StoreAction
+    clear: bool
   },
   Input {
     name: String,
@@ -154,19 +152,6 @@ pub struct PassInput {
   pub stage: PipelineStage,
   pub usage: InputUsage,
   pub is_history: bool
-}
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub enum StoreAction {
-  Store,
-  DontCare
-}
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub enum LoadAction {
-  Load,
-  Clear,
-  DontCare
 }
 
 #[derive(Clone)]

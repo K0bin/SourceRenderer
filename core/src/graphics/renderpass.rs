@@ -64,11 +64,15 @@ pub struct OutputAttachmentRef {
   pub resolve_attachment_index: Option<u32>
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum RenderPassPipelineStage {
-  Vertex,
-  Fragment
+
+bitflags! {
+  pub struct RenderPassPipelineStage: u32 {
+    const VERTEX   = 0b1;
+    const FRAGMENT = 0b10;
+    const BOTH     = 0b11;
+  }
 }
+
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttachmentRef {
