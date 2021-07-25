@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use sourcerenderer_core::graphics::{Backend, Device, Fence};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange}, math::BoundingBox};
 use sourcerenderer_core::Platform;
-use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, Filter, AddressMode, TextureShaderResourceViewInfo, BufferUsage };
+use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureShaderResourceViewInfo, BufferUsage };
 
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 

@@ -1,8 +1,6 @@
 use crate::graphics::Format;
 use crate::graphics::SampleCount;
 
-use super::ShaderType;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoadOp {
   Load,

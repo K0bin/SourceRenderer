@@ -1,3 +1,4 @@
+use core::panic;
 use std::env;
 use std::path::{PathBuf, Path};
 
@@ -14,7 +15,7 @@ fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
             to_buf.push(to);
             to_buf.push(entry.file_name());
             if !to_buf.exists() {
-                std::fs::create_dir(&to_buf).expect(format!("Failed to create target directory {:?}.", to_buf).as_str());
+                std::fs::create_dir(&to_buf).unwrap_or_else(|_| panic!("Failed to create target directory {:?}.", to_buf));
             }
             copy_directory_rec(&from_buf, &to_buf, file_filter);
             continue;
@@ -27,7 +28,7 @@ fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
         dst_path.push(to);
         dst_path.push(entry.file_name());
         println!("cargo:rerun-if-changed={}", entry.path().to_str().unwrap());
-        std::fs::copy(&entry.path(), &dst_path).expect(format!("Failed to copy file over: {:?} to {:?}", entry.path(), &dst_path).as_str());
+        std::fs::copy(&entry.path(), &dst_path).unwrap_or_else(|_| panic!("Failed to copy file over: {:?} to {:?}", entry.path(), &dst_path));
     }
 }
 

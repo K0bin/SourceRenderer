@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use legion::{World, Resources, Schedule};
 
-use nalgebra::{Quaternion, UnitQuaternion};
+use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3};
 
 use crate::{Transform, renderer::*};

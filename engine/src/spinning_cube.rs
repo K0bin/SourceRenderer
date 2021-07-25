@@ -1,9 +1,7 @@
 use legion::{World, Resources, component};
 use sourcerenderer_core::platform::{InputState, Key};
 use crate::{Transform, Camera};
-use sourcerenderer_core::graphics::{Format, TextureInfo, SampleCount};
 use nalgebra::{Unit, UnitQuaternion};
-use image::GenericImageView;
 use crate::asset::{AssetManager, MeshRange};
 use sourcerenderer_core::{Platform, Quaternion};
 use sourcerenderer_core::Vec3;
@@ -16,8 +14,6 @@ use crate::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
 use crate::game::DeltaTime;
 use std::f32;
-use sourcerenderer_core::platform::io::IO;
-use std::io::{Seek, SeekFrom, Read};
 
 #[derive(Clone)]
 #[repr(C)]

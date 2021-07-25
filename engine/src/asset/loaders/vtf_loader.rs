@@ -86,6 +86,6 @@ fn convert_vtf_texture_format(texture_format: VTFTextureFormat) -> Format {
     VTFTextureFormat::DXT3 => Format::DXT3,
     VTFTextureFormat::DXT5 => Format::DXT5,
     VTFTextureFormat::RGBA8888 => Format::RGBA8,
-    _ => panic!(format!("VTF format {:?} is not supported", texture_format))
+    _ => panic!("VTF format {:?} is not supported", texture_format)
   }
 }

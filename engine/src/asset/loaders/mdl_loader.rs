@@ -1,6 +1,6 @@
 use crate::{asset::{AssetLoader, AssetLoaderProgress, AssetManager, AssetLoadPriority, Asset}, math::BoundingBox};
 use std::sync::Arc;
-use std::io::{Seek, SeekFrom, Read, Result as IOResult, Error as IOError};
+use std::io::{Seek, SeekFrom, Read, Result as IOResult};
 use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, MeshRange};
 use sourcerenderer_mdl::{BodyPart, Header, Mesh, Model, PrimitiveRead, StringRead};
 use sourcerenderer_vtx::{BodyPartHeader, ModelHeader, ModelLODHeader, MeshHeader, Header as VTXHeader, StripGroupHeader, StripHeader, Vertex as VTXVertex};
@@ -8,7 +8,6 @@ use sourcerenderer_vvd::{Header as VVDHeader, Vertex, VertexFileFixup};
 use crate::asset::loaders::bsp::Vertex as BspVertex;
 use nalgebra::{Vector2, Vector3};
 use crate::asset::{Mesh as AssetMesh, Model as AssetModel, AssetType};
-use sourcerenderer_core::graphics::{Device, MemoryUsage, BufferUsage};
 use sourcerenderer_core::platform::Platform;
 use std::slice;
 
@@ -21,7 +20,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     file.path.starts_with("models/") && file.path.ends_with(".mdl")
   }
 
-  fn load(&self, mut file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, mut file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     if file.path.contains("autocombine") {
       print!("Model: {} is auto combined", &file.path);
     }

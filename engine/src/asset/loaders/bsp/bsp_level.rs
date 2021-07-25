@@ -1,9 +1,9 @@
 
-use nalgebra::{Matrix3, Rotation3};
-use sourcerenderer_core::{Matrix4, Platform, Quaternion, Vec4, graphics::{Format, SampleCount}};
+use nalgebra::Rotation3;
+use sourcerenderer_core::{Platform, Quaternion, Vec4, graphics::{Format, SampleCount}};
 use crate::asset::{AssetLoader, AssetType, Asset, Model, AssetManager, Mesh};
 use core::slice;
-use std::{f32::consts::{FRAC_PI_2, PI}, path::Path, u8};
+use std::{path::Path, u8};
 use std::sync::Arc;
 use sourcerenderer_bsp::{DispInfo, DispVert, Face, Map, SurfaceFlags};
 use std::collections::HashMap;

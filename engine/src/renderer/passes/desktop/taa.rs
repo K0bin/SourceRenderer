@@ -1,11 +1,10 @@
-use sourcerenderer_core::{Matrix4, Vec2, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, SamplerInfo, ShaderType, TextureUnorderedAccessView}};
+use sourcerenderer_core::{Vec2, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, SamplerInfo, ShaderType}};
 use sourcerenderer_core::Platform;
-use std::{sync::Arc, usize};
+use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 use crate::renderer::passes::desktop::{geometry::OUTPUT_IMAGE, prepass::OUTPUT_MOTION};
-use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 
 const PASS_NAME: &str = "TAA";
 pub(crate) const HISTORY_BUFFER_NAME: &str = "TAA_buffer";

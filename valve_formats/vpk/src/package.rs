@@ -62,9 +62,7 @@ pub struct Package<R>
   /// The archive MD5 checksum section entries. Also known as cache line hashes.
   archive_md5_entries: Vec<ArchiveMD5SectionEntry>,
 
-  archive_files: Mutex<HashMap<u16, BufReader<R>>>,
-
-  open_file_callback: Box<dyn Send + Sync + Fn(&str) -> IOResult<R>>
+  archive_files: Mutex<HashMap<u16, BufReader<R>>>
 }
 
 pub const MAGIC: u32 = 0x55AA1234;
@@ -235,8 +233,7 @@ impl<R> Package<R>
       signature,
       entries,
       archive_md5_entries,
-      archive_files: Mutex::new(archive_files),
-      open_file_callback: Box::new(open_file_callback)
+      archive_files: Mutex::new(archive_files)
     })
   }
 

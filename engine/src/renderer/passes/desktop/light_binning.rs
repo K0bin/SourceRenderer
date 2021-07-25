@@ -1,7 +1,7 @@
-use nalgebra::{Vector3, Vector4};
-use sourcerenderer_core::{Vec2UI, Vec3, Vec4, atomic_refcell::{AtomicRef, AtomicRefCell}, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferUsage, CommandBuffer, Device, InputUsage, MemoryUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, Shader, ShaderType}};
-use sourcerenderer_core::{Matrix4, Platform};
-use std::{cmp::max, sync::Arc};
+use nalgebra::Vector3;
+use sourcerenderer_core::{Vec3, atomic_refcell::{AtomicRef, AtomicRefCell}, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferUsage, CommandBuffer, Device, InputUsage, MemoryUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, ShaderType}};
+use sourcerenderer_core::Platform;
+use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;

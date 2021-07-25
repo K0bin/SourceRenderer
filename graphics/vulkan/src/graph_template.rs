@@ -1,19 +1,16 @@
-use sourcerenderer_core::{graphics::{AttachmentInfo, AttachmentRef, DepthStencil, DepthStencilAttachmentRef, ExternalOutput, ExternalProducerType, InputUsage, LoadOp, Output, OutputAttachmentRef, PipelineStage, RenderPassInfo, RenderPassPipelineStage, RenderPassTextureExtent, StencilOp, StoreOp, SubpassInfo}, platform::Input};
+use sourcerenderer_core::graphics::{AttachmentInfo, AttachmentRef, DepthStencil, DepthStencilAttachmentRef, ExternalOutput, ExternalProducerType, InputUsage, LoadOp, Output, OutputAttachmentRef, PipelineStage, RenderPassInfo, RenderPassPipelineStage, RenderPassTextureExtent, StoreOp, SubpassInfo};
 use std::{cmp::max, collections::{HashMap, VecDeque}};
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use ash::vk::{self, DeviceOrHostAddressConstKHR};
+use ash::vk;
 
 use sourcerenderer_core::graphics::{PassInfo, PassInput, RenderGraphTemplate, RenderGraphTemplateInfo, Format, SampleCount, GraphicsSubpassInfo, PassType, SubpassOutput};
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 use crate::{raw::RawVkDevice, VkThreadManager};
 
-use crate::format::format_to_vk;
-use crate::pipeline::samples_to_vk;
 use crate::VkRenderPass;
 use std::iter::FromIterator;
-use ash::vk::{AttachmentStoreOp, AttachmentLoadOp};
 
 const EMPTY_PIPELINE_STAGE_FLAGS: vk::PipelineStageFlags = vk::PipelineStageFlags::empty();
 const PASS_NAME_EXTERNAL: &'static str = "EXTERNAL";
@@ -370,7 +367,7 @@ impl VkRenderGraphTemplate {
                     });
                 },
                 SubpassOutput::Backbuffer {
-                  clear: backbuffer_clear
+                  ..
                 } => {
                   let metadata_entry = metadata
                       .entry(BACK_BUFFER_ATTACHMENT_NAME.to_string())
@@ -520,7 +517,7 @@ impl VkRenderGraphTemplate {
           for output in outputs {
             match output {
               Output::RenderTarget {
-                name, format, samples, extent, depth, levels, external, clear
+                name, format, samples, extent, depth, levels, external, ..
               } => {
                 let metadata_entry = metadata
                     .entry(name.clone())
@@ -542,7 +539,7 @@ impl VkRenderGraphTemplate {
                 });
               },
               Output::Backbuffer {
-                clear
+                ..
               } => {
                 let metadata_entry = metadata
                     .entry(BACK_BUFFER_ATTACHMENT_NAME.to_string())
@@ -640,7 +637,7 @@ impl VkRenderGraphTemplate {
           for output in outputs {
             match output {
               Output::RenderTarget {
-                name, format, samples, extent, depth, levels, external, clear
+                name, format, samples, extent, depth, levels, external, ..
               } => {
                 let metadata_entry = metadata
                     .entry(name.clone())
@@ -662,7 +659,7 @@ impl VkRenderGraphTemplate {
                 });
               },
               Output::Backbuffer {
-                clear
+                ..
               } => {
                 let metadata_entry = metadata
                     .entry(BACK_BUFFER_ATTACHMENT_NAME.to_string())

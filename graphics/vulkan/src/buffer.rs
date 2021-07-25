@@ -1,7 +1,6 @@
 use std::{collections::HashMap, fmt::Formatter, sync::{Arc, Mutex}};
 use std::cmp::max;
 use std::hash::{Hash, Hasher};
-use std::collections::{VecDeque, BTreeMap};
 use std::fmt::Debug;
 use std::ffi::CString;
 use ash::vk::Handle;

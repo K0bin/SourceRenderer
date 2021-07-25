@@ -4,7 +4,7 @@ use sourcerenderer_core::graphics::{Backend, Device, MemoryUsage, BufferUsage, B
 use sourcerenderer_core::{Matrix4, Vec3, Quaternion};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crossbeam_utils::atomic::AtomicCell;
-use nalgebra::{Point, Point3};
+use nalgebra::Point3;
 
 #[derive(Clone)]
 #[repr(C)]

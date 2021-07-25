@@ -1,11 +1,10 @@
-use sourcerenderer_core::{graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, SamplerInfo, ShaderType, TextureUnorderedAccessView}};
+use sourcerenderer_core::{graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, SamplerInfo, ShaderType}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 use crate::renderer::passes::desktop::taa::HISTORY_BUFFER_NAME;
-use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
 
 const PASS_NAME: &str = "SHARPEN";
 pub(crate) const SHARPEN_OUTPUT_NAME: &str = "sharpen";

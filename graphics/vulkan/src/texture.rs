@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
-use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
 
 use crate::{VkBackend, raw::RawVkDevice};
 use crate::format::format_to_vk;

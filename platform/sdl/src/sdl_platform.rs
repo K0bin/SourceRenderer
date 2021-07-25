@@ -48,14 +48,14 @@ impl SDLPlatform {
 
     let window = SDLWindow::new(&sdl_context, &video_subsystem, graphics_api);
 
-    return Box::new(SDLPlatform {
+    Box::new(SDLPlatform {
       sdl_context,
       video_subsystem,
       event_pump,
       window,
       input_commands: InputCommands::default(),
       input_state: InputState::default()
-    });
+    })
   }
 
   pub(crate) fn handle_events(&mut self) -> PlatformEvent {
@@ -72,7 +72,7 @@ impl SDLPlatform {
 
       event_opt = self.event_pump.poll_event();
     }
-    return PlatformEvent::Continue;
+    PlatformEvent::Continue
   }
 
   pub(crate) fn process_input(&mut self, input_commands: InputCommands) {
@@ -91,11 +91,11 @@ impl SDLWindow {
     }
 
     let window = window_builder.build().unwrap();
-    return SDLWindow {
+    SDLWindow {
       graphics_api,
       window,
       is_active: true
-    };
+    }
   }
 
   pub(crate) fn sdl_window_handle(&self) -> &sdl2::video::Window {
@@ -104,7 +104,7 @@ impl SDLWindow {
 
   #[inline]
   pub fn vulkan_instance_extensions(&self) -> Result<Vec<&str>, String> {
-    return self.window.vulkan_instance_extensions();
+    self.window.vulkan_instance_extensions()
   }
 }
 
@@ -114,7 +114,7 @@ impl Platform for SDLPlatform {
   type IO = crate::io::StdIO;
 
   fn window(&self) -> &SDLWindow {
-    return &self.window;
+    &self.window
   }
 
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
@@ -132,13 +132,13 @@ impl Window<SDLPlatform> for SDLWindow {
     let instance_raw = graphics_instance.get_raw();
     let surface = self.window.vulkan_create_surface(instance_raw.instance.handle().as_raw() as sdl2::video::VkInstance).unwrap();
     let surface_loader = SurfaceLoader::new(&instance_raw.entry, &instance_raw.instance);
-    return Arc::new(VkSurface::new(instance_raw, SurfaceKHR::from_raw(surface), surface_loader));
+    Arc::new(VkSurface::new(instance_raw, SurfaceKHR::from_raw(surface), surface_loader))
   }
 
   fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> Arc<VkSwapchain> {
     let device_inner = device.get_inner();
     let (width, height) = self.window.drawable_size();
-    return VkSwapchain::new(vsync, width, height, device_inner, surface).unwrap();
+    VkSwapchain::new(vsync, width, height, device_inner, surface).unwrap()
   }
 
   fn state(&self) -> WindowState {

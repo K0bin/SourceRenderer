@@ -1,7 +1,7 @@
 use nalgebra::Vector2;
-use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, BACK_BUFFER_ATTACHMENT_NAME, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InnerCommandBufferProvider, InputAssemblerElement, InputRate, InputUsage, LoadOp, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassOutput, VertexLayoutInfo, Viewport}};
+use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InputAssemblerElement, InputRate, InputUsage, LogicOp, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, RasterizerInfo, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, SubpassOutput, VertexLayoutInfo, Viewport}};
 use std::sync::Arc;
-use crate::renderer::{drawable::View, passes::desktop::{clustering::OUTPUT_CLUSTERS, light_binning::OUTPUT_LIGHT_BITMASKS}, renderer_scene::RendererScene};
+use crate::renderer::{drawable::View, passes::desktop::{light_binning::OUTPUT_LIGHT_BITMASKS}, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::passes::desktop::taa::scaled_halton_point;
 use std::path::Path;

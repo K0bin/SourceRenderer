@@ -7,7 +7,6 @@ use sourcerenderer_core::graphics::TextureInfo;
 use std::hash::Hash;
 
 use std::sync::Weak;
-use std::thread;
 use std::time::Duration;
 use legion::World;
 use std::io::{Cursor, Seek, SeekFrom, Read, Result as IOResult};

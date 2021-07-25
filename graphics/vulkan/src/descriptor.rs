@@ -402,7 +402,7 @@ impl Drop for VkDescriptorSet {
       return;
     }
     unsafe {
-      self.device.free_descriptor_sets(*self.pool.get_handle(), &[self.descriptor_set]);
+      self.device.free_descriptor_sets(*self.pool.get_handle(), &[self.descriptor_set]).unwrap();
     }
   }
 }

@@ -47,7 +47,7 @@ impl LumpData for DispInfo {
     let disp_tri_start = read.read_i32()?;
     let power = read.read_i32()?;
     if power != 2 && power != 3 && power != 4 {
-      panic!(format!("illegal power: {}", power));
+      panic!("illegal power: {}", power);
     }
     let min_tess = read.read_i32()?;
     let smoothing_angle = read.read_f32()?;
