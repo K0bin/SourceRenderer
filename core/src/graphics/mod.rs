@@ -12,11 +12,13 @@ pub use self::buffer::Buffer;
 pub use self::buffer::MappedBuffer;
 pub use self::buffer::MutMappedBuffer;
 pub use self::buffer::BufferUsage;
+pub use self::buffer::BufferInfo;
 pub use self::device::MemoryUsage;
 pub use self::format::Format;
 pub use self::pipeline::*;
 pub use self::texture::Texture;
 pub use self::texture::TextureInfo;
+pub use self::texture::TextureUsage;
 pub use self::renderpass::*;
 pub use self::command::Viewport;
 pub use self::command::Scissor;
@@ -41,6 +43,7 @@ mod backend;
 mod sync;
 mod graph;
 mod graph_template;
+mod resource;
 
 // TODO: find a better place for this
 pub trait Resettable {

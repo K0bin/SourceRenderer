@@ -121,13 +121,16 @@ impl VkDevice {
 }
 
 impl Device<VkBackend> for VkDevice {
-  fn create_buffer(&self, length: usize, memory_usage: MemoryUsage, usage: BufferUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
-    self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, length, name)
+  fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
+    self.context.get_shared().get_buffer_allocator().get_slice(info, memory_usage, name)
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> where T: 'static + Send + Sync + Sized + Clone {
     assert_ne!(memory_usage, MemoryUsage::GpuOnly);
-    let slice = self.context.get_shared().get_buffer_allocator().get_slice(memory_usage, usage, std::mem::size_of_val(data), None);
+    let slice = self.context.get_shared().get_buffer_allocator().get_slice(&BufferInfo {
+      size: std::mem::size_of_val(data),
+      usage
+    }, memory_usage, None);
     unsafe {
       let ptr = slice.map_unsafe(false).expect("Failed to map buffer slice");
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
@@ -141,7 +144,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<VkTexture> {
-    Arc::new(VkTexture::new(&self.device, info, name, vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST))
+    Arc::new(VkTexture::new(&self.device, info, name))
   }
 
   fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Arc<VkTextureView> {

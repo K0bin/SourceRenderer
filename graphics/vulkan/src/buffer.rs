@@ -5,14 +5,13 @@ use std::fmt::Debug;
 use std::ffi::CString;
 use ash::vk::Handle;
 
-use sourcerenderer_core::graphics::{Buffer, BufferUsage, MemoryUsage, MappedBuffer, MutMappedBuffer};
+use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
 use ash::{version::InstanceV1_1, vk};
 
 use crate::raw::*;
 use crate::device::memory_usage_to_vma;
 use smallvec::SmallVec;
-
 pub struct VkBuffer {
   buffer: vk::Buffer,
   allocation: vk_mem::Allocation,
@@ -21,8 +20,7 @@ pub struct VkBuffer {
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
   memory_usage: MemoryUsage,
-  buffer_usage: BufferUsage,
-  slice_size: usize,
+  info: BufferInfo,
   free_slices: Mutex<Vec<Arc<VkBufferSlice>>>,
   used_slices: Mutex<Vec<Arc<VkBufferSlice>>>
 }
@@ -31,10 +29,10 @@ unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, slice_size: usize, slices: usize, memory_usage: MemoryUsage, buffer_usage: BufferUsage, allocator: &vk_mem::Allocator, name: Option<&str>) -> Arc<Self> {
+  pub fn new(device: &Arc<RawVkDevice>, slices: usize, memory_usage: MemoryUsage, info: &BufferInfo, allocator: &vk_mem::Allocator, name: Option<&str>) -> Arc<Self> {
     let mut queue_families = SmallVec::<[u32; 2]>::new();
     let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
-    if buffer_usage.contains(BufferUsage::COPY_SRC) {
+    if info.usage.contains(BufferUsage::COPY_SRC) {
       queue_families.push(device.graphics_queue_info.queue_family_index as u32);
       if let Some(info) = device.transfer_queue_info {
         sharing_mode = vk::SharingMode::CONCURRENT;
@@ -43,8 +41,8 @@ impl VkBuffer {
     }
 
     let buffer_info = vk::BufferCreateInfo {
-      size: (slice_size * slices) as u64,
-      usage: buffer_usage_to_vk(buffer_usage),
+      size: (info.size * slices) as u64,
+      usage: buffer_usage_to_vk(info.usage),
       sharing_mode,
       p_queue_family_indices: queue_families.as_ptr(),
       queue_family_index_count: queue_families.len() as u32,
@@ -91,8 +89,7 @@ impl VkBuffer {
       map_ptr,
       is_coherent,
       memory_usage,
-      buffer_usage,
-      slice_size,
+      info: info.clone(),
       free_slices: Mutex::new(Vec::with_capacity(slices)),
       used_slices: Mutex::new(Vec::with_capacity(slices))
     });
@@ -102,8 +99,8 @@ impl VkBuffer {
       for i in 0..slices {
         slices_guard.push(Arc::new(VkBufferSlice {
           buffer: buffer.clone(),
-          offset: i * slice_size,
-          length: slice_size
+          offset: i * info.size,
+          length: info.size
         }));
       }
     }
@@ -181,13 +178,16 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   use self::vk::BufferUsageFlags as VkUsage;
   let usage_bits = usage.bits();
   let mut flags = 0u32;
-  flags |= usage_bits.rotate_left(VkUsage::VERTEX_BUFFER.as_raw().trailing_zeros() - BufferUsage::VERTEX.bits().trailing_zeros()) & VkUsage::VERTEX_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::INDEX_BUFFER.as_raw().trailing_zeros() - BufferUsage::INDEX.bits().trailing_zeros()) & VkUsage::INDEX_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros() - BufferUsage::CONSTANT.bits().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::INDIRECT_BUFFER.as_raw().trailing_zeros() - BufferUsage::INDIRECT.bits().trailing_zeros()) & VkUsage::INDIRECT_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros() - BufferUsage::STORAGE.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::STORAGE_TEXEL.bits().trailing_zeros() - VkUsage::STORAGE_TEXEL_BUFFER.as_raw().trailing_zeros()) & VkUsage::STORAGE_TEXEL_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::UNIFORM_TEXEL.bits().trailing_zeros() - VkUsage::UNIFORM_TEXEL_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_TEXEL_BUFFER.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::VERTEX_BUFFER.as_raw().trailing_zeros()   - BufferUsage::VERTEX.bits().trailing_zeros()) & VkUsage::VERTEX_BUFFER.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::INDEX_BUFFER.as_raw().trailing_zeros()    - BufferUsage::INDEX.bits().trailing_zeros()) & VkUsage::INDEX_BUFFER.as_raw();
+  flags |= usage_bits.rotate_right(BufferUsage::CONSTANT.bits().trailing_zeros()     - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
+  flags |= usage_bits.rotate_right(BufferUsage::INDIRECT.bits().trailing_zeros()     - VkUsage::INDIRECT_BUFFER.as_raw().trailing_zeros()) & VkUsage::INDIRECT_BUFFER.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::VERTEX_SHADER_STORAGE_READ.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
+  flags |= usage_bits.rotate_right(BufferUsage::VERTEX_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::FRAGMENT_SHADER_STORAGE_READ.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::COMPUTE_SHADER_STORAGE_READ.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
+  flags |= usage_bits.rotate_right(BufferUsage::COMPUTE_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
   flags |= usage_bits.rotate_right(BufferUsage::COPY_SRC.bits().trailing_zeros() - VkUsage::TRANSFER_SRC.as_raw().trailing_zeros()) & VkUsage::TRANSFER_SRC.as_raw();
   flags |= usage_bits.rotate_right(BufferUsage::COPY_DST.bits().trailing_zeros() - VkUsage::TRANSFER_DST.as_raw().trailing_zeros()) & VkUsage::TRANSFER_DST.as_raw();
   vk::BufferUsageFlags::from_raw(flags)
@@ -327,9 +327,9 @@ impl BufferAllocator {
     }
   }
 
-  pub fn get_slice(&self, memory_usage: MemoryUsage, buffer_usage: BufferUsage, length: usize, name: Option<&str>) -> Arc<VkBufferSlice> {
-    if length > BIG_BUFFER_SLAB_SIZE {
-      let buffer = VkBuffer::new(&self.device, length, 1, memory_usage, buffer_usage, &self.device.allocator, name);
+  pub fn get_slice(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
+    if info.size > BIG_BUFFER_SLAB_SIZE {
+      let buffer = VkBuffer::new(&self.device, 1, memory_usage, info, &self.device.allocator, name);
       let mut free_slices = buffer.free_slices.lock().unwrap();
       let slice = free_slices.pop().unwrap();
       let mut used_slices = buffer.used_slices.lock().unwrap();
@@ -337,21 +337,27 @@ impl BufferAllocator {
       return slice;
     }
 
+    let mut info = info.clone();
     let mut alignment: usize = 4;
-    if (buffer_usage & BufferUsage::CONSTANT) == BufferUsage::CONSTANT {
+    if (info.usage & BufferUsage::CONSTANT) == BufferUsage::CONSTANT {
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_uniform_buffer_offset_alignment as usize);
     }
-    if (buffer_usage & BufferUsage::STORAGE) == BufferUsage::STORAGE {
+    if info.usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_READ)
+      || info.usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_WRITE)
+      || info.usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_READ)
+      || info.usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE)
+      || info.usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_READ)
+      || info.usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_WRITE) {
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_storage_buffer_offset_alignment as usize);
     }
 
-    let key = BufferKey { memory_usage, buffer_usage };
+    let key = BufferKey { memory_usage, buffer_usage: info.usage };
     let mut guard = self.buffers.lock().unwrap();
     let matching_buffers = guard.entry(key).or_default();
     for buffer in matching_buffers.iter() {
-      if buffer.slice_size % alignment != 0 || buffer.slice_size < length {
+      if buffer.info.size % alignment != 0 || buffer.info.size < info.size {
         continue;
       }
       let slice = {
@@ -369,7 +375,7 @@ impl BufferAllocator {
 
     if self.reuse_automatically {
       for buffer in matching_buffers.iter() {
-        if buffer.slice_size % alignment != 0 || buffer.slice_size < length {
+        if buffer.info.size % alignment != 0 || buffer.info.size < info.size {
           continue;
         }
         let mut used_slices = buffer.used_slices.lock().unwrap();
@@ -386,18 +392,19 @@ impl BufferAllocator {
       }
     }
 
-    let mut slice_size = max(length, alignment);
+    let mut slice_size = max(info.size, alignment);
     slice_size = if slice_size <= TINY_BUFFER_SLAB_SIZE {
       TINY_BUFFER_SLAB_SIZE
-    } else if length <= SMALL_BUFFER_SLAB_SIZE {
+    } else if info.size <= SMALL_BUFFER_SLAB_SIZE {
       SMALL_BUFFER_SLAB_SIZE
-    } else if length <= BUFFER_SLAB_SIZE {
+    } else if info.size <= BUFFER_SLAB_SIZE {
       BUFFER_SLAB_SIZE
     } else {
       BIG_BUFFER_SLAB_SIZE
     };
+    info.size = slice_size;
 
-    let buffer = VkBuffer::new(&self.device, slice_size, SLICED_BUFFER_SIZE / slice_size, memory_usage, buffer_usage, &self.device.allocator, None);
+    let buffer = VkBuffer::new(&self.device, slice_size, memory_usage, &info, &self.device.allocator, None);
     let slice = {
       let mut free_slices = buffer.free_slices.lock().unwrap();
       let slice = free_slices.pop().unwrap();

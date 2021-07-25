@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::graphics::{Backend, Device, Fence};
+use sourcerenderer_core::graphics::{Backend, BufferInfo, Device, Fence, TextureUsage};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureShaderResourceViewInfo, BufferUsage };
@@ -79,7 +79,8 @@ impl<P: Platform> RendererAssets<P> {
       depth: 1,
       mip_levels: 1,
       array_length: 1,
-      samples: SampleCount::Samples1
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::VERTEX_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0);
     let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo {
@@ -119,13 +120,18 @@ impl<P: Platform> RendererAssets<P> {
     let vb_name = mesh_path.to_string() + "_vertices";
     let ib_name = mesh_path.to_string() + "_indices";
 
-    let vertex_buffer = self.device.create_buffer(
-      std::mem::size_of_val(&mesh.vertices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::VERTEX, Some(&vb_name));
+    let vertex_buffer = self.device.create_buffer(&BufferInfo {
+      size: std::mem::size_of_val(&mesh.vertices[..]),
+      usage: BufferUsage::COPY_DST | BufferUsage::VERTEX
+     }, MemoryUsage::GpuOnly, Some(&vb_name));
     let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     self.device.init_buffer(&temp_vertex_buffer, &vertex_buffer);
     let index_buffer = mesh.indices.map(|indices| {
       let buffer = self.device.create_buffer(
-      std::mem::size_of_val(&indices[..]), MemoryUsage::GpuOnly, BufferUsage::COPY_DST | BufferUsage::INDEX, Some(&ib_name));
+      &BufferInfo {
+        size: std::mem::size_of_val(&indices[..]), 
+        usage: BufferUsage::COPY_DST | BufferUsage::INDEX
+      },MemoryUsage::GpuOnly, Some(&ib_name));
       let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
       self.device.init_buffer(&temp_buffer, &buffer);
       buffer

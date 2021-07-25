@@ -248,7 +248,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(
             extent: Vec2UI::new(9999, 9999),
           }]);
 
-          let point_light_buffer = command_buffer.upload_dynamic_data(scene.point_lights(), BufferUsage::STORAGE);
+          let point_light_buffer = command_buffer.upload_dynamic_data(scene.point_lights(), BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
 
           //command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 4, graph_resources.get_buffer(OUTPUT_CLUSTERS, false).expect("Failed to get graph resource"));
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, graph_resources.get_buffer(LATE_LATCHING_CAMERA, false).expect("Failed to get graph resource"));

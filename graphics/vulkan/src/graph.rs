@@ -6,10 +6,11 @@ use std::cmp::min;
 
 use ash::vk;
 use smallvec::SmallVec;
+use sourcerenderer_core::graphics::TextureUsage;
 
 use crate::{command::VkInnerCommandBufferInfo, thread_manager::{VkThreadManager, VkFrameLocal}};
 
-use sourcerenderer_core::graphics::{RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions, SwapchainError, Swapchain};
+use sourcerenderer_core::graphics::{RenderpassRecordingMode, Format, SampleCount, ExternalResource, TextureDimensions, SwapchainError, Swapchain, BufferInfo};
 use sourcerenderer_core::graphics::{BufferUsage, InnerCommandBufferProvider, MemoryUsage, RenderGraph, RenderGraphResources, RenderGraphResourceError, RenderPassCallbacks, RenderPassTextureExtent, CommandBuffer};
 use sourcerenderer_core::graphics::RenderGraphInfo;
 use sourcerenderer_core::graphics::BACK_BUFFER_ATTACHMENT_NAME;
@@ -274,13 +275,14 @@ impl VkRenderGraph {
             continue;
           }
 
-          let mut usage = vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::INPUT_ATTACHMENT
-              | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
+          let mut usage = TextureUsage::VERTEX_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_LOCAL
+              | TextureUsage::COPY_SRC | TextureUsage::COPY_SRC;
 
           if format.is_depth() || format.is_stencil() {
-            usage |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+            usage |= TextureUsage::DEPTH_READ | TextureUsage::DEPTH_WRITE;
           } else {
-            usage |= vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE;
+            usage |= TextureUsage::RENDER_TARGET | TextureUsage::VERTEX_SHADER_STORAGE_WRITE | TextureUsage::FRAGMENT_SHADER_STORAGE_WRITE | TextureUsage::COMPUTE_SHADER_STORAGE_WRITE
+              |  TextureUsage::VERTEX_SHADER_STORAGE_READ | TextureUsage::FRAGMENT_SHADER_STORAGE_READ | TextureUsage::COMPUTE_SHADER_STORAGE_READ;
           }
 
           let (width, height) = match extent {
@@ -305,14 +307,15 @@ impl VkRenderGraph {
             depth: *depth,
             mip_levels: *levels,
             array_length: 1,
-            samples: *samples
+            samples: *samples,
+            usage
           };
 
-          let texture = Arc::new(VkTexture::new(&device, &texture_info, Some(name.as_str()), usage));
+          let texture = Arc::new(VkTexture::new(&device, &texture_info, Some(name.as_str())));
           let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
 
           let (texture_b, view_b) = if has_history_resource {
-            let texture = Arc::new(VkTexture::new(&device, &texture_info, Some((name.clone() + "B").as_str()), usage));
+            let texture = Arc::new(VkTexture::new(&device, &texture_info, Some((name.clone() + "B").as_str())));
             let view = Arc::new(VkTextureView::new_attachment_view(device, &texture));
             (Some(texture), Some(view))
           } else {
@@ -339,9 +342,15 @@ impl VkRenderGraph {
           name, format, size, clear
         } => {
           let allocator = context.get_shared().get_buffer_allocator();
-          let buffer = allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, *size as usize, Some(name));
+          let buffer = allocator.get_slice(&BufferInfo {
+            size: *size as usize,
+            usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::CONSTANT | BufferUsage::COPY_DST
+          }, MemoryUsage::GpuOnly, Some(name));
           let buffer_b = if has_history_resource {
-            Some(allocator.get_slice(MemoryUsage::GpuOnly, BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::COPY_DST, *size as usize, Some(name)))
+            Some(allocator.get_slice(&BufferInfo {
+              size: *size as usize,
+              usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::CONSTANT | BufferUsage::COPY_DST,
+            }, MemoryUsage::GpuOnly, Some(name)))
           } else {
             None
           };

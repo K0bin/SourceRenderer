@@ -1,6 +1,30 @@
 use crate::graphics::{Format, SampleCount, CompareFunc, Backend};
 use std::sync::Arc;
 
+bitflags! {
+  pub struct TextureUsage: u32 {
+    const FRAGMENT_SHADER_SAMPLED            = 0b1;
+    const VERTEX_SHADER_SAMPLED              = 0b10;
+    const COMPUTE_SHADER_SAMPLED             = 0b100;
+    const FRAGMENT_SHADER_STORAGE_READ       = 0b1000;
+    const VERTEX_SHADER_STORAGE_READ         = 0b10000;
+    const COMPUTE_SHADER_STORAGE_READ        = 0b100000;
+    const FRAGMENT_SHADER_STORAGE_WRITE      = 0b1000000;
+    const VERTEX_SHADER_STORAGE_WRITE        = 0b10000000;
+    const COMPUTE_SHADER_STORAGE_WRITE       = 0b100000000;
+    const FRAGMENT_SHADER_LOCAL              = 0b1000000000;
+    const RENDER_TARGET                      = 0b10000000000;
+    const DEPTH_READ                         = 0b100000000000;
+    const DEPTH_WRITE                        = 0b1000000000000;
+    const RESOLVE_SRC                        = 0b10000000000000;
+    const RESOLVE_DST                        = 0b100000000000000;
+    const BLIT_SRC                           = 0b1000000000000000;
+    const BLIT_DST                           = 0b10000000000000000;
+    const COPY_SRC                           = 0b100000000000000000;
+    const COPY_DST                           = 0b1000000000000000000;
+  }
+}
+
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
   pub format: Format,
@@ -9,7 +33,8 @@ pub struct TextureInfo {
   pub depth: u32,
   pub mip_levels: u32,
   pub array_length: u32,
-  pub samples: SampleCount
+  pub samples: SampleCount,
+  pub usage: TextureUsage
 }
 
 pub trait Texture {

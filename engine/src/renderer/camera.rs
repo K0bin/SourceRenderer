@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{Backend, Device, MemoryUsage, BufferUsage, Buffer};
+use sourcerenderer_core::graphics::{Backend, Buffer, BufferInfo, BufferUsage, Device, MemoryUsage};
 use sourcerenderer_core::{Matrix4, Vec3, Quaternion};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crossbeam_utils::atomic::AtomicCell;
@@ -32,7 +32,10 @@ pub struct LateLatchCamera<B: Backend> {
 impl<B: Backend> LateLatchCamera<B> {
   pub fn new(device: &B::Device, aspect_ratio: f32, fov: f32) -> Self {
     let late_letch_cam = Self {
-      buffer: device.create_buffer(std::mem::size_of::<PrimaryCameraBuffer>(), MemoryUsage::CpuOnly, BufferUsage::STORAGE, None),
+      buffer: device.create_buffer(&BufferInfo {
+        size: std::mem::size_of::<PrimaryCameraBuffer>(),
+        usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE
+      }, MemoryUsage::CpuOnly, None),
       proj_read_counter: AtomicU32::new(0),
       proj_write_counter: AtomicU32::new(0),
       view_read_counter: AtomicU32::new(0),

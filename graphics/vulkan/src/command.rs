@@ -9,7 +9,7 @@ use ash::version::DeviceV1_0;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferUsage, MemoryUsage, PipelineBinding, ShaderType, Texture};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, MemoryUsage, PipelineBinding, ShaderType, Texture};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -466,7 +466,10 @@ impl VkCommandBuffer {
 
   pub(crate) fn upload_dynamic_data<T>(&self, data: &[T], usage: BufferUsage) -> Arc<VkBufferSlice>
     where T: 'static + Send + Sync + Sized + Clone {
-    let slice = self.buffer_allocator.get_slice(MemoryUsage::CpuToGpu, usage, std::mem::size_of_val(data), None);
+    let slice = self.buffer_allocator.get_slice(&BufferInfo {
+      size: std::mem::size_of_val(data),
+      usage
+    }, MemoryUsage::CpuToGpu,  None);
     unsafe {
       let ptr = slice.map_unsafe(false).expect("Failed to map buffer");
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());

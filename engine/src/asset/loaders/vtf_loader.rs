@@ -4,7 +4,7 @@ use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, AssetFileData, A
 use std::io::{Cursor, BufReader};
 use sourcerenderer_vtf::{VtfTexture, ImageFormat as VTFTextureFormat};
 use std::fs::File;
-use sourcerenderer_core::graphics::{TextureInfo, SampleCount};
+use sourcerenderer_core::graphics::{SampleCount, TextureInfo, TextureUsage};
 use sourcerenderer_core::graphics::Format;
 use std::sync::Arc;
 
@@ -48,7 +48,8 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
             depth: 1,
             mip_levels: 1,
             array_length: 1,
-            samples: SampleCount::Samples1
+            samples: SampleCount::Samples1,
+            usage: TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::VERTEX_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::BLIT_DST
           },
           data: Box::new([mipmap.frames[0].faces[0].slices[0].data.clone()]),
         }
@@ -64,7 +65,8 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
             depth: 1,
             mip_levels: 1,
             array_length: 1,
-            samples: SampleCount::Samples1
+            samples: SampleCount::Samples1,
+            usage: TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::VERTEX_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::BLIT_DST
           },
           data: Box::new([mipmap.frames[0].faces[0].slices[0].data.clone()]),
         }

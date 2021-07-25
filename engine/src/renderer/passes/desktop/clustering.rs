@@ -70,7 +70,7 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           z_far: view_ref.far_plane
         };
 
-        let screen_to_view_cbuffer = c_device.upload_data(&[screen_to_view], MemoryUsage::CpuOnly, BufferUsage::STORAGE);
+        let screen_to_view_cbuffer = c_device.upload_data(&[screen_to_view], MemoryUsage::CpuOnly, BufferUsage::COMPUTE_SHADER_STORAGE_READ);
 
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&clustering_pipeline));

@@ -84,8 +84,8 @@ pub(crate) fn build_pass<P: Platform>(device: &Arc<<P::GraphicsBackend as Graphi
           radius: (l.intensity / LIGHT_CUTOFF).sqrt()
         }).collect();
 
-        let light_info_buffer = c_device.upload_data(&[setup_info], MemoryUsage::CpuOnly, BufferUsage::STORAGE);
-        let point_lights_buffer = c_device.upload_data(&point_lights[..], MemoryUsage::CpuOnly, BufferUsage::STORAGE);
+        let light_info_buffer = c_device.upload_data(&[setup_info], MemoryUsage::CpuOnly, BufferUsage::COMPUTE_SHADER_STORAGE_READ);
+        let point_lights_buffer = c_device.upload_data(&point_lights[..], MemoryUsage::CpuOnly, BufferUsage::COMPUTE_SHADER_STORAGE_READ);
 
         let command_buffer = command_buffer_a as &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer;
         command_buffer.set_pipeline(PipelineBinding::Compute(&light_binning_pipeline));

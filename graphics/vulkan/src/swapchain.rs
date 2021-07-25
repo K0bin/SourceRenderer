@@ -7,7 +7,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
 
-use sourcerenderer_core::graphics::{Swapchain, TextureInfo, SampleCount, SwapchainError};
+use sourcerenderer_core::graphics::{SampleCount, Swapchain, SwapchainError, TextureInfo, TextureUsage};
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
 
@@ -217,7 +217,8 @@ impl VkSwapchain {
             array_length: 1u32,
             mip_levels: 1u32,
             depth: 1u32,
-            samples: SampleCount::Samples1
+            samples: SampleCount::Samples1,
+            usage: TextureUsage::RENDER_TARGET | TextureUsage::COPY_DST
           })))
         .collect();
 

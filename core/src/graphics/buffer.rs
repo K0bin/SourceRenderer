@@ -3,17 +3,28 @@ use std::ops::{Deref, DerefMut};
 
 bitflags! {
   pub struct BufferUsage: u32 {
-    const VERTEX        = 0b1;
-    const INDEX         = 0b10;
-    const CONSTANT      = 0b100;
-    const STORAGE       = 0b1000;
-    const INDIRECT      = 0b10000;
-    const UNIFORM_TEXEL = 0b100000;
-    const STORAGE_TEXEL = 0b1000000;
-    const COPY_SRC      = 0b1000000000000000000;
-    const COPY_DST      = 0b10000000000000000000;
+    const VERTEX                             = 0b1;
+    const INDEX                              = 0b10;
+    const FRAGMENT_SHADER_STORAGE_READ       = 0b100;
+    const VERTEX_SHADER_STORAGE_READ         = 0b1000;
+    const COMPUTE_SHADER_STORAGE_READ        = 0b10000;
+    const FRAGMENT_SHADER_STORAGE_WRITE      = 0b100000;
+    const VERTEX_SHADER_STORAGE_WRITE        = 0b1000000;
+    const COMPUTE_SHADER_STORAGE_WRITE       = 0b10000000;
+    const COPY_SRC                           = 0b100000000;
+    const COPY_DST                           = 0b1000000000;
+    const CONSTANT                           = 0b10000000000;
+    const INDIRECT                           = 0b100000000000;
+    const CPU_IN_FLIGHT_WRITE                = 0b1000000000000;
   }
 }
+
+#[derive(Debug, Clone)]
+pub struct BufferInfo {
+  pub size: usize,
+  pub usage: BufferUsage
+}
+
 
 pub trait Buffer {
   fn map_mut<T>(&self) -> Option<MutMappedBuffer<Self, T>>

@@ -1,6 +1,6 @@
 
 use nalgebra::Rotation3;
-use sourcerenderer_core::{Platform, Quaternion, Vec4, graphics::{Format, SampleCount}};
+use sourcerenderer_core::{Platform, Quaternion, Vec4, graphics::{Format, SampleCount, TextureUsage}};
 use crate::asset::{AssetLoader, AssetType, Asset, Model, AssetManager, Mesh};
 use core::slice;
 use std::{path::Path, u8};
@@ -446,7 +446,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       depth: 1,
       mip_levels: 1,
       array_length: 1,
-      samples: SampleCount::Samples1
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::COPY_DST | TextureUsage::FRAGMENT_SHADER_SAMPLED
     };
     let samples = lightmap_packer.take_data();
     let samples_len = samples.len();

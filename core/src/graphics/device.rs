@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend, ExternalResource};
 use std::collections::HashMap;
 
-use super::{RenderPassInfo, texture::SamplerInfo};
+use super::{RenderPassInfo, buffer::BufferInfo, texture::SamplerInfo};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
@@ -28,7 +28,7 @@ pub trait Adapter<B: Backend> {
 }
 
 pub trait Device<B: Backend> {
-  fn create_buffer(&self, size: usize, memory_usage: MemoryUsage, usage: BufferUsage, name: Option<&str>) -> Arc<B::Buffer>;
+  fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<B::Buffer>;
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<B::Shader>;
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;

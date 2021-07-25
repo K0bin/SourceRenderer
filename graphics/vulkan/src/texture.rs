@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
+use sourcerenderer_core::graphics::TextureUsage;
 use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
 
 use crate::{VkBackend, raw::RawVkDevice};
@@ -23,13 +24,13 @@ pub struct VkTexture {
 }
 
 impl VkTexture {
-  pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, name: Option<&str>, usage: vk::ImageUsageFlags) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, name: Option<&str>) -> Self {
     let create_info = vk::ImageCreateInfo {
       flags: vk::ImageCreateFlags::empty(),
       tiling: vk::ImageTiling::OPTIMAL,
       initial_layout: vk::ImageLayout::UNDEFINED,
       sharing_mode: vk::SharingMode::EXCLUSIVE,
-      usage,
+      usage: texture_usage_to_vk(info.usage),
       image_type: vk::ImageType::TYPE_2D, // FIXME: if info.height <= 1 { vk::ImageType::TYPE_1D } else if info.depth <= 1 { vk::ImageType::TYPE_2D } else { vk::ImageType::TYPE_3D},
       extent: vk::Extent3D {
         width: max(1, info.width),
@@ -80,6 +81,32 @@ impl VkTexture {
   pub fn get_handle(&self) -> &vk::Image {
     &self.image
   }
+}
+
+fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
+  use self::vk::ImageUsageFlags as VkUsage;
+  let usage_bits = usage.bits();
+  let mut flags = 0u32;
+  flags |= usage_bits.rotate_right(TextureUsage::VERTEX_SHADER_STORAGE_READ.bits().trailing_zeros() - VkUsage::STORAGE.as_raw().trailing_zeros()) & VkUsage::STORAGE.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::VERTEX_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE.as_raw().trailing_zeros()) & VkUsage::STORAGE.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::FRAGMENT_SHADER_STORAGE_READ.bits().trailing_zeros() - VkUsage::STORAGE.as_raw().trailing_zeros()) & VkUsage::STORAGE.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::FRAGMENT_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE.as_raw().trailing_zeros()) & VkUsage::STORAGE.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::COMPUTE_SHADER_STORAGE_READ.bits().trailing_zeros() - VkUsage::STORAGE.as_raw().trailing_zeros()) & VkUsage::STORAGE.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::COMPUTE_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE.as_raw().trailing_zeros()) & VkUsage::STORAGE.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::SAMPLED.as_raw().trailing_zeros() - TextureUsage::VERTEX_SHADER_SAMPLED.bits().trailing_zeros()) & VkUsage::SAMPLED.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::SAMPLED.as_raw().trailing_zeros() - TextureUsage::FRAGMENT_SHADER_SAMPLED.bits().trailing_zeros()) & VkUsage::SAMPLED.as_raw();
+  flags |= usage_bits.rotate_left(VkUsage::SAMPLED.as_raw().trailing_zeros() - TextureUsage::COMPUTE_SHADER_SAMPLED.bits().trailing_zeros()) & VkUsage::SAMPLED.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::RENDER_TARGET.bits().trailing_zeros() - VkUsage::COLOR_ATTACHMENT.as_raw().trailing_zeros()) & VkUsage::COLOR_ATTACHMENT.as_raw();
+  flags |= usage_bits.rotate_left(TextureUsage::DEPTH_READ.bits().trailing_zeros() - VkUsage::DEPTH_STENCIL_ATTACHMENT.as_raw().trailing_zeros()) & VkUsage::DEPTH_STENCIL_ATTACHMENT.as_raw();
+  flags |= usage_bits.rotate_left(TextureUsage::DEPTH_WRITE.bits().trailing_zeros() - VkUsage::DEPTH_STENCIL_ATTACHMENT.as_raw().trailing_zeros()) & VkUsage::DEPTH_STENCIL_ATTACHMENT.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::FRAGMENT_SHADER_LOCAL.bits().trailing_zeros() - VkUsage::INPUT_ATTACHMENT.as_raw().trailing_zeros()) & VkUsage::INPUT_ATTACHMENT.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::BLIT_SRC.bits().trailing_zeros() - VkUsage::TRANSFER_SRC.as_raw().trailing_zeros()) & VkUsage::TRANSFER_SRC.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::RESOLVE_SRC.bits().trailing_zeros() - VkUsage::TRANSFER_SRC.as_raw().trailing_zeros()) & VkUsage::TRANSFER_SRC.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::COPY_SRC.bits().trailing_zeros() - VkUsage::TRANSFER_SRC.as_raw().trailing_zeros()) & VkUsage::TRANSFER_SRC.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::BLIT_DST.bits().trailing_zeros() - VkUsage::TRANSFER_DST.as_raw().trailing_zeros()) & VkUsage::TRANSFER_DST.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::RESOLVE_DST.bits().trailing_zeros() - VkUsage::TRANSFER_DST.as_raw().trailing_zeros()) & VkUsage::TRANSFER_DST.as_raw();
+  flags |= usage_bits.rotate_right(TextureUsage::COPY_DST.bits().trailing_zeros() - VkUsage::TRANSFER_DST.as_raw().trailing_zeros()) & VkUsage::TRANSFER_DST.as_raw();
+  vk::ImageUsageFlags::from_raw(flags)
 }
 
 impl Drop for VkTexture {
