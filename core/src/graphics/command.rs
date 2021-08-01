@@ -4,7 +4,7 @@ use crate::Vec2;
 use crate::Vec2I;
 use crate::Vec2UI;
 
-use crate::graphics::{Backend, BufferUsage, TextureUsage, CommonTextureUsage};
+use crate::graphics::{Backend, BufferUsage, TextureUsage};
 
 use super::ShaderType;
 
@@ -62,14 +62,16 @@ pub trait CommandBuffer<B: Backend> {
 
 pub enum Barrier<'a, B: Backend> {
   TextureBarrier {
-    old_primary_usage: CommonTextureUsage,
-    new_primary_usage: CommonTextureUsage,
+    old_primary_usage: TextureUsage,
+    new_primary_usage: TextureUsage,
     old_usages: TextureUsage,
     new_usages: TextureUsage,
     texture: &'a Arc<B::Texture>,
     try_omit: bool
   },
   BufferBarrier {
+    old_primary_usage: BufferUsage,
+    new_primary_usage: BufferUsage,
     old_usages: BufferUsage,
     new_usages: BufferUsage,
     buffer: &'a Arc<B::Buffer>,

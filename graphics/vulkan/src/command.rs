@@ -10,7 +10,7 @@ use ash::version::DeviceV1_0;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, CommonTextureUsage, MemoryUsage, PipelineBinding, ShaderType, Texture, TextureUsage};
+use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, MemoryUsage, PipelineBinding, ShaderType, Texture, TextureUsage};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -19,7 +19,7 @@ use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
 use crate::{raw::RawVkDevice, texture::VkSampler};
-use crate::VkRenderPass;
+use crate::{VkRenderPass, texture};
 use crate::VkFrameBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;
@@ -208,7 +208,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn end(&mut self) {
     assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    self.flush_barriers();
     self.state = VkCommandBufferState::Finished;
     unsafe {
       self.device.end_command_buffer(self.buffer).unwrap();
@@ -625,8 +625,11 @@ impl VkCommandBuffer {
     for barrier in barriers {
       match barrier {
         Barrier::TextureBarrier { old_primary_usage, new_primary_usage, old_usages, new_usages, texture, try_omit } => {
-          let old_layout = primary_texture_usage_to_image_layout(*old_primary_usage);
-          let new_layout = primary_texture_usage_to_image_layout(*new_primary_usage);
+          debug_assert!(old_usages.contains(*old_primary_usage));
+          debug_assert!(new_usages.contains(*new_primary_usage));
+
+          let old_layout = texture_usage_to_image_layout(*old_primary_usage);
+          let new_layout = texture_usage_to_image_layout(*new_primary_usage);
           let src_access = texture_usage_to_access(*old_usages);
           let new_access = texture_usage_to_access(*new_usages);
 
@@ -640,6 +643,13 @@ impl VkCommandBuffer {
           }
           if aspect_mask.is_empty() {
             aspect_mask |= vk::ImageAspectFlags::COLOR;
+          }
+
+          let src_stages = texture_usage_to_stage(*old_usages);
+          let dst_stages=  texture_usage_to_stage(*new_usages);
+
+          if self.pending_src_stage_flags != src_stages || self.pending_dst_stage_flags != dst_stages {
+            self.flush_barriers();
           }
 
           if old_layout != new_layout || (!*try_omit || src_access != new_access) {
@@ -660,13 +670,26 @@ impl VkCommandBuffer {
               },
               ..Default::default()
             });
-            self.pending_src_stage_flags |= texture_usage_to_stage(*old_usages);
-            self.pending_dst_stage_flags |= texture_usage_to_stage(*new_usages);
+            
+            if !old_primary_usage.is_empty() || !*try_omit {
+              self.pending_src_stage_flags |= src_stages;
+              self.pending_dst_stage_flags |= dst_stages;
+            }
           }
         },
-        Barrier::BufferBarrier { old_usages, new_usages, buffer, try_omit } => {          
+        Barrier::BufferBarrier { new_primary_usage, old_primary_usage, old_usages, new_usages, buffer, try_omit } => {     
+          debug_assert!(old_usages.contains(*old_primary_usage));
+          debug_assert!(new_usages.contains(*new_primary_usage));     
           let src_access = buffer_usage_to_access(*old_usages);
           let new_access = buffer_usage_to_access(*new_usages);
+
+          let src_stages = buffer_usage_to_stage(*old_usages);
+          let dst_stages=  buffer_usage_to_stage(*new_usages);
+
+          if self.pending_src_stage_flags != src_stages || self.pending_dst_stage_flags != dst_stages {
+            self.flush_barriers();
+          }
+
           if !*try_omit || src_access != new_access {
             self.pending_buffer_barriers.push(vk::BufferMemoryBarrier {
               src_access_mask: src_access & write_access_mask(),
@@ -678,8 +701,11 @@ impl VkCommandBuffer {
               size: buffer.get_length() as u64,
               ..Default::default()
             });
-            self.pending_src_stage_flags |= buffer_usage_to_stage(*old_usages);
-            self.pending_dst_stage_flags |= buffer_usage_to_stage(*new_usages);
+            
+            if !old_primary_usage.is_empty() || !*try_omit {
+              self.pending_src_stage_flags |= src_stages;
+              self.pending_dst_stage_flags |= dst_stages;
+            }
           }
         },
       }
@@ -999,8 +1025,6 @@ impl Drop for VkCommandBufferSubmission {
   }
 }
 
-
-
 fn texture_usage_to_access(texture_usage: TextureUsage) -> vk::AccessFlags {
   let mut flags = vk::AccessFlags::empty();
   if texture_usage.contains(TextureUsage::BLIT_DST)
@@ -1079,21 +1103,56 @@ fn texture_usage_to_stage(texture_usage: TextureUsage) -> vk::PipelineStageFlags
   flags
 }
 
-fn primary_texture_usage_to_image_layout(texture_usage: CommonTextureUsage) -> vk::ImageLayout {
+fn texture_usage_to_image_layout(texture_usage: TextureUsage) -> vk::ImageLayout {
+  let storage_usages = TextureUsage::VERTEX_SHADER_STORAGE_READ
+  | TextureUsage::VERTEX_SHADER_STORAGE_WRITE
+  | TextureUsage::COMPUTE_SHADER_STORAGE_READ
+  | TextureUsage::COMPUTE_SHADER_STORAGE_WRITE
+  | TextureUsage::FRAGMENT_SHADER_STORAGE_READ
+  | TextureUsage::FRAGMENT_SHADER_STORAGE_WRITE;
+  if texture_usage.intersects(storage_usages) && (texture_usage & !storage_usages).is_empty() {
+    return vk::ImageLayout::GENERAL;
+  }
+
+  let sampling_usages = TextureUsage::VERTEX_SHADER_SAMPLED
+  | TextureUsage::COMPUTE_SHADER_SAMPLED
+  | TextureUsage::FRAGMENT_SHADER_SAMPLED
+  | TextureUsage::FRAGMENT_SHADER_LOCAL;
+  if texture_usage.intersects(sampling_usages) && (texture_usage & !sampling_usages).is_empty() {
+    return vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+  }
+
+  let transfer_src_usages = TextureUsage::BLIT_SRC
+  | TextureUsage::COPY_SRC
+  | TextureUsage::RESOLVE_SRC;
+  if texture_usage.intersects(transfer_src_usages) && (texture_usage & !transfer_src_usages).is_empty() {
+    return vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
+  }
+
+  let transfer_dst_usages = TextureUsage::BLIT_DST
+  | TextureUsage::COPY_DST
+  | TextureUsage::RESOLVE_DST;
+  if texture_usage.intersects(transfer_dst_usages) && (texture_usage & !transfer_dst_usages).is_empty() {
+    return vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+  }
+
+  if texture_usage == TextureUsage::DEPTH_READ {
+    return vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+  }
+
+  let ds_usages = TextureUsage::DEPTH_WRITE | TextureUsage::DEPTH_READ;
+  if texture_usage.intersects(ds_usages) && (texture_usage &!ds_usages).is_empty() {
+    return vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+  }
+
+  if texture_usage.is_empty() {
+    return vk::ImageLayout::UNDEFINED;
+  }
+  
   match texture_usage {
-    CommonTextureUsage::Sample => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-    CommonTextureUsage::StorageRead => vk::ImageLayout::GENERAL,
-    CommonTextureUsage::ResolveSrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-    CommonTextureUsage::BlitSrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-    CommonTextureUsage::DepthRead => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-    CommonTextureUsage::StorageWrite => vk::ImageLayout::GENERAL,
-    CommonTextureUsage::ResolveDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-    CommonTextureUsage::BlitDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-    CommonTextureUsage::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-    CommonTextureUsage::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-    CommonTextureUsage::DepthReadWrite => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    CommonTextureUsage::RenderTarget => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-    CommonTextureUsage::Local => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+    TextureUsage::RENDER_TARGET => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+    TextureUsage::FRAGMENT_SHADER_LOCAL => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+    _ => panic!("Unsupported texture usage combination")
   }
 }
 

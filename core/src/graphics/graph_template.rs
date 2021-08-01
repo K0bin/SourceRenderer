@@ -1,7 +1,5 @@
 use crate::graphics::{Format, SampleCount, BufferUsage, TextureUsage};
 
-use super::CommonTextureUsage;
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum PipelineStage {
   GraphicsShaders,
