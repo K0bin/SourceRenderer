@@ -1,4 +1,6 @@
-use crate::graphics::{Format, SampleCount};
+use crate::graphics::{Format, SampleCount, BufferUsage, TextureUsage};
+
+use super::CommonTextureUsage;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum PipelineStage {
@@ -95,6 +97,24 @@ pub enum ExternalOutput {
     producer_type: ExternalProducerType
   }
 }
+
+/*#[derive(Clone)]
+pub enum ExternalResource {
+  RenderTarget {
+    name: String,
+    usages: TextureUsage,
+    common_usage: CommonTextureUsage
+  },
+  DepthStencil {
+    name: String,
+    usages: TextureUsage,
+    common_usage: CommonTextureUsage
+  },
+  Buffer {
+    name: String,
+    usages: BufferUsage
+  }
+}*/
 
 #[derive(Clone)]
 pub enum RenderPassTextureExtent {

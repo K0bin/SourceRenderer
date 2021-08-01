@@ -180,7 +180,9 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   let mut flags = 0u32;
   flags |= usage_bits.rotate_left(VkUsage::VERTEX_BUFFER.as_raw().trailing_zeros()   - BufferUsage::VERTEX.bits().trailing_zeros()) & VkUsage::VERTEX_BUFFER.as_raw();
   flags |= usage_bits.rotate_left(VkUsage::INDEX_BUFFER.as_raw().trailing_zeros()    - BufferUsage::INDEX.bits().trailing_zeros()) & VkUsage::INDEX_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::CONSTANT.bits().trailing_zeros()     - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
+  flags |= usage_bits.rotate_right(BufferUsage::VERTEX_SHADER_CONSTANT.bits().trailing_zeros() - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
+  flags |= usage_bits.rotate_right(BufferUsage::FRAGMENT_SHADER_CONSTANT.bits().trailing_zeros() - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
+  flags |= usage_bits.rotate_right(BufferUsage::COMPUTE_SHADER_CONSTANT.bits().trailing_zeros() - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
   flags |= usage_bits.rotate_right(BufferUsage::INDIRECT.bits().trailing_zeros()     - VkUsage::INDIRECT_BUFFER.as_raw().trailing_zeros()) & VkUsage::INDIRECT_BUFFER.as_raw();
   flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::VERTEX_SHADER_STORAGE_READ.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
   flags |= usage_bits.rotate_right(BufferUsage::VERTEX_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
@@ -339,7 +341,7 @@ impl BufferAllocator {
 
     let mut info = info.clone();
     let mut alignment: usize = 4;
-    if (info.usage & BufferUsage::CONSTANT) == BufferUsage::CONSTANT {
+    if info.usage.intersects(BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT) {
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_uniform_buffer_offset_alignment as usize);
     }

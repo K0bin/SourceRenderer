@@ -9,7 +9,8 @@ use ash::version::DeviceV1_0;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, MemoryUsage, PipelineBinding, ShaderType, Texture};
+use smallvec::SmallVec;
+use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, CommonTextureUsage, MemoryUsage, PipelineBinding, ShaderType, Texture, TextureUsage};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -123,6 +124,10 @@ pub struct VkCommandBuffer {
   queue_family_index: u32,
   descriptor_manager: VkBindingManager,
   buffer_allocator: Arc<BufferAllocator>,
+  pending_image_barriers: Vec<vk::ImageMemoryBarrier>,
+  pending_buffer_barriers: Vec<vk::BufferMemoryBarrier>,
+  pending_src_stage_flags: vk::PipelineStageFlags,
+  pending_dst_stage_flags: vk::PipelineStageFlags,  
   frame: u64
 }
 
@@ -149,6 +154,10 @@ impl VkCommandBuffer {
       queue_family_index,
       descriptor_manager: VkBindingManager::new(device),
       buffer_allocator: buffer_allocator.clone(),
+      pending_buffer_barriers: Vec::with_capacity(4),
+      pending_image_barriers: Vec::with_capacity(4),
+      pending_src_stage_flags: vk::PipelineStageFlags::empty(),
+      pending_dst_stage_flags: vk::PipelineStageFlags::empty(),
       frame: 0
     }
   }
@@ -199,6 +208,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn end(&mut self) {
     assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     self.state = VkCommandBufferState::Finished;
     unsafe {
       self.device.end_command_buffer(self.buffer).unwrap();
@@ -228,6 +238,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, clear_values: &[vk::ClearValue], recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     // TODO: begin info fields
     unsafe {
       let begin_info = vk::RenderPassBeginInfo {
@@ -317,6 +328,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().is_graphics());
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     unsafe {
       self.device.cmd_draw(self.buffer, vertices, 1, offset, 0);
     }
@@ -326,6 +338,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().is_graphics());
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     unsafe {
       self.device.cmd_draw_indexed(self.buffer, indices, instances, first_index, vertex_offset, first_instance);
     }
@@ -533,6 +546,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
     debug_assert!(!self.pipeline.as_ref().unwrap().is_graphics());
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     unsafe {
       self.device.cmd_dispatch(self.buffer, group_count_x, group_count_y, group_count_z);
     }
@@ -543,6 +557,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_none());
     debug_assert!(self.render_pass.is_none());
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     let src_info = src_texture.get_info();
     let dst_info = dst_texture.get_info();
     let mut src_aspect = vk::ImageAspectFlags::empty();
@@ -601,6 +616,101 @@ impl VkCommandBuffer {
         }]
       }], vk::Filter::LINEAR);
     }
+  }
+
+  pub(crate) fn barrier_1<'a>(
+    &mut self,
+    barriers: &[Barrier<VkBackend>]
+  ) {
+    for barrier in barriers {
+      match barrier {
+        Barrier::TextureBarrier { old_primary_usage, new_primary_usage, old_usages, new_usages, texture, try_omit } => {
+          let old_layout = primary_texture_usage_to_image_layout(*old_primary_usage);
+          let new_layout = primary_texture_usage_to_image_layout(*new_primary_usage);
+          let src_access = texture_usage_to_access(*old_usages);
+          let new_access = texture_usage_to_access(*new_usages);
+
+          let info = texture.get_info();
+          let mut aspect_mask = vk::ImageAspectFlags::empty();
+          if info.format.is_depth() {
+            aspect_mask |= vk::ImageAspectFlags::DEPTH;
+          }
+          if info.format.is_stencil() {
+            aspect_mask |= vk::ImageAspectFlags::STENCIL;
+          }
+          if aspect_mask.is_empty() {
+            aspect_mask |= vk::ImageAspectFlags::COLOR;
+          }
+
+          if old_layout != new_layout || (!*try_omit || src_access != new_access) {
+            self.pending_image_barriers.push(vk::ImageMemoryBarrier {
+              src_access_mask: src_access & write_access_mask(),
+              dst_access_mask: new_access,
+              old_layout,
+              new_layout,
+              src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+              dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+              image: *texture.get_handle(),
+              subresource_range: vk::ImageSubresourceRange {
+                aspect_mask,
+                base_array_layer: 0,
+                base_mip_level: 0,
+                level_count: info.mip_levels,
+                layer_count: info.array_length
+              },
+              ..Default::default()
+            });
+            self.pending_src_stage_flags |= texture_usage_to_stage(*old_usages);
+            self.pending_dst_stage_flags |= texture_usage_to_stage(*new_usages);
+          }
+        },
+        Barrier::BufferBarrier { old_usages, new_usages, buffer, try_omit } => {          
+          let src_access = buffer_usage_to_access(*old_usages);
+          let new_access = buffer_usage_to_access(*new_usages);
+          if !*try_omit || src_access != new_access {
+            self.pending_buffer_barriers.push(vk::BufferMemoryBarrier {
+              src_access_mask: src_access & write_access_mask(),
+              dst_access_mask: new_access,
+              src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+              dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+              buffer: *buffer.get_buffer().get_handle(),
+              offset: buffer.get_offset() as u64,
+              size: buffer.get_length() as u64,
+              ..Default::default()
+            });
+            self.pending_src_stage_flags |= buffer_usage_to_stage(*old_usages);
+            self.pending_dst_stage_flags |= buffer_usage_to_stage(*new_usages);
+          }
+        },
+      }
+    }
+  }
+
+  pub(crate) fn flush_barriers(&mut self) {
+    if self.pending_src_stage_flags.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() {
+      return;
+    }
+    if self.pending_dst_stage_flags.is_empty() {
+      self.pending_dst_stage_flags = vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+    }
+    if self.pending_src_stage_flags.is_empty() {
+      self.pending_src_stage_flags = vk::PipelineStageFlags::TOP_OF_PIPE;
+    }
+
+    unsafe {
+      self.device.cmd_pipeline_barrier(
+        self.buffer,
+        self.pending_src_stage_flags,
+        self.pending_dst_stage_flags,
+        vk::DependencyFlags::empty(),
+        &[],
+        &self.pending_buffer_barriers[..],
+        &self.pending_image_barriers[..]);
+    }
+    self.pending_src_stage_flags = vk::PipelineStageFlags::empty();
+    self.pending_dst_stage_flags = vk::PipelineStageFlags::empty();
+    self.pending_image_barriers.clear();
+    self.pending_buffer_barriers.clear();
   }
 
   pub(crate) fn barrier(
@@ -835,6 +945,17 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     item.end();
     VkCommandBufferSubmission::new(item, mut_self.sender.clone())
   }
+
+  #[inline(always)]
+  fn barrier<'a>(&mut self, barriers: &[Barrier<VkBackend>]) {
+    self.item.as_mut().unwrap().barrier_1(barriers);
+  }
+
+
+  #[inline(always)]
+  fn flush_barriers(&mut self) {
+      self.item.as_mut().unwrap().flush_barriers();
+  }
 }
 
 pub struct VkCommandBufferSubmission {
@@ -876,4 +997,176 @@ impl Drop for VkCommandBufferSubmission {
     let item = std::mem::replace(&mut self.item, None).unwrap();
     self.sender.send(item).unwrap();
   }
+}
+
+
+
+fn texture_usage_to_access(texture_usage: TextureUsage) -> vk::AccessFlags {
+  let mut flags = vk::AccessFlags::empty();
+  if texture_usage.contains(TextureUsage::BLIT_DST)
+    || texture_usage.contains(TextureUsage::COPY_DST)
+    || texture_usage.contains(TextureUsage::RESOLVE_DST) {
+    flags |= vk::AccessFlags::TRANSFER_WRITE;
+  }
+  if texture_usage.contains(TextureUsage::BLIT_SRC)
+    || texture_usage.contains(TextureUsage::COPY_SRC)
+    || texture_usage.contains(TextureUsage::RESOLVE_SRC) {
+    flags |= vk::AccessFlags::TRANSFER_READ;
+  }
+  if texture_usage.contains(TextureUsage::RENDER_TARGET) {
+    flags |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE | vk::AccessFlags::COLOR_ATTACHMENT_READ;
+  }
+  if texture_usage.contains(TextureUsage::DEPTH_READ) {
+    flags |= vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
+  }
+  if texture_usage.contains(TextureUsage::DEPTH_WRITE) {
+    flags |= vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
+  }
+  if texture_usage.contains(TextureUsage::VERTEX_SHADER_STORAGE_WRITE)
+    || texture_usage.contains(TextureUsage::FRAGMENT_SHADER_STORAGE_WRITE)
+    || texture_usage.contains(TextureUsage::COMPUTE_SHADER_STORAGE_WRITE) {
+    flags |= vk::AccessFlags::SHADER_WRITE;
+  }
+  if texture_usage.contains(TextureUsage::VERTEX_SHADER_STORAGE_READ)
+    || texture_usage.contains(TextureUsage::FRAGMENT_SHADER_STORAGE_READ)
+    || texture_usage.contains(TextureUsage::COMPUTE_SHADER_STORAGE_READ)
+    || texture_usage.contains(TextureUsage::VERTEX_SHADER_SAMPLED)
+    || texture_usage.contains(TextureUsage::FRAGMENT_SHADER_SAMPLED)
+    || texture_usage.contains(TextureUsage::COMPUTE_SHADER_SAMPLED) {
+    flags |= vk::AccessFlags::SHADER_READ;
+  }
+  if texture_usage.contains(TextureUsage::FRAGMENT_SHADER_LOCAL) {
+    flags |= vk::AccessFlags::INPUT_ATTACHMENT_READ;
+  }
+  flags
+}
+
+fn texture_usage_to_stage(texture_usage: TextureUsage) -> vk::PipelineStageFlags {
+  let mut flags = vk::PipelineStageFlags::empty();
+  if texture_usage.contains(TextureUsage::BLIT_DST)
+    || texture_usage.contains(TextureUsage::COPY_DST)
+    || texture_usage.contains(TextureUsage::RESOLVE_DST)
+    || texture_usage.contains(TextureUsage::BLIT_SRC)
+    || texture_usage.contains(TextureUsage::COPY_SRC)
+    || texture_usage.contains(TextureUsage::RESOLVE_SRC) {
+    flags |= vk::PipelineStageFlags::TRANSFER;
+  }
+  if texture_usage.contains(TextureUsage::RENDER_TARGET) {
+    flags |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+  }
+  if texture_usage.contains(TextureUsage::DEPTH_READ) {
+    flags |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS;
+  }
+  if texture_usage.contains(TextureUsage::DEPTH_WRITE) {
+    flags |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
+  }
+  if texture_usage.contains(TextureUsage::VERTEX_SHADER_STORAGE_WRITE)
+    || texture_usage.contains(TextureUsage::VERTEX_SHADER_STORAGE_READ)
+    || texture_usage.contains(TextureUsage::VERTEX_SHADER_SAMPLED) {
+    flags |= vk::PipelineStageFlags::VERTEX_SHADER;
+  }
+  if texture_usage.contains(TextureUsage::FRAGMENT_SHADER_STORAGE_WRITE)
+    || texture_usage.contains(TextureUsage::FRAGMENT_SHADER_STORAGE_READ)
+    || texture_usage.contains(TextureUsage::FRAGMENT_SHADER_SAMPLED)
+    || texture_usage.contains(TextureUsage::FRAGMENT_SHADER_LOCAL) {
+    flags |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+  }
+  if texture_usage.contains(TextureUsage::COMPUTE_SHADER_STORAGE_WRITE)
+    || texture_usage.contains(TextureUsage::COMPUTE_SHADER_STORAGE_READ)
+    || texture_usage.contains(TextureUsage::COMPUTE_SHADER_SAMPLED) {
+    flags |= vk::PipelineStageFlags::COMPUTE_SHADER;
+  }
+  flags
+}
+
+fn primary_texture_usage_to_image_layout(texture_usage: CommonTextureUsage) -> vk::ImageLayout {
+  match texture_usage {
+    CommonTextureUsage::Sample => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+    CommonTextureUsage::StorageRead => vk::ImageLayout::GENERAL,
+    CommonTextureUsage::ResolveSrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+    CommonTextureUsage::BlitSrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+    CommonTextureUsage::DepthRead => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+    CommonTextureUsage::StorageWrite => vk::ImageLayout::GENERAL,
+    CommonTextureUsage::ResolveDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+    CommonTextureUsage::BlitDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+    CommonTextureUsage::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+    CommonTextureUsage::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+    CommonTextureUsage::DepthReadWrite => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    CommonTextureUsage::RenderTarget => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+    CommonTextureUsage::Local => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+  }
+}
+
+fn buffer_usage_to_access(buffer_usage: BufferUsage) -> vk::AccessFlags {
+  let mut flags = vk::AccessFlags::empty();
+  if buffer_usage.contains(BufferUsage::COPY_DST) {
+    flags |= vk::AccessFlags::TRANSFER_WRITE;
+  }
+  if buffer_usage.contains(BufferUsage::COPY_SRC) {
+    flags |= vk::AccessFlags::TRANSFER_READ;
+  }
+  if buffer_usage.contains(BufferUsage::VERTEX) {
+    flags |= vk::AccessFlags::VERTEX_ATTRIBUTE_READ;
+  }
+  if buffer_usage.contains(BufferUsage::INDEX) {
+    flags |= vk::AccessFlags::INDEX_READ;
+  }
+  if buffer_usage.contains(BufferUsage::INDIRECT) {
+    flags |= vk::AccessFlags::INDIRECT_COMMAND_READ;
+  }
+  if buffer_usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_WRITE)
+    || buffer_usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE)
+    || buffer_usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_WRITE) {
+    flags |= vk::AccessFlags::SHADER_WRITE;
+  }
+  if buffer_usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_READ)
+    || buffer_usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_READ)
+    || buffer_usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_READ)
+    || buffer_usage.contains(BufferUsage::VERTEX_SHADER_CONSTANT)
+    || buffer_usage.contains(BufferUsage::FRAGMENT_SHADER_CONSTANT)
+    || buffer_usage.contains(BufferUsage::COMPUTE_SHADER_CONSTANT) {
+    flags |= vk::AccessFlags::SHADER_READ;
+  }
+  if buffer_usage.contains(BufferUsage::CPU_IN_FLIGHT_WRITE) {
+    flags |= vk::AccessFlags::HOST_WRITE;
+  }
+  flags
+}
+
+fn buffer_usage_to_stage(buffer_usage: BufferUsage) -> vk::PipelineStageFlags {
+  let mut flags = vk::PipelineStageFlags::empty();
+  if buffer_usage.contains(BufferUsage::COPY_DST)
+    || buffer_usage.contains(BufferUsage::COPY_SRC) {
+    flags |= vk::PipelineStageFlags::TRANSFER;
+  }
+  if buffer_usage.contains(BufferUsage::VERTEX) {
+    flags |= vk::PipelineStageFlags::VERTEX_INPUT;
+  }
+  if buffer_usage.contains(BufferUsage::INDEX) {
+    flags |= vk::PipelineStageFlags::VERTEX_INPUT;
+  }
+  if buffer_usage.contains(BufferUsage::INDIRECT) {
+    flags |= vk::PipelineStageFlags::DRAW_INDIRECT;
+  }
+  if buffer_usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_WRITE)
+    || buffer_usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_READ)
+    || buffer_usage.contains(BufferUsage::VERTEX_SHADER_CONSTANT) {
+    flags |= vk::PipelineStageFlags::VERTEX_SHADER;
+  }
+  if buffer_usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE)
+    || buffer_usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_READ)
+    || buffer_usage.contains(BufferUsage::FRAGMENT_SHADER_CONSTANT) {
+    flags |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+  }
+  if buffer_usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_WRITE)
+    || buffer_usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_READ)
+    || buffer_usage.contains(BufferUsage::COMPUTE_SHADER_CONSTANT) {
+    flags |= vk::PipelineStageFlags::COMPUTE_SHADER;
+  }
+  flags
+}
+
+fn write_access_mask() -> vk::AccessFlags {
+  // cant make that const :(
+  vk::AccessFlags::HOST_WRITE | vk::AccessFlags::MEMORY_WRITE | vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_WRITE | vk::AccessFlags::COLOR_ATTACHMENT_WRITE | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
 }

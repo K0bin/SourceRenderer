@@ -13,9 +13,11 @@ bitflags! {
     const COMPUTE_SHADER_STORAGE_WRITE       = 0b10000000;
     const COPY_SRC                           = 0b100000000;
     const COPY_DST                           = 0b1000000000;
-    const CONSTANT                           = 0b10000000000;
-    const INDIRECT                           = 0b100000000000;
-    const CPU_IN_FLIGHT_WRITE                = 0b1000000000000;
+    const FRAGMENT_SHADER_CONSTANT           = 0b10000000000;
+    const VERTEX_SHADER_CONSTANT             = 0b100000000000;
+    const COMPUTE_SHADER_CONSTANT            = 0b1000000000000;
+    const INDIRECT                           = 0b10000000000000;
+    const CPU_IN_FLIGHT_WRITE                = 0b100000000000000;
   }
 }
 

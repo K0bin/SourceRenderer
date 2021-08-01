@@ -4,7 +4,7 @@ use crate::Vec2;
 use crate::Vec2I;
 use crate::Vec2UI;
 
-use crate::graphics::{Backend, BufferUsage};
+use crate::graphics::{Backend, BufferUsage, TextureUsage, CommonTextureUsage};
 
 use super::ShaderType;
 
@@ -55,6 +55,26 @@ pub trait CommandBuffer<B: Backend> {
   fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
   fn blit(&mut self, src_texture: &Arc<B::Texture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<B::Texture>, dst_array_layer: u32, dst_mip_level: u32);
   fn finish(self) -> B::CommandBufferSubmission;
+
+  fn barrier<'a>(&mut self, barriers: &[Barrier<B>]);
+  fn flush_barriers(&mut self);
+}
+
+pub enum Barrier<'a, B: Backend> {
+  TextureBarrier {
+    old_primary_usage: CommonTextureUsage,
+    new_primary_usage: CommonTextureUsage,
+    old_usages: TextureUsage,
+    new_usages: TextureUsage,
+    texture: &'a Arc<B::Texture>,
+    try_omit: bool
+  },
+  BufferBarrier {
+    old_usages: BufferUsage,
+    new_usages: BufferUsage,
+    buffer: &'a Arc<B::Buffer>,
+    try_omit: bool
+  }
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]

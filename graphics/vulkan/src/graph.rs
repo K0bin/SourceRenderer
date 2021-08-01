@@ -344,12 +344,12 @@ impl VkRenderGraph {
           let allocator = context.get_shared().get_buffer_allocator();
           let buffer = allocator.get_slice(&BufferInfo {
             size: *size as usize,
-            usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::CONSTANT | BufferUsage::COPY_DST
+            usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::COPY_DST
           }, MemoryUsage::GpuOnly, Some(name));
           let buffer_b = if has_history_resource {
             Some(allocator.get_slice(&BufferInfo {
               size: *size as usize,
-              usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::CONSTANT | BufferUsage::COPY_DST,
+              usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::COPY_DST,
             }, MemoryUsage::GpuOnly, Some(name)))
           } else {
             None

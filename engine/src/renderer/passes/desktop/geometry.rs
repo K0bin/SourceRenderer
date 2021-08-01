@@ -233,7 +233,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(
             cluster_count,
             point_light_count: scene.point_lights().len() as u32
           };
-          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
+          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[per_frame], BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &transform_constant_buffer);
 
           command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));

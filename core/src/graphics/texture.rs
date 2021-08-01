@@ -25,6 +25,23 @@ bitflags! {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommonTextureUsage {
+  Sample,
+  StorageRead,
+  StorageWrite,
+  ResolveSrc,
+  BlitSrc,
+  ResolveDst,
+  BlitDst,
+  CopySrc,
+  CopyDst,
+  DepthRead,
+  DepthReadWrite,
+  RenderTarget,
+  Local
+}
+
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
   pub format: Format,

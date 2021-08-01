@@ -194,7 +194,7 @@ pub(in super::super::super) fn build_pass<P: Platform>(device: &Arc<<P::Graphics
             halton_point: scaled_halton_point(dimensions.width, dimensions.height, (frame_counter % 8) as u32)
           };
 
-          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
+          let transform_constant_buffer = command_buffer.upload_dynamic_data(&[per_frame], BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT);
           command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
 
           command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));

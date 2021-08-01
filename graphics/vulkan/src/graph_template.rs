@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{AttachmentInfo, AttachmentRef, DepthStencil, DepthStencilAttachmentRef, ExternalOutput, ExternalProducerType, InputUsage, LoadOp, Output, OutputAttachmentRef, PipelineStage, RenderPassInfo, RenderPassPipelineStage, RenderPassTextureExtent, StoreOp, SubpassInfo};
+use sourcerenderer_core::graphics::{AttachmentInfo, AttachmentRef, BufferUsage, DepthStencil, DepthStencilAttachmentRef, ExternalOutput, ExternalProducerType, ExternalResource, InputUsage, LoadOp, Output, OutputAttachmentRef, PipelineStage, RenderPassInfo, RenderPassPipelineStage, RenderPassTextureExtent, StoreOp, SubpassInfo, TextureUsage};
 use std::{cmp::max, collections::{HashMap, VecDeque}};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -1005,10 +1005,6 @@ impl VkRenderGraphTemplate {
       src_access = vk::AccessFlags::empty();
       dst_access = pass_access.access;
       dst_stage = pass_access.stage;
-
-      if src_access.is_empty() {
-        src_stage = vk::PipelineStageFlags::TOP_OF_PIPE;
-      }
     } else if src_access != vk::AccessFlags::empty() {
       // Flush + invalidate caches
       // Collect all future usages of the texture
