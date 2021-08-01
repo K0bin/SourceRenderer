@@ -134,22 +134,6 @@ struct ResourceAccess {
   layout: vk::ImageLayout,
 }
 
-struct SubpassAttachmentMetadata {
-  produced_in_subpass_index: u32,
-  render_pass_attachment_index: u32,
-  last_used_in_subpass_index: u32
-}
-
-impl Default for SubpassAttachmentMetadata {
-  fn default() -> Self {
-    Self {
-      produced_in_subpass_index: vk::SUBPASS_EXTERNAL,
-      render_pass_attachment_index: u32::MAX,
-      last_used_in_subpass_index: 0
-    }
-  }
-}
-
 impl VkRenderGraphTemplate {
   pub fn new(device: &Arc<RawVkDevice>,
              context: &Arc<VkThreadManager>,
