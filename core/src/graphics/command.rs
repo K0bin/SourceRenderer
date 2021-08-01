@@ -6,7 +6,12 @@ use crate::Vec2UI;
 
 use crate::graphics::{Backend, BufferUsage, TextureUsage};
 
+use super::LoadOp;
+use super::RenderPassInfo;
+use super::RenderpassRecordingMode;
 use super::ShaderType;
+use super::StoreOp;
+use super::SubpassInfo;
 
 pub struct Viewport {
   pub position: Vec2,
@@ -56,8 +61,22 @@ pub trait CommandBuffer<B: Backend> {
   fn blit(&mut self, src_texture: &Arc<B::Texture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<B::Texture>, dst_array_layer: u32, dst_mip_level: u32);
   fn finish(self) -> B::CommandBufferSubmission;
 
+  fn begin_render_pass_1(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode);
+  fn advance_subpass(&mut self);
+  fn end_render_pass(&mut self);
   fn barrier<'a>(&mut self, barriers: &[Barrier<B>]);
   fn flush_barriers(&mut self);
+}
+
+pub struct RenderPassAttachment<'a, B: Backend> {
+  pub view: &'a Arc<B::TextureRenderTargetView>,
+  pub load_op: LoadOp,
+  pub store_op: StoreOp
+}
+
+pub struct RenderPassBeginInfo<'a, B: Backend> {
+  pub attachments: &'a [RenderPassAttachment<'a, B>],
+  pub subpasses: &'a [SubpassInfo]
 }
 
 pub enum Barrier<'a, B: Backend> {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend, ExternalResource};
 use std::collections::HashMap;
 
-use super::{RenderPassInfo, buffer::BufferInfo, texture::SamplerInfo};
+use super::{RenderPassInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, buffer::BufferInfo, texture::SamplerInfo};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
@@ -33,6 +33,7 @@ pub trait Device<B: Backend> {
   fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<B::Shader>;
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;
   fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> Arc<B::TextureShaderResourceView>;
+  fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureRenderTargetViewInfo) -> Arc<B::TextureRenderTargetView>;
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, graph_template: &B::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<B::GraphicsPipeline>;
   fn create_compute_pipeline(&self, shader: &Arc<B::Shader>) -> Arc<B::ComputePipeline>;
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;

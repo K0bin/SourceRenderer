@@ -64,6 +64,14 @@ pub struct TextureShaderResourceViewInfo {
 }
 
 #[derive(Clone)]
+pub struct TextureRenderTargetViewInfo {
+  pub base_mip_level: u32,
+  pub mip_level_length: u32,
+  pub base_array_level: u32,
+  pub array_level_length: u32,
+}
+
+#[derive(Clone)]
 pub struct SamplerInfo {
   pub mag_filter: Filter,
   pub min_filter: Filter,
@@ -83,5 +91,9 @@ pub trait TextureShaderResourceView<B: Backend> {
 }
 
 pub trait TextureUnorderedAccessView<B: Backend> {
+  fn texture(&self) -> &Arc<B::Texture>;
+}
+
+pub trait TextureRenderTargetView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
 }

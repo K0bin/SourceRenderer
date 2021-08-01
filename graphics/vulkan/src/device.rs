@@ -151,6 +151,16 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, info))
   }
 
+  fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureRenderTargetViewInfo) -> Arc<VkTextureView> {
+    let srv_info = TextureShaderResourceViewInfo {
+      base_mip_level: info.base_mip_level,
+      mip_level_length: info.mip_level_length,
+      base_array_level: info.base_array_level,
+      array_level_length: info.array_level_length,
+    };
+    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, &srv_info))
+  }
+
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, graph_template: &<VkBackend as Backend>::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
     let pass = graph_template.passes.iter().find(|pass| pass.name.as_str() == pass_name).unwrap_or_else(|| panic!("Can not find pass {} in render graph.", pass_name));
     match &pass.pass_type {

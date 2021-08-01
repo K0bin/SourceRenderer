@@ -10,7 +10,7 @@ use ash::version::DeviceV1_0;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, MemoryUsage, PipelineBinding, ShaderType, Texture, TextureUsage};
+use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, TextureUsage};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -262,6 +262,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn end_render_pass(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.render_pass.is_some());
     unsafe {
       self.device.cmd_end_render_pass(self.buffer);
     }
@@ -270,9 +271,11 @@ impl VkCommandBuffer {
 
   pub(crate) fn advance_subpass(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.render_pass.is_some());
     unsafe {
       self.device.cmd_next_subpass(self.buffer, vk::SubpassContents::INLINE);
     }
+    self.sub_pass += 1;
   }
 
   pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>) {
@@ -627,6 +630,8 @@ impl VkCommandBuffer {
         Barrier::TextureBarrier { old_primary_usage, new_primary_usage, old_usages, new_usages, texture, try_omit } => {
           debug_assert!(old_usages.contains(*old_primary_usage));
           debug_assert!(new_usages.contains(*new_primary_usage));
+          debug_assert!(!new_primary_usage.is_empty());
+          debug_assert!(!new_usages.is_empty());
 
           let old_layout = texture_usage_to_image_layout(*old_primary_usage);
           let new_layout = texture_usage_to_image_layout(*new_primary_usage);
@@ -679,7 +684,9 @@ impl VkCommandBuffer {
         },
         Barrier::BufferBarrier { new_primary_usage, old_primary_usage, old_usages, new_usages, buffer, try_omit } => {     
           debug_assert!(old_usages.contains(*old_primary_usage));
-          debug_assert!(new_usages.contains(*new_primary_usage));     
+          debug_assert!(new_usages.contains(*new_primary_usage));    
+          debug_assert!(!new_primary_usage.is_empty());
+          debug_assert!(!new_usages.is_empty()); 
           let src_access = buffer_usage_to_access(*old_usages);
           let new_access = buffer_usage_to_access(*new_usages);
 
@@ -751,6 +758,76 @@ impl VkCommandBuffer {
     unsafe {
       self.device.cmd_pipeline_barrier(self.buffer, src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
     }
+  }
+
+  pub(crate) fn begin_render_pass_1(&mut self, renderpass_begin_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.render_pass.is_some());
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+
+    let mut attachment_infos = Vec::with_capacity(renderpass_begin_info.attachments.len());
+    let mut width = 0u32;
+    let mut height = 0u32;
+    let mut attachment_views = SmallVec::<[&Arc<VkTextureView>; 8]>::with_capacity(renderpass_begin_info.attachments.len());
+    let mut clear_values = SmallVec::<[vk::ClearValue; 8]>::with_capacity(renderpass_begin_info.attachments.len());
+
+    for attachment in renderpass_begin_info.attachments {
+      let info = attachment.view.texture().get_info();
+      attachment_infos.push(AttachmentInfo {
+        format: info.format,
+        samples: info.samples,
+        load_op: attachment.load_op,
+        store_op: attachment.store_op,
+        stencil_load_op: LoadOp::DontCare,
+        stencil_store_op: StoreOp::DontCare,
+      });
+      width = width.max(info.width);
+      height = height.max(info.height);
+      attachment_views.push(attachment.view);
+
+      clear_values.push(if info.format.is_depth() || info.format.is_stencil() {
+        vk::ClearValue {
+          depth_stencil: vk::ClearDepthStencilValue {
+            depth: 0f32,
+            stencil: 0u32,
+          }
+        }
+      } else {
+        vk::ClearValue {
+          color: vk::ClearColorValue {
+            float32: [0f32; 4]
+          }
+        }
+      });
+    }
+
+    let renderpass_info = RenderPassInfo {
+      attachments: attachment_infos,
+      subpasses: renderpass_begin_info.subpasses.iter().map(|s| s.clone()).collect(),
+    };
+
+    let renderpass = self.shared.get_render_pass(&renderpass_info);
+    let framebuffer = self.shared.get_framebuffer(&renderpass, &attachment_views);
+
+    // TODO: begin info fields
+    unsafe {
+      let begin_info = vk::RenderPassBeginInfo {
+        framebuffer: *framebuffer.get_handle(),
+        render_pass: *renderpass.get_handle(),
+        render_area: vk::Rect2D {
+          offset: vk::Offset2D { x: 0i32, y: 0i32 },
+          extent: vk::Extent2D { width, height }
+        },
+        clear_value_count: clear_values.len() as u32,
+        p_clear_values: clear_values.as_ptr(),
+        ..Default::default()
+      };
+      self.device.cmd_begin_render_pass(self.buffer, &begin_info, if recording_mode == RenderpassRecordingMode::Commands { vk::SubpassContents::INLINE } else { vk::SubpassContents::SECONDARY_COMMAND_BUFFERS });
+    }
+    self.sub_pass = 0;
+    self.trackers.track_frame_buffer(&framebuffer);
+    self.trackers.track_render_pass(&renderpass);
+    self.render_pass = Some(renderpass);
   }
 
   pub fn wait_events(
@@ -980,7 +1057,19 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 
   #[inline(always)]
   fn flush_barriers(&mut self) {
-      self.item.as_mut().unwrap().flush_barriers();
+    self.item.as_mut().unwrap().flush_barriers();
+  }
+
+  fn begin_render_pass_1(&mut self, renderpass_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
+    self.item.as_mut().unwrap().begin_render_pass_1(renderpass_info, recording_mode);
+  }
+
+  fn advance_subpass(&mut self) {
+    self.item.as_mut().unwrap().advance_subpass();
+  }
+
+  fn end_render_pass(&mut self) {
+    self.item.as_mut().unwrap().end_render_pass();
   }
 }
 
@@ -1148,12 +1237,12 @@ fn texture_usage_to_image_layout(texture_usage: TextureUsage) -> vk::ImageLayout
   if texture_usage.is_empty() {
     return vk::ImageLayout::UNDEFINED;
   }
-  
-  match texture_usage {
-    TextureUsage::RENDER_TARGET => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-    TextureUsage::FRAGMENT_SHADER_LOCAL => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-    _ => panic!("Unsupported texture usage combination")
+
+  if texture_usage == TextureUsage::RENDER_TARGET {
+    return vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
   }
+  
+  panic!("Unsupported texture usage combination");
 }
 
 fn buffer_usage_to_access(buffer_usage: BufferUsage) -> vk::AccessFlags {

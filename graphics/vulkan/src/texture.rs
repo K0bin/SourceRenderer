@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 use ash::version::DeviceV1_0;
 
+use sourcerenderer_core::graphics::TextureRenderTargetView;
 use sourcerenderer_core::graphics::TextureUsage;
 use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
 
@@ -264,6 +265,12 @@ impl TextureShaderResourceView<VkBackend> for VkTextureView {
 }
 
 impl TextureUnorderedAccessView<VkBackend> for VkTextureView {
+  fn texture(&self) -> &Arc<VkTexture> {
+    &self.texture
+  }
+}
+
+impl TextureRenderTargetView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
   }
