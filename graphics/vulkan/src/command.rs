@@ -440,6 +440,9 @@ impl VkCommandBuffer {
 
   pub(crate) fn finish_binding(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+
+    self.flush_barriers();
+
     let mut offsets: [u32; 16] = Default::default();
     let mut offsets_count = 0;
     let mut descriptor_sets: [vk::DescriptorSet; 4] = Default::default();
@@ -632,6 +635,8 @@ impl VkCommandBuffer {
           debug_assert!(new_usages.contains(*new_primary_usage));
           debug_assert!(!new_primary_usage.is_empty());
           debug_assert!(!new_usages.is_empty());
+          debug_assert!(texture.get_info().usage.contains(*new_primary_usage));
+          debug_assert!(texture.get_info().usage.contains(*new_usages));
 
           let old_layout = texture_usage_to_image_layout(*old_primary_usage);
           let new_layout = texture_usage_to_image_layout(*new_primary_usage);
@@ -653,7 +658,7 @@ impl VkCommandBuffer {
           let src_stages = texture_usage_to_stage(*old_usages);
           let dst_stages=  texture_usage_to_stage(*new_usages);
 
-          if self.pending_src_stage_flags != src_stages || self.pending_dst_stage_flags != dst_stages {
+          if (!self.pending_src_stage_flags.is_empty() && self.pending_src_stage_flags != src_stages) || (!self.pending_dst_stage_flags.is_empty() && self.pending_dst_stage_flags != dst_stages) {
             self.flush_barriers();
           }
 
@@ -675,10 +680,10 @@ impl VkCommandBuffer {
               },
               ..Default::default()
             });
+            self.pending_dst_stage_flags |= dst_stages;
             
             if !old_primary_usage.is_empty() || !*try_omit {
               self.pending_src_stage_flags |= src_stages;
-              self.pending_dst_stage_flags |= dst_stages;
             }
           }
         },
@@ -687,13 +692,15 @@ impl VkCommandBuffer {
           debug_assert!(new_usages.contains(*new_primary_usage));    
           debug_assert!(!new_primary_usage.is_empty());
           debug_assert!(!new_usages.is_empty()); 
-          let src_access = buffer_usage_to_access(*old_usages);
-          let new_access = buffer_usage_to_access(*new_usages);
+          debug_assert!(buffer.get_info().usage.contains(*new_primary_usage));
+          debug_assert!(buffer.get_info().usage.contains(*new_usages));
 
           let src_stages = buffer_usage_to_stage(*old_usages);
           let dst_stages=  buffer_usage_to_stage(*new_usages);
+          let src_access = buffer_usage_to_access(*old_usages);
+          let new_access = buffer_usage_to_access(*new_usages);
 
-          if self.pending_src_stage_flags != src_stages || self.pending_dst_stage_flags != dst_stages {
+          if (!self.pending_src_stage_flags.is_empty() && self.pending_src_stage_flags != src_stages) || (!self.pending_dst_stage_flags.is_empty() && self.pending_dst_stage_flags != dst_stages) {
             self.flush_barriers();
           }
 
@@ -708,10 +715,10 @@ impl VkCommandBuffer {
               size: buffer.get_length() as u64,
               ..Default::default()
             });
+            self.pending_dst_stage_flags |= dst_stages;
             
             if !old_primary_usage.is_empty() || !*try_omit {
               self.pending_src_stage_flags |= src_stages;
-              self.pending_dst_stage_flags |= dst_stages;
             }
           }
         },
@@ -910,7 +917,7 @@ impl VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  pub(crate) fn barrier(
+  pub(crate) fn barrier_vk(
     &mut self,
     src_stage_mask: vk::PipelineStageFlags,
     dst_stage_mask: vk::PipelineStageFlags,
@@ -1189,6 +1196,9 @@ fn texture_usage_to_stage(texture_usage: TextureUsage) -> vk::PipelineStageFlags
     || texture_usage.contains(TextureUsage::COMPUTE_SHADER_SAMPLED) {
     flags |= vk::PipelineStageFlags::COMPUTE_SHADER;
   }
+  if texture_usage.contains(TextureUsage::PRESENT) {
+    flags |= vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+  }
   flags
 }
 
@@ -1240,6 +1250,10 @@ fn texture_usage_to_image_layout(texture_usage: TextureUsage) -> vk::ImageLayout
 
   if texture_usage == TextureUsage::RENDER_TARGET {
     return vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+  }
+
+  if texture_usage == TextureUsage::PRESENT {
+    return vk::ImageLayout::PRESENT_SRC_KHR;
   }
   
   panic!("Unsupported texture usage combination");

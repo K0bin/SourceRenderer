@@ -6,6 +6,7 @@ use std::cmp::min;
 
 use ash::vk;
 use smallvec::SmallVec;
+use sourcerenderer_core::graphics::Barrier;
 use sourcerenderer_core::graphics::TextureUsage;
 
 use crate::{command::VkInnerCommandBufferInfo, thread_manager::{VkThreadManager, VkFrameLocal}};
@@ -344,12 +345,12 @@ impl VkRenderGraph {
           let allocator = context.get_shared().get_buffer_allocator();
           let buffer = allocator.get_slice(&BufferInfo {
             size: *size as usize,
-            usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::COPY_DST
+            usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::COPY_DST | BufferUsage::COPY_SRC
           }, MemoryUsage::GpuOnly, Some(name));
           let buffer_b = if has_history_resource {
             Some(allocator.get_slice(&BufferInfo {
               size: *size as usize,
-              usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::COPY_DST,
+              usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::COPY_DST | BufferUsage::COPY_SRC,
             }, MemoryUsage::GpuOnly, Some(name)))
           } else {
             None
@@ -461,7 +462,7 @@ impl VkRenderGraph {
     // Initial transition for history images
     // TODO: clear them
     let mut initialized_history_resources = HashSet::<String>::new();
-    let mut image_barriers = Vec::<vk::ImageMemoryBarrier>::new();
+    let mut image_barriers = Vec::<Barrier<VkBackend>>::new();
 
     for (name, metadata) in &template.resources {
       if metadata.history.is_none() || initialized_history_resources.contains(name) {
@@ -469,9 +470,10 @@ impl VkRenderGraph {
       }
 
       let history = metadata.history.as_ref().unwrap();
-      if history.initial_layout == vk::ImageLayout::UNDEFINED {
+      if history.initial_usage.is_empty() {
         continue;
       }
+
       let resource = resources.get(name).unwrap();
       let texture = match resource {
         VkResource::Texture { texture_b, .. } => {
@@ -492,34 +494,19 @@ impl VkRenderGraph {
         }
       }
 
-      image_barriers.push(vk::ImageMemoryBarrier {
-        src_access_mask: vk::AccessFlags::empty(),
-        dst_access_mask: vk::AccessFlags::empty(),
-        old_layout: vk::ImageLayout::UNDEFINED,
-        new_layout: history.initial_layout,
-        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-        image: *texture.get_handle(),
-        subresource_range: vk::ImageSubresourceRange {
-          aspect_mask: aspect,
-          base_mip_level: 0,
-          level_count: 1,
-          layer_count: 1,
-          base_array_layer: 0
-        },
-        ..Default::default()
-      });
+      image_barriers.push(Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::empty(),
+        new_primary_usage: history.initial_usage,
+        old_usages: TextureUsage::empty(),
+        new_usages: history.initial_usage,
+        texture: texture,
+        try_omit: true,
+    });
       initialized_history_resources.insert(name.clone());
     }
     if !image_barriers.is_empty() {
       let mut cmd_buffer = context.get_thread_local().get_frame_local().get_command_buffer();
-      cmd_buffer.barrier(
-        vk::PipelineStageFlags::ALL_COMMANDS,
-        vk::PipelineStageFlags::ALL_COMMANDS,
-        vk::DependencyFlags::empty(),
-        &[],
-        &[],
-      &image_barriers);
+      cmd_buffer.barrier(&image_barriers);
       graphics_queue.submit(cmd_buffer.finish(), None, &[], &[]);
     }
 
@@ -633,6 +620,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
           let mut clear_values = SmallVec::<[vk::ClearValue; 16]>::new();
           emit_barrier(&mut cmd_buffer, &template.barriers, &self.resources, &self.external_resources, &self.swapchain.get_views()[framebuffer_index]);
+          cmd_buffer.flush_barriers();
           match &template.pass_type {
             VkPassType::Graphics { attachments, .. } => {
 
@@ -753,6 +741,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
           let template = &self.template.passes[index];
           emit_barrier(&mut cmd_buffer, &template.barriers, &self.resources, &self.external_resources, &self.swapchain.get_views()[framebuffer_index]);
+          cmd_buffer.flush_barriers();
 
           match callbacks {
             RenderPassCallbacks::Regular(callbacks) => {
@@ -785,7 +774,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             let src_access = if is_compute { vk::AccessFlags::SHADER_WRITE } else { vk::AccessFlags::TRANSFER_WRITE };
             let view = &self.swapchain.get_views()[framebuffer_index];
             let texture = view.texture();
-            cmd_buffer.barrier(src_stage, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[], &[], &[
+
+            cmd_buffer.barrier_vk(src_stage, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[], &[], &[
               vk::ImageMemoryBarrier {
                 src_access_mask: src_access,
                 dst_access_mask: vk::AccessFlags::MEMORY_READ,
@@ -875,28 +865,19 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
 
 fn emit_barrier(
   command_buffer: &mut VkCommandBufferRecorder,
-  barriers: &[VkBarrierTemplate],
+  barrier_templates: &[VkBarrierTemplate],
   resources: &HashMap<String, VkResource>,
   external_resources: &HashMap<String, ExternalResource<VkBackend>>,
   backbuffer: &Arc<VkTextureView>
 ) {
   let mut combined_src_stages = vk::PipelineStageFlags::empty();
   let mut combined_dst_stages = vk::PipelineStageFlags::empty();
-  let mut image_memory_barriers = SmallVec::<[vk::ImageMemoryBarrier; 8]>::new();
-  let mut buffer_memory_barriers = SmallVec::<[vk::BufferMemoryBarrier; 8]>::new();
-  for barrier in barriers {
-    match barrier {
-        VkBarrierTemplate::Image { name, is_history, old_layout, new_layout, src_access_mask, dst_access_mask, src_stage, dst_stage, src_queue_family_index, dst_queue_family_index } => {
-          if image_memory_barriers.len() == image_memory_barriers.capacity() {
-            command_buffer.barrier(combined_src_stages, combined_dst_stages, vk::DependencyFlags::empty(), &[], &buffer_memory_barriers, &image_memory_barriers);
-            image_memory_barriers.clear();
-            buffer_memory_barriers.clear();
-            combined_src_stages = vk::PipelineStageFlags::empty();
-            combined_dst_stages = vk::PipelineStageFlags::empty();
-          }
+  let mut barriers = SmallVec::<[Barrier<VkBackend>; 8]>::new();
 
-          combined_src_stages |= *src_stage;
-          combined_dst_stages |= *dst_stage;
+
+  for barrier in barrier_templates {
+    match barrier {
+        VkBarrierTemplate::Image { name, is_history, old_usage, new_usage, old_primary_usage, new_primary_usage } => {
           let texture = if name == BACK_BUFFER_ATTACHMENT_NAME {
             backbuffer.texture()
           } else {
@@ -913,41 +894,16 @@ fn emit_barrier(
             })
           };
 
-          image_memory_barriers.push(vk::ImageMemoryBarrier {
-            src_access_mask: *src_access_mask,
-            dst_access_mask: *dst_access_mask,
-            old_layout: *old_layout,
-            new_layout: *new_layout,
-            src_queue_family_index: *src_queue_family_index,
-            dst_queue_family_index: *dst_queue_family_index,
-            image: *(texture.get_handle()),
-            subresource_range: vk::ImageSubresourceRange {
-              aspect_mask: if texture.get_info().format.is_depth() && texture.get_info().format.is_stencil() {
-                vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
-              } else if texture.get_info().format.is_depth() {
-                vk::ImageAspectFlags::DEPTH
-              } else {
-                vk::ImageAspectFlags::COLOR
-              },
-              base_mip_level: 0,
-              level_count: texture.get_info().mip_levels,
-              base_array_layer: 0,
-              layer_count: texture.get_info().array_length
-            },
-            ..Default::default()
-        });
+          barriers.push(Barrier::TextureBarrier {
+            old_primary_usage: *old_primary_usage,
+            new_primary_usage: *new_primary_usage,
+            old_usages: *old_usage,
+            new_usages: *new_usage,
+            texture,
+            try_omit: true
+          });
         }
-        VkBarrierTemplate::Buffer { name, is_history, src_access_mask, dst_access_mask, src_stage, dst_stage, src_queue_family_index, dst_queue_family_index } => {
-          if buffer_memory_barriers.len() == buffer_memory_barriers.capacity() {
-            command_buffer.barrier(combined_src_stages, combined_dst_stages, vk::DependencyFlags::empty(), &[], &buffer_memory_barriers, &image_memory_barriers);
-            image_memory_barriers.clear();
-            buffer_memory_barriers.clear();
-            combined_src_stages = vk::PipelineStageFlags::empty();
-            combined_dst_stages = vk::PipelineStageFlags::empty();
-          }
-
-          combined_src_stages |= *src_stage;
-          combined_dst_stages |= *dst_stage;
+        VkBarrierTemplate::Buffer { name, is_history, old_usage, new_usage, old_primary_usage, new_primary_usage } => {
           let buffer = external_resources.get(name).map_or_else(|| {
             match resources.get(name).unwrap() {
               VkResource::Buffer { buffer, buffer_b, .. } => {
@@ -959,23 +915,19 @@ fn emit_barrier(
             ExternalResource::Buffer(buffer) => buffer,
             _ => unreachable!()
           });
-          buffer_memory_barriers.push(vk::BufferMemoryBarrier {
-              src_access_mask: *src_access_mask,
-              dst_access_mask: *dst_access_mask,
-              src_queue_family_index: *src_queue_family_index,
-              dst_queue_family_index: *dst_queue_family_index,
-              buffer: *(buffer.get_buffer().get_handle()),
-              offset: buffer.get_offset() as u64,
-              size: buffer.get_length() as u64,
-              ..Default::default()
+          barriers.push(Barrier::BufferBarrier {
+            old_primary_usage: *old_primary_usage,
+            new_primary_usage: *new_primary_usage,
+            old_usages: *old_usage,
+            new_usages: *new_usage,
+            buffer,
+            try_omit: true
           });
         }
     }
   }
 
-  if !combined_src_stages.is_empty() || !combined_dst_stages.is_empty() || !image_memory_barriers.is_empty() || !buffer_memory_barriers.is_empty() {
-    command_buffer.barrier(combined_src_stages, combined_dst_stages, vk::DependencyFlags::empty(), &[], &buffer_memory_barriers, &image_memory_barriers);
-  }
+  command_buffer.barrier(&barriers);
 }
 
 fn get_frame_buffer(

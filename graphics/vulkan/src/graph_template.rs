@@ -37,24 +37,18 @@ pub enum VkBarrierTemplate {
   Image {
     name: String,
     is_history: bool,
-    old_layout: vk::ImageLayout,
-    new_layout: vk::ImageLayout,
-    src_access_mask: vk::AccessFlags,
-    dst_access_mask: vk::AccessFlags,
-    src_stage: vk::PipelineStageFlags,
-    dst_stage: vk::PipelineStageFlags,
-    src_queue_family_index: u32,
-    dst_queue_family_index: u32
+    new_usage: TextureUsage,
+    old_usage: TextureUsage,
+    new_primary_usage: TextureUsage,
+    old_primary_usage: TextureUsage
   },
   Buffer {
     name: String,
     is_history: bool,
-    src_access_mask: vk::AccessFlags,
-    dst_access_mask: vk::AccessFlags,
-    src_stage: vk::PipelineStageFlags,
-    dst_stage: vk::PipelineStageFlags,
-    src_queue_family_index: u32,
-    dst_queue_family_index: u32
+    new_usage: BufferUsage,
+    old_usage: BufferUsage,
+    new_primary_usage: BufferUsage,
+    old_primary_usage: BufferUsage
   }
 }
 
@@ -109,29 +103,51 @@ pub struct ResourceMetadata {
 
 impl ResourceMetadata {
   fn new(template: VkResourceTemplate) -> Self {
+    let is_buffer = match &template {
+        VkResourceTemplate::Texture { .. } => false,
+        VkResourceTemplate::Buffer { .. } => true,
+        VkResourceTemplate::ExternalBuffer => true,
+        VkResourceTemplate::ExternalTexture { .. } => false,
+    };
+
     ResourceMetadata {
       template,
       pass_range: ResourcePassRange::default(),
       history: None,
       pass_accesses: HashMap::new(),
-      current_access: ResourceAccess::default()
+      current_access: if is_buffer {
+        ResourceAccess::Buffer {
+          usage: BufferUsage::empty(),
+          primary_usage: BufferUsage::empty()
+        }
+      } else {
+        ResourceAccess::Texture {
+          usage: TextureUsage::empty(),
+          primary_usage: TextureUsage::empty()
+        }
+      }
     }
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct HistoryResourceMetadata {
   pub(super) pass_range: ResourcePassRange,
   pass_accesses: HashMap<u32, ResourceAccess>,
   current_access: ResourceAccess,
-  pub(super) initial_layout: vk::ImageLayout
+  pub(super) initial_usage: TextureUsage
 }
 
-#[derive(Debug, Clone, Default)]
-struct ResourceAccess {
-  stage: vk::PipelineStageFlags,
-  access: vk::AccessFlags,
-  layout: vk::ImageLayout,
+#[derive(Debug, Clone)]
+enum ResourceAccess {
+  Buffer {
+    usage: BufferUsage,
+    primary_usage: BufferUsage
+  },
+  Texture {
+    usage: TextureUsage,
+    primary_usage: TextureUsage
+  }
 }
 
 impl VkRenderGraphTemplate {
@@ -155,8 +171,10 @@ impl VkRenderGraphTemplate {
       if let Some(history) = resource.history.as_mut() {
         let (_, pass_access) = resource.pass_accesses.iter().max_by_key(|(pass_index, _)| **pass_index).unwrap();
         history.current_access = pass_access.clone();
-        history.current_access.access &= write_access_mask();
-        history.initial_layout = history.current_access.layout;
+        history.initial_usage = match pass_access {
+          ResourceAccess::Buffer { .. } => TextureUsage::empty(),
+          ResourceAccess::Texture { usage, .. } => *usage,
+        };
       }
     }
 
@@ -214,20 +232,19 @@ impl VkRenderGraphTemplate {
         ExternalOutput::Buffer {
           name, producer_type
         } => {
-          let access = ResourceAccess {
-            stage: match producer_type {
-              ExternalProducerType::Graphics => vk::PipelineStageFlags::FRAGMENT_SHADER | vk::PipelineStageFlags::VERTEX_SHADER,
-              ExternalProducerType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
-              ExternalProducerType::Copy => vk::PipelineStageFlags::TRANSFER,
-              ExternalProducerType::Host => vk::PipelineStageFlags::HOST
+          let access = ResourceAccess::Buffer {
+            usage: match producer_type {
+              ExternalProducerType::Graphics => BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Compute => BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Copy => BufferUsage::COPY_DST,
+              ExternalProducerType::Host => BufferUsage::CPU_IN_FLIGHT_WRITE
             },
-            access: match producer_type {
-              ExternalProducerType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE | vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-              ExternalProducerType::Compute => vk::AccessFlags::SHADER_WRITE,
-              ExternalProducerType::Copy => vk::AccessFlags::TRANSFER_WRITE,
-              ExternalProducerType::Host => vk::AccessFlags::HOST_WRITE
-            },
-            layout: vk::ImageLayout::UNDEFINED
+            primary_usage: match producer_type {
+              ExternalProducerType::Graphics => BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Compute => BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Copy => BufferUsage::COPY_DST,
+              ExternalProducerType::Host => BufferUsage::CPU_IN_FLIGHT_WRITE
+            }
           };
           let mut accesses = HashMap::new();
           accesses.insert(reordered_passes.len() as u32, access);
@@ -238,31 +255,28 @@ impl VkRenderGraphTemplate {
               last_used_in_pass_index: 0
             },
             history: None,
-            current_access: ResourceAccess::default(),
+            current_access: ResourceAccess::Buffer {
+              usage: BufferUsage::empty(),
+              primary_usage: BufferUsage::empty()
+            },
             pass_accesses: accesses,
           });
         }
         ExternalOutput::RenderTarget {
           name, producer_type
         } => {
-          let access = ResourceAccess {
-            stage: match producer_type {
-              ExternalProducerType::Graphics => vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-              ExternalProducerType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
-              ExternalProducerType::Copy => vk::PipelineStageFlags::TRANSFER,
-              ExternalProducerType::Host => vk::PipelineStageFlags::HOST
+          let access = ResourceAccess::Texture {
+            usage: match producer_type {
+              ExternalProducerType::Graphics => TextureUsage::RENDER_TARGET,
+              ExternalProducerType::Compute => TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Copy => TextureUsage::COPY_DST,
+              ExternalProducerType::Host => unimplemented!()
             },
-            access: match producer_type {
-              ExternalProducerType::Graphics => vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-              ExternalProducerType::Compute => vk::AccessFlags::SHADER_WRITE,
-              ExternalProducerType::Copy => vk::AccessFlags::TRANSFER_WRITE,
-              ExternalProducerType::Host => vk::AccessFlags::HOST_WRITE
-            },
-            layout: match producer_type {
-              ExternalProducerType::Graphics => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-              ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
-              ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-              ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
+            primary_usage: match producer_type {
+              ExternalProducerType::Graphics => TextureUsage::RENDER_TARGET,
+              ExternalProducerType::Compute => TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Copy => TextureUsage::COPY_DST,
+              ExternalProducerType::Host => unimplemented!()
             },
           };
           let mut accesses = HashMap::new();
@@ -275,30 +289,27 @@ impl VkRenderGraphTemplate {
             },
             history: None,
             pass_accesses: accesses,
-            current_access: ResourceAccess::default(),
+            current_access: ResourceAccess::Texture {
+              usage: TextureUsage::empty(),
+              primary_usage: TextureUsage::empty()
+            },
           });
         }
         ExternalOutput::DepthStencil {
           name, producer_type
         } => {
-          let access = ResourceAccess {
-            stage: match producer_type {
-              ExternalProducerType::Graphics => vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-              ExternalProducerType::Compute => vk::PipelineStageFlags::COMPUTE_SHADER,
-              ExternalProducerType::Copy => vk::PipelineStageFlags::TRANSFER,
-              ExternalProducerType::Host => vk::PipelineStageFlags::HOST
+          let access = ResourceAccess::Texture {
+            usage: match producer_type {
+              ExternalProducerType::Graphics => TextureUsage::DEPTH_WRITE,
+              ExternalProducerType::Compute => TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Copy => TextureUsage::COPY_DST,
+              ExternalProducerType::Host => unimplemented!()
             },
-            access: match producer_type {
-              ExternalProducerType::Graphics => vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-              ExternalProducerType::Compute => vk::AccessFlags::SHADER_WRITE,
-              ExternalProducerType::Copy => vk::AccessFlags::TRANSFER_WRITE,
-              ExternalProducerType::Host => vk::AccessFlags::HOST_WRITE
-            },
-            layout: match producer_type {
-              ExternalProducerType::Graphics => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-              ExternalProducerType::Compute => vk::ImageLayout::GENERAL,
-              ExternalProducerType::Copy => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-              ExternalProducerType::Host => vk::ImageLayout::PREINITIALIZED
+            primary_usage: match producer_type {
+              ExternalProducerType::Graphics => TextureUsage::DEPTH_WRITE,
+              ExternalProducerType::Compute => TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+              ExternalProducerType::Copy => TextureUsage::COPY_DST,
+              ExternalProducerType::Host => unimplemented!()
             },
           };
           let mut accesses = HashMap::new();
@@ -310,7 +321,10 @@ impl VkRenderGraphTemplate {
               last_used_in_pass_index: 0
             },
             history: None,
-            current_access: ResourceAccess::default(),
+            current_access: ResourceAccess::Texture {
+              usage: TextureUsage::empty(),
+              primary_usage: TextureUsage::empty()
+            },
             pass_accesses: accesses,
           });
         }
@@ -344,10 +358,9 @@ impl VkRenderGraphTemplate {
                         is_backbuffer: false
                       }));
                     metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                    metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                      stage: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                      access: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                      layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                      usage: TextureUsage::RENDER_TARGET,
+                      primary_usage: TextureUsage::RENDER_TARGET,
                     });
                 },
                 SubpassOutput::Backbuffer {
@@ -366,10 +379,9 @@ impl VkRenderGraphTemplate {
                         is_backbuffer: true
                       }));
                     metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                    metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                      stage: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                      access: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                      layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                      usage: TextureUsage::RENDER_TARGET,
+                      primary_usage: TextureUsage::RENDER_TARGET,
                     });
                 }
               }
@@ -395,10 +407,9 @@ impl VkRenderGraphTemplate {
                       is_backbuffer: false
                     }));
                   metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                  metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                    stage: vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-                    access: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                    layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                  metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                    usage: TextureUsage::DEPTH_WRITE | TextureUsage::DEPTH_READ,
+                    primary_usage: TextureUsage::DEPTH_WRITE | TextureUsage::DEPTH_READ
                   });
               }
               DepthStencil::Input {
@@ -413,17 +424,15 @@ impl VkRenderGraphTemplate {
                     if history_usage.pass_range.last_used_in_pass_index < reordered_passes.len() as u32 {
                       history_usage.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
                     }
-                    let access = ResourceAccess {
-                      stage: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                      access: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-                      layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                    let access = ResourceAccess::Texture {
+                      usage: TextureUsage::DEPTH_READ,
+                      primary_usage: TextureUsage::DEPTH_READ
                     };
                     history_usage.pass_accesses.insert(reordered_passes.len() as u32, access);
                   } else {
-                    let access = ResourceAccess {
-                      stage: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                      access: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-                      layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                    let access = ResourceAccess::Texture {
+                      usage: TextureUsage::DEPTH_READ,
+                      primary_usage: TextureUsage::DEPTH_READ
                     };
                     let mut accesses = HashMap::<u32, ResourceAccess>::new();
                     accesses.insert(reordered_passes.len() as u32, access);
@@ -433,16 +442,18 @@ impl VkRenderGraphTemplate {
                         last_used_in_pass_index: reordered_passes.len() as u32,
                       },
                       pass_accesses: accesses,
-                      current_access: ResourceAccess::default(),
-                      initial_layout: vk::ImageLayout::UNDEFINED
+                      current_access: ResourceAccess::Texture {
+                        usage: TextureUsage::empty(),
+                        primary_usage: TextureUsage::empty()
+                      },
+                      initial_usage: TextureUsage::empty()
                     });
                   }
                 } else {
                   input_metadata.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
-                  input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                    stage: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                    access: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-                    layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                  input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                    usage: TextureUsage::DEPTH_READ,
+                    primary_usage: TextureUsage::DEPTH_READ,
                   });
                 }
               }
@@ -451,6 +462,36 @@ impl VkRenderGraphTemplate {
 
             for input in &subpass.inputs {
               let mut input_metadata = metadata.get_mut(&input.name).unwrap();
+              let is_buffer = match &input_metadata.template {
+                VkResourceTemplate::Texture { .. } => false,
+                VkResourceTemplate::Buffer { .. } => true,
+                VkResourceTemplate::ExternalBuffer => true,
+                VkResourceTemplate::ExternalTexture { .. } => false,
+              };
+              let access = if is_buffer {
+                let usage = match input.usage {
+                  InputUsage::Storage => BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_READ,
+                  InputUsage::Sampled => unreachable!(),
+                  InputUsage::Local => BufferUsage::COMPUTE_SHADER_CONSTANT,
+                  InputUsage::Copy => unreachable!(),
+                };
+                ResourceAccess::Buffer {
+                  usage,
+                  primary_usage: usage 
+                }
+              } else {
+                let usage = match input.usage {
+                  InputUsage::Storage => TextureUsage::FRAGMENT_SHADER_STORAGE_READ | TextureUsage::VERTEX_SHADER_STORAGE_READ,
+                  InputUsage::Sampled => TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::VERTEX_SHADER_SAMPLED,
+                  InputUsage::Local => TextureUsage::FRAGMENT_SHADER_LOCAL,
+                  InputUsage::Copy => unreachable!()
+                };
+                ResourceAccess::Texture {
+                  usage,
+                  primary_usage: usage
+                }
+              };
+
               if input.is_history {
                 if let Some(history_usage) = input_metadata.history.as_mut() {
                   if history_usage.pass_range.first_used_in_pass_index > reordered_passes.len() as u32 {
@@ -459,18 +500,8 @@ impl VkRenderGraphTemplate {
                   if history_usage.pass_range.last_used_in_pass_index < reordered_passes.len() as u32 {
                     history_usage.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
                   }
-                  let access = ResourceAccess {
-                    stage: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                    access: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-                    layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                  };
                   history_usage.pass_accesses.insert(reordered_passes.len() as u32, access);
                 } else {
-                  let access = ResourceAccess {
-                    stage: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                    access: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-                    layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                  };
                   let mut accesses = HashMap::<u32, ResourceAccess>::new();
                   accesses.insert(reordered_passes.len() as u32, access);
                   input_metadata.history = Some(HistoryResourceMetadata {
@@ -479,17 +510,23 @@ impl VkRenderGraphTemplate {
                       last_used_in_pass_index: reordered_passes.len() as u32,
                     },
                     pass_accesses: accesses,
-                    current_access: ResourceAccess::default(),
-                    initial_layout: vk::ImageLayout::UNDEFINED
+                    current_access: if is_buffer {
+                      ResourceAccess::Buffer {
+                        usage: BufferUsage::empty(),
+                        primary_usage: BufferUsage::empty()
+                      }
+                    } else {
+                      ResourceAccess::Texture {
+                        usage: TextureUsage::empty(),
+                        primary_usage: TextureUsage::empty()
+                      }
+                    },
+                    initial_usage: TextureUsage::empty()
                   });
                 }
               } else {
                 input_metadata.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
-                input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: pipeline_stage_to_vk(input.stage),
-                  access: vk::AccessFlags::SHADER_READ,
-                  layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                });
+                input_metadata.pass_accesses.insert(reordered_passes.len() as u32, access);
               }
               assert_ne!(input.stage, PipelineStage::ComputeShader);
             }
@@ -516,10 +553,9 @@ impl VkRenderGraphTemplate {
                       is_backbuffer: false
                     }));
                 metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                  access: vk::AccessFlags::SHADER_WRITE,
-                  layout: vk::ImageLayout::GENERAL,
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                  usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+                  primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE
                 });
               },
               Output::Backbuffer {
@@ -538,10 +574,9 @@ impl VkRenderGraphTemplate {
                       is_backbuffer: true
                     }));
                 metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                  access: vk::AccessFlags::SHADER_WRITE,
-                  layout: vk::ImageLayout::GENERAL,
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                  usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+                  primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE
                 });
               },
               Output::Buffer {
@@ -556,10 +591,9 @@ impl VkRenderGraphTemplate {
                       clear: *clear
                     }));
                 metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                  access: vk::AccessFlags::SHADER_WRITE,
-                  layout: vk::ImageLayout::UNDEFINED,
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Buffer {
+                  usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
+                  primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE
                 });
               }
               _ => {}
@@ -574,6 +608,29 @@ impl VkRenderGraphTemplate {
               VkResourceTemplate::Texture {..} => false,
               VkResourceTemplate::ExternalTexture {..} => true,
             };
+            let access = if is_buffer {
+              let usage = match input.usage {
+                InputUsage::Storage => BufferUsage::COMPUTE_SHADER_STORAGE_READ,
+                InputUsage::Sampled => unreachable!(),
+                InputUsage::Local => BufferUsage::COMPUTE_SHADER_CONSTANT,
+                InputUsage::Copy => unreachable!(),
+              };
+              ResourceAccess::Buffer {
+                usage,
+                primary_usage: usage 
+              }
+            } else {
+              let usage = match input.usage {
+                InputUsage::Storage => TextureUsage::COMPUTE_SHADER_STORAGE_READ,
+                InputUsage::Sampled => TextureUsage::COMPUTE_SHADER_SAMPLED,
+                InputUsage::Local => unreachable!(),
+                InputUsage::Copy => unreachable!()
+              };
+              ResourceAccess::Texture {
+                usage,
+                primary_usage: usage
+              }
+            };
             if input.is_history {
               if let Some(history_usage) = input_metadata.history.as_mut() {
                 if history_usage.pass_range.first_used_in_pass_index > reordered_passes.len() as u32 {
@@ -582,35 +639,33 @@ impl VkRenderGraphTemplate {
                 if history_usage.pass_range.last_used_in_pass_index < reordered_passes.len() as u32 {
                   history_usage.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
                 }
-                history_usage.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                  access: vk::AccessFlags::SHADER_READ,
-                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else if input.usage == InputUsage::Storage { vk::ImageLayout::GENERAL } else { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL },
-                });
+                history_usage.pass_accesses.insert(reordered_passes.len() as u32, access);
               } else {
                 let mut accesses = HashMap::<u32, ResourceAccess>::new();
-                accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                  access: vk::AccessFlags::SHADER_READ,
-                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else if input.usage == InputUsage::Storage { vk::ImageLayout::GENERAL } else { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL },
-                });
+                accesses.insert(reordered_passes.len() as u32, access);
                 input_metadata.history = Some(HistoryResourceMetadata {
                   pass_range: ResourcePassRange {
                     first_used_in_pass_index: reordered_passes.len() as u32,
                     last_used_in_pass_index: reordered_passes.len() as u32,
                   },
-                  current_access: Default::default(),
+                  current_access: if is_buffer {
+                    ResourceAccess::Buffer {
+                      usage: BufferUsage::empty(),
+                      primary_usage: BufferUsage::empty()
+                    }
+                  } else {
+                    ResourceAccess::Texture {
+                      usage: TextureUsage::empty(),
+                      primary_usage: TextureUsage::empty()
+                    }
+                  },
                   pass_accesses: accesses,
-                  initial_layout: vk::ImageLayout::UNDEFINED
+                  initial_usage: TextureUsage::empty()
                 });
               }
             } else {
               input_metadata.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
-              input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                access: vk::AccessFlags::SHADER_READ,
-                layout: if is_buffer { vk::ImageLayout::UNDEFINED } else if input.usage == InputUsage::Storage { vk::ImageLayout::GENERAL } else { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL },
-              });
+              input_metadata.pass_accesses.insert(reordered_passes.len() as u32, access);
             }
             assert_eq!(input.stage, PipelineStage::ComputeShader);
           }
@@ -636,10 +691,9 @@ impl VkRenderGraphTemplate {
                       is_backbuffer: false
                     }));
                 metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::TRANSFER,
-                  access: vk::AccessFlags::TRANSFER_WRITE,
-                  layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                  usage: TextureUsage::BLIT_DST,
+                  primary_usage: TextureUsage::BLIT_DST
                 });
               },
               Output::Backbuffer {
@@ -658,10 +712,9 @@ impl VkRenderGraphTemplate {
                       is_backbuffer: true
                     }));
                 metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::TRANSFER,
-                  access: vk::AccessFlags::TRANSFER_WRITE,
-                  layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Texture {
+                  usage: TextureUsage::BLIT_DST,
+                  primary_usage: TextureUsage::BLIT_DST
                 });
               },
               Output::Buffer {
@@ -676,10 +729,9 @@ impl VkRenderGraphTemplate {
                       clear: *clear
                     }));
                 metadata_entry.pass_range.first_used_in_pass_index = reordered_passes.len() as u32;
-                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::TRANSFER,
-                  access: vk::AccessFlags::TRANSFER_WRITE,
-                  layout: vk::ImageLayout::UNDEFINED,
+                metadata_entry.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess::Buffer {
+                  usage: BufferUsage::COPY_DST,
+                  primary_usage: BufferUsage::COPY_DST
                 });
               }
               _ => {}
@@ -702,34 +754,62 @@ impl VkRenderGraphTemplate {
                 if history_usage.pass_range.last_used_in_pass_index < reordered_passes.len() as u32 {
                   history_usage.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
                 }
-                history_usage.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::TRANSFER,
-                  access: vk::AccessFlags::TRANSFER_READ,
-                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::TRANSFER_SRC_OPTIMAL },
+                history_usage.pass_accesses.insert(reordered_passes.len() as u32, if is_buffer {
+                  ResourceAccess::Buffer {
+                    usage: BufferUsage::COPY_SRC,
+                    primary_usage: BufferUsage::COPY_SRC
+                  }
+                } else {
+                  ResourceAccess::Texture {
+                    usage: TextureUsage::COPY_SRC,
+                    primary_usage: TextureUsage::COPY_SRC
+                  }
                 });
               } else {
                 let mut accesses = HashMap::<u32, ResourceAccess>::new();
-                accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                  stage: vk::PipelineStageFlags::TRANSFER,
-                  access: vk::AccessFlags::TRANSFER_READ,
-                  layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::TRANSFER_SRC_OPTIMAL },
+                accesses.insert(reordered_passes.len() as u32, if is_buffer {
+                  ResourceAccess::Buffer {
+                    usage: BufferUsage::COPY_SRC,
+                    primary_usage: BufferUsage::COPY_SRC
+                  }
+                } else {
+                  ResourceAccess::Texture {
+                    usage: TextureUsage::COPY_SRC,
+                    primary_usage: TextureUsage::COPY_SRC
+                  }
                 });
                 input_metadata.history = Some(HistoryResourceMetadata {
                   pass_range: ResourcePassRange {
                     first_used_in_pass_index: reordered_passes.len() as u32,
                     last_used_in_pass_index: reordered_passes.len() as u32,
                   },
-                  current_access: Default::default(),
+                  current_access: if is_buffer {
+                    ResourceAccess::Buffer {
+                      usage: BufferUsage::empty(),
+                      primary_usage: BufferUsage::empty()
+                    }
+                  } else {
+                    ResourceAccess::Texture {
+                      usage: TextureUsage::empty(),
+                      primary_usage: TextureUsage::empty()
+                    }
+                  },
                   pass_accesses: accesses,
-                  initial_layout: vk::ImageLayout::UNDEFINED
+                  initial_usage: TextureUsage::empty()
                 });
               }
             } else {
               input_metadata.pass_range.last_used_in_pass_index = reordered_passes.len() as u32;
-              input_metadata.pass_accesses.insert(reordered_passes.len() as u32, ResourceAccess {
-                stage: vk::PipelineStageFlags::TRANSFER,
-                access: vk::AccessFlags::TRANSFER_READ,
-                layout: if is_buffer { vk::ImageLayout::UNDEFINED } else { vk::ImageLayout::TRANSFER_SRC_OPTIMAL },
+              input_metadata.pass_accesses.insert(reordered_passes.len() as u32, if is_buffer {
+                ResourceAccess::Buffer {
+                  usage: BufferUsage::COPY_SRC,
+                  primary_usage: BufferUsage::COPY_SRC
+                }
+              } else {
+                ResourceAccess::Texture {
+                  usage: TextureUsage::COPY_SRC,
+                  primary_usage: TextureUsage::COPY_SRC
+                }
               });
             }
             assert_eq!(input.stage, PipelineStage::ComputeShader);
@@ -974,61 +1054,37 @@ impl VkRenderGraphTemplate {
       (pass_access, current_access)
     };
 
-    if current_access.access.is_empty() && current_access.layout == pass_access.layout {
-      return None;
-    }
+    let (old_usage, old_primary_usage) = match current_access {
+      ResourceAccess::Texture { usage, primary_usage } => (*usage, *primary_usage),
+      _ => unreachable!()
+    };
 
-    let mut src_stage = current_access.stage;
-    let mut src_access = current_access.access;
+    let (mut new_usage, new_primary_usage) = match pass_access {
+      ResourceAccess::Texture { usage, primary_usage } => (*usage, *primary_usage),
+      _ => unreachable!()
+    };
 
-    let mut dst_stage = vk::PipelineStageFlags::empty();
-    let mut dst_access = vk::AccessFlags::empty();
-
-    let discard = current_access.layout == vk::ImageLayout::UNDEFINED;
-    if discard {
-      src_access = vk::AccessFlags::empty();
-      dst_access = pass_access.access;
-      dst_stage = pass_access.stage;
-    } else if src_access != vk::AccessFlags::empty() {
-      // Flush + invalidate caches
-      // Collect all future usages of the texture
+    if !old_usage.is_empty() {
       for (resource_pass_index, access) in &resource_metadata.pass_accesses {
         if *resource_pass_index == pass_index {
           continue;
         }
-        dst_stage |= access.stage;
-        dst_access |= access.access & !current_access.access;
+        new_usage |= match access {
+          ResourceAccess::Texture { usage, .. } => *usage,
+          _ => unreachable!()
+        };
       }
-      if dst_access.is_empty() {
-        src_access = vk::AccessFlags::empty();
-      }
-    } else {
-      // Only a layout transition
-      dst_stage = pass_access.stage;
-      dst_access = pass_access.access;
     }
 
-    let old_layout = current_access.layout;
-    let new_layout = pass_access.layout;
-
-    current_access.access = pass_access.access & write_access_mask();
-    current_access.stage = pass_access.stage;
-    current_access.layout = pass_access.layout;
-
-    assert_ne!(dst_stage, vk::PipelineStageFlags::empty());
-    assert_ne!(src_stage, vk::PipelineStageFlags::empty());
+    *current_access = pass_access.clone();
 
     Some(VkBarrierTemplate::Image {
       name: name.to_string(),
       is_history,
-      old_layout,
-      new_layout,
-      src_access_mask: src_access,
-      dst_access_mask: dst_access,
-      src_stage,
-      dst_stage,
-      src_queue_family_index: 0,
-      dst_queue_family_index: 0
+      old_usage,
+      new_usage,
+      old_primary_usage,
+      new_primary_usage
     })
   }
 
@@ -1049,43 +1105,37 @@ impl VkRenderGraphTemplate {
       (pass_access, current_access)
     };
 
-    if current_access.access.is_empty() {
-      return None;
-    }
+    let (old_usage, old_primary_usage) = match current_access {
+      ResourceAccess::Buffer { usage, primary_usage } => (*usage, *primary_usage),
+      _ => unreachable!()
+    };
 
-    let src_stage = current_access.stage;
-    let mut src_access = current_access.access;
+    let (mut new_usage, new_primary_usage) = match pass_access {
+      ResourceAccess::Buffer { usage, primary_usage } => (*usage, *primary_usage),
+      _ => unreachable!()
+    };
 
-    let mut dst_stage = vk::PipelineStageFlags::empty();
-    let mut dst_access = vk::AccessFlags::empty();
-    // Collect all future usages of the buffer
-    for (resource_pass_index, access) in &resource_metadata.pass_accesses {
-      if *resource_pass_index == pass_index {
-        continue;
+    if !old_usage.is_empty() {
+      for (resource_pass_index, access) in &resource_metadata.pass_accesses {
+        if *resource_pass_index == pass_index {
+          continue;
+        }
+        new_usage |= match access {
+          ResourceAccess::Buffer { usage, .. } => *usage,
+          _ => unreachable!()
+        };
       }
-      dst_stage |= access.stage;
-      dst_access |= access.access & !current_access.access;
-    }
-    if dst_access.is_empty() {
-      src_access = vk::AccessFlags::empty();
     }
 
-    current_access.access = pass_access.access & write_access_mask();
-    current_access.stage = pass_access.stage;
-
-    assert_ne!(dst_stage, vk::PipelineStageFlags::empty());
-    assert_ne!(src_stage, vk::PipelineStageFlags::empty());
-    assert!((src_access == vk::AccessFlags::empty() && dst_access == vk::AccessFlags::empty()) || (src_access != vk::AccessFlags::empty() && dst_access != vk::AccessFlags::empty()));
+    *current_access = pass_access.clone();
 
     Some(VkBarrierTemplate::Buffer {
       name: name.to_string(),
       is_history,
-      src_access_mask: src_access,
-      dst_access_mask: dst_access,
-      src_stage,
-      dst_stage,
-      src_queue_family_index: 0,
-      dst_queue_family_index: 0
+      old_usage,
+      new_usage,
+      old_primary_usage,
+      new_primary_usage
     })
   }
 

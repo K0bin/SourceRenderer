@@ -22,6 +22,7 @@ bitflags! {
     const BLIT_DST                           = 0b10000000000000000;
     const COPY_SRC                           = 0b100000000000000000;
     const COPY_DST                           = 0b1000000000000000000;
+    const PRESENT                            = 0b10000000000000000000;
   }
 }
 

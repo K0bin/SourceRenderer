@@ -218,7 +218,7 @@ impl VkSwapchain {
             mip_levels: 1u32,
             depth: 1u32,
             samples: SampleCount::Samples1,
-            usage: TextureUsage::RENDER_TARGET | TextureUsage::COPY_DST
+            usage: TextureUsage::RENDER_TARGET | TextureUsage::COPY_DST | TextureUsage::BLIT_DST | TextureUsage::PRESENT
           })))
         .collect();
 

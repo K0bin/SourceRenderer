@@ -172,27 +172,53 @@ impl Buffer for VkBufferSlice {
   fn get_length(&self) -> usize {
     self.length
   }
+
+  fn get_info(&self) -> &BufferInfo {
+    &self.buffer.info
+  }
 }
 
 pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
-  use self::vk::BufferUsageFlags as VkUsage;
-  let usage_bits = usage.bits();
-  let mut flags = 0u32;
-  flags |= usage_bits.rotate_left(VkUsage::VERTEX_BUFFER.as_raw().trailing_zeros()   - BufferUsage::VERTEX.bits().trailing_zeros()) & VkUsage::VERTEX_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::INDEX_BUFFER.as_raw().trailing_zeros()    - BufferUsage::INDEX.bits().trailing_zeros()) & VkUsage::INDEX_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::VERTEX_SHADER_CONSTANT.bits().trailing_zeros() - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::FRAGMENT_SHADER_CONSTANT.bits().trailing_zeros() - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::COMPUTE_SHADER_CONSTANT.bits().trailing_zeros() - VkUsage::UNIFORM_BUFFER.as_raw().trailing_zeros()) & VkUsage::UNIFORM_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::INDIRECT.bits().trailing_zeros()     - VkUsage::INDIRECT_BUFFER.as_raw().trailing_zeros()) & VkUsage::INDIRECT_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::VERTEX_SHADER_STORAGE_READ.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::VERTEX_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::FRAGMENT_SHADER_STORAGE_READ.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
-  flags |= usage_bits.rotate_left(VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()  - BufferUsage::COMPUTE_SHADER_STORAGE_READ.bits().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::COMPUTE_SHADER_STORAGE_WRITE.bits().trailing_zeros() - VkUsage::STORAGE_BUFFER.as_raw().trailing_zeros()) & VkUsage::STORAGE_BUFFER.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::COPY_SRC.bits().trailing_zeros() - VkUsage::TRANSFER_SRC.as_raw().trailing_zeros()) & VkUsage::TRANSFER_SRC.as_raw();
-  flags |= usage_bits.rotate_right(BufferUsage::COPY_DST.bits().trailing_zeros() - VkUsage::TRANSFER_DST.as_raw().trailing_zeros()) & VkUsage::TRANSFER_DST.as_raw();
-  vk::BufferUsageFlags::from_raw(flags)
+  let mut flags = vk::BufferUsageFlags::empty();
+
+  let storage_usages = BufferUsage::VERTEX_SHADER_STORAGE_READ
+  | BufferUsage::VERTEX_SHADER_STORAGE_WRITE
+  | BufferUsage::COMPUTE_SHADER_STORAGE_READ
+  | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE
+  | BufferUsage::FRAGMENT_SHADER_STORAGE_READ
+  | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE;
+  if usage.intersects(storage_usages) {
+    flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
+  }
+
+  let constant_usages = BufferUsage::VERTEX_SHADER_CONSTANT
+  | BufferUsage::FRAGMENT_SHADER_CONSTANT
+  | BufferUsage::COMPUTE_SHADER_CONSTANT;
+  if usage.intersects(constant_usages) {
+    flags |= vk::BufferUsageFlags::UNIFORM_BUFFER;
+  }
+
+  if usage.contains(BufferUsage::VERTEX) {
+    flags |= vk::BufferUsageFlags::VERTEX_BUFFER;
+  }
+
+  if usage.contains(BufferUsage::INDEX) {
+    flags |= vk::BufferUsageFlags::INDEX_BUFFER;
+  }
+
+  if usage.contains(BufferUsage::INDIRECT) {
+    flags |= vk::BufferUsageFlags::INDIRECT_BUFFER;
+  }
+
+  if usage.contains(BufferUsage::COPY_SRC) {
+    flags |= vk::BufferUsageFlags::TRANSFER_SRC;
+  }
+
+  if usage.contains(BufferUsage::COPY_DST) {
+    flags |= vk::BufferUsageFlags::TRANSFER_DST;
+  }
+
+  flags
 }
 
 fn align_up(value: usize, alignment: usize) -> usize {

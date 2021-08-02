@@ -34,7 +34,7 @@ impl<B: Backend> LateLatchCamera<B> {
     let late_letch_cam = Self {
       buffer: device.create_buffer(&BufferInfo {
         size: std::mem::size_of::<PrimaryCameraBuffer>(),
-        usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE
+        usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ
       }, MemoryUsage::CpuOnly, None),
       proj_read_counter: AtomicU32::new(0),
       proj_write_counter: AtomicU32::new(0),

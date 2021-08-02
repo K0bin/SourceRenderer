@@ -384,7 +384,7 @@ impl<P: Platform> AssetManager<P> {
       }
     }
     if file_opt.is_none() {
-      println!("Could not find file: {:?}", path);
+      //println!("Could not find file: {:?}", path);
       {
         let mut inner = self.inner.lock().unwrap();
         inner.requested_assets.remove(path);

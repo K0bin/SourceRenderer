@@ -38,6 +38,8 @@ pub trait Buffer {
   unsafe fn unmap_unsafe(&self, flush: bool);
 
   fn get_length(&self) -> usize;
+
+  fn get_info(&self) -> &BufferInfo;
 }
 
 pub struct MutMappedBuffer<'a, B, T>
