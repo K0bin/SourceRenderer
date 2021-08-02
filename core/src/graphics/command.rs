@@ -85,16 +85,14 @@ pub enum Barrier<'a, B: Backend> {
     new_primary_usage: TextureUsage,
     old_usages: TextureUsage,
     new_usages: TextureUsage,
-    texture: &'a Arc<B::Texture>,
-    try_omit: bool
+    texture: &'a Arc<B::Texture>
   },
   BufferBarrier {
     old_primary_usage: BufferUsage,
     new_primary_usage: BufferUsage,
     old_usages: BufferUsage,
     new_usages: BufferUsage,
-    buffer: &'a Arc<B::Buffer>,
-    try_omit: bool
+    buffer: &'a Arc<B::Buffer>
   }
 }
 

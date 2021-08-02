@@ -499,8 +499,7 @@ impl VkRenderGraph {
         new_primary_usage: history.initial_usage,
         old_usages: TextureUsage::empty(),
         new_usages: history.initial_usage,
-        texture: texture,
-        try_omit: true,
+        texture: texture
     });
       initialized_history_resources.insert(name.clone());
     }
@@ -899,8 +898,7 @@ fn emit_barrier(
             new_primary_usage: *new_primary_usage,
             old_usages: *old_usage,
             new_usages: *new_usage,
-            texture,
-            try_omit: true
+            texture
           });
         }
         VkBarrierTemplate::Buffer { name, is_history, old_usage, new_usage, old_primary_usage, new_primary_usage } => {
@@ -920,8 +918,7 @@ fn emit_barrier(
             new_primary_usage: *new_primary_usage,
             old_usages: *old_usage,
             new_usages: *new_usage,
-            buffer,
-            try_omit: true
+            buffer
           });
         }
     }

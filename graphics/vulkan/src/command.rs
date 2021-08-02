@@ -630,9 +630,10 @@ impl VkCommandBuffer {
   ) {
     for barrier in barriers {
       match barrier {
-        Barrier::TextureBarrier { old_primary_usage, new_primary_usage, old_usages, new_usages, texture, try_omit } => {
-          debug_assert!(old_usages.contains(*old_primary_usage));
-          debug_assert!(new_usages.contains(*new_primary_usage));
+        Barrier::TextureBarrier { old_primary_usage, new_primary_usage, old_usages, new_usages, texture } => {
+          debug_assert!(old_usages.contains(*old_primary_usage) || (!old_primary_usage.is_empty() && old_usages.is_empty()));
+          debug_assert!(new_usages.contains(*new_primary_usage) || (!new_primary_usage.is_empty() && new_usages.is_empty()));
+          debug_assert!(!new_usages.is_empty() || (new_usages.is_empty() && old_usages.is_empty()));
           debug_assert!(!new_primary_usage.is_empty());
           debug_assert!(!new_usages.is_empty());
           debug_assert!(texture.get_info().usage.contains(*new_primary_usage));
@@ -640,8 +641,11 @@ impl VkCommandBuffer {
 
           let old_layout = texture_usage_to_image_layout(*old_primary_usage);
           let new_layout = texture_usage_to_image_layout(*new_primary_usage);
-          let src_access = texture_usage_to_access(*old_usages);
-          let new_access = texture_usage_to_access(*new_usages);
+          let mut src_access = texture_usage_to_access(*old_usages);
+          let mut dst_access = texture_usage_to_access(*new_usages);
+
+          let mut src_stages = texture_usage_to_stage(*old_usages);
+          let mut dst_stages = texture_usage_to_stage(*new_usages);
 
           let info = texture.get_info();
           let mut aspect_mask = vk::ImageAspectFlags::empty();
@@ -655,72 +659,78 @@ impl VkCommandBuffer {
             aspect_mask |= vk::ImageAspectFlags::COLOR;
           }
 
-          let src_stages = texture_usage_to_stage(*old_usages);
-          let dst_stages=  texture_usage_to_stage(*new_usages);
+          if dst_access.is_empty() && src_access.is_empty() && src_stages.is_empty() && dst_stages.is_empty() && old_layout == new_layout {
+            // Same layout, no memory operation, no wait
+            continue;
+          }
+
+          if dst_access.is_empty() && src_access.is_empty() {
+            // Pure layout transition
+            dst_access = texture_usage_to_access(*new_primary_usage);
+            dst_stages = texture_usage_to_stage(*new_primary_usage);
+            src_access = texture_usage_to_access(*old_primary_usage);
+            src_stages = texture_usage_to_stage(*old_primary_usage);
+
+            debug_assert!((src_access & write_access_mask()).is_empty());
+          }
 
           if (!self.pending_src_stage_flags.is_empty() && self.pending_src_stage_flags != src_stages) || (!self.pending_dst_stage_flags.is_empty() && self.pending_dst_stage_flags != dst_stages) {
             self.flush_barriers();
           }
 
-          if old_layout != new_layout || (!*try_omit || src_access != new_access) {
-            self.pending_image_barriers.push(vk::ImageMemoryBarrier {
-              src_access_mask: src_access & write_access_mask(),
-              dst_access_mask: new_access,
-              old_layout,
-              new_layout,
-              src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-              dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-              image: *texture.get_handle(),
-              subresource_range: vk::ImageSubresourceRange {
-                aspect_mask,
-                base_array_layer: 0,
-                base_mip_level: 0,
-                level_count: info.mip_levels,
-                layer_count: info.array_length
-              },
-              ..Default::default()
-            });
-            self.pending_dst_stage_flags |= dst_stages;
-            
-            if !old_primary_usage.is_empty() || !*try_omit {
-              self.pending_src_stage_flags |= src_stages;
-            }
-          }
+          self.pending_image_barriers.push(vk::ImageMemoryBarrier {
+            src_access_mask: src_access & write_access_mask(),
+            dst_access_mask: dst_access,
+            old_layout,
+            new_layout,
+            src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+            dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+            image: *texture.get_handle(),
+            subresource_range: vk::ImageSubresourceRange {
+              aspect_mask,
+              base_array_layer: 0,
+              base_mip_level: 0,
+              level_count: info.mip_levels,
+              layer_count: info.array_length
+            },
+            ..Default::default()
+          });
+          self.pending_dst_stage_flags |= dst_stages;
+          self.pending_src_stage_flags |= src_stages;
         },
-        Barrier::BufferBarrier { new_primary_usage, old_primary_usage, old_usages, new_usages, buffer, try_omit } => {     
-          debug_assert!(old_usages.contains(*old_primary_usage));
-          debug_assert!(new_usages.contains(*new_primary_usage));    
-          debug_assert!(!new_primary_usage.is_empty());
+        Barrier::BufferBarrier { new_primary_usage, old_primary_usage, old_usages, new_usages, buffer } => {     
+          debug_assert!(old_usages.contains(*old_primary_usage) || (!old_primary_usage.is_empty() && old_usages.is_empty()));
+          debug_assert!(new_usages.contains(*new_primary_usage) || (!new_primary_usage.is_empty() && new_usages.is_empty()));
+          debug_assert!(!new_usages.is_empty() || (new_usages.is_empty() && old_usages.is_empty()));
           debug_assert!(!new_usages.is_empty()); 
           debug_assert!(buffer.get_info().usage.contains(*new_primary_usage));
           debug_assert!(buffer.get_info().usage.contains(*new_usages));
 
           let src_stages = buffer_usage_to_stage(*old_usages);
-          let dst_stages=  buffer_usage_to_stage(*new_usages);
+          let dst_stages = buffer_usage_to_stage(*new_usages);
           let src_access = buffer_usage_to_access(*old_usages);
-          let new_access = buffer_usage_to_access(*new_usages);
+          let dst_access = buffer_usage_to_access(*new_usages);
+
+          if dst_access.is_empty() && src_access.is_empty() && src_stages.is_empty() && dst_stages.is_empty() {
+            continue;
+          }
 
           if (!self.pending_src_stage_flags.is_empty() && self.pending_src_stage_flags != src_stages) || (!self.pending_dst_stage_flags.is_empty() && self.pending_dst_stage_flags != dst_stages) {
             self.flush_barriers();
           }
 
-          if !*try_omit || src_access != new_access {
-            self.pending_buffer_barriers.push(vk::BufferMemoryBarrier {
-              src_access_mask: src_access & write_access_mask(),
-              dst_access_mask: new_access,
-              src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-              dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-              buffer: *buffer.get_buffer().get_handle(),
-              offset: buffer.get_offset() as u64,
-              size: buffer.get_length() as u64,
-              ..Default::default()
-            });
-            self.pending_dst_stage_flags |= dst_stages;
-            
-            if !old_primary_usage.is_empty() || !*try_omit {
-              self.pending_src_stage_flags |= src_stages;
-            }
-          }
+          self.pending_buffer_barriers.push(vk::BufferMemoryBarrier {
+            src_access_mask: src_access & write_access_mask(),
+            dst_access_mask: dst_access,
+            src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+            dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+            buffer: *buffer.get_buffer().get_handle(),
+            offset: buffer.get_offset() as u64,
+            size: buffer.get_length() as u64,
+            ..Default::default()
+          });
+          self.pending_dst_stage_flags |= dst_stages;
+          self.pending_src_stage_flags |= src_stages;
         },
       }
     }
