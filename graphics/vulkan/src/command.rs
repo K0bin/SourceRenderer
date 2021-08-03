@@ -641,11 +641,25 @@ impl VkCommandBuffer {
 
           let old_layout = texture_usage_to_image_layout(*old_primary_usage);
           let new_layout = texture_usage_to_image_layout(*new_primary_usage);
-          let mut src_access = texture_usage_to_access(*old_usages);
-          let mut dst_access = texture_usage_to_access(*new_usages);
 
+          let mut src_access = texture_usage_to_access(*old_usages);
           let mut src_stages = texture_usage_to_stage(*old_usages);
-          let mut dst_stages = texture_usage_to_stage(*new_usages);
+
+          let mut dst_access = vk::AccessFlags::empty();
+          let mut dst_stages = vk::PipelineStageFlags::empty();
+
+          let mut new_usages_bits = std::num::Wrapping(new_usages.bits());
+          while new_usages_bits != std::num::Wrapping(0) {
+            let usage_bit = new_usages_bits & -new_usages_bits;
+            let usage = TextureUsage::from_bits_truncate(usage_bit.0);
+            let usage_layout = texture_usage_to_image_layout(usage);
+            if usage_layout == new_layout {
+              // using the texture with this texture usage will not require a layout transition barrier
+              dst_access |= texture_usage_to_access(usage);
+              dst_stages |= texture_usage_to_stage(usage);
+            }
+            new_usages_bits &= !usage_bit; 
+          }
 
           let info = texture.get_info();
           let mut aspect_mask = vk::ImageAspectFlags::empty();
