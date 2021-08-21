@@ -231,6 +231,8 @@ impl VkCommandBuffer {
         unsafe {
           self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, *vk_pipeline);
         }
+
+        self.trackers.track_pipeline(*graphics_pipeline);
         self.pipeline = Some((*graphics_pipeline).clone())
       }
       PipelineBinding::Compute(compute_pipeline) => {
@@ -238,6 +240,7 @@ impl VkCommandBuffer {
         unsafe {
           self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::COMPUTE, *vk_pipeline);
         }
+        self.trackers.track_pipeline(*compute_pipeline);
         self.pipeline = Some((*compute_pipeline).clone())
       },
     };
