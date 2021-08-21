@@ -30,13 +30,14 @@ pub(super) trait RenderPath<B: Backend> {
     view: &Arc<AtomicRefCell<View>>,
     lightmap: &Arc<RendererTexture<B>>,
     primary_camera: &Arc<LateLatchCamera<B>>
-  );
+  ) -> Result<(), SwapchainError>;
 }
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   //graph: <P::GraphicsBackend as Backend>::RenderGraph,
+  swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
   asset_manager: Arc<AssetManager<P>>,
   lightmap: Arc<RendererTexture<P::GraphicsBackend>>,
@@ -73,6 +74,7 @@ impl<P: Platform> RendererInternal<P> {
       device: device.clone(),
       //graph,
       render_path: path,
+      swapchain: swapchain.clone(),
       scene,
       asset_manager: asset_manager.clone(),
       view,
@@ -256,18 +258,16 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
-    self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera);
-
-    /*let result = self.graph.render();
-    if result.is_err() {
+    let render_result = self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera);
+    if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
-      let new_swapchain = if result.err().unwrap() == SwapchainError::SurfaceLost {
+      let new_swapchain = if swapchain_error == SwapchainError::SurfaceLost {
         // No point in trying to recreate with the old surface
         let renderer_surface = self.renderer.surface();
-        if &*renderer_surface != self.graph.swapchain().surface() {
+        if &*renderer_surface != self.swapchain.surface() {
           println!("Recreating swapchain on a different surface");
-          let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.graph.swapchain(), &*renderer_surface, swapchain_width, swapchain_height);
+          let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &*renderer_surface, swapchain_width, swapchain_height);
           if new_swapchain_result.is_err() {
             println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
             return;
@@ -278,21 +278,17 @@ impl<P: Platform> RendererInternal<P> {
         }
       } else {
         println!("Recreating swapchain");
-        let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.graph.swapchain(), swapchain_width, swapchain_height);
+        let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, swapchain_width, swapchain_height);
         if new_swapchain_result.is_err() {
           println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
           return;
         }
         new_swapchain_result.unwrap()
       };
-
-      if new_swapchain.format() != self.graph.swapchain().format() || new_swapchain.sample_count() != self.graph.swapchain().sample_count() {
-        panic!("Swapchain format or sample count changed. Can not recreate render graph.");
-      }
-      *let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
-      self.graph = new_graph;*
-      let _ = self.graph.render();
-    }*/
+      self.render_path.on_swapchain_changed(&new_swapchain);
+      self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera).expect("Rendering still fails after recreating swapchain.");
+      self.swapchain = new_swapchain;
+    }
     self.renderer.dec_queued_frames_counter();
   }
 

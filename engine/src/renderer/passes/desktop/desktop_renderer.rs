@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{AddressMode, AttachmentRef, Backend, Barrier, BindingFrequency, CommandBuffer, DepthStencil, DepthStencilAttachmentRef, Device, Filter, Format, LoadOp, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassPipelineStage, RenderpassRecordingMode, SampleCount, SamplerInfo, ShaderType, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage}};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{AddressMode, AttachmentRef, Backend, Barrier, BindingFrequency, CommandBuffer, DepthStencil, DepthStencilAttachmentRef, Device, Filter, Format, LoadOp, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassPipelineStage, RenderpassRecordingMode, SampleCount, SamplerInfo, ShaderType, StoreOp, SubpassInfo, Swapchain, SwapchainError, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage}};
 
 use crate::{asset::Texture, renderer::{LateLatchCamera, drawable::View, passes::late_latching::LateLatchingPass, renderer_assets::RendererTexture, renderer_internal::RenderPath, renderer_scene::RendererScene}};
 
@@ -57,7 +57,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
     lightmap: &Arc<RendererTexture<B>>,
-    primary_camera: &Arc<LateLatchCamera<B>>) {
+    primary_camera: &Arc<LateLatchCamera<B>>) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 
@@ -74,19 +74,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.taa.swap_history_resources();
     self.late_latching_pass.swap_history_resources();
 
-    let prepare_sem = self.device.create_semaphore();
-    let cmd_buf_sem = self.device.create_semaphore();
-    let back_buffer = self.swapchain.prepare_back_buffer(&prepare_sem).unwrap();
-
-    cmd_buf.barrier(
-      &[
-        Barrier::TextureBarrier {
-          old_primary_usage: TextureUsage::UNINITIALIZED,
-          new_primary_usage: TextureUsage::COPY_DST,
-          old_usages: TextureUsage::empty(),
-          new_usages: TextureUsage::empty(),
-          texture: back_buffer.texture(),
-        },
+    cmd_buf.barrier(&[
         Barrier::TextureBarrier {
           old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
           new_primary_usage: TextureUsage::COPY_SRC,
@@ -97,10 +85,29 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       ]
     );
 
+    let prepare_sem = self.device.create_semaphore();
+    let cmd_buf_sem = self.device.create_semaphore();
+    self.frame += 1;
+    let back_buffer_res = self.swapchain.prepare_back_buffer(&prepare_sem);
+    if back_buffer_res.is_none() {
+      return Err(SwapchainError::Other);
+    }
+
+    let back_buffer = back_buffer_res.unwrap();
+
+    cmd_buf.barrier(
+      &[
+        Barrier::TextureBarrier {
+          old_primary_usage: TextureUsage::UNINITIALIZED,
+          new_primary_usage: TextureUsage::COPY_DST,
+          old_usages: TextureUsage::empty(),
+          new_usages: TextureUsage::empty(),
+          texture: back_buffer.texture(),
+        }
+      ]
+    );
     cmd_buf.flush_barriers();
-
     cmd_buf.blit(self.sharpen.sharpened_texture(), 0, 0, back_buffer.texture(), 0, 0);
-
     cmd_buf.barrier(
       &[
         Barrier::TextureBarrier {
@@ -113,10 +120,8 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       ]
     );
 
-    //cmd_buf.blit(src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level)
     graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem]);
     graphics_queue.present(&self.swapchain, &[&cmd_buf_sem]);
-
-    self.frame += 1;
+    return Ok(());
   }
 }
