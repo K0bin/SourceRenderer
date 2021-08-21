@@ -543,17 +543,19 @@ impl VkBindingManager {
       dynamic_offset_count: 0
     };
     if frequency == BindingFrequency::PerDraw {
-      bindings.iter().enumerate().for_each(|(_, binding)| {
-        match binding {
-          VkBoundResource::UniformBuffer(buffer) => {
-            set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
-            set_binding.dynamic_offset_count += 1;
+      bindings.iter().enumerate().for_each(|(index, binding)| {
+        if layout.binding_infos[index].is_some() {
+          match binding {
+            VkBoundResource::UniformBuffer(buffer) => {
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+              set_binding.dynamic_offset_count += 1;
+            }
+            VkBoundResource::StorageBuffer(buffer) => {
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+              set_binding.dynamic_offset_count += 1;
+            },
+            _ => {}
           }
-          VkBoundResource::StorageBuffer(buffer) => {
-            set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
-            set_binding.dynamic_offset_count += 1;
-          },
-          _ => {}
         }
       })
     }
@@ -571,13 +573,6 @@ impl VkBindingManager {
     set_bindings[BindingFrequency::PerFrame as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerFrame);
     set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerMaterial);
     set_bindings[BindingFrequency::Rarely as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::Rarely);
-
-
-    // TODO: make sure that isn't necessary. Only bind the slots that exist in the set template
-    self.bindings[BindingFrequency::PerDraw as usize] = Default::default();
-    self.bindings[BindingFrequency::PerFrame as usize] = Default::default();
-    self.bindings[BindingFrequency::PerMaterial as usize] = Default::default();
-    self.bindings[BindingFrequency::Rarely as usize] = Default::default();
 
     self.dirty = DirtyDescriptorSets::empty();
     set_bindings
