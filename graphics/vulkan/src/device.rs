@@ -6,7 +6,7 @@ use ash::version::{DeviceV1_0};
 use sourcerenderer_core::graphics::*;
 use crate::{queue::VkQueue, texture::VkSampler};
 use crate::queue::VkQueueInfo;
-use crate::{VkBackend, VkRenderPass};
+use crate::{VkBackend, VkRenderPass, VkSemaphore};
 use crate::VkAdapterExtensionSupport;
 use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
@@ -69,22 +69,22 @@ impl VkDevice {
 
     let shared = Arc::new(VkShared::new(&raw));
 
+    let context = Arc::new(VkThreadManager::new(&raw, &graphics_queue_info, compute_queue_info.as_ref(), transfer_queue_info.as_ref(), &shared, min(3, max_surface_image_count)));
+
     let graphics_queue = {
       let vk_queue = unsafe { raw.device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
-      Arc::new(VkQueue::new(graphics_queue_info, vk_queue, &raw, &shared))
+      Arc::new(VkQueue::new(graphics_queue_info, vk_queue, &raw, &shared, &context))
     };
 
     let compute_queue = compute_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared))
+      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared, &context))
     });
 
     let transfer_queue = transfer_queue_info.map(|info| {
       let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared))
+      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared, &context))
     });
-
-    let context = Arc::new(VkThreadManager::new(&raw, &graphics_queue, &compute_queue, &transfer_queue, &shared, min(3, max_surface_image_count)));
 
     let transfer = VkTransfer::new(&raw, &graphics_queue, &transfer_queue, &shared);
 
@@ -122,11 +122,13 @@ impl VkDevice {
 
 impl Device<VkBackend> for VkDevice {
   fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
+    debug_assert!(get_default_state(memory_usage).is_empty() || info.usage.intersects(get_default_state(memory_usage)));
     self.context.get_shared().get_buffer_allocator().get_slice(info, memory_usage, name)
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> where T: 'static + Send + Sync + Sized + Clone {
     assert_ne!(memory_usage, MemoryUsage::GpuOnly);
+    debug_assert!(get_default_state(memory_usage).is_empty() || usage.intersects(get_default_state(memory_usage)));
     let slice = self.context.get_shared().get_buffer_allocator().get_slice(&BufferInfo {
       size: std::mem::size_of_val(data),
       usage
@@ -152,6 +154,27 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureRenderTargetViewInfo) -> Arc<VkTextureView> {
+    let srv_info = TextureShaderResourceViewInfo {
+      base_mip_level: info.base_mip_level,
+      mip_level_length: info.mip_level_length,
+      base_array_level: info.base_array_level,
+      array_level_length: info.array_level_length,
+    };
+    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, &srv_info))
+  }
+
+  fn create_unordered_access_view(&self, texture: &Arc<VkTexture>, info: &TextureUnorderedAccessViewInfo) -> Arc<VkTextureView> {
+    let srv_info = TextureShaderResourceViewInfo {
+      base_mip_level: info.base_mip_level,
+      mip_level_length: info.mip_level_length,
+      base_array_level: info.base_array_level,
+      array_level_length: info.array_level_length,
+    };
+    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, &srv_info))
+  }
+
+  fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureDepthStencilViewInfo) -> Arc<VkTextureView> {
+    assert!(texture.get_info().format.is_depth() || texture.get_info().format.is_stencil());
     let srv_info = TextureShaderResourceViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
@@ -260,6 +283,18 @@ impl Device<VkBackend> for VkDevice {
 
   fn free_completed_transfers(&self) {
     self.transfer.try_free_used_buffers();
+  }
+
+  fn create_fence(&self) -> Arc<VkFence> {
+    self.context.shared().get_fence()
+  }
+
+  fn create_semaphore(&self) -> Arc<VkSemaphore> {
+    self.context.shared().get_semaphore()
+  }
+
+  fn graphics_queue(&self) -> &Arc<VkQueue> {
+    &self.graphics_queue
   }
 }
 

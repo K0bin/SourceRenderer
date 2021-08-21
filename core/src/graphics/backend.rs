@@ -10,6 +10,8 @@ use crate::graphics::Swapchain;
 use crate::graphics::{RenderGraph, RenderGraphTemplate};
 use crate::graphics::TextureUnorderedAccessView;
 use crate::graphics::TextureRenderTargetView;
+use super::Queue;
+use super::texture::TextureDepthStencilView;
 
 use std::hash::Hash;
 
@@ -26,6 +28,7 @@ pub trait Backend: 'static + Sized {
   type TextureShaderResourceView: TextureShaderResourceView<Self> + Send + Sync;
   type TextureUnorderedAccessView: TextureUnorderedAccessView<Self> + Send + Sync;
   type TextureRenderTargetView: TextureRenderTargetView<Self> + Send + Sync;
+  type TextureDepthStencilView: TextureDepthStencilView<Self> + Send + Sync;
   type Sampler: Send + Sync;
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
@@ -34,4 +37,6 @@ pub trait Backend: 'static + Sized {
   type RenderGraphTemplate: RenderGraphTemplate + Send + Sync;
   type RenderGraph: RenderGraph<Self> + Send + Sync;
   type Fence : Fence + Send + Sync;
+  type Semaphore : Send + Sync;
+  type Queue : Queue<Self> + Send + Sync;
 }

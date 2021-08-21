@@ -27,6 +27,9 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type TextureShaderResourceView = VkTextureView;
   type TextureUnorderedAccessView = VkTextureView;
   type TextureRenderTargetView = VkTextureView;
+  type TextureDepthStencilView = VkTextureView;
   type Sampler = VkSampler;
   type Fence = VkFence;
+  type Semaphore = VkSemaphore;
+  type Queue = VkQueue;
 }

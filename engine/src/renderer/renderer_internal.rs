@@ -19,12 +19,25 @@ use rayon::prelude::*;
 use crate::math::Frustum;
 
 use super::PointLight;
+use super::passes::desktop::desktop_renderer::DesktopRenderer;
 use super::renderer_scene::RendererScene;
+
+pub(super) trait RenderPath<B: Backend> {
+  fn on_swapchain_changed(&mut self, swapchain: &Arc<B::Swapchain>);
+  fn render(
+    &mut self,
+    scene: &Arc<AtomicRefCell<RendererScene<B>>>,
+    view: &Arc<AtomicRefCell<View>>,
+    lightmap: &Arc<RendererTexture<B>>,
+    primary_camera: &Arc<LateLatchCamera<B>>
+  );
+}
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
-  graph: <P::GraphicsBackend as Backend>::RenderGraph,
+  //graph: <P::GraphicsBackend as Backend>::RenderGraph,
+  render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
   asset_manager: Arc<AssetManager<P>>,
   lightmap: Arc<RendererTexture<P::GraphicsBackend>>,
   scene: Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>,
@@ -51,12 +64,15 @@ impl<P: Platform> RendererInternal<P> {
 
     let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
-    let graph = RendererInternal::<P>::build_graph(device, swapchain, &view, &scene, &lightmap, &primary_camera);
+    //let graph = RendererInternal::<P>::build_graph(device, swapchain, &view, &scene, &lightmap, &primary_camera);
+
+    let path = Box::new(DesktopRenderer::new::<P>(device, swapchain));
 
     Self {
       renderer: renderer.clone(),
       device: device.clone(),
-      graph,
+      //graph,
+      render_path: path,
       scene,
       asset_manager: asset_manager.clone(),
       view,
@@ -240,7 +256,9 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
-    let result = self.graph.render();
+    self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera);
+
+    /*let result = self.graph.render();
     if result.is_err() {
       self.device.wait_for_idle();
 
@@ -271,10 +289,10 @@ impl<P: Platform> RendererInternal<P> {
       if new_swapchain.format() != self.graph.swapchain().format() || new_swapchain.sample_count() != self.graph.swapchain().sample_count() {
         panic!("Swapchain format or sample count changed. Can not recreate render graph.");
       }
-      let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
-      self.graph = new_graph;
+      *let new_graph = <P::GraphicsBackend as Backend>::RenderGraph::recreate(&self.graph, &new_swapchain);
+      self.graph = new_graph;*
       let _ = self.graph.render();
-    }
+    }*/
     self.renderer.dec_queued_frames_counter();
   }
 

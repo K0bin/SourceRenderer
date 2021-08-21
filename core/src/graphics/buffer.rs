@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
+use super::MemoryUsage;
+
 bitflags! {
   pub struct BufferUsage: u32 {
     const VERTEX                             = 0b1;
@@ -17,7 +19,32 @@ bitflags! {
     const VERTEX_SHADER_CONSTANT             = 0b100000000000;
     const COMPUTE_SHADER_CONSTANT            = 0b1000000000000;
     const INDIRECT                           = 0b10000000000000;
-    const CPU_IN_FLIGHT_WRITE                = 0b100000000000000;
+
+    const STORAGE = Self::VERTEX_SHADER_STORAGE_READ.bits() | Self::VERTEX_SHADER_STORAGE_WRITE.bits()
+     | Self::FRAGMENT_SHADER_STORAGE_READ.bits() | Self::FRAGMENT_SHADER_STORAGE_WRITE.bits()
+     | Self::COMPUTE_SHADER_STORAGE_READ.bits() | Self::COMPUTE_SHADER_STORAGE_WRITE.bits();
+    const STORAGE_READ = Self::VERTEX_SHADER_STORAGE_READ.bits()
+    | Self::FRAGMENT_SHADER_STORAGE_READ.bits()
+    | Self::COMPUTE_SHADER_STORAGE_READ.bits();
+    const CONSTANT = Self::VERTEX_SHADER_CONSTANT.bits() | Self::FRAGMENT_SHADER_CONSTANT.bits() | Self::COMPUTE_SHADER_CONSTANT.bits();
+    const READ = Self::VERTEX_SHADER_STORAGE_READ.bits()
+    | Self::FRAGMENT_SHADER_STORAGE_READ.bits()
+    | Self::COMPUTE_SHADER_STORAGE_READ.bits()
+    | Self::VERTEX_SHADER_CONSTANT.bits()
+    | Self::FRAGMENT_SHADER_CONSTANT.bits()
+    | Self::COMPUTE_SHADER_CONSTANT.bits()
+    | Self::COPY_SRC.bits()
+    | Self::VERTEX.bits()
+    | Self::INDEX.bits()
+    | Self::INDIRECT.bits();
+  }
+}
+
+pub fn get_default_state(memory_usage: MemoryUsage) -> BufferUsage {
+  match memory_usage {
+    MemoryUsage::CpuOnly | MemoryUsage::CpuToGpu => BufferUsage::READ,
+    MemoryUsage::GpuToCpu => BufferUsage::COPY_DST,
+    MemoryUsage::GpuOnly => BufferUsage::empty()
   }
 }
 

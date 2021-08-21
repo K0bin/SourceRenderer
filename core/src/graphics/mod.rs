@@ -13,6 +13,8 @@ pub use self::buffer::MappedBuffer;
 pub use self::buffer::MutMappedBuffer;
 pub use self::buffer::BufferUsage;
 pub use self::buffer::BufferInfo;
+pub use self::buffer::get_default_state;
+pub use self::command::Queue;
 pub use self::device::MemoryUsage;
 pub use self::format::Format;
 pub use self::pipeline::*;
@@ -27,7 +29,13 @@ pub use self::backend::Backend;
 pub use self::command::BindingFrequency;
 pub use self::command::PipelineBinding;
 pub use self::command::RenderPassBeginInfo;
-pub use self::texture::{TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode, TextureUnorderedAccessView, SamplerInfo, TextureRenderTargetView, TextureRenderTargetViewInfo};
+pub use self::command::RenderPassAttachment;
+pub use self::command::RenderPassAttachmentView;
+pub use self::texture::{
+  TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode, TextureUnorderedAccessView,
+  SamplerInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo,
+  TextureDepthStencilView, TextureDepthStencilViewInfo 
+};
 pub use self::sync::Fence;
 pub use self::graph_template::*;
 pub use self::graph::*;

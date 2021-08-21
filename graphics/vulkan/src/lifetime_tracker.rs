@@ -7,7 +7,7 @@ use crate::texture::VkTextureView;
 use crate::VkFrameBuffer;
 
 pub struct VkLifetimeTrackers {
-  semaphores: Vec<Arc<Recyclable<VkSemaphore>>>,
+  semaphores: Vec<Arc<VkSemaphore>>,
   fences: Vec<Arc<VkFence>>,
   buffers: Vec<Arc<VkBufferSlice>>,
   textures: Vec<Arc<VkTexture>>,
@@ -42,7 +42,7 @@ impl VkLifetimeTrackers {
     self.samplers.clear();
   }
 
-  pub(crate) fn track_semaphore(&mut self, semaphore: &Arc<Recyclable<VkSemaphore>>) {
+  pub(crate) fn track_semaphore(&mut self, semaphore: &Arc<VkSemaphore>) {
     self.semaphores.push(semaphore.clone());
   }
 

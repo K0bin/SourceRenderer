@@ -10,7 +10,7 @@ use ash::version::DeviceV1_0;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, TextureUsage};
+use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, TextureUsage, get_default_state};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -128,7 +128,8 @@ pub struct VkCommandBuffer {
   pending_buffer_barriers: Vec<vk::BufferMemoryBarrier>,
   pending_src_stage_flags: vk::PipelineStageFlags,
   pending_dst_stage_flags: vk::PipelineStageFlags,  
-  frame: u64
+  frame: u64,
+  inheritance: Option<VkInnerCommandBufferInfo>
 }
 
 impl VkCommandBuffer {
@@ -158,7 +159,8 @@ impl VkCommandBuffer {
       pending_image_barriers: Vec::with_capacity(4),
       pending_src_stage_flags: vk::PipelineStageFlags::empty(),
       pending_dst_stage_flags: vk::PipelineStageFlags::empty(),
-      frame: 0
+      frame: 0,
+      inheritance: None
     }
   }
 
@@ -210,6 +212,11 @@ impl VkCommandBuffer {
     assert_eq!(self.state, VkCommandBufferState::Recording);
     self.flush_barriers();
     self.state = VkCommandBufferState::Finished;
+
+    if self.render_pass.is_some() {
+      self.end_render_pass();
+    }
+
     unsafe {
       self.device.end_command_buffer(self.buffer).unwrap();
     }
@@ -440,13 +447,12 @@ impl VkCommandBuffer {
 
   pub(crate) fn finish_binding(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pipeline.is_some());
 
     self.flush_barriers();
 
-    let mut offsets: [u32; 16] = Default::default();
-    let mut offsets_count = 0;
-    let mut descriptor_sets: [vk::DescriptorSet; 4] = Default::default();
-    let mut descriptor_sets_count = 0;
+    let mut offsets = SmallVec::<[u32; 16]>::new();
+    let mut descriptor_sets = SmallVec::<[vk::DescriptorSet; 4]>::new();
     let mut base_index = 0;
 
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
@@ -456,35 +462,35 @@ impl VkCommandBuffer {
     for (index, set_option) in finished_sets.iter().enumerate() {
       match set_option {
         None => {
-          if descriptor_sets_count != 0 {
+          if !descriptor_sets.is_empty() {
             unsafe {
-              self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
-              offsets_count = 0;
-              descriptor_sets_count = 0;
+              self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
+              offsets.clear();
+              descriptor_sets.clear();
             }
           }
           base_index = index as u32 + 1;
         },
         Some(set_binding) => {
-          descriptor_sets[descriptor_sets_count] = *set_binding.set.get_handle();
-          descriptor_sets_count += 1;
+          descriptor_sets.push(*set_binding.set.get_handle());
           for i in 0..set_binding.dynamic_offset_count as usize {
-            offsets[offsets_count] = set_binding.dynamic_offsets[i] as u32;
-            offsets_count += 1;
+            offsets.push(set_binding.dynamic_offsets[i] as u32);
           }
         }
       }
     }
 
-    if descriptor_sets_count != 0 {
+    if !descriptor_sets.is_empty() {
       unsafe {
-        self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets[0..descriptor_sets_count], &offsets[0..offsets_count]);
+        self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
       }
     }
   }
 
   pub(crate) fn upload_dynamic_data<T>(&self, data: &[T], usage: BufferUsage) -> Arc<VkBufferSlice>
     where T: 'static + Send + Sync + Sized + Clone {
+    debug_assert!(get_default_state(MemoryUsage::CpuToGpu).is_empty() || usage.intersects(get_default_state(MemoryUsage::CpuToGpu)));
+
     let slice = self.buffer_allocator.get_slice(&BufferInfo {
       size: std::mem::size_of_val(data),
       usage
@@ -539,7 +545,7 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn execute_inner_command_buffer(&mut self, mut submission: VkCommandBufferSubmission) {
+  pub(crate) fn execute_inner(&mut self, mut submission: VkCommandBufferSubmission) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     assert_eq!(submission.command_buffer_type(), CommandBufferType::SECONDARY);
     unsafe {
@@ -561,7 +567,6 @@ impl VkCommandBuffer {
 
   pub(crate) fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(self.pipeline.is_none());
     debug_assert!(self.render_pass.is_none());
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     let src_info = src_texture.get_info();
@@ -631,11 +636,9 @@ impl VkCommandBuffer {
     for barrier in barriers {
       match barrier {
         Barrier::TextureBarrier { old_primary_usage, new_primary_usage, old_usages, new_usages, texture } => {
-          debug_assert!(old_usages.contains(*old_primary_usage) || (!old_primary_usage.is_empty() && old_usages.is_empty()));
+          debug_assert!(old_usages.contains(*old_primary_usage) || old_usages.is_empty());
           debug_assert!(new_usages.contains(*new_primary_usage) || (!new_primary_usage.is_empty() && new_usages.is_empty()));
           debug_assert!(!new_usages.is_empty() || (new_usages.is_empty() && old_usages.is_empty()));
-          debug_assert!(!new_primary_usage.is_empty());
-          debug_assert!(!new_usages.is_empty());
           debug_assert!(texture.get_info().usage.contains(*new_primary_usage));
           debug_assert!(texture.get_info().usage.contains(*new_usages));
 
@@ -684,16 +687,10 @@ impl VkCommandBuffer {
             dst_stages = texture_usage_to_stage(*new_primary_usage);
             src_access = texture_usage_to_access(*old_primary_usage);
             src_stages = texture_usage_to_stage(*old_primary_usage);
-
-            debug_assert!((src_access & write_access_mask()).is_empty());
-          }
-
-          if (!self.pending_src_stage_flags.is_empty() && self.pending_src_stage_flags != src_stages) || (!self.pending_dst_stage_flags.is_empty() && self.pending_dst_stage_flags != dst_stages) {
-            self.flush_barriers();
           }
 
           self.pending_image_barriers.push(vk::ImageMemoryBarrier {
-            src_access_mask: src_access & write_access_mask(),
+            src_access_mask: src_access & WRITE_ACCESS_MASK,
             dst_access_mask: dst_access,
             old_layout,
             new_layout,
@@ -712,11 +709,10 @@ impl VkCommandBuffer {
           self.pending_dst_stage_flags |= dst_stages;
           self.pending_src_stage_flags |= src_stages;
         },
-        Barrier::BufferBarrier { new_primary_usage, old_primary_usage, old_usages, new_usages, buffer } => {     
+        Barrier::BufferBarrier { new_primary_usage, old_primary_usage, old_usages, new_usages, buffer } => {
           debug_assert!(old_usages.contains(*old_primary_usage) || (!old_primary_usage.is_empty() && old_usages.is_empty()));
-          debug_assert!(new_usages.contains(*new_primary_usage) || (!new_primary_usage.is_empty() && new_usages.is_empty()));
+          debug_assert!(new_usages.contains(*new_primary_usage) || new_usages.is_empty());
           debug_assert!(!new_usages.is_empty() || (new_usages.is_empty() && old_usages.is_empty()));
-          debug_assert!(!new_usages.is_empty()); 
           debug_assert!(buffer.get_info().usage.contains(*new_primary_usage));
           debug_assert!(buffer.get_info().usage.contains(*new_usages));
 
@@ -729,12 +725,8 @@ impl VkCommandBuffer {
             continue;
           }
 
-          if (!self.pending_src_stage_flags.is_empty() && self.pending_src_stage_flags != src_stages) || (!self.pending_dst_stage_flags.is_empty() && self.pending_dst_stage_flags != dst_stages) {
-            self.flush_barriers();
-          }
-
           self.pending_buffer_barriers.push(vk::BufferMemoryBarrier {
-            src_access_mask: src_access & write_access_mask(),
+            src_access_mask: src_access & WRITE_ACCESS_MASK,
             dst_access_mask: dst_access,
             src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
             dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
@@ -751,6 +743,30 @@ impl VkCommandBuffer {
   }
 
   pub(crate) fn flush_barriers(&mut self) {
+    const FULL_BARRIER: bool = false; // IN CASE OF EMERGENCY, SET TO TRUE
+    if FULL_BARRIER {
+      let full_memory_barrier = vk::MemoryBarrier {
+        src_access_mask: vk::AccessFlags::MEMORY_WRITE,
+        dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+        ..Default::default()
+      };
+      unsafe {
+        self.device.cmd_pipeline_barrier(
+          self.buffer,
+          vk::PipelineStageFlags::ALL_COMMANDS,
+          vk::PipelineStageFlags::ALL_COMMANDS,
+          vk::DependencyFlags::empty(),
+          &[full_memory_barrier],
+          &self.pending_buffer_barriers[..],
+          &self.pending_image_barriers[..]);
+      }
+      self.pending_src_stage_flags = vk::PipelineStageFlags::empty();
+      self.pending_dst_stage_flags = vk::PipelineStageFlags::empty();
+      self.pending_image_barriers.clear();
+      self.pending_buffer_barriers.clear();
+      return;
+    }
+
     if self.pending_src_stage_flags.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() {
       return;
     }
@@ -793,8 +809,9 @@ impl VkCommandBuffer {
 
   pub(crate) fn begin_render_pass_1(&mut self, renderpass_begin_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(self.render_pass.is_some());
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(!self.render_pass.is_some());
+
+    self.flush_barriers();
 
     let mut attachment_infos = Vec::with_capacity(renderpass_begin_info.attachments.len());
     let mut width = 0u32;
@@ -803,7 +820,12 @@ impl VkCommandBuffer {
     let mut clear_values = SmallVec::<[vk::ClearValue; 8]>::with_capacity(renderpass_begin_info.attachments.len());
 
     for attachment in renderpass_begin_info.attachments {
-      let info = attachment.view.texture().get_info();
+      let view = match &attachment.view {
+        sourcerenderer_core::graphics::RenderPassAttachmentView::RenderTarget(view) => *view,
+        sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(view) => *view
+      };
+
+      let info = view.texture().get_info();
       attachment_infos.push(AttachmentInfo {
         format: info.format,
         samples: info.samples,
@@ -814,12 +836,12 @@ impl VkCommandBuffer {
       });
       width = width.max(info.width);
       height = height.max(info.height);
-      attachment_views.push(attachment.view);
+      attachment_views.push(view);
 
       clear_values.push(if info.format.is_depth() || info.format.is_stencil() {
         vk::ClearValue {
           depth_stencil: vk::ClearDepthStencilValue {
-            depth: 0f32,
+            depth: 1f32,
             stencil: 0u32,
           }
         }
@@ -858,7 +880,16 @@ impl VkCommandBuffer {
     self.sub_pass = 0;
     self.trackers.track_frame_buffer(&framebuffer);
     self.trackers.track_render_pass(&renderpass);
-    self.render_pass = Some(renderpass);
+    self.render_pass = Some(renderpass.clone());
+    self.inheritance = Some(VkInnerCommandBufferInfo {
+      render_pass: renderpass,
+      sub_pass: 0,
+      frame_buffer: framebuffer
+    });
+  }
+
+  pub fn inheritance(&self) -> &VkInnerCommandBufferInfo {
+    self.inheritance.as_ref().unwrap()
   }
 
   pub fn wait_events(
@@ -935,11 +966,6 @@ impl VkCommandBufferRecorder {
   pub fn advance_subpass(&mut self) {
     self.item.as_mut().unwrap().advance_subpass();
   }
-
-  pub fn execute_inner_command_buffer(&mut self, submission: VkCommandBufferSubmission) {
-    self.item.as_mut().unwrap().execute_inner_command_buffer(submission);
-  }
-
   #[inline(always)]
   pub(crate) fn barrier_vk(
     &mut self,
@@ -1101,6 +1127,16 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 
   fn end_render_pass(&mut self) {
     self.item.as_mut().unwrap().end_render_pass();
+  }
+
+  type CommandBufferInheritance = VkInnerCommandBufferInfo;
+
+  fn inheritance(&self) -> &VkInnerCommandBufferInfo {
+    self.item.as_ref().unwrap().inheritance()
+  }
+
+  fn execute_inner(&mut self, submission: VkCommandBufferSubmission) {
+    self.item.as_mut().unwrap().execute_inner(submission);
   }
 }
 
@@ -1268,7 +1304,7 @@ fn texture_usage_to_image_layout(texture_usage: TextureUsage) -> vk::ImageLayout
     return vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
   }
 
-  if texture_usage.is_empty() {
+  if texture_usage == TextureUsage::UNINITIALIZED {
     return vk::ImageLayout::UNDEFINED;
   }
 
@@ -1313,9 +1349,9 @@ fn buffer_usage_to_access(buffer_usage: BufferUsage) -> vk::AccessFlags {
     || buffer_usage.contains(BufferUsage::COMPUTE_SHADER_CONSTANT) {
     flags |= vk::AccessFlags::SHADER_READ;
   }
-  if buffer_usage.contains(BufferUsage::CPU_IN_FLIGHT_WRITE) {
+  /*if buffer_usage.contains(BufferUsage::CPU_IN_FLIGHT_WRITE) {
     flags |= vk::AccessFlags::HOST_WRITE;
-  }
+  }*/
   flags
 }
 
@@ -1352,7 +1388,4 @@ fn buffer_usage_to_stage(buffer_usage: BufferUsage) -> vk::PipelineStageFlags {
   flags
 }
 
-fn write_access_mask() -> vk::AccessFlags {
-  // cant make that const :(
-  vk::AccessFlags::HOST_WRITE | vk::AccessFlags::MEMORY_WRITE | vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_WRITE | vk::AccessFlags::COLOR_ATTACHMENT_WRITE | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
-}
+const WRITE_ACCESS_MASK: vk::AccessFlags = vk::AccessFlags::from_raw(vk::AccessFlags::HOST_WRITE.as_raw() | vk::AccessFlags::MEMORY_WRITE.as_raw() | vk::AccessFlags::SHADER_WRITE.as_raw() | vk::AccessFlags::TRANSFER_WRITE.as_raw() | vk::AccessFlags::COLOR_ATTACHMENT_WRITE.as_raw() | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw());

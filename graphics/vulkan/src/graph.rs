@@ -565,7 +565,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
         return Err(SwapchainError::Other);
       }
 
-      let result = self.swapchain.prepare_back_buffer(&prepare_semaphore);
+      let result = self.swapchain.acquire_back_buffer(&prepare_semaphore);
       if result.is_err() {
         return Err(match result.err().unwrap() {
           vk::Result::ERROR_OUT_OF_DATE_KHR => {
@@ -688,7 +688,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
                 let callback = &callbacks[i];
                 let inner_cmd_buffers = (callback)(&provider, graph_resources_ref, frame_counter);
                 for inner_cmd_buffer in inner_cmd_buffers {
-                  cmd_buffer.execute_inner_command_buffer(inner_cmd_buffer);
+                  cmd_buffer.execute_inner(inner_cmd_buffer);
                 }
               }
               cmd_buffer.end_render_pass();
@@ -696,8 +696,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
           }
 
           let cmd_semaphore = self.thread_manager.get_shared().get_semaphore();
-          let prepare_semaphores = [prepare_semaphore.as_ref().as_ref()];
-          let cmd_semaphores = [cmd_semaphore.as_ref().as_ref()];
+          let prepare_semaphores = [prepare_semaphore.as_ref()];
+          let cmd_semaphores = [cmd_semaphore.as_ref()];
 
           let wait_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
             &prepare_semaphores
@@ -756,7 +756,7 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
               let callback = &callbacks[0];
               let inner_cmd_buffers = (callback)(&provider, graph_resources_ref, frame_counter);
               for inner_cmd_buffer in inner_cmd_buffers {
-                cmd_buffer.execute_inner_command_buffer(inner_cmd_buffer);
+                cmd_buffer.execute_inner(inner_cmd_buffer);
               }
             }
           }
@@ -801,8 +801,8 @@ impl RenderGraph<VkBackend> for VkRenderGraph {
             ])
           }
 
-          let prepare_semaphores = [prepare_semaphore.as_ref().as_ref()];
-          let cmd_semaphores = [cmd_semaphore.as_ref().as_ref()];
+          let prepare_semaphores = [prepare_semaphore.as_ref()];
+          let cmd_semaphores = [cmd_semaphore.as_ref()];
 
           let wait_semaphores: &[&VkSemaphore] = if *renders_to_swapchain {
             &prepare_semaphores

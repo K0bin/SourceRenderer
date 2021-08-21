@@ -12,7 +12,7 @@ use sourcerenderer_core::graphics::Resettable;
 use sourcerenderer_core::pool::Recyclable;
 
 
-use crate::{command::VkInnerCommandBufferInfo, raw::RawVkDevice};
+use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice};
 use crate::VkCommandPool;
 use crate::{VkQueue};
 use crate::{VkSemaphore, VkFence};
@@ -21,9 +21,9 @@ use crate::{VkCommandBufferRecorder, VkLifetimeTrackers, VkShared};
 
 pub struct VkThreadManager {
   device: Arc<RawVkDevice>,
-  graphics_queue: Arc<VkQueue>,
-  compute_queue: Option<Arc<VkQueue>>,
-  transfer_queue: Option<Arc<VkQueue>>,
+  graphics_queue: VkQueueInfo,
+  compute_queue: Option<VkQueueInfo>,
+  transfer_queue: Option<VkQueueInfo>,
   threads: ThreadLocal<VkThreadLocal>,
   shared: Arc<VkShared>,
   max_prepared_frames: u32,
@@ -66,17 +66,17 @@ pub struct VkFrame {
 
 impl VkThreadManager {
   pub fn new(device: &Arc<RawVkDevice>,
-             graphics_queue: &Arc<VkQueue>,
-             compute_queue: &Option<Arc<VkQueue>>,
-             transfer_queue: &Option<Arc<VkQueue>>,
+             graphics_queue: &VkQueueInfo,
+             compute_queue: Option<&VkQueueInfo>,
+             transfer_queue: Option<&VkQueueInfo>,
              shared: &Arc<VkShared>,
              max_prepared_frames: u32) -> Self {
     VkThreadManager {
       device: device.clone(),
       threads: ThreadLocal::new(),
       graphics_queue: graphics_queue.clone(),
-      compute_queue: compute_queue.clone(),
-      transfer_queue: transfer_queue.clone(),
+      compute_queue: compute_queue.cloned(),
+      transfer_queue: transfer_queue.cloned(),
       shared: shared.clone(),
       max_prepared_frames,
       frame_counter: AtomicU64::new(0),
@@ -99,7 +99,9 @@ impl VkThreadManager {
   }
 
   pub fn get_thread_local(&self) -> &VkThreadLocal {
-    let thread_local = self.threads.get_or(|| VkThreadLocal::new(&self.device, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, self.max_prepared_frames));
+    self.begin_frame();
+
+    let thread_local = self.threads.get_or(|| VkThreadLocal::new(&self.device, &self.shared, &self.graphics_queue, self.compute_queue.as_ref(), self.transfer_queue.as_ref(), self.max_prepared_frames));
     thread_local.set_frame(self.frame_counter.load(Ordering::SeqCst));
     thread_local
   }
@@ -126,14 +128,15 @@ impl VkThreadManager {
 
 impl VkThreadLocal {
   fn new(device: &Arc<RawVkDevice>,
-         graphics_queue: &Arc<VkQueue>,
-         compute_queue: &Option<Arc<VkQueue>>,
-         transfer_queue: &Option<Arc<VkQueue>>,
+         shared: &Arc<VkShared>,
+         graphics_queue: &VkQueueInfo,
+         compute_queue: Option<&VkQueueInfo>,
+         transfer_queue: Option<&VkQueueInfo>,
          max_prepared_frames: u32) -> Self {
 
     let mut frames: Vec<VkFrameLocal> = Vec::new();
     for _ in 0..max_prepared_frames {
-      frames.push(VkFrameLocal::new(device, graphics_queue, compute_queue, transfer_queue))
+      frames.push(VkFrameLocal::new(device, shared, graphics_queue, compute_queue, transfer_queue))
     }
 
     VkThreadLocal {
@@ -165,9 +168,9 @@ impl VkThreadLocal {
 }
 
 impl VkFrameLocal {
-  pub fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, _compute_queue: &Option<Arc<VkQueue>>, _transfer_queue: &Option<Arc<VkQueue>>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, shared: &Arc<VkShared>, graphics_queue: &VkQueueInfo, _compute_queue: Option<&VkQueueInfo>, _transfer_queue: Option<&VkQueueInfo>) -> Self {
     let buffer_allocator = Arc::new(BufferAllocator::new(device, false));
-    let command_pool = graphics_queue.create_command_pool(&buffer_allocator);
+    let command_pool = VkCommandPool::new(device, graphics_queue.queue_family_index as u32, shared, &buffer_allocator);
     Self {
       device: device.clone(),
       buffer_allocator,
@@ -198,7 +201,7 @@ impl VkFrameLocal {
     inner.command_pool.get_inner_command_buffer(frame, inner_info)
   }
 
-  pub fn track_semaphore(&self, semaphore: &Arc<Recyclable<VkSemaphore>>) {
+  pub fn track_semaphore(&self, semaphore: &Arc<VkSemaphore>) {
     let mut inner = self.inner.borrow_mut();
     inner.life_time_trackers.track_semaphore(semaphore);
   }

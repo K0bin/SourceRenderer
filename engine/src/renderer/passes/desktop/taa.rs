@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Vec2, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, SamplerInfo, ShaderType}};
+use sourcerenderer_core::{Vec2, graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, CommandBuffer, Device, Filter, Format, InputUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, RenderPassTextureExtent, SampleCount, SamplerInfo, ShaderType, Swapchain, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -133,4 +133,170 @@ pub(crate) fn halton_sequence(mut index: u32, base: u32) -> f32 {
   }
 
   return r;
+}
+
+
+// =============================================
+
+pub struct TAAPass<B: GraphicsBackend> {
+  taa_texture: Arc<B::Texture>,
+  taa_texture_b: Arc<B::Texture>,
+  taa_srv: Arc<B::TextureShaderResourceView>,
+  taa_srv_b: Arc<B::TextureShaderResourceView>,
+  taa_uav: Arc<B::TextureUnorderedAccessView>,
+  taa_uav_b: Arc<B::TextureUnorderedAccessView>,
+  pipeline: Arc<B::ComputePipeline>,
+  nearest_sampler: Arc<B::Sampler>,
+  linear_sampler: Arc<B::Sampler>
+}
+
+impl<B: GraphicsBackend> TAAPass<B> {
+  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
+    let taa_compute_shader = {
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("taa.comp.spv"))).unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.create_shader(ShaderType::ComputeShader, &bytes, Some("taa.comp.spv"))
+    };
+    let pipeline = device.create_compute_pipeline(&taa_compute_shader);
+  
+    let linear_sampler = device.create_sampler(&SamplerInfo {
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
+      address_mode_u: AddressMode::Repeat,
+      address_mode_v: AddressMode::Repeat,
+      address_mode_w: AddressMode::Repeat,
+      mip_bias: 0.0,
+      max_anisotropy: 0.0,
+      compare_op: None,
+      min_lod: 0.0,
+      max_lod: 1.0,
+    });
+  
+    let nearest_sampler = device.create_sampler(&SamplerInfo {
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
+      address_mode_u: AddressMode::Repeat,
+      address_mode_v: AddressMode::Repeat,
+      address_mode_w: AddressMode::Repeat,
+      mip_bias: 0.0,
+      max_anisotropy: 0.0,
+      compare_op: None,
+      min_lod: 0.0,
+      max_lod: 1.0,
+    });
+
+    let texture_info = TextureInfo {
+      format: Format::RGBA8,
+      width: swapchain.width(),
+      height: swapchain.height(),
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::COMPUTE_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+    };
+    let taa_texture = device.create_texture(&texture_info, Some("TAAOutput"));
+    let taa_texture_b = device.create_texture(&texture_info, Some("TAAOutput_b"));
+
+    let srv_info = TextureShaderResourceViewInfo {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1,
+    };
+    let taa_srv = device.create_shader_resource_view(&taa_texture, &srv_info);
+    let taa_srv_b = device.create_shader_resource_view(&taa_texture_b, &srv_info);
+
+    let uav_info = TextureUnorderedAccessViewInfo {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1,
+    };
+    let taa_uav = device.create_unordered_access_view(&taa_texture, &uav_info);
+    let taa_uav_b = device.create_unordered_access_view(&taa_texture_b, &uav_info);
+
+    init_cmd_buffer.barrier(&[
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::UNINITIALIZED,
+        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_usages: TextureUsage::empty(),
+        new_usages: TextureUsage::empty(),
+        texture: &taa_texture,
+      },
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::UNINITIALIZED,
+        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_usages: TextureUsage::empty(),
+        new_usages: TextureUsage::empty(),
+        texture: &taa_texture_b,
+      }
+    ]);
+
+    Self {
+      pipeline,
+      taa_texture,
+      taa_texture_b,
+      taa_srv,
+      taa_srv_b,
+      taa_uav,
+      taa_uav_b,
+      linear_sampler,
+      nearest_sampler
+    }
+  }
+
+  pub fn execute(
+    &mut self,
+    cmd_buf: &mut B::CommandBuffer,
+    output_srv: &Arc<B::TextureShaderResourceView>,
+    motion_srv: &Arc<B::TextureShaderResourceView>
+  ) {
+    cmd_buf.barrier(&[
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::RENDER_TARGET,
+        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_usages: TextureUsage::RENDER_TARGET,
+        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        texture: output_srv.texture(),
+      },
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::RENDER_TARGET,
+        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_usages: TextureUsage::RENDER_TARGET,
+        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        texture: motion_srv.texture(),
+      },
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        new_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+        old_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        new_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+        texture: self.taa_srv.texture(),
+      }
+    ]);
+
+    cmd_buf.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    cmd_buf.bind_texture_view(BindingFrequency::PerDraw, 0, output_srv, &self.linear_sampler);
+    cmd_buf.bind_texture_view(BindingFrequency::PerDraw, 1, &self.taa_srv_b, &self.linear_sampler);
+    cmd_buf.bind_storage_texture(BindingFrequency::PerDraw, 2, &self.taa_uav);
+    cmd_buf.bind_texture_view(BindingFrequency::PerDraw, 3, motion_srv, &self.nearest_sampler);
+    cmd_buf.finish_binding();
+
+    let info = self.taa_texture.get_info();
+    cmd_buf.dispatch(info.width, info.height, 1);
+  }
+
+  pub fn taa_srv(&self) -> &Arc<B::TextureShaderResourceView> {
+    &self.taa_srv
+  }
+
+  pub fn swap_history_resources(&mut self) {    
+    std::mem::swap(&mut self.taa_texture, &mut self.taa_texture_b);
+    std::mem::swap(&mut self.taa_srv, &mut self.taa_srv_b);
+    std::mem::swap(&mut self.taa_uav, &mut self.taa_uav_b);
+  }
 }

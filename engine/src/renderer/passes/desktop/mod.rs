@@ -5,3 +5,4 @@ pub(crate) mod sharpen;
 pub(crate) mod blit;
 pub(crate) mod clustering;
 pub(crate) mod light_binning;
+pub(crate) mod desktop_renderer;

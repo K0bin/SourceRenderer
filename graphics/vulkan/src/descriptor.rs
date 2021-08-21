@@ -572,6 +572,13 @@ impl VkBindingManager {
     set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerMaterial);
     set_bindings[BindingFrequency::Rarely as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::Rarely);
 
+
+    // TODO: make sure that isn't necessary. Only bind the slots that exist in the set template
+    self.bindings[BindingFrequency::PerDraw as usize] = Default::default();
+    self.bindings[BindingFrequency::PerFrame as usize] = Default::default();
+    self.bindings[BindingFrequency::PerMaterial as usize] = Default::default();
+    self.bindings[BindingFrequency::Rarely as usize] = Default::default();
+
     self.dirty = DirtyDescriptorSets::empty();
     set_bindings
   }

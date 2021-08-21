@@ -327,7 +327,7 @@ impl VkSwapchain {
   }
 
   #[allow(clippy::logic_bug)]
-  pub fn prepare_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
+  pub fn acquire_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
     while self.presented_image.load(Ordering::SeqCst) != self.acquired_image.load(Ordering::SeqCst) {}
     let result = {
       let swapchain_handle = self.get_handle();
@@ -376,6 +376,10 @@ impl VkSwapchain {
   pub fn transform(&self) -> &Matrix4 {
     &self.transform_matrix
   }
+
+  pub fn acquired_image(&self) -> u32 {
+    self.acquired_image.load(Ordering::SeqCst)
+  }
 }
 
 impl Drop for VkSwapchain {
@@ -410,6 +414,26 @@ impl Swapchain<VkBackend> for VkSwapchain {
 
   fn surface(&self) -> &Arc<VkSurface> {
     &self.surface
+  }
+
+  fn prepare_back_buffer(&self, semaphore: &Arc<VkSemaphore>) -> Option<Arc<VkTextureView>> {
+    let res = self.acquire_back_buffer(semaphore);
+    res
+      .ok()
+      .and_then(|(img_index, _optimal)| // TODO: handle optimal
+        //optimal.then(||
+        Some(
+          self.views.get(img_index as usize).unwrap().clone()
+        )
+      )
+  }
+
+  fn width(&self) -> u32 {
+    self.get_width()
+  }
+
+  fn height(&self) -> u32 {
+    self.get_height()
   }
 }
 

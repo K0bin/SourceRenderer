@@ -66,10 +66,26 @@ pub trait CommandBuffer<B: Backend> {
   fn end_render_pass(&mut self);
   fn barrier<'a>(&mut self, barriers: &[Barrier<B>]);
   fn flush_barriers(&mut self);
+  
+  fn inheritance(&self) -> &Self::CommandBufferInheritance;
+  type CommandBufferInheritance: Send + Sync;
+  fn execute_inner(&mut self, submission: B::CommandBufferSubmission);
+}
+
+pub trait Queue<B: Backend> {
+  fn create_command_buffer(&self) -> B::CommandBuffer;
+  fn create_inner_command_buffer(&self, inheritance: &<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance) -> B::CommandBuffer;
+  fn submit(&self, submission: B::CommandBufferSubmission, fence: Option<&Arc<B::Fence>>, wait_semaphores: &[&Arc<B::Semaphore>], signal_semaphores: &[&Arc<B::Semaphore>]);
+  fn present(&self, swapchain: &Arc<B::Swapchain>, wait_semaphores: &[&Arc<B::Semaphore>]);
+}
+
+pub enum RenderPassAttachmentView<'a, B: Backend> {
+  RenderTarget(&'a Arc<B::TextureRenderTargetView>),
+  DepthStencil(&'a Arc<B::TextureDepthStencilView>)
 }
 
 pub struct RenderPassAttachment<'a, B: Backend> {
-  pub view: &'a Arc<B::TextureRenderTargetView>,
+  pub view: RenderPassAttachmentView<'a, B>,
   pub load_op: LoadOp,
   pub store_op: StoreOp
 }

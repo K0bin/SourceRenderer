@@ -237,13 +237,13 @@ impl VkRenderGraphTemplate {
               ExternalProducerType::Graphics => BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_WRITE,
               ExternalProducerType::Compute => BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
               ExternalProducerType::Copy => BufferUsage::COPY_DST,
-              ExternalProducerType::Host => BufferUsage::CPU_IN_FLIGHT_WRITE
+              ExternalProducerType::Host => BufferUsage::empty() // BufferUsage::CPU_IN_FLIGHT_WRITE
             },
             primary_usage: match producer_type {
               ExternalProducerType::Graphics => BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE | BufferUsage::VERTEX_SHADER_STORAGE_WRITE,
               ExternalProducerType::Compute => BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
               ExternalProducerType::Copy => BufferUsage::COPY_DST,
-              ExternalProducerType::Host => BufferUsage::CPU_IN_FLIGHT_WRITE
+              ExternalProducerType::Host => BufferUsage::empty() // BufferUsage::CPU_IN_FLIGHT_WRITE
             }
           };
           let mut accesses = HashMap::new();

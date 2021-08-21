@@ -23,6 +23,8 @@ bitflags! {
     const COPY_SRC                           = 0b100000000000000000;
     const COPY_DST                           = 0b1000000000000000000;
     const PRESENT                            = 0b10000000000000000000;
+
+    const UNINITIALIZED                      = 0;
   }
 }
 
@@ -73,6 +75,22 @@ pub struct TextureRenderTargetViewInfo {
 }
 
 #[derive(Clone)]
+pub struct TextureUnorderedAccessViewInfo {
+  pub base_mip_level: u32,
+  pub mip_level_length: u32,
+  pub base_array_level: u32,
+  pub array_level_length: u32,
+}
+
+#[derive(Clone)]
+pub struct TextureDepthStencilViewInfo {
+  pub base_mip_level: u32,
+  pub mip_level_length: u32,
+  pub base_array_level: u32,
+  pub array_level_length: u32,
+}
+
+#[derive(Clone)]
 pub struct SamplerInfo {
   pub mag_filter: Filter,
   pub min_filter: Filter,
@@ -98,3 +116,8 @@ pub trait TextureUnorderedAccessView<B: Backend> {
 pub trait TextureRenderTargetView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
 }
+
+pub trait TextureDepthStencilView<B: Backend> {
+  fn texture(&self) -> &Arc<B::Texture>;
+}
+

@@ -5,15 +5,21 @@ use std::iter::*;
 use ash::vk;
 use ash::version::{DeviceV1_0};
 
+use sourcerenderer_core::graphics::Queue;
 use sourcerenderer_core::graphics::{CommandBufferType, Swapchain};
 
 
+use crate::VkBackend;
+use crate::VkCommandBufferRecorder;
+use crate::command::VkCommandBuffer;
+use crate::command::VkInnerCommandBufferInfo;
 use crate::raw::RawVkDevice;
 use crate::command::VkCommandPool;
 use crate::swapchain::{VkSwapchain, VkSwapchainState};
 use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
 
+use crate::thread_manager::VkThreadManager;
 use crate::{VkShared};
 use crate::VkCommandBufferSubmission;
 use crate::transfer::VkTransferCommandBuffer;
@@ -31,12 +37,14 @@ pub struct VkQueue {
   info: VkQueueInfo,
   queue: Mutex<VkQueueInner>,
   device: Arc<RawVkDevice>,
-  shared: Arc<VkShared>
+  shared: Arc<VkShared>,
+  threads: Arc<VkThreadManager>
 }
 
 struct VkQueueInner {
   virtual_queue: Vec<VkVirtualSubmission>,
-  queue: vk::Queue
+  queue: vk::Queue,
+  last_fence: Option<Arc<VkFence>>
 }
 
 enum VkVirtualSubmission {
@@ -55,15 +63,17 @@ enum VkVirtualSubmission {
 }
 
 impl VkQueue {
-  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, shared: &Arc<VkShared>) -> Self {
+  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, shared: &Arc<VkShared>, threads: &Arc<VkThreadManager>) -> Self {
     Self {
       info,
       queue: Mutex::new(VkQueueInner {
         virtual_queue: Vec::new(),
-        queue
+        queue,
+        last_fence: None
       }),
       device: device.clone(),
-      shared: shared.clone()
+      shared: shared.clone(),
+      threads: threads.clone()
     }
   }
 
@@ -243,6 +253,13 @@ impl VkQueue {
       panic!("Can only signal and wait for 4 semaphores each.");
     }
 
+    let mut new_fence = Option::<Arc<VkFence>>::None;
+    let mut fence = fence;
+    if fence.is_none() && !signal_semaphores.is_empty() {
+      new_fence = Some(self.threads.shared().get_fence());
+      fence = Some(new_fence.as_ref().unwrap());
+    }
+
     let mut cmd_buffer_mut = command_buffer;
     cmd_buffer_mut.mark_submitted();
     let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
@@ -259,6 +276,9 @@ impl VkQueue {
     };
 
     let mut guard = self.queue.lock().unwrap();
+    if fence.is_some() {
+      guard.last_fence = fence.cloned();
+    }
     guard.virtual_queue.push(submission);
   }
 
@@ -275,6 +295,11 @@ impl VkQueue {
     };
     let mut guard = self.queue.lock().unwrap();
     guard.virtual_queue.push(submission);
+
+    if let Some(fence) = guard.last_fence.as_ref() {
+      self.threads.end_frame(fence);
+    }
+    guard.last_fence = None;
   }
 
   pub(crate) fn wait_for_idle(&self) {
@@ -283,6 +308,39 @@ impl VkQueue {
     unsafe {
       self.device.queue_wait_idle(queue_guard.queue).unwrap();
     }
+  }
+}
+
+impl Queue<VkBackend> for VkQueue {
+  fn create_command_buffer(&self) -> VkCommandBufferRecorder {
+    self.threads.get_thread_local().get_frame_local().get_command_buffer()
+  }
+
+  fn submit(&self, submission: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[&Arc<VkSemaphore>], signal_semaphores: &[&Arc<VkSemaphore>]) {
+    let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
+    let mut signal_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(signal_semaphores.len());
+    for sem in wait_semaphores {
+      wait_semaphore_refs.push(sem.as_ref());
+    }
+    for sem in signal_semaphores {
+      signal_semaphore_refs.push(sem.as_ref());
+    }
+    // TODO: clean up
+
+    self.submit(submission, None, &wait_semaphore_refs, &signal_semaphore_refs);
+    self.process_submissions(); // TODO bring back threaded submission
+  }
+
+  fn present(&self, swapchain: &Arc<VkSwapchain>, wait_semaphores: &[&Arc<VkSemaphore>]) {
+    let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
+    for sem in wait_semaphores {
+      wait_semaphore_refs.push(sem.as_ref());
+    }
+    self.present(swapchain, swapchain.acquired_image(), &wait_semaphore_refs);
+  }
+
+  fn create_inner_command_buffer(&self, inheritance: &VkInnerCommandBufferInfo) -> VkCommandBufferRecorder {
+    self.threads.get_thread_local().get_frame_local().get_inner_command_buffer(Some(inheritance))
   }
 }
 

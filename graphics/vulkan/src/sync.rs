@@ -15,12 +15,12 @@ use std::hash::Hash;
 use std::sync::Mutex;
 use crossbeam_utils::atomic::AtomicCell;
 
-pub struct VkSemaphore {
+pub struct VkSemaphoreInner {
   semaphore: vk::Semaphore,
   device: Arc<RawVkDevice>
 }
 
-impl VkSemaphore {
+impl VkSemaphoreInner {
   pub fn new(device: &Arc<RawVkDevice>) -> Self {
     let _vk_device = &device.device;
     let info = vk::SemaphoreCreateInfo {
@@ -29,7 +29,7 @@ impl VkSemaphore {
     let semaphore = unsafe {
       device.create_semaphore(&info, None)
     }.unwrap();
-    VkSemaphore {
+    VkSemaphoreInner {
       semaphore,
       device: device.clone()
     }
@@ -40,11 +40,31 @@ impl VkSemaphore {
   }
 }
 
-impl Drop for VkSemaphore {
+impl Drop for VkSemaphoreInner {
   fn drop(&mut self) {
     unsafe {
       self.device.destroy_semaphore(self.semaphore, None);
     }
+  }
+}
+
+pub struct VkSemaphore {
+  inner: Recyclable<VkSemaphoreInner>
+}
+
+impl VkSemaphore {
+  pub fn new(inner: Recyclable<VkSemaphoreInner>) -> VkSemaphore {
+    Self {
+      inner
+    }
+  }
+}
+
+impl Deref for VkSemaphore {
+  type Target = VkSemaphoreInner;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
   }
 }
 
