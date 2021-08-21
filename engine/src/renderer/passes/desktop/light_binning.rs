@@ -146,7 +146,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     cmd_buffer.barrier(&[
       Barrier::BufferBarrier {
         old_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: BufferUsage::CONSTANT,
+        new_primary_usage: BufferUsage::COMPUTE_SHADER_CONSTANT,
         old_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
         new_usages: BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT
           | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_READ,

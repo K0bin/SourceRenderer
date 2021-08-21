@@ -132,13 +132,6 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     let screen_to_view_cbuffer = command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::COMPUTE_SHADER_STORAGE_READ);
     command_buffer.barrier(&[
       Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::READ,
-        new_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
-        old_usages: BufferUsage::empty(),
-        new_usages: BufferUsage::empty(),
-        buffer: &screen_to_view_cbuffer
-      },
-      Barrier::BufferBarrier {
         old_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
         new_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
         old_usages: BufferUsage::COMPUTE_SHADER_STORAGE_READ,

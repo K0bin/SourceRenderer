@@ -644,6 +644,8 @@ impl VkCommandBuffer {
           debug_assert!(!new_usages.is_empty() || (new_usages.is_empty() && old_usages.is_empty()));
           debug_assert!(texture.get_info().usage.contains(*new_primary_usage));
           debug_assert!(texture.get_info().usage.contains(*new_usages));
+          debug_assert!(new_primary_usage.bits().count_ones() == 1);
+          debug_assert!(old_primary_usage.bits().count_ones() == 1 || old_primary_usage.bits().count_ones() == 0);
 
           let old_layout = texture_usage_to_image_layout(*old_primary_usage);
           let new_layout = texture_usage_to_image_layout(*new_primary_usage);
@@ -654,10 +656,10 @@ impl VkCommandBuffer {
           let mut dst_access = vk::AccessFlags::empty();
           let mut dst_stages = vk::PipelineStageFlags::empty();
 
-          let mut new_usages_bits = std::num::Wrapping(new_usages.bits());
-          while new_usages_bits != std::num::Wrapping(0) {
-            let usage_bit = new_usages_bits & -new_usages_bits;
-            let usage = TextureUsage::from_bits_truncate(usage_bit.0);
+          let mut new_usages_bits = new_usages.bits();
+          while new_usages_bits != 0 {
+            let usage_bit = new_usages_bits & (1 << new_usages_bits.trailing_zeros());
+            let usage = TextureUsage::from_bits_truncate(usage_bit);
             let usage_layout = texture_usage_to_image_layout(usage);
             if usage_layout == new_layout {
               // using the texture with this texture usage will not require a layout transition barrier
@@ -718,6 +720,8 @@ impl VkCommandBuffer {
           debug_assert!(!new_usages.is_empty() || (new_usages.is_empty() && old_usages.is_empty()));
           debug_assert!(buffer.get_info().usage.contains(*new_primary_usage));
           debug_assert!(buffer.get_info().usage.contains(*new_usages));
+          debug_assert!(new_primary_usage.bits().count_ones() == 1);
+          debug_assert!(old_primary_usage.bits().count_ones() == 1 || old_primary_usage.bits().count_ones() == 0);
 
           let src_stages = buffer_usage_to_stage(*old_usages);
           let dst_stages = buffer_usage_to_stage(*new_usages);
