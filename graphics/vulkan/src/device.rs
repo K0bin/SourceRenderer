@@ -298,6 +298,12 @@ impl Device<VkBackend> for VkDevice {
   }
 }
 
+impl Drop for VkDevice {
+  fn drop(&mut self) {
+    self.wait_for_idle();
+  }
+}
+
 pub fn memory_usage_to_vma(memory_usage: MemoryUsage) -> vk_mem::MemoryUsage {
   match memory_usage {
     MemoryUsage::CpuOnly => vk_mem::MemoryUsage::CpuOnly,
