@@ -1,10 +1,8 @@
 use crate::{VkDevice, texture::VkSampler};
 use crate::*;
 use crate::pipeline::VkShader;
-use crate::graph::VkRenderGraph;
 use buffer::VkBufferSlice;
 use texture::VkTextureView;
-use graph_template::VkRenderGraphTemplate;
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum VkBackend {}
@@ -22,8 +20,6 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type GraphicsPipeline = VkPipeline;
   type ComputePipeline = VkPipeline;
   type Swapchain = VkSwapchain;
-  type RenderGraph = VkRenderGraph;
-  type RenderGraphTemplate = VkRenderGraphTemplate;
   type TextureShaderResourceView = VkTextureView;
   type TextureUnorderedAccessView = VkTextureView;
   type TextureRenderTargetView = VkTextureView;

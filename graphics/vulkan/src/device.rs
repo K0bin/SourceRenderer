@@ -12,7 +12,6 @@ use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
 use crate::texture::VkTexture;
 use crate::sync::VkFence;
-use crate::graph::VkRenderGraph;
 
 use crate::{VkThreadManager, VkShared};
 use crate::raw::{RawVkDevice, RawVkInstance};
@@ -21,7 +20,6 @@ use crate::buffer::VkBufferSlice;
 use std::cmp::min;
 use crate::texture::VkTextureView;
 use crate::transfer::VkTransfer;
-use crate::graph_template::{VkRenderGraphTemplate, VkPassType};
 use std::collections::HashMap;
 
 pub struct VkDevice {
@@ -184,22 +182,6 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, &srv_info))
   }
 
-  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, graph_template: &<VkBackend as Backend>::RenderGraphTemplate, pass_name: &str, subpass_index: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
-    let pass = graph_template.passes.iter().find(|pass| pass.name.as_str() == pass_name).unwrap_or_else(|| panic!("Can not find pass {} in render graph.", pass_name));
-    match &pass.pass_type {
-      VkPassType::Graphics {
-        render_pass, ..
-      } => {
-        Arc::new(VkPipeline::new_graphics(&self.device, &VkGraphicsPipelineInfo {
-          info,
-          render_pass,
-          sub_pass: subpass_index
-        }, self.context.shared()))
-      },
-      _ => panic!("Pass by name: {} is not a graphics pass.", pass_name)
-    }
-  }
-
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<VkSampler> {
     Arc::new(VkSampler::new(&self.device, info))
   }
@@ -231,20 +213,7 @@ impl Device<VkBackend> for VkDevice {
     }
   }
 
-  fn create_render_graph_template(&self, graph_info: &RenderGraphTemplateInfo) -> Arc<<VkBackend as Backend>::RenderGraphTemplate> {
-    Arc::new(VkRenderGraphTemplate::new(&self.device, &self.context, graph_info))
-  }
-
-  fn create_render_graph(&self,
-                         template: &Arc<<VkBackend as Backend>::RenderGraphTemplate>,
-                         info: &RenderGraphInfo<VkBackend>,
-                         swapchain: &Arc<<VkBackend as Backend>::Swapchain>,
-                         external_resources: Option<&HashMap<String, ExternalResource<VkBackend>>>) -> <VkBackend as Backend>::RenderGraph {
-    VkRenderGraph::new(&self.device, &self.context, &self.graphics_queue, &self.compute_queue, &self.transfer_queue, template, info, swapchain, external_resources)
-  }
-
-
-  fn create_graphics_pipeline_1(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
+  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
     let shared = self.context.get_shared();
     let mut rp_opt = {
       let render_passes = shared.get_render_passes().read().unwrap();

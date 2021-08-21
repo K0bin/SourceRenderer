@@ -36,7 +36,6 @@ pub(super) trait RenderPath<B: Backend> {
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
-  //graph: <P::GraphicsBackend as Backend>::RenderGraph,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
   asset_manager: Arc<AssetManager<P>>,
@@ -65,14 +64,12 @@ impl<P: Platform> RendererInternal<P> {
 
     let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
-    //let graph = RendererInternal::<P>::build_graph(device, swapchain, &view, &scene, &lightmap, &primary_camera);
 
     let path = Box::new(DesktopRenderer::new::<P>(device, swapchain));
 
     Self {
       renderer: renderer.clone(),
       device: device.clone(),
-      //graph,
       render_path: path,
       swapchain: swapchain.clone(),
       scene,
@@ -85,71 +82,6 @@ impl<P: Platform> RendererInternal<P> {
       assets,
       lightmap
     }
-  }
-
-  fn build_graph(
-    device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-    swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-    view: &Arc<AtomicRefCell<View>>,
-    scene: &Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>,
-    lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
-    primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>)
-    -> <P::GraphicsBackend as Backend>::RenderGraph {
-
-    let passes: Vec<PassInfo> = vec![
-      passes::late_latching::build_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::prepass::build_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::geometry::build_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::taa::build_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::sharpen::build_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::blit::build_blit_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::clustering::build_pass_template::<P::GraphicsBackend>(),
-      passes::desktop::light_binning::build_pass_template::<P::GraphicsBackend>(),
-    ];
-
-    let external_resources = vec![
-      passes::late_latching::external_resource_template()
-    ];
-
-    let graph_template = device.create_render_graph_template(&RenderGraphTemplateInfo {
-      external_resources,
-      passes,
-      swapchain_sample_count: swapchain.sample_count(),
-      swapchain_format: swapchain.format()
-    });
-
-    let mut callbacks: HashMap<String, RenderPassCallbacks<P::GraphicsBackend>> = HashMap::new();
-    let (pre_pass_name, pre_pass_callback) = passes::desktop::prepass::build_pass::<P>(device, &graph_template, &view, scene);
-    callbacks.insert(pre_pass_name, pre_pass_callback);
-
-    let (clustering_pass_name, clustering_pass_callback) = passes::desktop::clustering::build_pass::<P>(device, &view);
-    callbacks.insert(clustering_pass_name, clustering_pass_callback);
-
-    let (light_binning_pass_name, light_binning_pass_callback) = passes::desktop::light_binning::build_pass::<P>(device, &view, &scene);
-    callbacks.insert(light_binning_pass_name, light_binning_pass_callback);
-
-    let (geometry_pass_name, geometry_pass_callback) = passes::desktop::geometry::build_pass::<P>(device, &graph_template, &view, scene, &lightmap);
-    callbacks.insert(geometry_pass_name, geometry_pass_callback);
-
-    let (late_latch_pass_name, late_latch_pass_callback) = passes::late_latching::build_pass::<P>(device);
-    callbacks.insert(late_latch_pass_name, late_latch_pass_callback);
-
-    let (taa_pass_name, taa_pass_callback) = passes::desktop::taa::build_pass::<P>(device);
-    callbacks.insert(taa_pass_name, taa_pass_callback);
-
-    let (sharpen_pass_name, sharpen_pass_callback) = passes::desktop::sharpen::build_pass::<P>(device);
-    callbacks.insert(sharpen_pass_name, sharpen_pass_callback);
-
-    let (blit_pass_name, blit_pass_callback) = passes::desktop::blit::build_blit_pass::<P>();
-    callbacks.insert(blit_pass_name, blit_pass_callback);
-
-    let mut external_resources = HashMap::<String, ExternalResource<P::GraphicsBackend>>::new();
-    let (camera_resource_name, camera_resource) = passes::late_latching::external_resource(primary_camera);
-    external_resources.insert(camera_resource_name, camera_resource);
-
-    device.create_render_graph(&graph_template, &RenderGraphInfo {
-      pass_callbacks: callbacks
-    }, swapchain, Some(&external_resources))
   }
 
   fn receive_messages(&mut self) {

@@ -52,8 +52,6 @@ mod format;
 mod texture;
 mod sync;
 mod renderpass;
-mod graph;
-mod graph_template;
 mod thread_manager;
 mod descriptor;
 mod transfer;
