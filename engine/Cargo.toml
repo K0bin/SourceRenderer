@@ -24,6 +24,7 @@ regex = "1.4.2"
 bitvec = "0.22.3"
 rayon = "1.5"
 smallvec = "1.6.1"
+gltf = "0.16.0"
 
 [features]
 default = ["threading", "late-latching"]

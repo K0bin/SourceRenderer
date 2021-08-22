@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::{fs::File, sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -7,7 +7,7 @@ use legion::{World, Resources, Schedule};
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3};
 
-use crate::{Transform, renderer::*};
+use crate::{Transform, asset::{self, loaders::{GltfContainer, GltfLoader}}, renderer::*};
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;
@@ -69,14 +69,20 @@ impl<P: Platform> Game<P> {
 
     println!("Csgo path: {:?}", csgo_path);
 
-    let mut level = {
+    let mut bistro = File::open("/home/robin/Projekte/bistro/bistro.glb").unwrap();
+    asset_manager.add_container(Box::new(GltfContainer::load("/home/robin/Projekte/bistro/bistro.glb", &mut bistro).unwrap()));
+    asset_manager.add_loader(Box::new(GltfLoader::new()));
+    let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+
+
+    /*let mut level = {
       asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
       let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
       while !progress.is_done() {
         // wait until our container is loaded
       }
       asset_manager.load_level("de_overpass.bsp").unwrap()
-    };
+    };*/
     println!("Done loading level");
 
     let game = Arc::new(Self {

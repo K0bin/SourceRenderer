@@ -17,6 +17,7 @@ extern crate regex;
 extern crate bitvec;
 extern crate rayon;
 extern crate smallvec;
+extern crate gltf;
 
 #[cfg(feature = "threading")]
 pub use self::engine::Engine;
