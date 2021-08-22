@@ -120,48 +120,80 @@ impl GltfLoader {
 
     {
       let positions = primitive.get(&Semantic::Positions).unwrap();
-      let view = positions.view().unwrap();
-      let buffer = view.buffer();
-      match buffer.source() {
+      let positions_view = positions.view().unwrap();
+      let positions_buffer = positions_view.buffer();
+      match positions_buffer.source() {
         Source::Bin => {},
         Source::Uri(_) => unimplemented!(),
       }
 
-      let buffer_data = buffer_cache.entry(buffer.index())
-        .or_insert_with(|| {
-          let url = format!("{}/buffer/{}", gltf_file_name, buffer.index().to_string());
-          println!("Loading: {}", url);
-          let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+      let normals = primitive.get(&Semantic::Normals).unwrap();
+      let normals_view = normals.view().unwrap();
+      let normals_buffer = normals_view.buffer();
+      match normals_buffer.source() {
+        Source::Bin => {},
+        Source::Uri(_) => unimplemented!(),
+      }
 
-          let mut data = vec![0u8; buffer.length()];
-          buffer_file.read_exact(&mut data).unwrap();
-          data
-        });
+      if !buffer_cache.contains_key(&positions_buffer.index()) {
+        let url = format!("{}/buffer/{}", gltf_file_name, positions_buffer.index().to_string());
+        println!("Loading: {}", url);
+        let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
 
-      let mut buffer_cursor = Cursor::new(buffer_data);
-      buffer_cursor.seek(SeekFrom::Start((view.offset() + positions.offset()) as u64)).unwrap();
-    
+        let mut data = vec![0u8; positions_buffer.length()];
+        buffer_file.read_exact(&mut data).unwrap();
+        buffer_cache.insert(positions_buffer.index(), data);
+      }
+
+      if !buffer_cache.contains_key(&normals_buffer.index()) {
+        let url = format!("{}/buffer/{}", gltf_file_name, normals_buffer.index().to_string());
+        println!("Loading: {}", url);
+        let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+
+        let mut data = vec![0u8; normals_buffer.length()];
+        buffer_file.read_exact(&mut data).unwrap();
+        buffer_cache.insert(normals_buffer.index(), data);
+      }
+      
+      let positions_buffer_data = buffer_cache.get(&positions_buffer.index()).unwrap();
+      let mut positions_buffer_cursor = Cursor::new(positions_buffer_data);
+      positions_buffer_cursor.seek(SeekFrom::Start((positions_view.offset() + positions.offset()) as u64)).unwrap();
+
+      let normals_buffer_data = buffer_cache.get(&normals_buffer.index()).unwrap();
+      let mut normals_buffer_cursor = Cursor::new(normals_buffer_data);
+      normals_buffer_cursor.seek(SeekFrom::Start((normals_view.offset() + normals.offset()) as u64)).unwrap();
+
+      assert_eq!(positions.count(), normals.count());
       for _ in 0..positions.count() {
-        let start = buffer_cursor.seek(SeekFrom::Current(0)).unwrap();
+        let positions_start = positions_buffer_cursor.seek(SeekFrom::Current(0)).unwrap();
+        let normals_start = normals_buffer_cursor.seek(SeekFrom::Current(0)).unwrap();
 
-        let mut attr_data = vec![0; positions.size()];
-        buffer_cursor.read_exact(&mut attr_data).unwrap();
-
-        assert!(attr_data.len() >= std::mem::size_of::<Vec3>());
+        let mut position_data = vec![0; positions.size()];
+        positions_buffer_cursor.read_exact(&mut position_data).unwrap();
+        assert!(position_data.len() >= std::mem::size_of::<Vec3>());
+        
+        let mut normal_data = vec![0; normals.size()];
+        normals_buffer_cursor.read_exact(&mut normal_data).unwrap();
+        assert!(normal_data.len() >= std::mem::size_of::<Vec3>());
 
         unsafe { 
-          let vec_ptr: *const Vec3 = std::mem::transmute(attr_data.as_ptr());
+          let position_vec_ptr: *const Vec3 = std::mem::transmute(position_data.as_ptr());
+          let normal_vec_ptr: *const Vec3 = std::mem::transmute(normal_data.as_ptr());
           vertices.push(Vertex {
-            position: *vec_ptr,
-            normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
+            position: *position_vec_ptr,
+            normal: *normal_vec_ptr,
             uv: Vec2::new(0f32, 0f32),
             lightmap_uv: Vec2::new(0f32, 0f32),
             alpha: 1.0f32
           });
         }
 
-        if let Some(stride) = view.stride() {
-          buffer_cursor.seek(SeekFrom::Start(start + stride as u64)).unwrap();
+        if let Some(stride) = positions_view.stride() {
+          positions_buffer_cursor.seek(SeekFrom::Start(positions_start + stride as u64)).unwrap();
+        }
+
+        if let Some(stride) = normals_view.stride() {
+          normals_buffer_cursor.seek(SeekFrom::Start(normals_start + stride as u64)).unwrap();
         }
       }
     }
@@ -172,16 +204,17 @@ impl GltfLoader {
       let buffer = view.buffer();
 
 
-      let buffer_data = buffer_cache.entry(buffer.index())
-        .or_insert_with(|| {
-          let url = format!("{}/buffer/{}", gltf_file_name, buffer.index().to_string());
-          println!("Loading: {}", url);
-          let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+      if !buffer_cache.contains_key(&buffer.index()) {
+        let url = format!("{}/buffer/{}", gltf_file_name, buffer.index().to_string());
+        println!("Loading: {}", url);
+        let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
 
-          let mut data = vec![0u8; buffer.length()];
-          buffer_file.read_exact(&mut data).unwrap();
-          data
-        });
+        let mut data = vec![0u8; buffer.length()];
+        buffer_file.read_exact(&mut data).unwrap();
+        buffer_cache.insert(buffer.index(), data);
+      }
+
+      let buffer_data = buffer_cache.get(&buffer.index()).unwrap();
 
       let mut buffer_cursor = Cursor::new(buffer_data);
       buffer_cursor.seek(SeekFrom::Start((view.offset() + indices_accessor.offset()) as u64)).unwrap();
