@@ -4,7 +4,7 @@ use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCe
 
 use crate::{asset::Texture, renderer::{LateLatchCamera, drawable::View, passes::late_latching::LateLatchingPass, renderer_assets::RendererTexture, renderer_internal::RenderPath, renderer_scene::RendererScene}};
 
-use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, taa::TAAPass};
+use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass};
 
 pub struct DesktopRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
@@ -16,6 +16,7 @@ pub struct DesktopRenderer<B: Backend> {
   geometry: GeometryPass<B>,
   taa: TAAPass<B>,
   sharpen: SharpenPass<B>,
+  ssao: SsaoPass<B>,
   frame: u64
 }
 
@@ -30,6 +31,7 @@ impl<B: Backend> DesktopRenderer<B> {
     let geometry = GeometryPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
+    let ssao = SsaoPass::<B>::new::<P>(device, Vec2UI::new(swapchain.width(), swapchain.height()), &mut init_cmd_buffer);
 
     device.graphics_queue().submit(init_cmd_buffer.finish(), None, &[], &[]);
 
@@ -43,6 +45,7 @@ impl<B: Backend> DesktopRenderer<B> {
       geometry,
       taa,
       sharpen,
+      ssao,
       frame: 0
     }
   }
@@ -67,7 +70,8 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32, self.late_latching_pass.camera_buffer());
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), self.late_latching_pass.camera_buffer());
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), self.frame, self.late_latching_pass.camera_buffer(), self.late_latching_pass.camera_buffer_history());
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), self.late_latching_pass.camera_buffer());
+    self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), self.late_latching_pass.camera_buffer());
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), self.late_latching_pass.camera_buffer(), self.ssao.ssao_srv());
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
     self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
 

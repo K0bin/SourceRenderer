@@ -51,7 +51,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::DEPTH_READ | TextureUsage::DEPTH_WRITE,
+      usage: TextureUsage::DEPTH_READ | TextureUsage::DEPTH_WRITE | TextureUsage::COMPUTE_SHADER_SAMPLED,
     }, Some("PrepassDepth"));
     let dsv = device.create_depth_stencil_view(&depth_buffer, &TextureDepthStencilViewInfo {
       base_mip_level: 0,
@@ -306,7 +306,7 @@ impl<B: GraphicsBackend> Prepass<B> {
         texture: &self.motion.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
+        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
         new_primary_usage: TextureUsage::RENDER_TARGET,
         old_usages: TextureUsage::empty(),
         new_usages: TextureUsage::empty(),
@@ -324,7 +324,7 @@ impl<B: GraphicsBackend> Prepass<B> {
         RenderPassAttachment {
           view: RenderPassAttachmentView::RenderTarget(&self.normals),
           load_op: LoadOp::Clear,
-          store_op: StoreOp::DontCare
+          store_op: StoreOp::Store
         },
         RenderPassAttachment {
           view: RenderPassAttachmentView::DepthStencil(&self.depth_buffer),
@@ -414,23 +414,21 @@ impl<B: GraphicsBackend> Prepass<B> {
       cmd_buffer.execute_inner(inner_cmd_buffer);
     }
     cmd_buffer.end_render_pass();
-
-    cmd_buffer.barrier(&[
-      Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::RENDER_TARGET,
-        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
-        texture: &self.normals.texture(),
-      },
-    ]);
   }
 
   pub fn depth_dsv(&self) -> &Arc<B::TextureDepthStencilView> {
     &self.depth_buffer
   }
 
+  pub fn depth_srv(&self) -> &Arc<B::TextureShaderResourceView> {
+    &self.depth_srv
+  }
+
   pub fn motion_srv(&self) -> &Arc<B::TextureShaderResourceView> {
     &self.motion_srv
+  }
+
+  pub fn normals_srv(&self) -> &Arc<B::TextureShaderResourceView> {
+    &self.normals_srv
   }
 }

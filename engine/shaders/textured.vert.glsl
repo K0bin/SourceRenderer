@@ -44,7 +44,7 @@ void main(void) {
   out_worldPosition = (model * pos).xyz;
   out_uv = in_uv;
   out_lightmap_uv = in_lightmap_uv;
-  out_normal = (model * vec4(in_normal, 0)).xyz;
+  out_normal = normalize((model * vec4(in_normal, 0)).xyz);
 
   mat4 jitterMat;
   jitterMat[0] = vec4(1.0, 0.0, 0.0, 0.0);

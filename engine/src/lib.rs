@@ -18,6 +18,7 @@ extern crate bitvec;
 extern crate rayon;
 extern crate smallvec;
 extern crate gltf;
+extern crate rand;
 
 #[cfg(feature = "threading")]
 pub use self::engine::Engine;

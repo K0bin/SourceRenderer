@@ -48,6 +48,8 @@ layout(set = 2, binding = 3) uniform PerFrameUbo {
   uint pointLightCount;
 };
 
+layout(set = 2, binding = 4) uniform sampler2D ssao;
+
 /*layout(std430, set = 2, binding = 4, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };*/
@@ -85,6 +87,9 @@ void main(void) {
   */
 
   vec3 lighting = vec3(0);
+  lighting += 0.3;
+  lighting += texture(lightmap, in_lightmap_uv).xyz;
+  lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
   uint bitmaskOffset = lightBitmaskCount * clusterIndex;
@@ -110,9 +115,6 @@ void main(void) {
       }
     }
   }
-
-  lighting += texture(lightmap, in_lightmap_uv).xyz;
-  lighting += 0.3;
   vec4 tex = texture(tex, in_uv);
   out_color = vec4(lighting.x * tex.x, lighting.y * tex.y, lighting.z * tex.z, 1);
 }

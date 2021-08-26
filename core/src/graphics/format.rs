@@ -11,6 +11,7 @@ pub enum Format {
   DXT1Alpha,
   DXT3,
   DXT5,
+  R16Float,
   R32Float,
   RG32Float,
   RGB32Float,

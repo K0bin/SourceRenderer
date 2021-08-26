@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InputAssemblerElement, InputRate, InputUsage, LoadOp, LogicOp, OutputAttachmentRef, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassCallbacks, RenderPassInfo, RenderPassTextureExtent, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, SubpassOutput, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
+use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencil, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, GraphicsSubpassInfo, InputAssemblerElement, InputRate, InputUsage, LoadOp, LogicOp, OutputAttachmentRef, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassCallbacks, RenderPassInfo, RenderPassTextureExtent, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, SubpassOutput, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
 use std::sync::Arc;
 use crate::renderer::{drawable::View, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -239,7 +239,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     frame: u64,
     prepass_depth: &Arc<B::TextureDepthStencilView>,
     light_bitmask_buffer: &Arc<B::Buffer>,
-    camera_buffer: &Arc<B::Buffer>
+    camera_buffer: &Arc<B::Buffer>,
+    ssao: &Arc<B::TextureShaderResourceView>
   ) {
     let static_drawables = scene.static_drawables();
 
@@ -252,10 +253,10 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         texture: self.rtv.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::DEPTH_WRITE,
+        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
         new_primary_usage: TextureUsage::DEPTH_READ,
-        old_usages: TextureUsage::DEPTH_WRITE,
-        new_usages: TextureUsage::DEPTH_READ | TextureUsage::DEPTH_WRITE,
+        old_usages: TextureUsage::empty(),
+        new_usages: TextureUsage::empty(),
         texture: prepass_depth.texture()
       },
       Barrier::BufferBarrier {
@@ -264,6 +265,13 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         old_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
         new_usages: BufferUsage::FRAGMENT_SHADER_STORAGE_READ,
         buffer: light_bitmask_buffer,
+      },
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
+        old_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+        new_usages: TextureUsage::FRAGMENT_SHADER_SAMPLED,
+        texture: ssao.texture()
       },
     ]);
 
@@ -341,6 +349,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
+      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, ssao, &self.sampler);
       for part in chunk.into_iter() {
         let drawable = &static_drawables[part.drawable_index];
 
