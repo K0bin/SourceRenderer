@@ -193,9 +193,11 @@ impl GltfLoader {
         unsafe { 
           let position_vec_ptr: *const Vec3 = std::mem::transmute(position_data.as_ptr());
           let normal_vec_ptr: *const Vec3 = std::mem::transmute(normal_data.as_ptr());
+          let mut normal = *normal_vec_ptr;
+          normal.normalize_mut();
           vertices.push(Vertex {
             position: *position_vec_ptr,
-            normal: *normal_vec_ptr,
+            normal: normal,
             uv: Vec2::new(0f32, 0f32),
             lightmap_uv: Vec2::new(0f32, 0f32),
             alpha: 1.0f32
