@@ -16,7 +16,7 @@ struct TransformDirty(bool);
 
 pub struct GlobalTransform(pub Matrix4);
 
-pub struct Parent(Entity);
+pub struct Parent(pub Entity);
 struct PreviousParent(Entity);
 
 #[derive(Default)]

@@ -27,6 +27,8 @@ impl GltfContainer {
       blob: None
     };
 
+    println!("GLTF: Found {} buffers & {} images", buffers.len(), images.len());
+
     let file_name = Path::new(path).file_name().expect("Failed to read file name");
     let base_path = file_name.to_str().unwrap().to_string() + "/";
 

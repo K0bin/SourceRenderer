@@ -1,12 +1,11 @@
 use std::{collections::HashMap, io::{Cursor, Read, Seek, SeekFrom}, slice, sync::Arc, usize};
 
-use bitvec::index;
 use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::{self, Source}, json::extensions::scene};
-use legion::{Entity, World, WorldOptions};
+use legion::{Entity, EntityStore, World, WorldOptions};
 use nalgebra::{Matrix4, Quaternion, UnitQuaternion, Vector3};
 use sourcerenderer_core::{Platform, Vec2, Vec3, Vec4};
 
-use crate::{Transform, asset::{self, Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex}, math::BoundingBox, renderer::StaticRenderableComponent};
+use crate::{Parent, Transform, asset::{self, Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex}, math::BoundingBox, renderer::StaticRenderableComponent};
 
 pub struct GltfLoader {}
 
@@ -16,25 +15,29 @@ impl GltfLoader {
   }
 
   fn visit_node<P: Platform>(node: &Node, world: &mut World, asset_mgr: &AssetManager<P>, parent_entity: Option<Entity>, gltf_file_name: &str, buffer_cache: &mut HashMap<usize, Vec<u8>>) {
-    let entity = node.mesh().map(|mesh| {
-      let (translation, rotatiom, scale) = match node.transform() {
-        gltf::scene::Transform::Matrix { matrix: columns_data } => {
-          unimplemented!()
+    let (translation, rotation, scale) = match node.transform() {
+      gltf::scene::Transform::Matrix { matrix: _columns_data } => {
+        unimplemented!()
 
-          /*let mut matrix = Matrix4::default();
-          for i in 0..matrix.len() {
-            let column_slice = &columns_data[0];
-            matrix.column_mut(i).copy_from_slice(column_slice);
-          }
-          matrix*/
-        },
-        gltf::scene::Transform::Decomposed { translation, rotation, scale } => 
-          (Vec3::new(translation[0], translation[1], translation[2]),
-          Vec4::new(rotation[0], rotation[1], rotation[2], rotation[3]),
-          Vec3::new(scale[0], scale[1], scale[2])),
-      };
-      println!("{:?}", node.transform());
+        /*let mut matrix = Matrix4::default();
+        for i in 0..matrix.len() {
+          let column_slice = &columns_data[0];
+          matrix.column_mut(i).copy_from_slice(column_slice);
+        }
+        matrix*/
+      },
+      gltf::scene::Transform::Decomposed { translation, rotation, scale } =>
+        (Vec3::new(translation[0], translation[1], translation[2]),
+        Vec4::new(rotation[0], rotation[1], rotation[2], rotation[3]),
+        Vec3::new(scale[0], scale[1], scale[2])),
+    };
+    let entity = world.push((Transform {
+      position: translation,
+      scale: scale,
+      rotation: UnitQuaternion::identity(),
+    },));
 
+    if let Some(mesh) = node.mesh() {
       let mut indices = Vec::<u32>::new();
       let mut vertices = Vec::<Vertex>::new();
       let mut parts = Vec::<MeshRange>::with_capacity(mesh.primitives().len());
@@ -83,25 +86,32 @@ impl GltfLoader {
       asset_mgr.add_asset(&model_path, Asset::Model(Model {
         mesh_path: mesh_path.clone(),
         material_paths: vec!["IGNORE".to_string(); parts_len],
-    }), AssetLoadPriority::Normal);
+      }), AssetLoadPriority::Normal);
       
-      world.push(
-        (StaticRenderableComponent {
-          model_path: model_path,
-          receive_shadows: true,
-          cast_shadows: true,
-          can_move: false
-        },
-        Transform {
-          position: translation,
-          scale: scale,
-          rotation: UnitQuaternion::identity(),
-        })
-      )
-    });
+      let mut entry = world.entry(entity).unwrap();
+      entry.add_component(StaticRenderableComponent {
+        model_path: model_path,
+        receive_shadows: true,
+        cast_shadows: true,
+        can_move: false
+      });
+      if let Some(parent) = parent_entity {
+        entry.add_component(Parent(parent));
+      }
+    }8;
+
+    if node.skin().is_some() {
+      println!("WARNING: skins are not supported. Node name: {:?}", node.name());
+    }
+    if node.camera().is_some() {
+      println!("WARNING: cameras are not supported. Node name: {:?}", node.name());
+    }
+    if node.weights().is_some() {
+      println!("WARNING: weights are not supported. Node name: {:?}", node.name());
+    }
 
     for child in node.children() {
-      GltfLoader::visit_node(&child, world, asset_mgr, entity, gltf_file_name, buffer_cache);
+      GltfLoader::visit_node(&child, world, asset_mgr, Some(entity), gltf_file_name, buffer_cache);
     }
   }
 
@@ -118,8 +128,11 @@ impl GltfLoader {
   fn load_primitive<P: Platform>(primitive: &Primitive, asset_mgr: &AssetManager<P>, vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>, gltf_file_name: &str, buffer_cache: &mut HashMap<usize, Vec<u8>>) {
     GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
 
+    let index_base = vertices.len() as u32;
+
     {
       let positions = primitive.get(&Semantic::Positions).unwrap();
+      assert!(positions.sparse().is_none());
       let positions_view = positions.view().unwrap();
       let positions_buffer = positions_view.buffer();
       match positions_buffer.source() {
@@ -128,6 +141,7 @@ impl GltfLoader {
       }
 
       let normals = primitive.get(&Semantic::Normals).unwrap();
+      assert!(normals.sparse().is_none());
       let normals_view = normals.view().unwrap();
       let normals_buffer = normals_view.buffer();
       match normals_buffer.source() {
@@ -170,11 +184,11 @@ impl GltfLoader {
 
         let mut position_data = vec![0; positions.size()];
         positions_buffer_cursor.read_exact(&mut position_data).unwrap();
-        assert!(position_data.len() >= std::mem::size_of::<Vec3>());
+        assert_eq!(position_data.len(), std::mem::size_of::<Vec3>());
         
         let mut normal_data = vec![0; normals.size()];
         normals_buffer_cursor.read_exact(&mut normal_data).unwrap();
-        assert!(normal_data.len() >= std::mem::size_of::<Vec3>());
+        assert_eq!(normal_data.len(), std::mem::size_of::<Vec3>());
 
         unsafe { 
           let position_vec_ptr: *const Vec3 = std::mem::transmute(position_data.as_ptr());
@@ -189,17 +203,23 @@ impl GltfLoader {
         }
 
         if let Some(stride) = positions_view.stride() {
+          assert!(stride > positions.size());
           positions_buffer_cursor.seek(SeekFrom::Start(positions_start + stride as u64)).unwrap();
         }
 
         if let Some(stride) = normals_view.stride() {
+          assert!(stride > normals.size());
           normals_buffer_cursor.seek(SeekFrom::Start(normals_start + stride as u64)).unwrap();
         }
+
+        assert!(positions_buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (positions_view.offset() + positions_view.length()) as u64);
+        assert!(normals_buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (normals_view.offset() + normals_view.length()) as u64);
       }
     }
 
     let indices_accessor = primitive.indices();
     if let Some(indices_accessor) = indices_accessor {
+      assert!(indices_accessor.sparse().is_none());
       let view = indices_accessor.view().unwrap();
       let buffer = view.buffer();
 
@@ -230,29 +250,22 @@ impl GltfLoader {
         unsafe {
           if indices_accessor.size() == 4 {
             let index_ptr: *const u32 = std::mem::transmute(attr_data.as_ptr());
-            indices.push(*index_ptr);
-          } else {
+            indices.push(*index_ptr + index_base);
+          } else if indices_accessor.size() == 2 {
             let index_ptr: *const u16 = std::mem::transmute(attr_data.as_ptr());
-            indices.push(*index_ptr as u32);
+            indices.push(*index_ptr as u32 + index_base);
+          } else {
+            unimplemented!();
           }
         }
 
         if let Some(stride) = view.stride() {
+          assert!(stride > indices_accessor.size());
           buffer_cursor.seek(SeekFrom::Start(start + stride as u64)).unwrap();
         }
       }
+      assert!(buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (view.offset() + view.length()) as u64);
     }
-
-
-    //println!("{:?}", buffer);
-
-    //println!("{:?}", primitive.attributes());
-    /*println!("{:?}", primitive.material());
-    println!("{:?}", primitive.attributes());
-    //println!("{:?}", primitive.get());
-    println!("{:?}", primitive.indices());
-    println!("{:?}", primitive.mode());
-    println!("{:?}", primitive.bounding_box());*/
   }
 
   fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, gltf_file_name: &str) {
