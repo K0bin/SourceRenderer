@@ -30,7 +30,6 @@ void main() {
   vec4 normal = vec4(texture(normals, texCoord).xyz, 0.0);
   vec3 viewNormal = (camera.view * normal).xyz;
   viewNormal = normalize(viewNormal);
-  viewNormal.xz = -viewNormal.xz; // NO IDEA WHY
   vec3 randomVec = texture(noise, texCoord * noiseScale).xyz;
 
   vec3 tangent = normalize(randomVec - viewNormal * dot(randomVec, viewNormal));
@@ -42,8 +41,7 @@ void main() {
   float occlusion = 0.0;
 
   const uint kernelSize = 16;
-  //const float radius = 0.5;
-  const float radius = 2.5;
+  const float radius = 0.5;
 
   for (uint i = 0; i < kernelSize; i++) {
     vec3 samplePos = TBN * samples[i].xyz;

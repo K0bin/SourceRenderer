@@ -248,7 +248,7 @@ impl BspLevelLoader {
   }
 
   fn fixup_normal(normal: &Vec3) -> Vec3 {
-    Vec3::new(-normal.x, -normal.z, normal.y)
+    Vec3::new(normal.x, -normal.z, -normal.y)
   }
 
   fn fixup_rotation(rotation: &Vec3) -> Quaternion {
