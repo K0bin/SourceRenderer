@@ -37,6 +37,13 @@ impl GltfLoader {
       rotation: UnitQuaternion::identity(),
     },));
 
+    {
+      let mut entry = world.entry(entity).unwrap();
+      if let Some(parent) = parent_entity {
+        entry.add_component(Parent(parent));
+      }
+    }
+
     if let Some(mesh) = node.mesh() {
       let mut indices = Vec::<u32>::new();
       let mut vertices = Vec::<Vertex>::new();
@@ -95,10 +102,7 @@ impl GltfLoader {
         cast_shadows: true,
         can_move: false
       });
-      if let Some(parent) = parent_entity {
-        entry.add_component(Parent(parent));
-      }
-    }8;
+    };
 
     if node.skin().is_some() {
       println!("WARNING: skins are not supported. Node name: {:?}", node.name());
