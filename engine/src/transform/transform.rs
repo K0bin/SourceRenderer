@@ -90,6 +90,8 @@ fn mark_transforms_clean(dirty: &mut TransformDirty) {
 #[read_component(Transform)]
 #[read_component(TransformDirty)]
 #[read_component(GlobalTransform)]
+#[read_component(Parent)]
+#[read_component(Children)]
 fn update_global_transforms(world: &SubWorld,
                             command_buffer: &mut CommandBuffer) {
   let mut root_transforms_query = <(Entity,)>::query()
@@ -107,6 +109,7 @@ fn propagate_transforms(entity: &Entity,
                         command_buffer: &mut CommandBuffer) {
   let entry_opt = world.entry_ref(*entity);
   if entry_opt.is_err() {
+    println!("ERROR {:?}", entity);
     return;
   }
 
@@ -223,5 +226,6 @@ fn maintain_children(command_buffer: &mut CommandBuffer, world: &mut SubWorld, #
    // flush new children components
   for (entity, children) in new_children.drain() {
     command_buffer.add_component(entity, Children(children));
+    command_buffer.add_component(entity, TransformDirty(true));
   }
 }
