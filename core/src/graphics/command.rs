@@ -69,7 +69,7 @@ pub trait CommandBuffer<B: Backend> {
   
   fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
-  fn execute_inner(&mut self, submission: B::CommandBufferSubmission);
+  fn execute_inner(&mut self, submission: Vec<B::CommandBufferSubmission>);
 }
 
 pub trait Queue<B: Backend> {

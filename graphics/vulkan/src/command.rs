@@ -548,13 +548,21 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn execute_inner(&mut self, mut submission: VkCommandBufferSubmission) {
+  pub(crate) fn execute_inner(&mut self, mut submissions: Vec<VkCommandBufferSubmission>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    assert_eq!(submission.command_buffer_type(), CommandBufferType::SECONDARY);
-    unsafe {
-      self.device.cmd_execute_commands(self.buffer, &[*submission.get_handle()]);
+    for submission in &submissions {
+      assert_eq!(submission.command_buffer_type(), CommandBufferType::SECONDARY);
     }
-    submission.mark_submitted();
+    let submission_handles: SmallVec<[vk::CommandBuffer; 16]> = submissions
+      .iter()
+      .map(|s| *s.get_handle())
+      .collect();
+    unsafe {
+      self.device.cmd_execute_commands(self.buffer, &submission_handles);
+    }
+    for submission in &mut submissions {
+      submission.mark_submitted();
+    }
   }
 
   pub(crate) fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
@@ -1142,7 +1150,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     self.item.as_ref().unwrap().inheritance()
   }
 
-  fn execute_inner(&mut self, submission: VkCommandBufferSubmission) {
+  fn execute_inner(&mut self, submission: Vec<VkCommandBufferSubmission>) {
     self.item.as_mut().unwrap().execute_inner(submission);
   }
 }

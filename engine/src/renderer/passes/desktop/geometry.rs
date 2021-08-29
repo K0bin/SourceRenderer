@@ -384,9 +384,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.finish()
     }).collect();
 
-    for inner_cmd_buffer in inner_cmd_buffers {
-      cmd_buffer.execute_inner(inner_cmd_buffer);
-    }
+    cmd_buffer.execute_inner(inner_cmd_buffers);
     cmd_buffer.end_render_pass();
   }
 
