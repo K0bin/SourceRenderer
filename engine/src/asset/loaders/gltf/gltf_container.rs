@@ -14,7 +14,7 @@ pub struct GltfContainer {
 }
 
 impl GltfContainer {
-  pub fn load(path: &str, reader: &mut dyn Read) -> IOResult<Self> {
+  pub fn load(path: &str) -> IOResult<Self> {
     let json_data = {
       let file = File::open(path)?;
       let glb = Glb::from_reader(file).map_err(|_e| IOError::new(ErrorKind::Other, "Failed to read Glb"))?;
