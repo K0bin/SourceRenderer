@@ -274,5 +274,5 @@ fn fixup_position(position: &Vector3<f32>) -> Vector3<f32> {
 }
 
 fn fixup_normal(normal: &Vector3<f32>) -> Vector3<f32> {
-  Vector3::<f32>::new(normal.x, -normal.z, -normal.y)
+  Vector3::<f32>::new(normal.x, normal.z, -normal.y)
 }
