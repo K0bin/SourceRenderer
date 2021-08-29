@@ -9,7 +9,10 @@ layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec4 out_oldPosition;
 
 layout(set = 2, binding = 0) uniform CurrentLowFrequencyUbo {
-    mat4 viewProjection;
+    mat4 viewProj;
+    mat4 invProj;
+    mat4 view;
+    mat4 proj;
 };
 layout(set = 2, binding = 1) uniform PreviousLowFrequencyUbo {
     mat4 oldViewProjection;
@@ -27,15 +30,20 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
 void main(void) {
     vec4 pos = vec4(in_pos, 1);
 
-    mat4 mvp = swapchainTransform * viewProjection * model;
+    mat4 mvp = swapchainTransform * viewProj * model;
     vec4 transformedPos = mvp * pos;
     transformedPos.y = -transformedPos.y;
 
     vec4 transformedOldPos = (swapchainTransform * (oldViewProjection * oldModel)) * pos;
     transformedOldPos.y = -transformedOldPos.y;
 
-    // TODO remove scale from model matrix instead
-    out_normal = normalize((model * vec4(in_normal, 0)).xyz);
+    mat3 normalMat = mat3(model);
+    // remove scale
+    normalMat[0][0] = 1.0;
+    normalMat[1][1] = 1.0;
+    normalMat[2][2] = 1.0;
+    normalMat = transpose(inverse(normalMat));
+    out_normal = normalize(normalMat * in_normal); // shouldnt be necessary
     out_position = transformedPos;
     out_oldPosition = transformedOldPos;
 

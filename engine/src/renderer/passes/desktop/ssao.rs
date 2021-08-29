@@ -93,8 +93,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       }
     ]);
 
-    let kernel = Self::create_hemisphere(device, 64);
-    let noise = Self::create_noise(device, 16);
+    let kernel = Self::create_hemisphere(device, 16);
+    let noise = Self::create_noise(device, 4);
 
     let blur_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("ssao_blur.comp.spv"))).unwrap();
@@ -162,7 +162,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
   }
 
   fn create_hemisphere(device: &Arc<B::Device>, samples: u32) -> Arc<B::Buffer> {
-    let mut ssao_kernel = Vec::<Vec4>::new();
+    let mut ssao_kernel = Vec::<Vec4>::with_capacity(samples as usize);
     for i in 0..samples {
       let mut sample = Vec4::new(
         random::<f32>() * 2.0f32 - 1.0f32,
@@ -190,13 +190,14 @@ impl<B: GraphicsBackend> SsaoPass<B> {
 
   fn create_noise(device: &Arc<B::Device>, size: u32) -> Arc<B::TextureShaderResourceView> {
     let mut ssao_noise = Vec::<Vec4>::new();
-    for i in 0.. size * size {
-      ssao_noise.push(Vec4::new(
+    for _ in 0.. size * size {
+      let noise = Vec4::new(
         random::<f32>() * 2.0f32 - 1.0f32,
         random::<f32>()* 2.0f32 - 1.0f32,
         0.0f32,
         0.0f32
-      ));
+      );
+      ssao_noise.push(noise);
     }
     
     let texture = device.create_texture(&TextureInfo {

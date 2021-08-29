@@ -1,7 +1,7 @@
 #version 450
 
 layout(set = 0, binding = 0, std140) uniform kernel {
-  vec4 samples[64];
+  vec4 samples[16];
 };
 layout(set = 0, binding = 1) uniform sampler2D noise;
 layout(set = 0, binding = 2) uniform sampler2D depthMap;
@@ -28,8 +28,11 @@ void main() {
 
   vec2 noiseScale = texSize / textureSize(noise, 0);
   vec4 normal = vec4(texture(normals, texCoord).xyz, 0.0);
-  vec3 viewNormal = (camera.view * normal).xyz;
-  viewNormal = normalize(viewNormal);
+  mat4 normalViewMat = camera.view;
+  normalViewMat[3] = vec4(0.0, 0.0, 0.0, 1.0);
+  vec3 viewNormal = inverse(transpose(mat3(camera.view))) * normal.xyz;
+  viewNormal.y = -viewNormal.y; // No idea why
+  viewNormal = normalize(viewNormal); // shouldnt be necessary
   vec3 randomVec = texture(noise, texCoord * noiseScale).xyz;
 
   vec3 tangent = normalize(randomVec - viewNormal * dot(randomVec, viewNormal));
