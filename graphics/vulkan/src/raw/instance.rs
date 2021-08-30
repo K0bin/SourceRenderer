@@ -1,6 +1,5 @@
 use std::ops::Deref;
 
-use ash::version::{InstanceV1_0};
 use ash::vk;
 
 pub struct RawVkDebugUtils {

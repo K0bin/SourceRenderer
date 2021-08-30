@@ -3,7 +3,6 @@ use std::sync::Mutex;
 use std::iter::*;
 
 use ash::vk;
-use ash::version::{DeviceV1_0};
 
 use sourcerenderer_core::graphics::Queue;
 use sourcerenderer_core::graphics::{CommandBufferType, Swapchain};

@@ -1,7 +1,6 @@
 use std::sync::{Arc};
 
 use ash::vk;
-use ash::version::{DeviceV1_0};
 
 use sourcerenderer_core::graphics::*;
 use crate::{queue::VkQueue, texture::VkSampler};

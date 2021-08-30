@@ -3,7 +3,6 @@ use crate::{VkQueue, VkTexture};
 use crate::raw::{RawVkDevice, RawVkCommandPool};
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use ash::version::DeviceV1_0;
 use crate::buffer::VkBufferSlice;
 use crate::VkFence;
 

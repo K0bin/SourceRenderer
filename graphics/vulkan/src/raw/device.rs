@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::ops::Deref;
 
-use ash::version::{DeviceV1_0};
 use ash::vk;
 
 use crate::raw::RawVkInstance;

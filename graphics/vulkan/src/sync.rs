@@ -5,7 +5,6 @@ use std::task::{Poll, Context};
 use std::ops::Deref;
 
 use ash::vk;
-use ash::version::DeviceV1_0;
 
 use crate::raw::RawVkDevice;
 

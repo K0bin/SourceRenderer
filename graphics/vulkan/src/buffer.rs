@@ -3,11 +3,11 @@ use std::cmp::max;
 use std::hash::{Hash, Hasher};
 use std::fmt::Debug;
 use std::ffi::CString;
-use ash::vk::Handle;
 
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
-use ash::{version::InstanceV1_1, vk};
+use ash::vk;
+use ash::vk::Handle;
 
 use crate::raw::*;
 use crate::device::memory_usage_to_vma;
@@ -115,7 +115,7 @@ impl VkBuffer {
 
 impl Drop for VkBuffer {
   fn drop(&mut self) {
-    self.device.allocator.destroy_buffer(self.buffer, &self.allocation).unwrap();
+    self.device.allocator.destroy_buffer(self.buffer, &self.allocation);
   }
 }
 
@@ -151,7 +151,7 @@ impl Buffer for VkBufferSlice {
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let allocator = &self.buffer.device.allocator;
       if invalidate {
-        allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+        allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
       }
     }
     self.buffer.map_ptr.map(|ptr| ptr.add(self.offset))
@@ -164,7 +164,7 @@ impl Buffer for VkBufferSlice {
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let allocator = &self.buffer.device.allocator;
       if flush {
-        allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+        allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
       }
     }
   }

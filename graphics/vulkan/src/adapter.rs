@@ -8,8 +8,6 @@ use std::os::raw::c_char;
 
 use ash::vk;
 
-use ash::version::{InstanceV1_0};
-
 use sourcerenderer_core::graphics::Adapter;
 
 use sourcerenderer_core::graphics::AdapterType;

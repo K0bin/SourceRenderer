@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use ash::version::{DeviceV1_0};
 use ash::vk;
 
 mod device;
@@ -22,7 +21,7 @@ impl Drop for RawVkImage {
   fn drop(&mut self) {
     unsafe {
       if let Some(alloc) = &self.allocation {
-        self.device.allocator.destroy_image(self.image, alloc).unwrap();
+        self.device.allocator.destroy_image(self.image, alloc);
       } else {
         self.device.device.destroy_image(self.image, None)
       }

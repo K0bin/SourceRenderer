@@ -8,7 +8,7 @@ build = "build.rs"
 [dependencies]
 sdl2 = "0.34.2"
 sdl2-sys = "0.34.2"
-ash = "0.32.1"
+ash = "0.33.1+1.2.186"
 bitset-core = "0.1.1"
 sourcerenderer_bsp = { path = "../../valve_formats/bsp" }
 sourcerenderer_core = { path = "../../core" }

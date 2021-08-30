@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::ffi::{CString};
 
 use ash::vk;
-use ash::version::DeviceV1_0;
 
 use spirv_cross::{spirv, glsl};
 

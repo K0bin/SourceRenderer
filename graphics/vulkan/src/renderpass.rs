@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::usize;
 
 use ash::vk;
-use ash::version::DeviceV1_0;
 use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{Format, LoadOp, RenderPassInfo, RenderPassPipelineStage, StoreOp};
 

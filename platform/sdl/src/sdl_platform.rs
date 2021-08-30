@@ -21,7 +21,6 @@ use sdl2::EventPump;
 
 use sdl2_sys::SDL_WindowFlags;
 
-use ash::version::InstanceV1_0;
 use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
 

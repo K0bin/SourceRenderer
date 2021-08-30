@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use ash::vk;
-use ash::version::DeviceV1_0;
 
 use sourcerenderer_core::graphics::TextureDepthStencilView;
 use sourcerenderer_core::graphics::TextureRenderTargetView;
@@ -142,7 +141,7 @@ fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
 impl Drop for VkTexture {
   fn drop(&mut self) {
     if let Some(alloc) = &self.allocation {
-      self.device.allocator.destroy_image(self.image, alloc).unwrap();
+      self.device.allocator.destroy_image(self.image, alloc);
     }
   }
 }

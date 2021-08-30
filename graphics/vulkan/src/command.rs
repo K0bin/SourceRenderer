@@ -5,7 +5,6 @@ use std::cmp::max;
 use std::ffi::{CString};
 
 use ash::vk;
-use ash::version::DeviceV1_0;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 

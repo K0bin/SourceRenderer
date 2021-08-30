@@ -6,8 +6,6 @@ use std::marker::PhantomData;
 
 use thread_local::ThreadLocal;
 
-use ash::version::DeviceV1_0;
-
 use sourcerenderer_core::graphics::Resettable;
 
 use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice};

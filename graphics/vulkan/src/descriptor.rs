@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use ash::vk;
 use crate::{raw::RawVkDevice, texture::VkSampler};
-use ash::version::{DeviceV1_0, DeviceV1_1};
 use sourcerenderer_core::graphics::{BindingFrequency};
 use std::collections::HashMap;
 

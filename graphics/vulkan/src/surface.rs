@@ -7,7 +7,6 @@ use crate::raw::*;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use ash::prelude::VkResult;
-use ash::version::InstanceV1_0;
 use std::sync::atomic::{AtomicBool, Ordering};
 use ash::vk::Handle;
 
