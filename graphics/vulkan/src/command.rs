@@ -549,6 +549,10 @@ impl VkCommandBuffer {
 
   pub(crate) fn execute_inner(&mut self, mut submissions: Vec<VkCommandBufferSubmission>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    if submissions.is_empty() {
+      return;
+    }
+
     for submission in &submissions {
       assert_eq!(submission.command_buffer_type(), CommandBufferType::SECONDARY);
     }
