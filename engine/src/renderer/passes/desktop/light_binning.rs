@@ -1,12 +1,12 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec3, atomic_refcell::{AtomicRef, AtomicRefCell}, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, InputUsage, MemoryUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, ShaderType}};
+use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 
-use crate::renderer::{drawable::View, RendererScene};
+use crate::renderer::RendererScene;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

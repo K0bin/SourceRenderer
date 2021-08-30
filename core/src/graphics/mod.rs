@@ -37,8 +37,6 @@ pub use self::texture::{
   TextureDepthStencilView, TextureDepthStencilViewInfo 
 };
 pub use self::sync::Fence;
-pub use self::graph_template::*;
-pub use self::graph::*;
 
 mod device;
 mod instance;
@@ -51,8 +49,6 @@ mod texture;
 mod renderpass;
 mod backend;
 mod sync;
-mod graph;
-mod graph_template;
 mod resource;
 
 // TODO: find a better place for this

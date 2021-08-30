@@ -1,11 +1,11 @@
 use std::{collections::HashMap, io::{Cursor, Read, Seek, SeekFrom}, slice, sync::Arc, usize};
 
-use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::{self, Source}, json::extensions::scene};
-use legion::{Entity, EntityStore, World, WorldOptions};
-use nalgebra::{Matrix4, Quaternion, UnitQuaternion, Vector3};
+use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::Source};
+use legion::{Entity, World, WorldOptions};
+use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec2, Vec3, Vec4};
 
-use crate::{Parent, Transform, asset::{self, Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex}, math::BoundingBox, renderer::StaticRenderableComponent};
+use crate::{Parent, Transform, asset::{Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex}, math::BoundingBox, renderer::StaticRenderableComponent};
 
 pub struct GltfLoader {}
 
@@ -15,7 +15,7 @@ impl GltfLoader {
   }
 
   fn visit_node<P: Platform>(node: &Node, world: &mut World, asset_mgr: &AssetManager<P>, parent_entity: Option<Entity>, gltf_file_name: &str, buffer_cache: &mut HashMap<usize, Vec<u8>>) {
-    let (translation, rotation, scale) = match node.transform() {
+    let (translation, _rotation, scale) = match node.transform() {
       gltf::scene::Transform::Matrix { matrix: _columns_data } => {
         unimplemented!()
 
@@ -274,15 +274,16 @@ impl GltfLoader {
     }
   }
 
-  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, gltf_file_name: &str) {
-    let albedo = material.pbr_metallic_roughness().base_color_texture().unwrap();
+  fn load_material<P: Platform>(_material: &Material, _asset_mgr: &AssetManager<P>, _gltf_file_name: &str) {
+    /*let albedo = material.pbr_metallic_roughness().base_color_texture().unwrap();
     let albedo_source = albedo.texture().source().source();
     match albedo_source {
       gltf::image::Source::View { view, .. } => {
 
       },
       gltf::image::Source::Uri { .. } => unimplemented!(),
-    }
+    }*/
+    unimplemented!()
   }
 }
 
@@ -291,7 +292,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
     Gltf::from_reader(file).is_ok()
   }
 
-  fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = file.path.clone();
     let gltf = Gltf::from_reader(file).unwrap();
 

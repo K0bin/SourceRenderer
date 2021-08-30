@@ -1,12 +1,11 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec2UI, Vec4, atomic_refcell::{AtomicRef, AtomicRefCell}, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, Device, InputUsage, MemoryUsage, Output, PassInfo, PassInput, PassType, PipelineBinding, PipelineStage, RenderPassCallbacks, ShaderType, TextureUsage}};
+use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 
-use crate::renderer::drawable::View;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct ShaderScreenToView {

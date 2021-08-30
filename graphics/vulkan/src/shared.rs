@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{RenderPassInfo, Texture};
 use sourcerenderer_core::pool::{Pool, Recyclable};
 use crate::texture::VkTextureView;
-use crate::{VkFenceInner, VkRenderPass, VkSemaphore, VkTexture};
+use crate::{VkFenceInner, VkRenderPass, VkSemaphore};
 use crate::buffer::BufferAllocator;
 use std::sync::{RwLock, Arc};
 use crate::descriptor::VkDescriptorSetLayout;

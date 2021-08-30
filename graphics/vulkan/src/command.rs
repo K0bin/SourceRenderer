@@ -19,7 +19,7 @@ use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
 use crate::{raw::RawVkDevice, texture::VkSampler};
-use crate::{VkRenderPass, texture};
+use crate::VkRenderPass;
 use crate::VkFrameBuffer;
 use crate::VkPipeline;
 use crate::VkBackend;

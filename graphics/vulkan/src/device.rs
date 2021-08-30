@@ -20,7 +20,6 @@ use crate::buffer::VkBufferSlice;
 use std::cmp::min;
 use crate::texture::VkTextureView;
 use crate::transfer::VkTransfer;
-use std::collections::HashMap;
 
 pub struct VkDevice {
   device: Arc<RawVkDevice>,

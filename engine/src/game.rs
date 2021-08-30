@@ -1,4 +1,4 @@
-use std::{fs::File, sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
+use std::{sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -7,7 +7,7 @@ use legion::{World, Resources, Schedule};
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3};
 
-use crate::{Transform, asset::{self, loaders::{GltfContainer, GltfLoader}}, renderer::*};
+use crate::{Transform, renderer::*};
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;

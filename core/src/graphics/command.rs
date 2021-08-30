@@ -7,7 +7,6 @@ use crate::Vec2UI;
 use crate::graphics::{Backend, BufferUsage, TextureUsage};
 
 use super::LoadOp;
-use super::RenderPassInfo;
 use super::RenderpassRecordingMode;
 use super::ShaderType;
 use super::StoreOp;

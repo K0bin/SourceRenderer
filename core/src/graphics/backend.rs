@@ -7,7 +7,6 @@ use crate::graphics::Shader;
 use crate::graphics::Texture;
 use crate::graphics::Buffer;
 use crate::graphics::Swapchain;
-use crate::graphics::{RenderGraph, RenderGraphTemplate};
 use crate::graphics::TextureUnorderedAccessView;
 use crate::graphics::TextureRenderTargetView;
 use super::Queue;

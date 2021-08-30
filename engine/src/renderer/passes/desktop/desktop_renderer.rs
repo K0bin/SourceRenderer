@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{AddressMode, AttachmentRef, Backend, Barrier, BindingFrequency, CommandBuffer, DepthStencil, DepthStencilAttachmentRef, Device, Filter, Format, LoadOp, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassPipelineStage, RenderpassRecordingMode, SampleCount, SamplerInfo, ShaderType, StoreOp, SubpassInfo, Swapchain, SwapchainError, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage}};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage}};
 
-use crate::{asset::Texture, renderer::{LateLatchCamera, drawable::View, passes::late_latching::LateLatchingPass, renderer_assets::RendererTexture, renderer_internal::RenderPath, renderer_scene::RendererScene}};
+use crate::{renderer::{LateLatchCamera, drawable::View, passes::late_latching::LateLatchingPass, renderer_assets::RendererTexture, renderer_internal::RenderPath, renderer_scene::RendererScene}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass};
 
@@ -52,7 +52,7 @@ impl<B: Backend> DesktopRenderer<B> {
 }
 
 impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
-  fn on_swapchain_changed(&mut self, swapchain: &std::sync::Arc<B::Swapchain>) {
+  fn on_swapchain_changed(&mut self, _swapchain: &std::sync::Arc<B::Swapchain>) {
     todo!()
   }
 

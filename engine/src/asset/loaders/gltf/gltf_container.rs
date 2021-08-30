@@ -1,6 +1,5 @@
-use std::{fs::File, io::{Cursor, Error as IOError, ErrorKind, Read, Result as IOResult}, path::Path, usize};
-use gltf::{Document, Glb, Gltf, Node, Scene, buffer::Data as GltfBufferData, image::Data as GltfImageData, import, import_slice, json::serialize::to_string};
-use legion::{World, WorldOptions};
+use std::{fs::File, io::{Cursor, Error as IOError, ErrorKind, Result as IOResult}, path::Path, usize};
+use gltf::{Glb, Gltf, buffer::Data as GltfBufferData, image::Data as GltfImageData, import};
 use sourcerenderer_core::Platform;
 
 use crate::asset::asset_manager::{AssetContainer, AssetFile, AssetFileData};

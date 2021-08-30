@@ -11,7 +11,6 @@ use sourcerenderer_core::graphics::{CommandBufferType, Swapchain};
 
 use crate::VkBackend;
 use crate::VkCommandBufferRecorder;
-use crate::command::VkCommandBuffer;
 use crate::command::VkInnerCommandBufferInfo;
 use crate::raw::RawVkDevice;
 use crate::command::VkCommandPool;
@@ -253,11 +252,11 @@ impl VkQueue {
       panic!("Can only signal and wait for 4 semaphores each.");
     }
 
-    let mut new_fence = Option::<Arc<VkFence>>::None;
+    let mut _new_fence = Option::<Arc<VkFence>>::None;
     let mut fence = fence;
     if fence.is_none() && !signal_semaphores.is_empty() {
-      new_fence = Some(self.threads.shared().get_fence());
-      fence = Some(new_fence.as_ref().unwrap());
+      _new_fence = Some(self.threads.shared().get_fence());
+      fence = Some(_new_fence.as_ref().unwrap());
     }
 
     let mut cmd_buffer_mut = command_buffer;
@@ -327,7 +326,7 @@ impl Queue<VkBackend> for VkQueue {
     }
     // TODO: clean up
 
-    self.submit(submission, None, &wait_semaphore_refs, &signal_semaphore_refs);
+    self.submit(submission, fence, &wait_semaphore_refs, &signal_semaphore_refs);
     self.process_submissions(); // TODO bring back threaded submission
   }
 
