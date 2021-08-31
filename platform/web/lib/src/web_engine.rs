@@ -1,7 +1,8 @@
 use wasm_bindgen::{prelude::*, closure::Closure, JsCast};
 use web_sys::{HtmlCanvasElement, Worker, window};
-use std::{rc::Rc, cell::RefCell};
-use crate::{Renderer, start_asset_worker, start_game_worker, log};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
+use crate::{Renderer, start_asset_worker, start_game_worker};
+use sourcerenderer_webgl::{WebGLDevice, WebGLSurface, WebGLSwapchain};
 
 #[wasm_bindgen]
 pub struct WebEngine {
@@ -13,11 +14,15 @@ pub struct WebEngine {
 }
 
 impl WebEngine {
-  pub fn run(_canvas: HtmlCanvasElement) -> Self {
+  pub fn run(canvas: HtmlCanvasElement) -> Self {
     let game_worker = start_game_worker().unwrap();
     let asset_worker = start_asset_worker().unwrap();
 
     let renderer = Rc::new(RefCell::new(Renderer::new()));
+
+    let surface = Arc::new(WebGLSurface::new(&canvas));
+    let swapchain = WebGLSwapchain::new(&surface);
+    let device = WebGLDevice::new(&surface);
 
     let closure = Rc::new(RefCell::new(Option::<Closure<dyn FnMut()>>::None));
     let c_closure = closure.clone();

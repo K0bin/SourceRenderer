@@ -29,6 +29,8 @@ pub use transform::Parent;
 pub use camera::Camera;
 pub use camera::ActiveCamera;
 
+pub use self::game::{DeltaTime, TickDelta, TickDuration, TickRate, Tick};
+
 #[cfg(feature = "threading")]
 mod engine;
 
@@ -42,6 +44,3 @@ mod math;
 pub mod renderer;
 mod game;
 mod input;
-
-#[cfg(not(feature = "threading"))]
-pub use game::{DeltaTime, TickDelta, TickDuration, TickRate, Tick};

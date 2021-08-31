@@ -331,7 +331,7 @@ pub trait Shader {
   fn get_shader_type(&self) -> ShaderType;
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Hash, Eq, PartialEq)]
 pub struct GraphicsPipelineInfo<B: Backend> {
   pub vs: Arc<B::Shader>,
   pub fs: Option<Arc<B::Shader>>,
@@ -343,4 +343,21 @@ pub struct GraphicsPipelineInfo<B: Backend> {
   pub depth_stencil: DepthStencilInfo,
   pub blend: BlendInfo,
   pub primitive_type: PrimitiveType
+}
+
+impl<B: Backend> Clone for GraphicsPipelineInfo<B> {
+  fn clone(&self) -> Self {
+    Self {
+      vs: self.vs.clone(),
+      fs: self.fs.clone(),
+      gs: self.gs.clone(),
+      tcs: self.tcs.clone(),
+      tes: self.tes.clone(),
+      vertex_layout: self.vertex_layout.clone(),
+      rasterizer: self.rasterizer.clone(),
+      depth_stencil: self.depth_stencil.clone(),
+      blend: self.blend.clone(),
+      primitive_type: self.primitive_type.clone()
+    }
+  }
 }

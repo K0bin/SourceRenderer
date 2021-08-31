@@ -15,6 +15,7 @@ js-sys = "0.3.48"
 wasm-bindgen = { version = "0.2.74", features = ["serde-serialize"] }
 sourcerenderer_core = { path = "../../../core" }
 sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["web"] }
+sourcerenderer_webgl = { path = "../../../graphics/webgl" }
 legion = { version = "0.4.0", default-features = false, features = ["crossbeam-events", "codegen"] }
 serde = "1.0.124"
 serde_derive = "1.0.124"
