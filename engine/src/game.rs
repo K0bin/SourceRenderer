@@ -27,9 +27,13 @@ pub struct Game<P: Platform> {
   is_running: AtomicBool
 }
 
+#[derive(Debug, Clone)]
 pub struct TickDuration(pub Duration);
+#[derive(Debug, Clone, Copy)]
 pub struct TickRate(pub u32);
+#[derive(Debug, Clone)]
 pub struct DeltaTime(pub Duration);
+#[derive(Debug, Clone)]
 pub struct TickDelta(pub Duration);
 
 impl DeltaTime {
@@ -38,6 +42,7 @@ impl DeltaTime {
   }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Tick(pub u64);
 
 pub struct FilterAll {}
