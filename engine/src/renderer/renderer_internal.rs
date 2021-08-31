@@ -18,18 +18,8 @@ use crate::math::Frustum;
 
 use super::PointLight;
 use super::passes::desktop::desktop_renderer::DesktopRenderer;
+use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
-
-pub(super) trait RenderPath<B: Backend> {
-  fn on_swapchain_changed(&mut self, swapchain: &Arc<B::Swapchain>);
-  fn render(
-    &mut self,
-    scene: &Arc<AtomicRefCell<RendererScene<B>>>,
-    view: &Arc<AtomicRefCell<View>>,
-    lightmap: &Arc<RendererTexture<B>>,
-    primary_camera: &Arc<LateLatchCamera<B>>
-  ) -> Result<(), SwapchainError>;
-}
 
 pub(super) struct RendererInternal<P: Platform> {
   renderer: Arc<Renderer<P>>,

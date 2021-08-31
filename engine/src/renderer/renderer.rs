@@ -1,7 +1,7 @@
 use std::{cmp::max, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
 use crossbeam_channel::{Sender, unbounded};
 
-use sourcerenderer_core::platform::{Platform, Window, WindowState};
+use sourcerenderer_core::{atomic_refcell::AtomicRefCell, graphics::SwapchainError, platform::{Platform, Window, WindowState}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
@@ -16,7 +16,7 @@ use legion::systems::Builder;
 use crate::renderer::RendererInternal;
 use crate::renderer::camera::LateLatchCamera;
 
-use super::{StaticRenderableComponent, ecs::{PointLightComponent, RendererInterface}};
+use super::{StaticRenderableComponent, drawable::View, ecs::{PointLightComponent, RendererInterface}, renderer_assets::RendererTexture, renderer_scene::RendererScene};
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,

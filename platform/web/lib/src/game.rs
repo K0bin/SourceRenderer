@@ -2,7 +2,9 @@ use legion::{Schedule, World, Resources};
 use wasm_bindgen::{prelude::*, closure::Closure, JsCast};
 use sourcerenderer_engine::{transform, DeltaTime, TickDelta, TickDuration, TickRate, Tick};
 use web_sys::{MessageEvent, DedicatedWorkerGlobalScope};
+use js_sys::Date;
 use std::{cell::RefCell, rc::Rc, time::{SystemTime, Duration}};
+use crate::console_log;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SimulateFrameMessage {
@@ -19,8 +21,8 @@ pub struct GameInner {
   fixed_schedule: Schedule,
   schedule: Schedule,
   resources: Resources,
-  last_iter_time: SystemTime,
-  last_tick_time: SystemTime,
+  last_iter_time: Date,
+  last_tick_time: Date,
   tick: u64,
   frame: u64
 }
@@ -49,8 +51,8 @@ impl Game {
       resources,
       frame: 0,
       tick: 0,
-      last_iter_time: SystemTime::now(),
-      last_tick_time: SystemTime::now()
+      last_iter_time: Date::new_0(),
+      last_tick_time: Date::new_0()
     }));
 
     let c_inner = inner.clone();
@@ -75,21 +77,25 @@ impl Game {
 impl GameInner {
   fn simulate(&mut self, _message: SimulateFrameMessage) -> u64 {
     let frame = self.frame;
-    let now = SystemTime::now();
+    let now = Date::new_0();
 
     // run fixed step systems first
-    let mut tick_delta = now.duration_since(self.last_tick_time).unwrap();
+    let tick_delta_ms = now.get_time() - self.last_tick_time.get_time();
+    let tick_delta = Duration::new((tick_delta_ms / 1_000f64) as u64, (((tick_delta_ms * 1_000_000f64) as u64) % 1000_000_000u64) as u32);
     let tick_duration = self.resources.get::<TickDuration>().unwrap().0.clone();
 
     while tick_delta >= tick_duration {
-      self.last_tick_time += tick_duration;
+      self.last_tick_time.set_time(self.last_tick_time.get_time() + tick_duration.as_millis() as f64);
       self.resources.insert(Tick(self.tick));
       self.fixed_schedule.execute(&mut self.world, &mut self.resources);
       self.tick += 1;
-      tick_delta = now.duration_since(self.last_tick_time).unwrap();
+      let tick_delta_ms = now.get_time() - self.last_tick_time.get_time();
+      let tick_delta = Duration::new((tick_delta_ms / 1_000f64) as u64, (((tick_delta_ms * 1_000_000f64) as u64) % 1000_000_000u64) as u32);
     }
 
-    let delta = now.duration_since(self.last_iter_time).unwrap();
+    let delta_ms = now.get_time() - self.last_iter_time.get_time();
+    let delta_nanos = delta_ms * 1_000_000f64;
+    let delta = Duration::new((delta_ms / 1_000f64) as u64, (((delta_ms * 1_000_000f64) as u64) % 1000_000_000u64) as u32);
     self.last_iter_time = now;
     self.resources.insert(TickDelta(tick_delta));
     self.resources.insert(DeltaTime(delta));

@@ -1,7 +1,7 @@
 use wasm_bindgen::{prelude::*, closure::Closure, JsCast};
 use web_sys::{HtmlCanvasElement, Worker, window};
 use std::{rc::Rc, cell::RefCell};
-use crate::{Renderer, start_asset_worker, start_game_worker};
+use crate::{Renderer, start_asset_worker, start_game_worker, log};
 
 #[wasm_bindgen]
 pub struct WebEngine {

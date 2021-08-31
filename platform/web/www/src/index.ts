@@ -1,5 +1,5 @@
 import * as wasm from "sourcerenderer_web";
-import * as lib from "./lib.ts";
+import * as lib from "./lib.js";
 
 let engine: wasm.WebEngine | null = null;
 

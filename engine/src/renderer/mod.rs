@@ -8,6 +8,7 @@ mod command;
 mod renderer_internal;
 mod renderer_scene;
 mod light;
+mod render_path;
 
 mod camera;
 pub(crate) mod passes;

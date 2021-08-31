@@ -1,5 +1,4 @@
 import * as wasm from "sourcerenderer_web";
-import * as lib from "./lib.ts";
 
 let game: wasm.Game | null = null;
 

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage}};
 
-use crate::{renderer::{LateLatchCamera, drawable::View, passes::late_latching::LateLatchingPass, renderer_assets::RendererTexture, renderer_internal::RenderPath, renderer_scene::RendererScene}};
+use crate::{renderer::{LateLatchCamera, drawable::View, passes::late_latching::LateLatchingPass, renderer_assets::RendererTexture, render_path::RenderPath, renderer_scene::RendererScene}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass};
 
