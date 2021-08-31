@@ -17,10 +17,6 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.wasm$/,
-        type: 'webassembly/sync',
-      },
-      {
         test: /\.tsx?$/,
         use: {
           loader: 'ts-loader',
@@ -68,6 +64,6 @@ module.exports = {
     }),
   ],
   experiments:  {
-    syncWebAssembly: true
+    asyncWebAssembly: true
   }
 };
