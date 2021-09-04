@@ -4,7 +4,7 @@
   "description": "Render source engine maps in the browser",
   "main": "index.js",
   "scripts": {
-    "build_rust": "cd ../lib && wasm-pack build",
+    "build_rust": "cd ../lib && RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' wasm-pack build -- -Z build-std=std,panic_abort",
     "build": "webpack --config webpack.dev.js",
     "start": "webpack serve --config webpack.dev.js"
   },

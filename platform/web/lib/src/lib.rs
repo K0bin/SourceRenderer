@@ -2,6 +2,7 @@ mod utils;
 mod web_engine;
 mod game;
 mod renderer;
+mod threadpool;
 
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;
