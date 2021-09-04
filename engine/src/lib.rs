@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-extern crate num_cpus;
+// extern crate num_cpus;
 extern crate sourcerenderer_core;
 extern crate image;
 extern crate crossbeam_channel;
@@ -20,6 +20,7 @@ extern crate smallvec;
 extern crate gltf;
 extern crate rand;
 extern crate bitset_core;
+extern crate instant;
 
 #[cfg(feature = "threading")]
 pub use self::engine::Engine;

@@ -1,5 +1,6 @@
 use std::{rc::Rc, sync::Arc};
 
+use crossbeam_channel::Sender;
 use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Texture, Viewport};
 use wasm_bindgen::JsCast;
 use web_sys::{WebGlRenderingContext, WebGlTexture};
@@ -7,48 +8,74 @@ use web_sys::{WebGlRenderingContext, WebGlTexture};
 use crate::{RawWebGLContext, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, address_mode_to_gl, format_to_internal_gl, max_filter_to_gl, min_filter_to_gl, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}};
 
 pub struct WebGLCommandBuffer {
-  context: Rc<RawWebGLContext>,
-  pipeline: Option<WebGLGraphicsPipeline>
+  pipeline: Option<WebGLGraphicsPipeline>,
+  commands: Vec<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>
 }
 
 impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn set_pipeline(&mut self, pipeline: PipelineBinding<WebGLBackend>) {
     match pipeline {
       PipelineBinding::Graphics(pipeline) => {
-        self.context.use_program(Some(pipeline.gl_program()));
+        let handle = pipeline.handle();
+        self.commands.push(Box::new(move |device| {
+          let pipeline = device.pipeline(handle).clone();
+          device.use_program(Some(pipeline.gl_program()));
+        }));
       },
       PipelineBinding::Compute(_) => panic!("WebGL does not support compute shaders")
     }
   }
 
   fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<WebGLBuffer>) {
-    self.context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, vertex_buffer.gl_buffer());
+    // TODO: maybe track dirty and do before draw
+
+    let handle = vertex_buffer.handle();
+    self.commands.push(Box::new(move |device| {
+      let buffer = device.buffer(handle).clone();
+      device.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(buffer.gl_buffer()));
+    }));
   }
 
   fn set_index_buffer(&mut self, index_buffer: &Arc<WebGLBuffer>) {
-    self.context.bind_buffer(WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, index_buffer.gl_buffer());
+    // TODO: maybe track dirty and do before draw
+
+    let handle = index_buffer.handle();
+    self.commands.push(Box::new(move |device| {
+      let buffer = device.buffer(handle).clone();
+      device.bind_buffer(WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, Some(buffer.gl_buffer()));
+    }));
   }
 
   fn set_viewports(&mut self, viewports: &[ Viewport ]) {
+    // TODO: maybe track dirty and do before draw
+
     if viewports.len() == 0 {
       return;
     }
     debug_assert_eq!(viewports.len(), 1);
-    let viewport = viewports.first().unwrap();
-    self.context.viewport(viewport.position.x as i32, viewport.position.y as i32, viewport.extent.x as i32, viewport.extent.y as i32);
+    let viewports: Vec<Viewport> = viewports.iter().cloned().collect();
+    self.commands.push(Box::new(move |device| {
+      let viewport = viewports.first().unwrap();
+      device.viewport(viewport.position.x as i32, viewport.position.y as i32, viewport.extent.x as i32, viewport.extent.y as i32);
+    }));
   }
 
   fn set_scissors(&mut self, scissors: &[ Scissor ]) {
+    // TODO: maybe track dirty and do before draw
+
     if scissors.len() == 0 {
       return;
     }
     debug_assert_eq!(scissors.len(), 1);
-    let scissor = scissors.first().unwrap();
-    self.context.scissor(scissor.position.x as i32, scissor.position.y as i32, scissor.extent.x as i32, scissor.extent.y as i32);
+    let scissors: Vec<Scissor> = scissors.iter().cloned().collect();
+    self.commands.push(Box::new(move |device| {
+      let scissor = scissors.first().unwrap();
+      device.scissor(scissor.position.x as i32, scissor.position.y as i32, scissor.extent.x as i32, scissor.extent.y as i32);
+    }));
   }
 
   fn init_texture_mip_level(&mut self, src_buffer: &Arc<WebGLBuffer>, texture: &Arc<WebGLTexture>, mip_level: u32, array_layer: u32) {
-    let info = texture.get_info();
+    /*let info = texture.get_info();
     let data_ref = src_buffer.data();
     let data = data_ref.as_ref().unwrap();
     let target = texture.target();
@@ -80,12 +107,14 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     if !bind_texture.is_null() {
       let bind_texture = bind_texture.unchecked_into::<WebGlTexture>();
       self.context.bind_texture(target, Some(&bind_texture));
-    }
+    }*/
+    unimplemented!()
   }
 
   fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Arc<WebGLBuffer>
   where T: 'static + Send + Sync + Sized + Clone {
-    Arc::new(WebGLBuffer::new(&self.context, &BufferInfo { size: std::mem::size_of_val(data), usage }, MemoryUsage::CpuOnly))
+    //Arc::new(WebGLBuffer::new(&self.context, &BufferInfo { size: std::mem::size_of_val(data), usage }, MemoryUsage::CpuOnly))
+    unimplemented!()
   }
 
   fn upload_dynamic_data_inline<T>(&mut self, data: &[T], _visible_for_shader_stage: ShaderType)
@@ -101,11 +130,13 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
 
   fn draw(&mut self, vertices: u32, offset: u32) {
     assert!(self.pipeline.is_none());
-    self.context.draw_arrays(
-      self.pipeline.as_ref().unwrap().gl_draw_mode(),
-      offset as i32,
-      vertices as i32
-    );
+    self.commands.push(Box::new(move |device| {
+      device.draw_arrays(
+        WebGlRenderingContext::TRIANGLES, // TODO: self.pipeline.as_ref().unwrap().gl_draw_mode(),
+        offset as i32,
+        vertices as i32
+      );
+    }));
   }
 
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
@@ -115,17 +146,18 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     assert_eq!(instances, 0);
     assert_eq!(first_instance, 0);
     assert_eq!(vertex_offset, 0);
-
-    self.context.draw_elements_with_i32(
-      self.pipeline.as_ref().unwrap().gl_draw_mode(),
-      indices as i32,
-      WebGlRenderingContext::UNSIGNED_INT,
-      first_index as i32 * std::mem::size_of::<u32>() as i32,
-    );
+    self.commands.push(Box::new(move |device| {
+      device.draw_elements_with_i32(
+        WebGlRenderingContext::TRIANGLES, // TODO: self.pipeline.as_ref().unwrap().gl_draw_mode(),
+        indices as i32,
+        WebGlRenderingContext::UNSIGNED_INT,
+        first_index as i32 * std::mem::size_of::<u32>() as i32,
+      );
+    }));
   }
 
   fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureShaderResourceView>, sampler: &Arc<WebGLSampler>) {
-    assert_eq!(frequency, BindingFrequency::PerDraw);
+    /*assert_eq!(frequency, BindingFrequency::PerDraw);
     let gl_texture = texture.texture().handle();
     let view_info = texture.info();
     let info = texture.texture().get_info();
@@ -147,7 +179,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     if !bind_texture.is_null() {
       let bind_texture = bind_texture.unchecked_into::<WebGlTexture>();
       self.context.bind_texture(target, Some(&bind_texture));
-    }
+    }*/
   }
 
   fn bind_uniform_buffer(&mut self, _frequency: BindingFrequency, _binding: u32, _buffer: &Arc<WebGLBuffer>) {
@@ -175,7 +207,9 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
 
   fn finish(self) -> WebGLCommandSubmission {
     // nop
-    WebGLCommandSubmission {}
+    WebGLCommandSubmission {
+      cmd_buffer: self
+    }
   }
 
   fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLUnorderedAccessView>) {
@@ -213,16 +247,18 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   }
 }
 
-pub struct WebGLCommandSubmission {}
+pub struct WebGLCommandSubmission {
+  cmd_buffer: WebGLCommandBuffer
+}
 
 pub struct WebGLQueue {
-  context: Rc<RawWebGLContext>,
+  sender: Sender<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>
 }
 
 impl WebGLQueue {
-  pub fn new(context: &Rc<RawWebGLContext>) -> Self {
+  pub fn new(sender: &Sender<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>) -> Self {
     Self {
-      context: context.clone()
+      sender: sender.clone()
     }
   }
 }
@@ -230,24 +266,22 @@ impl WebGLQueue {
 impl Queue<WebGLBackend> for WebGLQueue {
   fn create_command_buffer(&self) -> WebGLCommandBuffer {
     WebGLCommandBuffer {
-      context: self.context.clone(),
-      pipeline: None
+      pipeline: None,
+      commands: Vec::new()
     }
   }
 
-  fn create_inner_command_buffer(&self, inheritance: &()) -> WebGLCommandBuffer {
+  fn create_inner_command_buffer(&self, _inheritance: &()) -> WebGLCommandBuffer {
     panic!("WebGL does not support inner command buffers")
   }
 
-  fn submit(&self, submission: WebGLCommandSubmission, fence: Option<&Arc<WebGLFence>>, wait_semaphores: &[&Arc<WebGLSemaphore>], signal_semaphores: &[&Arc<WebGLSemaphore>]) {
-    // nop
+  fn submit(&self, mut submission: WebGLCommandSubmission, _fence: Option<&Arc<WebGLFence>>, _wait_semaphores: &[&Arc<WebGLSemaphore>], _signal_semaphores: &[&Arc<WebGLSemaphore>]) {
+    for cmd in submission.cmd_buffer.commands.drain(..) {
+      self.sender.send(cmd).unwrap();
+    }
   }
 
-  fn present(&self, swapchain: &Arc<WebGLSwapchain>, wait_semaphores: &[&Arc<WebGLSemaphore>]) {
+  fn present(&self, _swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>]) {
     // nop in WebGL
   }
 }
-
-// doesnt matter anyway for WebGL
-unsafe impl Send for WebGLQueue {}
-unsafe impl Sync for WebGLQueue {}

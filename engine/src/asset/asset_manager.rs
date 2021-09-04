@@ -197,7 +197,7 @@ struct AssetManagerInner {
 }
 
 impl<P: Platform> AssetManager<P> {
-  pub fn new(device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>) -> Arc<Self> {
+  pub fn new(platform: &P, device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>) -> Arc<Self> {
     let (renderer_sender, renderer_receiver) = unbounded();
 
     let cond_var = Arc::new(Condvar::new());
@@ -219,7 +219,7 @@ impl<P: Platform> AssetManager<P> {
     let thread_count = 1;
     for _ in 0..thread_count {
       let c_manager = Arc::downgrade(&manager);
-      std::thread::Builder::new().name("AssetManagerThread".to_string()).spawn(move || asset_manager_thread_fn(c_manager)).unwrap();
+      platform.start_thread("AssetManagerThread", move || asset_manager_thread_fn(c_manager));
     }
 
     manager

@@ -1,8 +1,8 @@
 mod utils;
-mod web_engine;
-mod game;
-mod renderer;
 mod threadpool;
+mod platform;
+mod io;
+mod window;
 
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;
@@ -10,13 +10,22 @@ extern crate legion;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate rayon;
+#[macro_use]
+extern crate lazy_static;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use sourcerenderer_core::Platform;
+use sourcerenderer_core::platform::Window;
+use sourcerenderer_engine::Engine;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use self::web_engine::WebEngine;
+use web_sys::window;
 use web_sys::{EventTarget, HtmlCanvasElement, Worker};
-use self::renderer::Renderer;
-use game::Game;
+use self::platform::WebPlatform;
+use sourcerenderer_webgl::WebGLThreadDevice;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -40,6 +49,10 @@ extern "C" {
     // Multiple arguments too!
     #[wasm_bindgen(js_namespace = console, js_name = log)]
     pub fn log_many(a: &str, b: &str);
+
+    // Multiple arguments too!
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    pub fn logv(a: &JsValue);
 }
 
 #[macro_export]
@@ -50,23 +63,46 @@ macro_rules! console_log {
 }
 
 #[wasm_bindgen(js_name = "startEngine")]
-pub fn start_engine(canvas: EventTarget) -> WebEngine {
-  // must use extremely generic type here and to avoid typescript errors
-  // when loading the wasm module on a web worker where DOM types dont exist
+pub fn start_engine(canvas_selector: &str) {
   utils::set_panic_hook();
-  WebEngine::run(canvas.dyn_into::<HtmlCanvasElement>().unwrap())
-}
 
-#[wasm_bindgen(js_name = "gameWorkerMain")]
-pub fn start_game(tick_rate: u32) -> Game {
-  utils::set_panic_hook();
-  Game::run(tick_rate)
-}
+  console_log!("Initializing platform");
+  let platform = WebPlatform::new(canvas_selector);
 
-#[wasm_bindgen(raw_module = "../../www/src/lib.ts")]
-extern "C" {
-  #[wasm_bindgen(js_name = "startGameWorker", catch)]
-  pub fn start_game_worker() -> Result<Worker, JsValue>;
-  #[wasm_bindgen(js_name = "startAssetWorker", catch)]
-  pub fn start_asset_worker() -> Result<Worker, JsValue>;
+  console_log!("Initializing engine");
+  let mut engine = Engine::run(&platform);
+  console_log!("Initialized engine");
+  let device = engine.device().clone();
+  console_log!("Got device");
+  let surface = engine.surface().clone();
+  console_log!("Got surface");
+  let receiver = device.receiver();
+  let window = platform.window();
+  let web_window = window.window();
+  let document = window.document();
+  let mut thread_device = WebGLThreadDevice::new(receiver, &surface, document);
+
+
+  let closure = Rc::new(RefCell::new(Option::<Closure<dyn FnMut()>>::None));
+  let c_closure = closure.clone();
+  let c_web_window = web_window.clone();
+  let c_swapchain = window.create_swapchain(true, &device, &surface); // Returns the same swapchain for WebWindow
+  *closure.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+    // TODO: Sample inputs
+
+    let exit = false;
+    if exit {
+      let _ = c_closure.borrow_mut().take();
+      return;
+    }
+
+    thread_device.process();
+    c_swapchain.bump_frame();
+
+    c_web_window.request_animation_frame((c_closure.borrow().as_ref().unwrap()).as_ref().unchecked_ref()).unwrap();
+  }) as Box<dyn FnMut()>));
+
+  web_window.request_animation_frame(closure.borrow().as_ref().unwrap().as_ref().unchecked_ref()).unwrap();
+
+  std::mem::forget(closure);
 }

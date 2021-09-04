@@ -8,7 +8,7 @@ use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Form
 
 use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
 
-pub(super) struct RendererTexture<B: Backend> {
+pub struct RendererTexture<B: Backend> {
   pub(super) view: Arc<B::TextureShaderResourceView>
 }
 
@@ -19,7 +19,7 @@ impl<B: Backend> PartialEq for RendererTexture<B> {
 }
 impl<B: Backend> Eq for RendererTexture<B> {}
 
-pub(super) struct RendererMaterial<B: Backend> {
+pub struct RendererMaterial<B: Backend> {
   pub(super) properties: HashMap<String, RendererMaterialValue<B>>,
   pub(super) shader_name: String // TODO reference actual shader
 }
@@ -30,7 +30,7 @@ impl<B: Backend> Clone for RendererMaterial<B> {
   }
 }
 
-pub(super) enum RendererMaterialValue<B: Backend> {
+pub enum RendererMaterialValue<B: Backend> {
   Float(f32),
   Texture(Arc<RendererTexture<B>>)
 }
@@ -132,7 +132,7 @@ impl<B: Backend> Ord for RendererMaterial<B> {
   }
 }
 
-pub(super) struct RendererModel<B: Backend> {
+pub struct RendererModel<B: Backend> {
   inner: AtomicRefCell<RendererModelInner<B>>
 }
 
@@ -160,11 +160,11 @@ impl<B: Backend> RendererModel<B> {
   }
 }
 
-pub(super) struct RendererMesh<B: Backend> {
-  pub(super) vertices: Arc<B::Buffer>,
-  pub(super) indices: Option<Arc<B::Buffer>>,
-  pub(super) parts: Box<[MeshRange]>,
-  pub(super) bounding_box: Option<BoundingBox>
+pub struct RendererMesh<B: Backend> {
+  pub vertices: Arc<B::Buffer>,
+  pub indices: Option<Arc<B::Buffer>>,
+  pub parts: Box<[MeshRange]>,
+  pub bounding_box: Option<BoundingBox>
 }
 
 

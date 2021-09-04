@@ -1,8 +1,7 @@
-use std::{sync::Arc, vec};
+use std::{sync::{Arc, atomic::{AtomicU32, AtomicU64}}, vec};
 
+use crossbeam_channel::unbounded;
 use sourcerenderer_core::graphics::{Adapter, AdapterType, Instance};
-
-use web_sys::{WebGl2RenderingContext as WebGLContext};
 
 use crate::{WebGLBackend, WebGLDevice, WebGLSurface};
 pub struct WebGLInstance {
@@ -12,7 +11,8 @@ pub struct WebGLInstance {
 impl WebGLInstance {
   pub fn new() -> Self {
     Self {
-      adapters: vec![Arc::new(WebGLAdapter {})]
+      adapters: vec![Arc::new(WebGLAdapter {
+      })]
     }
   }
 }
@@ -24,7 +24,6 @@ impl Instance<WebGLBackend> for WebGLInstance {
 }
 
 pub struct WebGLAdapter {
-
 }
 
 impl Adapter<WebGLBackend> for WebGLAdapter {
@@ -32,7 +31,7 @@ impl Adapter<WebGLBackend> for WebGLAdapter {
     AdapterType::Other
   }
 
-  fn create_device(&self, surface: &WebGLSurface) -> WebGLDevice {
+  fn create_device(&self, surface: &Arc<WebGLSurface>) -> WebGLDevice {
     WebGLDevice::new(surface)
   }
 }

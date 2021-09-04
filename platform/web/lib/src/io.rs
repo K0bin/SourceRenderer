@@ -8,11 +8,12 @@ impl IO for WebIO {
   type File = WebFile;
 
   fn open_asset<P: AsRef<std::path::Path>>(path: P) -> IOResult<Self::File> {
+    // IOResult::Err(std::io::Error::new(std::io::ErrorKind::Other, "stub"))
     todo!()
   }
 
   fn asset_exists<P: AsRef<std::path::Path>>(path: P) -> bool {
-    todo!()
+    false
   }
 
   fn open_external_asset<P: AsRef<std::path::Path>>(path: P) -> IOResult<Self::File> {
@@ -20,7 +21,7 @@ impl IO for WebIO {
   }
 
   fn external_asset_exists<P: AsRef<std::path::Path>>(path: P) -> bool {
-    todo!()
+    false
   }
 }
 

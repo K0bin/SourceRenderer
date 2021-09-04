@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
 use web_sys::{ErrorEvent, Event, Worker};
+use crate::console_log;
 
 #[wasm_bindgen]
 pub struct WorkerPool {

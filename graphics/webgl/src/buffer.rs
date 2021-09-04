@@ -1,111 +1,77 @@
-use std::{cell::{Ref, RefCell}, rc::Rc};
+use std::{cell::{Ref, RefCell, UnsafeCell}, rc::Rc, sync::Mutex};
 
+use crossbeam_channel::Sender;
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
-use web_sys::{WebGlBuffer as WebGLBufferHandle, WebGl2RenderingContext as WebGLContext};
+use web_sys::{WebGl2RenderingContext as WebGLContext, WebGlBuffer as WebGLBufferHandle, WebGlRenderingContext};
 
-use crate::RawWebGLContext;
+use crate::{GLThreadSender, RawWebGLContext, thread::BufferHandle};
 
 pub struct WebGLBuffer {
-  context: Rc<RawWebGLContext>,
-  buffer: Option<WebGLBufferHandle>,
+  handle: crate::thread::BufferHandle,
+  sender: GLThreadSender,
   info: BufferInfo,
-  length: usize,
-  mapped_data: RefCell<Option<Box<[u8]>>>,
-  gl_usage: u32,
-  keep_data: bool
+  mapped_data: Mutex<Option<UnsafeCell<Box<[u8]>>>>
 }
 
-unsafe impl Send for WebGLBuffer {}
-unsafe impl Sync for WebGLBuffer {}
-
 impl WebGLBuffer {
-  pub fn new(
-    context: &Rc<RawWebGLContext>,
-    info: &BufferInfo,
-    _memory_usage: MemoryUsage,
-  ) -> Self {
-    let buffer_usage = info.usage;
-    let mut usage = WebGLContext::STATIC_DRAW;
-    if buffer_usage.intersects(BufferUsage::COPY_DST) {
-      if buffer_usage.intersects(BufferUsage::CONSTANT) {
-        usage = WebGLContext::STREAM_READ;
-      } else {
-        usage = WebGLContext::STATIC_READ;
-      }
-    }
-    if buffer_usage.intersects(BufferUsage::COPY_SRC) {
-      if buffer_usage.intersects(BufferUsage::CONSTANT) {
-        usage = WebGLContext::STREAM_COPY;
-      } else {
-        usage = WebGLContext::STATIC_COPY;
-      }
-    }
-    let buffer = if buffer_usage == BufferUsage::COPY_SRC {
-      Some(context.create_buffer().unwrap())
-    } else {
-      None
-    };
+  pub fn new(handle: BufferHandle, info: &BufferInfo, memory_usage: MemoryUsage, sender: &GLThreadSender) -> Self {
+    let c_info = info.clone();
+    sender.send(Box::new(move |device| {
+      device.create_buffer(handle, &c_info, memory_usage, None);
+    })).unwrap();
+
     Self {
-      context: context.clone(),
-      length: info.size,
+      sender: sender.clone(),
+      handle,
       info: info.clone(),
-      gl_usage: usage,
-      mapped_data: RefCell::new(None),
-      buffer,
-      keep_data: buffer_usage.intersects(BufferUsage::COPY_SRC)
+      mapped_data: Mutex::new(None)
     }
   }
 
-  pub fn gl_buffer(&self) -> Option<&WebGLBufferHandle> {
-    self.buffer.as_ref()
-  }
-
-  pub fn data(&self) -> Ref<Option<Box<[u8]>>> {
-    self.mapped_data.borrow()
+  pub fn handle(&self) -> crate::thread::BufferHandle {
+    self.handle
   }
 }
 
 impl Drop for WebGLBuffer {
   fn drop(&mut self) {
-    if let Some(buffer) = &self.buffer {
-      self.context.delete_buffer(Some(buffer));
-    }
+    let handle = self.handle;
+    self.sender.send(Box::new(move |device| device.remove_buffer(handle))).unwrap();
   }
 }
 
 impl Buffer for WebGLBuffer {
-  fn map_mut<T>(&self) -> Option<sourcerenderer_core::graphics::MutMappedBuffer<Self, T>>
+  fn map_mut<T>(&self) -> Option<MutMappedBuffer<Self, T>>
   where Self: Sized, T: 'static + Send + Sync + Sized + Clone {
     MutMappedBuffer::new(self, true)
   }
 
-  fn map<T>(&self) -> Option<sourcerenderer_core::graphics::MappedBuffer<Self, T>>
+  fn map<T>(&self) -> Option<MappedBuffer<Self, T>>
   where Self: Sized, T: 'static + Send + Sync + Sized + Clone {
     MappedBuffer::new(self, true)
   }
 
   unsafe fn map_unsafe(&self, _invalidate: bool) -> Option<*mut u8> {
-    let mut mapped_data = Vec::with_capacity(self.length);
-    mapped_data.set_len(self.length);
-    let mut mapped_data_mut = self.mapped_data.borrow_mut();
-    *mapped_data_mut = Some(mapped_data.into_boxed_slice());
-    Some(mapped_data_mut.as_mut().unwrap().as_mut_ptr())
+    let mut mapped_data = self.mapped_data.lock().unwrap();
+    *mapped_data= Some(UnsafeCell::new(vec![0; self.get_length()].into_boxed_slice()));
+    Some(mapped_data.as_mut().unwrap().get_mut().as_mut_ptr())
   }
 
   unsafe fn unmap_unsafe(&self, _flush: bool) {
-    if let Some(buffer) = &self.buffer {
-      let mut mapped_data_mut = self.mapped_data.borrow_mut();
-      self.context.bind_buffer(WebGLContext::ARRAY_BUFFER, Some(buffer));
-      self.context.buffer_data_with_u8_array(WebGLContext::ARRAY_BUFFER, &mapped_data_mut.as_ref().unwrap()[..], self.gl_usage);
-      if self.keep_data {
-        *mapped_data_mut = None;
-      }
-    }
+    let mut mapped_data = self.mapped_data.lock().unwrap();
+    let data = mapped_data.take().unwrap();
+    let handle = self.handle;
+    self.sender.send(Box::new(move |device| {
+      let buffer = device.buffer(handle).clone();
+      device.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(buffer.gl_buffer()));
+      let data = &*(data.get());
+      device.buffer_data_with_u8_array(WebGlRenderingContext::ARRAY_BUFFER, &data[..], buffer.gl_usage());
+    })).unwrap();
   }
 
   fn get_length(&self) -> usize {
-    self.length
+    self.info.size
   }
 
   fn get_info(&self) -> &BufferInfo {

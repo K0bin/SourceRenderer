@@ -2,7 +2,7 @@ use std::{ops::Deref, panic};
 
 use wasm_bindgen::JsCast;
 
-use web_sys::{WebGl2RenderingContext, WebglCompressedTextureS3tc};
+use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext, WebglCompressedTextureS3tc};
 
 use crate::WebGLSurface;
 
@@ -24,8 +24,9 @@ pub struct WebGLExtensions {
 }
 
 impl RawWebGLContext {
-  pub fn new(surface: &WebGLSurface) -> Self {
-    let context_obj = surface.canvas().get_context("webgl2").unwrap();
+  pub fn new(document: &Document, surface: &WebGLSurface) -> Self {
+    let canvas = surface.canvas(document);
+    let context_obj = canvas.get_context("webgl2").unwrap();
     match context_obj {
       Some(context_obj) => {
         let webgl2_context = context_obj.dyn_into::<WebGl2RenderingContext>().unwrap();

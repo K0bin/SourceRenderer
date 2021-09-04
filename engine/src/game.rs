@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use legion::{World, Resources, Schedule};
 
@@ -16,8 +16,9 @@ use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use crate::input::InputState;
 use crate::{fps_camera::FPSCamera, renderer::RendererInterface};
+use instant::Instant;
 
-pub struct TimeStampedInputState(InputState, SystemTime);
+pub struct TimeStampedInputState(InputState, Instant);
 
 #[cfg(feature = "threading")]
 pub struct Game {
@@ -54,6 +55,7 @@ impl LayoutFilter for FilterAll {
 #[cfg(feature = "threading")]
 impl Game {
   pub fn run<P: Platform>(
+    platform: &P,
     input: &Arc<Input>,
     renderer: &Arc<Renderer<P>>,
     asset_manager: &Arc<AssetManager<P>>,
@@ -72,6 +74,8 @@ impl Game {
         let csgo_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive";
     #[cfg(target_os = "android")]
       let csgo_path = "content://com.android.externalstorage.documents/tree/primary%3Agames%2Fcsgo/document/primary%3Agames%2Fcsgo";
+    #[cfg(target_arch = "wasm32")]
+      let csgo_path = "";
 
     println!("Csgo path: {:?}", csgo_path);
 
@@ -80,7 +84,7 @@ impl Game {
     let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();*/
 
 
-    let mut level = {
+    /*let mut level = {
       asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
       let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
       while !progress.is_done() {
@@ -88,7 +92,7 @@ impl Game {
       }
       asset_manager.load_level("de_overpass.bsp").unwrap()
     };
-    println!("Done loading level");
+    println!("Done loading level");*/
 
     let game = Arc::new(Self {
       input: input.clone(),
@@ -99,7 +103,7 @@ impl Game {
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
     let c_game = game.clone();
-    thread::Builder::new().name("GameThread".to_string()).spawn(move || {
+    platform.start_thread("GameThread", move || {
       let mut world = World::default();
       let mut fixed_schedule = Schedule::builder();
       let mut schedule = Schedule::builder();
@@ -119,7 +123,7 @@ impl Game {
 
       println!("Point Light: {:?}", point_light_entity);
 
-      world.move_from(&mut level, &FilterAll {});
+      //world.move_from(&mut level, &FilterAll {});
 
       //resources.insert(c_renderer.primary_camera().clone());
 
@@ -130,18 +134,18 @@ impl Game {
       let mut tick = 0u64;
       let mut schedule = schedule.build();
       let mut fixed_schedule = fixed_schedule.build();
-      let mut last_tick_time = SystemTime::now();
-      let mut last_iter_time = SystemTime::now();
+      let mut last_tick_time = Instant::now();
+      let mut last_iter_time = Instant::now();
       loop {
         if !c_game.is_running() {
           break;
         }
         resources.insert(c_game.input.poll());
 
-        let now = SystemTime::now();
+        let now = Instant::now();
 
         // run fixed step systems first
-        let mut tick_delta = now.duration_since(last_tick_time).unwrap();
+        let mut tick_delta = now.duration_since(last_tick_time);
         if c_renderer.is_saturated() && tick_delta <= tick_duration {
           std::thread::yield_now();
         }
@@ -151,16 +155,16 @@ impl Game {
           resources.insert(Tick(tick));
           fixed_schedule.execute(&mut world, &mut resources);
           tick += 1;
-          tick_delta = now.duration_since(last_tick_time).unwrap();
+          tick_delta = now.duration_since(last_tick_time);
         }
 
-        let delta = now.duration_since(last_iter_time).unwrap();
+        let delta = now.duration_since(last_iter_time);
         last_iter_time = now;
         resources.insert(TickDelta(tick_delta));
         resources.insert(DeltaTime(delta));
         schedule.execute(&mut world, &mut resources);
       }
-    }).unwrap();
+    });
 
     game
   }

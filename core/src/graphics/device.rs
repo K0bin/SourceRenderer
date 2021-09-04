@@ -23,7 +23,7 @@ pub enum MemoryUsage {
 
 pub trait Adapter<B: Backend> {
   fn adapter_type(&self) -> AdapterType;
-  fn create_device(&self, surface: &B::Surface) -> B::Device;
+  fn create_device(&self, surface: &Arc<B::Surface>) -> B::Device;
 }
 
 pub trait Device<B: Backend> {

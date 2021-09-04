@@ -4,44 +4,52 @@ use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Te
 
 use web_sys::{WebGlRenderingContext, WebGlTexture as WebGLTextureHandle, WebglCompressedTextureS3tc};
 
-use crate::{RawWebGLContext, WebGLBackend};
+use crate::{GLThreadSender, RawWebGLContext, WebGLBackend, thread::TextureHandle};
+
+enum WebGLTextureInner {
+  Internal,
+  Explicit {
+    handle: crate::thread::TextureHandle,
+    sender: GLThreadSender
+  }
+}
 
 pub struct WebGLTexture {
-  context: Rc<RawWebGLContext>,
-  texture: WebGLTextureHandle,
-  info: TextureInfo,
-  is_cubemap: bool,
-  target: u32,
+  inner: WebGLTextureInner,
+  info: TextureInfo
 }
 
 unsafe impl Send for WebGLTexture {}
 unsafe impl Sync for WebGLTexture {}
 
 impl WebGLTexture {
-  pub fn new(context: &Rc<RawWebGLContext>, info: &TextureInfo) -> Self {
-    assert!(info.array_length == 6 || info.array_length == 1);
-    let is_cubemap = info.array_length == 6;
-    let target = if is_cubemap { WebGlRenderingContext::TEXTURE_BINDING_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_BINDING_2D };
-    let texture = context.create_texture().unwrap();
+  pub fn new(id: TextureHandle, info: &TextureInfo, sender: &GLThreadSender) -> Self {
+    let c_info = info.clone();
+    sender.send(Box::new(move |device| {
+      device.create_texture(id, &c_info);
+    })).unwrap();
+
     Self {
-      context: context.clone(),
-      texture,
-      info: info.clone(),
-      is_cubemap,
-      target
+      inner: WebGLTextureInner::Explicit {
+        handle: id,
+        sender: sender.clone(),
+      },
+      info: info.clone()
     }
   }
 
-  pub fn handle(&self) -> &WebGLTextureHandle {
-    &self.texture
+  pub fn new_internal(info: &TextureInfo) -> Self {
+    Self {
+      inner: WebGLTextureInner::Internal,
+      info: info.clone()
+    }
   }
 
-  pub fn is_cubemap(&self) -> bool {
-    self.is_cubemap
-  }
-
-  pub fn target(&self) -> u32 {
-    self.target
+  pub fn handle(&self) -> Option<TextureHandle> {
+    match &self.inner {
+      WebGLTextureInner::Internal => None,
+      WebGLTextureInner::Explicit { handle, ..} => Some(*handle),
+    }
   }
 }
 
@@ -53,13 +61,25 @@ impl Texture for WebGLTexture {
 
 impl Drop for WebGLTexture {
   fn drop(&mut self) {
-    self.context.delete_texture(Some(&self.texture));
+    match &self.inner {
+      WebGLTextureInner::Internal => { /* nothing to do */ },
+      WebGLTextureInner::Explicit { handle, sender} => {
+        let handle = *handle;
+        sender.send(Box::new(move |device| {
+          device.remove_texture(handle);
+        })).unwrap();
+      },
+    }
   }
 }
 
 impl PartialEq for WebGLTexture {
   fn eq(&self, other: &Self) -> bool {
-    self.context == other.context && self.texture == other.texture
+    match (&self.inner, &other.inner) {
+      (WebGLTextureInner::Internal, WebGLTextureInner::Internal) => true,
+      (WebGLTextureInner::Explicit { handle, .. }, WebGLTextureInner::Explicit { handle: other_handle, .. }) => handle == other_handle,
+      _ => false
+    }
   }
 }
 

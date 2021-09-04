@@ -40,6 +40,16 @@ impl Platform for AndroidPlatform {
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     Ok(Arc::new(VkInstance::new(&["VK_KHR_surface", "VK_KHR_android_surface"], debug_layers)))
   }
+
+  fn start_thread<F>(&self, name: &str, callback: F)
+  where
+        F: FnOnce(),
+        F: Send + 'static {
+    std::thread::Builder::new()
+      .name(name.to_string())
+      .spawn(callback)
+      .unwrap();
+  }
 }
 
 pub struct AndroidWindow {

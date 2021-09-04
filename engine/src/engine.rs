@@ -1,6 +1,7 @@
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::platform::Platform;
 use std::sync::Arc;
+use std::sync::MutexGuard;
 
 use sourcerenderer_core::ThreadPoolBuilder;
 use sourcerenderer_core::graphics::*;
@@ -23,10 +24,14 @@ pub struct Engine<P: Platform> {
 }
 
 impl<P: Platform> Engine<P> {
+  #[cfg(not(feature = "web"))]
   pub fn initialize_global() {
     let cores = num_cpus::get();
     ThreadPoolBuilder::new().num_threads(cores - 2).build_global().unwrap();
   }
+
+  #[cfg(feature = "web")]
+  pub fn initialize_global() {}
 
   pub fn run(platform: &P) -> Self {
     let instance = platform.create_graphics(false).expect("Failed to initialize graphics");
@@ -36,11 +41,11 @@ impl<P: Platform> Engine<P> {
     let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let swapchain = Arc::new(platform.window().create_swapchain(false, &device, &surface));
-    let asset_manager = AssetManager::<P>::new(&device);
+    let asset_manager = AssetManager::<P>::new(&platform, &device);
     let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
     let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
-    let renderer = Renderer::<P>::run(&instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
-    let game = Game::run::<P>(&input, &renderer, &asset_manager, TICK_RATE);
+    let renderer = Renderer::<P>::run(platform, &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
+    let game = Game::run::<P>(&platform, &input, &renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
       game,
@@ -91,5 +96,13 @@ impl<P: Platform> Engine<P> {
       return false;
     }
     return true;
+  }
+
+  pub fn device(&self) -> &Arc<<P::GraphicsBackend as Backend>::Device> {
+    self.renderer.device()
+  }
+
+  pub fn surface(&self) -> MutexGuard<Arc<<P::GraphicsBackend as Backend>::Surface>> {
+    self.renderer.surface()
   }
 }

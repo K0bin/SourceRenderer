@@ -1,16 +1,19 @@
-import * as wasm from "sourcerenderer_web";
-import * as lib from "./lib.js";
 
-let engine: wasm.WebEngine | null = null;
+const { startEngine } = wasm_bindgen;
 
 start();
 
 function start() {
-  const canvas = document.getElementById("canvas")! as HTMLCanvasElement;
-  engine = wasm.startEngine(canvas);
+  wasm_bindgen('libsourcerenderer.wasm')
+      .then(() => {
+          startEngine("canvas");
+      })
+      .catch((e) => {
+          console.error("Failed initializing WASM: " + e);
+      });
 }
 
-if ('serviceWorker' in navigator) {
+/*if ('serviceWorker' in navigator) {
     // Use the window load event to keep the page load performant
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./service_worker.bundle.js').then(registration => {
@@ -19,4 +22,4 @@ if ('serviceWorker' in navigator) {
             console.log('ServiceWorker registration failed: ', registrationError);
           });
     });
-}
+}*/

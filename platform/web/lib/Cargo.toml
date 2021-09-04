@@ -14,11 +14,13 @@ default = ["console_error_panic_hook"]
 js-sys = "0.3.48"
 wasm-bindgen = { version = "0.2.74", features = ["serde-serialize"] }
 sourcerenderer_core = { path = "../../../core" }
-sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["web"] }
+sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["threading", "web"] }
 sourcerenderer_webgl = { path = "../../../graphics/webgl" }
 legion = { version = "0.4.0", default-features = false, features = ["crossbeam-events", "codegen"] }
 serde = "1.0.124"
 serde_derive = "1.0.124"
+rayon = "1.5.1"
+lazy_static = "1.4.0"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -46,7 +48,9 @@ features = [
   'WebGlTexture',
   'Window',
   'Worker',
-  'DedicatedWorkerGlobalScope'
+  'DedicatedWorkerGlobalScope',
+  'Navigator',
+  'ErrorEvent'
 ]
 
 [dev-dependencies]

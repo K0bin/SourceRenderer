@@ -1,53 +1,103 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicU32, AtomicU64, Ordering}};
 
-use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain};
-use web_sys::HtmlCanvasElement;
+use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, TextureInfo, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage};
+use wasm_bindgen::JsCast;
+use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
-use crate::{WebGLBackend, sync::WebGLSemaphore, texture::WebGLRenderTargetView};
+use crate::{WebGLBackend, WebGLTexture, WebGLTextureShaderResourceView, sync::WebGLSemaphore, texture::WebGLRenderTargetView};
 
 pub struct WebGLSurface {
-  canvas_element: HtmlCanvasElement
-}
+  //canvas_element: HtmlCanvasElement
 
-unsafe impl Send for WebGLSurface {}
-unsafe impl Sync for WebGLSurface {}
+  selector: String,
+  width: u32,
+  height: u32
+}
 
 impl Surface for WebGLSurface {}
 
 impl PartialEq for WebGLSurface {
   fn eq(&self, other: &Self) -> bool {
-    self.canvas_element == other.canvas_element
+    //self.canvas_element == other.canvas_element
+    self.selector == other.selector
   }
 }
 
 impl Eq for WebGLSurface {}
 
 impl WebGLSurface {
-  pub fn new(canvas_element: &HtmlCanvasElement) -> Self {
+  /*pub fn new(canvas_element: &HtmlCanvasElement) -> Self {
     Self {
       canvas_element: canvas_element.clone()
     }
+  }*/
+
+  pub fn new(selector: &str, document: &Document) -> Self {
+    let canvas = Self::canvas_internal(selector, document);
+    let width = canvas.width();
+    let height = canvas.height();
+    Self {
+      selector: selector.to_string(),
+      width,
+      height
+    }
   }
 
-  pub fn canvas(&self) -> &HtmlCanvasElement {
-    &self.canvas_element
+  fn canvas_internal(selector: &str, document: &Document) -> HtmlCanvasElement {
+    let element = document.query_selector(selector).unwrap().unwrap();
+    element.dyn_into::<HtmlCanvasElement>().unwrap()
+  }
+
+  pub fn canvas(&self, document: &Document) -> HtmlCanvasElement {    
+    Self::canvas_internal(&self.selector, document)
+  }
+
+  pub fn selector(&self) -> &str {
+    &self.selector
   }
 }
 
 pub struct WebGLSwapchain {
+  prepared_frame: AtomicU64,
+  processed_frame: AtomicU64,
   surface: Arc<WebGLSurface>,
   width: u32,
-  height: u32
+  height: u32,
+  backbuffer_view: Arc<WebGLRenderTargetView>
 }
 
 impl WebGLSwapchain {
   pub fn new(surface: &Arc<WebGLSurface>) -> Self {
+    let backbuffer = Arc::new(WebGLTexture::new_internal(&TextureInfo {
+      format: Format::Unknown,
+      width: surface.width,
+      height: surface.height,
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::RENDER_TARGET | TextureUsage::PRESENT,
+    }));
+
+    let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureRenderTargetViewInfo {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1
+    }));
     
     Self {
+      prepared_frame: AtomicU64::new(0),
+      processed_frame: AtomicU64::new(0),
       surface: surface.clone(),
-      width: surface.canvas().width(),
-      height: surface.canvas().height()
+      width: surface.width,
+      height: surface.height,
+      backbuffer_view: view
     }
+  }
+
+  pub fn bump_frame(&self) {
+    self.processed_frame.fetch_add(1, Ordering::SeqCst);
   }
 }
 
@@ -77,7 +127,12 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
   }
 
   fn prepare_back_buffer(&self, semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
-    todo!()
+    while self.processed_frame.load(Ordering::SeqCst) < self.prepared_frame.load(Ordering::SeqCst) - 1 {
+      // Block so we dont run too far ahead
+    }
+
+    self.prepared_frame.fetch_add(1, Ordering::SeqCst);
+    Some(self.backbuffer_view.clone())
   }
 
   fn width(&self) -> u32 {

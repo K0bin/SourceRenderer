@@ -179,6 +179,16 @@ impl Platform for SDLPlatform {
     let extensions = self.window.vulkan_instance_extensions().unwrap();
     Ok(Arc::new(VkInstance::new(&extensions, debug_layers)))
   }
+
+  fn start_thread<F>(&self, name: &str, callback: F)
+  where
+        F: FnOnce(),
+        F: Send + 'static {
+    std::thread::Builder::new()
+      .name(name.to_string())
+      .spawn(callback)
+      .unwrap();
+  }
 }
 
 impl Window<SDLPlatform> for SDLWindow {

@@ -1,50 +1,69 @@
-use std::{sync::Arc, rc::Rc};
+use std::{rc::Rc, sync::{Arc, atomic::{AtomicU64, Ordering}}};
 
-use sourcerenderer_core::graphics::{Buffer, BufferInfo, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, Texture, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo};
+use crossbeam_channel::{Sender, unbounded};
+use sourcerenderer_core::graphics::{Buffer, BufferInfo, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, Surface, Texture, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo};
 use wasm_bindgen::JsCast;
 use web_sys::{WebGlRenderingContext, WebGlTexture};
 
-use crate::{RawWebGLContext, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView}};
+use crate::{GLThreadReceiver, GLThreadSender, RawWebGLContext, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView}, thread::WebGLThreadDevice};
 
 pub struct WebGLDevice {
-  context: Rc<RawWebGLContext>,
-  queue: Arc<WebGLQueue>
+  next_buffer_id: AtomicU64,
+  next_texture_id: AtomicU64,
+  next_shader_id: AtomicU64,
+  next_pipeline_id: AtomicU64,
+  queue: Arc<WebGLQueue>,
+  sender: GLThreadSender,
+  receiver: GLThreadReceiver,
+  surface: Arc<WebGLSurface>
 }
 
-unsafe impl Send for WebGLDevice {}
-unsafe impl Sync for WebGLDevice {}
-
 impl WebGLDevice {
-  pub fn new(surface: &WebGLSurface) -> Self {
-    let context = Rc::new(RawWebGLContext::new(surface));
+  pub fn new(surface: &Arc<WebGLSurface>) -> Self {
+    let (sender, receiver): (GLThreadSender, GLThreadReceiver) = unbounded();
     Self {
-      queue: Arc::new(WebGLQueue::new(&context)),
-      context,
+      queue: Arc::new(WebGLQueue::new(&sender)),
+      sender: sender.clone(),
+      receiver,
+      next_buffer_id: AtomicU64::new(0),
+      next_texture_id: AtomicU64::new(0),
+      next_shader_id: AtomicU64::new(0),
+      next_pipeline_id: AtomicU64::new(0),
+      surface: surface.clone()
     }
+  }
+
+  pub fn receiver(&self) -> &GLThreadReceiver {
+    &self.receiver
   }
 }
 
 impl Device<WebGLBackend> for WebGLDevice {
-  fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<WebGLBuffer> {
-    Arc::new(WebGLBuffer::new(&self.context, info, memory_usage))
+  fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, _name: Option<&str>) -> Arc<WebGLBuffer> {
+    let id = self.next_buffer_id.fetch_add(1, Ordering::SeqCst) + 1;
+    Arc::new(WebGLBuffer::new(id, info, memory_usage, &self.sender))
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: sourcerenderer_core::graphics::MemoryUsage, usage: sourcerenderer_core::graphics::BufferUsage) -> Arc<WebGLBuffer> where T: 'static + Send + Sync + Sized + Clone {
+    /*let data = data.clone();
     let buffer = Arc::new(WebGLBuffer::new(&self.context, &BufferInfo { size: std::mem::size_of_val(data), usage }, memory_usage));
     unsafe {
       let ptr = buffer.map_unsafe(true).unwrap();
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
       buffer.unmap_unsafe(true);
     }
-    buffer
+    buffer*/
+    unimplemented!()
   }
 
   fn create_shader(&self, shader_type: sourcerenderer_core::graphics::ShaderType, bytecode: &[u8], _name: Option<&str>) -> Arc<WebGLShader> {
-    Arc::new(WebGLShader::new(&self.context, shader_type, bytecode))
+    let id = self.next_shader_id.fetch_add(1, Ordering::SeqCst) + 1;
+    Arc::new(WebGLShader::new(id, shader_type, bytecode, &self.sender))
   }
 
   fn create_texture(&self, info: &sourcerenderer_core::graphics::TextureInfo, _name: Option<&str>) -> Arc<WebGLTexture> {
-    Arc::new(WebGLTexture::new(&self.context, info))
+    let id = self.next_texture_id.fetch_add(1, Ordering::SeqCst) + 1;
+    Arc::new(WebGLTexture::new(id, info, &self.sender))
   }
 
   fn create_shader_resource_view(&self, texture: &Arc<WebGLTexture>, info: &sourcerenderer_core::graphics::TextureShaderResourceViewInfo) -> Arc<WebGLTextureShaderResourceView> {
@@ -52,7 +71,8 @@ impl Device<WebGLBackend> for WebGLDevice {
   }
 
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<WebGLBackend>, _pass_info: &RenderPassInfo, _subpass_index: u32) -> Arc<WebGLGraphicsPipeline> {
-    Arc::new(WebGLGraphicsPipeline::new(&self.context, info))
+    let id = self.next_pipeline_id.fetch_add(1, Ordering::SeqCst) + 1;
+    Arc::new(WebGLGraphicsPipeline::new(id, info, &self.sender))
   }
 
   fn create_compute_pipeline(&self, _shader: &Arc<WebGLShader>) -> Arc<WebGLComputePipeline> {
@@ -64,7 +84,7 @@ impl Device<WebGLBackend> for WebGLDevice {
   }
 
   fn init_texture(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32) {
-    let info = texture.get_info();
+    /*let info = texture.get_info();
     let data_ref = buffer.data();
     let data = data_ref.as_ref().unwrap();
     let target = texture.target();
@@ -96,22 +116,25 @@ impl Device<WebGLBackend> for WebGLDevice {
     if !bind_texture.is_null() {
       let bind_texture = bind_texture.unchecked_into::<WebGlTexture>();
       self.context.bind_texture(target, Some(&bind_texture));
-    }
+    }*/
+    unimplemented!()
   }
 
   fn init_texture_async(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32) -> Option<Arc<WebGLFence>> {
-    self.init_texture(texture, buffer, mip_level, array_layer);
-    Some(Arc::new(WebGLFence::new()))
+    //self.init_texture(texture, buffer, mip_level, array_layer);
+    //Some(Arc::new(WebGLFence::new()))
+    unimplemented!()
   }
 
   fn init_buffer(&self, src_buffer: &Arc<WebGLBuffer>, dst_buffer: &Arc<WebGLBuffer>) {
-    let data_ref = src_buffer.data();
+    /*let data_ref = src_buffer.data();
     let data = data_ref.as_ref().unwrap();
     unsafe {
       let mapped_dst = dst_buffer.map_unsafe(true).unwrap();
       std::ptr::copy(data.as_ptr() as *const u8, mapped_dst, std::mem::size_of_val(data));
       dst_buffer.unmap_unsafe(true);
-    }
+    }*/
+    unimplemented!()
   }
 
   fn flush_transfers(&self) {
@@ -135,7 +158,8 @@ impl Device<WebGLBackend> for WebGLDevice {
   }
 
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<WebGLSampler> {
-    Arc::new(WebGLSampler::new(info))
+    //Arc::new(WebGLSampler::new(info))
+    unimplemented!()
   }
 
   fn create_fence(&self) -> Arc<WebGLFence> {

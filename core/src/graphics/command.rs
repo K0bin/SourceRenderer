@@ -12,6 +12,7 @@ use super::ShaderType;
 use super::StoreOp;
 use super::SubpassInfo;
 
+#[derive(Clone)]
 pub struct Viewport {
   pub position: Vec2,
   pub extent: Vec2,
@@ -19,6 +20,7 @@ pub struct Viewport {
   pub max_depth: f32
 }
 
+#[derive(Clone)]
 pub struct Scissor {
   pub position: Vec2I,
   pub extent: Vec2UI

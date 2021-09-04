@@ -27,6 +27,11 @@ pub trait Platform: 'static + Sized {
 
   fn window(&self) -> &Self::Window;
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<<Self::GraphicsBackend as graphics::Backend>::Instance>, Box<dyn Error>>;
+
+  fn start_thread<F>(&self, name: &str, callback: F)
+  where
+      F: FnOnce(),
+      F: Send + 'static;
 }
 
 #[derive(PartialEq, Clone)]

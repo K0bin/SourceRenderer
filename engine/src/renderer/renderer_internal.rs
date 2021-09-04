@@ -3,7 +3,7 @@ use crate::renderer::{Renderer, RendererStaticDrawable};
 use crate::transform::interpolation::deconstruct_transform;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crate::renderer::command::RendererCommand;
-use std::time::{SystemTime, Duration};
+use std::time::Duration;
 use crate::asset::AssetManager;
 use sourcerenderer_core::{Platform, Vec2UI, Vec4};
 use sourcerenderer_core::graphics::{SwapchainError, Backend,Swapchain, Device};
@@ -15,6 +15,7 @@ use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use rayon::prelude::*;
 use crate::math::Frustum;
+use instant::Instant;
 
 use super::PointLight;
 use super::drawable::{make_camera_proj, make_camera_view};
@@ -34,7 +35,7 @@ pub(super) struct RendererInternal<P: Platform> {
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   window_event_receiver: Receiver<Event<P>>,
-  last_tick: SystemTime,
+  last_tick: Instant,
   assets: RendererAssets<P>
 }
 
@@ -67,7 +68,7 @@ impl<P: Platform> RendererInternal<P> {
       sender,
       receiver,
       window_event_receiver,
-      last_tick: SystemTime::now(),
+      last_tick: Instant::now(),
       assets,
       lightmap
     }
@@ -136,7 +137,7 @@ impl<P: Platform> RendererInternal<P> {
       let message = message_opt.take().unwrap();
       match message {
         RendererCommand::EndFrame => {
-          self.last_tick = SystemTime::now();
+          self.last_tick = Instant::now();
           break;
         }
 
