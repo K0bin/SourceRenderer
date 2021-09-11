@@ -86,7 +86,7 @@ impl VkAdapter {
 // Vulkan physical devices are implicitly freed with the instance
 
 impl Adapter<VkBackend> for VkAdapter {
-  fn create_device(&self, surface: &VkSurface) -> VkDevice {
+  fn create_device(&self, surface: &Arc<VkSurface>) -> VkDevice {
     return unsafe {
       let surface_loader = KhrSurface::new(&self.instance.entry, &self.instance.instance);
       let queue_properties = self.instance.instance.get_physical_device_queue_family_properties(self.physical_device);

@@ -2,7 +2,7 @@ use std::{rc::Rc, sync::Arc};
 
 use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
 
-use web_sys::{WebGlRenderingContext, WebGlTexture as WebGLTextureHandle, WebglCompressedTextureS3tc};
+use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebGlTexture as WebGLTextureHandle, WebglCompressedTextureS3tc};
 
 use crate::{GLThreadSender, RawWebGLContext, WebGLBackend, thread::TextureHandle};
 
@@ -219,9 +219,24 @@ impl WebGLSampler {
   }
 }
 
+pub(crate) fn format_to_type(_format: Format) -> u32 {
+  WebGl2RenderingContext::UNSIGNED_BYTE
+}
+
 pub(crate) fn format_to_internal_gl(format: Format) -> u32 {
   match format {
-    Format::RGBA8 => WebGlRenderingContext::RGBA,
+    Format::RGBA8 => WebGl2RenderingContext::RGBA8,
+    Format::DXT1 => WebglCompressedTextureS3tc::COMPRESSED_RGB_S3TC_DXT1_EXT,
+    Format::DXT1Alpha => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT1_EXT,
+    Format::DXT3 => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT3_EXT,
+    Format::DXT5 => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT5_EXT,
+    _ => panic!("Unsupported texture format")
+  }
+}
+
+pub(crate) fn format_to_gl(format: Format) -> u32 {
+  match format {
+    Format::RGBA8 => WebGl2RenderingContext::RGBA,
     Format::DXT1 => WebglCompressedTextureS3tc::COMPRESSED_RGB_S3TC_DXT1_EXT,
     Format::DXT1Alpha => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT1_EXT,
     Format::DXT3 => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT3_EXT,

@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use crate::renderer::passes::web::WebRenderer;
 use crate::renderer::{Renderer, RendererStaticDrawable};
 use crate::transform::interpolation::deconstruct_transform;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
@@ -55,7 +56,11 @@ impl<P: Platform> RendererInternal<P> {
     let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
 
-    let path = Box::new(DesktopRenderer::new::<P>(device, swapchain));
+    let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
+      Box::new(WebRenderer::new::<P>(device, swapchain))
+    } else {
+      Box::new(DesktopRenderer::new::<P>(device, swapchain))
+    };
 
     Self {
       renderer: renderer.clone(),

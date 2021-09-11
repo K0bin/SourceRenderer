@@ -3,9 +3,9 @@ use std::{rc::Rc, sync::{Arc, atomic::{AtomicU64, Ordering}}};
 use crossbeam_channel::{Sender, unbounded};
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, Surface, Texture, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo};
 use wasm_bindgen::JsCast;
-use web_sys::{WebGlRenderingContext, WebGlTexture};
+use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebGlTexture};
 
-use crate::{GLThreadReceiver, GLThreadSender, RawWebGLContext, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView}, thread::WebGLThreadDevice};
+use crate::{GLThreadReceiver, GLThreadSender, RawWebGLContext, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::WebGLThreadDevice};
 
 pub struct WebGLDevice {
   next_buffer_id: AtomicU64,
@@ -45,15 +45,15 @@ impl Device<WebGLBackend> for WebGLDevice {
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: sourcerenderer_core::graphics::MemoryUsage, usage: sourcerenderer_core::graphics::BufferUsage) -> Arc<WebGLBuffer> where T: 'static + Send + Sync + Sized + Clone {
-    /*let data = data.clone();
-    let buffer = Arc::new(WebGLBuffer::new(&self.context, &BufferInfo { size: std::mem::size_of_val(data), usage }, memory_usage));
+    let data = data.clone();
+    let id = self.next_buffer_id.fetch_add(1, Ordering::SeqCst) + 1;
+    let buffer = Arc::new(WebGLBuffer::new(id, &BufferInfo { size: std::mem::size_of_val(data), usage }, memory_usage, &self.sender));
     unsafe {
       let ptr = buffer.map_unsafe(true).unwrap();
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
       buffer.unmap_unsafe(true);
     }
-    buffer*/
-    unimplemented!()
+    buffer
   }
 
   fn create_shader(&self, shader_type: sourcerenderer_core::graphics::ShaderType, bytecode: &[u8], _name: Option<&str>) -> Arc<WebGLShader> {
@@ -84,57 +84,58 @@ impl Device<WebGLBackend> for WebGLDevice {
   }
 
   fn init_texture(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32) {
-    /*let info = texture.get_info();
-    let data_ref = buffer.data();
-    let data = data_ref.as_ref().unwrap();
-    let target = texture.target();
-    let bind_texture = self.context.get_parameter(target).unwrap();
-    self.context.bind_texture(target, Some(texture.handle()));
-    if info.format.is_compressed() {
-      self.context.compressed_tex_image_2d_with_u8_array(
-        if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
-        mip_level as i32,
-        format_to_internal_gl(info.format),
-        info.width as i32,
-        info.height as i32,
-        0,
-        &data[..]
-      );
-    } else {
-      self.context.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
-        if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
-        mip_level as i32,
-        format_to_internal_gl(info.format) as i32,
-        info.width as i32,
-        info.height as i32,
-        0,
-        format_to_internal_gl(info.format), // TODO: change for Webgl 2
-        WebGlRenderingContext::UNSIGNED_BYTE,
-        Some(&data[..])
-      ).unwrap();
-    }
-    if !bind_texture.is_null() {
-      let bind_texture = bind_texture.unchecked_into::<WebGlTexture>();
-      self.context.bind_texture(target, Some(&bind_texture));
-    }*/
-    unimplemented!()
+    let buffer_id = buffer.handle();
+    let texture_id = texture.handle().unwrap();
+    self.sender.send(Box::new(move |device| {
+      let buffer = device.buffer(buffer_id);
+      let texture = device.texture(texture_id);
+      let target = texture.target();
+      let info = texture.info();
+
+      device.bind_buffer(WebGl2RenderingContext::PIXEL_UNPACK_BUFFER, Some(buffer.gl_buffer()));
+      device.bind_texture(target, Some(texture.gl_handle()));
+      if !info.format.is_compressed() {
+        device.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_i32(
+          if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
+          mip_level as i32,
+          format_to_internal_gl(info.format) as i32,
+          info.width as i32,
+          info.height as i32,
+          0,
+          format_to_gl(info.format),
+          format_to_type(info.format),
+          0
+        ).unwrap();
+      } else {
+        device.compressed_tex_image_2d_with_i32_and_i32(
+          if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
+          mip_level as i32,
+          format_to_internal_gl(info.format),
+          info.width as i32,
+          info.height as i32,
+          0,
+          buffer.info().size as i32,
+          0
+        );
+      }
+    })).unwrap();
   }
 
   fn init_texture_async(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32) -> Option<Arc<WebGLFence>> {
-    //self.init_texture(texture, buffer, mip_level, array_layer);
-    //Some(Arc::new(WebGLFence::new()))
-    unimplemented!()
+    self.init_texture(texture, buffer, mip_level, array_layer);
+    Some(Arc::new(WebGLFence::new()))
   }
 
   fn init_buffer(&self, src_buffer: &Arc<WebGLBuffer>, dst_buffer: &Arc<WebGLBuffer>) {
-    /*let data_ref = src_buffer.data();
-    let data = data_ref.as_ref().unwrap();
-    unsafe {
-      let mapped_dst = dst_buffer.map_unsafe(true).unwrap();
-      std::ptr::copy(data.as_ptr() as *const u8, mapped_dst, std::mem::size_of_val(data));
-      dst_buffer.unmap_unsafe(true);
-    }*/
-    unimplemented!()
+    let src_buffer_id = src_buffer.handle();
+    let dst_buffer_id = dst_buffer.handle();
+    self.sender.send(Box::new(move |device| {
+      let src_buffer = device.buffer(src_buffer_id);
+      let dst_buffer = device.buffer(dst_buffer_id);
+      device.bind_buffer(WebGl2RenderingContext::COPY_READ_BUFFER, Some(src_buffer.gl_buffer()));
+      device.bind_buffer(WebGl2RenderingContext::COPY_WRITE_BUFFER, Some(dst_buffer.gl_buffer()));
+      device.buffer_data_with_i32(WebGl2RenderingContext::COPY_WRITE_BUFFER, dst_buffer.info().size as i32, dst_buffer.gl_usage());
+    })).unwrap();
   }
 
   fn flush_transfers(&self) {

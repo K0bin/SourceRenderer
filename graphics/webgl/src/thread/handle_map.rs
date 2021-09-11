@@ -19,7 +19,7 @@ impl WebGLThreadTexture {
   pub fn new(context: &Rc<RawWebGLContext>, info: &TextureInfo) -> Self {
     assert!(info.array_length == 6 || info.array_length == 1);
     let is_cubemap = info.array_length == 6;
-    let target = if is_cubemap { WebGlRenderingContext::TEXTURE_BINDING_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_BINDING_2D };
+    let target = if is_cubemap { WebGlRenderingContext::TEXTURE_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_2D };
     let texture = context.create_texture().unwrap();
     Self {
       texture,
@@ -57,7 +57,6 @@ pub struct WebGLThreadBuffer {
   context: Rc<RawWebGLContext>,
   buffer: WebGLBufferHandle,
   info: BufferInfo,
-  length: usize,
   gl_usage: u32
 }
 
@@ -75,7 +74,6 @@ impl WebGLThreadBuffer {
       } else {
         usage = WebGl2RenderingContext::STATIC_READ;
       }
-      usage |= WebGl2RenderingContext::PIXEL_PACK_BUFFER;
     }
     if buffer_usage.intersects(BufferUsage::COPY_SRC) {
       if buffer_usage.intersects(BufferUsage::CONSTANT) {
@@ -83,12 +81,10 @@ impl WebGLThreadBuffer {
       } else {
         usage = WebGl2RenderingContext::STATIC_COPY;
       }
-      usage |= WebGl2RenderingContext::PIXEL_UNPACK_BUFFER;
     }
     let buffer = context.create_buffer().unwrap();
     Self {
       context: context.clone(),
-      length: info.size,
       info: info.clone(),
       gl_usage: usage,
       buffer,
@@ -101,6 +97,10 @@ impl WebGLThreadBuffer {
 
   pub fn gl_usage(&self) -> u32 {
     self.gl_usage
+  }
+
+  pub fn info(&self) -> &BufferInfo {
+    &self.info
   }
 }
 
@@ -180,7 +180,7 @@ impl WebGLThreadDevice {
     self.buffers.remove(&id).expect("Buffer didnt exist");
   }
 
-  pub fn buffer(&mut self, id: BufferHandle) -> &Rc<WebGLThreadBuffer> {
+  pub fn buffer(&self, id: BufferHandle) -> &Rc<WebGLThreadBuffer> {
     self.buffers.get(&id).expect("Cant find buffer")
   }
 

@@ -32,7 +32,8 @@ instant = "0.1"
 [features]
 default = ["threading", "late-latching"]
 late-latching = []
-threading = ["legion/parallel"]
+threading = []
+# threading = ["legion/parallel"] Legion relies on thread parking atm
 web = ["legion/wasm-bindgen", "instant/wasm-bindgen"]
 
 [profile.release]

@@ -6,7 +6,6 @@ mod window;
 
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;
-extern crate legion;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;

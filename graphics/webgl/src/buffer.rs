@@ -1,11 +1,10 @@
-use std::{cell::{Ref, RefCell, UnsafeCell}, rc::Rc, sync::Mutex};
+use std::{cell::UnsafeCell, sync::Mutex};
 
-use crossbeam_channel::Sender;
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
-use web_sys::{WebGl2RenderingContext as WebGLContext, WebGlBuffer as WebGLBufferHandle, WebGlRenderingContext};
+use web_sys::{WebGlRenderingContext, WebGl2RenderingContext};
 
-use crate::{GLThreadSender, RawWebGLContext, thread::BufferHandle};
+use crate::{GLThreadSender, thread::BufferHandle};
 
 pub struct WebGLBuffer {
   handle: crate::thread::BufferHandle,
@@ -54,7 +53,7 @@ impl Buffer for WebGLBuffer {
 
   unsafe fn map_unsafe(&self, _invalidate: bool) -> Option<*mut u8> {
     let mut mapped_data = self.mapped_data.lock().unwrap();
-    *mapped_data= Some(UnsafeCell::new(vec![0; self.get_length()].into_boxed_slice()));
+    *mapped_data = Some(UnsafeCell::new(vec![0; self.get_length()].into_boxed_slice()));
     Some(mapped_data.as_mut().unwrap().get_mut().as_mut_ptr())
   }
 
@@ -62,11 +61,13 @@ impl Buffer for WebGLBuffer {
     let mut mapped_data = self.mapped_data.lock().unwrap();
     let data = mapped_data.take().unwrap();
     let handle = self.handle;
+    let usage = self.info.usage;
     self.sender.send(Box::new(move |device| {
       let buffer = device.buffer(handle).clone();
-      device.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(buffer.gl_buffer()));
+      let target = buffer_usage_to_target(usage);
+      device.bind_buffer(target, Some(buffer.gl_buffer()));
       let data = &*(data.get());
-      device.buffer_data_with_u8_array(WebGlRenderingContext::ARRAY_BUFFER, &data[..], buffer.gl_usage());
+      device.buffer_data_with_u8_array(target, &data[..], buffer.gl_usage());
     })).unwrap();
   }
 
@@ -76,5 +77,21 @@ impl Buffer for WebGLBuffer {
 
   fn get_info(&self) -> &BufferInfo {
     &self.info
+  }
+}
+
+fn buffer_usage_to_target(usage: BufferUsage) -> u32 {
+  if usage.contains(BufferUsage::VERTEX) {
+    WebGl2RenderingContext::ARRAY_BUFFER
+  } else if usage.contains(BufferUsage::INDEX) {
+    WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER
+  } else if usage.contains(BufferUsage::COPY_SRC) {
+    WebGl2RenderingContext::PIXEL_UNPACK_BUFFER
+  } else if usage.contains(BufferUsage::COPY_DST) {
+    WebGl2RenderingContext::PIXEL_PACK_BUFFER
+  } else if usage.intersects(BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT) {
+    WebGl2RenderingContext::UNIFORM_BUFFER
+  } else {
+    panic!("Can not determine buffer target {:?}", usage)
   }
 }
