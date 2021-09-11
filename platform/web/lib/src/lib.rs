@@ -1,5 +1,5 @@
 mod utils;
-mod threadpool;
+mod worker_pool;
 mod platform;
 mod io;
 mod window;
@@ -13,13 +13,20 @@ extern crate serde_derive;
 extern crate rayon;
 #[macro_use]
 extern crate lazy_static;
+extern crate crossbeam_channel;
 
 use std::cell::RefCell;
+use std::cell::RefMut;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_engine::Engine;
+use sourcerenderer_webgl::WebGLSwapchain;
+use worker_pool::WorkerPool;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -62,12 +69,19 @@ macro_rules! console_log {
   ($($t:tt)*) => (crate::log(&format_args!($($t)*).to_string()))
 }
 
+
+struct EngineWrapper {
+  engine: Engine<WebPlatform>,
+  gl_device: WebGLThreadDevice,
+  swapchain: Arc<WebGLSwapchain>
+}
+
 #[wasm_bindgen(js_name = "startEngine")]
-pub fn start_engine(canvas_selector: &str) {
+pub fn start_engine(canvas_selector: &str, worker_pool: WorkerPool) -> usize {
   utils::set_panic_hook();
 
   console_log!("Initializing platform");
-  let platform = WebPlatform::new(canvas_selector);
+  let platform = WebPlatform::new(canvas_selector, worker_pool);
 
   console_log!("Initializing engine");
   let mut engine = Engine::run(&platform);
@@ -78,31 +92,33 @@ pub fn start_engine(canvas_selector: &str) {
   console_log!("Got surface");
   let receiver = device.receiver();
   let window = platform.window();
-  let web_window = window.window();
   let document = window.document();
-  let mut thread_device = WebGLThreadDevice::new(receiver, &surface, document);
+  let thread_device = WebGLThreadDevice::new(receiver, &surface, document);
+  let swapchain = window.create_swapchain(true, &device, &surface); // Returns the same swapchain for WebWindow
+
+  let wrapper = Box::new(RefCell::new(EngineWrapper {
+    gl_device: thread_device,
+    engine: engine,
+    swapchain: swapchain
+  }));
+  Box::into_raw(wrapper) as usize
+}
 
 
-  let closure = Rc::new(RefCell::new(Option::<Closure<dyn FnMut()>>::None));
-  let c_closure = closure.clone();
-  let c_web_window = web_window.clone();
-  let c_swapchain = window.create_swapchain(true, &device, &surface); // Returns the same swapchain for WebWindow
-  *closure.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-    // TODO: Sample inputs
+fn engine_from_usize<'a>(engine_ptr: usize) -> RefMut<'a, EngineWrapper> {
+  assert_ne!(engine_ptr, 0);
+  unsafe {
+    let ptr = std::mem::transmute::<usize, *mut RefCell<EngineWrapper>>(engine_ptr);
+    let engine: RefMut<EngineWrapper> = (*ptr).borrow_mut();
+    let engine_ref = std::mem::transmute::<RefMut<EngineWrapper>, RefMut<'a, EngineWrapper>>(engine);
+    engine_ref
+  }
+}
 
-    let exit = false;
-    if exit {
-      let _ = c_closure.borrow_mut().take();
-      return;
-    }
-
-    thread_device.process();
-    c_swapchain.bump_frame();
-
-    c_web_window.request_animation_frame((c_closure.borrow().as_ref().unwrap()).as_ref().unchecked_ref()).unwrap();
-  }) as Box<dyn FnMut()>));
-
-  web_window.request_animation_frame(closure.borrow().as_ref().unwrap().as_ref().unchecked_ref()).unwrap();
-
-  std::mem::forget(closure);
+#[wasm_bindgen(js_name = "engineFrame")]
+pub fn engine_frame(engine: usize) -> bool {
+  let mut wrapper = engine_from_usize(engine);
+  wrapper.gl_device.process();
+  wrapper.swapchain.bump_frame();
+  true
 }
