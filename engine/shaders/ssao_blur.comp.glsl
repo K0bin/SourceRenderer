@@ -4,9 +4,10 @@ layout(set = 0, binding = 0, r16f) uniform writeonly image2D outputTexture;
 layout(set = 0, binding = 1) uniform sampler2D inputTexture;
 
 void main() {
-  ivec2 texSize = textureSize(inputTexture, 0);
-  vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
-  vec2 texel = vec2(1.0 / float(texSize.x), 1.0 / float(texSize.y));
+  ivec2 inputTexSize = textureSize(inputTexture, 0);
+  ivec2 outputTexSize = imageSize(outputTexture);
+  vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(outputTexSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(outputTexSize.y));
+  vec2 texel = vec2(1.0 / float(inputTexSize.x), 1.0 / float(inputTexSize.y));
   float sum = 0.0;
   const int kernelSize = 5;
   // TODO: reduce samples using shared memory

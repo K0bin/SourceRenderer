@@ -19,7 +19,7 @@ layout(set = 0, binding = 5, r16f) uniform writeonly image2D outputTexture;
 // https://learnopengl.com/Advanced-Lighting/SSAO
 
 void main() {
-  ivec2 texSize = textureSize(depthMap, 0);
+  ivec2 texSize = imageSize(outputTexture);
   vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
   float depth = texture(depthMap, texCoord).r;
   vec4 screenSpacePosition = vec4(texCoord * 2.0 - 1.0, depth, 1.0);

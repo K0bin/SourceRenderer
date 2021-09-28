@@ -28,8 +28,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let ssao_texture = device.create_texture(&TextureInfo {
       format: Format::R16Float,
-      width: resolution.x,
-      height: resolution.y,
+      width: resolution.x / 2,
+      height: resolution.y / 2,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -254,9 +254,9 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, normals, &self.nearest_sampler);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 4, camera);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 5, &self.ssao_uav);
-    let info = depth.texture().get_info();
     cmd_buffer.finish_binding();
-    cmd_buffer.dispatch(info.width, info.height, info.depth);
+    let ssao_info = self.ssao_srv.texture().get_info();
+    cmd_buffer.dispatch(ssao_info.width, ssao_info.height, ssao_info.depth);
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
@@ -278,7 +278,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &self.blurred_uav);
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 1, &self.ssao_srv, &self.blur_sampler);
     cmd_buffer.finish_binding();
-    cmd_buffer.dispatch(info.width, info.height, info.depth);
+    let blur_info = self.blurred_texture.get_info();
+    cmd_buffer.dispatch(blur_info.width, blur_info.height, blur_info.depth);
   }
 
   pub fn ssao_texture(&self) -> &Arc<B::Texture> {
