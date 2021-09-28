@@ -1,0 +1,3 @@
+[submodule "vendor/vk-mem-rs"]
+	path = vendor/vk-mem-rs
+	url = git@github.com:K0bin/vk-mem-rs.git
