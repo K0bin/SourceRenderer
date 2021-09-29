@@ -130,7 +130,7 @@ impl GltfLoader {
   }
 
   fn load_primitive<P: Platform>(primitive: &Primitive, asset_mgr: &AssetManager<P>, vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>, gltf_file_name: &str, buffer_cache: &mut HashMap<usize, Vec<u8>>) {
-    GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
+    //GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
 
     let index_base = vertices.len() as u32;
 
