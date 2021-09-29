@@ -249,7 +249,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.flush_barriers();
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &self.kernel);
-    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 1, &self.noise, &self.nearest_sampler);
+    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 1, &self.noise, &self.noise_sampler);
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 2, depth, &self.nearest_sampler);
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, normals, &self.nearest_sampler);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 4, camera);
