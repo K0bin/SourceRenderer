@@ -38,8 +38,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }, Some("SSAO"));
     let blurred_texture = device.create_texture(&TextureInfo {
       format: Format::R16Float,
-      width: resolution.x,
-      height: resolution.y,
+      width: resolution.x / 2,
+      height: resolution.y / 2,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -93,7 +93,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       }
     ]);
 
-    let kernel = Self::create_hemisphere(device, 16);
+    let kernel = Self::create_hemisphere(device, 64);
     let noise = Self::create_noise(device, 4);
 
     let blur_shader = {
@@ -178,14 +178,14 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       ssao_kernel.push(sample);
     }
 
-    let noise_buffer = device.create_buffer(&BufferInfo {
+    let buffer = device.create_buffer(&BufferInfo {
       size: std::mem::size_of_val(&ssao_kernel[..]),
       usage: BufferUsage::COPY_DST | BufferUsage::COMPUTE_SHADER_CONSTANT,
     }, MemoryUsage::GpuOnly, Some("SSAOKernel"));
 
     let temp_buffer = device.upload_data(&ssao_kernel[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    device.init_buffer(&temp_buffer, &noise_buffer);
-    noise_buffer
+    device.init_buffer(&temp_buffer, &buffer);
+    buffer
   }
 
   fn create_noise(device: &Arc<B::Device>, size: u32) -> Arc<B::TextureShaderResourceView> {

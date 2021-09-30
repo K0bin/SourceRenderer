@@ -37,13 +37,8 @@ void main(void) {
     vec4 transformedOldPos = (swapchainTransform * (oldViewProjection * oldModel)) * pos;
     transformedOldPos.y = -transformedOldPos.y;
 
-    mat3 normalMat = mat3(model);
-    // remove scale
-    normalMat[0][0] = 1.0;
-    normalMat[1][1] = 1.0;
-    normalMat[2][2] = 1.0;
-    normalMat = transpose(inverse(normalMat));
-    out_normal = normalize(normalMat * in_normal); // shouldnt be necessary
+    mat4 normalMat = transpose(inverse(model));
+    out_normal = normalize((normalMat * vec4(in_normal, 0.0)).xyz); // shouldnt be necessary
     out_position = transformedPos;
     out_oldPosition = transformedOldPos;
 
