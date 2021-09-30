@@ -89,6 +89,7 @@ void main(void) {
   vec3 lighting = vec3(0);
   lighting += 0.3;
   lighting += texture(lightmap, in_lightmap_uv).xyz;
+  lighting = min(vec3(1.0, 1.0, 1.0), lighting);
   lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
@@ -116,7 +117,7 @@ void main(void) {
     }
   }
   vec4 tex = texture(tex, in_uv);
-  out_color = vec4(lighting.x * tex.x, lighting.y * tex.y, lighting.z * tex.z, 1);
+  out_color = vec4(lighting * tex.xyz, 1);
 }
 
 float linearizeDepth(float d, float zNear,float zFar)
