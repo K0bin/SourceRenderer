@@ -70,13 +70,14 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32, self.late_latching_pass.camera_buffer());
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), self.late_latching_pass.camera_buffer());
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), self.frame, self.late_latching_pass.camera_buffer(), self.late_latching_pass.camera_buffer_history());
-    self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), self.late_latching_pass.camera_buffer());
+    self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), self.late_latching_pass.camera_buffer(), self.prepass.motion_srv());
     self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), self.late_latching_pass.camera_buffer(), self.ssao.ssao_srv());
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
     self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
 
     self.taa.swap_history_resources();
     self.late_latching_pass.swap_history_resources();
+    self.ssao.swap_history_resources();
 
     cmd_buf.barrier(&[
         Barrier::TextureBarrier {

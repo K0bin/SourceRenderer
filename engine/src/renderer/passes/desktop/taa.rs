@@ -54,7 +54,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("taa.comp.spv"))
     };
     let pipeline = device.create_compute_pipeline(&taa_compute_shader);
-  
+
     let linear_sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,
       min_filter: Filter::Linear,
@@ -68,7 +68,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       min_lod: 0.0,
       max_lod: 1.0,
     });
-  
+
     let nearest_sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,
       min_filter: Filter::Linear,
@@ -131,6 +131,8 @@ impl<B: GraphicsBackend> TAAPass<B> {
       }
     ]);
 
+    // TODO: Clear history texture
+
     Self {
       pipeline,
       taa_texture,
@@ -159,13 +161,6 @@ impl<B: GraphicsBackend> TAAPass<B> {
         texture: output_srv.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::RENDER_TARGET,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::RENDER_TARGET,
-        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        texture: motion_srv.texture(),
-      },
-      Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
         new_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
         old_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
@@ -189,7 +184,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     &self.taa_srv
   }
 
-  pub fn swap_history_resources(&mut self) {    
+  pub fn swap_history_resources(&mut self) {
     std::mem::swap(&mut self.taa_texture, &mut self.taa_texture_b);
     std::mem::swap(&mut self.taa_srv, &mut self.taa_srv_b);
     std::mem::swap(&mut self.taa_uav, &mut self.taa_uav_b);

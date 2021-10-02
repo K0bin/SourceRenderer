@@ -265,7 +265,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       },
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
+        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED,
         old_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
         new_usages: TextureUsage::FRAGMENT_SHADER_SAMPLED,
         texture: ssao.texture()

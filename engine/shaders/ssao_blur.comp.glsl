@@ -2,6 +2,8 @@
 
 layout(set = 0, binding = 0, r16f) uniform writeonly image2D outputTexture;
 layout(set = 0, binding = 1) uniform sampler2D inputTexture;
+layout(set = 0, binding = 2) uniform sampler2D history;
+layout(set = 0, binding = 3) uniform sampler2D motion;
 
 void main() {
   ivec2 inputTexSize = textureSize(inputTexture, 0);
@@ -18,6 +20,10 @@ void main() {
     }
   }
   sum /= kernelSize * kernelSize;
+
+  sum *= 0.3;
+  vec2 historyTexCoord = texCoord - texture(motion, texCoord).xy;
+  sum += texture(history, historyTexCoord).r * 0.7;
 
   ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
   imageStore(outputTexture, storageTexCoord, vec4(sum, 0.0, 0.0, 0.0));

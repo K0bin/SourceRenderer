@@ -17,6 +17,9 @@ pub struct SsaoPass<B: GraphicsBackend> {
   blurred_texture: Arc<B::Texture>,
   blurred_uav: Arc<B::TextureUnorderedAccessView>,
   blurred_srv: Arc<B::TextureShaderResourceView>,
+  blurred_texture_b: Arc<B::Texture>,
+  blurred_uav_b: Arc<B::TextureUnorderedAccessView>,
+  blurred_srv_b: Arc<B::TextureShaderResourceView>,
   blur_sampler: Arc<B::Sampler>
 }
 
@@ -28,8 +31,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let ssao_texture = device.create_texture(&TextureInfo {
       format: Format::R16Float,
-      width: resolution.x, // / 2,
-      height: resolution.y, // / 2,
+      width: resolution.x / 2,
+      height: resolution.y / 2,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -38,14 +41,24 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }, Some("SSAO"));
     let blurred_texture = device.create_texture(&TextureInfo {
       format: Format::R16Float,
-      width: resolution.x, // / 2,
-      height: resolution.y, // / 2,
+      width: resolution.x / 2,
+      height: resolution.y / 2,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::FRAGMENT_SHADER_SAMPLED,
     }, Some("SSAOBlurred"));
+    let blurred_texture_b = device.create_texture(&TextureInfo {
+      format: Format::R16Float,
+      width: resolution.x / 2,
+      height: resolution.y / 2,
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::FRAGMENT_SHADER_SAMPLED,
+    }, Some("SSAOBlurred_b"));
 
     let uav_info = TextureUnorderedAccessViewInfo {
       base_mip_level: 0,
@@ -55,25 +68,23 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     };
     let ssao_uav = device.create_unordered_access_view(&ssao_texture, &uav_info);
     let blurred_uav = device.create_unordered_access_view(&blurred_texture, &uav_info);
-    let ssao_srv = device.create_shader_resource_view(&ssao_texture, &TextureShaderResourceViewInfo {
+    let blurred_uav_b = device.create_unordered_access_view(&blurred_texture_b, &uav_info);
+    let srv_info = TextureShaderResourceViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
       array_level_length: 1,
-    });
-    let blurred_srv = device.create_shader_resource_view(&blurred_texture, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
+    };
+    let ssao_srv = device.create_shader_resource_view(&ssao_texture, &srv_info);
+    let blurred_srv = device.create_shader_resource_view(&blurred_texture, &srv_info);
+    let blurred_srv_b = device.create_shader_resource_view(&blurred_texture_b, &srv_info);
 
     let shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("ssao.comp.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("ssao.comp.spv"))
-    };  
+    };
     let pipeline = device.create_compute_pipeline(&shader);
 
     init_cmd_buffer.barrier(&[
@@ -90,8 +101,17 @@ impl<B: GraphicsBackend> SsaoPass<B> {
         old_usages: TextureUsage::empty(),
         new_usages: TextureUsage::empty(),
         texture: &blurred_texture,
+      },
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::UNINITIALIZED,
+        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
+        old_usages: TextureUsage::empty(),
+        new_usages: TextureUsage::empty(),
+        texture: &blurred_texture_b,
       }
     ]);
+
+    // TODO: Clear history texture
 
     let kernel = Self::create_hemisphere(device, 64);
     let noise = Self::create_noise(device, 4);
@@ -154,6 +174,9 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       nearest_sampler,
       blurred_texture,
       blurred_uav,
+      blurred_srv_b,
+      blurred_texture_b,
+      blurred_uav_b,
       blur_pipeline,
       ssao_srv,
       blur_sampler,
@@ -200,7 +223,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       );
       ssao_noise.push(noise);
     }
-    
+
     let texture = device.create_texture(&TextureInfo {
       format: Format::RGBA32Float,
       width: size,
@@ -223,7 +246,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     srv
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, normals: &Arc<B::TextureShaderResourceView>, depth: &Arc<B::TextureShaderResourceView>, camera: &Arc<B::Buffer>) {
+  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, normals: &Arc<B::TextureShaderResourceView>, depth: &Arc<B::TextureShaderResourceView>, camera: &Arc<B::Buffer>, motion_srv: &Arc<B::TextureShaderResourceView>) {
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
@@ -245,6 +268,13 @@ impl<B: GraphicsBackend> SsaoPass<B> {
         old_usages: TextureUsage::RENDER_TARGET,
         new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
         texture: normals.texture(),
+      },
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::RENDER_TARGET,
+        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_usages: TextureUsage::RENDER_TARGET,
+        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        texture: motion_srv.texture(),
       },
     ]);
     cmd_buffer.flush_barriers();
@@ -273,14 +303,29 @@ impl<B: GraphicsBackend> SsaoPass<B> {
         new_usages: TextureUsage::empty(),
         texture: &self.blurred_texture,
       },
+      Barrier::TextureBarrier {
+        old_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
+        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_usages: TextureUsage::empty(),
+        new_usages: TextureUsage::empty(),
+        texture: &self.blurred_texture_b,
+      },
     ]);
     cmd_buffer.flush_barriers();
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.blur_pipeline));
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &self.blurred_uav);
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 1, &self.ssao_srv, &self.blur_sampler);
+    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 2, &self.blurred_srv_b, &self.blur_sampler);
+    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, motion_srv, &self.nearest_sampler);
     cmd_buffer.finish_binding();
     let blur_info = self.blurred_texture.get_info();
     cmd_buffer.dispatch(blur_info.width, blur_info.height, blur_info.depth);
+  }
+
+  pub fn swap_history_resources(&mut self) {
+    std::mem::swap(&mut self.blurred_texture, &mut self.blurred_texture_b);
+    std::mem::swap(&mut self.blurred_srv, &mut self.blurred_srv_b);
+    std::mem::swap(&mut self.blurred_uav, &mut self.blurred_uav_b);
   }
 
   pub fn ssao_texture(&self) -> &Arc<B::Texture> {
