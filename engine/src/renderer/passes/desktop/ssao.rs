@@ -28,8 +28,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let ssao_texture = device.create_texture(&TextureInfo {
       format: Format::R16Float,
-      width: resolution.x / 2,
-      height: resolution.y / 2,
+      width: resolution.x, // / 2,
+      height: resolution.y, // / 2,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -38,8 +38,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }, Some("SSAO"));
     let blurred_texture = device.create_texture(&TextureInfo {
       format: Format::R16Float,
-      width: resolution.x / 2,
-      height: resolution.y / 2,
+      width: resolution.x, // / 2,
+      height: resolution.y, // / 2,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -163,10 +163,11 @@ impl<B: GraphicsBackend> SsaoPass<B> {
 
   fn create_hemisphere(device: &Arc<B::Device>, samples: u32) -> Arc<B::Buffer> {
     let mut ssao_kernel = Vec::<Vec4>::with_capacity(samples as usize);
+    const BIAS: f32 = 0.15f32;
     for i in 0..samples {
       let mut sample = Vec4::new(
-        random::<f32>() * 2.0f32 - 1.0f32,
-        random::<f32>() * 2.0f32 - 1.0f32,
+        (random::<f32>() - BIAS) * 2.0f32 - (1.0f32 - BIAS),
+        (random::<f32>() - BIAS) * 2.0f32 - (1.0f32 - BIAS),
         random::<f32>(),
         0.0f32
       );
