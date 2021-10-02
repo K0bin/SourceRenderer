@@ -17,6 +17,7 @@ layout(set = 0, binding = 5, r16f) uniform writeonly image2D outputTexture;
 vec3 viewSpacePosition(vec2 uv) {
   float depth = texture(depthMap, uv).r;
   vec4 screenSpacePosition = vec4(uv * 2.0 - 1.0, depth, 1.0);
+  screenSpacePosition.y = -screenSpacePosition.y;
   vec4 viewSpaceTemp = camera.invProj * screenSpacePosition;
   return viewSpaceTemp.xyz / viewSpaceTemp.w;
 }
@@ -24,7 +25,6 @@ vec3 viewSpacePosition(vec2 uv) {
 vec3 worldSpaceNormalToViewSpace(vec2 uv) {
   vec3 worldSpaceNormal = texture(normals, uv).xyz;
   vec3 viewSpaceNormal = (transpose(inverse(camera.view)) * vec4(worldSpaceNormal, 0.0)).xyz;
-  viewSpaceNormal.y = -viewSpaceNormal.y;
   return viewSpaceNormal;
 }
 
@@ -41,8 +41,7 @@ void main() {
   vec3 normal = worldSpaceNormalToViewSpace(texCoord);
 
   vec2 noiseScale = textureSize(depthMap, 0) / textureSize(noise, 0);
-
-  vec3 randomVec = texture(noise, texCoord * noiseScale).xyz;
+  vec3 randomVec = texture(noise, texCoord * noiseScale).xyz * 2.0 - 1.0;
 
   vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
   vec3 bitangent = cross(tangent, normal);
@@ -59,9 +58,10 @@ void main() {
     samplePos = fragPos + samplePos * radius;
 
     vec4 offset = vec4(samplePos, 1.0);
+    offset.y = -offset.y;
     offset = camera.proj * offset;
     offset.xyz /= offset.w;
-    offset.xy = offset.xy * 0.5 + 0.5;
+    offset.xyz = offset.xyz * 0.5 + 0.5;
 
     // TODO: linearize depth instead of calculating view space position
     // we only need the depth
