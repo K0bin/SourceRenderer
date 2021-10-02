@@ -1,5 +1,9 @@
 #version 450
 
+layout(local_size_x = 16,
+       local_size_y = 16,
+       local_size_z = 1) in;
+
 layout(set = 0, binding = 0, r16f) uniform writeonly image2D outputTexture;
 layout(set = 0, binding = 1) uniform sampler2D inputTexture;
 layout(set = 0, binding = 2) uniform sampler2D history;
@@ -8,6 +12,9 @@ layout(set = 0, binding = 3) uniform sampler2D motion;
 void main() {
   ivec2 inputTexSize = textureSize(inputTexture, 0);
   ivec2 outputTexSize = imageSize(outputTexture);
+  if (gl_GlobalInvocationID.x >= outputTexSize.x || gl_GlobalInvocationID.y >= outputTexSize.y) {
+    return;
+  }
   vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(outputTexSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(outputTexSize.y));
   vec2 texel = vec2(1.0 / float(inputTexSize.x), 1.0 / float(inputTexSize.y));
   float sum = 0.0;

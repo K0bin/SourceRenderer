@@ -287,7 +287,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 5, &self.ssao_uav);
     cmd_buffer.finish_binding();
     let ssao_info = self.ssao_srv.texture().get_info();
-    cmd_buffer.dispatch(ssao_info.width, ssao_info.height, ssao_info.depth);
+    cmd_buffer.dispatch((ssao_info.width + 15) / 16, (ssao_info.height + 15) / 16, ssao_info.depth);
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
@@ -319,7 +319,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, motion_srv, &self.nearest_sampler);
     cmd_buffer.finish_binding();
     let blur_info = self.blurred_texture.get_info();
-    cmd_buffer.dispatch(blur_info.width, blur_info.height, blur_info.depth);
+    cmd_buffer.dispatch((blur_info.width + 15) / 16, (blur_info.height + 15) / 16, blur_info.depth);
   }
 
   pub fn swap_history_resources(&mut self) {

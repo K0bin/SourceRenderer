@@ -177,7 +177,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     cmd_buf.finish_binding();
 
     let info = self.taa_texture.get_info();
-    cmd_buf.dispatch(info.width, info.height, 1);
+    cmd_buf.dispatch((info.width + 15) / 16, (info.height + 15) / 16, 1);
   }
 
   pub fn taa_srv(&self) -> &Arc<B::TextureShaderResourceView> {

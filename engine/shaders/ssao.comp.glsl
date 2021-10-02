@@ -1,5 +1,9 @@
 #version 450
 
+layout(local_size_x = 16,
+       local_size_y = 16,
+       local_size_z = 1) in;
+
 layout(set = 0, binding = 0, std140) uniform kernel {
   vec4 samples[16];
 };
@@ -35,6 +39,9 @@ vec3 worldSpaceNormalToViewSpace(vec2 uv) {
 
 void main() {
   ivec2 texSize = imageSize(outputTexture);
+  if (gl_GlobalInvocationID.x >= texSize.x || gl_GlobalInvocationID.y >= texSize.y) {
+    return;
+  }
   vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
 
   vec3 fragPos = viewSpacePosition(texCoord);

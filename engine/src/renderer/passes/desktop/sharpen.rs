@@ -93,7 +93,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
     cmd_buffer.finish_binding();
 
     let info = self.sharpen_uav.texture().get_info();
-    cmd_buffer.dispatch(info.width, info.height, 1);
+    cmd_buffer.dispatch((info.width + 15) / 16, (info.height + 15) / 16, 1);
   }
 
   pub fn sharpened_texture(&self) -> &Arc<B::Texture> {
