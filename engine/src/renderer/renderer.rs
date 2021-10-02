@@ -127,14 +127,14 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
       can_move: renderable.can_move
     });
     if result.is_err() {
-      panic!("Sending message to render thread failed");
+      panic!("Sending message to render thread failed {:?}", result.err().unwrap());
     }
   }
 
   fn unregister_static_renderable(&self, entity: Entity) {
     let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
     if result.is_err() {
-      panic!("Sending message to render thread failed");
+      panic!("Sending message to render thread failed {:?}", result.err().unwrap());
     }
   }
 
@@ -145,7 +145,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
       intensity: component.intensity
     });
     if result.is_err() {
-      panic!("Sending message to render thread failed");
+      panic!("Sending message to render thread failed {:?}", result.err().unwrap());
     }
   }
 
@@ -159,14 +159,14 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
   fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
     let result = self.sender.send(RendererCommand::UpdateCameraTransform { camera_transform_mat, fov });
     if result.is_err() {
-      panic!("Sending message to render thread failed");
+      panic!("Sending message to render thread failed {:?}", result.err().unwrap());
     }
   }
 
   fn update_transform(&self, entity: Entity, transform: Matrix4) {
     let result = self.sender.send(RendererCommand::UpdateTransform { entity, transform_mat: transform });
     if result.is_err() {
-      panic!("Sending message to render thread failed");
+      panic!("Sending message to render thread failed {:?}", result.err().unwrap());
     }
   }
 
@@ -174,7 +174,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     self.queued_frames_counter.fetch_add(1, Ordering::SeqCst);
     let result = self.sender.send(RendererCommand::EndFrame);
     if result.is_err() {
-      panic!("Sending message to render thread failed");
+      panic!("Sending message to render thread failed {:?}", result.err().unwrap());
     }
   }
 

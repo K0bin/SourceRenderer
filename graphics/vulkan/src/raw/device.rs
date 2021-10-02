@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::ops::Deref;
+use std::sync::atomic::AtomicBool;
 
 use ash::vk;
 
@@ -15,7 +16,8 @@ pub struct RawVkDevice {
   pub extensions: VkAdapterExtensionSupport,
   pub graphics_queue_info: VkQueueInfo,
   pub compute_queue_info: Option<VkQueueInfo>,
-  pub transfer_queue_info: Option<VkQueueInfo>
+  pub transfer_queue_info: Option<VkQueueInfo>,
+  pub is_alive: AtomicBool
 }
 
 impl Deref for RawVkDevice {

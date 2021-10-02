@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::iter::*;
+use std::sync::atomic::Ordering;
 
 use ash::vk;
 
@@ -93,6 +94,11 @@ impl VkQueue {
       return;
     }
 
+    if !self.device.is_alive.load(Ordering::SeqCst) {
+      guard.virtual_queue.clear();
+      return;
+    }
+
     let mut command_buffers = SmallVec::<[vk::CommandBuffer; 32]>::new();
     let mut batch = SmallVec::<[vk::SubmitInfo; 8]>::new();
     let vk_queue = guard.queue;
@@ -118,6 +124,10 @@ impl VkQueue {
                 unsafe {
                   let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
                   if result.is_err() {
+                    self.device.is_alive.store(true, Ordering::SeqCst);
+                    unsafe {
+                      self.device.queue_wait_idle(vk_queue).unwrap();
+                    }
                     panic!("Submit failed: {:?}", result);
                   }
                 }
@@ -141,6 +151,10 @@ impl VkQueue {
               unsafe {
                 let result = self.device.device.queue_submit(vk_queue, &[submit], *fence_handle);
                 if result.is_err() {
+                  self.device.is_alive.store(true, Ordering::SeqCst);
+                  unsafe {
+                    self.device.queue_wait_idle(vk_queue).unwrap();
+                  }
                   panic!("Submit failed: {:?}", result);
                 }
               }
@@ -149,6 +163,10 @@ impl VkQueue {
                 unsafe {
                   let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
                   if result.is_err() {
+                    self.device.is_alive.store(true, Ordering::SeqCst);
+                    unsafe {
+                      self.device.queue_wait_idle(vk_queue).unwrap();
+                    }
                     panic!("Submit failed: {:?}", result);
                   }
                 }
@@ -179,6 +197,10 @@ impl VkQueue {
             unsafe {
               let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
               if result.is_err() {
+                self.device.is_alive.store(true, Ordering::SeqCst);
+                unsafe {
+                  self.device.queue_wait_idle(vk_queue).unwrap();
+                }
                 panic!("Submit failed: {:?}", result);
               }
             }
@@ -208,7 +230,13 @@ impl VkQueue {
                 match err {
                   vk::Result::ERROR_OUT_OF_DATE_KHR => { swapchain.set_state(VkSwapchainState::OutOfDate); }
                   vk::Result::ERROR_SURFACE_LOST_KHR => { swapchain.surface().mark_lost(); }
-                  _ => { panic!("Present failed: {:?}", err); }
+                  _ => {
+                    self.device.is_alive.store(true, Ordering::SeqCst);
+                    unsafe {
+                      self.device.queue_wait_idle(vk_queue).unwrap();
+                    }
+                    panic!("Present failed: {:?}", err);
+                  }
                 }
               }
             }
@@ -221,6 +249,7 @@ impl VkQueue {
       unsafe {
         let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
         if result.is_err() {
+          self.device.is_alive.store(true, Ordering::SeqCst);
           panic!("Submit failed: {:?}", result);
         }
       }

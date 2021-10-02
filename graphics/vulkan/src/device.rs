@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc};
 
 use ash::vk;
@@ -60,7 +61,8 @@ impl VkDevice {
       extensions,
       graphics_queue_info,
       transfer_queue_info,
-      compute_queue_info
+      compute_queue_info,
+      is_alive: AtomicBool::new(true)
     });
 
     let shared = Arc::new(VkShared::new(&raw));
