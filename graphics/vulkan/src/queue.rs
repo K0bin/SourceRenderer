@@ -125,9 +125,7 @@ impl VkQueue {
                   let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
                   if result.is_err() {
                     self.device.is_alive.store(true, Ordering::SeqCst);
-                    unsafe {
-                      self.device.queue_wait_idle(vk_queue).unwrap();
-                    }
+                    self.device.queue_wait_idle(vk_queue).unwrap();
                     panic!("Submit failed: {:?}", result);
                   }
                 }
@@ -152,9 +150,7 @@ impl VkQueue {
                 let result = self.device.device.queue_submit(vk_queue, &[submit], *fence_handle);
                 if result.is_err() {
                   self.device.is_alive.store(true, Ordering::SeqCst);
-                  unsafe {
-                    self.device.queue_wait_idle(vk_queue).unwrap();
-                  }
+                  self.device.queue_wait_idle(vk_queue).unwrap();
                   panic!("Submit failed: {:?}", result);
                 }
               }
@@ -164,9 +160,7 @@ impl VkQueue {
                   let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
                   if result.is_err() {
                     self.device.is_alive.store(true, Ordering::SeqCst);
-                    unsafe {
-                      self.device.queue_wait_idle(vk_queue).unwrap();
-                    }
+                    self.device.queue_wait_idle(vk_queue).unwrap();
                     panic!("Submit failed: {:?}", result);
                   }
                 }
@@ -198,9 +192,7 @@ impl VkQueue {
               let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
               if result.is_err() {
                 self.device.is_alive.store(true, Ordering::SeqCst);
-                unsafe {
-                  self.device.queue_wait_idle(vk_queue).unwrap();
-                }
+                self.device.queue_wait_idle(vk_queue).unwrap();
                 panic!("Submit failed: {:?}", result);
               }
             }
@@ -232,9 +224,7 @@ impl VkQueue {
                   vk::Result::ERROR_SURFACE_LOST_KHR => { swapchain.surface().mark_lost(); }
                   _ => {
                     self.device.is_alive.store(true, Ordering::SeqCst);
-                    unsafe {
-                      self.device.queue_wait_idle(vk_queue).unwrap();
-                    }
+                    self.device.queue_wait_idle(vk_queue).unwrap();
                     panic!("Present failed: {:?}", err);
                   }
                 }
