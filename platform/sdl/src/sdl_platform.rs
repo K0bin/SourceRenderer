@@ -1,19 +1,22 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use sourcerenderer_core::platform::{Platform, InputState, InputCommands};
+use sdl2::mouse::MouseUtil;
+use sourcerenderer_core::{Vec2I, Vec2UI};
+use sourcerenderer_core::platform::{Event, InputCommands, InputState, Platform};
 
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_core::platform::PlatformEvent;
 use sourcerenderer_core::platform::GraphicsApi;
 use sourcerenderer_core::platform::WindowState;
 
+use sourcerenderer_engine::Engine;
 use sourcerenderer_vulkan::VkInstance;
 use sourcerenderer_vulkan::VkSurface;
 use sourcerenderer_vulkan::VkSwapchain;
 use sourcerenderer_vulkan::VkDevice;
 
-use sdl2::event::Event;
+use sdl2::event::{Event as SDLEvent, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::Sdl;
 use sdl2::VideoSubsystem;
@@ -23,6 +26,8 @@ use sdl2_sys::SDL_WindowFlags;
 
 use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
+
+use crate::input;
 
 pub struct SDLPlatform {
   sdl_context: Sdl,
@@ -57,21 +62,53 @@ impl SDLPlatform {
     })
   }
 
-  pub(crate) fn handle_events(&mut self) -> PlatformEvent {
+  pub(crate) fn poll_events(&mut self, engine: &Engine<Self>) -> bool {
     let mut event_opt = Some(self.event_pump.wait_event());
     while let Some(event) = event_opt {
       match event {
-        Event::Quit {..} |
-        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-          self.window.is_active = false;
-          return PlatformEvent::Quit;
-        },
+        SDLEvent::Quit {..} |
+        SDLEvent::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+          engine.dispatch_event(Event::Quit);
+          return false;
+        }
+        SDLEvent::KeyUp { scancode: Some(keycode), .. } => {
+          engine.dispatch_event(Event::KeyUp(input::SCANCODE_TO_KEY.get(&keycode).copied().unwrap()));
+        }
+        SDLEvent::KeyDown { scancode: Some(keycode), .. } => {
+          engine.dispatch_event(Event::KeyDown(input::SCANCODE_TO_KEY.get(&keycode).copied().unwrap()));
+        }
+        SDLEvent::MouseMotion { x, y, .. } => {
+          engine.dispatch_event(Event::MouseMoved(Vec2I::new(x, y)));
+        }
+        SDLEvent::Window {
+          window_id: _,
+          timestamp: _,
+          win_event
+        } => {
+          match win_event {
+            WindowEvent::Resized(width, height) => {
+              engine.dispatch_event(Event::WindowSizeChanged(Vec2UI::new(width as u32, height as u32)));
+            }
+            WindowEvent::SizeChanged(width, height) => {
+              engine.dispatch_event(Event::WindowSizeChanged(Vec2UI::new(width as u32, height as u32)));
+            },
+            WindowEvent::Close => {
+              engine.dispatch_event(Event::Quit);
+            },
+            _ => {}
+          }
+        }
         _ => {}
       }
-
-      event_opt = self.event_pump.poll_event();
+      event_opt = self.event_pump.poll_event()
     }
-    PlatformEvent::Continue
+    true
+  }
+
+  pub(crate) fn reset_mouse_position(&self) {
+    let mouse_util = self.sdl_context.mouse();
+    let (width, height) = self.window.sdl_window_handle().drawable_size();
+    mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
   }
 
   pub(crate) fn process_input(&mut self, input_commands: InputCommands) {

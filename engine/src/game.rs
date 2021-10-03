@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 use legion::{World, Resources, Schedule};
 
 use nalgebra::UnitQuaternion;
-use sourcerenderer_core::{Platform, Vec3};
+use sourcerenderer_core::{Platform, Vec3, platform::Event};
 
 use crate::{Transform, asset::loaders::{GltfContainer, GltfLoader}, renderer::*};
 use crate::transform;
@@ -83,8 +83,10 @@ impl<P: Platform> Game<P> {
     };
     println!("Done loading level");
 
+    let mut input_state = InputState::default();
+    input_state.set_mouse_lock(true);
     let game = Arc::new(Self {
-      input_state: Mutex::new(TimeStampedInputState(InputState::default(), SystemTime::now())),
+      input_state: Mutex::new(TimeStampedInputState(input_state, SystemTime::now())),
       late_latch_camera: renderer.primary_camera().clone(),
       fps_camera: Mutex::new(FPSCamera::new()),
       is_running: AtomicBool::new(true)
@@ -180,10 +182,25 @@ impl<P: Platform> Game<P> {
     }
   }
 
-  pub fn receive_input_commands(&self) -> InputCommands {
-    let mut commands = InputCommands::new();
-    commands.lock_mouse(true);
-    commands
+  pub fn process_input_event(&self, event: Event<P>) {
+    let mut guard = self.input_state.lock().unwrap();
+    match event {
+      Event::KeyDown(key) => {
+        guard.0.set_key_down(key, true);
+      }
+      Event::KeyUp(key) => {
+        guard.0.set_key_down(key, false);
+      }
+      Event::MouseMoved(position) => {
+        guard.0.set_mouse_pos(position);
+      }
+      _ => unreachable!()
+    }
+  }
+
+  pub fn is_mouse_locked(&self) -> bool {
+    let guard = self.input_state.lock().unwrap();
+    guard.0.mouse_locked()
   }
 
   pub fn is_running(&self) -> bool {

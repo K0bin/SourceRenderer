@@ -13,20 +13,37 @@ use sourcerenderer_core::{Vec2I};
 use crate::sdl_platform::SDLWindow;
 
 lazy_static! {
-static ref KEY_TO_SCANCODE: HashMap<Key, Scancode> = {
-      let mut key_to_scancode: HashMap<Key, Scancode> = HashMap::new();
-      key_to_scancode.insert(Key::W, Scancode::W);
-      key_to_scancode.insert(Key::A, Scancode::A);
-      key_to_scancode.insert(Key::S, Scancode::S);
-      key_to_scancode.insert(Key::D, Scancode::D);
-      key_to_scancode.insert(Key::Q, Scancode::Q);
-      key_to_scancode.insert(Key::E, Scancode::E);
-      key_to_scancode.insert(Key::Space, Scancode::Space);
-      key_to_scancode.insert(Key::LShift, Scancode::LShift);
-      key_to_scancode.insert(Key::LCtrl, Scancode::LCtrl);
-      key_to_scancode
-    };
+  pub static ref KEY_TO_SCANCODE: HashMap<Key, Scancode> = {
+    let mut key_to_scancode: HashMap<Key, Scancode> = HashMap::new();
+    key_to_scancode.insert(Key::W, Scancode::W);
+    key_to_scancode.insert(Key::A, Scancode::A);
+    key_to_scancode.insert(Key::S, Scancode::S);
+    key_to_scancode.insert(Key::D, Scancode::D);
+    key_to_scancode.insert(Key::Q, Scancode::Q);
+    key_to_scancode.insert(Key::E, Scancode::E);
+    key_to_scancode.insert(Key::Space, Scancode::Space);
+    key_to_scancode.insert(Key::LShift, Scancode::LShift);
+    key_to_scancode.insert(Key::LCtrl, Scancode::LCtrl);
+    key_to_scancode
+  };
 }
+
+lazy_static! {
+  pub static ref SCANCODE_TO_KEY: HashMap<Scancode, Key> = {
+    let mut key_to_scancode: HashMap<Scancode, Key> = HashMap::new();
+    key_to_scancode.insert(Scancode::W, Key::W);
+    key_to_scancode.insert(Scancode::A, Key::A);
+    key_to_scancode.insert(Scancode::S, Key::S);
+    key_to_scancode.insert(Scancode::D, Key::D);
+    key_to_scancode.insert(Scancode::Q, Key::Q);
+    key_to_scancode.insert(Scancode::E, Key::E);
+    key_to_scancode.insert(Scancode::Space, Key::Space);
+    key_to_scancode.insert(Scancode::LShift, Key::LShift);
+    key_to_scancode.insert(Scancode::LCtrl, Key::LCtrl);
+    key_to_scancode
+  };
+}
+
 
 pub fn process(previous_commands: &mut InputCommands, commands: InputCommands, event_pump: &EventPump, mouse_util: &MouseUtil, window: &SDLWindow) -> InputState {
   let window_state = window.state();

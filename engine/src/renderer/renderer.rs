@@ -1,7 +1,7 @@
 use std::{cmp::max, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
 use crossbeam_channel::{Sender, unbounded};
 
-use sourcerenderer_core::{atomic_refcell::AtomicRefCell, graphics::SwapchainError, platform::{Platform, Window, WindowState}};
+use sourcerenderer_core::{atomic_refcell::AtomicRefCell, graphics::SwapchainError, platform::{Event, Platform, Window, WindowState}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
@@ -20,6 +20,7 @@ use super::{StaticRenderableComponent, drawable::View, ecs::{PointLightComponent
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
+  window_event_sender: Sender<Event<P>>,
   instance: Arc<<P::GraphicsBackend as Backend>::Instance>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   window_state: Mutex<WindowState>,
@@ -30,7 +31,7 @@ pub struct Renderer<P: Platform> {
 }
 
 impl<P: Platform> Renderer<P> {
-  fn new(sender: Sender<RendererCommand>, instance: &Arc<<P::GraphicsBackend as Backend>::Instance>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window, surface: &Arc<<P::GraphicsBackend as Backend>::Surface>) -> Self {
+  fn new(sender: Sender<RendererCommand>, window_event_sender: Sender<Event<P>>, instance: &Arc<<P::GraphicsBackend as Backend>::Instance>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window, surface: &Arc<<P::GraphicsBackend as Backend>::Surface>) -> Self {
     let window_state = window.state();
     let (width, height) = match &window_state {
         WindowState::Minimized => (0,0),
@@ -47,7 +48,8 @@ impl<P: Platform> Renderer<P> {
       queued_frames_counter: AtomicUsize::new(0),
       primary_camera: Arc::new(LateLatchCamera::new(device.as_ref(), (width as f32) / (max(1, height) as f32), std::f32::consts::FRAC_PI_2)),
       surface: Mutex::new(surface.clone()),
-      is_running: AtomicBool::new(true)
+      is_running: AtomicBool::new(true),
+      window_event_sender
     }
   }
 
@@ -57,7 +59,8 @@ impl<P: Platform> Renderer<P> {
              swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
              asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
     let (sender, receiver) = unbounded::<RendererCommand>();
-    let renderer = Arc::new(Renderer::new(sender.clone(), instance, device, window, swapchain.surface()));
+    let (window_event_sender, window_event_receiver) = unbounded();
+    let renderer = Arc::new(Renderer::new(sender.clone(), window_event_sender, instance, device, window, swapchain.surface()));
 
     let c_device = device.clone();
     let c_renderer = renderer.clone();
@@ -67,7 +70,7 @@ impl<P: Platform> Renderer<P> {
     std::thread::Builder::new()
       .name("RenderThread".to_string())
       .spawn(move || {
-      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, receiver, c_renderer.primary_camera());
+      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver, c_renderer.primary_camera());
       loop {
         if !c_renderer.is_running.load(Ordering::SeqCst) {
           break;
@@ -113,6 +116,10 @@ impl<P: Platform> Renderer<P> {
 
   pub fn stop(&self) {
     self.is_running.store(false, Ordering::SeqCst);
+  }
+
+  pub fn dispatch_window_event(&self, event: Event<P>) {
+    self.window_event_sender.send(event).unwrap();
   }
 }
 

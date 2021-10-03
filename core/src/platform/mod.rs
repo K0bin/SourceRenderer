@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::graphics;
+use crate::{Vec2I, Vec2UI, graphics::{self, Backend}};
 
 mod input;
 pub mod io;
@@ -44,6 +44,18 @@ pub enum WindowState {
     height: u32
   },
   Exited
+}
+
+#[derive(PartialEq, Eq, Clone)]
+pub enum Event<P: Platform> {
+  KeyDown(Key),
+  KeyUp(Key),
+  Quit,
+  WindowMinimized,
+  SurfaceChanged(Arc<<P::GraphicsBackend as Backend>::Surface>),
+  WindowRestored(Vec2UI),
+  WindowSizeChanged(Vec2UI),
+  MouseMoved(Vec2I),
 }
 
 pub trait Window<P: Platform> {
