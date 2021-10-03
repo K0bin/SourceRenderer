@@ -1,10 +1,10 @@
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
-use sourcerenderer_core::platform::{Window, WindowState, InputState};
+use sourcerenderer_core::platform::Window;
 use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
 use ndk::native_window::NativeWindow;
-use ndk_sys::{ANativeWindow_release};
+use ndk_sys::{ANativeWindow_release, ANativeWindow_getWidth, ANativeWindow_getHeight};
 
 use ash::extensions::khr::AndroidSurface;
 use ash::extensions::khr::Surface;
@@ -13,24 +13,18 @@ use std::os::raw::c_void;
 use crate::io::AndroidIO;
 
 pub struct AndroidPlatform {
-  window: AndroidWindow,
-  input_state: InputState,
+  window: AndroidWindow
 }
 
 impl AndroidPlatform {
-  pub fn new(native_window: NativeWindow) -> Box<Self> {
-    Box::new(Self {
-      window: AndroidWindow::new(native_window),
-      input_state: Default::default()
-    })
+  pub fn new(native_window: NativeWindow) -> Self {
+    Self {
+      window: AndroidWindow::new(native_window)
+    }
   }
 
-  pub(crate) fn input_state(&mut self) -> &mut InputState {
-    &mut self.input_state
-  }
-
-  pub(crate) fn window_mut(&mut self) -> &mut AndroidWindow {
-    &mut self.window
+  pub(crate) fn change_window(&mut self, window: AndroidWindow) {
+    self.window = window;
   }
 }
 
@@ -46,31 +40,17 @@ impl Platform for AndroidPlatform {
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     Ok(Arc::new(VkInstance::new(&["VK_KHR_surface", "VK_KHR_android_surface"], debug_layers)))
   }
-
-  fn input_state(&self) -> InputState {
-    self.input_state.clone()
-  }
 }
 
 pub struct AndroidWindow {
-  native_window: NativeWindow,
-  window_state: WindowState
+  native_window: NativeWindow
 }
 
 impl AndroidWindow {
   pub fn new(native_window: NativeWindow) -> Self {
-    let window_state = WindowState::FullScreen {
-      width: native_window.width() as u32,
-      height: native_window.height() as u32
-    };
     Self {
-      native_window,
-      window_state
+      native_window
     }
-  }
-
-  pub(crate) fn state_mut(&mut self) -> &mut WindowState {
-    &mut self.window_state
   }
 
   pub(crate) fn native_window(&self) -> &NativeWindow {
@@ -106,7 +86,15 @@ impl Window<AndroidPlatform> for AndroidWindow {
     return VkSwapchain::new(vsync, self.native_window.width() as u32, self.native_window.height() as u32, device_inner, surface).unwrap();
   }
 
-  fn state(&self) -> WindowState {
-    self.window_state.clone()
+  fn width(&self) -> u32 {
+    unsafe {
+      ANativeWindow_getWidth(self.native_window.ptr().as_ptr()) as u32
+    }
+  }
+
+  fn height(&self) -> u32 {
+    unsafe {
+      ANativeWindow_getHeight(self.native_window.ptr().as_ptr()) as u32
+    }
   }
 }

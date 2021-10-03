@@ -3,7 +3,7 @@ use package_entry::PackageEntry;
 use std::collections::HashMap;
 use archive_md5_section_entry::ArchiveMD5SectionEntry;
 use read_util::{PrimitiveRead, StringRead, StringReadError, RawDataRead};
-use crc::crc32;
+use crc::{self, Crc};
 use utilities::AsnKeyParser;
 use rsa::{BigUint, PaddingScheme, Hash, PublicKey};
 use rand::rngs::OsRng;
@@ -306,7 +306,8 @@ impl<R> Package<R>
       }
     }
 
-    if validate_crc && entry.crc32 != crc32::checksum_ieee(&output) {
+    let crc = Crc::<u32>::new(&crc::CRC_32_ISCSI);
+    if validate_crc && entry.crc32 != crc.checksum(&output) {
       return Err(PackageError::FileError("CRC32 mismatch for read data.".to_string()));
     }
 
@@ -429,7 +430,7 @@ impl<R> Package<R>
     }
     let parameters = parameters_res.unwrap();
 
-    let public_key_res = rsa::RSAPublicKey::new(BigUint::from_bytes_le(&parameters.modulus), BigUint::from_bytes_le(&parameters.exponent));
+    let public_key_res = rsa::RsaPublicKey::new(BigUint::from_bytes_le(&parameters.modulus), BigUint::from_bytes_le(&parameters.exponent));
     if public_key_res.is_err() {
       return false;
     }

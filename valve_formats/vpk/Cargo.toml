@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 
 [dependencies]
-rsa = "0.3.0"
-crc = "1.8.1"
+rsa = "0.5.0"
+crc = "2.0.0"
 md5 = "0.7.0"
-rand = "0.7.3"
+rand = "0.8.4"

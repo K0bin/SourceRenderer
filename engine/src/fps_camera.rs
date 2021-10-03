@@ -1,5 +1,6 @@
 use std::sync::Arc;
-use sourcerenderer_core::platform::{Key, InputState};
+use sourcerenderer_core::input::Key;
+use crate::input::InputState;
 use crate::Transform;
 use crate::Camera;
 use sourcerenderer_core::{Quaternion, Vec3, Platform, Vec2};

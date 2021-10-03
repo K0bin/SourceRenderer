@@ -1,19 +1,7 @@
-use crate::{Vec2I, Vec2};
-use bitset_core::BitSet;
+use sourcerenderer_core::input::Key;
+use sourcerenderer_core::{Vec2, Vec2I};
 
-#[derive(Copy, Clone, Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum Key {
-  W,
-  A,
-  S,
-  D,
-  Q,
-  E,
-  Space,
-  LCtrl,
-  LShift,
-}
+use crate::bitset_core::BitSet;
 
 #[derive(Clone, Default)]
 pub struct InputState {
@@ -21,12 +9,21 @@ pub struct InputState {
   mouse_pos: Vec2I,
   mouse_buttons: u32,
   fingers_down: u32,
-  finger_pos: [Vec2; 6]
+  finger_pos: [Vec2; 6],
+  lock_mouse: bool
 }
 
 impl InputState {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  pub fn set_mouse_lock(&mut self, is_locked: bool) {
+    self.lock_mouse = is_locked;
+  }
+
+  pub fn mouse_locked(&self) -> bool {
+    self.lock_mouse
   }
 
   pub fn set_key_down(&mut self, key: Key, is_down: bool) {
@@ -72,33 +69,4 @@ impl InputState {
   pub fn finger_position(&self, finger_index: u32) -> Vec2 {
     self.finger_pos[finger_index as usize]
   }
-}
-
-#[derive(Default)]
-pub struct InputCommands {
-  lock_mouse: bool
-}
-
-impl InputCommands {
-  pub fn new() -> Self {
-    Self {
-      lock_mouse: false
-    }
-  }
-
-  pub fn should_lock_mouse(&self) -> bool {
-    self.lock_mouse
-  }
-  pub fn lock_mouse(&mut self, lock: bool) {
-    self.lock_mouse = lock;
-  }
-}
-
-pub trait Input: Send + Sync {
-  fn is_key_down(&self, key: Key) -> bool;
-  fn is_mouse_button_down(&self, button: u8) -> bool;
-  fn is_finger_down(&self, finger_index: u32) -> bool;
-  fn finger_position(&self, finger_index: u32) -> Vec2;
-  fn mouse_position(&self) -> Vec2I;
-  fn toggle_mouse_lock(&self, enabled: bool);
 }

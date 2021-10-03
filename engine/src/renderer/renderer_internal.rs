@@ -1,13 +1,13 @@
 use std::sync::{Arc, Mutex};
 use crate::renderer::{Renderer, RendererStaticDrawable};
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
 use crate::asset::AssetManager;
-use sourcerenderer_core::{Platform, Vec4};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4};
 use sourcerenderer_core::graphics::{SwapchainError, Backend,Swapchain, Device};
 use crate::renderer::View;
-use sourcerenderer_core::platform::WindowState;
+use sourcerenderer_core::platform::Event;
 use smallvec::SmallVec;
 use crate::renderer::camera::LateLatchCamera;
 use crate::renderer::drawable::DrawablePart;
@@ -32,6 +32,7 @@ pub(super) struct RendererInternal<P: Platform> {
   view: Arc<AtomicRefCell<View>>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
+  window_event_receiver: Receiver<Event<P>>,
   last_tick: SystemTime,
   primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
   assets: RendererAssets<P>
@@ -44,6 +45,7 @@ impl<P: Platform> RendererInternal<P> {
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
     sender: Sender<RendererCommand>,
+    window_event_receiver: Receiver<Event<P>>,
     receiver: Receiver<RendererCommand>,
     primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>) -> Self {
 
@@ -65,10 +67,60 @@ impl<P: Platform> RendererInternal<P> {
       view,
       sender,
       receiver,
+      window_event_receiver,
       last_tick: SystemTime::now(),
       primary_camera: primary_camera.clone(),
       assets,
       lightmap
+    }
+  }
+
+  fn receive_window_events(&mut self) -> bool {
+    let mut window_message_res = self.window_event_receiver.try_recv();
+
+    let mut new_surface = Option::<Arc<<P::GraphicsBackend as Backend>::Surface>>::None;
+    let mut new_size = Option::<Vec2UI>::None;
+
+    while window_message_res.is_ok() {
+      match window_message_res.unwrap() {
+        Event::WindowMinimized => {
+          std::thread::sleep(Duration::new(1, 0));
+        }
+        Event::WindowRestored(size) => {
+          new_size = Some(size);
+        }
+        Event::WindowSizeChanged(size) => {
+          new_size = Some(size);
+        }
+        Event::SurfaceChanged(surface) => {
+          new_surface = Some(surface);
+        }
+        _ => unreachable!()
+      }
+      window_message_res = self.window_event_receiver.try_recv();
+    }
+    if let Result::Err(err) = &window_message_res {
+      if let TryRecvError::Disconnected = err {
+        panic!("Rendering window event channel closed {:?}", err);
+      }
+    }
+
+    if new_surface.is_some() || new_size.is_some() {
+      // We need to recreate the swapchain
+      let size = new_size.unwrap_or_else(|| Vec2UI::new(self.swapchain.width(), self.swapchain.height()));
+      let surface = new_surface.unwrap_or_else(|| self.swapchain.surface().clone());
+
+      self.device.wait_for_idle();
+      let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &surface, size.x, size.y);
+      if let Result::Err(error) = new_swapchain_result {
+        println!("Swapchain recreation failed: {:?}", error);
+      } else {
+        self.swapchain = new_swapchain_result.unwrap();
+      }
+      self.render_path.on_swapchain_changed(&self.swapchain);
+      true
+    } else {
+      false
     }
   }
 
@@ -77,8 +129,8 @@ impl<P: Platform> RendererInternal<P> {
     let mut view = self.view.borrow_mut();
 
     let message_res = self.receiver.recv();
-    if message_res.is_err() {
-      panic!("Rendering channel closed");
+    if let Result::Err(err) = &message_res {
+      panic!("Rendering channel closed {:?}", err);
     }
     let mut message_opt = message_res.ok();
 
@@ -147,32 +199,7 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   pub(super) fn render(&mut self) {
-    let state = {
-      let state_guard = self.renderer.window_state().lock().unwrap();
-      state_guard.clone()
-    };
-
-    let (swapchain_width, swapchain_height) = match state {
-      WindowState::Minimized => {
-        std::thread::sleep(Duration::new(1, 0));
-        return;
-      },
-      WindowState::FullScreen {
-        width, height
-      } => {
-        (width, height)
-      },
-      WindowState::Visible {
-        width, height, focussed: _focussed
-      } => {
-        (width, height)
-      },
-      WindowState::Exited => {
-        self.renderer.stop();
-        return;
-      }
-    };
-
+    self.receive_window_events();
     self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
     self.update_visibility();
@@ -182,32 +209,35 @@ impl<P: Platform> RendererInternal<P> {
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
-      let new_swapchain = if swapchain_error == SwapchainError::SurfaceLost {
-        // No point in trying to recreate with the old surface
-        let renderer_surface = self.renderer.surface();
-        if &*renderer_surface != self.swapchain.surface() {
-          println!("Recreating swapchain on a different surface");
-          let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &*renderer_surface, swapchain_width, swapchain_height);
+      // Recheck window events
+      if !self.receive_window_events() {
+        let new_swapchain = if swapchain_error == SwapchainError::SurfaceLost {
+          // No point in trying to recreate with the old surface
+          let renderer_surface = self.renderer.surface();
+          if &*renderer_surface != self.swapchain.surface() {
+            println!("Recreating swapchain on a different surface");
+            let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &*renderer_surface, self.swapchain.width(), self.swapchain.height());
+            if new_swapchain_result.is_err() {
+              println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
+              return;
+            }
+            new_swapchain_result.unwrap()
+          } else {
+            return;
+          }
+        } else {
+          println!("Recreating swapchain");
+          let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, self.swapchain.width(), self.swapchain.height());
           if new_swapchain_result.is_err() {
             println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
             return;
           }
           new_swapchain_result.unwrap()
-        } else {
-          return;
-        }
-      } else {
-        println!("Recreating swapchain");
-        let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, swapchain_width, swapchain_height);
-        if new_swapchain_result.is_err() {
-          println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
-          return;
-        }
-        new_swapchain_result.unwrap()
-      };
-      self.render_path.on_swapchain_changed(&new_swapchain);
-      self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera).expect("Rendering still fails after recreating swapchain.");
-      self.swapchain = new_swapchain;
+        };
+        self.render_path.on_swapchain_changed(&new_swapchain);
+        self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera).expect("Rendering still fails after recreating swapchain.");
+        self.swapchain = new_swapchain;
+      }
     }
     self.renderer.dec_queued_frames_counter();
   }

@@ -27,8 +27,4 @@ impl Window<WebPlatform> for WebWindow {
   fn create_swapchain(&self, _vsync: bool, _device: &WebGLDevice, surface: &Arc<WebGLSurface>) -> Arc<WebGLSwapchain> {
     Arc::new(WebGLSwapchain::new(surface))
   }
-
-  fn state(&self) -> sourcerenderer_core::platform::WindowState {
-    todo!()
-  }
 }

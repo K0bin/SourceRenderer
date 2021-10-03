@@ -9,29 +9,27 @@ extern crate bitset_core;
 extern crate lazy_static;
 
 use sourcerenderer_engine::Engine;
-use sourcerenderer_core::platform::{GraphicsApi, PlatformEvent};
+use sourcerenderer_core::platform::GraphicsApi;
 
 pub use sdl_platform::SDLPlatform;
 
 mod sdl_platform;
-mod input;
-mod io;
 
 fn main() {
   Engine::<SDLPlatform>::initialize_global();
-  let platform = SDLPlatform::new(GraphicsApi::Vulkan);
-  let mut engine = Box::new(Engine::run(platform));
+  let mut platform = SDLPlatform::new(GraphicsApi::Vulkan);
+  let engine = Box::new(Engine::run(platform.as_ref()));
+
   'event_loop: loop {
     if !engine.is_running() {
       break;
     }
-    let event = engine.platform().handle_events();
-    if event == PlatformEvent::Quit {
-      engine.stop();
+
+    if !platform.poll_events(&engine) {
       break 'event_loop;
     }
-    let input_commands = engine.receive_input_commands();
-    engine.platform().process_input(input_commands);
-    engine.poll_platform();
+    if engine.is_mouse_locked() {
+      platform.reset_mouse_position();
+    }
   }
 }

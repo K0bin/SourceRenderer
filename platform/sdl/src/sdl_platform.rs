@@ -1,36 +1,53 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
+use std::io::Result as IOResult;
+use std::path::Path;
 
-use sourcerenderer_core::platform::{Platform, InputState, InputCommands};
+use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::{Vec2I, Vec2UI};
+use sourcerenderer_core::input::Key;
+use sourcerenderer_core::platform::{Event, Platform};
 
 use sourcerenderer_core::platform::Window;
-use sourcerenderer_core::platform::PlatformEvent;
 use sourcerenderer_core::platform::GraphicsApi;
-use sourcerenderer_core::platform::WindowState;
 
+use sourcerenderer_engine::Engine;
 use sourcerenderer_vulkan::VkInstance;
 use sourcerenderer_vulkan::VkSurface;
 use sourcerenderer_vulkan::VkSwapchain;
 use sourcerenderer_vulkan::VkDevice;
 
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use sdl2::event::{Event as SDLEvent, WindowEvent};
+use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::Sdl;
 use sdl2::VideoSubsystem;
 use sdl2::EventPump;
 
-use sdl2_sys::SDL_WindowFlags;
-
 use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
+
+lazy_static! {
+  pub static ref SCANCODE_TO_KEY: HashMap<Scancode, Key> = {
+    let mut key_to_scancode: HashMap<Scancode, Key> = HashMap::new();
+    key_to_scancode.insert(Scancode::W, Key::W);
+    key_to_scancode.insert(Scancode::A, Key::A);
+    key_to_scancode.insert(Scancode::S, Key::S);
+    key_to_scancode.insert(Scancode::D, Key::D);
+    key_to_scancode.insert(Scancode::Q, Key::Q);
+    key_to_scancode.insert(Scancode::E, Key::E);
+    key_to_scancode.insert(Scancode::Space, Key::Space);
+    key_to_scancode.insert(Scancode::LShift, Key::LShift);
+    key_to_scancode.insert(Scancode::LCtrl, Key::LCtrl);
+    key_to_scancode
+  };
+}
 
 pub struct SDLPlatform {
   sdl_context: Sdl,
   video_subsystem: VideoSubsystem,
   event_pump: EventPump,
-  window: SDLWindow,
-  input_commands: InputCommands,
-  input_state: InputState
+  window: SDLWindow
 }
 
 pub struct SDLWindow {
@@ -51,31 +68,62 @@ impl SDLPlatform {
       sdl_context,
       video_subsystem,
       event_pump,
-      window,
-      input_commands: InputCommands::default(),
-      input_state: InputState::default()
+      window
     })
   }
 
-  pub(crate) fn handle_events(&mut self) -> PlatformEvent {
+  pub(crate) fn poll_events(&mut self, engine: &Engine<Self>) -> bool {
     let mut event_opt = Some(self.event_pump.wait_event());
     while let Some(event) = event_opt {
       match event {
-        Event::Quit {..} |
-        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-          self.window.is_active = false;
-          return PlatformEvent::Quit;
-        },
+        SDLEvent::Quit {..} |
+        SDLEvent::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+          engine.dispatch_event(Event::Quit);
+          return false;
+        }
+        SDLEvent::KeyUp { scancode: Some(keycode), .. } => {
+          engine.dispatch_event(Event::KeyUp(SCANCODE_TO_KEY.get(&keycode).copied().unwrap()));
+        }
+        SDLEvent::KeyDown { scancode: Some(keycode), .. } => {
+          engine.dispatch_event(Event::KeyDown(SCANCODE_TO_KEY.get(&keycode).copied().unwrap()));
+        }
+        SDLEvent::MouseMotion { x, y, .. } => {
+          if engine.is_mouse_locked() {
+            let (width, height) = self.window.window.drawable_size();
+            engine.dispatch_event(Event::MouseMoved(Vec2I::new(x - width as i32 / 2i32, y - height as i32 / 2i32)));
+          } else {
+            engine.dispatch_event(Event::MouseMoved(Vec2I::new(x, y)));
+          }
+        }
+        SDLEvent::Window {
+          window_id: _,
+          timestamp: _,
+          win_event
+        } => {
+          match win_event {
+            WindowEvent::Resized(width, height) => {
+              engine.dispatch_event(Event::WindowSizeChanged(Vec2UI::new(width as u32, height as u32)));
+            }
+            WindowEvent::SizeChanged(width, height) => {
+              engine.dispatch_event(Event::WindowSizeChanged(Vec2UI::new(width as u32, height as u32)));
+            },
+            WindowEvent::Close => {
+              engine.dispatch_event(Event::Quit);
+            },
+            _ => {}
+          }
+        }
         _ => {}
       }
-
-      event_opt = self.event_pump.poll_event();
+      event_opt = self.event_pump.poll_event()
     }
-    PlatformEvent::Continue
+    true
   }
 
-  pub(crate) fn process_input(&mut self, input_commands: InputCommands) {
-    self.input_state = crate::input::process(&mut self.input_commands, input_commands, &self.event_pump, &self.sdl_context.mouse(), &self.window);
+  pub(crate) fn reset_mouse_position(&self) {
+    let mouse_util = self.sdl_context.mouse();
+    let (width, height) = self.window.sdl_window_handle().drawable_size();
+    mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
   }
 }
 
@@ -110,7 +158,7 @@ impl SDLWindow {
 impl Platform for SDLPlatform {
   type Window = SDLWindow;
   type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
-  type IO = crate::io::StdIO;
+  type IO = StdIO;
 
   fn window(&self) -> &SDLWindow {
     &self.window
@@ -119,10 +167,6 @@ impl Platform for SDLPlatform {
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     let extensions = self.window.vulkan_instance_extensions().unwrap();
     Ok(Arc::new(VkInstance::new(&extensions, debug_layers)))
-  }
-
-  fn input_state(&self) -> InputState {
-    self.input_state.clone()
   }
 }
 
@@ -140,29 +184,33 @@ impl Window<SDLPlatform> for SDLWindow {
     VkSwapchain::new(vsync, width, height, device_inner, surface).unwrap()
   }
 
-  fn state(&self) -> WindowState {
-    if !self.is_active {
-      return WindowState::Exited;
-    }
+  fn width(&self) -> u32 {
+    self.window.drawable_size().0
+  }
 
-    let (width, height) = self.window.drawable_size();
-    let flags = self.window.window_flags();
-    let fullscreen = (flags & SDL_WindowFlags::SDL_WINDOW_FULLSCREEN as u32) != 0 || (flags & SDL_WindowFlags::SDL_WINDOW_FULLSCREEN_DESKTOP as u32) != 0;
-    let minimized = width == 0 || height == 0 || (flags & SDL_WindowFlags::SDL_WINDOW_MINIMIZED as u32) != 0 || (flags & SDL_WindowFlags::SDL_WINDOW_HIDDEN as u32) != 0;
-    let focussed = (flags & SDL_WindowFlags::SDL_WINDOW_INPUT_FOCUS as u32) != 0 || (flags & SDL_WindowFlags::SDL_WINDOW_INPUT_GRABBED as u32) != 0;
-    if minimized {
-      WindowState::Minimized
-    } else if fullscreen {
-      WindowState::FullScreen {
-        width,
-        height
-      }
-    } else {
-      WindowState::Visible {
-        width,
-        height,
-        focussed
-      }
-    }
+  fn height(&self) -> u32 {
+    self.window.drawable_size().1
+  }
+}
+
+pub struct StdIO {}
+
+impl IO for StdIO {
+  type File = std::fs::File;
+
+  fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+    std::fs::File::open(path)
+  }
+
+  fn asset_exists<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().exists()
+  }
+
+  fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+    std::fs::File::open(path)
+  }
+
+  fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().exists()
   }
 }

@@ -1,5 +1,6 @@
 use legion::{World, Resources, component};
-use sourcerenderer_core::platform::{InputState, Key};
+use sourcerenderer_core::input::Key;
+use crate::input::InputState;
 use crate::{Transform, Camera};
 use nalgebra::{Unit, UnitQuaternion};
 use crate::asset::{AssetManager, MeshRange};

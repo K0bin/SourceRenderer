@@ -1,4 +1,5 @@
-use sourcerenderer_core::platform::{Platform, InputCommands};
+use sourcerenderer_core::platform::Event;
+use sourcerenderer_core::platform::Platform;
 use std::sync::Arc;
 
 use sourcerenderer_core::ThreadPoolBuilder;
@@ -13,8 +14,7 @@ const TICK_RATE: u32 = 5;
 
 pub struct Engine<P: Platform> {
   renderer: Arc<Renderer<P>>,
-  game: Arc<Game<P>>,
-  platform: Box<P>
+  game: Arc<Game<P>>
 }
 
 impl<P: Platform> Engine<P> {
@@ -23,8 +23,8 @@ impl<P: Platform> Engine<P> {
     ThreadPoolBuilder::new().num_threads(cores - 2).build_global().unwrap();
   }
 
-  pub fn run(platform: Box<P>) -> Self {
-    let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
+  pub fn run(platform: &P) -> Self {
+    let instance = platform.create_graphics(false).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
     let mut adapters = instance.clone().list_adapters();
@@ -35,30 +35,39 @@ impl<P: Platform> Engine<P> {
     let game = Game::<P>::run(&renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
-      game,
-      platform
+      game
     }
   }
 
-  pub fn receive_input_commands(&self) -> InputCommands {
-    self.game.receive_input_commands()
+  pub fn is_mouse_locked(&self) -> bool {
+    self.game.is_mouse_locked()
   }
 
-  pub fn platform(&mut self) -> &mut P {
-    &mut self.platform
-  }
-
-  pub fn notify_window_changed(&self) {
-    let surface = self.platform.window().create_surface(self.renderer.instance().clone());
-    self.renderer.change_surface(&surface);
-  }
-
-  pub fn poll_platform(&self) {
-    self.game.update_input_state(self.platform.input_state());
-    self.renderer.set_window_state(self.platform.window().state());
-    if !self.game.is_running() || !self.renderer.is_running() {
-      self.stop(); // if just one system dies, kill the others too
+  pub fn dispatch_event(&self, event: Event<P>) {
+    match event {
+      Event::MouseMoved(_)
+      | Event::KeyUp(_)
+      | Event::KeyDown(_)
+      | Event::FingerDown(_)
+      | Event::FingerUp(_)
+      | Event::FingerMoved {..} => {
+        self.game.process_input_event(event);
+      },
+      Event::Quit => {
+        self.stop();
+        return;
+      },
+      Event::WindowMinimized
+      | Event::WindowRestored(_)
+      | Event::WindowSizeChanged(_)
+      | Event::SurfaceChanged(_) => {
+        self.renderer.dispatch_window_event(event);
+      }
     }
+  }
+
+  pub fn instance(&self) -> &Arc<<P::GraphicsBackend as Backend>::Instance> {
+    self.renderer.instance()
   }
 
   pub fn stop(&self) {

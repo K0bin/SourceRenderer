@@ -15,6 +15,8 @@ use jni::JNIEnv;
 use jni::objects::{JClass, JObject};
 use jni::sys::{jlong, jint, jfloat};
 use ndk_sys::{android_LogPriority_ANDROID_LOG_DEBUG, __android_log_print};
+use sourcerenderer_core::Vec2UI;
+use sourcerenderer_core::platform::Window;
 use crate::android_platform::{AndroidPlatform, AndroidWindow};
 use sourcerenderer_engine::Engine;
 use ndk_sys::ANativeWindow_fromSurface;
@@ -25,8 +27,7 @@ use std::fs::File;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::prelude::RawFd;
 use std::cell::{RefCell, RefMut};
-use sourcerenderer_core::platform::WindowState;
-use sourcerenderer_core::{Vec2, Platform};
+use sourcerenderer_core::{Vec2, Platform, platform::Event};
 
 lazy_static! {
   static ref TAG: CString = {
@@ -62,14 +63,19 @@ fn setup_log() {
   println!("Logging set up.");
 }
 
-fn engine_from_long<'a>(engine_ptr: jlong) -> RefMut<'a, Engine<AndroidPlatform>> {
+fn engine_from_long<'a>(engine_ptr: jlong) -> RefMut<'a, EngineWrapper> {
   assert_ne!(engine_ptr, 0);
   unsafe {
-    let ptr = std::mem::transmute::<jlong, *mut RefCell<Engine<AndroidPlatform>>>(engine_ptr);
-    let engine: RefMut<Engine<AndroidPlatform>> = (*ptr).borrow_mut();
-    let engine_ref = std::mem::transmute::<RefMut<Engine<AndroidPlatform>>, RefMut<'a, Engine<AndroidPlatform>>>(engine);
+    let ptr = std::mem::transmute::<jlong, *mut RefCell<EngineWrapper>>(engine_ptr);
+    let engine: RefMut<EngineWrapper> = (*ptr).borrow_mut();
+    let engine_ref = std::mem::transmute::<RefMut<EngineWrapper>, RefMut<'a, EngineWrapper>>(engine);
     engine_ref
   }
+}
+
+struct EngineWrapper {
+  engine: Engine<AndroidPlatform>,
+  platform: AndroidPlatform
 }
 
 #[no_mangle]
@@ -94,11 +100,11 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onDestroyNative
   engine_ptr: jlong
 ) {
   unsafe {
-    let engine_ptr = std::mem::transmute::<jlong, *mut RefCell<Engine<AndroidPlatform>>>(engine_ptr);
+    let engine_ptr = std::mem::transmute::<jlong, *mut RefCell<EngineWrapper>>(engine_ptr);
     let engine_box = Box::from_raw(engine_ptr);
     {
-      let mut engine_mut = (*engine_box).borrow_mut();
-      *engine_mut.platform().window_mut().state_mut() = WindowState::Exited;
+      let engine_mut = (*engine_box).borrow_mut();
+      engine_mut.engine.dispatch_event(Event::Quit);
     }
     // engine box gets dropped
   }
@@ -117,7 +123,10 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_startEngineNati
   let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
   let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
   let platform = AndroidPlatform::new(native_window);
-  let engine = Box::new(RefCell::new(Engine::run(platform)));
+  let engine = Box::new(RefCell::new(EngineWrapper {
+    engine: Engine::run(&platform),
+    platform
+  }));
   println!("Engine started");
   unsafe {
     std::mem::transmute(Box::into_raw(engine))
@@ -132,7 +141,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChange
   engine_ptr: jlong,
   surface: JObject
 ) {
-  let mut engine = engine_from_long(engine_ptr);
+  let mut wrapper = engine_from_long(engine_ptr);
   if surface.is_null() {
     return;
   } else {
@@ -140,9 +149,10 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onSurfaceChange
     let native_window_nonnull = NonNull::new(native_window_ptr).expect("Null surface provided");
     let native_window = unsafe { NativeWindow::from_ptr(native_window_nonnull) };
 
-    if &native_window != engine.platform().window().native_window() {
-      *engine.platform().window_mut() = AndroidWindow::new(native_window);
-      engine.notify_window_changed();
+    if &native_window != wrapper.platform.window().native_window() {
+      wrapper.platform.change_window(AndroidWindow::new(native_window));
+      wrapper.engine.dispatch_event(Event::SurfaceChanged(wrapper.platform.window().create_surface(wrapper.engine.instance().clone())));
+      wrapper.engine.dispatch_event(Event::WindowSizeChanged(Vec2UI::new(wrapper.platform.window().width(), wrapper.platform.window().height())));
     }
   }
 }
@@ -164,27 +174,34 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_MainActivity_onTouchInputNat
   const ANDROID_EVENT_TYPE_UP: i32 = 1;
   const ANDROID_EVENT_TYPE_MOVE: i32 = 2;
 
-  let mut engine = engine_from_long(engine_ptr);
+  let wrapper = engine_from_long(engine_ptr);
+  let engine = &wrapper.engine;
 
   {
-    let input = engine.platform().input_state();
     match event_type {
       ANDROID_EVENT_TYPE_POINTER_DOWN |
       ANDROID_EVENT_TYPE_DOWN => {
-        input.set_finger_position(finger_index as u32, Vec2::new(x, y));
-        input.set_finger_down(finger_index as u32, true);
+        engine.dispatch_event(Event::FingerDown(finger_index as u32));
+        engine.dispatch_event(Event::FingerMoved {
+          index: finger_index as u32,
+          position: Vec2::new(x, y)
+        });
       }
       ANDROID_EVENT_TYPE_POINTER_UP |
       ANDROID_EVENT_TYPE_UP => {
-        input.set_finger_position(finger_index as u32, Vec2::new(0f32, 0f32));
-        input.set_finger_down(finger_index as u32, false);
+        engine.dispatch_event(Event::FingerMoved {
+          index: finger_index as u32,
+          position: Vec2::new(x, y)
+        });
+        engine.dispatch_event(Event::FingerUp(finger_index as u32));
       }
       ANDROID_EVENT_TYPE_MOVE => {
-        input.set_finger_position(finger_index as u32, Vec2::new(x, y));
+        engine.dispatch_event(Event::FingerMoved {
+          index: finger_index as u32,
+          position: Vec2::new(x, y)
+        });
       }
       _ => {}
     }
   }
-
-  engine.poll_platform();
 }

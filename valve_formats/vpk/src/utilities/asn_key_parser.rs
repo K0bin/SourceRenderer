@@ -125,11 +125,11 @@ impl AsnKeyParser {
     // Checkpoint
     position = self.parser.current_position();
 
-    // Ignore sequence - RSAPublicKey
+    // Ignore sequence - RsaPublicKey
     let length = self.parser.next_sequence()?;
     if length != self.parser.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect RSAPublicKey Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
+        message: format!("Incorrect RsaPublicKey Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
         position
       });
     }

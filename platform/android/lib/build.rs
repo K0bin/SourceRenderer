@@ -133,9 +133,15 @@ fn main() {
   lib_path.push("jniLibs");
   lib_path.push(target_mapping.get(target.as_str()).expect("Failed to map LLVM target triple to Android jniLibs directory."));
   let mut libcpp_dst = lib_path.clone();
+  if !lib_path.exists() {
+    std::fs::create_dir(&lib_path).expect("Failed to create shader target directory.");
+  }
   libcpp_dst.push("libc++_shared.so");
 
-  std::fs::copy(libcpp_src, libcpp_dst).expect("Failed to copy file over.");
+  let copy_res = std::fs::copy(&libcpp_src, &libcpp_dst);
+  if let Result::Err(err) = copy_res {
+    panic!("Failed to copy file over. {:?} to {:?} {:?}", libcpp_src, libcpp_dst, err);
+  }
 
   let profile = env::var("PROFILE").unwrap_or_else(|_| "release".to_string());
   if profile == "debug" {

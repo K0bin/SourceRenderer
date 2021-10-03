@@ -19,6 +19,7 @@ extern crate rayon;
 extern crate smallvec;
 extern crate gltf;
 extern crate rand;
+extern crate bitset_core;
 
 #[cfg(feature = "threading")]
 pub use self::engine::Engine;
@@ -40,6 +41,7 @@ mod math;
 
 pub mod renderer;
 mod game;
+mod input;
 
 #[cfg(not(feature = "threading"))]
 pub use game::{DeltaTime, TickDelta, TickDuration, TickRate, Tick};

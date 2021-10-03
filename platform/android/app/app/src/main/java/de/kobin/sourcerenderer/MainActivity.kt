@@ -1,5 +1,7 @@
 package de.kobin.sourcerenderer
 
+import android.app.GameManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -37,6 +39,14 @@ class MainActivity : AppCompatActivity() {
                 or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val gameManager: GameManager? = getSystemService(Context.GAME_SERVICE) as GameManager?
+            // Returns the selected GameMode
+            val gameMode = gameManager?.gameMode
+            Log.d("SourceRenderer", "Game mode: $gameMode")
+        }
+
 
         //askForCsgoDirectory()
 

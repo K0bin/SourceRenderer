@@ -17,9 +17,19 @@
         android:version="0x400003"
         android:required="true" />
 
+    <meta-data
+        android:name="com.android.app.gamemode.performance.enabled"
+        android:value="true"/>
+
+    <meta-data
+        android:name="com.android.app.gamemode.battery.enabled"
+        android:value="true"/>
+
+
     <application
         android:name=".App"
         android:allowBackup="true"
+        android:fullBackupContent="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -30,7 +40,8 @@
             android:configChanges="density|fontScale|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:preferMinimalPostProcessing="true"
             android:screenOrientation="landscape"
-            android:windowSoftInputMode="stateHidden">
+            android:windowSoftInputMode="stateHidden"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
