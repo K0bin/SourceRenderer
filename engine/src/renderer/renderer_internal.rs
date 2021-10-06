@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 use crate::renderer::{Renderer, RendererStaticDrawable};
+use crate::transform::interpolation::deconstruct_transform;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crate::renderer::command::RendererCommand;
 use std::time::{SystemTime, Duration};
@@ -9,7 +10,7 @@ use sourcerenderer_core::graphics::{SwapchainError, Backend,Swapchain, Device};
 use crate::renderer::View;
 use sourcerenderer_core::platform::Event;
 use smallvec::SmallVec;
-use crate::renderer::camera::LateLatchCamera;
+use crate::renderer::late_latch_camera::LateLatchCamera;
 use crate::renderer::drawable::DrawablePart;
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
@@ -17,6 +18,7 @@ use rayon::prelude::*;
 use crate::math::Frustum;
 
 use super::PointLight;
+use super::drawable::{make_camera_proj, make_camera_view};
 use super::passes::desktop::desktop_renderer::DesktopRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
@@ -34,7 +36,6 @@ pub(super) struct RendererInternal<P: Platform> {
   receiver: Receiver<RendererCommand>,
   window_event_receiver: Receiver<Event<P>>,
   last_tick: SystemTime,
-  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
   assets: RendererAssets<P>
 }
 
@@ -46,8 +47,7 @@ impl<P: Platform> RendererInternal<P> {
     asset_manager: &Arc<AssetManager<P>>,
     sender: Sender<RendererCommand>,
     window_event_receiver: Receiver<Event<P>>,
-    receiver: Receiver<RendererCommand>,
-    primary_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>) -> Self {
+    receiver: Receiver<RendererCommand>) -> Self {
 
     let mut assets = RendererAssets::new(device);
     let lightmap = assets.insert_placeholder_texture("lightmap");
@@ -69,7 +69,6 @@ impl<P: Platform> RendererInternal<P> {
       receiver,
       window_event_receiver,
       last_tick: SystemTime::now(),
-      primary_camera: primary_camera.clone(),
       assets,
       lightmap
     }
@@ -145,12 +144,10 @@ impl<P: Platform> RendererInternal<P> {
         RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => {
           view.camera_transform = camera_transform_mat;
           view.camera_fov = fov;
-
           view.old_camera_matrix = view.proj_matrix * view.view_matrix;
-          let position = camera_transform_mat.column(3).xyz();
-          self.primary_camera.update_position(position);
-          view.view_matrix = self.primary_camera.view();
-          view.proj_matrix = self.primary_camera.proj();
+          let (position, rotation, _) = deconstruct_transform(&camera_transform_mat);
+          view.view_matrix = make_camera_view(position, rotation);
+          view.proj_matrix = make_camera_proj(view.camera_fov, view.aspect_ratio, view.near_plane, view.far_plane)
         }
 
         RendererCommand::UpdateTransform { entity, transform_mat } => {
@@ -205,7 +202,7 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
-    let render_result = self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera);
+    let render_result = self.render_path.render(&self.scene, &self.view, &self.lightmap, self.renderer.late_latching(), self.renderer.input());
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -235,7 +232,7 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, &self.lightmap, &self.primary_camera).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, &self.lightmap, self.renderer.late_latching(), self.renderer.input()).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }
@@ -253,8 +250,8 @@ impl<P: Platform> RendererInternal<P> {
     existing_parts.clear();
     let visible_parts = Mutex::new(existing_parts);
 
-    let frustum = Frustum::new(self.primary_camera.z_near(), self.primary_camera.z_far(), self.primary_camera.fov(), self.primary_camera.aspect_ratio());
-    let camera_matrix = self.primary_camera.view();
+    let frustum = Frustum::new(view_mut.near_plane, view_mut.far_plane, view_mut.camera_fov, view_mut.aspect_ratio);
+    let camera_matrix = view_mut.view_matrix;
     const CHUNK_SIZE: usize = 64;
     static_meshes.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
       let mut chunk_visible_parts = SmallVec::<[DrawablePart; 64]>::new();

@@ -5,6 +5,8 @@ use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 
+use crate::renderer::LateLatching;
+
 pub struct LateLatchingPass<B: GraphicsBackend> {
   pipeline: Arc<B::ComputePipeline>,
   camera_buffer: Arc<B::Buffer>,
@@ -19,7 +21,7 @@ impl<B: GraphicsBackend> LateLatchingPass<B> {
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("copy_camera.comp.spv"))
     };
-  
+
     let copy_camera_pipeline = device.create_compute_pipeline(&copy_camera_compute_shader);
     let buffer_info = BufferInfo {
       size: std::mem::size_of::<Matrix4>() * 2,
@@ -36,7 +38,15 @@ impl<B: GraphicsBackend> LateLatchingPass<B> {
     }
   }
 
-  pub fn execute(&mut self, command_buffer: &mut B::CommandBuffer, camera_ring_buffer: &Arc<B::Buffer>) {
+  pub fn execute(
+    &mut self,
+    command_buffer: &mut B::CommandBuffer,
+    late_latching: Option<&dyn LateLatching<B>>
+  ) {
+    if late_latching.is_none() {
+      return;
+    }
+
     command_buffer.barrier(&[
       Barrier::BufferBarrier {
         old_primary_usage: BufferUsage::VERTEX_SHADER_CONSTANT,
@@ -49,14 +59,14 @@ impl<B: GraphicsBackend> LateLatchingPass<B> {
     ]);
 
     command_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
-    command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, camera_ring_buffer);
+    command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, &late_latching.unwrap().buffer());
     command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &self.camera_buffer);
     command_buffer.finish_binding();
     command_buffer.dispatch(1, 1, 1);
   }
 
   pub fn swap_history_resources(&mut self) {
-    std::mem::swap(&mut self.camera_buffer, &mut self.camera_buffer_b);    
+    std::mem::swap(&mut self.camera_buffer, &mut self.camera_buffer_b);
   }
 
   pub fn camera_buffer(&self) -> &Arc<B::Buffer> {

@@ -1,4 +1,5 @@
-use sourcerenderer_core::Matrix4;
+use nalgebra::Point3;
+use sourcerenderer_core::{Matrix4, Quaternion, Vec3};
 
 use legion::Entity;
 use std::{sync::Arc, usize};
@@ -17,15 +18,16 @@ pub(super) struct RendererStaticDrawable<B: Backend> {
 }
 
 #[derive(Clone)]
-pub(crate) struct View {
-  pub(super) view_matrix: Matrix4,
-  pub(super) proj_matrix: Matrix4,
-  pub(super) old_camera_matrix: Matrix4,
-  pub(super) camera_transform: Matrix4,
-  pub(super) camera_fov: f32,
-  pub(super) near_plane: f32,
-  pub(super) far_plane: f32,
-  pub(super) drawable_parts: Vec<DrawablePart>
+pub struct View {
+  pub view_matrix: Matrix4,
+  pub proj_matrix: Matrix4,
+  pub old_camera_matrix: Matrix4,
+  pub camera_transform: Matrix4,
+  pub camera_fov: f32,
+  pub near_plane: f32,
+  pub far_plane: f32,
+  pub aspect_ratio: f32,
+  pub drawable_parts: Vec<DrawablePart>
 }
 
 impl Default for View {
@@ -38,6 +40,7 @@ impl Default for View {
       camera_fov: f32::consts::PI / 2f32,
       near_plane: 0.1f32,
       far_plane: 100f32,
+      aspect_ratio: 16.0f32 / 9.0f32,
       drawable_parts: Vec::new()
     }
   }
@@ -47,4 +50,15 @@ impl Default for View {
 pub struct DrawablePart {
   pub(super) drawable_index: usize,
   pub(super) part_index: usize
+}
+
+pub(crate) fn make_camera_view(position: Vec3, rotation: Quaternion) -> Matrix4 {
+  let position = Point3::<f32>::new(position.x, position.y, position.z);
+  let forward = rotation.transform_vector(&Vec3::new(0.0f32, 0.0f32, -1.0f32));
+  Matrix4::look_at_rh(&position, &(position + forward), &Vec3::new(0.0f32, 1.0f32, 0.0f32))
+}
+
+pub(crate) fn make_camera_proj(fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Matrix4 {
+  let vertical_fov = 2f32 * ((fov / 2f32).tan() * (1f32 / aspect_ratio)).atan();
+  Matrix4::new_perspective(aspect_ratio, vertical_fov, z_near, z_far)
 }

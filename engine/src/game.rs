@@ -7,7 +7,7 @@ use legion::{World, Resources, Schedule};
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3, platform::Event};
 
-use crate::{Transform, asset::loaders::{GltfContainer, GltfLoader}, renderer::*};
+use crate::{Transform, asset::loaders::{GltfContainer, GltfLoader}, input::Input, renderer::*};
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;
@@ -20,10 +20,9 @@ use crate::{fps_camera::{fps_camera_rotation, FPSCamera}, renderer::RendererInte
 pub struct TimeStampedInputState(InputState, SystemTime);
 
 #[cfg(feature = "threading")]
-pub struct Game<P: Platform> {
-  input_state: Mutex<TimeStampedInputState>,
+pub struct Game {
+  input: Arc<Input>,
   fps_camera: Mutex<FPSCamera>,
-  late_latch_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
   is_running: AtomicBool
 }
 
@@ -48,10 +47,13 @@ impl LayoutFilter for FilterAll {
 }
 
 #[cfg(feature = "threading")]
-impl<P: Platform> Game<P> {
-  pub fn run(renderer: &Arc<Renderer<P>>,
-                          asset_manager: &Arc<AssetManager<P>>,
-                          tick_rate: u32) -> Arc<Self> {
+impl Game {
+  pub fn run<P: Platform>(
+    input: &Arc<Input>,
+    renderer: &Arc<Renderer<P>>,
+    asset_manager: &Arc<AssetManager<P>>,
+    tick_rate: u32) -> Arc<Self> {
+
     asset_manager.add_loader(Box::new(BspLevelLoader::new()));
     asset_manager.add_loader(Box::new(VPKContainerLoader::new()));
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
@@ -83,11 +85,8 @@ impl<P: Platform> Game<P> {
     };
     println!("Done loading level");
 
-    let mut input_state = InputState::default();
-    input_state.set_mouse_lock(true);
     let game = Arc::new(Self {
-      input_state: Mutex::new(TimeStampedInputState(input_state, SystemTime::now())),
-      late_latch_camera: renderer.primary_camera().clone(),
+      input: input.clone(),
       fps_camera: Mutex::new(FPSCamera::new()),
       is_running: AtomicBool::new(true)
     });
@@ -117,7 +116,7 @@ impl<P: Platform> Game<P> {
 
       world.move_from(&mut level, &FilterAll {});
 
-      resources.insert(c_renderer.primary_camera().clone());
+      //resources.insert(c_renderer.primary_camera().clone());
 
       let tick_duration = Duration::new(0, 1_000_000_000 / tick_rate);
       resources.insert(TickRate(tick_rate));
@@ -132,10 +131,7 @@ impl<P: Platform> Game<P> {
         if !c_game.is_running() {
           break;
         }
-        {
-          let input_guard = c_game.input_state.lock().unwrap();
-          resources.insert((input_guard.0).clone());
-        }
+        resources.insert(c_game.input.poll());
 
         let now = SystemTime::now();
 
@@ -162,56 +158,6 @@ impl<P: Platform> Game<P> {
     }).unwrap();
 
     game
-  }
-
-  pub fn update_input_state(&self, input_state: InputState) {
-    {
-      let mut input_guard = self.input_state.lock().unwrap();
-      let now = SystemTime::now();
-
-      #[cfg(feature = "late-latching")]
-      {
-        let delta = now.duration_since(input_guard.1).unwrap();
-        {
-          let mut fps_camera = self.fps_camera.lock().unwrap();
-          self.late_latch_camera.update_rotation(fps_camera_rotation::<P>(&input_state, &mut fps_camera, delta.as_secs_f32()));
-        }
-      }
-
-      *input_guard = TimeStampedInputState(input_state, now);
-    }
-  }
-
-  pub fn process_input_event(&self, event: Event<P>) {
-    let mut input_guard = self.input_state.lock().unwrap();
-    let now = SystemTime::now();
-    match event {
-      Event::KeyDown(key) => {
-        input_guard.0.set_key_down(key, true);
-      }
-      Event::KeyUp(key) => {
-        input_guard.0.set_key_down(key, false);
-      }
-      Event::MouseMoved(position) => {
-        input_guard.0.set_mouse_pos(position);
-      }
-      _ => unreachable!()
-    }
-
-    #[cfg(feature = "late-latching")]
-    {
-      let delta = now.duration_since(input_guard.1).unwrap();
-      {
-        let mut fps_camera = self.fps_camera.lock().unwrap();
-        self.late_latch_camera.update_rotation(fps_camera_rotation::<P>(&input_guard.0, &mut fps_camera, delta.as_secs_f32()));
-      }
-    }
-    input_guard.1 = now;
-  }
-
-  pub fn is_mouse_locked(&self) -> bool {
-    let guard = self.input_state.lock().unwrap();
-    guard.0.mouse_locked()
   }
 
   pub fn is_running(&self) -> bool {

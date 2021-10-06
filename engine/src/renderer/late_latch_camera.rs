@@ -1,14 +1,20 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use sourcerenderer_core::graphics::{Backend, Buffer, BufferInfo, BufferUsage, Device, MemoryUsage};
-use sourcerenderer_core::{Matrix4, Vec3, Quaternion};
+use sourcerenderer_core::{Matrix4, Quaternion, Vec2, Vec3};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crossbeam_utils::atomic::AtomicCell;
 use nalgebra::Point3;
 
+use crate::fps_camera::{FPSCamera, fps_camera_rotation};
+use crate::transform::interpolation::deconstruct_transform;
+
+use super::LateLatching;
+use super::drawable::View;
+
 #[derive(Clone)]
 #[repr(C)]
-struct PrimaryCameraBuffer {
+struct LateLatchCamerabuffer {
   proj: [Matrix4; 16],
   view: [Matrix4; 16],
   proj_index: u32,
@@ -16,6 +22,7 @@ struct PrimaryCameraBuffer {
 }
 
 pub struct LateLatchCamera<B: Backend> {
+  fps_camera: Mutex<FPSCamera>,
   buffer: Arc<B::Buffer>,
   proj_read_counter: AtomicU32,
   proj_write_counter: AtomicU32,
@@ -29,11 +36,28 @@ pub struct LateLatchCamera<B: Backend> {
   z_far: f32
 }
 
+impl<B: Backend> LateLatching<B> for LateLatchCamera<B> {
+  fn buffer(&self) -> Arc<B::Buffer> {
+    self.buffer.clone()
+  }
+
+  fn process_input(&self, input: &crate::input::InputState) {
+    let mut fps_camera = self.fps_camera.lock().unwrap();
+    self.update_rotation(fps_camera_rotation(input, &mut fps_camera));
+  }
+
+  fn before_submit(&self, _input: &crate::input::InputState, view: &View) {
+    let (position, _, _) = deconstruct_transform(&view.camera_transform);
+    self.update_position(position);
+  }
+}
+
 impl<B: Backend> LateLatchCamera<B> {
   pub fn new(device: &B::Device, aspect_ratio: f32, fov: f32) -> Self {
     let late_letch_cam = Self {
+      fps_camera: Mutex::new(FPSCamera::new()),
       buffer: device.create_buffer(&BufferInfo {
-        size: std::mem::size_of::<PrimaryCameraBuffer>(),
+        size: std::mem::size_of::<LateLatchCamerabuffer>(),
         usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT
       }, MemoryUsage::CpuOnly, None),
       proj_read_counter: AtomicU32::new(0),
@@ -47,6 +71,7 @@ impl<B: Backend> LateLatchCamera<B> {
       z_near: 0.1f32,
       z_far: 100f32
     };
+    late_letch_cam.update_view(late_letch_cam.view());
     late_letch_cam.update_projection(late_letch_cam.proj());
     late_letch_cam
   }
@@ -88,7 +113,7 @@ impl<B: Backend> LateLatchCamera<B> {
   }
 
   fn update_view(&self, view: Matrix4) {
-    let mut map = self.buffer.map_mut::<PrimaryCameraBuffer>().expect("Failed to map camera buffer");
+    let mut map = self.buffer.map_mut::<LateLatchCamerabuffer>().expect("Failed to map camera buffer");
     let mats_len = map.view.len();
     let counter = self.view_write_counter.fetch_add(1, Ordering::SeqCst) + 1;
     map.view[counter as usize % mats_len] = view;
@@ -97,7 +122,7 @@ impl<B: Backend> LateLatchCamera<B> {
   }
 
   fn update_projection(&self, proj: Matrix4) {
-    let mut map = self.buffer.map_mut::<PrimaryCameraBuffer>().expect("Failed to map camera buffer");
+    let mut map = self.buffer.map_mut::<LateLatchCamerabuffer>().expect("Failed to map camera buffer");
     let mats_len = map.proj.len();
     let counter = self.proj_write_counter.fetch_add(1, Ordering::SeqCst) + 1;
     map.proj[counter as usize % mats_len] = proj;
@@ -121,7 +146,7 @@ impl<B: Backend> LateLatchCamera<B> {
   pub fn get_camera(&self) -> Matrix4 {
     unsafe {
       let ptr = self.buffer.map_unsafe(false).expect("Failed to map camera buffer");
-      let buf = (ptr as *mut PrimaryCameraBuffer).as_ref().unwrap();
+      let buf = (ptr as *mut LateLatchCamerabuffer).as_ref().unwrap();
       let proj_len = buf.proj.len();
       let proj_counter = self.proj_read_counter.load(Ordering::SeqCst);
       let proj = buf.proj[proj_counter as usize % proj_len];
@@ -131,9 +156,5 @@ impl<B: Backend> LateLatchCamera<B> {
       self.buffer.unmap_unsafe(false);
       proj * view
     }
-  }
-
-  pub fn buffer(&self) -> &Arc<B::Buffer> {
-    &self.buffer
   }
 }

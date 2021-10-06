@@ -6,6 +6,9 @@ use sourcerenderer_core::ThreadPoolBuilder;
 use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::platform::Window;
 
+use crate::input::Input;
+use crate::renderer::LateLatchCamera;
+use crate::renderer::LateLatching;
 use crate::{asset::AssetManager, renderer::RendererInterface};
 use crate::renderer::Renderer;
 use crate::game::Game;
@@ -14,7 +17,9 @@ const TICK_RATE: u32 = 5;
 
 pub struct Engine<P: Platform> {
   renderer: Arc<Renderer<P>>,
-  game: Arc<Game<P>>
+  game: Arc<Game>,
+  input: Arc<Input>,
+  late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>
 }
 
 impl<P: Platform> Engine<P> {
@@ -27,20 +32,25 @@ impl<P: Platform> Engine<P> {
     let instance = platform.create_graphics(false).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
+    let input = Arc::new(Input::new());
     let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let swapchain = Arc::new(platform.window().create_swapchain(false, &device, &surface));
     let asset_manager = AssetManager::<P>::new(&device);
-    let renderer = Renderer::<P>::run(platform.window(), &instance, &device, &swapchain, &asset_manager);
-    let game = Game::<P>::run(&renderer, &asset_manager, TICK_RATE);
+    let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
+    let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
+    let renderer = Renderer::<P>::run(platform.window(), &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
+    let game = Game::run::<P>(&input, &renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
-      game
+      game,
+      input,
+      late_latching: Some(late_latching)
     }
   }
 
   pub fn is_mouse_locked(&self) -> bool {
-    self.game.is_mouse_locked()
+    self.input.poll().mouse_locked()
   }
 
   pub fn dispatch_event(&self, event: Event<P>) {
@@ -51,7 +61,7 @@ impl<P: Platform> Engine<P> {
       | Event::FingerDown(_)
       | Event::FingerUp(_)
       | Event::FingerMoved {..} => {
-        self.game.process_input_event(event);
+        self.input.process_input_event(event, self.late_latching.as_ref().map(|l| l.as_ref()));
       },
       Event::Quit => {
         self.stop();

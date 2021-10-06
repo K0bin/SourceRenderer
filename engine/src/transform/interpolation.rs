@@ -49,7 +49,7 @@ fn interpolate_new_transform(
   command_buffer.add_component(*entity, InterpolatedTransform(transform.0));
 }
 
-fn deconstruct_transform(transform_mat: &Matrix4) -> (Vec3, Quaternion, Vec3) {
+pub(crate) fn deconstruct_transform(transform_mat: &Matrix4) -> (Vec3, Quaternion, Vec3) {
   let scale = Vec3::new(transform_mat.column(0).xyz().magnitude(),
                         transform_mat.column(1).xyz().magnitude(),
                         transform_mat.column(2).xyz().magnitude());

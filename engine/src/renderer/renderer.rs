@@ -1,11 +1,11 @@
-use std::{cmp::max, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
+use std::{cmp::max, rc::Rc, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
 use crossbeam_channel::{Sender, unbounded};
 
 use sourcerenderer_core::{platform::{Event, Platform, Window}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
-use crate::{asset::AssetManager, transform::interpolation::InterpolatedTransform};
+use crate::{asset::AssetManager, input::Input, transform::interpolation::InterpolatedTransform};
 
 use std::sync::atomic::{Ordering, AtomicUsize};
 
@@ -14,9 +14,8 @@ use legion::{World, Resources, Entity};
 use legion::systems::Builder;
 
 use crate::renderer::RendererInternal;
-use crate::renderer::camera::LateLatchCamera;
 
-use super::{StaticRenderableComponent, ecs::{PointLightComponent, RendererInterface}};
+use super::{LateLatching, StaticRenderableComponent, ecs::{PointLightComponent, RendererInterface}};
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
@@ -24,24 +23,33 @@ pub struct Renderer<P: Platform> {
   instance: Arc<<P::GraphicsBackend as Backend>::Instance>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   queued_frames_counter: AtomicUsize,
-  primary_camera: Arc<LateLatchCamera<P::GraphicsBackend>>,
   surface: Mutex<Arc<<P::GraphicsBackend as Backend>::Surface>>,
-  is_running: AtomicBool
+  is_running: AtomicBool,
+  input: Arc<Input>,
+  late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>
 }
 
 impl<P: Platform> Renderer<P> {
-  fn new(sender: Sender<RendererCommand>, window_event_sender: Sender<Event<P>>, instance: &Arc<<P::GraphicsBackend as Backend>::Instance>, device: &Arc<<P::GraphicsBackend as Backend>::Device>, window: &P::Window, surface: &Arc<<P::GraphicsBackend as Backend>::Surface>) -> Self {
-    let width = window.width();
-    let height = window.height();
+  fn new(
+    sender: Sender<RendererCommand>,
+    window_event_sender: Sender<Event<P>>,
+    instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
+    device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+    window: &P::Window,
+    surface: &Arc<<P::GraphicsBackend as Backend>::Surface>,
+    input: &Arc<Input>,
+    late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>) -> Self {
+
     Self {
       sender,
       instance: instance.clone(),
       device: device.clone(),
       queued_frames_counter: AtomicUsize::new(0),
-      primary_camera: Arc::new(LateLatchCamera::new(device.as_ref(), (width as f32) / (max(1, height) as f32), std::f32::consts::FRAC_PI_2)),
       surface: Mutex::new(surface.clone()),
       is_running: AtomicBool::new(true),
-      window_event_sender
+      window_event_sender,
+      late_latching: late_latching.cloned(),
+      input: input.clone()
     }
   }
 
@@ -49,10 +57,13 @@ impl<P: Platform> Renderer<P> {
              instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
              device: &Arc<<P::GraphicsBackend as Backend>::Device>,
              swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-             asset_manager: &Arc<AssetManager<P>>) -> Arc<Renderer<P>> {
+             asset_manager: &Arc<AssetManager<P>>,
+             input: &Arc<Input>,
+             late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>) -> Arc<Renderer<P>> {
+
     let (sender, receiver) = unbounded::<RendererCommand>();
     let (window_event_sender, window_event_receiver) = unbounded();
-    let renderer = Arc::new(Renderer::new(sender.clone(), window_event_sender, instance, device, window, swapchain.surface()));
+    let renderer = Arc::new(Renderer::new(sender.clone(), window_event_sender, instance, device, window, swapchain.surface(), input, late_latching));
 
     let c_device = device.clone();
     let c_renderer = renderer.clone();
@@ -62,7 +73,7 @@ impl<P: Platform> Renderer<P> {
     std::thread::Builder::new()
       .name("RenderThread".to_string())
       .spawn(move || {
-      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver, c_renderer.primary_camera());
+      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
       loop {
         if !c_renderer.is_running.load(Ordering::SeqCst) {
           break;
@@ -71,10 +82,6 @@ impl<P: Platform> Renderer<P> {
       }
     }).unwrap();
     renderer
-  }
-
-  pub fn primary_camera(&self) -> &Arc<LateLatchCamera<P::GraphicsBackend>> {
-    &self.primary_camera
   }
 
   pub fn install(self: &Arc<Renderer<P>>, _world: &mut World, _resources: &mut Resources, systems: &mut Builder) {
@@ -103,6 +110,14 @@ impl<P: Platform> Renderer<P> {
 
   pub fn dispatch_window_event(&self, event: Event<P>) {
     self.window_event_sender.send(event).unwrap();
+  }
+
+  pub fn late_latching(&self) -> Option<&dyn LateLatching<P::GraphicsBackend>> {
+    self.late_latching.as_ref().map(|l| l.as_ref())
+  }
+
+  pub fn input(&self) -> &Input {
+    &self.input
   }
 }
 

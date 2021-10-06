@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage}};
 
-use crate::{renderer::{LateLatchCamera, drawable::View, passes::late_latching::LateLatchingPass, renderer_assets::RendererTexture, render_path::RenderPath, renderer_scene::RendererScene}};
+use crate::{input::Input, renderer::{LateLatchCamera, LateLatching, Renderer, drawable::View, passes::late_latching::LateLatchingPass, render_path::RenderPath, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass};
 
@@ -60,13 +60,14 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
     lightmap: &Arc<RendererTexture<B>>,
-    primary_camera: &Arc<LateLatchCamera<B>>) -> Result<(), SwapchainError> {
+    late_latching: Option<&dyn LateLatching<B>>,
+    input: &Input) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 
     let view_ref = view.borrow();
     let scene_ref = scene.borrow();
-    self.late_latching_pass.execute(&mut cmd_buf, primary_camera.buffer());
+    self.late_latching_pass.execute(&mut cmd_buf, late_latching);
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32, self.late_latching_pass.camera_buffer());
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), self.late_latching_pass.camera_buffer());
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), self.frame, self.late_latching_pass.camera_buffer(), self.late_latching_pass.camera_buffer_history());
@@ -125,6 +126,10 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       ]
     );
 
+    if let Some(late_latching) = late_latching {
+      let input_state = input.poll();
+      late_latching.before_submit(&input_state, &view_ref);
+    }
     graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem]);
     graphics_queue.present(&self.swapchain, &[&cmd_buf_sem]);
     return Ok(());

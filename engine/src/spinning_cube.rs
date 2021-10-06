@@ -259,7 +259,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32
-  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCameraComponent {}));
+  }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCameraComponent::default()));
 
   resources.insert(ActiveCamera(camera));
 }

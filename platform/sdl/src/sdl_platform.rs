@@ -47,7 +47,8 @@ pub struct SDLPlatform {
   sdl_context: Sdl,
   video_subsystem: VideoSubsystem,
   event_pump: EventPump,
-  window: SDLWindow
+  window: SDLWindow,
+  mouse_pos: Vec2I
 }
 
 pub struct SDLWindow {
@@ -68,7 +69,8 @@ impl SDLPlatform {
       sdl_context,
       video_subsystem,
       event_pump,
-      window
+      window,
+      mouse_pos: Vec2I::new(0, 0)
     })
   }
 
@@ -82,15 +84,24 @@ impl SDLPlatform {
           return false;
         }
         SDLEvent::KeyUp { scancode: Some(keycode), .. } => {
-          engine.dispatch_event(Event::KeyUp(SCANCODE_TO_KEY.get(&keycode).copied().unwrap()));
+          let key = SCANCODE_TO_KEY.get(&keycode).copied();
+          if let Some(key) = key {
+            engine.dispatch_event(Event::KeyUp(key));
+          }
         }
         SDLEvent::KeyDown { scancode: Some(keycode), .. } => {
-          engine.dispatch_event(Event::KeyDown(SCANCODE_TO_KEY.get(&keycode).copied().unwrap()));
+          let key = SCANCODE_TO_KEY.get(&keycode).copied();
+          if let Some(key) = key {
+            engine.dispatch_event(Event::KeyDown(key));
+          }
         }
         SDLEvent::MouseMotion { x, y, .. } => {
           if engine.is_mouse_locked() {
             let (width, height) = self.window.window.drawable_size();
-            engine.dispatch_event(Event::MouseMoved(Vec2I::new(x - width as i32 / 2i32, y - height as i32 / 2i32)));
+            if x - width as i32 / 2i32 != 0 || y - height as i32 / 2i32 != 0 {
+              self.mouse_pos += Vec2I::new(x - width as i32 / 2i32, y - height as i32 / 2i32);
+              engine.dispatch_event(Event::MouseMoved(self.mouse_pos));
+            }
           } else {
             engine.dispatch_event(Event::MouseMoved(Vec2I::new(x, y)));
           }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use sourcerenderer_core::Vec2I;
 use sourcerenderer_core::input::Key;
 use crate::input::InputState;
 use crate::Transform;
@@ -8,7 +8,6 @@ use legion::systems::Builder;
 use legion::{component, World};
 
 use crate::game::TickRate;
-use crate::renderer::LateLatchCamera;
 
 pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
   systems.add_system(retrieve_fps_camera_rotation_system::<P>());
@@ -16,13 +15,21 @@ pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
 }
 
 pub struct FPSCameraComponent {
+  fps_camera: FPSCamera
+}
+
+impl Default for FPSCameraComponent {
+  fn default() -> Self {
+    Self { fps_camera: FPSCamera::new() }
+  }
 }
 
 pub struct FPSCamera {
   sensitivity: f32,
   pitch: f32,
   yaw: f32,
-  last_touch_position: Vec2
+  last_touch_position: Vec2,
+  last_mouse_position: Vec2I
 }
 
 impl FPSCamera {
@@ -31,13 +38,17 @@ impl FPSCamera {
       sensitivity: 10.0f32,
       pitch: 0f32,
       yaw: 0f32,
-      last_touch_position: Vec2::new(0f32, 0f32)
+      last_touch_position: Vec2::new(0f32, 0f32),
+      last_mouse_position: Vec2I::new(0, 0)
     }
   }
 }
 
-pub fn fps_camera_rotation<P: Platform>(input: &InputState, fps_camera: &mut FPSCamera, _delta_time: f32) -> Quaternion {
-  let mouse_delta = input.mouse_position();
+pub fn fps_camera_rotation(input: &InputState, fps_camera: &mut FPSCamera) -> Quaternion {
+  let mouse_position = input.mouse_position();
+  let mouse_delta = mouse_position - fps_camera.last_mouse_position;
+
+  println!("mouse {:?}", mouse_delta);
   let touch_position = input.finger_position(0);
   let touch_delta = if fps_camera.last_touch_position.x.abs() > 0.1f32 && fps_camera.last_touch_position.y.abs() > 0.1f32
     && touch_position.x.abs() > 0.1f32 && touch_position.y.abs() > 0.1f32 {
@@ -53,13 +64,14 @@ pub fn fps_camera_rotation<P: Platform>(input: &InputState, fps_camera: &mut FPS
   fps_camera.pitch = fps_camera.pitch.max(-std::f32::consts::FRAC_PI_2 + 0.01f32).min(std::f32::consts::FRAC_PI_2 - 0.01f32);
 
   fps_camera.last_touch_position = touch_position;
+  fps_camera.last_mouse_position = mouse_position;
   Quaternion::from_euler_angles(fps_camera.pitch, fps_camera.yaw, 0f32)
 }
 
 #[system(for_each)]
 #[filter(component::<Camera>() & component::<FPSCameraComponent>())]
-fn retrieve_fps_camera_rotation<P: Platform>(#[resource] late_latch_camera: &Arc<LateLatchCamera<P::GraphicsBackend>>, transform: &mut Transform) {
-  transform.rotation = late_latch_camera.rotation();
+fn retrieve_fps_camera_rotation<P: Platform>(#[resource] input: &InputState, transform: &mut Transform, fps_camera: &mut FPSCameraComponent) {
+  transform.rotation = fps_camera_rotation(input, &mut fps_camera.fps_camera);
 }
 
 #[system(for_each)]
