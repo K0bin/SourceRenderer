@@ -2,14 +2,13 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage}};
 
-use crate::{input::Input, renderer::{LateLatchCamera, LateLatching, Renderer, drawable::View, passes::late_latching::LateLatchingPass, render_path::RenderPath, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
+use crate::{input::Input, renderer::{LateLatchCamera, LateLatching, Renderer, drawable::View, render_path::RenderPath, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass};
 
 pub struct DesktopRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
   device: Arc<B::Device>,
-  late_latching_pass: LateLatchingPass<B>,
   clustering_pass: ClusteringPass<B>,
   light_binning_pass: LightBinningPass<B>,
   prepass: Prepass<B>,
@@ -24,7 +23,6 @@ impl<B: Backend> DesktopRenderer<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
 
-    let late_latching = LateLatchingPass::<B>::new::<P>(device);
     let clustering = ClusteringPass::<B>::new::<P>(device);
     let light_binning = LightBinningPass::<B>::new::<P>(device);
     let prepass = Prepass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
@@ -39,7 +37,6 @@ impl<B: Backend> DesktopRenderer<B> {
       swapchain: swapchain.clone(),
       device: device.clone(),
       clustering_pass: clustering,
-      late_latching_pass: late_latching,
       light_binning_pass: light_binning,
       prepass,
       geometry,
@@ -67,17 +64,17 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
 
     let view_ref = view.borrow();
     let scene_ref = scene.borrow();
-    self.late_latching_pass.execute(&mut cmd_buf, late_latching);
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32, self.late_latching_pass.camera_buffer());
-    self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), self.late_latching_pass.camera_buffer());
-    self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), self.frame, self.late_latching_pass.camera_buffer(), self.late_latching_pass.camera_buffer_history());
-    self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), self.late_latching_pass.camera_buffer(), self.prepass.motion_srv());
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), self.late_latching_pass.camera_buffer(), self.ssao.ssao_srv());
+    let late_latching_buffer = late_latching.unwrap().buffer();
+    let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32,&late_latching_buffer);
+    self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), &late_latching_buffer);
+    self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), self.frame, &late_latching_buffer, &late_latching_history_buffer);
+    self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), &late_latching_buffer, self.prepass.motion_srv());
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv());
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
     self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
 
     self.taa.swap_history_resources();
-    self.late_latching_pass.swap_history_resources();
     self.ssao.swap_history_resources();
 
     cmd_buf.barrier(&[
@@ -132,6 +129,11 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     }
     graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem]);
     graphics_queue.present(&self.swapchain, &[&cmd_buf_sem]);
+
+    if let Some(late_latching) = late_latching {
+      late_latching.after_submit(&self.device);
+    }
+
     return Ok(());
   }
 }

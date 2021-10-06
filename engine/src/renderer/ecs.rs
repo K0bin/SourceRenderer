@@ -4,6 +4,7 @@ use legion::{Entity, IntoQuery, maybe_changed, EntityStore};
 use legion::systems::Builder;
 use legion::component;
 use legion::world::SubWorld;
+use crate::transform::GlobalTransform;
 use crate::{ActiveCamera, Camera};
 use sourcerenderer_core::{Matrix4, Platform};
 use crate::transform::interpolation::InterpolatedTransform;
@@ -50,6 +51,7 @@ pub fn install<P: Platform, R: RendererInterface + Send + Sync + 'static>(system
 #[read_component(StaticRenderableComponent)]
 #[read_component(InterpolatedTransform)]
 #[read_component(PointLightComponent)]
+#[read_component(GlobalTransform)]
 #[read_component(Camera)]
 fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
             #[state] renderer: &R,
@@ -63,10 +65,18 @@ fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
   }
 
   let camera_entry = world.entry_ref(active_camera.0).ok();
-  let transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<InterpolatedTransform>().ok());
+  let interpolated_transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<InterpolatedTransform>().ok());
   let camera_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<Camera>().ok());
-  if let (Some(camera_component), Some(transform_component)) = (camera_component, transform_component) {
-    renderer.update_camera_transform(transform_component.0, camera_component.fov);
+  let transform_component = camera_entry.as_ref().and_then(|entry| entry.get_component::<GlobalTransform>().ok());
+
+  if let (Some(camera), Some(interpolated), Some(transform)) = (camera_component, interpolated_transform_component, transform_component) {
+    if camera.interpolate_rotation {
+      renderer.update_camera_transform(interpolated.0, camera.fov);
+    } else {
+      let mut combined_transform = transform.0;
+      *combined_transform.column_mut(3) = *interpolated.0.column(3);
+      renderer.update_camera_transform(combined_transform, camera.fov);
+    }
   }
 
   let mut static_components_query = <(Entity, &StaticRenderableComponent, &InterpolatedTransform)>::query();

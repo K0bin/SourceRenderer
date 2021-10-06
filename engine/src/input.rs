@@ -23,7 +23,7 @@ impl Input {
     }
   }
 
-  pub fn process_input_event<P: Platform>(&self, event: Event<P>, late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>) {
+  pub fn process_input_event<P: Platform>(&self, event: Event<P>) {
     let mut input_guard = self.state.lock().unwrap();
     match event {
       Event::KeyDown(key) => {
@@ -36,10 +36,6 @@ impl Input {
         input_guard.mouse_pos = position;
       }
       _ => unreachable!()
-    }
-
-    if let Some(late_latching) = late_latching {
-      late_latching.process_input(&input_guard);
     }
   }
 

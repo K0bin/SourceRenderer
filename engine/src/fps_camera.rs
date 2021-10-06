@@ -48,7 +48,6 @@ pub fn fps_camera_rotation(input: &InputState, fps_camera: &mut FPSCamera) -> Qu
   let mouse_position = input.mouse_position();
   let mouse_delta = mouse_position - fps_camera.last_mouse_position;
 
-  println!("mouse {:?}", mouse_delta);
   let touch_position = input.finger_position(0);
   let touch_delta = if fps_camera.last_touch_position.x.abs() > 0.1f32 && fps_camera.last_touch_position.y.abs() > 0.1f32
     && touch_position.x.abs() > 0.1f32 && touch_position.y.abs() > 0.1f32 {

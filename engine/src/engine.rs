@@ -61,7 +61,7 @@ impl<P: Platform> Engine<P> {
       | Event::FingerDown(_)
       | Event::FingerUp(_)
       | Event::FingerMoved {..} => {
-        self.input.process_input_event(event, self.late_latching.as_ref().map(|l| l.as_ref()));
+        self.input.process_input_event(event);
       },
       Event::Quit => {
         self.stop();
