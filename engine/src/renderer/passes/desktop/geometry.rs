@@ -364,13 +364,17 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
         let range = &mesh.parts[part.part_index];
         let material = &model.materials[part.part_index];
-        let texture = material.albedo.borrow();
-        let albedo_view = texture.view.borrow();
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &self.sampler);
+        match material.as_ref() {
+          RendererMaterial::PBR { albedo, metalness_map, metalness, roughness_map, roughness, normal_map } => {
+            let albedo_view = &albedo.view;
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &self.sampler);
 
-        let lightmap_ref = lightmap.view.borrow();
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &self.sampler);
-        command_buffer.finish_binding();
+            let lightmap_ref = &lightmap.view;
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &self.sampler);
+            command_buffer.finish_binding();
+          }
+          RendererMaterial::Blended { material1, material2 } => todo!(),
+        }
 
         if mesh.indices.is_some() {
           command_buffer.draw_indexed(1, 0, range.count, range.start, 0);

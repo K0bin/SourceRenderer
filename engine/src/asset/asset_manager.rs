@@ -67,8 +67,19 @@ pub struct Model {
 }
 
 #[derive(Clone)]
-pub struct Material {
-  pub albedo_texture_path: String
+pub enum Material {
+  PBR {
+    albedo_texture_path: String,
+    metalness_texture_path: String,
+    roughness_texture_path: String,
+    metalness: f32,
+    roughness: f32,
+    normal_map: String
+  },
+  BlendedMaterial {
+    material1_path: String,
+    material2_path: String
+  }
 }
 
 pub struct AssetFile<P: Platform> {
@@ -222,8 +233,13 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn add_material(&self, path: &str, albedo: &str) {
-    let material = Material {
-      albedo_texture_path: albedo.to_string()
+    let material = Material::PBR {
+      albedo_texture_path: albedo.to_string(),
+      normal_map: "NULL".to_string(),
+      roughness_texture_path: "NULL".to_string(),
+      metalness_texture_path: "NULL".to_string(),
+      metalness: 0.0f32,
+      roughness: 1.0f32
     };
     self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
   }

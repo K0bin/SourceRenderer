@@ -71,8 +71,13 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     }
     let albedo = albedo_opt.unwrap();
     let albedo_path = "materials/".to_string() + albedo.to_lowercase().replace('\\', "/").as_str().trim_matches('/').trim_end_matches(".vtf") + ".vtf";
-    let material = Material {
-      albedo_texture_path: albedo_path.clone()
+    let material = Material::PBR {
+      albedo_texture_path: albedo_path.clone(),
+      normal_map: "NULL".to_string(),
+      roughness_texture_path: "NULL".to_string(),
+      metalness_texture_path: "NULL".to_string(),
+      metalness: 0.0f32,
+      roughness: 1.0f32
     };
 
     manager.request_asset_with_progress(&albedo_path, AssetType::Texture, priority, Some(progress));
