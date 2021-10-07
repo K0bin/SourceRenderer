@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
-use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
-use std::sync::Arc;
+use sourcerenderer_core::{Matrix4, atomic_refcell::AtomicRef, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
+use std::{cell::RefCell, sync::Arc};
 use crate::renderer::{drawable::View, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::passes::desktop::taa::scaled_halton_point;
@@ -355,7 +355,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         command_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
 
         let model = &drawable.model;
-        let mesh = &model.mesh;
+        let mesh = model.mesh();
+        let materials = model.materials();
 
         command_buffer.set_vertex_buffer(&mesh.vertices);
         if mesh.indices.is_some() {
@@ -363,12 +364,17 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         }
 
         let range = &mesh.parts[part.part_index];
-        let material = &model.materials[part.part_index];
-        let texture = material.albedo.borrow();
-        let albedo_view = texture.view.borrow();
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &self.sampler);
+        let material = &materials[part.part_index];
+        let albedo_value = material.get("albedo").unwrap();
+        match albedo_value {
+          RendererMaterialValue::Texture(texture) => {
+            let albedo_view = &texture.view;
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &self.sampler);
+          }
+          RendererMaterialValue::Float(_) => unimplemented!()
+        }
 
-        let lightmap_ref = lightmap.view.borrow();
+        let lightmap_ref = &lightmap.view;
         command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &self.sampler);
         command_buffer.finish_binding();
 

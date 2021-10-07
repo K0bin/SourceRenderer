@@ -11,5 +11,6 @@ pub use asset_manager::MeshRange;
 pub use asset_manager::Texture;
 pub use asset_manager::Model;
 pub use asset_manager::Material;
+pub use asset_manager::MaterialValue;
 pub use asset_manager::AssetLoaderProgress;
 pub use asset_manager::AssetLoadPriority;

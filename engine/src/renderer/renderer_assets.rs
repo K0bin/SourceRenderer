@@ -1,24 +1,104 @@
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::collections::HashMap;
 
 use sourcerenderer_core::graphics::{Backend, BufferInfo, Device, Fence, TextureUsage};
-use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange}, math::BoundingBox};
+use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureShaderResourceViewInfo, BufferUsage };
 
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
 
 pub(super) struct RendererTexture<B: Backend> {
-  pub(super) view: AtomicRefCell<Arc<B::TextureShaderResourceView>>
+  pub(super) view: Arc<B::TextureShaderResourceView>
 }
 
+impl<B: Backend> PartialEq for RendererTexture<B> {
+  fn eq(&self, other: &Self) -> bool {
+    self.view == other.view
+  }
+}
+impl<B: Backend> Eq for RendererTexture<B> {}
+
 pub(super) struct RendererMaterial<B: Backend> {
-  pub(super) albedo: AtomicRefCell<Arc<RendererTexture<B>>>
+  pub(super) properties: HashMap<String, RendererMaterialValue<B>>,
+  pub(super) shader_name: String // TODO reference actual shader
+}
+
+impl<B: Backend> Clone for RendererMaterial<B> {
+  fn clone(&self) -> Self {
+    Self { properties: self.properties.clone(), shader_name: self.shader_name.clone() }
+  }
+}
+
+pub(super) enum RendererMaterialValue<B: Backend> {
+  Float(f32),
+  Texture(Arc<RendererTexture<B>>)
+}
+
+impl<B: Backend> PartialEq for RendererMaterialValue<B> {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Float(l0), Self::Float(r0)) => (l0 * 100f32) as u32 == (r0 * 100f32) as u32,
+      (Self::Texture(l0), Self::Texture(r0)) => l0 == r0,
+      _ => false
+    }
+  }
+}
+
+impl<B: Backend> Eq for RendererMaterialValue<B> {}
+
+impl<B: Backend> Clone for RendererMaterialValue<B> {
+  fn clone(&self) -> Self {
+    match self {
+      Self::Float(val) => Self::Float(*val),
+      Self::Texture(tex) => Self::Texture(tex.clone())
+    }
+  }
+}
+
+impl<B: Backend> PartialOrd for RendererMaterialValue<B> {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl<B: Backend> Ord for RendererMaterialValue<B> {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    match (self, other) {
+      (RendererMaterialValue::Float(val1), RendererMaterialValue::Float(val2)) => ((val1 * 100f32) as u32).cmp(&((val2 * 100f32) as u32)),
+      (RendererMaterialValue::Float(_), RendererMaterialValue::Texture(_)) => std::cmp::Ordering::Less,
+      (RendererMaterialValue::Texture(_), RendererMaterialValue::Float(_)) => std::cmp::Ordering::Greater,
+      (RendererMaterialValue::Texture(tex1), RendererMaterialValue::Texture(tex2)) => (tex1.view.as_ref() as *const B::TextureShaderResourceView).cmp(&(tex2.view.as_ref() as *const B::TextureShaderResourceView)),
+    }
+  }
 }
 
 impl<B: Backend> PartialEq for RendererMaterial<B> {
   fn eq(&self, other: &Self) -> bool {
-    self.albedo.as_ptr() == other.albedo.as_ptr()
+    if &self.shader_name != &other.shader_name {
+      return false;
+    }
+    for (key, value) in self.properties.iter() {
+      if other.properties.get(key) != Some(value) {
+        return false;
+      }
+    }
+    return true;
+  }
+}
+
+impl<B: Backend> RendererMaterial<B> {
+  pub fn new_pbr(albedo_texture: &Arc<RendererTexture<B>>) -> Self {
+    let mut props = HashMap::new();
+    props.insert("albedo".to_string(), RendererMaterialValue::Texture(albedo_texture.clone()));
+    Self {
+      shader_name: "pbr".to_string(),
+      properties: props
+    }
+  }
+
+  pub fn get(&self, key: &str) -> Option<&RendererMaterialValue<B>> {
+    self.properties.get(key)
   }
 }
 
@@ -26,19 +106,58 @@ impl<B: Backend> Eq for RendererMaterial<B> {}
 
 impl<B: Backend> PartialOrd for RendererMaterial<B> {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-    self.albedo.as_ptr().partial_cmp(&other.albedo.as_ptr())
+    Some(self.cmp(other))
   }
 }
 
 impl<B: Backend> Ord for RendererMaterial<B> {
   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-    self.albedo.as_ptr().cmp(&other.albedo.as_ptr())
+    let mut last_result = self.shader_name.cmp(&other.shader_name)
+    .then(self.properties.len().cmp(&other.properties.len()));
+
+    if last_result != std::cmp::Ordering::Equal {
+      return last_result;
+    }
+
+    for (key, value) in &self.properties {
+      let other_val = other.properties.get(key);
+      if let Some(other_val) = other_val {
+        last_result = value.cmp(other_val);
+        if last_result != std::cmp::Ordering::Equal {
+          return last_result;
+        }
+      }
+    }
+    std::cmp::Ordering::Equal
   }
 }
 
 pub(super) struct RendererModel<B: Backend> {
-  pub(super) mesh: Arc<RendererMesh<B>>,
-  pub(super) materials: Box<[Arc<RendererMaterial<B>>]>
+  inner: AtomicRefCell<RendererModelInner<B>>
+}
+
+struct RendererModelInner<B: Backend> {
+  mesh: Arc<RendererMesh<B>>,
+  materials: Box<[Arc<RendererMaterial<B>>]>
+}
+
+impl<B: Backend> RendererModel<B> {
+  pub fn new(mesh: &Arc<RendererMesh<B>>, materials: Box<[Arc<RendererMaterial<B>>]>) -> Self {
+    Self {
+      inner: AtomicRefCell::new(RendererModelInner::<B> {
+        mesh: mesh.clone(),
+        materials
+      })
+    }
+  }
+
+  pub fn mesh(&self) -> AtomicRef<Arc<RendererMesh<B>>> {
+    AtomicRef::map(self.inner.borrow(), |inner| &inner.mesh)
+  }
+
+  pub fn materials(&self) -> AtomicRef<Box<[Arc<RendererMaterial<B>>]>> {
+    AtomicRef::map(self.inner.borrow(), |inner| &inner.materials)
+  }
 }
 
 pub(super) struct RendererMesh<B: Backend> {
@@ -64,6 +183,8 @@ pub(super) struct RendererAssets<P: Platform> {
   meshes: HashMap<String, Arc<RendererMesh<P::GraphicsBackend>>>,
   materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
   textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
+  texture_usages: HashMap<String, Vec<(String, String)>>,
+  material_usages: HashMap<String, Vec<(String, usize)>>,
   zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>,
   delayed_assets: Vec<DelayedAsset<P::GraphicsBackend>>
 }
@@ -97,22 +218,36 @@ impl<P: Platform> RendererAssets<P> {
       meshes: HashMap::new(),
       materials: HashMap::new(),
       textures: HashMap::new(),
+      material_usages: HashMap::new(),
+      texture_usages: HashMap::new(),
       zero_view,
       delayed_assets: Vec::new()
     }
   }
 
   pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>) -> Arc<RendererTexture<P::GraphicsBackend>> {
-    let existing_texture = self.textures.get(texture_path);
-    if let Some(existing_texture) = existing_texture {
-      *existing_texture.view.borrow_mut() = texture.clone();
-      return existing_texture.clone();
-    }
-
     let renderer_texture = Arc::new(RendererTexture {
-      view: AtomicRefCell::new(texture.clone())
+      view: texture.clone()
     });
     self.textures.insert(texture_path.to_owned(), renderer_texture.clone());
+
+    if let Some(usages) = self.texture_usages.get(texture_path) {
+      for (material_name, prop_name) in usages.iter() {
+        let mut new_material = self.materials.get(material_name).unwrap().as_ref().clone();
+        new_material.properties.insert(prop_name.clone(), RendererMaterialValue::Texture(renderer_texture.clone()));
+        let mat_arc = Arc::new(new_material);
+        self.materials.insert(material_name.clone(), mat_arc.clone());
+
+        if let Some(usages) = self.material_usages.get(material_name) {
+          for (model_name, index) in usages.iter() {
+            let model = self.models.get(model_name).unwrap();
+            let mut inner = model.inner.borrow_mut();
+            inner.materials[*index] = mat_arc.clone();
+          }
+        }
+      }
+    }
+
     renderer_texture
   }
 
@@ -129,7 +264,7 @@ impl<P: Platform> RendererAssets<P> {
     let index_buffer = mesh.indices.map(|indices| {
       let buffer = self.device.create_buffer(
       &BufferInfo {
-        size: std::mem::size_of_val(&indices[..]), 
+        size: std::mem::size_of_val(&indices[..]),
         usage: BufferUsage::COPY_DST | BufferUsage::INDEX
       },MemoryUsage::GpuOnly, Some(&ib_name));
       let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
@@ -173,21 +308,33 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub fn integrate_material(&mut self, material_path: &str, material: &Material) -> Arc<RendererMaterial<P::GraphicsBackend>> {
-    let albedo = self.textures.get(&material.albedo_texture_path)
-      .cloned()
-      .or_else(|| {
-        let zero_view = self.zero_view.clone();
-        Some(self.integrate_texture(&material.albedo_texture_path, &zero_view))
-      }).unwrap();
+    let mut properties = HashMap::<String, RendererMaterialValue<P::GraphicsBackend>>::with_capacity(material.properties.len());
+    for (key, value) in &material.properties {
+      match value {
+        MaterialValue::Texture(path) => {
+          let texture = self.textures.get(path)
+            .cloned()
+            .or_else(|| {
+              let zero_view = self.zero_view.clone();
+              Some(self.integrate_texture(path, &zero_view))
+            }).unwrap();
 
-    let existing_material = self.materials.get(material_path);
-    if let Some(existing_material) = existing_material {
-      *existing_material.albedo.borrow_mut() = albedo;
-      return existing_material.clone();
+          self.texture_usages.entry(path.to_string())
+            .or_default()
+            .push((material_path.to_string(), key.to_string()));
+
+          properties.insert(key.to_string(), RendererMaterialValue::Texture(texture));
+        }
+
+        MaterialValue::Float(val) => {
+          properties.insert(key.to_string(), RendererMaterialValue::Float(*val));
+        }
+      }
     }
 
     let renderer_material = Arc::new(RendererMaterial {
-      albedo: AtomicRefCell::new(albedo)
+      shader_name: material.shader_name.clone(),
+      properties
     });
     self.materials.insert(material_path.to_owned(), renderer_material.clone());
     renderer_material
@@ -199,17 +346,16 @@ impl<P: Platform> RendererAssets<P> {
     for material in &model.material_paths {
       let renderer_material = self.materials.get(material).cloned()
         .or_else(|| {
-        Some(self.integrate_material(material, &Material {
-          albedo_texture_path: "NULL".to_string()
-        }))
+        Some(self.integrate_material(material, &Material::new_pbr("NULL")))
       }).unwrap();
-      renderer_materials.push(renderer_material);
+      renderer_materials.push(renderer_material.clone());
+
+      self.material_usages.entry(material.clone())
+        .or_default()
+        .push((model_path.to_string(), renderer_materials.len() - 1));
     }
 
-    let renderer_model = Arc::new(RendererModel {
-      materials: renderer_materials.into_boxed_slice(),
-      mesh
-    });
+    let renderer_model = Arc::new(RendererModel::new(&mesh, renderer_materials.into_boxed_slice()));
     self.models.insert(model_path.to_owned(), renderer_model.clone());
     Some(renderer_model)
   }
@@ -232,7 +378,7 @@ impl<P: Platform> RendererAssets<P> {
     }
 
     let texture = Arc::new(RendererTexture {
-      view: AtomicRefCell::new(self.zero_view.clone())
+      view: self.zero_view.clone()
     });
     self.textures.insert(texture_path.to_string(), texture.clone());
     texture

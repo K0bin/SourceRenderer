@@ -202,6 +202,8 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
+    self.lightmap = self.assets.get_texture("lightmap");
+
     let render_result = self.render_path.render(&self.scene, &self.view, &self.lightmap, self.renderer.late_latching(), self.renderer.input());
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
@@ -258,14 +260,15 @@ impl<P: Platform> RendererInternal<P> {
       for (index, static_mesh) in chunk.iter().enumerate() {
         let model_view_matrix = camera_matrix * static_mesh.transform;
         let model = &static_mesh.model;
-        let bounding_box = &model.mesh.bounding_box;
+        let mesh = model.mesh();
+        let bounding_box = &mesh.bounding_box;
         if let Some(bounding_box) = bounding_box {
           let is_visible = frustum.intersects(bounding_box, &model_view_matrix);
           if !is_visible {
             continue;
           }
           let drawable_index = chunk_index * CHUNK_SIZE + index;
-          for part_index in 0..model.mesh.parts.len() {
+          for part_index in 0..mesh.parts.len() {
             if chunk_visible_parts.len() == chunk_visible_parts.capacity() {
               let mut global_parts = visible_parts.lock().unwrap();
               global_parts.extend_from_slice(&chunk_visible_parts[..]);
@@ -306,8 +309,10 @@ impl<P: Platform> RendererInternal<P> {
       } else {
         let static_mesh_a = &static_meshes[a.drawable_index];
         let static_mesh_b = &static_meshes[b.drawable_index];
-        let material_a = &static_mesh_a.model.materials[a.part_index];
-        let material_b = &static_mesh_b.model.materials[b.part_index];
+        let materials_a = static_mesh_a.model.materials();
+        let materials_b = static_mesh_b.model.materials();
+        let material_a = &materials_a[a.part_index];
+        let material_b = &materials_b[b.part_index];
         material_a.cmp(material_b)
       }
     });

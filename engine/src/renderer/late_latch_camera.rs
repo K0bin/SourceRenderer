@@ -45,7 +45,7 @@ impl<B: Backend> LateLatching<B> for LateLatchCamera<B> {
     Some(history_buffer_ref.clone())
   }
 
-  fn before_recording(&self, input: &crate::input::InputState, view: &View) {}
+  fn before_recording(&self, _input: &crate::input::InputState, _view: &View) {}
 
   fn before_submit(&self, input: &crate::input::InputState, view: &View) {
     let mut fps_camera = self.fps_camera.lock().unwrap();

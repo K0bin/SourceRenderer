@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex, Condvar};
-use std::collections::{VecDeque, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use sourcerenderer_core::platform::{Platform, io::IO};
 use sourcerenderer_core::graphics;
 use sourcerenderer_core::graphics::TextureInfo;
@@ -68,7 +68,25 @@ pub struct Model {
 
 #[derive(Clone)]
 pub struct Material {
-  pub albedo_texture_path: String
+  pub shader_name: String,
+  pub properties: HashMap<String, MaterialValue>
+}
+
+impl Material {
+  pub fn new_pbr(albedo_texture_path: &str) -> Self {
+    let mut props = HashMap::new();
+    props.insert("albedo".to_string(), MaterialValue::Texture(albedo_texture_path.to_string()));
+    Self {
+      shader_name: "pbr".to_string(),
+      properties: props
+    }
+  }
+}
+
+#[derive(Clone)]
+pub enum MaterialValue {
+  Texture(String),
+  Float(f32)
 }
 
 pub struct AssetFile<P: Platform> {
@@ -222,9 +240,7 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn add_material(&self, path: &str, albedo: &str) {
-    let material = Material {
-      albedo_texture_path: albedo.to_string()
-    };
+    let material = Material::new_pbr(albedo);
     self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
   }
 

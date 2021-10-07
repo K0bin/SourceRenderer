@@ -23,11 +23,11 @@ pub trait Backend: 'static + Sized {
   type Swapchain: Swapchain<Self> + Send + Sync;
   type CommandBuffer: CommandBuffer<Self>;
   type CommandBufferSubmission: Send;
-  type Texture: Texture + Send + Sync;
-  type TextureShaderResourceView: TextureShaderResourceView<Self> + Send + Sync;
-  type TextureUnorderedAccessView: TextureUnorderedAccessView<Self> + Send + Sync;
-  type TextureRenderTargetView: TextureRenderTargetView<Self> + Send + Sync;
-  type TextureDepthStencilView: TextureDepthStencilView<Self> + Send + Sync;
+  type Texture: Texture + Send + Sync + PartialEq + Eq;
+  type TextureShaderResourceView: TextureShaderResourceView<Self> + Send + Sync + PartialEq + Eq;
+  type TextureUnorderedAccessView: TextureUnorderedAccessView<Self> + Send + Sync + PartialEq + Eq;
+  type TextureRenderTargetView: TextureRenderTargetView<Self> + Send + Sync + PartialEq + Eq;
+  type TextureDepthStencilView: TextureDepthStencilView<Self> + Send + Sync + PartialEq + Eq;
   type Sampler: Send + Sync;
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;

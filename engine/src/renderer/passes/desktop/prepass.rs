@@ -388,7 +388,7 @@ impl<B: GraphicsBackend> Prepass<B> {
           old_model: drawable.old_transform
         }], ShaderType::VertexShader);
 
-        let mesh = &model.mesh;
+        let mesh = &model.mesh();
 
         command_buffer.set_vertex_buffer(&mesh.vertices);
         if mesh.indices.is_some() {
