@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 use legion::{World, Resources, Schedule};
 
 use nalgebra::UnitQuaternion;
-use sourcerenderer_core::{Platform, Vec3, platform::Event};
+use sourcerenderer_core::{Platform, Vec3};
 
 use crate::{Transform, asset::loaders::{GltfContainer, GltfLoader}, input::Input, renderer::*};
 use crate::transform;
@@ -15,7 +15,7 @@ use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use crate::input::InputState;
-use crate::{fps_camera::{fps_camera_rotation, FPSCamera}, renderer::RendererInterface};
+use crate::{fps_camera::FPSCamera, renderer::RendererInterface};
 
 pub struct TimeStampedInputState(InputState, SystemTime);
 

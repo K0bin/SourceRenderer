@@ -39,7 +39,7 @@ impl<P: Platform> Engine<P> {
     let asset_manager = AssetManager::<P>::new(&device);
     let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
     let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
-    let renderer = Renderer::<P>::run(platform.window(), &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
+    let renderer = Renderer::<P>::run(&instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
     let game = Game::run::<P>(&input, &renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,

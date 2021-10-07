@@ -1,14 +1,10 @@
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
-use std::time::SystemTime;
 
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{Platform, Vec2, Vec2I};
 
 use crate::bitset_core::BitSet;
-use crate::fps_camera::fps_camera_rotation;
-use crate::renderer::LateLatching;
 
 pub struct Input {
   state: Mutex<InputState>

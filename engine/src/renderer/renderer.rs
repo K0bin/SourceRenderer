@@ -1,7 +1,7 @@
-use std::{cmp::max, rc::Rc, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
+use std::{sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
 use crossbeam_channel::{Sender, unbounded};
 
-use sourcerenderer_core::{platform::{Event, Platform, Window}};
+use sourcerenderer_core::{platform::{Event, Platform}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
@@ -35,7 +35,6 @@ impl<P: Platform> Renderer<P> {
     window_event_sender: Sender<Event<P>>,
     instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-    window: &P::Window,
     surface: &Arc<<P::GraphicsBackend as Backend>::Surface>,
     input: &Arc<Input>,
     late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>) -> Self {
@@ -53,8 +52,7 @@ impl<P: Platform> Renderer<P> {
     }
   }
 
-  pub fn run(window: &P::Window,
-             instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
+  pub fn run(instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
              device: &Arc<<P::GraphicsBackend as Backend>::Device>,
              swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
              asset_manager: &Arc<AssetManager<P>>,
@@ -63,7 +61,7 @@ impl<P: Platform> Renderer<P> {
 
     let (sender, receiver) = unbounded::<RendererCommand>();
     let (window_event_sender, window_event_receiver) = unbounded();
-    let renderer = Arc::new(Renderer::new(sender.clone(), window_event_sender, instance, device, window, swapchain.surface(), input, late_latching));
+    let renderer = Arc::new(Renderer::new(sender.clone(), window_event_sender, instance, device, swapchain.surface(), input, late_latching));
 
     let c_device = device.clone();
     let c_renderer = renderer.clone();

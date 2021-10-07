@@ -10,7 +10,6 @@ use sourcerenderer_core::graphics::{SwapchainError, Backend,Swapchain, Device};
 use crate::renderer::View;
 use sourcerenderer_core::platform::Event;
 use smallvec::SmallVec;
-use crate::renderer::late_latch_camera::LateLatchCamera;
 use crate::renderer::drawable::DrawablePart;
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;

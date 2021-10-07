@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Vec3, graphics::Backend};
+use sourcerenderer_core::graphics::Backend;
 
 use crate::input::InputState;
 

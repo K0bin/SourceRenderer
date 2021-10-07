@@ -1,4 +1,4 @@
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use std::collections::HashMap;
 
 use sourcerenderer_core::graphics::{Backend, BufferInfo, Device, Fence, TextureUsage};

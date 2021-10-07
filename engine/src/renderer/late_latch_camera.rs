@@ -2,10 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::graphics::{Backend, Buffer, BufferInfo, BufferUsage, Device, MemoryUsage};
-use sourcerenderer_core::{Matrix4, Quaternion, Vec2, Vec3};
-use std::sync::atomic::{AtomicU32, Ordering};
-use crossbeam_utils::atomic::AtomicCell;
-use nalgebra::Point3;
+use sourcerenderer_core::{Matrix4, Vec3};
 
 use crate::fps_camera::{FPSCamera, fps_camera_rotation};
 use crate::transform::interpolation::deconstruct_transform;
