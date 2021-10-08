@@ -1,6 +1,5 @@
 use std::{sync::{Arc, atomic::{AtomicU32, AtomicU64}}, vec};
 
-use crossbeam_channel::unbounded;
 use sourcerenderer_core::graphics::{Adapter, AdapterType, Instance};
 
 use crate::{WebGLBackend, WebGLDevice, WebGLSurface};

@@ -1,5 +1,5 @@
 mod utils;
-mod worker_pool;
+mod pool;
 mod platform;
 mod io;
 mod window;
@@ -19,19 +19,21 @@ use std::cell::RefMut;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_engine::Engine;
 use sourcerenderer_webgl::WebGLSwapchain;
-use worker_pool::WorkerPool;
+use crate::pool::WorkerPool;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 use web_sys::{EventTarget, HtmlCanvasElement, Worker};
 use self::platform::WebPlatform;
 use sourcerenderer_webgl::WebGLThreadDevice;
+use crossbeam_channel::unbounded;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -111,6 +113,51 @@ fn engine_from_usize<'a>(engine_ptr: usize) -> RefMut<'a, EngineWrapper> {
     let engine: RefMut<EngineWrapper> = (*ptr).borrow_mut();
     let engine_ref = std::mem::transmute::<RefMut<EngineWrapper>, RefMut<'a, EngineWrapper>>(engine);
     engine_ref
+  }
+}
+
+#[wasm_bindgen]
+pub struct RayonInitialization {
+  rayon_threads: u32,
+  ready_thread_counter: Arc<AtomicU32>
+}
+
+#[wasm_bindgen(js_name = "startRayonWorkers")]
+pub fn start_rayon_workers(worker_pool: &WorkerPool, rayon_thread_count: u32) -> RayonInitialization {
+  let initialize_counter = Arc::new(AtomicU32::new(0));
+  let (rayon_start_sender, rayon_start_receiver) = unbounded::<rayon::ThreadBuilder>();
+  for _ in 0..rayon_thread_count {
+    let c_receiver = rayon_start_receiver.clone();
+    let c_counter = initialize_counter.clone();
+    worker_pool.run(move || {
+      console_log!("Rayon worker waiting for initialization");
+      let thread_builder = c_receiver.recv().unwrap();
+      console_log!("Rayon worker initializing");
+      c_counter.fetch_add(1, Ordering::SeqCst);
+      thread_builder.run();
+    });
+  }
+  worker_pool.run(move || {
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(rayon_thread_count as usize)
+        .spawn_handler(|builder| {
+          rayon_start_sender.send(builder).unwrap();
+          Ok(())
+        })
+        .build_global()
+        .unwrap();
+  }).unwrap();
+  RayonInitialization {
+    ready_thread_counter: initialize_counter,
+    rayon_threads: rayon_thread_count
+  }
+}
+
+#[wasm_bindgen]
+impl RayonInitialization {
+  #[wasm_bindgen(js_name = "isDone")]
+  pub fn is_done(&self) -> bool {
+    self.ready_thread_counter.load(Ordering::SeqCst) == self.rayon_threads
   }
 }
 
