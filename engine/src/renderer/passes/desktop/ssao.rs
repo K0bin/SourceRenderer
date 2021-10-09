@@ -20,7 +20,8 @@ pub struct SsaoPass<B: GraphicsBackend> {
   blurred_texture_b: Arc<B::Texture>,
   blurred_uav_b: Arc<B::TextureUnorderedAccessView>,
   blurred_srv_b: Arc<B::TextureShaderResourceView>,
-  blur_sampler: Arc<B::Sampler>
+  blur_sampler: Arc<B::Sampler>,
+  linear_sampler: Arc<B::Sampler>
 }
 
 fn lerp(a: f32, b: f32, f: f32) -> f32 {
@@ -121,7 +122,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("ssao_blur.comp.spv"))
-    };  
+    };
     let blur_pipeline = device.create_compute_pipeline(&blur_shader);
 
     let noise_sampler = device.create_sampler(&SamplerInfo {
@@ -141,6 +142,19 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       mag_filter: Filter::Nearest,
       min_filter: Filter::Nearest,
       mip_filter: Filter::Nearest,
+      address_mode_u: AddressMode::ClampToEdge,
+      address_mode_v: AddressMode::ClampToEdge,
+      address_mode_w: AddressMode::ClampToEdge,
+      mip_bias: 0.0f32,
+      max_anisotropy: 0.0f32,
+      compare_op: None,
+      min_lod: 0.0f32,
+      max_lod: 1.0f32,
+    });
+    let linear = device.create_sampler(&SamplerInfo {
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
       address_mode_u: AddressMode::ClampToEdge,
       address_mode_v: AddressMode::ClampToEdge,
       address_mode_w: AddressMode::ClampToEdge,
@@ -180,7 +194,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       blur_pipeline,
       ssao_srv,
       blur_sampler,
-      blurred_srv
+      blurred_srv,
+      linear_sampler: linear
     }
   }
 
@@ -281,8 +296,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &self.kernel);
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 1, &self.noise, &self.noise_sampler);
-    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 2, depth, &self.nearest_sampler);
-    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, normals, &self.nearest_sampler);
+    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 2, depth, &self.linear_sampler);
+    cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, normals, &self.linear_sampler);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 4, camera);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 5, &self.ssao_uav);
     cmd_buffer.finish_binding();
