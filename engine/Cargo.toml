@@ -24,7 +24,7 @@ regex = "1.4.2"
 bitvec = "0.22.3"
 rayon = "1.5"
 smallvec = "1.6.1"
-gltf = "0.16.0"
+gltf = { version = "0.16.0", features = ["KHR_lights_punctual"] }
 rand = "0.8.4"
 bitset-core = "0.1.1"
 instant = "0.1"

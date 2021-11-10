@@ -5,7 +5,7 @@ use legion::{Entity, World, WorldOptions};
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec2, Vec3, Vec4};
 
-use crate::{Parent, Transform, asset::{Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex}, math::BoundingBox, renderer::StaticRenderableComponent};
+use crate::{Parent, Transform, asset::{Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex}, math::BoundingBox, renderer::{PointLightComponent, DirectionalLightComponent, StaticRenderableComponent}};
 
 pub struct GltfLoader {}
 
@@ -94,7 +94,7 @@ impl GltfLoader {
         mesh_path: mesh_path.clone(),
         material_paths: vec!["IGNORE".to_string(); parts_len],
       }), AssetLoadPriority::Normal);
-      
+
       let mut entry = world.entry(entity).unwrap();
       entry.add_component(StaticRenderableComponent {
         model_path: model_path,
@@ -112,6 +112,23 @@ impl GltfLoader {
     }
     if node.weights().is_some() {
       println!("WARNING: weights are not supported. Node name: {:?}", node.name());
+    }
+
+    if let Some(light) = node.light() {
+      let mut entry = world.entry(entity).unwrap();
+      match light.kind() {
+        gltf::khr_lights_punctual::Kind::Directional => {
+          entry.add_component(DirectionalLightComponent {
+            intensity: light.intensity() / 200f32,
+          });
+        },
+        gltf::khr_lights_punctual::Kind::Point => {
+          entry.add_component(PointLightComponent {
+            intensity: light.intensity() / 200f32,
+          });
+        },
+        gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
+      }
     }
 
     for child in node.children() {
@@ -172,7 +189,7 @@ impl GltfLoader {
         buffer_file.read_exact(&mut data).unwrap();
         buffer_cache.insert(normals_buffer.index(), data);
       }
-      
+
       let positions_buffer_data = buffer_cache.get(&positions_buffer.index()).unwrap();
       let mut positions_buffer_cursor = Cursor::new(positions_buffer_data);
       positions_buffer_cursor.seek(SeekFrom::Start((positions_view.offset() + positions.offset()) as u64)).unwrap();
@@ -189,12 +206,12 @@ impl GltfLoader {
         let mut position_data = vec![0; positions.size()];
         positions_buffer_cursor.read_exact(&mut position_data).unwrap();
         assert_eq!(position_data.len(), std::mem::size_of::<Vec3>());
-        
+
         let mut normal_data = vec![0; normals.size()];
         normals_buffer_cursor.read_exact(&mut normal_data).unwrap();
         assert_eq!(normal_data.len(), std::mem::size_of::<Vec3>());
 
-        unsafe { 
+        unsafe {
           let position_vec_ptr: *const Vec3 = std::mem::transmute(position_data.as_ptr());
           let normal_vec_ptr: *const Vec3 = std::mem::transmute(normal_data.as_ptr());
           let mut normal = *normal_vec_ptr;
@@ -244,7 +261,7 @@ impl GltfLoader {
 
       let mut buffer_cursor = Cursor::new(buffer_data);
       buffer_cursor.seek(SeekFrom::Start((view.offset() + indices_accessor.offset()) as u64)).unwrap();
-    
+
       for _ in 0..indices_accessor.count() {
         let start = buffer_cursor.seek(SeekFrom::Current(0)).unwrap();
 
