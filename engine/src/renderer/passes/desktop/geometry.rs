@@ -1,7 +1,8 @@
 use nalgebra::Vector2;
+use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
 use std::sync::Arc;
-use crate::renderer::{drawable::View, renderer_scene::RendererScene};
+use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::passes::desktop::taa::scaled_halton_point;
 use std::path::Path;
@@ -21,7 +22,8 @@ struct FrameData {
   cluster_z_bias: f32,
   cluster_z_scale: f32,
   cluster_count: nalgebra::Vector3::<u32>,
-  point_light_count: u32
+  point_light_count: u32,
+  directional_light_count: u32
 }
 
 pub struct GeometryPass<B: GraphicsBackend> {
@@ -317,10 +319,26 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       cluster_z_bias,
       cluster_z_scale,
       cluster_count,
-      point_light_count: scene.point_lights().len() as u32
+      point_light_count: scene.point_lights().len() as u32,
+      directional_light_count: scene.directional_lights().len() as u32
     };
+    let mut point_lights = SmallVec::<[PointLight; 16]>::new();
+    for point_light in scene.point_lights() {
+      point_lights.push(PointLight {
+        position: point_light.position,
+        intensity: point_light.intensity
+      });
+    }
+    let mut directional_lights = SmallVec::<[DirectionalLight; 16]>::new();
+    for directional_light in scene.directional_lights() {
+      directional_lights.push(DirectionalLight {
+        direction: directional_light.direction,
+        intensity: directional_light.intensity
+      });
+    }
     let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT);
-    let point_light_buffer = cmd_buffer.upload_dynamic_data(scene.point_lights(), BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
+    let point_light_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
+    let directional_light_buffer = cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
 
     let inheritance = cmd_buffer.inheritance();
     const CHUNK_SIZE: usize = 128;
@@ -347,6 +365,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, ssao, &self.sampler);
+      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer);
       for part in chunk.into_iter() {
         let drawable = &static_drawables[part.drawable_index];
 

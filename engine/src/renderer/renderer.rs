@@ -15,7 +15,7 @@ use legion::systems::Builder;
 
 use crate::renderer::RendererInternal;
 
-use super::{LateLatching, StaticRenderableComponent, ecs::{PointLightComponent, RendererInterface}};
+use super::{LateLatching, StaticRenderableComponent, ecs::{DirectionalLightComponent, PointLightComponent, RendererInterface}};
 
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
@@ -158,6 +158,24 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
 
   fn unregister_point_light(&self, entity: Entity) {
     let result = self.sender.send(RendererCommand::UnregisterPointLight(entity));
+    if let Result::Err(err) = result {
+      panic!("Sending message to render thread failed {:?}", err);
+    }
+  }
+
+  fn register_directional_light(&self, entity: Entity, transform: &InterpolatedTransform, component: &DirectionalLightComponent) {
+    let result = self.sender.send(RendererCommand::RegisterDirectionalLight {
+      entity,
+      transform: transform.0,
+      intensity: component.intensity
+    });
+    if let Result::Err(err) = result {
+      panic!("Sending message to render thread failed {:?}", err);
+    }
+  }
+
+  fn unregister_directional_light(&self, entity: Entity) {
+    let result = self.sender.send(RendererCommand::UnregisterDirectionalLight(entity));
     if let Result::Err(err) = result {
       panic!("Sending message to render thread failed {:?}", err);
     }

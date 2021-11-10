@@ -17,6 +17,12 @@ pub enum RendererCommand {
     intensity: f32
   },
   UnregisterPointLight(Entity),
+  RegisterDirectionalLight {
+    entity: Entity,
+    transform: Matrix4,
+    intensity: f32
+  },
+  UnregisterDirectionalLight(Entity),
   UpdateTransform{ entity: Entity, transform_mat: Matrix4 },
   UpdateCameraTransform { camera_transform_mat: Matrix4, fov: f32 },
   EndFrame

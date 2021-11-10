@@ -36,6 +36,14 @@ layout (std430, set = 2, binding = 2) buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
+struct DirectionalLight {
+  vec3 direction;
+  float intensity;
+};
+layout(std430, set = 2, binding = 5, std430) readonly buffer directionalLightsBuffer {
+  DirectionalLight directionalLights[];
+};
+
 layout(set = 2, binding = 3) uniform PerFrameUbo {
   mat4 swapchainTransform;
   vec2 jitterPoint;
@@ -46,6 +54,7 @@ layout(set = 2, binding = 3) uniform PerFrameUbo {
   float clusterZScale;
   uvec3 clusterCount;
   uint pointLightCount;
+  uint directionalLightCount;
 };
 
 layout(set = 2, binding = 4) uniform sampler2D ssao;
@@ -88,9 +97,14 @@ void main(void) {
 
   vec3 lighting = vec3(0);
   lighting += 0.3;
-  lighting += texture(lightmap, in_lightmap_uv).xyz;
+  //lighting += texture(lightmap, in_lightmap_uv).xyz;
   lighting = min(vec3(1.0, 1.0, 1.0), lighting);
   lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
+
+  for (uint i = 0; i < directionalLightCount; i++) {
+    DirectionalLight light = directionalLights[i];
+    lighting += max(0.0, dot(in_normal, -normalize(light.direction)) * light.intensity);
+  }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
   uint bitmaskOffset = lightBitmaskCount * clusterIndex;

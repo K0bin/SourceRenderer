@@ -6,7 +6,7 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crate::renderer::command::RendererCommand;
 use std::time::Duration;
 use crate::asset::AssetManager;
-use sourcerenderer_core::{Platform, Vec2UI, Vec4};
+use sourcerenderer_core::{Platform, Vec2UI, Vec3, Vec4};
 use sourcerenderer_core::graphics::{SwapchainError, Backend,Swapchain, Device};
 use crate::renderer::View;
 use sourcerenderer_core::platform::Event;
@@ -20,6 +20,7 @@ use instant::Instant;
 
 use super::PointLight;
 use super::drawable::{make_camera_proj, make_camera_view};
+use super::light::DirectionalLight;
 use super::passes::desktop::desktop_renderer::DesktopRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
@@ -173,10 +174,10 @@ impl<P: Platform> RendererInternal<P> {
             can_move
           });
         }
-
         RendererCommand::UnregisterStatic(entity) => {
           scene.remove_static_drawable(&entity);
         }
+
         RendererCommand::RegisterPointLight {
           entity,
           transform,
@@ -189,6 +190,20 @@ impl<P: Platform> RendererInternal<P> {
         },
         RendererCommand::UnregisterPointLight(entity) => {
           scene.remove_point_light(&entity);
+        },
+
+        RendererCommand::RegisterDirectionalLight {
+          entity,
+          transform,
+          intensity
+        } => {
+          let (_, rotation, _) = deconstruct_transform(&transform);
+          let base_dir = Vec3::new(0f32, -1f32, 0f32);
+          let dir = rotation.transform_vector(&base_dir);
+          scene.add_directional_light(entity, DirectionalLight { direction: dir, intensity: intensity});
+        },
+        RendererCommand::UnregisterDirectionalLight(entity) => {
+          scene.remove_directional_light(&entity);
         },
       }
 

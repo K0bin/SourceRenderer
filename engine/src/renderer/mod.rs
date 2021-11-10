@@ -20,6 +20,7 @@ pub use self::renderer::Renderer;
 
 pub use self::ecs::StaticRenderableComponent;
 pub use self::ecs::PointLightComponent;
+pub use self::ecs::DirectionalLightComponent;
 pub use self::drawable::DrawablePart;
 pub use self::late_latch_camera::LateLatchCamera;
 use self::drawable::View;
