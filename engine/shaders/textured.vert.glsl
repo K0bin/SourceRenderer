@@ -1,5 +1,8 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
+#extension GL_GOOGLE_include_directive : enable
+
+#include "descriptor_sets.h"
 
 layout(location = 0) in vec3 in_pos;
 layout(location = 1) in vec3 in_normal;
@@ -12,14 +15,14 @@ layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec2 out_uv;
 layout(location = 3) out vec2 out_lightmap_uv;
 
-layout(set = 2, binding = 0, std140) uniform CameraUbo {
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUbo {
   mat4 viewProj;
   mat4 invProj;
   mat4 view;
   mat4 proj;
 } camera;
 
-layout(set = 2, binding = 3) uniform PerFrameUbo {
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
   mat4 swapchainTransform;
   vec2 jitterPoint;
   float zNear;

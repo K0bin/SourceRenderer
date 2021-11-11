@@ -1,6 +1,9 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
+#extension GL_GOOGLE_include_directive : enable
 // #extension GL_EXT_debug_printf : enable
+
+#include "descriptor_sets.h"
 
 layout(location = 0) in vec3 in_worldPosition;
 layout(location = 1) in vec3 in_normal;
@@ -9,15 +12,15 @@ layout(location = 3) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = 1, binding = 0) uniform sampler2D tex;
-layout(set = 1, binding = 1) uniform sampler2D lightmap;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 0) uniform sampler2D tex;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 1) uniform sampler2D lightmap;
 
 struct Cluster {
   vec4 minPoint;
   vec4 maxPoint;
 };
 
-layout(std140, set = 2, binding = 0, std140) uniform CameraUbo {
+layout(std140, set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUbo {
   mat4 viewProj;
   mat4 invProj;
   mat4 view;
@@ -28,11 +31,11 @@ struct PointLight {
   vec3 position;
   float intensity;
 };
-layout(std430, set = 2, binding = 1, std430) readonly buffer pointLightsBuffer {
+layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 1, std430) readonly buffer pointLightsBuffer {
   PointLight pointLights[];
 };
 
-layout (std430, set = 2, binding = 2) buffer lightBitmasksBuffer {
+layout (std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 2) buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
@@ -40,11 +43,11 @@ struct DirectionalLight {
   vec3 direction;
   float intensity;
 };
-layout(std430, set = 2, binding = 5, std430) readonly buffer directionalLightsBuffer {
+layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 5, std430) readonly buffer directionalLightsBuffer {
   DirectionalLight directionalLights[];
 };
 
-layout(set = 2, binding = 3) uniform PerFrameUbo {
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
   mat4 swapchainTransform;
   vec2 jitterPoint;
   float zNear;
@@ -57,7 +60,7 @@ layout(set = 2, binding = 3) uniform PerFrameUbo {
   uint directionalLightCount;
 };
 
-layout(set = 2, binding = 4) uniform sampler2D ssao;
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 4) uniform sampler2D ssao;
 
 /*layout(std430, set = 2, binding = 4, std430) readonly buffer clusterAABB {
   Cluster clusters[];

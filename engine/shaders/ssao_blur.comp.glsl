@@ -1,13 +1,16 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
 
 layout(local_size_x = 16,
        local_size_y = 16,
        local_size_z = 1) in;
 
-layout(set = 0, binding = 0, r16f) uniform writeonly image2D outputTexture;
-layout(set = 0, binding = 1) uniform sampler2D inputTexture;
-layout(set = 0, binding = 2) uniform sampler2D history;
-layout(set = 0, binding = 3) uniform sampler2D motion;
+#include "descriptor_sets.h"
+
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, r16f) uniform writeonly image2D outputTexture;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D inputTexture;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform sampler2D history;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform sampler2D motion;
 
 void main() {
   ivec2 inputTexSize = textureSize(inputTexture, 0);

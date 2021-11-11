@@ -1,22 +1,25 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
 
 layout(local_size_x = 16,
        local_size_y = 16,
        local_size_z = 1) in;
 
-layout(set = 0, binding = 0, std140) uniform kernel {
+#include "descriptor_sets.h"
+
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform kernel {
   vec4 samples[16];
 };
-layout(set = 0, binding = 1) uniform sampler2D noise;
-layout(set = 0, binding = 2) uniform sampler2D depthMap;
-layout(set = 0, binding = 3) uniform sampler2D normals;
-layout(set = 0, binding = 4, std140) uniform Camera {
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D noise;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform sampler2D depthMap;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform sampler2D normals;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4, std140) uniform Camera {
   mat4 viewProj;
   mat4 invProj;
   mat4 view;
   mat4 proj;
 } camera;
-layout(set = 0, binding = 5, r16f) uniform writeonly image2D outputTexture;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 5, r16f) uniform writeonly image2D outputTexture;
 
 vec3 viewSpacePosition(vec2 uv) {
   float depth = texture(depthMap, uv).r;
@@ -73,7 +76,7 @@ void main() {
     // TODO: linearize depth instead of calculating view space position
     // we only need the depth
     float sampleDepth = viewSpacePosition(offset.xy).z;
-    
+
     float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));
     occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
   }
