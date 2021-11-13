@@ -320,8 +320,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       cluster_z_bias,
       cluster_z_scale,
       cluster_count,
-      point_light_count: 0, //scene.point_lights().len() as u32,
-      directional_light_count: scene.directional_lights().len() as u32 + 1
+      point_light_count: scene.point_lights().len() as u32,
+      directional_light_count: scene.directional_lights().len() as u32
     };
     let mut point_lights = SmallVec::<[PointLight; 16]>::new();
     for point_light in scene.point_lights() {
@@ -337,10 +337,6 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         intensity: directional_light.intensity
       });
     }
-    directional_lights.push(DirectionalLight {
-      direction: Vec3::new(-1f32, 0.1f32, 0f32).normalize(),
-      intensity: 2f32
-    });
     let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT);
     let point_light_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
     let directional_light_buffer = cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
