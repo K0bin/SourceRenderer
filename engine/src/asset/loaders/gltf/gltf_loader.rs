@@ -32,7 +32,7 @@ impl GltfLoader {
         Vec3::new(scale[0], scale[1], scale[2])),
     };
     let entity = world.push((Transform {
-      position: translation,
+      position: translation * 1000f32,
       scale: scale,
       rotation: UnitQuaternion::identity(),
     },));
@@ -45,6 +45,10 @@ impl GltfLoader {
     }
 
     if let Some(mesh) = node.mesh() {
+      let model_name = node.name().map_or_else(|| node.index().to_string(), |name| name.to_string());
+      let mesh_path = gltf_file_name.to_string() + "/mesh/" + &model_name;
+      let material_path = gltf_file_name.to_string() + "/material/" + &model_name;
+
       let mut indices = Vec::<u32>::new();
       let mut vertices = Vec::<Vertex>::new();
       let mut parts = Vec::<MeshRange>::with_capacity(mesh.primitives().len());
@@ -52,13 +56,14 @@ impl GltfLoader {
       for primitive in mesh.primitives() {
         let part_start = indices.len();
         GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name, buffer_cache);
+        GltfLoader::load_material(&primitive.material(), asset_mgr, &material_path);
         let primitive_bounding_box = primitive.bounding_box();
-        bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]);
-        bounding_box.min.y = f32::min(bounding_box.min.y, primitive_bounding_box.min[1]);
-        bounding_box.min.z = f32::min(bounding_box.min.z, primitive_bounding_box.min[2]);
-        bounding_box.max.x = f32::max(bounding_box.max.x, primitive_bounding_box.max[0]);
-        bounding_box.max.y = f32::max(bounding_box.max.y, primitive_bounding_box.max[1]);
-        bounding_box.max.z = f32::max(bounding_box.max.z, primitive_bounding_box.max[2]);
+        bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]) * 1000f32;
+        bounding_box.min.y = f32::min(bounding_box.min.y, primitive_bounding_box.min[1]) * 1000f32;
+        bounding_box.min.z = f32::min(bounding_box.min.z, primitive_bounding_box.min[2]) * 1000f32;
+        bounding_box.max.x = f32::max(bounding_box.max.x, primitive_bounding_box.max[0]) * 1000f32;
+        bounding_box.max.y = f32::max(bounding_box.max.y, primitive_bounding_box.max[1]) * 1000f32;
+        bounding_box.max.z = f32::max(bounding_box.max.z, primitive_bounding_box.max[2]) * 1000f32;
         let range = MeshRange {
           start: part_start as u32,
           count: (indices.len() - part_start) as u32
@@ -80,8 +85,6 @@ impl GltfLoader {
 
       let parts_len = parts.len();
 
-      let model_name = node.name().map_or_else(|| node.index().to_string(), |name| name.to_string());
-      let mesh_path = gltf_file_name.to_string() + "/mesh/" + &model_name;
       asset_mgr.add_asset(&mesh_path, Asset::Mesh(Mesh {
         indices: (indices_count > 0).then(|| indices_data),
         vertices: vertices_data,
@@ -92,7 +95,7 @@ impl GltfLoader {
       let model_path = gltf_file_name.to_string() + "/model/" + &model_name;
       asset_mgr.add_asset(&model_path, Asset::Model(Model {
         mesh_path: mesh_path.clone(),
-        material_paths: vec!["IGNORE".to_string(); parts_len],
+        material_paths: vec![material_path; parts_len],
       }), AssetLoadPriority::Normal);
 
       let mut entry = world.entry(entity).unwrap();
@@ -119,12 +122,12 @@ impl GltfLoader {
       match light.kind() {
         gltf::khr_lights_punctual::Kind::Directional => {
           entry.add_component(DirectionalLightComponent {
-            intensity: light.intensity() / 200f32,
+            intensity: light.intensity(),
           });
         },
         gltf::khr_lights_punctual::Kind::Point => {
           entry.add_component(PointLightComponent {
-            intensity: light.intensity() / 200f32,
+            intensity: light.intensity(),
           });
         },
         gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
@@ -147,8 +150,6 @@ impl GltfLoader {
   }
 
   fn load_primitive<P: Platform>(primitive: &Primitive, asset_mgr: &AssetManager<P>, vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>, gltf_file_name: &str, buffer_cache: &mut HashMap<usize, Vec<u8>>) {
-    //GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
-
     let index_base = vertices.len() as u32;
 
     {
@@ -217,7 +218,7 @@ impl GltfLoader {
           let mut normal = *normal_vec_ptr;
           normal.normalize_mut();
           vertices.push(Vertex {
-            position: *position_vec_ptr,
+            position: *position_vec_ptr * 1000f32,
             normal: normal,
             uv: Vec2::new(0f32, 0f32),
             lightmap_uv: Vec2::new(0f32, 0f32),
@@ -226,12 +227,12 @@ impl GltfLoader {
         }
 
         if let Some(stride) = positions_view.stride() {
-          assert!(stride > positions.size());
+          assert!(stride >= positions.size());
           positions_buffer_cursor.seek(SeekFrom::Start(positions_start + stride as u64)).unwrap();
         }
 
         if let Some(stride) = normals_view.stride() {
-          assert!(stride > normals.size());
+          assert!(stride >= normals.size());
           normals_buffer_cursor.seek(SeekFrom::Start(normals_start + stride as u64)).unwrap();
         }
 
@@ -291,7 +292,11 @@ impl GltfLoader {
     }
   }
 
-  fn load_material<P: Platform>(_material: &Material, _asset_mgr: &AssetManager<P>, _gltf_file_name: &str) {
+  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, material_name: &str) {
+    let pbr = material.pbr_metallic_roughness();
+    let color = pbr.base_color_factor();
+    asset_mgr.add_material_color(material_name, Vec4::new(color[0], color[1], color[2], color[3]), pbr.roughness_factor(), pbr.metallic_factor());
+
     /*let albedo = material.pbr_metallic_roughness().base_color_texture().unwrap();
     let albedo_source = albedo.texture().source().source();
     match albedo_source {
@@ -300,7 +305,7 @@ impl GltfLoader {
       },
       gltf::image::Source::Uri { .. } => unimplemented!(),
     }*/
-    unimplemented!()
+    //unimplemented!()
   }
 }
 
@@ -319,7 +324,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
       let gltf_name = &path[0..scene_name_start];
       let scene_name = &path[scene_name_start + scene_prefix.len() ..];
       for scene in gltf.scenes() {
-        if scene.name().is_some() && scene.name().unwrap() == scene_name {
+        if scene.name().map_or_else(|| scene.index().to_string(), |name| name.to_string()) == scene_name {
           let world = GltfLoader::load_scene(&scene, manager, gltf_name);
           return Ok(AssetLoaderResult {
             level: Some(world),

@@ -56,6 +56,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
   fn render(&mut self,
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
+    zero_texture_view: &Arc<B::TextureShaderResourceView>,
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input) -> Result<(), SwapchainError> {
@@ -70,7 +71,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), &late_latching_buffer);
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), self.frame, &late_latching_buffer, &late_latching_history_buffer);
     self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), &late_latching_buffer, self.prepass.motion_srv());
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv());
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), );
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
     self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
 

@@ -22,7 +22,7 @@ impl GltfContainer {
 
     let (document, buffers, images) = import(path).unwrap();
     let gltf = Gltf {
-      document, 
+      document,
       blob: None
     };
 

@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex, Condvar};
 use std::collections::{HashMap, HashSet, VecDeque};
 use sourcerenderer_core::platform::{Platform, io::IO};
-use sourcerenderer_core::graphics;
+use sourcerenderer_core::{Vec3, Vec4, graphics};
 use sourcerenderer_core::graphics::TextureInfo;
 use std::hash::Hash;
 
@@ -73,9 +73,22 @@ pub struct Material {
 }
 
 impl Material {
-  pub fn new_pbr(albedo_texture_path: &str) -> Self {
+  pub fn new_pbr(albedo_texture_path: &str, roughness: f32, metalness: f32) -> Self {
     let mut props = HashMap::new();
     props.insert("albedo".to_string(), MaterialValue::Texture(albedo_texture_path.to_string()));
+    props.insert("roughness".to_string(), MaterialValue::Float(roughness));
+    props.insert("metalness".to_string(), MaterialValue::Float(metalness));
+    Self {
+      shader_name: "pbr".to_string(),
+      properties: props
+    }
+  }
+
+  pub fn new_pbr_color(albedo: Vec4, roughness: f32, metalness: f32) -> Self {
+    let mut props = HashMap::new();
+    props.insert("albedo".to_string(), MaterialValue::Vec4(albedo));
+    props.insert("roughness".to_string(), MaterialValue::Float(roughness));
+    props.insert("metalness".to_string(), MaterialValue::Float(metalness));
     Self {
       shader_name: "pbr".to_string(),
       properties: props
@@ -86,7 +99,8 @@ impl Material {
 #[derive(Clone)]
 pub enum MaterialValue {
   Texture(String),
-  Float(f32)
+  Float(f32),
+  Vec4(Vec4)
 }
 
 pub struct AssetFile<P: Platform> {
@@ -216,10 +230,13 @@ impl<P: Platform> AssetManager<P> {
       cond_var
     });
 
-    let thread_count = 1;
-    for _ in 0..thread_count {
-      let c_manager = Arc::downgrade(&manager);
-      platform.start_thread("AssetManagerThread", move || asset_manager_thread_fn(c_manager));
+    #[cfg(not(target_family = "wasm"))]
+    {
+      let thread_count = 1;
+      for _ in 0..thread_count {
+        let c_manager = Arc::downgrade(&manager);
+        platform.start_thread("AssetManagerThread", move || asset_manager_thread_fn(c_manager));
+      }
     }
 
     manager
@@ -239,8 +256,13 @@ impl<P: Platform> AssetManager<P> {
     self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
   }
 
-  pub fn add_material(&self, path: &str, albedo: &str) {
-    let material = Material::new_pbr(albedo);
+  pub fn add_material(&self, path: &str, albedo: &str, roughness: f32, metalness: f32) {
+    let material = Material::new_pbr(albedo, roughness, metalness);
+    self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
+  }
+
+  pub fn add_material_color(&self, path: &str, albedo: Vec4, roughness: f32, metalness: f32) {
+    let material = Material::new_pbr_color(albedo, roughness, metalness);
     self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
   }
 
@@ -479,6 +501,8 @@ impl<P: Platform> AssetManager<P> {
   }
 }
 
+
+#[cfg(not(target_family = "wasm"))]
 fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
   let cond_var = {
     let mgr_opt = asset_manager.upgrade();
@@ -527,3 +551,15 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
     }
   }
 }
+
+
+// #[cfg(target_family = "wasm")]
+pub async fn process_asset_requests<P: Platform>(asset_manager: &AssetManager<P>, platform: &P) {
+  let mut inner = asset_manager.inner.lock().unwrap();
+  let mut request_opt = inner.load_queue.pop_front();
+  if request_opt.is_none() {
+    return;
+  }
+  let request = request_opt.unwrap();
+}
+

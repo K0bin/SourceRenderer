@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
+use sourcerenderer_core::{Matrix4, Vec3, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
 use std::sync::Arc;
 use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -233,6 +233,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     device: &Arc<B::Device>,
     scene: &RendererScene<B>,
     view: &View,
+    zero_texture_view: &Arc<B::TextureShaderResourceView>,
     lightmap: &Arc<RendererTexture<B>>,
     swapchain_transform: Matrix4,
     frame: u64,
@@ -319,8 +320,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       cluster_z_bias,
       cluster_z_scale,
       cluster_count,
-      point_light_count: scene.point_lights().len() as u32,
-      directional_light_count: scene.directional_lights().len() as u32
+      point_light_count: 0, //scene.point_lights().len() as u32,
+      directional_light_count: scene.directional_lights().len() as u32 + 1
     };
     let mut point_lights = SmallVec::<[PointLight; 16]>::new();
     for point_light in scene.point_lights() {
@@ -336,6 +337,10 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         intensity: directional_light.intensity
       });
     }
+    directional_lights.push(DirectionalLight {
+      direction: Vec3::new(-1f32, 0.1f32, 0f32).normalize(),
+      intensity: 2f32
+    });
     let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT);
     let point_light_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
     let directional_light_buffer = cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
@@ -382,6 +387,22 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
         }
 
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct MaterialInfo {
+          albedo: Vec4,
+          roughness_factor: f32,
+          metalness_factor: f32
+        }
+        let mut material_info = MaterialInfo {
+          albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
+          roughness_factor: 0f32,
+          metalness_factor: 0f32
+        };
+        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
+        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
+        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, zero_texture_view, &self.sampler);
+
         let range = &mesh.parts[part.part_index];
         let material = &materials[part.part_index];
         let albedo_value = material.get("albedo").unwrap();
@@ -389,9 +410,38 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           RendererMaterialValue::Texture(texture) => {
             let albedo_view = &texture.view;
             command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &self.sampler);
-          }
+          },
+          RendererMaterialValue::Vec4(val) => {
+            material_info.albedo = *val
+          },
           RendererMaterialValue::Float(_) => unimplemented!()
         }
+        let roughness_value = material.get("roughness");
+        match roughness_value {
+          Some(RendererMaterialValue::Texture(texture)) => {
+            let roughness_view = &texture.view;
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, &roughness_view, &self.sampler);
+          }
+          Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+          Some(RendererMaterialValue::Float(val)) => {
+            material_info.roughness_factor = *val;
+          },
+          None => {}
+        }
+        let metalness_value = material.get("metalness");
+        match metalness_value {
+          Some(RendererMaterialValue::Texture(texture)) => {
+            let metalness_view = &texture.view;
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, &metalness_view, &self.sampler);
+          }
+          Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+          Some(RendererMaterialValue::Float(val)) => {
+            material_info.metalness_factor = *val;
+          },
+          None => {}
+        }
+        let material_info_buffer = command_buffer.upload_dynamic_data(&[material_info], BufferUsage::FRAGMENT_SHADER_CONSTANT);
+        command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 4, &material_info_buffer);
 
         let lightmap_ref = &lightmap.view;
         command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &self.sampler);

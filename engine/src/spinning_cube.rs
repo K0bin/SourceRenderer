@@ -246,7 +246,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     count: indices.len() as u32
   }].into_boxed_slice());
   //asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
-  asset_manager.add_material("cube_material", "cube_texture_albedo");
+  asset_manager.add_material("cube_material", "cube_texture_albedo", 0f32, 0f32);
   asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
 
   systems.add_system(spin_system());

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::graphics::{Backend, BufferInfo, Device, Fence, TextureUsage};
+use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureShaderResourceViewInfo, BufferUsage };
@@ -32,6 +32,7 @@ impl<B: Backend> Clone for RendererMaterial<B> {
 
 pub enum RendererMaterialValue<B: Backend> {
   Float(f32),
+  Vec4(Vec4),
   Texture(Arc<RendererTexture<B>>)
 }
 
@@ -39,6 +40,10 @@ impl<B: Backend> PartialEq for RendererMaterialValue<B> {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
       (Self::Float(l0), Self::Float(r0)) => (l0 * 100f32) as u32 == (r0 * 100f32) as u32,
+      (Self::Vec4(l0), Self::Vec4(r0)) => (l0.x * 100f32) as u32 == (r0.x * 100f32) as u32
+                                                                                              && (l0.y * 100f32) as u32 == (r0.y * 100f32) as u32
+                                                                                              && (l0.z * 100f32) as u32 == (r0.z * 100f32) as u32
+                                                                                              && (l0.w * 100f32) as u32 == (r0.w * 100f32) as u32,
       (Self::Texture(l0), Self::Texture(r0)) => l0 == r0,
       _ => false
     }
@@ -51,6 +56,7 @@ impl<B: Backend> Clone for RendererMaterialValue<B> {
   fn clone(&self) -> Self {
     match self {
       Self::Float(val) => Self::Float(*val),
+      Self::Vec4(val) => Self::Vec4(*val),
       Self::Texture(tex) => Self::Texture(tex.clone())
     }
   }
@@ -67,8 +73,16 @@ impl<B: Backend> Ord for RendererMaterialValue<B> {
     match (self, other) {
       (RendererMaterialValue::Float(val1), RendererMaterialValue::Float(val2)) => ((val1 * 100f32) as u32).cmp(&((val2 * 100f32) as u32)),
       (RendererMaterialValue::Float(_), RendererMaterialValue::Texture(_)) => std::cmp::Ordering::Less,
+      (RendererMaterialValue::Float(_), RendererMaterialValue::Vec4(_)) => std::cmp::Ordering::Less,
       (RendererMaterialValue::Texture(_), RendererMaterialValue::Float(_)) => std::cmp::Ordering::Greater,
+      (RendererMaterialValue::Texture(_), RendererMaterialValue::Vec4(_)) => std::cmp::Ordering::Greater,
       (RendererMaterialValue::Texture(tex1), RendererMaterialValue::Texture(tex2)) => (tex1.view.as_ref() as *const B::TextureShaderResourceView).cmp(&(tex2.view.as_ref() as *const B::TextureShaderResourceView)),
+      (RendererMaterialValue::Vec4(val1), RendererMaterialValue::Vec4(val2)) => ((val1.x * 100f32) as u32).cmp(&((val2.x * 100f32) as u32))
+                                                                                                                                      .then(((val1.y * 100f32) as u32).cmp(&((val2.y * 100f32) as u32)))
+                                                                                                                                      .then(((val1.z * 100f32) as u32).cmp(&((val2.z * 100f32) as u32)))
+                                                                                                                                      .then(((val1.w * 100f32) as u32).cmp(&((val2.w * 100f32) as u32))),
+      (RendererMaterialValue::Vec4(_), RendererMaterialValue::Texture(_)) => std::cmp::Ordering::Less,
+      (RendererMaterialValue::Vec4(_), RendererMaterialValue::Float(_)) => std::cmp::Ordering::Greater,
     }
   }
 }
@@ -329,6 +343,10 @@ impl<P: Platform> RendererAssets<P> {
         MaterialValue::Float(val) => {
           properties.insert(key.to_string(), RendererMaterialValue::Float(*val));
         }
+
+        MaterialValue::Vec4(val) => {
+          properties.insert(key.to_string(), RendererMaterialValue::Vec4(*val));
+        }
       }
     }
 
@@ -346,7 +364,7 @@ impl<P: Platform> RendererAssets<P> {
     for material in &model.material_paths {
       let renderer_material = self.materials.get(material).cloned()
         .or_else(|| {
-        Some(self.integrate_material(material, &Material::new_pbr("NULL")))
+        Some(self.integrate_material(material, &Material::new_pbr("NULL", 0f32, 0f32)))
       }).unwrap();
       renderer_materials.push(renderer_material.clone());
 
@@ -431,5 +449,9 @@ impl<P: Platform> RendererAssets<P> {
 
     // Make sure the work initializing the resources actually gets submitted
     self.device.flush_transfers();
+  }
+
+  pub(crate) fn zero_view(&self) -> &Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView> {
+    &self.zero_view
   }
 }

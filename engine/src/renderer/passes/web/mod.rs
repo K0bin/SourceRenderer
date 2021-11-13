@@ -33,6 +33,7 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     &mut self,
     scene: &std::sync::Arc<sourcerenderer_core::atomic_refcell::AtomicRefCell<crate::renderer::RendererScene<B>>>,
     view: &std::sync::Arc<sourcerenderer_core::atomic_refcell::AtomicRefCell<crate::renderer::View>>,
+    _zero_texture_view: &Arc<B::TextureShaderResourceView>,
     _lightmap: &std::sync::Arc<crate::renderer::renderer_assets::RendererTexture<B>>,
     _late_latching: Option<&dyn LateLatching<B>>,
     _input: &Input

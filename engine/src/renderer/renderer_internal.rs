@@ -224,7 +224,7 @@ impl<P: Platform> RendererInternal<P> {
 
     self.lightmap = self.assets.get_texture("lightmap");
 
-    let render_result = self.render_path.render(&self.scene, &self.view, &self.lightmap, self.renderer.late_latching(), self.renderer.input());
+    let render_result = self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, self.renderer.late_latching(), self.renderer.input());
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -254,7 +254,7 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, &self.lightmap, self.renderer.late_latching(), self.renderer.input()).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, self.renderer.late_latching(), self.renderer.input()).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }
@@ -285,7 +285,7 @@ impl<P: Platform> RendererInternal<P> {
         if let Some(bounding_box) = bounding_box {
           let is_visible = frustum.intersects(bounding_box, &model_view_matrix);
           if !is_visible {
-            continue;
+            //continue;
           }
           let drawable_index = chunk_index * CHUNK_SIZE + index;
           for part_index in 0..mesh.parts.len() {

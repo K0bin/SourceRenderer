@@ -5,6 +5,8 @@
 
 #include "descriptor_sets.h"
 
+const float PI = 3.14159265359;
+
 layout(location = 0) in vec3 in_worldPosition;
 layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec2 in_uv;
@@ -12,8 +14,15 @@ layout(location = 3) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 0) uniform sampler2D tex;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 0) uniform sampler2D albedo;
 layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 1) uniform sampler2D lightmap;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 2) uniform sampler2D roughness_map;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 3) uniform sampler2D metalness_map;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 4) uniform Material {
+  vec4 albedo_color;
+  float roughness_factor;
+  float metalness_factor;
+} material;
 
 struct Cluster {
   vec4 minPoint;
@@ -25,6 +34,8 @@ layout(std140, set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform Came
   mat4 invProj;
   mat4 view;
   mat4 proj;
+  mat4 invView;
+  vec4 position;
 } camera;
 
 struct PointLight {
@@ -67,6 +78,11 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 4) uniform sampler2D ssao;
 };*/
 
 float linearizeDepth(float d, float zNear,float zFar);
+vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness);
+float distributionGGX(vec3 normal, vec3 halfway, float roughness);
+float schlickGGX(float nDotV, float roughness);
+float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float k);
+vec3 fresnelSchlick(float cosTheta, vec3 f0);
 
 void main(void) {
   vec2 tileSize = vec2(rtSize) / vec2(clusterCount.xy);
@@ -98,15 +114,22 @@ void main(void) {
   }
   */
 
+  float roughness = material.roughness_factor * texture(roughness_map, in_uv).r;
+  float metalness = material.metalness_factor * texture(metalness_map, in_uv).r;
+  vec3 albedo = material.albedo_color.rgb * texture(albedo, in_uv).rgb;
+
+  vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
+  vec3 f0 = vec3(0.04);
+  f0 = mix(f0, albedo, metalness);
+
   vec3 lighting = vec3(0);
   lighting += 0.3;
   //lighting += texture(lightmap, in_lightmap_uv).xyz;
-  lighting = min(vec3(1.0, 1.0, 1.0), lighting);
   lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
-    lighting += max(0.0, dot(in_normal, -normalize(light.direction)) * light.intensity);
+    lighting += pbr(-light.direction, viewDir, in_normal, f0, albedo, vec3(light.intensity), roughness, metalness);
   }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
@@ -126,18 +149,59 @@ void main(void) {
       bitmask &= ~singleBitMask;
       if (lightActive) {
         PointLight light = pointLights[i * 32 + bitIndex];
-        vec3 fragToLight = in_worldPosition - light.position;
+        vec3 fragToLight = light.position - in_worldPosition;
         vec3 lightDir = normalize(fragToLight);
         float lightSquaredDist = dot(fragToLight, fragToLight);
-        lighting += max(0.0, dot(in_normal, normalize(lightDir)) * (light.intensity * 1.0 / lightSquaredDist));
+        lighting += pbr(lightDir, viewDir, in_normal, f0, albedo, vec3(light.intensity / lightSquaredDist), roughness, metalness);
       }
     }
   }
-  vec4 tex = texture(tex, in_uv);
-  out_color = vec4(lighting * tex.xyz, 1);
+  out_color = vec4(lighting * albedo, 1);
 }
 
-float linearizeDepth(float d, float zNear,float zFar)
-{
+vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness) {
+  vec3 halfway = normalize(viewDir + lightDir);
+
+  float ndf = distributionGGX(normal, halfway, roughness);
+  float g = geometrySmith(normal, viewDir, lightDir, roughness);
+  vec3 f = fresnelSchlick(max(dot(halfway, viewDir), 0.0), f0);
+
+  vec3 kS = f;
+  vec3 kD = vec3(1.0) - kS;
+  kD *= 1.0 - metalness;
+
+  vec3 specular = (ndf * g * f) / (4.0 * max(dot(normal, viewDir), 0.0) * max(dot(normal, lightDir), 0.0) + 0.0001);
+  float nDotL = max(dot(normal, lightDir), 0.0);
+  return (kD * albedo / PI + specular) * radiance * nDotL;
+}
+
+float linearizeDepth(float d, float zNear,float zFar) {
   return 2.0 * zNear * zFar / (zFar + zNear - d * (zFar - zNear));
+}
+
+float distributionGGX(vec3 normal, vec3 halfway, float roughness) {
+  float a = roughness * roughness;
+  float a2 = a * a;
+  float nDotH = max(dot(normal, halfway), 0.0);
+  float nDotH2 = nDotH * nDotH;
+  float x = nDotH2 * (a2 - 1.0) + 1.0;
+  return a2 / (PI * x * x);
+}
+
+float geometrySchlickGGX(float nDotV, float roughness) {
+  float r = roughness + 1.0;
+  float k = (r*r) / 8.0;
+  return nDotV / (nDotV * (1.0 - k) + k);
+}
+
+float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float roughness) {
+  float nDotV = max(dot(normal, viewDir), 0.0);
+  float nDotL = max(dot(normal, lightDir), 0.0);
+  float ggx2 = geometrySchlickGGX(nDotV, roughness);
+  float ggx1 = geometrySchlickGGX(nDotL, roughness);
+  return ggx1 * ggx2;
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 f0) {
+  return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }

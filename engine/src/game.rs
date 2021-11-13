@@ -79,9 +79,11 @@ impl Game {
 
     println!("Csgo path: {:?}", csgo_path);
 
-    /*asset_manager.add_container(Box::new(GltfContainer::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+    asset_manager.add_container(Box::new(GltfContainer::load("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
+    //asset_manager.add_container(Box::new(GltfContainer::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
-    let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();*/
+    //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+    let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
 
     /*let mut level = {
@@ -123,7 +125,7 @@ impl Game {
 
       println!("Point Light: {:?}", point_light_entity);
 
-      //world.move_from(&mut level, &FilterAll {});
+      world.move_from(&mut level, &FilterAll {});
 
       //resources.insert(c_renderer.primary_camera().clone());
 

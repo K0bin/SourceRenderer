@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::graphics::{Backend, Buffer, BufferInfo, BufferUsage, Device, MemoryUsage};
-use sourcerenderer_core::{Matrix4, Vec3};
+use sourcerenderer_core::{Matrix4, Vec3, Vec4};
 
 use crate::fps_camera::{FPSCamera, fps_camera_rotation};
 use crate::transform::interpolation::deconstruct_transform;
@@ -18,7 +18,7 @@ struct LateLatchCamerabuffer {
   view: Matrix4,
   proj: Matrix4,
   inv_view: Matrix4,
-  position: Vec3
+  position: Vec4
 }
 
 pub struct LateLatchCamera<B: Backend> {
@@ -59,7 +59,7 @@ impl<B: Backend> LateLatching<B> for LateLatchCamera<B> {
     buffer_data.inv_view = view.try_inverse().unwrap();
     buffer_data.inv_proj = proj.try_inverse().unwrap();
     buffer_data.view_proj = proj * view;
-    buffer_data.position = position;
+    buffer_data.position = Vec4::new(position.x, position.y, position.z, 1f32);
   }
 
   fn after_submit(&self, device: &B::Device) {
