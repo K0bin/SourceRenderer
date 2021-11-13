@@ -7,7 +7,7 @@ use std::path::Path;
 use sourcerenderer_core::platform::io::IO;
 use sourcerenderer_core::{Vec2I, Vec2UI};
 use sourcerenderer_core::input::Key;
-use sourcerenderer_core::platform::{Event, Platform};
+use sourcerenderer_core::platform::{Event, Platform, ThreadHandle};
 
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_core::platform::GraphicsApi;
@@ -170,6 +170,7 @@ impl Platform for SDLPlatform {
   type Window = SDLWindow;
   type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
   type IO = StdIO;
+  type ThreadHandle = StdThreadHandle;
 
   fn window(&self) -> &SDLWindow {
     &self.window
@@ -180,14 +181,14 @@ impl Platform for SDLPlatform {
     Ok(Arc::new(VkInstance::new(&extensions, debug_layers)))
   }
 
-  fn start_thread<F>(&self, name: &str, callback: F)
+  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
   where
         F: FnOnce(),
         F: Send + 'static {
-    std::thread::Builder::new()
+    StdThreadHandle(std::thread::Builder::new()
       .name(name.to_string())
       .spawn(callback)
-      .unwrap();
+      .unwrap())
   }
 }
 
@@ -233,5 +234,12 @@ impl IO for StdIO {
 
   fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().exists()
+  }
+}
+
+pub struct StdThreadHandle(std::thread::JoinHandle<()>);
+impl ThreadHandle for StdThreadHandle {
+  fn join(self) {
+      self.0.join().unwrap();
   }
 }

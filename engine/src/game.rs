@@ -5,7 +5,7 @@ use std::time::Duration;
 use legion::{World, Resources, Schedule};
 
 use nalgebra::UnitQuaternion;
-use sourcerenderer_core::{Platform, Vec3};
+use sourcerenderer_core::{Platform, Vec3, atomic_refcell::AtomicRefCell, platform::ThreadHandle};
 
 use crate::{Transform, asset::loaders::{GltfContainer, GltfLoader}, input::Input, renderer::*};
 use crate::transform;
@@ -21,10 +21,11 @@ use instant::Instant;
 pub struct TimeStampedInputState(InputState, Instant);
 
 #[cfg(feature = "threading")]
-pub struct Game {
+pub struct Game<P: Platform> {
   input: Arc<Input>,
   fps_camera: Mutex<FPSCamera>,
-  is_running: AtomicBool
+  is_running: AtomicBool,
+  thread_handle: AtomicRefCell<Option<P::ThreadHandle>>
 }
 
 #[derive(Debug, Clone)]
@@ -53,8 +54,8 @@ impl LayoutFilter for FilterAll {
 }
 
 #[cfg(feature = "threading")]
-impl Game {
-  pub fn run<P: Platform>(
+impl<P: Platform> Game<P> {
+  pub fn run(
     platform: &P,
     input: &Arc<Input>,
     renderer: &Arc<Renderer<P>>,
@@ -99,13 +100,14 @@ impl Game {
     let game = Arc::new(Self {
       input: input.clone(),
       fps_camera: Mutex::new(FPSCamera::new()),
-      is_running: AtomicBool::new(true)
+      is_running: AtomicBool::new(true),
+      thread_handle: AtomicRefCell::new(None)
     });
 
     let c_renderer = renderer.clone();
     let c_asset_manager = asset_manager.clone();
     let c_game = game.clone();
-    platform.start_thread("GameThread", move || {
+    let thread_handle = platform.start_thread("GameThread", move || {
       let mut world = World::default();
       let mut fixed_schedule = Schedule::builder();
       let mut schedule = Schedule::builder();
@@ -166,7 +168,12 @@ impl Game {
         resources.insert(DeltaTime(delta));
         schedule.execute(&mut world, &mut resources);
       }
+      c_game.is_running.store(false, Ordering::SeqCst);
     });
+    {
+      let mut thread_handle_guard = game.thread_handle.borrow_mut();
+      *thread_handle_guard = Some(thread_handle);
+    }
 
     game
   }
@@ -176,6 +183,14 @@ impl Game {
   }
 
   pub fn stop(&self) {
-    self.is_running.store(false, Ordering::SeqCst);
+    let was_running = self.is_running.swap(false, Ordering::SeqCst);
+    if !was_running {
+      return;
+    }
+    let mut thread_handle_guard = self.thread_handle.borrow_mut();
+    thread_handle_guard
+      .take()
+      .expect("Game was already stopped")
+      .join();
   }
 }

@@ -1,6 +1,8 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex, Condvar};
 use std::collections::{HashMap, HashSet, VecDeque};
+use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use sourcerenderer_core::platform::ThreadHandle;
 use sourcerenderer_core::platform::{Platform, io::IO};
 use sourcerenderer_core::{Vec3, Vec4, graphics};
 use sourcerenderer_core::graphics::TextureInfo;
@@ -201,7 +203,9 @@ pub struct AssetManager<P: Platform> {
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
   renderer_sender: Sender<LoadedAsset>,
   renderer_receiver: Receiver<LoadedAsset>,
-  cond_var: Arc<Condvar>
+  cond_var: Arc<Condvar>,
+  is_running: AtomicBool,
+  thread_handles: AtomicRefCell<Vec<P::ThreadHandle>>
 }
 
 struct AssetManagerInner {
@@ -227,16 +231,22 @@ impl<P: Platform> AssetManager<P> {
       containers: RwLock::new(Vec::new()),
       renderer_sender,
       renderer_receiver,
-      cond_var
+      cond_var,
+      is_running: AtomicBool::new(true),
+      thread_handles: AtomicRefCell::new(Vec::new())
     });
 
     #[cfg(not(target_family = "wasm"))]
     {
+      let mut thread_handles = Vec::new();
       let thread_count = 1;
       for _ in 0..thread_count {
         let c_manager = Arc::downgrade(&manager);
-        platform.start_thread("AssetManagerThread", move || asset_manager_thread_fn(c_manager));
+        let thread_handle = platform.start_thread("AssetManagerThread", move || asset_manager_thread_fn(c_manager));
+        thread_handles.push(thread_handle);
       }
+      let mut thread_handles_guard = manager.thread_handles.borrow_mut();
+      *thread_handles_guard = thread_handles;
     }
 
     manager
@@ -499,6 +509,18 @@ impl<P: Platform> AssetManager<P> {
     let mut inner = self.inner.lock().unwrap();
     inner.loaded_assets.remove(path);
   }
+
+  pub fn stop(&self) {
+    let was_running = self.is_running.swap(false, Ordering::SeqCst);
+    if !was_running {
+      return;
+    }
+    self.cond_var.notify_all();
+    let mut thread_handles_guard = self.thread_handles.borrow_mut();
+    for handle in thread_handles_guard.drain(..) {
+      handle.join();
+    }
+  }
 }
 
 
@@ -519,6 +541,9 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       break;
     }
     let mgr = mgr_opt.unwrap();
+    if !mgr.is_running.load(Ordering::SeqCst) {
+      break;
+    }
     let request = {
       let mut inner = mgr.inner.lock().unwrap();
       let mut request_opt = inner.load_queue.pop_front();

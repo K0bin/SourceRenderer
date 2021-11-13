@@ -20,15 +20,20 @@ pub enum GraphicsApi {
   Vulkan
 }
 
+pub trait ThreadHandle : Send + Sync {
+  fn join(self);
+}
+
 pub trait Platform: 'static + Sized {
   type GraphicsBackend: graphics::Backend + Send + Sync;
   type Window: Window<Self>;
   type IO: io::IO;
+  type ThreadHandle: ThreadHandle;
 
   fn window(&self) -> &Self::Window;
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<<Self::GraphicsBackend as graphics::Backend>::Instance>, Box<dyn Error>>;
 
-  fn start_thread<F>(&self, name: &str, callback: F)
+  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
   where
       F: FnOnce(),
       F: Send + 'static;

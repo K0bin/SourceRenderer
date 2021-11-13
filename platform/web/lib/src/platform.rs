@@ -1,7 +1,7 @@
 use std::{cell::RefCell, error::Error, sync::{Arc, atomic::{AtomicBool, AtomicU32, Ordering}}, thread::Thread};
 
 use crossbeam_channel::unbounded;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, platform::ThreadHandle};
 use sourcerenderer_webgl::{GLThreadReceiver, WebGLBackend, WebGLInstance, WebGLThreadDevice};
 use web_sys::{Document, HtmlCanvasElement, Worker};
 #[macro_use]
@@ -29,6 +29,7 @@ impl Platform for WebPlatform {
   type GraphicsBackend = WebGLBackend;
   type Window = WebWindow;
   type IO = WebIO;
+  type ThreadHandle = BusyWaitThreadHandle;
 
   fn window(&self) -> &Self::Window {
     &self.window
@@ -38,10 +39,24 @@ impl Platform for WebPlatform {
     Ok(self.instance.clone())
   }
 
-  fn start_thread<F>(&self, name: &str, callback: F)
+  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
   where
       F: FnOnce(),
       F: Send + 'static {
-    self.pool.run(callback).unwrap();
+    let thread_done = Arc::new(AtomicBool::new(false));
+    let c_thread_done = thread_done.clone();
+    self.pool.run(move || {
+      callback();
+      c_thread_done.store(true, Ordering::SeqCst);
+    }).unwrap();
+    BusyWaitThreadHandle(thread_done)
+  }
+}
+
+pub struct BusyWaitThreadHandle(Arc<AtomicBool>);
+impl ThreadHandle for BusyWaitThreadHandle {
+  fn join(self) {
+    // As with everything Web related, this is awful
+    while !self.0.load(Ordering::SeqCst) {}
   }
 }

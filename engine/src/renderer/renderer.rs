@@ -1,7 +1,7 @@
-use std::{sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
+use std::{borrow::BorrowMut, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
 use crossbeam_channel::{Sender, unbounded};
 
-use sourcerenderer_core::{platform::{Event, Platform}};
+use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::{Event, Platform, ThreadHandle}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
@@ -26,7 +26,8 @@ pub struct Renderer<P: Platform> {
   surface: Mutex<Arc<<P::GraphicsBackend as Backend>::Surface>>,
   is_running: AtomicBool,
   input: Arc<Input>,
-  late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>
+  late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>,
+  thread_handle: AtomicRefCell<Option<P::ThreadHandle>>
 }
 
 impl<P: Platform> Renderer<P> {
@@ -48,7 +49,8 @@ impl<P: Platform> Renderer<P> {
       is_running: AtomicBool::new(true),
       window_event_sender,
       late_latching: late_latching.cloned(),
-      input: input.clone()
+      input: input.clone(),
+      thread_handle: AtomicRefCell::new(None)
     }
   }
 
@@ -70,7 +72,7 @@ impl<P: Platform> Renderer<P> {
     let c_swapchain = swapchain.clone();
     let c_asset_manager = asset_manager.clone();
 
-    platform.start_thread("RenderThread", move || {
+    let thread_handle = platform.start_thread("RenderThread", move || {
       let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
       loop {
         if !c_renderer.is_running.load(Ordering::SeqCst) {
@@ -78,7 +80,14 @@ impl<P: Platform> Renderer<P> {
         }
         internal.render();
       }
+      c_renderer.is_running.store(false, Ordering::SeqCst);
     });
+
+    {
+      let mut thread_handle_guard = renderer.thread_handle.borrow_mut();
+      *thread_handle_guard = Some(thread_handle);
+    }
+
     renderer
   }
 
@@ -103,7 +112,15 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn stop(&self) {
-    self.is_running.store(false, Ordering::SeqCst);
+    let was_running = self.is_running.swap(false, Ordering::SeqCst);
+    if !was_running {
+      return;
+    }
+    let mut thread_handle_guard = self.thread_handle.borrow_mut();
+    thread_handle_guard
+      .take()
+      .expect("Renderer was already stopped")
+      .join();
   }
 
   pub fn dispatch_window_event(&self, event: Event<P>) {

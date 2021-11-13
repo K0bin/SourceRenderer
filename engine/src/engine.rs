@@ -18,7 +18,8 @@ const TICK_RATE: u32 = 5;
 
 pub struct Engine<P: Platform> {
   renderer: Arc<Renderer<P>>,
-  game: Arc<Game>,
+  game: Arc<Game<P>>,
+  asset_manager: Arc<AssetManager<P>>,
   input: Arc<Input>,
   late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>
 }
@@ -45,10 +46,11 @@ impl<P: Platform> Engine<P> {
     let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
     let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
     let renderer = Renderer::<P>::run(platform, &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
-    let game = Game::run::<P>(&platform, &input, &renderer, &asset_manager, TICK_RATE);
+    let game = Game::<P>::run(&platform, &input, &renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
       game,
+      asset_manager,
       input,
       late_latching: Some(late_latching)
     }
@@ -86,6 +88,7 @@ impl<P: Platform> Engine<P> {
   }
 
   pub fn stop(&self) {
+    self.asset_manager.stop();
     self.game.stop();
     self.renderer.stop();
   }
