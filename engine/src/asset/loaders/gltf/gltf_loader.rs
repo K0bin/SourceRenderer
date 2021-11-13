@@ -32,7 +32,7 @@ impl GltfLoader {
         Vec3::new(scale[0], scale[1], scale[2])),
     };
     let entity = world.push((Transform {
-      position: translation * 1000f32,
+      position: translation,
       scale: scale,
       rotation: UnitQuaternion::identity(),
     },));
@@ -58,12 +58,12 @@ impl GltfLoader {
         GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name, buffer_cache);
         GltfLoader::load_material(&primitive.material(), asset_mgr, &material_path);
         let primitive_bounding_box = primitive.bounding_box();
-        bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]) * 1000f32;
-        bounding_box.min.y = f32::min(bounding_box.min.y, primitive_bounding_box.min[1]) * 1000f32;
-        bounding_box.min.z = f32::min(bounding_box.min.z, primitive_bounding_box.min[2]) * 1000f32;
-        bounding_box.max.x = f32::max(bounding_box.max.x, primitive_bounding_box.max[0]) * 1000f32;
-        bounding_box.max.y = f32::max(bounding_box.max.y, primitive_bounding_box.max[1]) * 1000f32;
-        bounding_box.max.z = f32::max(bounding_box.max.z, primitive_bounding_box.max[2]) * 1000f32;
+        bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]);
+        bounding_box.min.y = f32::min(bounding_box.min.y, primitive_bounding_box.min[1]);
+        bounding_box.min.z = f32::min(bounding_box.min.z, primitive_bounding_box.min[2]);
+        bounding_box.max.x = f32::max(bounding_box.max.x, primitive_bounding_box.max[0]);
+        bounding_box.max.y = f32::max(bounding_box.max.y, primitive_bounding_box.max[1]);
+        bounding_box.max.z = f32::max(bounding_box.max.z, primitive_bounding_box.max[2]);
         let range = MeshRange {
           start: part_start as u32,
           count: (indices.len() - part_start) as u32
@@ -218,7 +218,7 @@ impl GltfLoader {
           let mut normal = *normal_vec_ptr;
           normal.normalize_mut();
           vertices.push(Vertex {
-            position: *position_vec_ptr * 1000f32,
+            position: *position_vec_ptr,
             normal: normal,
             uv: Vec2::new(0f32, 0f32),
             lightmap_uv: Vec2::new(0f32, 0f32),
