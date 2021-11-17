@@ -1,6 +1,6 @@
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
-use sourcerenderer_core::platform::Window;
+use sourcerenderer_core::platform::{Window, ThreadHandle};
 use std::error::Error;
 use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface, VkDevice, VkSwapchain};
 use ndk::native_window::NativeWindow;
@@ -32,6 +32,7 @@ impl Platform for AndroidPlatform {
   type GraphicsBackend = VkBackend;
   type Window = AndroidWindow;
   type IO = AndroidIO;
+  type ThreadHandle = StdThreadHandle;
 
   fn window(&self) -> &Self::Window {
     &self.window
@@ -41,14 +42,14 @@ impl Platform for AndroidPlatform {
     Ok(Arc::new(VkInstance::new(&["VK_KHR_surface", "VK_KHR_android_surface"], debug_layers)))
   }
 
-  fn start_thread<F>(&self, name: &str, callback: F)
+  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
   where
         F: FnOnce(),
         F: Send + 'static {
-    std::thread::Builder::new()
+    StdThreadHandle(std::thread::Builder::new()
       .name(name.to_string())
       .spawn(callback)
-      .unwrap();
+      .unwrap())
   }
 }
 
@@ -106,5 +107,12 @@ impl Window<AndroidPlatform> for AndroidWindow {
     unsafe {
       ANativeWindow_getHeight(self.native_window.ptr().as_ptr()) as u32
     }
+  }
+}
+
+pub struct StdThreadHandle(std::thread::JoinHandle<()>);
+impl ThreadHandle for StdThreadHandle {
+  fn join(self) {
+      self.0.join().unwrap();
   }
 }
