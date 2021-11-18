@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex, Condvar};
 use std::collections::{HashMap, HashSet, VecDeque};
+use log::{trace, warn};
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::ThreadHandle;
 use sourcerenderer_core::platform::{Platform, io::IO};
@@ -388,7 +389,7 @@ impl<P: Platform> AssetManager<P> {
   pub fn load_level(self: &Arc<Self>, path: &str) -> Option<World> {
     let file_opt = self.load_file(path);
     if file_opt.is_none() {
-      println!("Could not load file: {:?}", path);
+      warn!("Could not load file: {:?}", path);
       return None;
     }
     let mut file = file_opt.unwrap();
@@ -396,7 +397,7 @@ impl<P: Platform> AssetManager<P> {
     let loaders = self.loaders.read().unwrap();
     let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
     if loader_opt.is_none() {
-      println!("Could not find loader for file: {:?}", path);
+      warn!("Could not find loader for file: {:?}", path);
       return None;
     }
 
@@ -407,7 +408,7 @@ impl<P: Platform> AssetManager<P> {
     let loader = loader_opt.unwrap();
     let assets_opt = loader.load(file, self, AssetLoadPriority::Normal, &progress);
     if assets_opt.is_err() {
-      println!("Could not load file: {:?}", path);
+      warn!("Could not load file: {:?}", path);
       return None;
     }
     let assets = assets_opt.unwrap();
@@ -431,7 +432,7 @@ impl<P: Platform> AssetManager<P> {
       }
     }
     if file_opt.is_none() {
-      //println!("Could not find file: {:?}", path);
+      //warn!("Could not find file: {:?}", path);
       {
         let mut inner = self.inner.lock().unwrap();
         inner.requested_assets.remove(path);
@@ -477,7 +478,7 @@ impl<P: Platform> AssetManager<P> {
         let mut inner = self.inner.lock().unwrap();
         inner.requested_assets.remove(&path);
       }
-      println!("Could not find loader for file: {:?}", path.as_str());
+      warn!("Could not find loader for file: {:?}", path.as_str());
       return;
     }
     let loader = loader_opt.unwrap();
@@ -489,7 +490,7 @@ impl<P: Platform> AssetManager<P> {
         let mut inner = self.inner.lock().unwrap();
         inner.requested_assets.remove(&path);
       }
-      println!("Could not load file: {:?}", path.as_str());
+      warn!("Could not load file: {:?}", path.as_str());
       return;
       // dunno, error i guess
     }
@@ -523,6 +524,7 @@ impl<P: Platform> AssetManager<P> {
 }
 
 fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
+  trace!("Started asset manager thread");
   let cond_var = {
     let mgr_opt = asset_manager.upgrade();
     if mgr_opt.is_none() {

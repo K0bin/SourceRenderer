@@ -1,3 +1,4 @@
+use log::trace;
 use sourcerenderer_core::{Vec3, Quaternion, Matrix4};
 use legion::{Entity, IntoQuery, component, maybe_changed, EntityStore};
 
@@ -109,7 +110,7 @@ fn propagate_transforms(entity: &Entity,
                         command_buffer: &mut CommandBuffer) {
   let entry_opt = world.entry_ref(*entity);
   if entry_opt.is_err() {
-    println!("ERROR {:?}", entity);
+    trace!("ERROR {:?}", entity);
     return;
   }
 

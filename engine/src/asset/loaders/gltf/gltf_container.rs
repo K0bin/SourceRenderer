@@ -1,5 +1,6 @@
 use std::{fs::File, io::{Cursor, Error as IOError, ErrorKind, Result as IOResult}, path::Path, usize};
 use gltf::{Glb, Gltf, buffer::Data as GltfBufferData, image::Data as GltfImageData, import};
+use log::trace;
 use sourcerenderer_core::{Platform, platform::io::IO};
 
 use crate::asset::asset_manager::{AssetContainer, AssetFile, AssetFileData};
@@ -26,12 +27,12 @@ impl GltfContainer {
       blob: None
     };
 
-    println!("GLTF: Found {} buffers & {} images", buffers.len(), images.len());
+    trace!("GLTF: Found {} buffers & {} images", buffers.len(), images.len());
 
     let file_name = Path::new(path).file_name().expect("Failed to read file name");
     let base_path = file_name.to_str().unwrap().to_string() + "/";
 
-    gltf.scenes().for_each(|s| println!("{:?}", s.name()));
+    gltf.scenes().for_each(|s| trace!("{:?}", s.name()));
 
     Ok(Self {
       gltf,

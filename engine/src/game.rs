@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use legion::{Resources, Schedule, World};
 
+use log::trace;
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3, atomic_refcell::AtomicRefCell, platform::ThreadHandle};
 
@@ -77,7 +78,7 @@ impl<P: Platform> Game<P> {
     #[cfg(target_arch = "wasm32")]
       let csgo_path = "";
 
-    println!("Csgo path: {:?}", csgo_path);
+    trace!("Csgo path: {:?}", csgo_path);
 
     let game = Arc::new(Self {
       input: input.clone(),
@@ -90,6 +91,7 @@ impl<P: Platform> Game<P> {
     let c_asset_manager = asset_manager.clone();
     let c_game = game.clone();
     let thread_handle = platform.start_thread("GameThread", move || {
+      trace!("Started game thread");
       let mut world = World::default();
       let mut fixed_schedule = Schedule::builder();
       let mut schedule = Schedule::builder();
@@ -114,7 +116,7 @@ impl<P: Platform> Game<P> {
         }
         c_asset_manager.load_level("de_overpass.bsp").unwrap()
       };*/
-      println!("Done loading level");
+      trace!("Done loading level");
 
       crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, &c_asset_manager);
       fps_camera::install::<P>(&mut world, &mut fixed_schedule);
@@ -128,7 +130,7 @@ impl<P: Platform> Game<P> {
         scale: Vec3::new(1f32, 1f32, 1f32),
       }, PointLightComponent { intensity: 1.0f32 }));
 
-      println!("Point Light: {:?}", point_light_entity);
+      trace!("Point Light: {:?}", point_light_entity);
 
       world.move_from(&mut level, &FilterAll {});
 

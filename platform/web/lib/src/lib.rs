@@ -82,6 +82,8 @@ struct EngineWrapper {
 pub fn start_engine(canvas_selector: &str, worker_pool: WorkerPool) -> usize {
   utils::set_panic_hook();
 
+  console_log::init_with_level(log::Level::Trace);
+
   console_log!("Initializing platform");
   let platform = WebPlatform::new(canvas_selector, worker_pool);
 

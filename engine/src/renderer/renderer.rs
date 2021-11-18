@@ -1,6 +1,7 @@
 use std::{borrow::BorrowMut, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
 use crossbeam_channel::{Sender, unbounded};
 
+use log::trace;
 use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::{Event, Platform, ThreadHandle}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
@@ -73,6 +74,7 @@ impl<P: Platform> Renderer<P> {
     let c_asset_manager = asset_manager.clone();
 
     let thread_handle = platform.start_thread("RenderThread", move || {
+      trace!("Started renderer thread");
       let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
       loop {
         if !c_renderer.is_running.load(Ordering::SeqCst) {

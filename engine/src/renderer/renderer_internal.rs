@@ -3,6 +3,7 @@ use crate::renderer::passes::web::WebRenderer;
 use crate::renderer::{Renderer, RendererStaticDrawable};
 use crate::transform::interpolation::deconstruct_transform;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use log::trace;
 use crate::renderer::command::RendererCommand;
 use std::time::Duration;
 use crate::asset::AssetManager;
@@ -118,7 +119,7 @@ impl<P: Platform> RendererInternal<P> {
       self.device.wait_for_idle();
       let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &surface, size.x, size.y);
       if let Result::Err(error) = new_swapchain_result {
-        println!("Swapchain recreation failed: {:?}", error);
+        trace!("Swapchain recreation failed: {:?}", error);
       } else {
         self.swapchain = new_swapchain_result.unwrap();
       }
@@ -234,10 +235,10 @@ impl<P: Platform> RendererInternal<P> {
           // No point in trying to recreate with the old surface
           let renderer_surface = self.renderer.surface();
           if &*renderer_surface != self.swapchain.surface() {
-            println!("Recreating swapchain on a different surface");
+            trace!("Recreating swapchain on a different surface");
             let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &*renderer_surface, self.swapchain.width(), self.swapchain.height());
             if new_swapchain_result.is_err() {
-              println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
+              trace!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
               return;
             }
             new_swapchain_result.unwrap()
@@ -245,10 +246,10 @@ impl<P: Platform> RendererInternal<P> {
             return;
           }
         } else {
-          println!("Recreating swapchain");
+          trace!("Recreating swapchain");
           let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(&self.swapchain, self.swapchain.width(), self.swapchain.height());
           if new_swapchain_result.is_err() {
-            println!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
+            trace!("Swapchain recreation failed: {:?}", new_swapchain_result.err().unwrap());
             return;
           }
           new_swapchain_result.unwrap()
