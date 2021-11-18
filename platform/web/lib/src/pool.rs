@@ -52,7 +52,7 @@ impl WorkerPool {
             }),
         };
         for _ in 0..initial {
-            let worker = pool.spawn(true)?;
+            let worker = pool.spawn()?;
             pool.state.push(worker);
         }
 
@@ -68,7 +68,7 @@ impl WorkerPool {
     ///
     /// Returns any error that may happen while a JS web worker is created and a
     /// message is sent to it.
-    fn spawn(&self, recyle_worker: bool) -> Result<Worker, JsValue> {
+    fn spawn(&self) -> Result<Worker, JsValue> {
         console_log!("spawning new worker");
         // TODO: what do do about `./worker.js`:
         //
@@ -84,7 +84,6 @@ impl WorkerPool {
         let array = js_sys::Array::new();
         array.push(&wasm_bindgen::module());
         array.push(&wasm_bindgen::memory());
-        array.push(&JsValue::from_bool(recyle_worker));
         worker.post_message(&array)?;
 
         Ok(worker)
@@ -103,7 +102,7 @@ impl WorkerPool {
     fn worker(&self) -> Result<Worker, JsValue> {
         match self.state.workers.borrow_mut().pop() {
             Some(worker) => Ok(worker),
-            None => self.spawn(true),
+            None => self.spawn(),
         }
     }
 
@@ -119,11 +118,11 @@ impl WorkerPool {
     ///
     /// Returns any error that may happen while a JS web worker is created and a
     /// message is sent to it.
-    fn execute(&self, f: impl FnOnce() + Send + 'static, recycle_worker: bool) -> Result<Worker, JsValue> {
-        let worker = if recycle_worker {
+    fn execute(&self, f: impl FnOnce() + Send + 'static, force_new_worker: bool) -> Result<Worker, JsValue> {
+        let worker = if !force_new_worker {
             self.worker()?
         } else {
-            self.spawn(false)?
+            self.spawn()?
         };
         let work = Box::new(Work { func: Box::new(f) });
         let ptr = Box::into_raw(work);
@@ -195,14 +194,13 @@ impl WorkerPool {
     /// If an error happens while spawning a web worker or sending a message to
     /// a web worker, that error is returned.
     pub fn run(&self, f: impl FnOnce() + Send + 'static) -> Result<(), JsValue> {
-        let worker = self.execute(f, true)?;
+        let worker = self.execute(f, false)?;
         self.reclaim_on_message(worker);
         Ok(())
     }
 
     pub fn run_permanent(&self, f: impl FnOnce() + Send + 'static) -> Result<(), JsValue> {
-        let worker = self.execute(f, false)?;
-        self.reclaim_on_message(worker);
+        let worker = self.execute(f, true)?;
         Ok(())
     }
 }
@@ -224,7 +222,7 @@ impl PoolState {
 /// Entry point invoked by `worker.js`, a bit of a hack but see the "TODO" above
 /// about `worker.js` in general.
 #[wasm_bindgen]
-pub fn child_entry_point(ptr: u32, recycle_worker: bool) -> Result<(), JsValue> {
+pub fn child_entry_point(ptr: u32) -> Result<(), JsValue> {
     let ptr = unsafe { Box::from_raw(ptr as *mut Work) };
     let global = js_sys::global().unchecked_into::<DedicatedWorkerGlobalScope>();
     (ptr.func)();
