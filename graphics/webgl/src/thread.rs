@@ -184,7 +184,7 @@ impl WebGLThreadDevice {
     self.buffers.get(&id).expect("Cant find buffer")
   }
 
-  pub fn create_shader(&mut self, id: ShaderHandle, shader_type: ShaderType, data: &[u8]) {    
+  pub fn create_shader(&mut self, id: ShaderHandle, shader_type: ShaderType, data: &[u8]) {
     let gl_shader_type = match shader_type {
       ShaderType::VertexShader => WebGl2RenderingContext::VERTEX_SHADER,
       ShaderType::FragmentShader => WebGl2RenderingContext::FRAGMENT_SHADER,
