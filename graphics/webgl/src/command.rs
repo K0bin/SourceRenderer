@@ -1,15 +1,14 @@
-use std::{rc::Rc, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 
 use crossbeam_channel::Sender;
-use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Texture, Viewport};
-use wasm_bindgen::JsCast;
-use web_sys::{WebGlRenderingContext, WebGlTexture};
+use sourcerenderer_core::graphics::{BindingFrequency, BufferUsage, CommandBuffer, LoadOp, PipelineBinding, Queue, Scissor, ShaderType, Viewport};
+use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
 
-use crate::{RawWebGLContext, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, address_mode_to_gl, format_to_internal_gl, max_filter_to_gl, min_filter_to_gl, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}};
+use crate::{WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::TextureHandle};
 
 pub struct WebGLCommandBuffer {
   pipeline: Option<WebGLGraphicsPipeline>,
-  commands: Vec<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>
+  commands: VecDeque<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>
 }
 
 impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
@@ -17,7 +16,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     match pipeline {
       PipelineBinding::Graphics(pipeline) => {
         let handle = pipeline.handle();
-        self.commands.push(Box::new(move |device| {
+        self.commands.push_back(Box::new(move |device| {
           let pipeline = device.pipeline(handle).clone();
           device.use_program(Some(pipeline.gl_program()));
         }));
@@ -30,7 +29,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     // TODO: maybe track dirty and do before draw
 
     let handle = vertex_buffer.handle();
-    self.commands.push(Box::new(move |device| {
+    self.commands.push_back(Box::new(move |device| {
       let buffer = device.buffer(handle).clone();
       device.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(buffer.gl_buffer()));
     }));
@@ -40,7 +39,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     // TODO: maybe track dirty and do before draw
 
     let handle = index_buffer.handle();
-    self.commands.push(Box::new(move |device| {
+    self.commands.push_back(Box::new(move |device| {
       let buffer = device.buffer(handle).clone();
       device.bind_buffer(WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, Some(buffer.gl_buffer()));
     }));
@@ -54,7 +53,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }
     debug_assert_eq!(viewports.len(), 1);
     let viewports: Vec<Viewport> = viewports.iter().cloned().collect();
-    self.commands.push(Box::new(move |device| {
+    self.commands.push_back(Box::new(move |device| {
       let viewport = viewports.first().unwrap();
       device.viewport(viewport.position.x as i32, viewport.position.y as i32, viewport.extent.x as i32, viewport.extent.y as i32);
     }));
@@ -68,7 +67,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }
     debug_assert_eq!(scissors.len(), 1);
     let scissors: Vec<Scissor> = scissors.iter().cloned().collect();
-    self.commands.push(Box::new(move |device| {
+    self.commands.push_back(Box::new(move |device| {
       let scissor = scissors.first().unwrap();
       device.scissor(scissor.position.x as i32, scissor.position.y as i32, scissor.extent.x as i32, scissor.extent.y as i32);
     }));
@@ -130,7 +129,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
 
   fn draw(&mut self, vertices: u32, offset: u32) {
     assert!(self.pipeline.is_none());
-    self.commands.push(Box::new(move |device| {
+    self.commands.push_back(Box::new(move |device| {
       device.draw_arrays(
         WebGlRenderingContext::TRIANGLES, // TODO: self.pipeline.as_ref().unwrap().gl_draw_mode(),
         offset as i32,
@@ -146,7 +145,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     assert_eq!(instances, 0);
     assert_eq!(first_instance, 0);
     assert_eq!(vertex_offset, 0);
-    self.commands.push(Box::new(move |device| {
+    self.commands.push_back(Box::new(move |device| {
       device.draw_elements_with_i32(
         WebGlRenderingContext::TRIANGLES, // TODO: self.pipeline.as_ref().unwrap().gl_draw_mode(),
         indices as i32,
@@ -212,23 +211,48 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }
   }
 
-  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLUnorderedAccessView>) {
+  fn bind_storage_texture(&mut self, _frequency: BindingFrequency, _binding: u32, _texture: &Arc<WebGLUnorderedAccessView>) {
     panic!("WebGL does not support storage textures")
   }
 
   fn begin_render_pass_1(&mut self, renderpass_info: &sourcerenderer_core::graphics::RenderPassBeginInfo<WebGLBackend>, recording_mode: sourcerenderer_core::graphics::RenderpassRecordingMode) {
-    todo!()
+    let mut clear_mask: u32 = 0;
+    let mut color_attachments: [Option<TextureHandle>; 8] = Default::default();
+    let mut depth_attachment = Option::<TextureHandle>::None;
+    let subpass = &renderpass_info.subpasses[0];
+    for (index, attachment_ref) in subpass.output_color_attachments.iter().enumerate() {
+      let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
+      match &attachment.view {
+        sourcerenderer_core::graphics::RenderPassAttachmentView::RenderTarget(rt) => {
+          if attachment.load_op == LoadOp::Clear {
+            clear_mask |= WebGl2RenderingContext::COLOR_BUFFER_BIT;
+          }
+          color_attachments[index] = Some(rt.texture().handle());
+        },
+        sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(ds) => {
+          if attachment.load_op == LoadOp::Clear {
+            clear_mask |= WebGl2RenderingContext::DEPTH_BUFFER_BIT;
+          }
+          depth_attachment = Some(ds.texture().handle());
+        },
+      }
+    }
+
+    self.commands.push_back(Box::new(move |context| {
+      let fbo = context.get_framebuffer(&color_attachments, depth_attachment);
+      context.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, fbo.as_ref());
+      context.clear_color(0f32, 0f32, 0f32, 1f32);
+      context.clear(clear_mask);
+    }));
   }
 
   fn advance_subpass(&mut self) {
-    todo!()
   }
 
   fn end_render_pass(&mut self) {
-    todo!()
   }
 
-  fn barrier<'a>(&mut self, barriers: &[sourcerenderer_core::graphics::Barrier<WebGLBackend>]) {
+  fn barrier<'a>(&mut self, _barriers: &[sourcerenderer_core::graphics::Barrier<WebGLBackend>]) {
     // nop
   }
 
@@ -267,7 +291,7 @@ impl Queue<WebGLBackend> for WebGLQueue {
   fn create_command_buffer(&self) -> WebGLCommandBuffer {
     WebGLCommandBuffer {
       pipeline: None,
-      commands: Vec::new()
+      commands: VecDeque::new()
     }
   }
 
@@ -281,7 +305,8 @@ impl Queue<WebGLBackend> for WebGLQueue {
     }
   }
 
-  fn present(&self, _swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>]) {
+  fn present(&self, swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>]) {
     // nop in WebGL
+    swapchain.bump_frame();
   }
 }

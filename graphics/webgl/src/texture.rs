@@ -45,10 +45,10 @@ impl WebGLTexture {
     }
   }
 
-  pub fn handle(&self) -> Option<TextureHandle> {
+  pub fn handle(&self) -> TextureHandle {
     match &self.inner {
-      WebGLTextureInner::Internal => None,
-      WebGLTextureInner::Explicit { handle, ..} => Some(*handle),
+      WebGLTextureInner::Internal => 1,
+      WebGLTextureInner::Explicit { handle, ..} => *handle,
     }
   }
 }

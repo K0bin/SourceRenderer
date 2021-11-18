@@ -4,16 +4,22 @@ use crossbeam_channel::{Receiver, Sender};
 use log::{trace, warn};
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, GraphicsPipelineInfo, MappedBuffer, MemoryUsage, MutMappedBuffer, PrimitiveType, ShaderType, TextureInfo};
 
-use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture};
+use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlFramebuffer};
 
 use crate::{GLThreadReceiver, WebGLBackend, WebGLShader, WebGLSurface, WebGLTexture, raw_context::RawWebGLContext};
+
+#[derive(Hash, PartialEq, Eq, Debug)]
+struct FboKey {
+  rts: [Option<TextureHandle>; 8],
+  ds: Option<TextureHandle>
+}
 
 pub struct WebGLThreadTexture {
   texture: WebGlTexture,
   context: Rc<RawWebGLContext>,
   info: TextureInfo,
   is_cubemap: bool,
-  target: u32,
+  target: u32
 }
 
 impl WebGLThreadTexture {
@@ -148,11 +154,12 @@ impl Drop for WebGLThreadPipeline {
 
 pub struct WebGLThreadDevice {
   context: Rc<RawWebGLContext>,
-  textures: HashMap<BufferHandle, Rc<WebGLThreadTexture>>,
+  textures: HashMap<TextureHandle, Rc<WebGLThreadTexture>>,
   shaders: HashMap<ShaderHandle, Rc<WebGLThreadShader>>,
   pipelines: HashMap<PipelineHandle, Rc<WebGLThreadPipeline>>,
-  buffers: HashMap<TextureHandle, Rc<WebGLThreadBuffer>>,
-  receiver: Receiver<Box<dyn FnOnce(&mut Self) + Send>>
+  buffers: HashMap<BufferHandle, Rc<WebGLThreadBuffer>>,
+  receiver: Receiver<Box<dyn FnOnce(&mut Self) + Send>>,
+  fbo_cache: HashMap<FboKey, WebGlFramebuffer>
 }
 
 pub type BufferHandle = u64;
@@ -168,7 +175,8 @@ impl WebGLThreadDevice {
       shaders: HashMap::new(),
       pipelines: HashMap::new(),
       buffers: HashMap::new(),
-      receiver: receiver.clone()
+      receiver: receiver.clone(),
+      fbo_cache: HashMap::new()
     }
   }
 
@@ -278,6 +286,85 @@ impl WebGLThreadDevice {
       cmd(self);
       cmd_res = self.receiver.try_recv();
     }
+  }
+
+  pub fn get_framebuffer(&mut self, rts: &[Option<TextureHandle>; 8], ds: Option<TextureHandle>) -> Option<WebGlFramebuffer> {
+    let mut use_internal_fbo = Option::<bool>::None;
+    for rt in rts {
+      if rt.is_none() {
+        continue;
+      }
+      let rt = rt.unwrap();
+      if rt == 1 {
+        if let Some(use_internal_fbo) = use_internal_fbo {
+          if !use_internal_fbo {
+            panic!("Cannot mix internal fbo texture and manually created textures");
+          }
+        } else {
+          use_internal_fbo = Some(true);
+        }
+      } else {
+        if let Some(use_internal_fbo) = use_internal_fbo {
+          if use_internal_fbo {
+            panic!("Cannot mix internal fbo texture and manually created textures");
+          }
+        }
+        use_internal_fbo = Some(false);
+      }
+    }
+    if let Some(ds) = ds {
+      if ds == 1 {
+        if let Some(use_internal_fbo) = use_internal_fbo {
+          if !use_internal_fbo {
+            panic!("Cannot mix internal fbo texture and manually created textures");
+          }
+        } else {
+          use_internal_fbo = Some(true);
+        }
+      } else {
+        if let Some(use_internal_fbo) = use_internal_fbo {
+          if use_internal_fbo {
+            panic!("Cannot mix internal fbo texture and manually created textures");
+          }
+        }
+        use_internal_fbo = Some(false);
+      }
+    }
+
+    if use_internal_fbo.expect("Empty frame buffer") {
+      return None;
+    }
+
+    let key = FboKey {
+      rts: rts.clone(),
+      ds: ds.clone()
+    };
+
+    let fbo = self.fbo_cache.get(&key);
+    if let Some(fbo) = fbo {
+      return Some(fbo.clone());
+    }
+
+    let fbo = self.context.create_framebuffer().unwrap();
+    self.context.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&fbo));
+    for (index, rt) in rts.iter().enumerate() {
+      if rt.is_none() {
+        continue;
+      }
+      let rt = rt.unwrap();
+      let rt_texture = self.texture(rt);
+      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::COLOR_ATTACHMENT0 + index as u32, WebGl2RenderingContext::TEXTURE_2D, Some(&rt_texture.texture), 0);
+    }
+
+    if let Some(ds) = ds {
+      let ds_texture = self.texture(ds);
+      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::DEPTH_STENCIL_ATTACHMENT, WebGl2RenderingContext::TEXTURE_2D, Some(&ds_texture.texture), 0);
+    }
+
+    assert!(self.context.is_framebuffer(Some(&fbo)));
+    assert_eq!(self.context.check_framebuffer_status(WebGl2RenderingContext::DRAW_FRAMEBUFFER), WebGl2RenderingContext::FRAMEBUFFER_COMPLETE);
+    self.fbo_cache.insert(key, fbo.clone());
+    Some(fbo)
   }
 }
 

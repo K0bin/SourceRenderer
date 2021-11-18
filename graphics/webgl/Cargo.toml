@@ -10,6 +10,7 @@ wasm-bindgen = "0.2.71"
 sourcerenderer_core = { path = "../../core" }
 crossbeam-channel = "0.5.0"
 log = "0.4.14"
+smallvec = "1.5.1"
 
 [dependencies.web-sys]
 version = "0.3.4"
@@ -27,5 +28,6 @@ features = [
   'Window',
   'DedicatedWorkerGlobalScope',
   'WebglCompressedTextureS3tc',
-  'WebGlActiveInfo'
+  'WebGlActiveInfo',
+  'WebGlFramebuffer'
 ]

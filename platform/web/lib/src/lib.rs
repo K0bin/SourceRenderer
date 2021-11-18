@@ -73,22 +73,21 @@ macro_rules! console_log {
 
 
 struct EngineWrapper {
-  engine: Engine<WebPlatform>,
-  gl_device: WebGLThreadDevice,
-  swapchain: Arc<WebGLSwapchain>
+  _engine: Engine<WebPlatform>,
+  gl_device: WebGLThreadDevice
 }
 
 #[wasm_bindgen(js_name = "startEngine")]
 pub fn start_engine(canvas_selector: &str, worker_pool: WorkerPool) -> usize {
   utils::set_panic_hook();
 
-  console_log::init_with_level(log::Level::Trace);
+  console_log::init_with_level(log::Level::Trace).unwrap();
 
   console_log!("Initializing platform");
   let platform = WebPlatform::new(canvas_selector, worker_pool);
 
   console_log!("Initializing engine");
-  let mut engine = Engine::run(&platform);
+  let engine = Engine::run(&platform);
   console_log!("Initialized engine");
   let device = engine.device().clone();
   console_log!("Got device");
@@ -98,12 +97,10 @@ pub fn start_engine(canvas_selector: &str, worker_pool: WorkerPool) -> usize {
   let window = platform.window();
   let document = window.document();
   let thread_device = WebGLThreadDevice::new(receiver, &surface, document);
-  let swapchain = window.create_swapchain(true, &device, &surface); // Returns the same swapchain for WebWindow
 
   let wrapper = Box::new(RefCell::new(EngineWrapper {
     gl_device: thread_device,
-    engine: engine,
-    swapchain: swapchain
+    _engine: engine
   }));
   Box::into_raw(wrapper) as usize
 }
@@ -138,7 +135,7 @@ pub fn start_rayon_workers(worker_pool: &WorkerPool, rayon_thread_count: u32) ->
       console_log!("Rayon worker initializing");
       c_counter.fetch_add(1, Ordering::SeqCst);
       thread_builder.run();
-    });
+    }).unwrap();
   }
   worker_pool.run(move || {
     rayon::ThreadPoolBuilder::new()
@@ -168,6 +165,5 @@ impl RayonInitialization {
 pub fn engine_frame(engine: usize) -> bool {
   let mut wrapper = engine_from_usize(engine);
   wrapper.gl_device.process();
-  wrapper.swapchain.bump_frame();
   true
 }

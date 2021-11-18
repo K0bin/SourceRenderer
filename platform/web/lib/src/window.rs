@@ -10,7 +10,6 @@ use crate::platform::WebPlatform;
 pub struct WebWindow {
   canvas_selector: String,
   surface: Arc<WebGLSurface>,
-  swapchain: Arc<WebGLSwapchain>,
   window: HTMLWindow,
   document: Document
 }
@@ -20,11 +19,9 @@ impl WebWindow {
     let window = window().unwrap();
     let document = window.document().unwrap();
     let surface = Arc::new(WebGLSurface::new(canvas_selector, &document));
-    let swapchain = Arc::new(WebGLSwapchain::new(&surface));
     Self {
       canvas_selector: canvas_selector.to_string(),
       surface,
-      swapchain,
       window,
       document
     }
@@ -44,8 +41,9 @@ impl Window<WebPlatform> for WebWindow {
     self.surface.clone()
   }
 
-  fn create_swapchain(&self, _vsync: bool, _device: &WebGLDevice, surface: &Arc<WebGLSurface>) -> Arc<WebGLSwapchain> {
-    self.swapchain.clone()
+  fn create_swapchain(&self, _vsync: bool, device: &WebGLDevice, surface: &Arc<WebGLSurface>) -> Arc<WebGLSwapchain> {
+    let swapchain = Arc::new(WebGLSwapchain::new(device.sender(), &surface));
+    swapchain
   }
 
   fn width(&self) -> u32 {

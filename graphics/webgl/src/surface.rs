@@ -1,10 +1,11 @@
 use std::sync::{Arc, atomic::{AtomicU32, AtomicU64, Ordering}};
 
+use log::trace;
 use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, TextureInfo, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage};
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
-use crate::{WebGLBackend, WebGLTexture, WebGLTextureShaderResourceView, sync::WebGLSemaphore, texture::WebGLRenderTargetView};
+use crate::{GLThreadSender, WebGLBackend, WebGLDevice, WebGLTexture, WebGLTextureShaderResourceView, sync::WebGLSemaphore, texture::WebGLRenderTargetView, thread::WebGLThreadShader};
 
 pub struct WebGLSurface {
   //canvas_element: HtmlCanvasElement
@@ -63,11 +64,12 @@ pub struct WebGLSwapchain {
   surface: Arc<WebGLSurface>,
   width: u32,
   height: u32,
-  backbuffer_view: Arc<WebGLRenderTargetView>
+  backbuffer_view: Arc<WebGLRenderTargetView>,
+  thread_sender: GLThreadSender
 }
 
 impl WebGLSwapchain {
-  pub fn new(surface: &Arc<WebGLSurface>) -> Self {
+  pub fn new(sender: &GLThreadSender, surface: &Arc<WebGLSurface>) -> Self {
     let backbuffer = Arc::new(WebGLTexture::new_internal(&TextureInfo {
       format: Format::Unknown,
       width: surface.width,
@@ -85,32 +87,36 @@ impl WebGLSwapchain {
       base_array_level: 0,
       array_level_length: 1
     }));
-    
+
     Self {
       prepared_frame: AtomicU64::new(0),
       processed_frame: AtomicU64::new(0),
       surface: surface.clone(),
       width: surface.width,
       height: surface.height,
-      backbuffer_view: view
+      backbuffer_view: view,
+      thread_sender: sender.clone()
     }
   }
 
-  pub fn bump_frame(&self) {
-    self.processed_frame.fetch_add(1, Ordering::SeqCst);
+  pub(crate) fn bump_frame(self: &Arc<Self>) {
+    let c_self = self.clone();
+    self.thread_sender.send(Box::new(move |_context| {
+      c_self.processed_frame.fetch_add(1, Ordering::SeqCst);
+    })).unwrap();
   }
 }
 
 impl Swapchain<WebGLBackend> for WebGLSwapchain {
   fn recreate(old: &Self, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
     Ok(
-      Arc::new(WebGLSwapchain::new(&old.surface))
+      Arc::new(WebGLSwapchain::new(&old.thread_sender, &old.surface))
     )
   }
 
-  fn recreate_on_surface(_old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
+  fn recreate_on_surface(old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
     Ok(
-      Arc::new(WebGLSwapchain::new(&surface))
+      Arc::new(WebGLSwapchain::new(&old.thread_sender, &surface))
     )
   }
 
@@ -129,6 +135,7 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
   fn prepare_back_buffer(&self, _semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
     while self.processed_frame.load(Ordering::SeqCst) + 1 < self.prepared_frame.load(Ordering::SeqCst) {
       // Block so we dont run too far ahead
+      trace!("waiting for the main thread to catch up processed: {}, prepared: {}", self.processed_frame.load(Ordering::SeqCst), self.prepared_frame.load(Ordering::SeqCst));
     }
 
     self.prepared_frame.fetch_add(1, Ordering::SeqCst);
