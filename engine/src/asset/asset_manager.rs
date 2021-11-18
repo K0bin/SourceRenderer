@@ -236,7 +236,6 @@ impl<P: Platform> AssetManager<P> {
       thread_handles: AtomicRefCell::new(Vec::new())
     });
 
-    #[cfg(not(target_family = "wasm"))]
     {
       let mut thread_handles = Vec::new();
       let thread_count = 1;
@@ -523,8 +522,6 @@ impl<P: Platform> AssetManager<P> {
   }
 }
 
-
-#[cfg(not(target_family = "wasm"))]
 fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
   let cond_var = {
     let mgr_opt = asset_manager.upgrade();
@@ -576,15 +573,3 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
     }
   }
 }
-
-
-// #[cfg(target_family = "wasm")]
-pub async fn process_asset_requests<P: Platform>(asset_manager: &AssetManager<P>, platform: &P) {
-  let mut inner = asset_manager.inner.lock().unwrap();
-  let mut request_opt = inner.load_queue.pop_front();
-  if request_opt.is_none() {
-    return;
-  }
-  let request = request_opt.unwrap();
-}
-
