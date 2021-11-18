@@ -1,6 +1,6 @@
 use std::{fs::File, io::{Cursor, Error as IOError, ErrorKind, Result as IOResult}, path::Path, usize};
 use gltf::{Glb, Gltf, buffer::Data as GltfBufferData, image::Data as GltfImageData, import};
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, platform::io::IO};
 
 use crate::asset::asset_manager::{AssetContainer, AssetFile, AssetFileData};
 
@@ -13,10 +13,10 @@ pub struct GltfContainer {
 }
 
 impl GltfContainer {
-  pub fn load(path: &str) -> IOResult<Self> {
+  pub fn load<P: Platform>(path: &str) -> IOResult<Self> {
     let json_data = {
-      let file = File::open(path)?;
-      let glb = Glb::from_reader(file).map_err(|_e| IOError::new(ErrorKind::Other, "Failed to read Glb"))?;
+      let file = P::IO::open_external_asset(path)?;
+      let glb = Glb::from_reader(file).map_err(|e| IOError::new(ErrorKind::Other, format!("Failed to read Glb: {:?}", e)))?;
       glb.json.into_owned().into_boxed_slice()
     };
 
