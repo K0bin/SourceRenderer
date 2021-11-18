@@ -135,7 +135,6 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
   fn prepare_back_buffer(&self, _semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
     while self.processed_frame.load(Ordering::SeqCst) + 1 < self.prepared_frame.load(Ordering::SeqCst) {
       // Block so we dont run too far ahead
-      trace!("waiting for the main thread to catch up processed: {}, prepared: {}", self.processed_frame.load(Ordering::SeqCst), self.prepared_frame.load(Ordering::SeqCst));
     }
 
     self.prepared_frame.fetch_add(1, Ordering::SeqCst);
