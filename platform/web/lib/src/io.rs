@@ -45,18 +45,7 @@ impl IO for WebIO {
   }
 
   fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
-    crate::console_log!("Opening external asset: {:?}", path.as_ref().to_str().unwrap());
-    let task = AsyncIOTask::new(path.as_ref().to_str().unwrap());
-    unsafe {
-      IO_SENDER.as_ref().unwrap().try_send(
-        task.clone()
-      ).unwrap();
-    }
-
-    Ok(WebFile {
-      task,
-      cursor_position: 0
-    })
+    Self::open_asset(path)
   }
 
   fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
