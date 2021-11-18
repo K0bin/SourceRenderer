@@ -1,42 +1,120 @@
-use std::io::{Read, Seek, SeekFrom, Result as IOResult};
+use std::io::{Read, Seek, SeekFrom, Result as IOResult, Error as IOError, ErrorKind};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::path::Path;
 
 use sourcerenderer_core::platform::io::IO;
+
+use wasm_bindgen::JsCast;
+use web_sys::DedicatedWorkerGlobalScope;
+use web_sys::WorkerGlobalScope;
+use async_channel::Sender;
+
+use crate::async_io_worker::{AsyncIOTask, AsyncIOTaskError};
+use crate::WorkerPool;
+
+static mut IO_SENDER: Option<Sender<Arc<AsyncIOTask>>> = None;
+
+pub(super) fn init_global_io(worker_pool: &WorkerPool) {
+  unsafe {
+    IO_SENDER = Some(crate::async_io_worker::start_worker(&worker_pool));
+  }
+}
 
 pub struct WebIO {}
 
 impl IO for WebIO {
   type File = WebFile;
 
-  fn open_asset<P: AsRef<std::path::Path>>(path: P) -> IOResult<Self::File> {
-    // IOResult::Err(std::io::Error::new(std::io::ErrorKind::Other, "stub"))
-    todo!()
+  fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+    crate::console_log!("Opening asset: {:?}", path.as_ref().to_str().unwrap());
+    let task = AsyncIOTask::new(path.as_ref().to_str().unwrap());
+    unsafe {
+      IO_SENDER.as_ref().unwrap().try_send(
+        task.clone()
+      ).unwrap();
+    }
+
+    Ok(WebFile {
+      task,
+      cursor_position: 0
+    })
   }
 
-  fn asset_exists<P: AsRef<std::path::Path>>(path: P) -> bool {
+  fn asset_exists<P: AsRef<Path>>(path: P) -> bool {
     false
   }
 
-  fn open_external_asset<P: AsRef<std::path::Path>>(path: P) -> IOResult<Self::File> {
-    todo!()
+  fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+    crate::console_log!("Opening external asset: {:?}", path.as_ref().to_str().unwrap());
+    let task = AsyncIOTask::new(path.as_ref().to_str().unwrap());
+    unsafe {
+      IO_SENDER.as_ref().unwrap().send(
+        task.clone()
+      );
+    }
+
+    Ok(WebFile {
+      task,
+      cursor_position: 0
+    })
   }
 
-  fn external_asset_exists<P: AsRef<std::path::Path>>(path: P) -> bool {
+  fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
     false
   }
 }
 
 pub struct WebFile {
-
+  task: Arc<AsyncIOTask>,
+  cursor_position: u64
 }
 
 impl Read for WebFile {
   fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
-    todo!()
+    let data_guard = self.task.wait_for_result();
+    let data = data_guard.as_ref().map_err(|e| {
+      let msg = match e {
+        AsyncIOTaskError::InProgress => unreachable!(),
+        AsyncIOTaskError::Error(msg) => msg,
+      };
+      IOError::new(ErrorKind::NotFound, msg.as_str())
+    })?;
+
+    if self.cursor_position + buf.len() as u64 >= data.len() as u64 {
+      return IOResult::Ok(0);
+    }
+
+    let read_length = buf.len().min(data.len() - self.cursor_position as usize);
+    let read_start = self.cursor_position as usize;
+    let read_end = read_start + read_length;
+    buf.copy_from_slice(&data[read_start .. read_end]);
+    Ok(buf.len())
   }
 }
 
 impl Seek for WebFile {
   fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
-    todo!()
+    let len = {
+      let data_guard = self.task.wait_for_result();
+      let data = data_guard.as_ref().map_err(|e| {
+        let msg = match e {
+          AsyncIOTaskError::InProgress => unreachable!(),
+          AsyncIOTaskError::Error(msg) => msg,
+        };
+        IOError::new(ErrorKind::NotFound, msg.as_str())
+      })?;
+      data.len()
+    };
+    let new_pos = match pos {
+      SeekFrom::Start(seek_pos) => seek_pos as i64,
+      SeekFrom::End(seek_pos) => (len as i64) - seek_pos,
+      SeekFrom::Current(seek_pos) => (self.cursor_position as i64 + seek_pos) as i64,
+    };
+    if new_pos > len as i64 || new_pos < 0 {
+      IOResult::Err(IOError::new(ErrorKind::UnexpectedEof, format!("Can not perform seek: {:?}, calculated pos: {:?} bytes, total file length is {:?} bytes.", pos, new_pos, len)))
+    } else {
+      self.cursor_position = new_pos as u64;
+      IOResult::Ok(self.cursor_position)
+    }
   }
 }

@@ -3,6 +3,7 @@ mod pool;
 mod platform;
 mod io;
 mod window;
+mod async_io_worker;
 
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;

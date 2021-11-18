@@ -4,10 +4,12 @@ use crossbeam_channel::unbounded;
 use sourcerenderer_core::{Platform, platform::ThreadHandle};
 use sourcerenderer_webgl::{GLThreadReceiver, WebGLBackend, WebGLInstance, WebGLThreadDevice};
 use web_sys::{Document, HtmlCanvasElement, Worker};
+use async_channel::Sender;
 #[macro_use]
 use lazy_static;
 
-use crate::{console_log, io::WebIO, pool::WorkerPool, window::WebWindow};
+use crate::{async_io_worker::AsyncIOTask, console_log, io::WebIO, pool::WorkerPool, window::WebWindow};
+
 
 pub struct WebPlatform {
   window: WebWindow,
@@ -17,6 +19,7 @@ pub struct WebPlatform {
 
 impl WebPlatform {
   pub(crate) fn new(canvas_selector: &str, worker_pool: WorkerPool) -> Self {
+    crate::io::init_global_io(&worker_pool);
     Self {
       window: WebWindow::new(canvas_selector),
       instance: Arc::new(WebGLInstance::new()),
@@ -45,7 +48,7 @@ impl Platform for WebPlatform {
       F: Send + 'static {
     let thread_done = Arc::new(AtomicBool::new(false));
     let c_thread_done = thread_done.clone();
-    self.pool.run(move || {
+    self.pool.run_permanent(move || {
       callback();
       c_thread_done.store(true, Ordering::SeqCst);
     }).unwrap();
