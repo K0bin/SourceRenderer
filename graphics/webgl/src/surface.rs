@@ -48,7 +48,7 @@ impl WebGLSurface {
     element.dyn_into::<HtmlCanvasElement>().unwrap()
   }
 
-  pub fn canvas(&self, document: &Document) -> HtmlCanvasElement {    
+  pub fn canvas(&self, document: &Document) -> HtmlCanvasElement {
     Self::canvas_internal(&self.selector, document)
   }
 
@@ -126,8 +126,8 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
     &self.surface
   }
 
-  fn prepare_back_buffer(&self, semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
-    while self.processed_frame.load(Ordering::SeqCst) < self.prepared_frame.load(Ordering::SeqCst) - 1 {
+  fn prepare_back_buffer(&self, _semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
+    while self.processed_frame.load(Ordering::SeqCst) + 1 < self.prepared_frame.load(Ordering::SeqCst) {
       // Block so we dont run too far ahead
     }
 
