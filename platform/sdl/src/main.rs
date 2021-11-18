@@ -16,6 +16,8 @@ pub use sdl_platform::SDLPlatform;
 mod sdl_platform;
 
 fn main() {
+  simple_logger::SimpleLogger::new().init().unwrap();
+
   Engine::<SDLPlatform>::initialize_global();
   let mut platform = SDLPlatform::new(GraphicsApi::Vulkan);
   let engine = Box::new(Engine::run(platform.as_ref()));
