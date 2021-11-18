@@ -48,9 +48,9 @@ impl IO for WebIO {
     crate::console_log!("Opening external asset: {:?}", path.as_ref().to_str().unwrap());
     let task = AsyncIOTask::new(path.as_ref().to_str().unwrap());
     unsafe {
-      IO_SENDER.as_ref().unwrap().send(
+      IO_SENDER.as_ref().unwrap().try_send(
         task.clone()
-      );
+      ).unwrap();
     }
 
     Ok(WebFile {
