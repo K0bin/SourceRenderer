@@ -1,8 +1,7 @@
 use std::{sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
-use std::thread;
 use std::time::Duration;
 
-use legion::{World, Resources, Schedule};
+use legion::{Resources, Schedule, World};
 
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3, atomic_refcell::AtomicRefCell, platform::ThreadHandle};
@@ -80,23 +79,6 @@ impl<P: Platform> Game<P> {
 
     println!("Csgo path: {:?}", csgo_path);
 
-    //asset_manager.add_container(Box::new(GltfContainer::load("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
-    asset_manager.add_container(Box::new(GltfContainer::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
-    asset_manager.add_loader(Box::new(GltfLoader::new()));
-    let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
-    //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
-
-
-    /*let mut level = {
-      asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
-      let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
-      while !progress.is_done() {
-        // wait until our container is loaded
-      }
-      asset_manager.load_level("de_overpass.bsp").unwrap()
-    };
-    println!("Done loading level");*/
-
     let game = Arc::new(Self {
       input: input.clone(),
       fps_camera: Mutex::new(FPSCamera::new()),
@@ -112,6 +94,27 @@ impl<P: Platform> Game<P> {
       let mut fixed_schedule = Schedule::builder();
       let mut schedule = Schedule::builder();
       let mut resources = Resources::default();
+
+
+
+      //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
+      //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
+      asset_manager.add_container(Box::new(GltfContainer::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+      asset_manager.add_loader(Box::new(GltfLoader::new()));
+      let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+      //let mut level = c_asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
+
+      //let mut level = World::new(legion::WorldOptions::default());
+
+      /*let mut level = {
+        asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
+        let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
+        while !progress.is_done() {
+          // wait until our container is loaded
+        }
+        asset_manager.load_level("de_overpass.bsp").unwrap()
+      };*/
+      println!("Done loading level");
 
       crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, &c_asset_manager);
       fps_camera::install::<P>(&mut world, &mut fixed_schedule);
