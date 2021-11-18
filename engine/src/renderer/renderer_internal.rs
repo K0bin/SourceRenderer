@@ -286,7 +286,7 @@ impl<P: Platform> RendererInternal<P> {
         if let Some(bounding_box) = bounding_box {
           let is_visible = frustum.intersects(bounding_box, &model_view_matrix);
           if !is_visible {
-            //continue;
+            continue;
           }
           let drawable_index = chunk_index * CHUNK_SIZE + index;
           for part_index in 0..mesh.parts.len() {
