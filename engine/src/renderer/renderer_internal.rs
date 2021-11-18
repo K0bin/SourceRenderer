@@ -283,24 +283,26 @@ impl<P: Platform> RendererInternal<P> {
         let model = &static_mesh.model;
         let mesh = model.mesh();
         let bounding_box = &mesh.bounding_box;
-        if let Some(bounding_box) = bounding_box {
-          let is_visible = frustum.intersects(bounding_box, &model_view_matrix);
-          if !is_visible {
-            continue;
+        let is_visible = if let Some(bounding_box) = bounding_box {
+          frustum.intersects(bounding_box, &model_view_matrix)
+        } else {
+          true
+        };
+        if !is_visible {
+          continue;
+        }
+        let drawable_index = chunk_index * CHUNK_SIZE + index;
+        for part_index in 0..mesh.parts.len() {
+          if chunk_visible_parts.len() == chunk_visible_parts.capacity() {
+            let mut global_parts = visible_parts.lock().unwrap();
+            global_parts.extend_from_slice(&chunk_visible_parts[..]);
+            chunk_visible_parts.clear();
           }
-          let drawable_index = chunk_index * CHUNK_SIZE + index;
-          for part_index in 0..mesh.parts.len() {
-            if chunk_visible_parts.len() == chunk_visible_parts.capacity() {
-              let mut global_parts = visible_parts.lock().unwrap();
-              global_parts.extend_from_slice(&chunk_visible_parts[..]);
-              chunk_visible_parts.clear();
-            }
 
-            chunk_visible_parts.push(DrawablePart {
-              drawable_index,
-              part_index
-            });
-          }
+          chunk_visible_parts.push(DrawablePart {
+            drawable_index,
+            part_index
+          });
         }
       }
 
