@@ -48,7 +48,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::FRAGMENT_SHADER_SAMPLED,
+      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::COMPUTE_SHADER_STORAGE_READ | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED,
     }, Some("SSAOBlurred"));
     let blurred_texture_b = device.create_texture(&TextureInfo {
       format: Format::R16Float,
@@ -58,7 +58,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::FRAGMENT_SHADER_SAMPLED,
+      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::COMPUTE_SHADER_STORAGE_READ | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED,
     }, Some("SSAOBlurred_b"));
 
     let uav_info = TextureUnorderedAccessViewInfo {

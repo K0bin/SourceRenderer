@@ -86,12 +86,7 @@ impl<B: Backend> LateLatchCamera<B> {
   fn create_buffer(device: &B::Device) -> Arc<B::Buffer> {
     device.create_buffer(&BufferInfo {
       size: std::mem::size_of::<LateLatchCamerabuffer>(),
-      usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ
-        | BufferUsage::VERTEX_SHADER_STORAGE_READ
-        | BufferUsage::FRAGMENT_SHADER_STORAGE_READ
-        | BufferUsage::VERTEX_SHADER_CONSTANT
-        | BufferUsage::FRAGMENT_SHADER_CONSTANT
-        | BufferUsage::COMPUTE_SHADER_CONSTANT
+      usage: BufferUsage::STORAGE_READ | BufferUsage::CONSTANT
     }, MemoryUsage::CpuToGpu, None)
   }
 

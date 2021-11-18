@@ -112,6 +112,7 @@ impl VkFenceInner {
   }
 
   pub fn await_signal(&self) {
+    debug_assert_eq!(self.state.load(), VkFenceState::Submitted);
     let vk_device = &self.device.device;
     let fence_guard = self.fence.lock().unwrap();
     unsafe {

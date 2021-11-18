@@ -69,8 +69,7 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
         old_primary_usage: BufferUsage::COMPUTE_SHADER_CONSTANT,
         new_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
         old_usages: BufferUsage::COMPUTE_SHADER_CONSTANT,
-        new_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE
-          | BufferUsage::COMPUTE_SHADER_STORAGE_READ
+        new_usages: BufferUsage::COMPUTE_SHADER_STORAGE_READ
           | BufferUsage::COMPUTE_SHADER_CONSTANT
           | BufferUsage::VERTEX_SHADER_CONSTANT
           | BufferUsage::FRAGMENT_SHADER_CONSTANT,

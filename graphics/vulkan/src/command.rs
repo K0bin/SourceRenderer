@@ -677,7 +677,7 @@ impl VkCommandBuffer {
               dst_access |= texture_usage_to_access(usage);
               dst_stages |= texture_usage_to_stage(usage);
             }
-            new_usages_bits &= !usage_bit; 
+            new_usages_bits &= !usage_bit;
           }
 
           let info = texture.get_info();
