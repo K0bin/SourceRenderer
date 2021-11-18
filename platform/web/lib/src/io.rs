@@ -69,15 +69,16 @@ impl Read for WebFile {
       IOError::new(ErrorKind::NotFound, msg.as_str())
     })?;
 
-    if self.cursor_position + buf.len() as u64 >= data.len() as u64 {
+    if self.cursor_position >= data.len() as u64 {
       return IOResult::Ok(0);
     }
 
     let read_length = buf.len().min(data.len() - self.cursor_position as usize);
     let read_start = self.cursor_position as usize;
     let read_end = read_start + read_length;
-    buf.copy_from_slice(&data[read_start .. read_end]);
-    Ok(buf.len())
+    buf[0 .. read_length].copy_from_slice(&data[read_start .. read_end]);
+    self.cursor_position += read_length as u64;
+    Ok(read_length)
   }
 }
 
