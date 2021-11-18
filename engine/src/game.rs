@@ -157,6 +157,7 @@ impl<P: Platform> Game<P> {
         let mut tick_delta = now.duration_since(last_tick_time);
         if c_renderer.is_saturated() && tick_delta <= tick_duration {
           std::thread::yield_now();
+          continue;
         }
 
         while tick_delta >= tick_duration {
@@ -174,6 +175,7 @@ impl<P: Platform> Game<P> {
         schedule.execute(&mut world, &mut resources);
       }
       c_game.is_running.store(false, Ordering::SeqCst);
+      trace!("Stopped game thread");
     });
     {
       let mut thread_handle_guard = game.thread_handle.borrow_mut();
@@ -188,6 +190,7 @@ impl<P: Platform> Game<P> {
   }
 
   pub fn stop(&self) {
+    trace!("Stopping Game");
     let was_running = self.is_running.swap(false, Ordering::SeqCst);
     if !was_running {
       return;

@@ -511,6 +511,7 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn stop(&self) {
+    trace!("Stopping asset manager");
     let was_running = self.is_running.swap(false, Ordering::SeqCst);
     if !was_running {
       return;
@@ -537,16 +538,20 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
   'asset_loop: loop {
     let mgr_opt = asset_manager.upgrade();
     if mgr_opt.is_none() {
-      break;
+      break 'asset_loop;
     }
     let mgr = mgr_opt.unwrap();
     if !mgr.is_running.load(Ordering::SeqCst) {
-      break;
+      break 'asset_loop;
     }
     let request = {
       let mut inner = mgr.inner.lock().unwrap();
       let mut request_opt = inner.load_queue.pop_front();
       while request_opt.is_none() {
+        if !mgr.is_running.load(Ordering::SeqCst) {
+          break 'asset_loop;
+        }
+
         inner = cond_var.wait(inner).unwrap();
         request_opt = inner.load_queue.pop_front();
       }
@@ -566,4 +571,5 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
       mgr.load_asset(file, request.priority, &request.progress);
     }
   }
+  trace!("Stopped asset manager thread");
 }

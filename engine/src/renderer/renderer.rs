@@ -83,6 +83,7 @@ impl<P: Platform> Renderer<P> {
         internal.render();
       }
       c_renderer.is_running.store(false, Ordering::SeqCst);
+      trace!("Stopped renderer thread");
     });
 
     {
@@ -114,6 +115,7 @@ impl<P: Platform> Renderer<P> {
   }
 
   pub fn stop(&self) {
+    trace!("Stopping renderer");
     let was_running = self.is_running.swap(false, Ordering::SeqCst);
     if !was_running {
       return;

@@ -1,3 +1,4 @@
+use log::trace;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::platform::Platform;
 use std::sync::Arc;
@@ -88,6 +89,7 @@ impl<P: Platform> Engine<P> {
   }
 
   pub fn stop(&self) {
+    trace!("Stopping engine");
     self.asset_manager.stop();
     self.game.stop();
     self.renderer.stop();
