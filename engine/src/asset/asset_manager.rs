@@ -546,17 +546,9 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
     let request = {
       let mut inner = mgr.inner.lock().unwrap();
       let mut request_opt = inner.load_queue.pop_front();
-      if !cfg!(target_family = "wasm") {
-        let _ = cond_var.wait_timeout_while(
-          inner,
-          Duration::from_millis(2000),
-          |inner| {
-          if request_opt.is_some() {
-            return false;
-          }
-          request_opt = inner.load_queue.pop_front();
-          request_opt.is_none()
-        }).unwrap();
+      while request_opt.is_none() {
+        inner = cond_var.wait(inner).unwrap();
+        request_opt = inner.load_queue.pop_front();
       }
       match request_opt {
         Some(request) => request,
