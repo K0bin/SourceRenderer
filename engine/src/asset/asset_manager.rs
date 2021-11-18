@@ -256,12 +256,12 @@ impl<P: Platform> AssetManager<P> {
     &self.device
   }
 
-  pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, index_buffer_data: Box<[u8]>, parts: Box<[MeshRange]>) {
+  pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, index_buffer_data: Box<[u8]>, parts: Box<[MeshRange]>, bounding_box: Option<BoundingBox>) {
     let mesh = Mesh {
       vertices: vertex_buffer_data,
       indices: if !index_buffer_data.is_empty() { Some(index_buffer_data) } else { None },
       parts,
-      bounding_box: None
+      bounding_box
     };
     self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
   }

@@ -1,6 +1,8 @@
 use legion::{World, Resources, component};
+use log::trace;
 use sourcerenderer_core::input::Key;
 use crate::input::InputState;
+use crate::math::BoundingBox;
 use crate::{Transform, Camera};
 use nalgebra::{Unit, UnitQuaternion};
 use crate::asset::{AssetManager, MeshRange};
@@ -241,10 +243,11 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
 
   let triangle_data = unsafe { std::slice::from_raw_parts(triangle.as_ptr() as *const u8, std::mem::size_of_val(&triangle[..])) }.to_vec().into_boxed_slice();
   let index_data = unsafe { std::slice::from_raw_parts(indices.as_ptr() as *const u8, std::mem::size_of_val(&indices[..])) }.to_vec().into_boxed_slice();
+  let bounding_box = BoundingBox::new(Vec3::new(-1f32, -1f32, -1f32), Vec3::new(1f32, 1f32, 1f32));
   asset_manager.add_mesh("cube_mesh", triangle_data, index_data, vec![MeshRange {
     start: 0,
     count: indices.len() as u32
-  }].into_boxed_slice());
+  }].into_boxed_slice(), Some(bounding_box));
   //asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
   asset_manager.add_material("cube_material", "cube_texture_albedo", 0f32, 0f32);
   asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
@@ -263,6 +266,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
   }, Transform::new(Vec3::new(0.0f32, 0.0f32, -5.0f32)), FPSCameraComponent::default()));
 
   resources.insert(ActiveCamera(camera));
+  trace!("Added spinning cube");
 }
 
 #[system(for_each)]
