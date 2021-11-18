@@ -1,10 +1,8 @@
-use std::{rc::Rc, hash::{Hash, Hasher}};
+use std::{hash::{Hash, Hasher}};
 
-use js_sys::JsString;
 use sourcerenderer_core::graphics::{GraphicsPipelineInfo, PrimitiveType, Shader, ShaderType};
-use web_sys::{WebGl2RenderingContext as WebGLContext, WebGlProgram, WebGlRenderingContext, WebGlShader};
 
-use crate::{GLThreadSender, RawWebGLContext, WebGLBackend, thread::{PipelineHandle, ShaderHandle}};
+use crate::{GLThreadSender, WebGLBackend, thread::{PipelineHandle, ShaderHandle}};
 
 pub struct WebGLShader {
   handle: ShaderHandle,
@@ -32,7 +30,7 @@ impl WebGLShader {
     let boxed_data = data.into_boxed_slice();
     sender.send(Box::new(move |device| {
       device.create_shader(handle, shader_type, &boxed_data);
-    }));
+    })).unwrap();
     Self {
       handle,
       shader_type,
@@ -50,7 +48,7 @@ impl Drop for WebGLShader {
     let handle = self.handle;
     self.sender.send(Box::new(move |device| {
       device.remove_shader(handle);
-    }));
+    })).unwrap();
   }
 }
 
@@ -70,7 +68,7 @@ impl WebGLGraphicsPipeline {
     let info = info.clone();
     sender.send(Box::new(move |device| {
       device.create_pipeline(handle, &info);
-    }));
+    })).unwrap();
     Self {
       handle,
       sender: sender.clone()
@@ -87,7 +85,7 @@ impl Drop for WebGLGraphicsPipeline {
     let handle = self.handle;
     self.sender.send(Box::new(move |device| {
       device.remove_pipeline(handle);
-    }));
+    })).unwrap();
   }
 }
 

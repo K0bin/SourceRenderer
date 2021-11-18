@@ -3,6 +3,7 @@ name = "sourcerenderer_web"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -60,6 +61,9 @@ features = [
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
+
+[build-dependencies]
+spirv_cross = { version = "0.23.1", features = [ 'glsl' ] }
 
 [profile.release]
 # Tell `rustc` to optimize for small code size.

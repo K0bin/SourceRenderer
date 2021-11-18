@@ -44,6 +44,14 @@ impl RawWebGLContext {
   pub fn extensions(&self) -> &WebGLExtensions {
     &self.extensions
   }
+
+  pub fn debug_ensure_error(&self) {
+    debug_assert_eq!(self.context.get_error(), WebGl2RenderingContext::NO_ERROR);
+  }
+
+  pub fn ensure_error(&self) {
+    assert_eq!(self.context.get_error(), WebGl2RenderingContext::NO_ERROR);
+  }
 }
 
 impl Deref for RawWebGLContext {

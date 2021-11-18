@@ -1,6 +1,7 @@
 use std::{cell::{Ref, RefCell}, collections::{HashMap, HashSet}, hash::Hash, ops::Deref, rc::Rc, sync::Mutex};
 
 use crossbeam_channel::{Receiver, Sender};
+use log::{trace, warn};
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, GraphicsPipelineInfo, MappedBuffer, MemoryUsage, MutMappedBuffer, PrimitiveType, ShaderType, TextureInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture};
@@ -112,7 +113,7 @@ impl Drop for WebGLThreadBuffer {
 
 pub struct WebGLThreadShader {
   context: Rc<RawWebGLContext>,
-  shader: WebGlShader,  
+  shader: WebGlShader,
 }
 
 impl Drop for WebGLThreadShader {
@@ -193,7 +194,15 @@ impl WebGLThreadDevice {
     let shader = self.context.create_shader(gl_shader_type).unwrap();
     let source = String::from_utf8(data.iter().copied().collect()).unwrap();
     self.context.shader_source(&shader, source.as_str());
+    self.context.debug_ensure_error();
     self.context.compile_shader(&shader);
+    self.context.ensure_error();
+    let info = self.context.get_shader_info_log(&shader);
+    if let Some(info) = info {
+      if !info.is_empty() {
+        warn!("Shader info: {}", info);
+      }
+    }
     self.shaders.insert(id, Rc::new(WebGLThreadShader {
       context: self.context.clone(),
       shader: shader,
@@ -218,6 +227,9 @@ impl WebGLThreadDevice {
       self.context.attach_shader(&program, &fs.shader);
     }
     self.context.link_program(&program);
+    if !self.context.get_program_parameter(&program, WebGl2RenderingContext::LINK_STATUS).as_bool().unwrap() {
+      panic!("Linking shader failed.");
+    }
 
     let attrib_count = self.context.get_program_parameter(&program, WebGlRenderingContext::ACTIVE_ATTRIBUTES).as_f64().unwrap() as u32;
     for i in 0..attrib_count {

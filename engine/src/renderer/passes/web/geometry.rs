@@ -32,17 +32,17 @@ impl<B: Backend> GeometryPass<B> {
     });
 
     let vertex_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("textured.vert.spv"))).unwrap();
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("web_geometry.vert.glsl"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
+      device.create_shader(ShaderType::VertexShader, &bytes, Some("web_geometry.vert.glsl"))
     };
 
     let fragment_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("textured.frag.spv"))).unwrap();
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("web_geometry.frag.glsl"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
+      device.create_shader(ShaderType::FragmentShader, &bytes, Some("web_geometry.frag.glsl"))
     };
 
     let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
