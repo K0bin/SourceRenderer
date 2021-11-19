@@ -1,11 +1,19 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
 use crossbeam_channel::Sender;
 use log::trace;
 use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport};
-use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
+use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::TextureHandle};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}};
+
+use bitflags::bitflags;
+
+bitflags! {
+  pub struct WebGLCommandBufferDirty: u32 {
+    const VAO = 0b0001;
+  }
+}
 
 pub struct WebGLCommandBuffer {
   sender: GLThreadSender,
@@ -16,6 +24,56 @@ pub struct WebGLCommandBuffer {
   used_buffers: Vec<Arc<WebGLBuffer>>,
   used_textures: Vec<Arc<WebGLTexture>>,
   used_pipelines: Vec<Arc<WebGLGraphicsPipeline>>,
+  dirty: WebGLCommandBufferDirty,
+  vertex_buffer: Option<Arc<WebGLBuffer>>
+}
+
+impl WebGLCommandBuffer {
+  pub fn new(sender: &GLThreadSender, handle_allocator: &Arc<WebGLHandleAllocator>) -> Self {
+    let inline_buffer = Arc::new(WebGLBuffer::new(handle_allocator.new_buffer_handle(), &BufferInfo {
+      size: 256,
+      usage: BufferUsage::CONSTANT,
+    }, MemoryUsage::CpuToGpu, sender));
+    WebGLCommandBuffer {
+      pipeline: None,
+      commands: VecDeque::new(),
+      sender: sender.clone(),
+      handles: handle_allocator.clone(),
+      inline_buffer,
+      used_buffers: Vec::new(),
+      used_textures: Vec::new(),
+      used_pipelines: Vec::new(),
+      dirty: WebGLCommandBufferDirty::empty(),
+      vertex_buffer: None
+    }
+  }
+
+  fn before_draw(&mut self) {
+    if self.dirty.is_empty() {
+      return;
+    }
+    assert!(self.pipeline.is_some());
+    assert!(self.vertex_buffer.is_some());
+
+    let dirty = self.dirty;
+    let pipeline = self.pipeline.as_ref().unwrap();
+    let pipeline_handle = pipeline.handle();
+    let vbo = self.vertex_buffer.as_ref().unwrap();
+    let vbo_handle = vbo.handle();
+    self.commands.push_back(Box::new(move |device| {
+      let pipeline = device.pipeline(pipeline_handle);
+      let vbo = device.buffer(vbo_handle);
+      if dirty.contains(WebGLCommandBufferDirty::VAO) {
+        let index_buffer: WebGlBuffer = device.get_parameter(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER_BINDING).unwrap().into();
+        let mut vbs: [Option<Rc<WebGLThreadBuffer>>; 4] = Default::default();
+        vbs[0] = Some(vbo.clone());
+        let vao = pipeline.get_vao(&vbs);
+        device.bind_vertex_array(Some(&vao));
+        device.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+      }
+    }));
+    self.dirty = WebGLCommandBufferDirty::empty();
+  }
 }
 
 impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
@@ -25,6 +83,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
         self.pipeline = Some(pipeline.clone());
         self.used_pipelines.push(pipeline.clone());
         let handle = pipeline.handle();
+        self.dirty |= WebGLCommandBufferDirty::VAO;
         self.commands.push_back(Box::new(move |device| {
           let pipeline = device.pipeline(handle).clone();
           device.use_program(Some(pipeline.gl_program()));
@@ -35,13 +94,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   }
 
   fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<WebGLBuffer>) {
-    // TODO: maybe track dirty and do before draw
-
-    let handle = vertex_buffer.handle();
-    self.commands.push_back(Box::new(move |device| {
-      let buffer = device.buffer(handle).clone();
-      device.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(buffer.gl_buffer()));
-    }));
+    self.vertex_buffer = Some(vertex_buffer.clone());
+    self.dirty |= WebGLCommandBufferDirty::VAO;
   }
 
   fn set_index_buffer(&mut self, index_buffer: &Arc<WebGLBuffer>) {
@@ -155,7 +209,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   }
 
   fn draw(&mut self, vertices: u32, offset: u32) {
-    assert!(self.pipeline.is_some());
+    self.before_draw();
+
     self.commands.push_back(Box::new(move |device| {
       device.draw_arrays(
         WebGlRenderingContext::TRIANGLES, // TODO: self.pipeline.as_ref().unwrap().gl_draw_mode(),
@@ -167,7 +222,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   }
 
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
-    assert!(self.pipeline.is_some());
+    self.before_draw();
 
     // TODO: support instancing with WebGL2
     assert_eq!(instances, 1);
@@ -337,20 +392,7 @@ impl WebGLQueue {
 
 impl Queue<WebGLBackend> for WebGLQueue {
   fn create_command_buffer(&self) -> WebGLCommandBuffer {
-    let inline_buffer = Arc::new(WebGLBuffer::new(self.handle_allocator.new_buffer_handle(), &BufferInfo {
-      size: 256,
-      usage: BufferUsage::CONSTANT,
-    }, MemoryUsage::CpuToGpu, &self.sender));
-    WebGLCommandBuffer {
-      pipeline: None,
-      commands: VecDeque::new(),
-      sender: self.sender.clone(),
-      handles: self.handle_allocator.clone(),
-      inline_buffer,
-      used_buffers: Vec::new(),
-      used_textures: Vec::new(),
-      used_pipelines: Vec::new(),
-    }
+    WebGLCommandBuffer::new(&self.sender, &self.handle_allocator)
   }
 
   fn create_inner_command_buffer(&self, _inheritance: &()) -> WebGLCommandBuffer {

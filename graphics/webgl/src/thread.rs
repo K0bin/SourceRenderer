@@ -1,12 +1,12 @@
-use std::{collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc};
+use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
 
 use crossbeam_channel::Receiver;
 use log::{trace, warn};
-use sourcerenderer_core::graphics::{BindingFrequency,  BufferInfo, BufferUsage, GraphicsPipelineInfo, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
+use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
 
-use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlFramebuffer};
+use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
 
-use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext};
+use crate::{GLThreadReceiver, WebGLBackend, WebGLBuffer, WebGLSurface, raw_context::RawWebGLContext};
 
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct FboKey {
@@ -64,13 +64,15 @@ pub struct WebGLThreadBuffer {
   context: Rc<RawWebGLContext>,
   buffer: WebGLBufferHandle,
   info: BufferInfo,
-  gl_usage: u32
+  gl_usage: u32,
+  buffer_handle: BufferHandle
 }
 
 impl WebGLThreadBuffer {
   pub fn new(
     context: &Rc<RawWebGLContext>,
     info: &BufferInfo,
+    buffer_handle: BufferHandle,
     _memory_usage: MemoryUsage,
   ) -> Self {
     let buffer_usage = info.usage;
@@ -105,6 +107,7 @@ impl WebGLThreadBuffer {
       info: info.clone(),
       gl_usage: usage,
       buffer,
+      buffer_handle
     }
   }
 
@@ -118,6 +121,10 @@ impl WebGLThreadBuffer {
 
   pub fn info(&self) -> &BufferInfo {
     &self.info
+  }
+
+  pub fn handle(&self) -> BufferHandle {
+    self.buffer_handle
   }
 }
 
@@ -149,6 +156,8 @@ pub struct WebGLThreadPipeline {
   program: WebGlProgram,
   ubo_infos: HashMap<(BindingFrequency, u32), WebGLBlockInfo>,
   push_constants_info: Option<WebGLBlockInfo>,
+  vao_cache: RefCell<HashMap<[Option<BufferHandle>; 4], WebGlVertexArrayObject>>,
+  info: GraphicsPipelineInfo<WebGLBackend>,
 
   // graphics state
   gl_draw_mode: u32
@@ -163,6 +172,52 @@ impl WebGLThreadPipeline {
     &self.program
   }
 
+  pub fn get_vao(&self, vertex_buffers: &[Option<Rc<WebGLThreadBuffer>>; 4]) -> WebGlVertexArrayObject {
+    let mut key: [Option<BufferHandle>; 4] = Default::default();
+    for i in 0..vertex_buffers.len() {
+      key[i] = vertex_buffers[i].as_ref().map(|b| b.handle());
+    }
+    {
+      let cache = self.vao_cache.borrow();
+      if let Some(cached) = cache.get(&key) {
+        return cached.clone();
+      }
+    }
+
+    let mut cache_mut = self.vao_cache.borrow_mut();
+    let attrib_count = self.context.get_program_parameter(&self.program, WebGl2RenderingContext::ACTIVE_ATTRIBUTES).as_f64().unwrap() as u32;
+    for i in 0..attrib_count {
+      let attrib_info = self.context.get_active_attrib(&self.program, i).unwrap();
+      let name = attrib_info.name();
+      let mut name_parts = name.split("_"); // name should be like this: "vs_input_X"
+      name_parts.next();
+      name_parts.next();
+      let attrib_index = name_parts.next().unwrap().parse::<u32>().unwrap();
+      self.context.bind_attrib_location(&self.program, attrib_index, &attrib_info.name());
+    }
+
+    let vao = self.context.create_vertex_array().unwrap();
+    self.context.bind_vertex_array(Some(&vao));
+    for ia_element in &self.info.vertex_layout.input_assembler {
+      let input = self.info.vertex_layout.shader_inputs.iter().find(|a| a.input_assembler_binding == ia_element.binding).unwrap();
+      let gl_attrib_index = input.location_vk_mtl;
+
+      let buffer = vertex_buffers[ia_element.binding as usize].as_ref();
+      if buffer.is_none() {
+        warn!("Vertex buffer {} not bound", ia_element.binding);
+        continue;
+      }
+      let buffer = buffer.unwrap();
+
+      self.context.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(buffer.gl_buffer()));
+      self.context.enable_vertex_attrib_array(gl_attrib_index);
+      self.context.vertex_attrib_divisor(gl_attrib_index,  if ia_element.input_rate == InputRate::PerVertex { 0 } else { 1 });
+      self.context.vertex_attrib_pointer_with_i32(gl_attrib_index, input.format.element_size() as i32 / std::mem::size_of::<f32>() as i32, WebGl2RenderingContext::FLOAT, false, ia_element.stride as i32, input.offset as i32);
+    }
+    cache_mut.insert(key, vao.clone());
+    vao
+  }
+
   pub fn push_constants_info(&self) -> Option<&WebGLBlockInfo> {
     self.push_constants_info.as_ref()
   }
@@ -174,6 +229,11 @@ impl WebGLThreadPipeline {
 
 impl Drop for WebGLThreadPipeline {
   fn drop(&mut self) {
+    let mut cache = self.vao_cache.borrow_mut();
+    for (_key, vao) in cache.drain() {
+      self.context.delete_vertex_array(Some(&vao));
+    }
+
     self.context.delete_program(Some(&self.program));
   }
 }
@@ -207,7 +267,7 @@ impl WebGLThreadDevice {
   }
 
   pub fn create_buffer(&mut self, id: BufferHandle, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) {
-    let buffer = WebGLThreadBuffer::new(&self.context, info, memory_usage);
+    let buffer = WebGLThreadBuffer::new(&self.context, info, id, memory_usage);
     self.buffers.insert(id, Rc::new(buffer));
   }
 
@@ -267,11 +327,6 @@ impl WebGLThreadDevice {
       panic!("Linking shader failed.");
     }
 
-    let attrib_count = self.context.get_program_parameter(&program, WebGl2RenderingContext::ACTIVE_ATTRIBUTES).as_f64().unwrap() as u32;
-    for i in 0..attrib_count {
-      let attrib_info = self.context.get_active_attrib(&program, i).unwrap();
-    }
-
     let mut push_constants_info = Option::<WebGLBlockInfo>::None;
     let mut ubo_infos = HashMap::<(BindingFrequency, u32), WebGLBlockInfo>::new();
     let ubo_count = self.context.get_program_parameter(&program, WebGl2RenderingContext::ACTIVE_UNIFORM_BLOCKS).as_f64().unwrap() as u32;
@@ -313,12 +368,16 @@ impl WebGLThreadDevice {
         PrimitiveType::LineStrip => WebGl2RenderingContext::LINE_STRIP,
         PrimitiveType::Points => WebGl2RenderingContext::POINTS,
     };
+
+    self.context.debug_ensure_error();
     self.pipelines.insert(id, Rc::new(WebGLThreadPipeline {
       program,
       context: self.context.clone(),
       gl_draw_mode,
       ubo_infos,
-      push_constants_info
+      push_constants_info,
+      vao_cache: RefCell::new(HashMap::new()),
+      info: info.clone()
     }));
   }
 

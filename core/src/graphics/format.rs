@@ -48,4 +48,15 @@ impl Format {
       | Format::DXT3
       | Format::DXT5)
   }
+
+  pub fn element_size(&self) -> u32 {
+    match self {
+      Format::R32Float => 4,
+      Format::R16Float => 2,
+      Format::RG32Float => 8,
+      Format::RGB32Float => 12,
+      Format::RGBA32Float => 16,
+      _ => todo!()
+    }
+  }
 }
