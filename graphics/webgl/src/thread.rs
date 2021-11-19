@@ -1,12 +1,12 @@
-use std::{cell::{Ref, RefCell}, collections::{HashMap, HashSet}, hash::Hash, ops::Deref, rc::Rc, sync::Mutex};
+use std::{collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc};
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Receiver;
 use log::{trace, warn};
-use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, GraphicsPipelineInfo, MappedBuffer, MemoryUsage, MutMappedBuffer, PrimitiveType, ShaderType, TextureInfo};
+use sourcerenderer_core::graphics::{BindingFrequency,  BufferInfo, BufferUsage, GraphicsPipelineInfo, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlFramebuffer};
 
-use crate::{GLThreadReceiver, WebGLBackend, WebGLShader, WebGLSurface, WebGLTexture, raw_context::RawWebGLContext};
+use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext};
 
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct FboKey {
@@ -74,6 +74,15 @@ impl WebGLThreadBuffer {
     _memory_usage: MemoryUsage,
   ) -> Self {
     let buffer_usage = info.usage;
+
+    if buffer_usage.contains(BufferUsage::INDEX) && buffer_usage != BufferUsage::INDEX {
+      if buffer_usage == BufferUsage::INDEX | BufferUsage::COPY_DST {
+        warn!("WebGL does not allow using index buffers for anything else. Buffer copies will be handled on the CPU.");
+      } else {
+        panic!("WebGL does not allow using index buffers for anything else.");
+      }
+    }
+
     let mut usage = WebGlRenderingContext::STATIC_DRAW;
     if buffer_usage.intersects(BufferUsage::COPY_DST) {
       if buffer_usage.intersects(BufferUsage::CONSTANT) {
@@ -83,11 +92,12 @@ impl WebGLThreadBuffer {
       }
     }
     if buffer_usage.intersects(BufferUsage::COPY_SRC) {
-      if buffer_usage.intersects(BufferUsage::CONSTANT) {
+      /*if buffer_usage.intersects(BufferUsage::CONSTANT) {
         usage = WebGl2RenderingContext::STREAM_COPY;
       } else {
         usage = WebGl2RenderingContext::STATIC_COPY;
-      }
+      }*/
+      usage = WebGl2RenderingContext::STREAM_READ;
     }
     let buffer = context.create_buffer().unwrap();
     Self {
@@ -128,9 +138,17 @@ impl Drop for WebGLThreadShader {
   }
 }
 
+pub struct WebGLBlockInfo {
+  pub name: String,
+  pub binding: u32,
+  pub size: u32
+}
+
 pub struct WebGLThreadPipeline {
   context: Rc<RawWebGLContext>,
   program: WebGlProgram,
+  ubo_infos: HashMap<(BindingFrequency, u32), WebGLBlockInfo>,
+  push_constants_info: Option<WebGLBlockInfo>,
 
   // graphics state
   gl_draw_mode: u32
@@ -143,6 +161,14 @@ impl WebGLThreadPipeline {
 
   pub fn gl_program(&self) -> &WebGlProgram {
     &self.program
+  }
+
+  pub fn push_constants_info(&self) -> Option<&WebGLBlockInfo> {
+    self.push_constants_info.as_ref()
+  }
+
+  pub fn ubo_info(&self, frequency: BindingFrequency, binding: u32) -> Option<&WebGLBlockInfo> {
+    self.ubo_infos.get(&(frequency, binding))
   }
 }
 
@@ -194,6 +220,8 @@ impl WebGLThreadDevice {
   }
 
   pub fn create_shader(&mut self, id: ShaderHandle, shader_type: ShaderType, data: &[u8]) {
+    self.debug_ensure_error();
+
     let gl_shader_type = match shader_type {
       ShaderType::VertexShader => WebGl2RenderingContext::VERTEX_SHADER,
       ShaderType::FragmentShader => WebGl2RenderingContext::FRAGMENT_SHADER,
@@ -239,9 +267,43 @@ impl WebGLThreadDevice {
       panic!("Linking shader failed.");
     }
 
-    let attrib_count = self.context.get_program_parameter(&program, WebGlRenderingContext::ACTIVE_ATTRIBUTES).as_f64().unwrap() as u32;
+    let attrib_count = self.context.get_program_parameter(&program, WebGl2RenderingContext::ACTIVE_ATTRIBUTES).as_f64().unwrap() as u32;
     for i in 0..attrib_count {
       let attrib_info = self.context.get_active_attrib(&program, i).unwrap();
+    }
+
+    let mut push_constants_info = Option::<WebGLBlockInfo>::None;
+    let mut ubo_infos = HashMap::<(BindingFrequency, u32), WebGLBlockInfo>::new();
+    let ubo_count = self.context.get_program_parameter(&program, WebGl2RenderingContext::ACTIVE_UNIFORM_BLOCKS).as_f64().unwrap() as u32;
+    for i in 0..ubo_count {
+      let binding = i + 1;
+      self.context.uniform_block_binding(&program, i, binding);
+      let size = self.context.get_active_uniform_block_parameter(&program, i, WebGl2RenderingContext::UNIFORM_BLOCK_DATA_SIZE).unwrap().as_f64().unwrap() as u32;
+      let ubo_name = self.context.get_active_uniform_block_name(&program, i).unwrap();
+      if ubo_name == "push_constants_t" {
+        push_constants_info = Some(WebGLBlockInfo {
+          name: ubo_name,
+          size,
+          binding: binding
+        });
+        continue;
+      }
+      let mut ubo_name_parts = ubo_name.split("_"); // name should be like this: "res_X_X_t"
+      ubo_name_parts.next();
+      let set = ubo_name_parts.next().unwrap();
+      let descriptor_set_binding = ubo_name_parts.next().unwrap();
+      let frequency = match set.parse::<u32>().unwrap() {
+        0 => BindingFrequency::PerDraw,
+        1 => BindingFrequency::PerMaterial,
+        2 => BindingFrequency::PerFrame,
+        3 => BindingFrequency::Rarely,
+        _ => panic!("Invalid binding frequency")
+      };
+      ubo_infos.insert((frequency, descriptor_set_binding.parse::<u32>().unwrap()), WebGLBlockInfo {
+        name: ubo_name,
+        size,
+        binding: binding
+      });
     }
 
     let gl_draw_mode = match &info.primitive_type {
@@ -254,7 +316,9 @@ impl WebGLThreadDevice {
     self.pipelines.insert(id, Rc::new(WebGLThreadPipeline {
       program,
       context: self.context.clone(),
-      gl_draw_mode
+      gl_draw_mode,
+      ubo_infos,
+      push_constants_info
     }));
   }
 
@@ -365,6 +429,14 @@ impl WebGLThreadDevice {
     assert_eq!(self.context.check_framebuffer_status(WebGl2RenderingContext::DRAW_FRAMEBUFFER), WebGl2RenderingContext::FRAMEBUFFER_COMPLETE);
     self.fbo_cache.insert(key, fbo.clone());
     Some(fbo)
+  }
+
+  pub fn debug_ensure_error(&self) {
+    self.context.debug_ensure_error();
+  }
+
+  pub fn ensure_error(&self) {
+    self.context.ensure_error();
   }
 }
 

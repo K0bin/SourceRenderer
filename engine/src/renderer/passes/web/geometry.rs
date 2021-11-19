@@ -1,6 +1,7 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureDepthStencilViewInfo, TextureInfo, TextureUsage, VertexLayoutInfo}, platform::io::IO};
+use log::trace;
+use sourcerenderer_core::{Platform, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureDepthStencilViewInfo, TextureInfo, TextureUsage, VertexLayoutInfo}, platform::io::IO};
 
 use crate::{renderer::{drawable::View, renderer_scene::RendererScene}};
 
@@ -212,10 +213,14 @@ impl<B: Backend> GeometryPass<B> {
 
     cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
 
+    let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_buffer);
+
     let drawables = scene.static_drawables();
     let parts = &view.drawable_parts;
     for part in parts {
       let drawable = &drawables[part.drawable_index];
+      cmd_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
       let model = &drawable.model;
       let mesh = model.mesh();
       let materials = model.materials();

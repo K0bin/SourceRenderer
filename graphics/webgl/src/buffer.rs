@@ -1,5 +1,6 @@
 use std::{cell::UnsafeCell, sync::Mutex};
 
+use log::trace;
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
 use web_sys::{WebGlRenderingContext, WebGl2RenderingContext};
@@ -62,12 +63,16 @@ impl Buffer for WebGLBuffer {
     let data = mapped_data.take().unwrap();
     let handle = self.handle;
     let usage = self.info.usage;
+    let expected_size = self.info.size;
     self.sender.send(Box::new(move |device| {
       let buffer = device.buffer(handle).clone();
       let target = buffer_usage_to_target(usage);
       device.bind_buffer(target, Some(buffer.gl_buffer()));
       let data = &*(data.get());
       device.buffer_data_with_u8_array(target, &data[..], buffer.gl_usage());
+      let size = device.get_buffer_parameter(target, WebGl2RenderingContext::BUFFER_SIZE).as_f64().unwrap() as u32;
+      assert_eq!(size, expected_size as u32);
+      device.debug_ensure_error();
     })).unwrap();
   }
 
@@ -80,7 +85,7 @@ impl Buffer for WebGLBuffer {
   }
 }
 
-fn buffer_usage_to_target(usage: BufferUsage) -> u32 {
+pub(crate) fn buffer_usage_to_target(usage: BufferUsage) -> u32 {
   if usage.contains(BufferUsage::VERTEX) {
     WebGl2RenderingContext::ARRAY_BUFFER
   } else if usage.contains(BufferUsage::INDEX) {
