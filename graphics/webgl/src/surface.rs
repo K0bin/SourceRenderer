@@ -64,12 +64,11 @@ pub struct WebGLSwapchain {
   surface: Arc<WebGLSurface>,
   width: u32,
   height: u32,
-  backbuffer_view: Arc<WebGLRenderTargetView>,
-  thread_sender: GLThreadSender
+  backbuffer_view: Arc<WebGLRenderTargetView>
 }
 
 impl WebGLSwapchain {
-  pub fn new(sender: &GLThreadSender, surface: &Arc<WebGLSurface>) -> Self {
+  pub fn new(surface: &Arc<WebGLSurface>) -> Self {
     let backbuffer = Arc::new(WebGLTexture::new_internal(&TextureInfo {
       format: Format::Unknown,
       width: surface.width,
@@ -94,29 +93,26 @@ impl WebGLSwapchain {
       surface: surface.clone(),
       width: surface.width,
       height: surface.height,
-      backbuffer_view: view,
-      thread_sender: sender.clone()
+      backbuffer_view: view
     }
   }
 
   pub(crate) fn bump_frame(self: &Arc<Self>) {
-    let c_self = self.clone();
-    self.thread_sender.send(Box::new(move |_context| {
-      c_self.processed_frame.fetch_add(1, Ordering::SeqCst);
-    })).unwrap();
+    // Has to be called on the GL thread
+    self.processed_frame.fetch_add(1, Ordering::SeqCst);
   }
 }
 
 impl Swapchain<WebGLBackend> for WebGLSwapchain {
   fn recreate(old: &Self, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
     Ok(
-      Arc::new(WebGLSwapchain::new(&old.thread_sender, &old.surface))
+      Arc::new(WebGLSwapchain::new(&old.surface))
     )
   }
 
-  fn recreate_on_surface(old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
+  fn recreate_on_surface(_old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
     Ok(
-      Arc::new(WebGLSwapchain::new(&old.thread_sender, &surface))
+      Arc::new(WebGLSwapchain::new(&surface))
     )
   }
 
@@ -134,7 +130,7 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
 
   fn prepare_back_buffer(&self, _semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
     while self.processed_frame.load(Ordering::SeqCst) + 1 < self.prepared_frame.load(Ordering::SeqCst) {
-      // Block so we dont run too far ahead
+      // Block so we dont run too far ahead of the GL thread
     }
 
     self.prepared_frame.fetch_add(1, Ordering::SeqCst);

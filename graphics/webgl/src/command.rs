@@ -400,13 +400,16 @@ impl Queue<WebGLBackend> for WebGLQueue {
   }
 
   fn submit(&self, mut submission: WebGLCommandSubmission, _fence: Option<&Arc<WebGLFence>>, _wait_semaphores: &[&Arc<WebGLSemaphore>], _signal_semaphores: &[&Arc<WebGLSemaphore>]) {
-    for cmd in submission.cmd_buffer.commands.drain(..) {
+    while let Some(cmd) = submission.cmd_buffer.commands.pop_front() {
       self.sender.send(cmd).unwrap();
     }
   }
 
   fn present(&self, swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>]) {
     // nop in WebGL
-    swapchain.bump_frame();
+    let c_swapchain = swapchain.clone();
+    self.sender.send(Box::new(move |_context| {
+      c_swapchain.bump_frame();
+    })).unwrap();
   }
 }
