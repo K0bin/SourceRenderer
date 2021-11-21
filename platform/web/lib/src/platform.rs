@@ -18,10 +18,10 @@ pub struct WebPlatform {
 }
 
 impl WebPlatform {
-  pub(crate) fn new(canvas_selector: &str, worker_pool: WorkerPool) -> Self {
+  pub(crate) fn new(canvas: HtmlCanvasElement, worker_pool: WorkerPool) -> Self {
     crate::io::init_global_io(&worker_pool);
     Self {
-      window: WebWindow::new(canvas_selector),
+      window: WebWindow::new(canvas),
       instance: Arc::new(WebGLInstance::new()),
       pool: worker_pool
     }
