@@ -88,10 +88,11 @@ impl Buffer for WebGLBuffer {
 }
 
 pub(crate) fn buffer_usage_to_target(usage: BufferUsage) -> u32 {
-  if usage.contains(BufferUsage::VERTEX) {
-    WebGl2RenderingContext::ARRAY_BUFFER
-  } else if usage.contains(BufferUsage::INDEX) {
+  if usage.contains(BufferUsage::INDEX) {
+    // Index buffers must take priority!
     WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER
+  } else if usage.contains(BufferUsage::VERTEX) {
+    WebGl2RenderingContext::ARRAY_BUFFER
   } else if usage.contains(BufferUsage::COPY_SRC) {
     WebGl2RenderingContext::PIXEL_UNPACK_BUFFER
   } else if usage.contains(BufferUsage::COPY_DST) {

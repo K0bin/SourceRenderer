@@ -1,12 +1,12 @@
-use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc};
 
 use crossbeam_channel::Receiver;
-use log::{trace, warn};
+use log::warn;
 use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
 
-use crate::{GLThreadReceiver, WebGLBackend, WebGLBuffer, WebGLSurface, raw_context::RawWebGLContext};
+use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext};
 
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct FboKey {
@@ -102,6 +102,9 @@ impl WebGLThreadBuffer {
       usage = WebGl2RenderingContext::STREAM_READ;
     }
     let buffer = context.create_buffer().unwrap();
+    let target = crate::buffer::buffer_usage_to_target(info.usage);
+    context.bind_buffer(target, Some(&buffer));
+    context.buffer_data_with_i32(target, info.size as i32, usage);
     Self {
       context: context.clone(),
       info: info.clone(),

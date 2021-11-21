@@ -1,5 +1,6 @@
 use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}};
 use crossbeam_channel::{unbounded};
+use log::trace;
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo};
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
 use crate::{GLThreadReceiver, GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle}};
@@ -171,7 +172,7 @@ impl Device<WebGLBackend> for WebGLDevice {
       } else {
         device.bind_buffer(WebGl2RenderingContext::COPY_READ_BUFFER, Some(src_buffer.gl_buffer()));
         device.bind_buffer(WebGl2RenderingContext::COPY_WRITE_BUFFER, Some(dst_buffer.gl_buffer()));
-        device.buffer_data_with_i32(WebGl2RenderingContext::COPY_WRITE_BUFFER, dst_buffer.info().size as i32, dst_buffer.gl_usage());
+        device.copy_buffer_sub_data_with_i32_and_i32_and_i32(WebGl2RenderingContext::COPY_READ_BUFFER, WebGl2RenderingContext::COPY_WRITE_BUFFER, 0, 0, dst_buffer.info().size.min(src_buffer.info().size) as i32);
       }
     })).unwrap();
   }
