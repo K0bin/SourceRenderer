@@ -28,7 +28,7 @@ bitflags! {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct TextureInfo {
   pub format: Format,
   pub width: u32,

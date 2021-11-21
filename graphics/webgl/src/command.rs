@@ -404,7 +404,7 @@ impl Queue<WebGLBackend> for WebGLQueue {
   }
 
   fn present(&self, swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>]) {
-    // nop in WebGL
+    swapchain.present();
     let c_swapchain = swapchain.clone();
     self.sender.send(Box::new(move |_context| {
       c_swapchain.bump_frame();

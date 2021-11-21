@@ -1,12 +1,12 @@
 use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc};
 
 use crossbeam_channel::Receiver;
-use log::warn;
+use log::{trace, warn};
 use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
 
-use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext};
+use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::{format_to_gl, format_to_internal_gl, format_to_type}};
 
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct FboKey {
@@ -26,8 +26,21 @@ impl WebGLThreadTexture {
   pub fn new(context: &Rc<RawWebGLContext>, info: &TextureInfo) -> Self {
     assert!(info.array_length == 6 || info.array_length == 1);
     let is_cubemap = info.array_length == 6;
+    if is_cubemap {
+      todo!("Cubemaps are unimplemented");
+    }
+    if info.format.is_compressed() {
+      todo!("Compressed textures are unimplemented");
+    }
+    trace!("info: {:?}", info);
     let target = if is_cubemap { WebGlRenderingContext::TEXTURE_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_2D };
     let texture = context.create_texture().unwrap();
+    context.bind_texture(target, Some(&texture));
+    context.bind_buffer(WebGl2RenderingContext::PIXEL_UNPACK_BUFFER, None);
+    context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MAX_LEVEL, info.mip_levels as i32);
+    context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MAG_FILTER, WebGl2RenderingContext::LINEAR as i32);
+    context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MIN_FILTER, WebGl2RenderingContext::LINEAR_MIPMAP_LINEAR as i32);
+    context.tex_storage_2d(target, info.mip_levels as i32, format_to_internal_gl(info.format), info.width as i32, info.height as i32);
     Self {
       texture,
       context: context.clone(),
@@ -410,52 +423,6 @@ impl WebGLThreadDevice {
   }
 
   pub fn get_framebuffer(&mut self, rts: &[Option<TextureHandle>; 8], ds: Option<TextureHandle>) -> Option<WebGlFramebuffer> {
-    let mut use_internal_fbo = Option::<bool>::None;
-    for rt in rts {
-      if rt.is_none() {
-        continue;
-      }
-      let rt = rt.unwrap();
-      if rt == 1 {
-        if let Some(use_internal_fbo) = use_internal_fbo {
-          if !use_internal_fbo {
-            panic!("Cannot mix internal fbo texture and manually created textures");
-          }
-        } else {
-          use_internal_fbo = Some(true);
-        }
-      } else {
-        if let Some(use_internal_fbo) = use_internal_fbo {
-          if use_internal_fbo {
-            panic!("Cannot mix internal fbo texture and manually created textures");
-          }
-        }
-        use_internal_fbo = Some(false);
-      }
-    }
-    if let Some(ds) = ds {
-      if ds == 1 {
-        if let Some(use_internal_fbo) = use_internal_fbo {
-          if !use_internal_fbo {
-            panic!("Cannot mix internal fbo texture and manually created textures");
-          }
-        } else {
-          use_internal_fbo = Some(true);
-        }
-      } else {
-        if let Some(use_internal_fbo) = use_internal_fbo {
-          if use_internal_fbo {
-            panic!("Cannot mix internal fbo texture and manually created textures");
-          }
-        }
-        use_internal_fbo = Some(false);
-      }
-    }
-
-    if use_internal_fbo.expect("Empty frame buffer") {
-      return None;
-    }
-
     let key = FboKey {
       rts: rts.clone(),
       ds: ds.clone()

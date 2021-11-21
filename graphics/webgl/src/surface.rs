@@ -1,11 +1,10 @@
-use std::sync::{Arc, atomic::{AtomicU32, AtomicU64, Ordering}};
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
-use log::trace;
-use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, TextureInfo, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage};
+use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage};
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLDevice, WebGLTexture, WebGLTextureShaderResourceView, sync::WebGLSemaphore, texture::WebGLRenderTargetView, thread::WebGLThreadShader};
+use crate::{GLThreadSender, WebGLBackend, WebGLTexture, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::WebGLRenderTargetView, thread::{TextureHandle}};
 
 pub struct WebGLSurface {
   //canvas_element: HtmlCanvasElement
@@ -64,13 +63,16 @@ pub struct WebGLSwapchain {
   surface: Arc<WebGLSurface>,
   width: u32,
   height: u32,
-  backbuffer_view: Arc<WebGLRenderTargetView>
+  backbuffer_view: Arc<WebGLRenderTargetView>,
+  sender: GLThreadSender,
+  allocator: Arc<WebGLHandleAllocator>
 }
 
 impl WebGLSwapchain {
-  pub fn new(surface: &Arc<WebGLSurface>) -> Self {
-    let backbuffer = Arc::new(WebGLTexture::new_internal(&TextureInfo {
-      format: Format::Unknown,
+  pub fn new(surface: &Arc<WebGLSurface>, sender: &GLThreadSender, allocator: &Arc<WebGLHandleAllocator>) -> Self {
+    let handle = allocator.new_texture_handle();
+    let backbuffer = Arc::new(WebGLTexture::new(handle, &TextureInfo {
+      format: Format::RGBA8,
       width: surface.width,
       height: surface.height,
       depth: 1,
@@ -78,7 +80,7 @@ impl WebGLSwapchain {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::RENDER_TARGET | TextureUsage::PRESENT,
-    }));
+    }, sender));
 
     let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureRenderTargetViewInfo {
       base_mip_level: 0,
@@ -93,7 +95,9 @@ impl WebGLSwapchain {
       surface: surface.clone(),
       width: surface.width,
       height: surface.height,
-      backbuffer_view: view
+      backbuffer_view: view,
+      sender: sender.clone(),
+      allocator: allocator.clone()
     }
   }
 
@@ -101,18 +105,33 @@ impl WebGLSwapchain {
     // Has to be called on the GL thread
     self.processed_frame.fetch_add(1, Ordering::SeqCst);
   }
+
+  pub(crate) fn present(&self) {
+    let backbuffer_handle = self.backbuffer_view.texture().handle();
+    let info = self.backbuffer_view.texture().get_info();
+    let width = info.width as i32;
+    let height = info.height as i32;
+    self.sender.send(Box::new(move |device| {
+      let mut rts: [Option<TextureHandle>; 8] = Default::default();
+      rts[0] = Some(backbuffer_handle);
+      let read_fb = device.get_framebuffer(&rts, None);
+      device.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, None);
+      device.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, read_fb.as_ref());
+      device.blit_framebuffer(0, 0, width, height, 0, 0, width, height, WebGl2RenderingContext::COLOR_BUFFER_BIT, WebGl2RenderingContext::LINEAR);
+    })).unwrap();
+  }
 }
 
 impl Swapchain<WebGLBackend> for WebGLSwapchain {
   fn recreate(old: &Self, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
     Ok(
-      Arc::new(WebGLSwapchain::new(&old.surface))
+      Arc::new(WebGLSwapchain::new(&old.surface, &old.sender, &old.allocator))
     )
   }
 
-  fn recreate_on_surface(_old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
+  fn recreate_on_surface(old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
     Ok(
-      Arc::new(WebGLSwapchain::new(&surface))
+      Arc::new(WebGLSwapchain::new(&surface, &old.sender, &old.allocator))
     )
   }
 

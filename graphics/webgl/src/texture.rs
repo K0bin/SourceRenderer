@@ -6,16 +6,9 @@ use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebGlTexture as Web
 
 use crate::{GLThreadSender, RawWebGLContext, WebGLBackend, thread::TextureHandle};
 
-enum WebGLTextureInner {
-  Internal,
-  Explicit {
-    handle: crate::thread::TextureHandle,
-    sender: GLThreadSender
-  }
-}
-
 pub struct WebGLTexture {
-  inner: WebGLTextureInner,
+  handle: crate::thread::TextureHandle,
+  sender: GLThreadSender,
   info: TextureInfo
 }
 
@@ -30,26 +23,14 @@ impl WebGLTexture {
     })).unwrap();
 
     Self {
-      inner: WebGLTextureInner::Explicit {
-        handle: id,
-        sender: sender.clone(),
-      },
-      info: info.clone()
-    }
-  }
-
-  pub fn new_internal(info: &TextureInfo) -> Self {
-    Self {
-      inner: WebGLTextureInner::Internal,
+      handle: id,
+      sender: sender.clone(),
       info: info.clone()
     }
   }
 
   pub fn handle(&self) -> TextureHandle {
-    match &self.inner {
-      WebGLTextureInner::Internal => 1,
-      WebGLTextureInner::Explicit { handle, ..} => *handle,
-    }
+    self.handle
   }
 }
 
@@ -61,25 +42,16 @@ impl Texture for WebGLTexture {
 
 impl Drop for WebGLTexture {
   fn drop(&mut self) {
-    match &self.inner {
-      WebGLTextureInner::Internal => { /* nothing to do */ },
-      WebGLTextureInner::Explicit { handle, sender} => {
-        let handle = *handle;
-        sender.send(Box::new(move |device| {
-          device.remove_texture(handle);
-        })).unwrap();
-      },
-    }
+    let handle = self.handle;
+    self.sender.send(Box::new(move |device| {
+      device.remove_texture(handle);
+    })).unwrap();
   }
 }
 
 impl PartialEq for WebGLTexture {
   fn eq(&self, other: &Self) -> bool {
-    match (&self.inner, &other.inner) {
-      (WebGLTextureInner::Internal, WebGLTextureInner::Internal) => true,
-      (WebGLTextureInner::Explicit { handle, .. }, WebGLTextureInner::Explicit { handle: other_handle, .. }) => handle == other_handle,
-      _ => false
-    }
+    self.handle() == other.handle()
   }
 }
 
@@ -214,8 +186,8 @@ pub struct WebGLSampler {
 }
 
 impl WebGLSampler {
-  pub fn new(info: &SamplerInfo) -> Self {
-    Self {} 
+  pub fn new(_info: &SamplerInfo) -> Self {
+    Self {}
   }
 }
 
@@ -225,23 +197,29 @@ pub(crate) fn format_to_type(_format: Format) -> u32 {
 
 pub(crate) fn format_to_internal_gl(format: Format) -> u32 {
   match format {
+    Format::D24S8 => WebGl2RenderingContext::DEPTH24_STENCIL8,
+    Format::D32S8 => WebGl2RenderingContext::DEPTH32F_STENCIL8,
+    Format::D32 => WebGl2RenderingContext::DEPTH_COMPONENT32F,
     Format::RGBA8 => WebGl2RenderingContext::RGBA8,
     Format::DXT1 => WebglCompressedTextureS3tc::COMPRESSED_RGB_S3TC_DXT1_EXT,
     Format::DXT1Alpha => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT1_EXT,
     Format::DXT3 => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT3_EXT,
     Format::DXT5 => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT5_EXT,
-    _ => panic!("Unsupported texture format")
+    _ => panic!("Unsupported texture format {:?}", format)
   }
 }
 
 pub(crate) fn format_to_gl(format: Format) -> u32 {
   match format {
+    Format::D24S8 => WebGl2RenderingContext::DEPTH_STENCIL,
+    Format::D32S8 => WebGl2RenderingContext::DEPTH_STENCIL,
+    Format::D32 => WebGl2RenderingContext::DEPTH_COMPONENT,
     Format::RGBA8 => WebGl2RenderingContext::RGBA,
     Format::DXT1 => WebglCompressedTextureS3tc::COMPRESSED_RGB_S3TC_DXT1_EXT,
     Format::DXT1Alpha => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT1_EXT,
     Format::DXT3 => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT3_EXT,
     Format::DXT5 => WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT5_EXT,
-    _ => panic!("Unsupported texture format")
+    _ => panic!("Unsupported texture format {:?}", format)
   }
 }
 

@@ -44,7 +44,7 @@ impl WebGLDevice {
     let handles = Arc::new(
       WebGLHandleAllocator {
         next_buffer_id: AtomicU64::new(0),
-        next_texture_id: AtomicU64::new(1), // id 1 is the internal fb texture
+        next_texture_id: AtomicU64::new(0),
         next_shader_id: AtomicU64::new(0),
         next_pipeline_id: AtomicU64::new(0),
       }
@@ -64,6 +64,10 @@ impl WebGLDevice {
 
   pub fn sender(&self) -> &GLThreadSender {
     &self.sender
+  }
+
+  pub fn handle_allocator(&self) -> &Arc<WebGLHandleAllocator> {
+    &self.handles
   }
 }
 
@@ -113,6 +117,7 @@ impl Device<WebGLBackend> for WebGLDevice {
   }
 
   fn init_texture(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32) {
+    return;
     let buffer_id = buffer.handle();
     let texture_id = texture.handle();
     self.sender.send(Box::new(move |device| {
