@@ -174,6 +174,7 @@ pub struct WebGLThreadPipeline {
   push_constants_info: Option<WebGLBlockInfo>,
   vao_cache: RefCell<HashMap<[Option<BufferHandle>; 4], WebGlVertexArrayObject>>,
   info: GraphicsPipelineInfo<WebGLBackend>,
+  attribs: HashMap<u32, u32>,
 
   // graphics state
   gl_draw_mode: u32,
@@ -211,22 +212,17 @@ impl WebGLThreadPipeline {
     }
 
     let mut cache_mut = self.vao_cache.borrow_mut();
-    let attrib_count = self.context.get_program_parameter(&self.program, WebGl2RenderingContext::ACTIVE_ATTRIBUTES).as_f64().unwrap() as u32;
-    for i in 0..attrib_count {
-      let attrib_info = self.context.get_active_attrib(&self.program, i).unwrap();
-      let name = attrib_info.name();
-      let mut name_parts = name.split("_"); // name should be like this: "vs_input_X"
-      name_parts.next();
-      name_parts.next();
-      let attrib_index = name_parts.next().unwrap().parse::<u32>().unwrap();
-      self.context.bind_attrib_location(&self.program, attrib_index, &attrib_info.name());
-    }
 
     let vao = self.context.create_vertex_array().unwrap();
     self.context.bind_vertex_array(Some(&vao));
-    for ia_element in &self.info.vertex_layout.input_assembler {
-      let input = self.info.vertex_layout.shader_inputs.iter().find(|a| a.input_assembler_binding == ia_element.binding).unwrap();
-      let gl_attrib_index = input.location_vk_mtl;
+    for input in &self.info.vertex_layout.shader_inputs {
+      let ia_element = self.info.vertex_layout.input_assembler.iter().find(|a| a.binding == input.input_assembler_binding).unwrap();
+      let gl_attrib_index_opt = self.attribs.get(&input.location_vk_mtl).copied();
+      if gl_attrib_index_opt.is_none() {
+        warn!("Missing vertex attribute: {}", input.location_vk_mtl);
+        continue;
+      }
+      let gl_attrib_index = gl_attrib_index_opt.unwrap();
 
       let buffer = vertex_buffers[ia_element.binding as usize].as_ref();
       if buffer.is_none() {
@@ -349,6 +345,19 @@ impl WebGLThreadDevice {
       panic!("Linking shader failed.");
     }
 
+    let mut attrib_map = HashMap::<u32, u32>::new();
+    let attrib_count = self.context.get_program_parameter(&program, WebGl2RenderingContext::ACTIVE_ATTRIBUTES).as_f64().unwrap() as u32;
+    for i in 0..attrib_count {
+      let attrib_info = self.context.get_active_attrib(&program, i).unwrap();
+      let name = attrib_info.name();
+      let mut name_parts = name.split("_"); // name should be like this: "vs_input_X"
+      name_parts.next();
+      name_parts.next();
+      let location = name_parts.next().unwrap().parse::<u32>().unwrap();
+      let gl_location = self.context.get_attrib_location(&program, &name);
+      attrib_map.insert(location, gl_location as u32);
+    }
+
     let mut push_constants_info = Option::<WebGLBlockInfo>::None;
     let mut ubo_infos = HashMap::<(BindingFrequency, u32), WebGLBlockInfo>::new();
     let ubo_count = self.context.get_program_parameter(&program, WebGl2RenderingContext::ACTIVE_UNIFORM_BLOCKS).as_f64().unwrap() as u32;
@@ -410,6 +419,7 @@ impl WebGLThreadDevice {
       push_constants_info,
       vao_cache: RefCell::new(HashMap::new()),
       info: info.clone(),
+      attribs: attrib_map,
       gl_cull_face,
       gl_front_face
     }));
