@@ -176,12 +176,22 @@ pub struct WebGLThreadPipeline {
   info: GraphicsPipelineInfo<WebGLBackend>,
 
   // graphics state
-  gl_draw_mode: u32
+  gl_draw_mode: u32,
+  gl_front_face: u32,
+  gl_cull_face: u32
 }
 
 impl WebGLThreadPipeline {
   pub fn gl_draw_mode(&self) -> u32 {
     self.gl_draw_mode
+  }
+
+  pub fn gl_cull_face(&self) -> u32 {
+    self.gl_cull_face
+  }
+
+  pub fn gl_front_face(&self) -> u32 {
+    self.gl_front_face
   }
 
   pub fn gl_program(&self) -> &WebGlProgram {
@@ -381,6 +391,17 @@ impl WebGLThreadDevice {
         PrimitiveType::Points => WebGl2RenderingContext::POINTS,
     };
 
+    let gl_front_face = match info.rasterizer.front_face {
+      sourcerenderer_core::graphics::FrontFace::CounterClockwise => WebGl2RenderingContext::CCW,
+      sourcerenderer_core::graphics::FrontFace::Clockwise => WebGl2RenderingContext::CW,
+    };
+
+    let gl_cull_face = match info.rasterizer.cull_mode {
+      sourcerenderer_core::graphics::CullMode::None => 0,
+      sourcerenderer_core::graphics::CullMode::Front => WebGl2RenderingContext::FRONT,
+      sourcerenderer_core::graphics::CullMode::Back => WebGl2RenderingContext::BACK,
+    };
+
     self.pipelines.insert(id, Rc::new(WebGLThreadPipeline {
       program,
       context: self.context.clone(),
@@ -388,7 +409,9 @@ impl WebGLThreadDevice {
       ubo_infos,
       push_constants_info,
       vao_cache: RefCell::new(HashMap::new()),
-      info: info.clone()
+      info: info.clone(),
+      gl_cull_face,
+      gl_front_face
     }));
   }
 

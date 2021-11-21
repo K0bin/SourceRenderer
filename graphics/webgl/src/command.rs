@@ -88,6 +88,14 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
           let pipeline = device.pipeline(handle).clone();
           device.use_program(Some(pipeline.gl_program()));
           device.enable(WebGl2RenderingContext::DEPTH_TEST);
+          device.front_face(pipeline.gl_front_face());
+          let cull_face = pipeline.gl_cull_face();
+          if cull_face == 0 {
+            device.disable(WebGl2RenderingContext::CULL_FACE);
+          } else {
+            device.enable(WebGl2RenderingContext::CULL_FACE);
+            device.cull_face(cull_face);
+          }
         }));
       },
       PipelineBinding::Compute(_) => panic!("WebGL does not support compute shaders")
