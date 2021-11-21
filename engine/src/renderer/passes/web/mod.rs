@@ -38,8 +38,8 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     view: &std::sync::Arc<sourcerenderer_core::atomic_refcell::AtomicRefCell<crate::renderer::View>>,
     _zero_texture_view: &Arc<B::TextureShaderResourceView>,
     _lightmap: &std::sync::Arc<crate::renderer::renderer_assets::RendererTexture<B>>,
-    _late_latching: Option<&dyn LateLatching<B>>,
-    _input: &Input
+    late_latching: Option<&dyn LateLatching<B>>,
+    input: &Input
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
 
     let queue = self.device.graphics_queue();
@@ -47,10 +47,22 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
 
     let scene_ref = scene.borrow();
     let view_ref = view.borrow();
-    let semaphore = self.geometry.execute(&mut cmd_buffer, &self.device, &scene_ref, &view_ref);
+    let late_latching_buffer = late_latching.unwrap().buffer();
+    let semaphore = self.geometry.execute(&mut cmd_buffer, &self.device, &scene_ref, &view_ref, &late_latching_buffer);
+
+    if let Some(late_latching) = late_latching {
+      let input_state = input.poll();
+      late_latching.before_submit(&input_state, &view_ref);
+    }
+
     let submit_semaphore = self.device.create_semaphore();
     queue.submit(cmd_buffer.finish(), None, &[&semaphore], &[&submit_semaphore]);
     queue.present(&self.swapchain, &[&submit_semaphore]);
+
+    if let Some(late_latching) = late_latching {
+      late_latching.after_submit(&self.device);
+    }
+
     Ok(())
   }
 }

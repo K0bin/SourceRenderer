@@ -209,7 +209,8 @@ impl<B: Backend> GeometryPass<B> {
     cmd_buffer: &mut B::CommandBuffer,
     device: &Arc<B::Device>,
     scene: &RendererScene<B>,
-    view: &View) -> Arc<B::Semaphore> {
+    view: &View,
+    camera_buffer: &Arc<B::Buffer>) -> Arc<B::Semaphore> {
 
     let semaphore = device.create_semaphore();
     let backbuffer = self.swapchain.prepare_back_buffer(&semaphore).unwrap();
@@ -264,7 +265,7 @@ impl<B: Backend> GeometryPass<B> {
       extent: Vec2UI::new(9999, 9999),
     }]);
 
-    let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
+    //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_buffer);
 
     let drawables = scene.static_drawables();
