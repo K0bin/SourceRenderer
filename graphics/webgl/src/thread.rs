@@ -1,12 +1,12 @@
 use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc};
 
 use crossbeam_channel::Receiver;
-use log::{trace, warn};
+use log::warn;
 use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
 
-use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::{format_to_gl, format_to_internal_gl, format_to_type}};
+use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl};
 
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct FboKey {
@@ -32,7 +32,6 @@ impl WebGLThreadTexture {
     if info.format.is_compressed() {
       todo!("Compressed textures are unimplemented");
     }
-    trace!("info: {:?}", info);
     let target = if is_cubemap { WebGlRenderingContext::TEXTURE_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_2D };
     let texture = context.create_texture().unwrap();
     context.bind_texture(target, Some(&texture));
