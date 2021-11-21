@@ -62,6 +62,7 @@ fn main() {
         let set = ast.get_decoration(uniform.id, Decoration::DescriptorSet).unwrap();
         let location = ast.get_decoration(uniform.id, Decoration::Location).unwrap();
         ast.set_name(uniform.id, &format!("res_{}_{}", set, location)).unwrap();
+        ast.set_name(uniform.base_type_id, &format!("res_{}_{}_t", set, location)).unwrap();
         ast.unset_decoration(uniform.id, Decoration::Location).unwrap();
         ast.unset_decoration(uniform.id, Decoration::DescriptorSet).unwrap();
       }
@@ -74,7 +75,8 @@ fn main() {
       }
 
       for push_constants in &resources.push_constant_buffers {
-        ast.set_name(push_constants.id, "PUSH_CONSTANTS").unwrap();
+        ast.set_name(push_constants.id, "push_constants").unwrap();
+        ast.set_name(push_constants.base_type_id, "push_constants_t").unwrap();
         break;
       }
 
