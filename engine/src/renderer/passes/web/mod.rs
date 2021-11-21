@@ -16,7 +16,10 @@ pub struct WebRenderer<B: Backend> {
 
 impl<B: Backend> WebRenderer<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
-    let geometry_pass = GeometryPass::new::<P>(device, swapchain);
+    let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
+    let geometry_pass = GeometryPass::new::<P>(device, swapchain, &mut init_cmd_buffer);
+    let init_submission = init_cmd_buffer.finish();
+    device.graphics_queue().submit(init_submission, None, &[], &[]);
     Self {
       device: device.clone(),
       swapchain: swapchain.clone(),

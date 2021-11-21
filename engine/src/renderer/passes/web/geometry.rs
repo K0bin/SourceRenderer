@@ -1,19 +1,20 @@
 use std::{io::Read, path::Path, sync::Arc};
 
 use log::trace;
-use sourcerenderer_core::{Platform, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureDepthStencilViewInfo, TextureInfo, TextureUsage, VertexLayoutInfo}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport}, platform::io::IO};
 
-use crate::{renderer::{drawable::View, renderer_scene::RendererScene}};
+use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, renderer_scene::RendererScene}};
 
 pub struct GeometryPass<B: Backend> {
   depth_buffer: Arc<B::TextureDepthStencilView>,
   swapchain: Arc<B::Swapchain>,
-  pipeline: Arc<B::GraphicsPipeline>
+  pipeline: Arc<B::GraphicsPipeline>,
+  sampler: Arc<B::Sampler>
 }
 
 impl<B: Backend> GeometryPass<B> {
 
-  pub(super) fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
+  pub(super) fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let ds = device.create_texture(&TextureInfo {
       format: Format::D32,
       width: swapchain.width(),
@@ -32,15 +33,21 @@ impl<B: Backend> GeometryPass<B> {
       array_level_length: 1,
     });
 
+    let shader_file_extension = if cfg!(target_family = "wasm") {
+      "glsl"
+    } else {
+      "spv"
+    };
+
     let vertex_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("web_geometry.vert.glsl"))).unwrap();
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(&format!("web_geometry.vert.{}", shader_file_extension)))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::VertexShader, &bytes, Some("web_geometry.vert.glsl"))
     };
 
     let fragment_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("web_geometry.frag.glsl"))).unwrap();
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(&format!("web_geometry.frag.{}", shader_file_extension)))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::FragmentShader, &bytes, Some("web_geometry.frag.glsl"))
@@ -141,7 +148,7 @@ impl<B: Backend> GeometryPass<B> {
           stencil_store_op: StoreOp::DontCare,
         },
         AttachmentInfo {
-          format: Format::D24S8,
+          format: ds.get_info().format,
           samples: SampleCount::Samples1,
           load_op: LoadOp::DontCare,
           store_op: StoreOp::DontCare,
@@ -166,10 +173,33 @@ impl<B: Backend> GeometryPass<B> {
       ]
     }, 0);
 
+    let sampler = device.create_sampler(&SamplerInfo {
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
+      address_mode_u: AddressMode::ClampToEdge,
+      address_mode_v: AddressMode::ClampToEdge,
+      address_mode_w: AddressMode::ClampToEdge,
+      mip_bias: 0.0f32,
+      max_anisotropy: 0.0f32,
+      compare_op: None,
+      min_lod: 0.0f32,
+      max_lod: 0.0f32,
+    });
+
+    init_cmd_buffer.barrier(&[Barrier::TextureBarrier {
+      old_primary_usage: TextureUsage::UNINITIALIZED,
+      new_primary_usage: TextureUsage::DEPTH_WRITE,
+      old_usages: TextureUsage::empty(),
+      new_usages: TextureUsage::empty(),
+      texture: &ds,
+    }]);
+
     Self {
       depth_buffer: dsv,
       swapchain: swapchain.clone(),
-      pipeline
+      pipeline,
+      sampler
     }
   }
 
@@ -183,6 +213,15 @@ impl<B: Backend> GeometryPass<B> {
 
     let semaphore = device.create_semaphore();
     let backbuffer = self.swapchain.prepare_back_buffer(&semaphore).unwrap();
+
+    cmd_buffer.barrier(&[Barrier::TextureBarrier {
+      old_primary_usage: TextureUsage::UNINITIALIZED,
+      new_primary_usage: TextureUsage::RENDER_TARGET,
+      old_usages: TextureUsage::empty(),
+      new_usages: TextureUsage::empty(),
+      texture: backbuffer.texture(),
+    }]);
+
     cmd_buffer.begin_render_pass_1(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
@@ -211,7 +250,19 @@ impl<B: Backend> GeometryPass<B> {
       ],
     }, RenderpassRecordingMode::Commands);
 
+    let rtv_info = backbuffer.texture().get_info();
+
     cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+    cmd_buffer.set_viewports(&[Viewport {
+      position: Vec2::new(0.0f32, 0.0f32),
+      extent: Vec2::new(rtv_info.width as f32, rtv_info.height as f32),
+      min_depth: 0.0f32,
+      max_depth: 1.0f32
+    }]);
+    cmd_buffer.set_scissors(&[Scissor {
+      position: Vec2I::new(0, 0),
+      extent: Vec2UI::new(9999, 9999),
+    }]);
 
     let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_buffer);
@@ -225,7 +276,17 @@ impl<B: Backend> GeometryPass<B> {
       let mesh = model.mesh();
       let materials = model.materials();
       let range = &mesh.parts[part.part_index];
-      let _material = &materials[part.part_index];
+      let material = &materials[part.part_index];
+      let albedo_value = material.get("albedo").unwrap();
+      match albedo_value {
+        RendererMaterialValue::Texture(texture) => {
+          let albedo_view = &texture.view;
+          cmd_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &self.sampler);
+        },
+        _ => unimplemented!()
+      }
+      cmd_buffer.finish_binding();
+
       cmd_buffer.set_vertex_buffer(&mesh.vertices);
       if let Some(indices) = mesh.indices.as_ref() {
         cmd_buffer.set_index_buffer(indices);
@@ -235,6 +296,15 @@ impl<B: Backend> GeometryPass<B> {
       }
     }
     cmd_buffer.end_render_pass();
+
+    cmd_buffer.barrier(&[Barrier::TextureBarrier {
+      old_primary_usage: TextureUsage::RENDER_TARGET,
+      new_primary_usage: TextureUsage::PRESENT,
+      old_usages: TextureUsage::RENDER_TARGET,
+      new_usages: TextureUsage::PRESENT,
+      texture: backbuffer.texture(),
+    }]);
+
     return semaphore;
   }
 }
