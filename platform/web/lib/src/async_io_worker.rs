@@ -43,15 +43,18 @@ impl AsyncIOTask {
 }
 
 pub(crate) fn start_worker(worker_pool: &WorkerPool) -> Sender<Arc<AsyncIOTask>> {
+  crate::console_log!("Starting async worker");
   let (task_sender, task_receiver) = unbounded::<Arc<AsyncIOTask>>();
   worker_pool.run_permanent(move || {
+    crate::console_log!("Starting async worker thread");
     let future = process(task_receiver);
     wasm_bindgen_futures::spawn_local(future);
-  });
+  }).unwrap();
   task_sender
 }
 
 async fn process(task_receiver: Receiver<Arc<AsyncIOTask>>) {
+  crate::console_log!("Started async worker");
   loop {
     let task = task_receiver.recv().await.unwrap();
     let result = handle_fetch_task(task.path.clone()).await;

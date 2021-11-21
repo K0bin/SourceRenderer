@@ -185,10 +185,6 @@ impl WorkerPool {
     /// spawned quickly into one if the worker is idle. If no idle workers are
     /// available then a new web worker will be spawned.
     ///
-    /// Once `f` returns the worker assigned to `f` is automatically reclaimed
-    /// by this `WorkerPool`. This method provides no method of learning when
-    /// `f` completes, and for that you'll need to use `run_notify`.
-    ///
     /// # Errors
     ///
     /// If an error happens while spawning a web worker or sending a message to
@@ -200,7 +196,7 @@ impl WorkerPool {
     }
 
     pub fn run_permanent(&self, f: impl FnOnce() + Send + 'static) -> Result<(), JsValue> {
-        let worker = self.execute(f, true)?;
+        let _ = self.execute(f, true)?;
         Ok(())
     }
 }
