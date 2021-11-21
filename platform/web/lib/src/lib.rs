@@ -78,13 +78,13 @@ struct EngineWrapper {
 }
 
 #[wasm_bindgen(js_name = "startEngine")]
-pub fn start_engine(canvas_selector: &str, worker_pool: WorkerPool) -> usize {
+pub fn start_engine(canvas: HtmlCanvasElement, worker_pool: WorkerPool) -> usize {
   utils::set_panic_hook();
 
   console_log::init_with_level(log::Level::Trace).unwrap();
 
   console_log!("Initializing platform");
-  let platform = WebPlatform::new(canvas_selector, worker_pool);
+  let platform = WebPlatform::new(canvas, worker_pool);
 
   console_log!("Initializing engine");
   let engine = Engine::run(&platform);
