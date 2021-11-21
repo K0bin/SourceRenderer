@@ -70,9 +70,11 @@ impl Buffer for WebGLBuffer {
       device.bind_buffer(target, Some(buffer.gl_buffer()));
       let data = &*(data.get());
       device.buffer_data_with_u8_array(target, &data[..], buffer.gl_usage());
-      let size = device.get_buffer_parameter(target, WebGl2RenderingContext::BUFFER_SIZE).as_f64().unwrap() as u32;
-      assert_eq!(size, expected_size as u32);
-      device.debug_ensure_error();
+      #[cfg(debug_assertions)]
+      {
+        let size = device.get_buffer_parameter(target, WebGl2RenderingContext::BUFFER_SIZE).as_f64().unwrap() as u32;
+        assert_eq!(size, expected_size as u32);
+      }
     })).unwrap();
   }
 

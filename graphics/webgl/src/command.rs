@@ -87,6 +87,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
         self.commands.push_back(Box::new(move |device| {
           let pipeline = device.pipeline(handle).clone();
           device.use_program(Some(pipeline.gl_program()));
+          device.enable(WebGl2RenderingContext::DEPTH_TEST);
         }));
       },
       PipelineBinding::Compute(_) => panic!("WebGL does not support compute shaders")
@@ -203,7 +204,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
         let buffer = device.buffer(buffer_handle);
         debug_assert!(buffer.info().size as u32 >= info.size);
         device.bind_buffer_base(WebGl2RenderingContext::UNIFORM_BUFFER, binding, Some(&buffer.gl_buffer()));
-        device.debug_ensure_error();
       }
     }));
   }
@@ -217,7 +217,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
         offset as i32,
         vertices as i32
       );
-      device.debug_ensure_error();
     }));
   }
 
@@ -228,14 +227,15 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     assert_eq!(instances, 1);
     assert_eq!(first_instance, 0);
     assert_eq!(vertex_offset, 0);
+    let pipeline_handle = self.pipeline.as_ref().unwrap().handle();
     self.commands.push_back(Box::new(move |device| {
+      let pipeline = device.pipeline(pipeline_handle);
       device.draw_elements_with_i32(
-        WebGlRenderingContext::TRIANGLES, // TODO: self.pipeline.as_ref().unwrap().gl_draw_mode(),
+        pipeline.gl_draw_mode(),
         indices as i32,
         WebGlRenderingContext::UNSIGNED_INT,
         first_index as i32 * std::mem::size_of::<u32>() as i32,
       );
-      device.debug_ensure_error();
     }));
   }
 
@@ -280,7 +280,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
         debug_assert!(buffer.info().size as u32 >= info.size);
         let binding_index = info.binding;
         device.bind_buffer_base(WebGl2RenderingContext::UNIFORM_BUFFER, binding_index, Some(buffer.gl_buffer()));
-        device.debug_ensure_error();
       }
     }));
   }
@@ -343,7 +342,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
       context.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, fbo.as_ref());
       context.clear_color(0f32, 0f32, 0f32, 1f32);
       context.clear(clear_mask);
-      context.debug_ensure_error();
     }));
   }
 

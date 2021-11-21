@@ -280,8 +280,6 @@ impl WebGLThreadDevice {
   }
 
   pub fn create_shader(&mut self, id: ShaderHandle, shader_type: ShaderType, data: &[u8]) {
-    self.debug_ensure_error();
-
     let gl_shader_type = match shader_type {
       ShaderType::VertexShader => WebGl2RenderingContext::VERTEX_SHADER,
       ShaderType::FragmentShader => WebGl2RenderingContext::FRAGMENT_SHADER,
@@ -290,9 +288,7 @@ impl WebGLThreadDevice {
     let shader = self.context.create_shader(gl_shader_type).unwrap();
     let source = String::from_utf8(data.iter().copied().collect()).unwrap();
     self.context.shader_source(&shader, source.as_str());
-    self.context.debug_ensure_error();
     self.context.compile_shader(&shader);
-    self.context.ensure_error();
     let info = self.context.get_shader_info_log(&shader);
     if let Some(info) = info {
       if !info.is_empty() {
@@ -369,7 +365,6 @@ impl WebGLThreadDevice {
         PrimitiveType::Points => WebGl2RenderingContext::POINTS,
     };
 
-    self.context.debug_ensure_error();
     self.pipelines.insert(id, Rc::new(WebGLThreadPipeline {
       program,
       context: self.context.clone(),
@@ -488,14 +483,6 @@ impl WebGLThreadDevice {
     assert_eq!(self.context.check_framebuffer_status(WebGl2RenderingContext::DRAW_FRAMEBUFFER), WebGl2RenderingContext::FRAMEBUFFER_COMPLETE);
     self.fbo_cache.insert(key, fbo.clone());
     Some(fbo)
-  }
-
-  pub fn debug_ensure_error(&self) {
-    self.context.debug_ensure_error();
-  }
-
-  pub fn ensure_error(&self) {
-    self.context.ensure_error();
   }
 }
 
