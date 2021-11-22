@@ -95,7 +95,7 @@ impl GameInternal {
     }
   }
 
-  pub fn update<P: Platform>(&mut self, game: &Game<P>, renderer: &Arc<Renderer<P>>) -> bool {
+  pub fn update<P: Platform>(&mut self, game: &Game<P>, renderer: &Arc<Renderer<P>>) {
     self.resources.insert(game.input().poll());
 
     let now = Instant::now();
@@ -104,7 +104,7 @@ impl GameInternal {
     let mut tick_delta = now.duration_since(self.last_tick_time);
     if renderer.is_saturated() && tick_delta <= self.tick_duration {
       std::thread::yield_now();
-      return false;
+      return;
     }
 
     while tick_delta >= self.tick_duration {
@@ -120,6 +120,5 @@ impl GameInternal {
     self.resources.insert(TickDelta(tick_delta));
     self.resources.insert(DeltaTime(delta));
     self.schedule.execute(&mut self.world, &mut self.resources);
-    return true;
   }
 }

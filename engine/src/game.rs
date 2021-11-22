@@ -105,9 +105,10 @@ impl<P: Platform> Game<P> {
         let game = c_game.upgrade().unwrap();
         let mut internal = GameInternal::new(&c_asset_manager, &c_renderer, tick_rate);
         loop {
-          if !internal.update(&game, &c_renderer) {
+          if !game.is_running() {
             break;
           }
+          internal.update(&game, &c_renderer);
         }
         game.is_running.store(false, Ordering::SeqCst);
         trace!("Stopped game thread");
