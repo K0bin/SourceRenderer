@@ -1,14 +1,11 @@
-use std::{cell::RefCell, error::Error, sync::{Arc, atomic::{AtomicBool, AtomicU32, Ordering}}, thread::Thread};
+use std::{error::Error, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 
-use crossbeam_channel::unbounded;
+use log::warn;
 use sourcerenderer_core::{Platform, platform::ThreadHandle};
-use sourcerenderer_webgl::{GLThreadReceiver, WebGLBackend, WebGLInstance, WebGLThreadDevice};
-use web_sys::{Document, HtmlCanvasElement, Worker};
-use async_channel::Sender;
-#[macro_use]
-use lazy_static;
+use sourcerenderer_webgl::{WebGLBackend, WebGLInstance};
+use web_sys::HtmlCanvasElement;
 
-use crate::{async_io_worker::AsyncIOTask, console_log, io::WebIO, pool::WorkerPool, window::WebWindow};
+use crate::{io::WebIO, pool::WorkerPool, window::WebWindow};
 
 
 pub struct WebPlatform {
@@ -42,13 +39,23 @@ impl Platform for WebPlatform {
     Ok(self.instance.clone())
   }
 
-  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
+  fn start_thread<F>(&self, _name: &str, callback: F) -> Self::ThreadHandle
   where
       F: FnOnce(),
       F: Send + 'static {
-    let thread_done = Arc::new(AtomicBool::new(false));
+    let thread_done = Arc::new(AtomicBool::new(true));
     let c_thread_done = thread_done.clone();
     self.pool.run_permanent(move || {
+      // We need to set isDone to false on the thread because the thread only gets started when the
+      // we return control of the main thread to the browser. So this could end up in a dead loop
+      // where we end up waiting on a thread that will never be started.
+      // This solution is pretty shit too if you're waiting for something calculated on the thread
+      // but what can you do. ._.
+      if !c_thread_done.swap(false, Ordering::SeqCst) {
+        // Thread was joined before it even started
+        warn!("Thread was joined before it was started!");
+        return;
+      }
       callback();
       c_thread_done.store(true, Ordering::SeqCst);
     }).unwrap();
