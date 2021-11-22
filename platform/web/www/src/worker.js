@@ -1,3 +1,4 @@
+importScripts('hooks.js');
 // synchronously, using the browser, import out shim JS scripts
 importScripts('libsourcerenderer_glue.js'); // TODO
 

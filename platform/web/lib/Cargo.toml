@@ -26,6 +26,7 @@ async-channel = "1.6.1"
 wasm-bindgen-futures = "0.4.28"
 log = "0.4.14"
 console_log = "0.2.0"
+wasm-tracing-allocator = "0.1.0"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
