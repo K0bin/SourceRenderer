@@ -136,6 +136,8 @@ impl<P: Platform> Renderer<P> {
         return;
       }
 
+      self.sender.send(RendererCommand::EndFrame).unwrap();
+
       let mut renderer_impl = self.renderer_impl.borrow_mut();
 
       if let RendererImpl::Uninitialized = &*renderer_impl {
