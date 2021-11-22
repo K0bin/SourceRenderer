@@ -80,10 +80,6 @@ impl VkQueue {
     self.info.queue_family_index as u32
   }
 
-  pub fn create_command_pool(&self, buffer_allocator: &Arc<BufferAllocator>) -> VkCommandPool {
-    VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.shared, buffer_allocator)
-  }
-
   pub fn supports_presentation(&self) -> bool {
     self.info.supports_presentation
   }
