@@ -641,6 +641,9 @@ impl VkCommandBuffer {
         }]
       }], vk::Filter::LINEAR);
     }
+
+    self.trackers.track_texture(src_texture);
+    self.trackers.track_texture(dst_texture);
   }
 
   pub(crate) fn barrier_1<'a>(
