@@ -33,5 +33,8 @@ fn main() {
     if engine.is_mouse_locked() {
       platform.reset_mouse_position();
     }
+
+    engine.frame();
   }
+  engine.stop();
 }

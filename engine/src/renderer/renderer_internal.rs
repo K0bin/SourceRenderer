@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use crate::renderer::passes::web::WebRenderer;
 use crate::renderer::{Renderer, RendererStaticDrawable};
 use crate::transform::interpolation::deconstruct_transform;
@@ -27,7 +27,6 @@ use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
 
 pub(super) struct RendererInternal<P: Platform> {
-  renderer: Arc<Renderer<P>>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
@@ -44,7 +43,6 @@ pub(super) struct RendererInternal<P: Platform> {
 
 impl<P: Platform> RendererInternal<P> {
   pub(super) fn new(
-    renderer: &Arc<Renderer<P>>,
     device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
@@ -58,14 +56,13 @@ impl<P: Platform> RendererInternal<P> {
     let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
 
-    let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
+    let path: Box<dyn RenderPath<P::GraphicsBackend>> = //if cfg!(target_family = "wasm") {
       Box::new(WebRenderer::new::<P>(device, swapchain))
-    } else {
+    /*} else {
       Box::new(DesktopRenderer::new::<P>(device, swapchain))
-    };
+    }*/;
 
     Self {
-      renderer: renderer.clone(),
       device: device.clone(),
       render_path: path,
       swapchain: swapchain.clone(),
@@ -216,7 +213,7 @@ impl<P: Platform> RendererInternal<P> {
     }
   }
 
-  pub(super) fn render(&mut self) {
+  pub(super) fn render(&mut self, renderer: &Renderer<P>) {
     self.receive_window_events();
     self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
@@ -225,7 +222,7 @@ impl<P: Platform> RendererInternal<P> {
 
     self.lightmap = self.assets.get_texture("lightmap");
 
-    let render_result = self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, self.renderer.late_latching(), self.renderer.input());
+    let render_result = self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input());
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -233,7 +230,7 @@ impl<P: Platform> RendererInternal<P> {
       if !self.receive_window_events() {
         let new_swapchain = if swapchain_error == SwapchainError::SurfaceLost {
           // No point in trying to recreate with the old surface
-          let renderer_surface = self.renderer.surface();
+          let renderer_surface = renderer.surface();
           if &*renderer_surface != self.swapchain.surface() {
             trace!("Recreating swapchain on a different surface");
             let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(&self.swapchain, &*renderer_surface, self.swapchain.width(), self.swapchain.height());
@@ -255,11 +252,11 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, self.renderer.late_latching(), self.renderer.input()).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input()).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }
-    self.renderer.dec_queued_frames_counter();
+    renderer.dec_queued_frames_counter();
   }
 
   fn update_visibility(&mut self) {
@@ -339,11 +336,5 @@ impl<P: Platform> RendererInternal<P> {
         material_a.cmp(material_b)
       }
     });
-  }
-}
-
-impl<P: Platform> Drop for RendererInternal<P> {
-  fn drop(&mut self) {
-    self.renderer.stop();
   }
 }

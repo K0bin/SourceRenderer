@@ -18,6 +18,15 @@ use crate::renderer::RendererInternal;
 
 use super::{LateLatching, StaticRenderableComponent, ecs::{DirectionalLightComponent, PointLightComponent, RendererInterface}};
 
+enum RendererImpl<P: Platform> {
+  MultiThreaded(P::ThreadHandle),
+  SingleThreaded(RendererInternal<P>),
+  Uninitialized
+}
+
+unsafe impl<P: Platform> Send for RendererImpl<P> {}
+unsafe impl<P: Platform> Sync for RendererImpl<P> {}
+
 pub struct Renderer<P: Platform> {
   sender: Sender<RendererCommand>,
   window_event_sender: Sender<Event<P>>,
@@ -28,7 +37,7 @@ pub struct Renderer<P: Platform> {
   is_running: AtomicBool,
   input: Arc<Input>,
   late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>,
-  thread_handle: AtomicRefCell<Option<P::ThreadHandle>>
+  renderer_impl: AtomicRefCell<RendererImpl<P>>
 }
 
 impl<P: Platform> Renderer<P> {
@@ -51,7 +60,7 @@ impl<P: Platform> Renderer<P> {
       window_event_sender,
       late_latching: late_latching.cloned(),
       input: input.clone(),
-      thread_handle: AtomicRefCell::new(None)
+      renderer_impl: AtomicRefCell::new(RendererImpl::Uninitialized)
     }
   }
 
@@ -73,22 +82,27 @@ impl<P: Platform> Renderer<P> {
     let c_swapchain = swapchain.clone();
     let c_asset_manager = asset_manager.clone();
 
-    let thread_handle = platform.start_thread("RenderThread", move || {
-      trace!("Started renderer thread");
-      let mut internal = RendererInternal::new(&c_renderer, &c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
-      loop {
-        if !c_renderer.is_running.load(Ordering::SeqCst) {
-          break;
-        }
-        internal.render();
-      }
-      c_renderer.is_running.store(false, Ordering::SeqCst);
-      trace!("Stopped renderer thread");
-    });
 
-    {
-      let mut thread_handle_guard = renderer.thread_handle.borrow_mut();
-      *thread_handle_guard = Some(thread_handle);
+    if cfg!(feature = "threading") {
+      let thread_handle = platform.start_thread("RenderThread", move || {
+        trace!("Started renderer thread");
+        let mut internal = RendererInternal::new(&c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
+        loop {
+          if !c_renderer.is_running.load(Ordering::SeqCst) {
+            break;
+          }
+          internal.render(&c_renderer);
+        }
+        c_renderer.is_running.store(false, Ordering::SeqCst);
+        trace!("Stopped renderer thread");
+      });
+
+      let mut thread_handle_guard = renderer.renderer_impl.borrow_mut();
+      *thread_handle_guard = RendererImpl::MultiThreaded(thread_handle);
+    } else {
+      let internal = RendererInternal::new(&c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
+      let mut thread_handle_guard = renderer.renderer_impl.borrow_mut();
+      *thread_handle_guard = RendererImpl::SingleThreaded(internal);
     }
 
     renderer
@@ -116,15 +130,31 @@ impl<P: Platform> Renderer<P> {
 
   pub fn stop(&self) {
     trace!("Stopping renderer");
-    let was_running = self.is_running.swap(false, Ordering::SeqCst);
-    if !was_running {
-      return;
+    if cfg!(feature = "threading") {
+      let was_running = self.is_running.swap(false, Ordering::SeqCst);
+      if !was_running {
+        return;
+      }
+
+      let mut renderer_impl = self.renderer_impl.borrow_mut();
+
+      if let RendererImpl::Uninitialized = &*renderer_impl {
+        return;
+      }
+
+      let renderer_impl = std::mem::replace(&mut *renderer_impl, RendererImpl::Uninitialized);
+
+      match renderer_impl {
+        RendererImpl::MultiThreaded(thread_handle) => {
+          thread_handle
+            .join();
+        },
+        RendererImpl::Uninitialized => {
+          panic!("Renderer was already stopped.");
+        },
+        _ => {}
+      }
     }
-    let mut thread_handle_guard = self.thread_handle.borrow_mut();
-    thread_handle_guard
-      .take()
-      .expect("Renderer was already stopped")
-      .join();
   }
 
   pub fn dispatch_window_event(&self, event: Event<P>) {
@@ -141,6 +171,13 @@ impl<P: Platform> Renderer<P> {
 
   pub fn device(&self) -> &Arc<<P::GraphicsBackend as Backend>::Device> {
     &self.device
+  }
+
+  pub fn render(&self) {
+    let mut renderer_impl = self.renderer_impl.borrow_mut();
+    if let RendererImpl::SingleThreaded(renderer) = &mut *renderer_impl {
+      renderer.render(self);
+    }
   }
 }
 

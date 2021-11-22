@@ -110,4 +110,9 @@ impl<P: Platform> Engine<P> {
   pub fn surface(&self) -> MutexGuard<Arc<<P::GraphicsBackend as Backend>::Surface>> {
     self.renderer.surface()
   }
+
+  pub fn frame(&self) {
+    self.game.update(&self.renderer);
+    self.renderer.render();
+  }
 }

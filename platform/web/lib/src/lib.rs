@@ -73,7 +73,7 @@ macro_rules! console_log {
 
 
 struct EngineWrapper {
-  _engine: Engine<WebPlatform>,
+  engine: Engine<WebPlatform>,
   gl_device: WebGLThreadDevice
 }
 
@@ -100,7 +100,7 @@ pub fn start_engine(canvas: HtmlCanvasElement, worker_pool: WorkerPool) -> usize
 
   let wrapper = Box::new(RefCell::new(EngineWrapper {
     gl_device: thread_device,
-    _engine: engine
+    engine
   }));
   Box::into_raw(wrapper) as usize
 }
@@ -164,6 +164,7 @@ impl RayonInitialization {
 #[wasm_bindgen(js_name = "engineFrame")]
 pub fn engine_frame(engine: usize) -> bool {
   let mut wrapper = engine_from_usize(engine);
+  wrapper.engine.frame();
   wrapper.gl_device.process();
   true
 }
