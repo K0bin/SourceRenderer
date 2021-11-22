@@ -334,13 +334,19 @@ impl Queue<VkBackend> for VkQueue {
   }
 
   fn submit(&self, submission: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[&Arc<VkSemaphore>], signal_semaphores: &[&Arc<VkSemaphore>]) {
+    let frame_local = self.threads.get_thread_local().get_frame_local();
     let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
     let mut signal_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(signal_semaphores.len());
     for sem in wait_semaphores {
       wait_semaphore_refs.push(sem.as_ref());
+      frame_local.track_semaphore(*sem);
     }
     for sem in signal_semaphores {
       signal_semaphore_refs.push(sem.as_ref());
+      frame_local.track_semaphore(*sem);
+    }
+    if let Some(fence) = fence {
+      frame_local.track_fence(fence);
     }
     // TODO: clean up
 
@@ -349,9 +355,11 @@ impl Queue<VkBackend> for VkQueue {
   }
 
   fn present(&self, swapchain: &Arc<VkSwapchain>, wait_semaphores: &[&Arc<VkSemaphore>]) {
+    let frame_local = self.threads.get_thread_local().get_frame_local();
     let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
     for sem in wait_semaphores {
       wait_semaphore_refs.push(sem.as_ref());
+      frame_local.track_semaphore(*sem);
     }
     self.present(swapchain, swapchain.acquired_image(), &wait_semaphore_refs);
   }
