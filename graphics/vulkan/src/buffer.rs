@@ -408,10 +408,20 @@ impl BufferAllocator {
         }
         let mut used_slices = buffer.used_slices.lock().unwrap();
         let mut free_slices = buffer.free_slices.lock().unwrap();
-        for slice in &*used_slices {
-          if Arc::strong_count(slice) == 1 {
-            free_slices.push(slice.clone());
+        // This is awful. Completely rewrite this with drain_filter once that's stabilized.
+        // Right now cleaner alternatives would likely need to do more copying and allocations.
+        let mut i: isize = (used_slices.len() - 1) as isize;
+        while i >= 0 {
+          let index = i as usize;
+          let refcount = {
+            let slice = &used_slices[index];
+            Arc::strong_count(slice)
+          };
+          if refcount == 1 {
+            free_slices.push(used_slices.remove(index));
+            i -= 1;
           }
+          i -= 1;
         }
         if let Some(slice) = free_slices.pop() {
           used_slices.push(slice.clone());
