@@ -488,6 +488,18 @@ impl WebGLThreadDevice {
   }
 }
 
+impl Drop for WebGLThreadDevice {
+  fn drop(&mut self) {
+    self.textures.clear();
+    self.buffers.clear();
+    self.shaders.clear();
+    self.pipelines.clear();
+    for (_key, fbo) in self.fbo_cache.drain() {
+      self.context.delete_framebuffer(Some(&fbo));
+    }
+  }
+}
+
 impl Deref for WebGLThreadDevice {
   type Target = WebGl2RenderingContext;
 
