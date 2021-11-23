@@ -137,13 +137,13 @@ pub fn start_rayon_workers(worker_pool: &WorkerPool, rayon_thread_count: u32) ->
   for _ in 0..rayon_thread_count {
     let c_receiver = rayon_start_receiver.clone();
     let c_counter = initialize_counter.clone();
-    worker_pool.run(move || {
+    worker_pool.run_permanent(move || {
       console_log!("Rayon worker waiting for initialization");
       let thread_builder = c_receiver.recv().unwrap();
       console_log!("Rayon worker initializing");
       c_counter.fetch_add(1, Ordering::SeqCst);
       thread_builder.run();
-    }).unwrap();
+    }, Some("Rayon worker")).unwrap();
   }
   worker_pool.run(move || {
     rayon::ThreadPoolBuilder::new()

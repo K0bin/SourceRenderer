@@ -10,7 +10,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
-use web_sys::{ErrorEvent, Event, Worker};
+use web_sys::{ErrorEvent, Event, Worker, WorkerOptions};
 
 use crate::console_log;
 
@@ -26,6 +26,13 @@ struct PoolState {
 
 struct Work {
     func: Box<dyn FnOnce() + Send>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WorkerType<'a> {
+    Permanent,
+    PermenantNamed(&'a str),
+    Temporary
 }
 
 #[wasm_bindgen]
@@ -52,7 +59,7 @@ impl WorkerPool {
             }),
         };
         for _ in 0..initial {
-            let worker = pool.spawn()?;
+            let worker = pool.spawn(None)?;
             pool.state.push(worker);
         }
 
@@ -68,7 +75,7 @@ impl WorkerPool {
     ///
     /// Returns any error that may happen while a JS web worker is created and a
     /// message is sent to it.
-    fn spawn(&self) -> Result<Worker, JsValue> {
+    fn spawn(&self, name: Option<&str>) -> Result<Worker, JsValue> {
         console_log!("spawning new worker");
         // TODO: what do do about `./worker.js`:
         //
@@ -76,7 +83,12 @@ impl WorkerPool {
         //   library, know what's going on?
         // * How do we not fetch a script N times? It internally then
         //   causes another script to get fetched N times...
-        let worker = Worker::new("./worker.js")?;
+        let mut options = WorkerOptions::new();
+        if let Some(name) = name {
+            options.name(name);
+        }
+
+        let worker = Worker::new_with_options("./worker.js", &options)?;
 
         // With a worker spun up send it the module/memory so it can start
         // instantiating the wasm module. Later it might receive further
@@ -102,7 +114,7 @@ impl WorkerPool {
     fn worker(&self) -> Result<Worker, JsValue> {
         match self.state.workers.borrow_mut().pop() {
             Some(worker) => Ok(worker),
-            None => self.spawn(),
+            None => self.spawn(None),
         }
     }
 
@@ -118,11 +130,11 @@ impl WorkerPool {
     ///
     /// Returns any error that may happen while a JS web worker is created and a
     /// message is sent to it.
-    fn execute(&self, f: impl FnOnce() + Send + 'static, force_new_worker: bool) -> Result<Worker, JsValue> {
-        let worker = if !force_new_worker {
-            self.worker()?
-        } else {
-            self.spawn()?
+    fn execute(&self, f: impl FnOnce() + Send + 'static, worker_type: WorkerType) -> Result<Worker, JsValue> {
+        let worker = match worker_type {
+            WorkerType::Temporary => self.worker()?,
+            WorkerType::Permanent => self.spawn(None)?,
+            WorkerType::PermenantNamed(name) => self.spawn(Some(&name))?,
         };
         let work = Box::new(Work { func: Box::new(f) });
         let ptr = Box::into_raw(work);
@@ -190,13 +202,13 @@ impl WorkerPool {
     /// If an error happens while spawning a web worker or sending a message to
     /// a web worker, that error is returned.
     pub fn run(&self, f: impl FnOnce() + Send + 'static) -> Result<(), JsValue> {
-        let worker = self.execute(f, false)?;
+        let worker = self.execute(f, WorkerType::Temporary)?;
         self.reclaim_on_message(worker);
         Ok(())
     }
 
-    pub fn run_permanent(&self, f: impl FnOnce() + Send + 'static) -> Result<(), JsValue> {
-        let _ = self.execute(f, true)?;
+    pub fn run_permanent(&self, f: impl FnOnce() + Send + 'static, name: Option<&str>) -> Result<(), JsValue> {
+        let _ = self.execute(f, name.map(|n| WorkerType::PermenantNamed(n)).unwrap_or(WorkerType::Permanent))?;
         Ok(())
     }
 }

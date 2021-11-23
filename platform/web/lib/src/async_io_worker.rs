@@ -49,7 +49,7 @@ pub(crate) fn start_worker(worker_pool: &WorkerPool) -> Sender<Arc<AsyncIOTask>>
     crate::console_log!("Starting async worker thread");
     let future = process(task_receiver);
     wasm_bindgen_futures::spawn_local(future);
-  }).unwrap();
+  }, Some("Async worker")).unwrap();
   task_sender
 }
 

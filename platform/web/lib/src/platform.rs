@@ -39,7 +39,7 @@ impl Platform for WebPlatform {
     Ok(self.instance.clone())
   }
 
-  fn start_thread<F>(&self, _name: &str, callback: F) -> Self::ThreadHandle
+  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
   where
       F: FnOnce(),
       F: Send + 'static {
@@ -58,7 +58,7 @@ impl Platform for WebPlatform {
       }
       callback();
       c_thread_done.store(true, Ordering::SeqCst);
-    }).unwrap();
+    }, Some(name)).unwrap();
     BusyWaitThreadHandle(thread_done)
   }
 }

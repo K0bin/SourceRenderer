@@ -57,7 +57,8 @@ features = [
   'DedicatedWorkerGlobalScope',
   'Navigator',
   'ErrorEvent',
-  'Response'
+  'Response',
+  'WorkerOptions'
 ]
 
 [dev-dependencies]
