@@ -56,11 +56,11 @@ impl<P: Platform> RendererInternal<P> {
     let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
 
-    let path: Box<dyn RenderPath<P::GraphicsBackend>> = //if cfg!(target_family = "wasm") {
+    let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
       Box::new(WebRenderer::new::<P>(device, swapchain))
-    /*} else {
+    } else {
       Box::new(DesktopRenderer::new::<P>(device, swapchain))
-    }*/;
+    };
 
     Self {
       device: device.clone(),
