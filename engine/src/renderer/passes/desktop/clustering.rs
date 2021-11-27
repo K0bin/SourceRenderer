@@ -48,6 +48,8 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     far_plane: f32,
     camera_buffer: &Arc<B::Buffer>
   ) {
+    command_buffer.begin_label("Clustering pass");
+
     let cluster_count = Vector3::<u32>::new(16, 9, 24);
     let screen_to_view = ShaderScreenToView {
       tile_size: Vec2UI::new(((rt_size.x as f32) / cluster_count.x as f32).ceil() as u32, ((rt_size.y as f32) / cluster_count.y as f32).ceil() as u32),
@@ -83,6 +85,8 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer);
     command_buffer.finish_binding();
     command_buffer.dispatch(cluster_count.x, cluster_count.y, cluster_count.z);
+
+    command_buffer.end_label();
   }
 
   pub fn clusters_buffer(&self) -> &Arc<B::Buffer> {

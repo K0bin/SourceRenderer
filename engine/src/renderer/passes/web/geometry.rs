@@ -223,7 +223,7 @@ impl<B: Backend> GeometryPass<B> {
       texture: backbuffer.texture(),
     }]);
 
-    cmd_buffer.begin_render_pass_1(&RenderPassBeginInfo {
+    cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
           view: RenderPassAttachmentView::RenderTarget(&backbuffer),

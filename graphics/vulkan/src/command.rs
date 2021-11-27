@@ -245,30 +245,6 @@ impl VkCommandBuffer {
     };
   }
 
-  pub(crate) fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, clear_values: &[vk::ClearValue], recording_mode: RenderpassRecordingMode) {
-    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
-    // TODO: begin info fields
-    unsafe {
-      let begin_info = vk::RenderPassBeginInfo {
-        framebuffer: *frame_buffer.get_handle(),
-        render_pass: *render_pass.get_handle(),
-        render_area: vk::Rect2D {
-          offset: vk::Offset2D { x: 0i32, y: 0i32 },
-          extent: vk::Extent2D { width: frame_buffer.width(), height: frame_buffer.height() }
-        },
-        clear_value_count: clear_values.len() as u32,
-        p_clear_values: clear_values.as_ptr(),
-        ..Default::default()
-      };
-      self.device.cmd_begin_render_pass(self.buffer, &begin_info, if recording_mode == RenderpassRecordingMode::Commands { vk::SubpassContents::INLINE } else { vk::SubpassContents::SECONDARY_COMMAND_BUFFERS });
-    }
-    self.render_pass = Some(render_pass.clone());
-    self.sub_pass = 0;
-    self.trackers.track_frame_buffer(frame_buffer);
-    self.trackers.track_render_pass(render_pass);
-  }
-
   pub(crate) fn end_render_pass(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.render_pass.is_some());
@@ -646,7 +622,7 @@ impl VkCommandBuffer {
     self.trackers.track_texture(dst_texture);
   }
 
-  pub(crate) fn barrier_1<'a>(
+  pub(crate) fn barrier<'a>(
     &mut self,
     barriers: &[Barrier<VkBackend>]
   ) {
@@ -814,21 +790,7 @@ impl VkCommandBuffer {
     self.pending_buffer_barriers.clear();
   }
 
-  pub(crate) fn barrier(
-    &mut self,
-    src_stage_mask: vk::PipelineStageFlags,
-    dst_stage_mask: vk::PipelineStageFlags,
-    dependency_flags: vk::DependencyFlags,
-    memory_barriers: &[vk::MemoryBarrier],
-    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-    image_memory_barriers: &[vk::ImageMemoryBarrier]) {
-    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    unsafe {
-      self.device.cmd_pipeline_barrier(self.buffer, src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
-    }
-  }
-
-  pub(crate) fn begin_render_pass_1(&mut self, renderpass_begin_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
+  pub(crate) fn begin_render_pass(&mut self, renderpass_begin_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(!self.render_pass.is_some());
 
@@ -975,28 +937,12 @@ impl VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  pub fn begin_render_pass(&mut self, render_pass: &Arc<VkRenderPass>, frame_buffer: &Arc<VkFrameBuffer>, clear_values: &[vk::ClearValue], recording_mode: RenderpassRecordingMode) {
-    self.item.as_mut().unwrap().begin_render_pass(render_pass, frame_buffer, clear_values, recording_mode);
-  }
-
-  #[inline(always)]
   pub fn end_render_pass(&mut self) {
     self.item.as_mut().unwrap().end_render_pass();
   }
 
   pub fn advance_subpass(&mut self) {
     self.item.as_mut().unwrap().advance_subpass();
-  }
-  #[inline(always)]
-  pub(crate) fn barrier_vk(
-    &mut self,
-    src_stage_mask: vk::PipelineStageFlags,
-    dst_stage_mask: vk::PipelineStageFlags,
-    dependency_flags: vk::DependencyFlags,
-    memory_barriers: &[vk::MemoryBarrier],
-    buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-    image_memory_barriers: &[vk::ImageMemoryBarrier]) {
-    self.item.as_mut().unwrap().barrier(src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers, buffer_memory_barriers, image_memory_barriers);
   }
 
   pub fn wait_events(
@@ -1129,7 +1075,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 
   #[inline(always)]
   fn barrier<'a>(&mut self, barriers: &[Barrier<VkBackend>]) {
-    self.item.as_mut().unwrap().barrier_1(barriers);
+    self.item.as_mut().unwrap().barrier(barriers);
   }
 
 
@@ -1138,8 +1084,8 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     self.item.as_mut().unwrap().flush_barriers();
   }
 
-  fn begin_render_pass_1(&mut self, renderpass_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
-    self.item.as_mut().unwrap().begin_render_pass_1(renderpass_info, recording_mode);
+  fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
+    self.item.as_mut().unwrap().begin_render_pass(renderpass_info, recording_mode);
   }
 
   fn advance_subpass(&mut self) {

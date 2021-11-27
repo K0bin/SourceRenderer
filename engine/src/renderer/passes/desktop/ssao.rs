@@ -262,6 +262,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
   }
 
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, normals: &Arc<B::TextureShaderResourceView>, depth: &Arc<B::TextureShaderResourceView>, camera: &Arc<B::Buffer>, motion_srv: &Arc<B::TextureShaderResourceView>) {
+    cmd_buffer.begin_label("SSAO pass");
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
@@ -335,6 +336,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.finish_binding();
     let blur_info = self.blurred_texture.get_info();
     cmd_buffer.dispatch((blur_info.width + 15) / 16, (blur_info.height + 15) / 16, blur_info.depth);
+    cmd_buffer.end_label();
   }
 
   pub fn swap_history_resources(&mut self) {

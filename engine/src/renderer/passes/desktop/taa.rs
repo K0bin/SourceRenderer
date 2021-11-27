@@ -152,6 +152,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     output_srv: &Arc<B::TextureShaderResourceView>,
     motion_srv: &Arc<B::TextureShaderResourceView>
   ) {
+    cmd_buf.begin_label("TAA pass");
     cmd_buf.barrier(&[
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::RENDER_TARGET,
@@ -178,6 +179,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
 
     let info = self.taa_texture.get_info();
     cmd_buf.dispatch((info.width + 15) / 16, (info.height + 15) / 16, 1);
+    cmd_buf.end_label();
   }
 
   pub fn taa_srv(&self) -> &Arc<B::TextureShaderResourceView> {

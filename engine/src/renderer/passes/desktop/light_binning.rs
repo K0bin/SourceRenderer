@@ -51,6 +51,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
   }
 
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B>, clusters_buffer: &Arc<B::Buffer>, camera_buffer: &Arc<B::Buffer>) {
+    cmd_buffer.begin_label("Light binning");
     let cluster_count = Vector3::<u32>::new(16, 9, 24);
     let setup_info = SetupInfo {
       point_light_count: scene.point_lights().len() as u32,
@@ -88,7 +89,6 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
         buffer: &self.light_bitmask_buffer,
       }
     ]);
-    
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.light_binning_pipeline));
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, camera_buffer);
@@ -98,6 +98,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 4, &self.light_bitmask_buffer);
     cmd_buffer.finish_binding();
     cmd_buffer.dispatch((cluster_count.x * cluster_count.y * cluster_count.z + 63) / 64, 1, 1);
+    cmd_buffer.end_label();
   }
 
   pub fn light_bitmask_buffer(&self) -> &Arc<B::Buffer> {

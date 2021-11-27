@@ -254,7 +254,7 @@ impl<B: GraphicsBackend> Prepass<B> {
         texture: depth_srv.texture(),
       },
     ]);
-  
+
     Self {
       depth_buffer: dsv,
       motion: motion_view,
@@ -277,6 +277,7 @@ impl<B: GraphicsBackend> Prepass<B> {
     camera_buffer: &Arc<B::Buffer>,
     camera_history_buffer: &Arc<B::Buffer>
   ) {
+    cmd_buffer.begin_label("Depth prepass");
     let static_drawables = scene.static_drawables();
 
     cmd_buffer.barrier(&[
@@ -310,7 +311,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       },
     ]);
 
-    cmd_buffer.begin_render_pass_1(&RenderPassBeginInfo {
+    cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
           view: RenderPassAttachmentView::RenderTarget(&self.motion),
@@ -408,6 +409,7 @@ impl<B: GraphicsBackend> Prepass<B> {
 
     cmd_buffer.execute_inner(inner_cmd_buffers);
     cmd_buffer.end_render_pass();
+    cmd_buffer.end_label();
   }
 
   pub fn depth_dsv(&self) -> &Arc<B::TextureDepthStencilView> {

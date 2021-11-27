@@ -20,7 +20,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("sharpen.comp.spv"))
     };
     let pipeline = device.create_compute_pipeline(&sharpen_compute_shader);
-  
+
     let sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,
       min_filter: Filter::Linear,
@@ -61,7 +61,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
         texture: &texture,
       }
     ]);
-    
+
     Self {
       pipeline,
       sampler,
@@ -70,6 +70,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
   }
 
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, input_image: &Arc<B::TextureShaderResourceView>) {
+    cmd_buffer.begin_label("Sharpening pass");
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
@@ -94,6 +95,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
 
     let info = self.sharpen_uav.texture().get_info();
     cmd_buffer.dispatch((info.width + 15) / 16, (info.height + 15) / 16, 1);
+    cmd_buffer.end_label();
   }
 
   pub fn sharpened_texture(&self) -> &Arc<B::Texture> {

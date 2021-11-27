@@ -242,6 +242,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     camera_buffer: &Arc<B::Buffer>,
     ssao: &Arc<B::TextureShaderResourceView>
   ) {
+    cmd_buffer.begin_label("Geometry pass");
     let static_drawables = scene.static_drawables();
 
     cmd_buffer.barrier(&[
@@ -275,7 +276,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       },
     ]);
 
-    cmd_buffer.begin_render_pass_1(&RenderPassBeginInfo {
+    cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
           view: RenderPassAttachmentView::RenderTarget(&self.rtv),
@@ -454,6 +455,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     cmd_buffer.execute_inner(inner_cmd_buffers);
     cmd_buffer.end_render_pass();
+    cmd_buffer.end_label();
   }
 
   pub fn output_srv(&self) -> &Arc<B::TextureShaderResourceView> {

@@ -322,7 +322,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support storage textures")
   }
 
-  fn begin_render_pass_1(&mut self, renderpass_info: &sourcerenderer_core::graphics::RenderPassBeginInfo<WebGLBackend>, recording_mode: sourcerenderer_core::graphics::RenderpassRecordingMode) {
+  fn begin_render_pass(&mut self, renderpass_info: &sourcerenderer_core::graphics::RenderPassBeginInfo<WebGLBackend>, recording_mode: sourcerenderer_core::graphics::RenderpassRecordingMode) {
     let mut clear_mask: u32 = 0;
     let mut color_attachments: [Option<TextureHandle>; 8] = Default::default();
     let mut depth_attachment = Option::<TextureHandle>::None;
