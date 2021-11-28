@@ -9,8 +9,6 @@ use crate::Transform;
 
 #[derive(Clone, Default, Debug)]
 pub struct ActiveRigidBodies(HashSet<Entity>);
-#[derive(Clone, Default, Debug)]
-pub struct RegisteredRigidBodies(HashSet<Entity>);
 
 pub enum ColliderComponent {
   Capsule {
@@ -77,7 +75,7 @@ impl PhysicsWorld {
     };
     resources.insert(physics_world);
 
-    systems.add_system(physics_tick_system(ActiveRigidBodies(HashSet::new()), RegisteredRigidBodies(HashSet::new())));
+    systems.add_system(physics_tick_system(ActiveRigidBodies(HashSet::new())));
   }
 }
 
@@ -86,7 +84,7 @@ impl PhysicsWorld {
 #[read_component(RigidBodyComponent)]
 #[read_component(Transform)]
 #[write_component(Transform)]
-fn physics_tick(world: &mut SubWorld, #[resource] physics_world: &mut PhysicsWorld, #[state] active_rigid_bodies: &mut ActiveRigidBodies, #[state] registered_rigid_bodies: &mut RegisteredRigidBodies) {
+fn physics_tick(world: &mut SubWorld, #[resource] physics_world: &mut PhysicsWorld, #[state] active_rigid_bodies: &mut ActiveRigidBodies) {
 
   let mut query = <(Entity, &Transform)>::query()
     .filter(maybe_changed::<Transform>() & component::<RigidBodyComponent>() & component::<ColliderComponent>());
@@ -112,7 +110,7 @@ fn physics_tick(world: &mut SubWorld, #[resource] physics_world: &mut PhysicsWor
     // this is pretty bad
     let entity_raw: u64 = unsafe { std::mem::transmute_copy(entity) };
 
-    if !registered_rigid_bodies.0.contains(entity) {
+    if !physics_world.entity_collider_map.contains_key(entity) {
       let euler_angles = transform.rotation.euler_angles();
 
       // Add to ColliderSet and RigidBodySet
@@ -136,25 +134,26 @@ fn physics_tick(world: &mut SubWorld, #[resource] physics_world: &mut PhysicsWor
 
       let collider_handle = physics_world.collider_set.insert_with_parent(collider, rigid_body_handle, &mut physics_world.rigid_body_set);
       physics_world.entity_collider_map.insert(*entity, collider_handle);
-
-      registered_rigid_bodies.0.insert(*entity);
     }
 
     active_rigid_bodies.0.insert(*entity);
   }
 
-  registered_rigid_bodies.0.retain(|entity| {
-    if !active_rigid_bodies.0.contains(entity) {
-      // Remove from ColliderSet and RigidBodySet
-      let collider_handle = physics_world.entity_collider_map.get(entity).unwrap();
-      let collider = physics_world.collider_set.get(*collider_handle).unwrap();
-      let parent = collider.parent().unwrap();
-      physics_world.rigid_body_set.remove(parent, &mut physics_world.island_manager, &mut physics_world.collider_set, &mut physics_world.joint_set);
-      physics_world.collider_set.remove(*collider_handle, &mut physics_world.island_manager, &mut physics_world.rigid_body_set, true);
-      false
-    } else {
-      true
+  for (entity, collider_handle) in &physics_world.entity_collider_map {
+    if active_rigid_bodies.0.contains(entity) {
+      continue;
     }
+    // Remove from ColliderSet and RigidBodySet
+    let rigid_body_handle =  {
+      let collider = physics_world.collider_set.get(*collider_handle).unwrap();
+      collider.parent().unwrap()
+    };
+    physics_world.rigid_body_set.remove(rigid_body_handle, &mut physics_world.island_manager, &mut physics_world.collider_set, &mut physics_world.joint_set);
+    physics_world.collider_set.remove(*collider_handle, &mut physics_world.island_manager, &mut physics_world.rigid_body_set, true);
+  }
+
+  physics_world.entity_collider_map.retain(|entity, _collider_handle| {
+    active_rigid_bodies.0.contains(entity)
   });
 
   physics_world.physics_pipeline.step(
