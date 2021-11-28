@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
+use std::{ops::Add, sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
 use std::time::Duration;
 
 use legion::{Resources, Schedule, World};
@@ -18,6 +18,7 @@ use crate::input::InputState;
 use crate::{fps_camera::FPSCamera, renderer::RendererInterface};
 use instant::Instant;
 use crate::game::Game;
+use crate::physics::PhysicsWorld;
 
 pub struct GameInternal {
   world: World,
@@ -55,6 +56,8 @@ impl GameInternal {
       c_asset_manager.load_level("de_overpass.bsp").unwrap()
     };*/
     trace!("Done loading level");
+
+    PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule);
 
     crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, &asset_manager);
     fps_camera::install::<P>(&mut world, &mut fixed_schedule);
