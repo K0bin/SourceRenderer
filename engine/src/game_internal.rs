@@ -37,6 +37,7 @@ impl GameInternal {
     let mut fixed_schedule = Schedule::builder();
     let mut schedule = Schedule::builder();
     let mut resources = Resources::default();
+    let tick_duration = Duration::new(0, 1_000_000_000 / tick_rate);
 
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
@@ -57,8 +58,7 @@ impl GameInternal {
     };*/
     trace!("Done loading level");
 
-    PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule);
-
+    PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule, tick_duration);
     crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, &asset_manager);
     fps_camera::install::<P>(&mut world, &mut fixed_schedule);
     transform::interpolation::install(&mut fixed_schedule, &mut schedule);
@@ -77,7 +77,6 @@ impl GameInternal {
 
     //resources.insert(c_renderer.primary_camera().clone());
 
-    let tick_duration = Duration::new(0, 1_000_000_000 / tick_rate);
     resources.insert(TickRate(tick_rate));
     resources.insert(TickDuration(tick_duration));
 

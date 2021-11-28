@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, default};
 
+use instant::Duration;
 use rapier3d::prelude::*;
 use rapier3d::prelude::IntegrationParameters;
 use legion::{Entity, IntoQuery, Resources, World, component, maybe_changed, systems::Builder, world::SubWorld};
@@ -48,7 +49,7 @@ pub struct PhysicsWorld {
 }
 
 impl PhysicsWorld {
-  pub fn install(_world: &mut World, resources: &mut Resources, systems: &mut Builder) {
+  pub fn install(_world: &mut World, resources: &mut Resources, systems: &mut Builder, delta: Duration) {
     let rigid_body_set = RigidBodySet::new();
     let collider_set = ColliderSet::new();
     let physics_pipeline = PhysicsPipeline::new();
@@ -58,7 +59,10 @@ impl PhysicsWorld {
     let joint_set = JointSet::new();
     let ccd_solver = CCDSolver::new();
     let gravity = vector![0f32, -9.81f32, 0f32];
-    let integration_parameters = IntegrationParameters::default();
+    let integration_parameters = IntegrationParameters {
+      dt: delta.as_secs_f32(),
+      ..Default::default()
+    };
 
     let physics_world = Self {
       rigid_body_set,

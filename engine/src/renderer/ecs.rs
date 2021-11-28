@@ -94,6 +94,7 @@ fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
     }
   }
 
+  active_static_renderables.0.clear();
   let mut static_components_query = <(Entity, &StaticRenderableComponent, &InterpolatedTransform)>::query();
   for (entity, component, transform) in static_components_query.iter(world) {
     if active_static_renderables.0.contains(entity) {
