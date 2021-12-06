@@ -3,6 +3,7 @@ use log::trace;
 use sourcerenderer_core::input::Key;
 use crate::input::InputState;
 use crate::math::BoundingBox;
+use crate::physics::{ColliderComponent, RigidBodyComponent, RigidBodyType};
 use crate::{Transform, Camera};
 use nalgebra::{Unit, UnitQuaternion};
 use crate::asset::{AssetManager, MeshRange};
@@ -258,7 +259,27 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     cast_shadows: true,
     can_move: true,
     model_path: "cube_model".to_owned()
-  }, Transform::new(Vec3::new(0f32, 0f32, -5f32)), SpinningCube {}));
+  },
+  Transform::new(Vec3::new(0f32, 0f32, -5f32)),
+  SpinningCube {},
+  RigidBodyComponent {
+    body_type: RigidBodyType::Dynamic,
+  },
+  ColliderComponent::Box {
+    width: 1f32,
+    height: 1f32,
+    depth: 1f32
+  }));
+
+  world.push((Transform::new(Vec3::new(0f32, -2f32, -5f32)),
+  RigidBodyComponent {
+    body_type: RigidBodyType::Static
+  },
+  ColliderComponent::Box {
+    width: 10f32,
+    height: 0.1f32,
+    depth: 10f32
+  }));
 
   let camera = world.push((Camera {
     fov: f32::consts::PI / 2f32,
