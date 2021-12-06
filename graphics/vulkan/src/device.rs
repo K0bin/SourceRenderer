@@ -191,26 +191,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn wait_for_idle(&self) {
-    let c_graphics_queue = self.graphics_queue.clone();
-    let graphics_join = std::thread::spawn(move || c_graphics_queue.wait_for_idle() );
-
-    let transfer_join = self.transfer_queue.as_ref().map(|q| {
-      let c_queue = q.clone();
-      std::thread::spawn(move || c_queue.wait_for_idle())
-    });
-
-    let compute_join = self.compute_queue.as_ref().map(|q| {
-      let c_queue = q.clone();
-      std::thread::spawn(move || c_queue.wait_for_idle())
-    });
-
-    graphics_join.join().unwrap();
-    if let Some(join) = transfer_join {
-      join.join().unwrap();
-    }
-    if let Some(join) = compute_join {
-      join.join().unwrap();
-    }
+    unsafe { self.device.device_wait_idle().unwrap(); }
   }
 
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
