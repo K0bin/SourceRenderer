@@ -71,7 +71,7 @@ impl<B: Backend> LateLatching<B> for LateLatchCamera<B> {
 
 impl<B: Backend> LateLatchCamera<B> {
   pub fn new(device: &B::Device, aspect_ratio: f32, fov: f32) -> Self {
-    let late_letch_cam = Self {
+    Self {
       fps_camera: Mutex::new(FPSCamera::new()),
       buffer: AtomicRefCell::new(Self::create_buffer(device)),
       history_buffer: AtomicRefCell::new(Self::create_buffer(device)),
@@ -79,8 +79,7 @@ impl<B: Backend> LateLatchCamera<B> {
       fov,
       z_near: 0.1f32,
       z_far: 100f32
-    };
-    late_letch_cam
+    }
   }
 
   fn create_buffer(device: &B::Device) -> Arc<B::Buffer> {

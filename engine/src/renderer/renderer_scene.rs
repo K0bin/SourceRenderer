@@ -44,7 +44,7 @@ impl<B: Backend> RendererScene<B> {
   }
 
   pub fn remove_static_drawable(&mut self, entity: &Entity) {
-    let index = self.drawable_entity_map.get(&entity);
+    let index = self.drawable_entity_map.get(entity);
     debug_assert!(index.is_some());
     if index.is_none() {
       return;
@@ -54,14 +54,14 @@ impl<B: Backend> RendererScene<B> {
   }
 
   pub fn update_transform(&mut self, entity: &Entity, transform: Matrix4) {
-    let index = self.drawable_entity_map.get(&entity);
+    let index = self.drawable_entity_map.get(entity);
     if let Some(index) = index {
       let static_drawable = &mut self.static_meshes[*index];
       static_drawable.transform = transform;
       return;
     }
 
-    let index = self.point_light_entity_map.get(&entity);
+    let index = self.point_light_entity_map.get(entity);
     if let Some(index) = index {
       let point_light = &mut self.point_lights[*index];
       point_light.position = (transform * Vec4::new(0f32, 0f32, 0f32, 1f32)).xyz();
@@ -78,7 +78,7 @@ impl<B: Backend> RendererScene<B> {
   }
 
   pub fn remove_point_light(&mut self, entity: &Entity) {
-    let index = self.point_light_entity_map.get(&entity);
+    let index = self.point_light_entity_map.get(entity);
     debug_assert!(index.is_some());
     if index.is_none() {
       return;
@@ -94,7 +94,7 @@ impl<B: Backend> RendererScene<B> {
   }
 
   pub fn remove_directional_light(&mut self, entity: &Entity) {
-    let index = self.point_light_entity_map.get(&entity);
+    let index = self.point_light_entity_map.get(entity);
     debug_assert!(index.is_some());
     if index.is_none() {
       return;

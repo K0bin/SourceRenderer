@@ -290,16 +290,15 @@ impl VkSwapchain {
     if !vsync {
       if let Some(mode) = present_modes
         .iter()
-        .filter(|&&mode| mode == vk::PresentModeKHR::IMMEDIATE)
-        .next() {
+        .find(|&&mode| mode == vk::PresentModeKHR::IMMEDIATE) {
         return *mode;
       }
     }
 
     *present_modes
       .iter()
-      .filter(|&&mode| mode == vk::PresentModeKHR::FIFO)
-      .next().expect("No compatible present mode found")
+      .find(|&&mode| mode == vk::PresentModeKHR::FIFO)
+      .expect("No compatible present mode found")
   }
 
   pub fn get_loader(&self) -> &SwapchainLoader {
@@ -396,7 +395,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
     if old.state() == VkSwapchainState::Retired {
       VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, None)
     } else {
-      VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(&old))
+      VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(old))
     }
   }
 

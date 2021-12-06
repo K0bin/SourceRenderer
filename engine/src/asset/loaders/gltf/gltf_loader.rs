@@ -33,7 +33,7 @@ impl GltfLoader {
     };
     let entity = world.push((Transform {
       position: translation,
-      scale: scale,
+      scale,
       rotation: UnitQuaternion::identity(),
     },));
 
@@ -100,7 +100,7 @@ impl GltfLoader {
 
       let mut entry = world.entry(entity).unwrap();
       entry.add_component(StaticRenderableComponent {
-        model_path: model_path,
+        model_path,
         receive_shadows: true,
         cast_shadows: true,
         can_move: false
@@ -219,7 +219,7 @@ impl GltfLoader {
           normal.normalize_mut();
           vertices.push(Vertex {
             position: *position_vec_ptr,
-            normal: normal,
+            normal,
             uv: Vec2::new(0f32, 0f32),
             lightmap_uv: Vec2::new(0f32, 0f32),
             alpha: 1.0f32

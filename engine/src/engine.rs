@@ -43,11 +43,11 @@ impl<P: Platform> Engine<P> {
     let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let swapchain = Arc::new(platform.window().create_swapchain(false, &device, &surface));
-    let asset_manager = AssetManager::<P>::new(&platform, &device);
+    let asset_manager = AssetManager::<P>::new(platform, &device);
     let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
     let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
     let renderer = Renderer::<P>::run(platform, &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
-    let game = Game::<P>::run(&platform, &input, &renderer, &asset_manager, TICK_RATE);
+    let game = Game::<P>::run(platform, &input, &renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
       game,
@@ -73,7 +73,6 @@ impl<P: Platform> Engine<P> {
       },
       Event::Quit => {
         self.stop();
-        return;
       },
       Event::WindowMinimized
       | Event::WindowRestored(_)
@@ -100,7 +99,7 @@ impl<P: Platform> Engine<P> {
       self.stop(); // if just one system dies, kill the others too
       return false;
     }
-    return true;
+    true
   }
 
   pub fn device(&self) -> &Arc<<P::GraphicsBackend as Backend>::Device> {

@@ -277,7 +277,7 @@ impl Frustum {
       }
     }
 
-    return true;
+    true
   }
 }
 

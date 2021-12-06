@@ -313,7 +313,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     let cluster_z_scale = (cluster_count.z as f32) / (far / near).log2();
     let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
     let per_frame = FrameData {
-      swapchain_transform: swapchain_transform,
+      swapchain_transform,
       halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32),
       z_near: view.near_plane,
       z_far: view.far_plane,
@@ -368,7 +368,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, ssao, &self.sampler);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer);
-      for part in chunk.into_iter() {
+      for part in chunk.iter() {
         let drawable = &static_drawables[part.drawable_index];
 
         /*let model_constant_buffer = command_buffer.upload_dynamic_data(&[drawable.transform], BufferUsage::CONSTANT);
@@ -406,7 +406,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         match albedo_value {
           RendererMaterialValue::Texture(texture) => {
             let albedo_view = &texture.view;
-            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, &albedo_view, &self.sampler);
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
           },
           RendererMaterialValue::Vec4(val) => {
             material_info.albedo = *val
@@ -417,7 +417,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         match roughness_value {
           Some(RendererMaterialValue::Texture(texture)) => {
             let roughness_view = &texture.view;
-            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, &roughness_view, &self.sampler);
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, roughness_view, &self.sampler);
           }
           Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
           Some(RendererMaterialValue::Float(val)) => {
@@ -429,7 +429,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         match metalness_value {
           Some(RendererMaterialValue::Texture(texture)) => {
             let metalness_view = &texture.view;
-            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, &metalness_view, &self.sampler);
+            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, metalness_view, &self.sampler);
           }
           Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
           Some(RendererMaterialValue::Float(val)) => {
@@ -441,7 +441,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 4, &material_info_buffer);
 
         let lightmap_ref = &lightmap.view;
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, &lightmap_ref, &self.sampler);
+        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, lightmap_ref, &self.sampler);
         command_buffer.finish_binding();
 
         if mesh.indices.is_some() {

@@ -89,7 +89,7 @@ impl<B: Backend> Ord for RendererMaterialValue<B> {
 
 impl<B: Backend> PartialEq for RendererMaterial<B> {
   fn eq(&self, other: &Self) -> bool {
-    if &self.shader_name != &other.shader_name {
+    if self.shader_name != other.shader_name {
       return false;
     }
     for (key, value) in self.properties.iter() {
@@ -97,7 +97,7 @@ impl<B: Backend> PartialEq for RendererMaterial<B> {
         return false;
       }
     }
-    return true;
+    true
   }
 }
 
@@ -289,7 +289,7 @@ impl<P: Platform> RendererAssets<P> {
     let mesh = Arc::new(RendererMesh {
       vertices: vertex_buffer,
       indices: index_buffer,
-      parts: mesh.parts.into_iter().cloned().collect(), // TODO: change base type to boxed slice
+      parts: mesh.parts.iter().cloned().collect(), // TODO: change base type to boxed slice
       bounding_box: mesh.bounding_box
     });
     self.meshes.insert(mesh_path.to_owned(), mesh);

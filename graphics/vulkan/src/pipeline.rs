@@ -359,7 +359,7 @@ impl VkPipeline {
         }
       }
       if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), *push_constants_range);
       }
     }
 
@@ -384,7 +384,7 @@ impl VkPipeline {
         }
       }
       if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), *push_constants_range);
       }
     }
 
@@ -409,7 +409,7 @@ impl VkPipeline {
         }
       }
       if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), *push_constants_range);
       }
     }
 
@@ -434,7 +434,7 @@ impl VkPipeline {
         }
       }
       if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), *push_constants_range);
       }
     }
 
@@ -459,7 +459,7 @@ impl VkPipeline {
         }
       }
       if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+        push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), *push_constants_range);
       }
     }
 
@@ -604,7 +604,7 @@ impl VkPipeline {
       };
       let set_layout = existing_set_layout.unwrap_or_else(|| {
         let mut cache = cache_lock.write().unwrap();
-        cache.insert(hash, Arc::new(VkDescriptorSetLayout::new(&bindings, device)));
+        cache.insert(hash, Arc::new(VkDescriptorSetLayout::new(bindings, device)));
         cache.get(&hash).unwrap().clone()
       });
       descriptor_set_layouts[index] = Some(set_layout);
@@ -628,7 +628,7 @@ impl VkPipeline {
       index.hash(&mut hasher);
       bindings.hash(&mut hasher);
     }
-    for (_, range) in &remapped_push_constant_ranges {
+    for range in remapped_push_constant_ranges.values() {
       range.stage_flags.hash(&mut hasher);
       range.size.hash(&mut hasher);
       range.offset.hash(&mut hasher);
@@ -737,7 +737,7 @@ impl VkPipeline {
       };
       let set_layout = existing_set_layout.unwrap_or_else(|| {
         let mut cache = cache_lock.write().unwrap();
-        cache.insert(hash, Arc::new(VkDescriptorSetLayout::new(&bindings, device)));
+        cache.insert(hash, Arc::new(VkDescriptorSetLayout::new(bindings, device)));
         cache.get(&hash).unwrap().clone()
       });
       descriptor_set_layouts[index] = Some(set_layout);
@@ -747,7 +747,7 @@ impl VkPipeline {
     }
     let mut push_constants_ranges = HashMap::<vk::ShaderStageFlags, vk::PushConstantRange>::new();
     if let Some(push_constants_range) = &shader.push_constants_range {
-      push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), push_constants_range.clone());
+      push_constants_ranges.insert(shader_type_to_vk(shader.get_shader_type()), *push_constants_range);
     }
 
     let mut hasher = DefaultHasher::new();
@@ -755,7 +755,7 @@ impl VkPipeline {
       index.hash(&mut hasher);
       bindings.hash(&mut hasher);
     }
-    for (_, range) in &push_constants_ranges {
+    for range in push_constants_ranges.values() {
       range.stage_flags.hash(&mut hasher);
       range.size.hash(&mut hasher);
       range.offset.hash(&mut hasher);

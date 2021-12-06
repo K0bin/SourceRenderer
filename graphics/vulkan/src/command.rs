@@ -282,14 +282,14 @@ impl VkCommandBuffer {
   pub(crate) fn set_viewports(&mut self, viewports: &[ Viewport ]) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     unsafe {
-      for i in 0..viewports.len() {
+      for (i, viewport) in viewports.iter().enumerate() {
         self.device.cmd_set_viewport(self.buffer, i as u32, &[vk::Viewport {
-          x: viewports[i].position.x,
-          y: viewports[i].position.y,
-          width: viewports[i].extent.x,
-          height: viewports[i].extent.y,
-          min_depth: viewports[i].min_depth,
-          max_depth: viewports[i].max_depth
+          x: viewport.position.x,
+          y: viewport.position.y,
+          width: viewport.extent.x,
+          height: viewport.extent.y,
+          min_depth: viewport.min_depth,
+          max_depth: viewport.max_depth
         }]);
       }
     }
@@ -622,7 +622,7 @@ impl VkCommandBuffer {
     self.trackers.track_texture(dst_texture);
   }
 
-  pub(crate) fn barrier<'a>(
+  pub(crate) fn barrier(
     &mut self,
     barriers: &[Barrier<VkBackend>]
   ) {
@@ -839,7 +839,7 @@ impl VkCommandBuffer {
 
     let renderpass_info = RenderPassInfo {
       attachments: attachment_infos,
-      subpasses: renderpass_begin_info.subpasses.iter().map(|s| s.clone()).collect(),
+      subpasses: renderpass_begin_info.subpasses.to_vec(),
     };
 
     let renderpass = self.shared.get_render_pass(&renderpass_info);
@@ -1129,7 +1129,7 @@ impl VkCommandBufferSubmission {
   }
 
   pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
-    &self.item.as_ref().unwrap().get_handle()
+    self.item.as_ref().unwrap().get_handle()
   }
 
   pub(crate) fn command_buffer_type(&self) -> CommandBufferType {

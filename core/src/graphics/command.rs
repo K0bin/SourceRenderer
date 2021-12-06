@@ -65,7 +65,7 @@ pub trait CommandBuffer<B: Backend> {
   fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode);
   fn advance_subpass(&mut self);
   fn end_render_pass(&mut self);
-  fn barrier<'a>(&mut self, barriers: &[Barrier<B>]);
+  fn barrier(&mut self, barriers: &[Barrier<B>]);
   fn flush_barriers(&mut self);
 
   fn inheritance(&self) -> &Self::CommandBufferInheritance;

@@ -20,7 +20,7 @@ use super::{LateLatching, StaticRenderableComponent, ecs::{DirectionalLightCompo
 
 enum RendererImpl<P: Platform> {
   MultiThreaded(P::ThreadHandle),
-  SingleThreaded(RendererInternal<P>),
+  SingleThreaded(Box<RendererInternal<P>>),
   Uninitialized
 }
 
@@ -102,7 +102,7 @@ impl<P: Platform> Renderer<P> {
     } else {
       let internal = RendererInternal::new(&c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
       let mut thread_handle_guard = renderer.renderer_impl.borrow_mut();
-      *thread_handle_guard = RendererImpl::SingleThreaded(internal);
+      *thread_handle_guard = RendererImpl::SingleThreaded(Box::new(internal));
     }
 
     renderer

@@ -357,7 +357,7 @@ impl<B: Backend> Clone for GraphicsPipelineInfo<B> {
       rasterizer: self.rasterizer.clone(),
       depth_stencil: self.depth_stencil.clone(),
       blend: self.blend.clone(),
-      primitive_type: self.primitive_type.clone()
+      primitive_type: self.primitive_type
     }
   }
 }

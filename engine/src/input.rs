@@ -12,8 +12,10 @@ pub struct Input {
 
 impl Input {
   pub fn new() -> Self {
-    let mut input_state = InputState::default();
-    input_state.lock_mouse = true;
+    let input_state = InputState {
+      lock_mouse: true,
+      ..Default::default()
+    };
     Self {
       state: Mutex::new(input_state)
     }

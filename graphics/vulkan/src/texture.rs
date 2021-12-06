@@ -207,9 +207,7 @@ impl VkTextureView {
         a: vk::ComponentSwizzle::IDENTITY,
       },
       subresource_range: vk::ImageSubresourceRange {
-        aspect_mask: if texture.get_info().format.is_depth() && texture.info.format.is_stencil() {
-          vk::ImageAspectFlags::DEPTH //| vk::ImageAspectFlags::STENCIL
-        } else if texture.get_info().format.is_depth() {
+        aspect_mask: if texture.get_info().format.is_depth() {
           vk::ImageAspectFlags::DEPTH
         } else {
           vk::ImageAspectFlags::COLOR

@@ -101,7 +101,7 @@ fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
     }
 
     if !registered_static_renderables.0.contains(entity) {
-      renderer.register_static_renderable(*entity, transform, &component);
+      renderer.register_static_renderable(*entity, transform, component);
 
       registered_static_renderables.0.insert(*entity);
     }
@@ -132,7 +132,7 @@ fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
     }
 
     if !registered_point_lights.0.contains(entity) {
-      renderer.register_point_light(*entity, transform, &component);
+      renderer.register_point_light(*entity, transform, component);
 
       registered_point_lights.0.insert(*entity);
     }
@@ -163,7 +163,7 @@ fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
     }
 
     if !active_directional_lights.0.contains(entity) {
-      renderer.register_directional_light(*entity, transform, &component);
+      renderer.register_directional_light(*entity, transform, component);
 
       active_directional_lights.0.insert(*entity);
     }

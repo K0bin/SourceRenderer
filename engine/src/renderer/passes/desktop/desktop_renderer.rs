@@ -135,6 +135,6 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       late_latching.after_submit(&self.device);
     }
 
-    return Ok(());
+    Ok(())
   }
 }

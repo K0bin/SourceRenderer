@@ -198,7 +198,7 @@ impl<P: Platform> RendererInternal<P> {
           let (_, rotation, _) = deconstruct_transform(&transform);
           let base_dir = Vec3::new(0f32, -1f32, 0f32);
           let dir = rotation.transform_vector(&base_dir);
-          scene.add_directional_light(entity, DirectionalLight { direction: dir, intensity: intensity});
+          scene.add_directional_light(entity, DirectionalLight { direction: dir, intensity});
         },
         RendererCommand::UnregisterDirectionalLight(entity) => {
           scene.remove_directional_light(&entity);
@@ -265,7 +265,7 @@ impl<P: Platform> RendererInternal<P> {
 
     let mut view_mut = self.view.borrow_mut();
 
-    let mut existing_parts = std::mem::replace(&mut view_mut.drawable_parts, Vec::new());
+    let mut existing_parts = std::mem::take(&mut view_mut.drawable_parts);
     // take out vector, creating a new one doesn't allocate until we push an element to it.
     existing_parts.clear();
     let visible_parts = Mutex::new(existing_parts);

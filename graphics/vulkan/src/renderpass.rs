@@ -112,7 +112,7 @@ impl VkRenderPass {
         *subpass_attachment_bitmask |= 1 << depth_stencil_attachment.index;
       }
     }
-    for (index, attachment) in info.attachments.iter().enumerate() {      
+    for (index, attachment) in info.attachments.iter().enumerate() {
       if attachment.store_op == StoreOp::DontCare || attachment.stencil_store_op == StoreOp::DontCare {
         let mut metadata = attachment_metadata.entry(index as u32).or_default();
         metadata.last_used_in_subpass = vk::SUBPASS_EXTERNAL;
@@ -120,16 +120,16 @@ impl VkRenderPass {
     }
 
     for (subpass_index, subpass) in info.subpasses.iter().enumerate() {
-      let p_input_attachments = unsafe { attachment_references.as_ptr().offset(attachment_references.len() as isize) };
+      let p_input_attachments = unsafe { attachment_references.as_ptr().add(attachment_references.len()) };
       for input_attachment in &subpass.input_attachments {
         attachment_references.push(vk::AttachmentReference {
           attachment: input_attachment.index,
           layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         });
-        debug_assert_eq!(attachment_references.capacity(), attachment_count);        
+        debug_assert_eq!(attachment_references.capacity(), attachment_count);
       }
 
-      let p_color_attachments = unsafe { attachment_references.as_ptr().offset(attachment_references.len() as isize) };
+      let p_color_attachments = unsafe { attachment_references.as_ptr().add(attachment_references.len()) };
       for color_attachment in &subpass.output_color_attachments {
         attachment_references.push(vk::AttachmentReference {
           attachment: color_attachment.index,
@@ -137,7 +137,7 @@ impl VkRenderPass {
         });
         debug_assert_eq!(attachment_references.capacity(), attachment_count);
       }
-      let p_resolve_attachments = unsafe { attachment_references.as_ptr().offset(attachment_references.len() as isize) };
+      let p_resolve_attachments = unsafe { attachment_references.as_ptr().add(attachment_references.len()) };
       for color_attachment in &subpass.output_color_attachments {
         if let Some(resolve_attachment_index) = color_attachment.resolve_attachment_index {
           attachment_references.push(vk::AttachmentReference {
@@ -155,7 +155,7 @@ impl VkRenderPass {
       }
 
       let p_depth_stencil_attachment = if let Some(depth_stencil_attachment) = &subpass.depth_stencil_attachment {
-        let p_depth_stencil_attachment = unsafe { attachment_references.as_ptr().offset(attachment_references.len() as isize) };
+        let p_depth_stencil_attachment = unsafe { attachment_references.as_ptr().add(attachment_references.len()) };
         attachment_references.push(vk::AttachmentReference {
           attachment: depth_stencil_attachment.index,
           layout: if depth_stencil_attachment.read_only {
@@ -170,7 +170,7 @@ impl VkRenderPass {
         std::ptr::null()
       };
 
-      let p_preserve_attachments = unsafe { preserve_attachments.as_ptr().offset(preserve_attachments.len() as isize) };
+      let p_preserve_attachments = unsafe { preserve_attachments.as_ptr().add(preserve_attachments.len()) };
       let preserve_attachments_offset = preserve_attachments.len();
       for (index, _) in info.attachments.iter().enumerate() {
         let subpass_attachment_bitmask = subpass_attachment_bitmasks.get(subpass_index).unwrap();
@@ -184,13 +184,13 @@ impl VkRenderPass {
         flags: vk::SubpassDescriptionFlags::empty(),
         pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
         input_attachment_count: subpass.input_attachments.len() as u32,
-        p_input_attachments: p_input_attachments,
+        p_input_attachments,
         color_attachment_count: subpass.output_color_attachments.len() as u32,
-        p_color_attachments: p_color_attachments,
-        p_resolve_attachments: p_resolve_attachments,
-        p_depth_stencil_attachment: p_depth_stencil_attachment,
+        p_color_attachments,
+        p_resolve_attachments,
+        p_depth_stencil_attachment,
         preserve_attachment_count: (preserve_attachments.len() - preserve_attachments_offset) as u32,
-        p_preserve_attachments: p_preserve_attachments,
+        p_preserve_attachments,
       });
     }
 
@@ -277,13 +277,13 @@ impl VkFrameBuffer {
           render_pass: *render_pass.get_handle(),
           attachment_count: vk_attachments.len() as u32,
           p_attachments: vk_attachments.as_ptr(),
-          width: width,
-          height: height,
+          width,
+          height,
           layers: 1,
           ..Default::default()
       }, None).unwrap() },
-      width: width,
-      height: height,
+      width,
+      height,
       attachments: attachment_refs,
       render_pass: render_pass.clone()
     }
@@ -335,7 +335,7 @@ fn build_dependency(subpass_index: u32, src_subpass: u32, format: Format, stage:
   }
 
   vk::SubpassDependency {
-    src_subpass: src_subpass,
+    src_subpass,
     dst_subpass: subpass_index,
     src_stage_mask: if format.is_depth() || format.is_stencil() {
       vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
@@ -355,7 +355,7 @@ fn build_dependency(subpass_index: u32, src_subpass: u32, format: Format, stage:
 
 fn build_depth_stencil_dependency(subpass_index: u32, src_subpass: u32, memory_barrier: bool) -> vk::SubpassDependency {
   vk::SubpassDependency {
-    src_subpass: src_subpass,
+    src_subpass,
     dst_subpass: subpass_index,
     src_stage_mask: vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
     dst_stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,

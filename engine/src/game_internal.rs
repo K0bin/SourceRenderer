@@ -55,7 +55,7 @@ impl GameInternal {
     trace!("Done loading level");
 
     PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule, tick_duration);
-    crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, &asset_manager);
+    crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, asset_manager);
     fps_camera::install::<P>(&mut world, &mut fixed_schedule);
     transform::interpolation::install(&mut fixed_schedule, &mut schedule);
     transform::install(&mut fixed_schedule);

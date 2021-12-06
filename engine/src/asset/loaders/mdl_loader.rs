@@ -20,6 +20,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     file.path.starts_with("models/") && file.path.ends_with(".mdl")
   }
 
+  #[allow(clippy::never_loop)]
   fn load(&self, mut file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     if file.path.contains("autocombine") {
       print!("Model: {} is auto combined", &file.path);
@@ -224,7 +225,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     }), AssetLoadPriority::Normal);
 
     manager.add_asset_with_progress(&file.path, Asset::Model(AssetModel {
-      mesh_path: vtx_path.clone(),
+      mesh_path: vtx_path,
       material_paths: materials
     }), Some(progress), AssetLoadPriority::Normal);
 
@@ -240,6 +241,7 @@ impl MDLModelLoader {
   }
 }
 
+#[allow(clippy::never_loop)]
 fn load_geometry<R: Read + Seek>(file: &mut R) -> IOResult<Box<[Vertex]>> {
   let vvd_start = file.seek(SeekFrom::Current(0))?;
   let vvd_header = VVDHeader::read(file)?;

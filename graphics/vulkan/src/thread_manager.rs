@@ -69,7 +69,7 @@ impl VkThreadManager {
     VkThreadManager {
       device: device.clone(),
       threads: ThreadLocal::new(),
-      graphics_queue: graphics_queue.clone(),
+      graphics_queue: *graphics_queue,
       compute_queue: compute_queue.cloned(),
       transfer_queue: transfer_queue.cloned(),
       shared: shared.clone(),

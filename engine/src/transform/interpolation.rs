@@ -31,7 +31,7 @@ fn interpolate_transform(
   interpolated_transform: &mut InterpolatedTransform,
   #[resource] tick_duration: &TickDuration,
   #[resource] tick_delta: &TickDelta) {
-  if &interpolated_transform.0 == &transform.0 {
+  if interpolated_transform.0 == transform.0 {
     return;
   }
   let frac = tick_delta.0.as_secs_f32() / tick_duration.0.as_secs_f32();

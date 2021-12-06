@@ -17,7 +17,7 @@ pub struct TimeStampedInputState(InputState, Instant);
 
 enum GameImpl<P: Platform> {
   MultiThreaded(P::ThreadHandle),
-  SingleThreaded(GameInternal),
+  SingleThreaded(Box<GameInternal>),
   Uninitialized
 }
 
@@ -116,7 +116,7 @@ impl<P: Platform> Game<P> {
     } else {
       let internal = GameInternal::new(&c_asset_manager, &c_renderer, tick_rate);
       let mut thread_handle_guard = game.game_impl.borrow_mut();
-      *thread_handle_guard = GameImpl::SingleThreaded(internal);
+      *thread_handle_guard = GameImpl::SingleThreaded(Box::new(internal));
     }
 
     game

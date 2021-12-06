@@ -251,14 +251,12 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }, Some("SSAONoise"));
     let buffer = device.upload_data(&ssao_noise[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     device.init_texture(&texture, &buffer, 0, 0);
-    let srv = device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
+    device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
       array_level_length: 1,
-    });
-
-    srv
+    })
   }
 
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, normals: &Arc<B::TextureShaderResourceView>, depth: &Arc<B::TextureShaderResourceView>, camera: &Arc<B::Buffer>, motion_srv: &Arc<B::TextureShaderResourceView>) {

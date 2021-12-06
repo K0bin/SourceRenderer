@@ -413,11 +413,9 @@ impl<P: Platform> AssetManager<P> {
     let assets = assets_opt.unwrap();
     let level = assets.level;
     progress.finished.fetch_add(1, Ordering::SeqCst);
-    if level.is_none() {
-      return None;
-    }
+    let level = level?;
     while !progress.is_done() {}
-    level
+    Some(level)
   }
 
   pub fn load_file(&self, path: &str) -> Option<AssetFile<P>> {
@@ -447,7 +445,7 @@ impl<P: Platform> AssetManager<P> {
         return true;
       }
     }
-    return false;
+    false
   }
 
   fn find_loader<'a>(file: &mut AssetFile<P>, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a dyn AssetLoader<P>> {
@@ -490,7 +488,6 @@ impl<P: Platform> AssetManager<P> {
         inner.requested_assets.remove(&path);
       }
       warn!("Could not load file: {:?}", path.as_str());
-      return;
       // dunno, error i guess
     }
   }

@@ -525,7 +525,7 @@ impl VkBindingManager {
     let mut is_new = false;
     let set = cached_set.unwrap_or_else(|| {
       let pool = if frequency == BindingFrequency::Rarely { &self.permanent_pool } else { &self.transient_pool };
-      let new_set = Arc::new(VkDescriptorSet::new(pool, &self.device, layout, frequency != BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw, &bindings));
+      let new_set = Arc::new(VkDescriptorSet::new(pool, &self.device, layout, frequency != BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw, bindings));
       is_new = true;
       new_set
     });

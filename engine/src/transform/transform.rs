@@ -47,7 +47,7 @@ impl Transform {
   }
 
   pub fn transform(&self, vector: &Vec3) -> Vec3 {
-    Matrix4::from(self).transform_vector(&vector)
+    Matrix4::from(self).transform_vector(vector)
   }
 }
 

@@ -198,7 +198,7 @@ impl Device<VkBackend> for VkDevice {
     let shared = self.context.get_shared();
     let mut rp_opt = {
       let render_passes = shared.get_render_passes().read().unwrap();
-      render_passes.get(renderpass_info).map(|rp_ref| rp_ref.clone())
+      render_passes.get(renderpass_info).cloned()
     };
     if rp_opt.is_none() {
       let rp = Arc::new(VkRenderPass::new(&self.device, renderpass_info));

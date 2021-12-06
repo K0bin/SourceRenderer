@@ -300,14 +300,14 @@ impl<B: GraphicsBackend> Prepass<B> {
         new_primary_usage: TextureUsage::RENDER_TARGET,
         old_usages: TextureUsage::empty(),
         new_usages: TextureUsage::empty(),
-        texture: &self.motion.texture(),
+        texture: self.motion.texture(),
       },
       Barrier::TextureBarrier {
         old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
         new_primary_usage: TextureUsage::RENDER_TARGET,
         old_usages: TextureUsage::empty(),
         new_usages: TextureUsage::empty(),
-        texture: &self.normals.texture(),
+        texture: self.normals.texture(),
       },
     ]);
 
@@ -380,7 +380,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, camera_history_buffer);
       command_buffer.finish_binding();
 
-      for part in chunk.into_iter() {
+      for part in chunk.iter() {
         let drawable = &static_drawables[part.drawable_index];
         let model = &drawable.model;
 

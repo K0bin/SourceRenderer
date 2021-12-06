@@ -25,12 +25,12 @@ pub(crate) fn halton_sequence(mut index: u32, base: u32) -> f32 {
   let mut r = 0.0f32;
 
   while index > 0 {
-    f = f / (base as f32);
+    f /= base as f32;
     r += f * (index as f32 % (base as f32));
     index = (index as f32 / (base as f32)).floor() as u32;
   }
 
-  return r;
+  r
 }
 
 pub struct TAAPass<B: GraphicsBackend> {

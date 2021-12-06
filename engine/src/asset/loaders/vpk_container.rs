@@ -21,9 +21,9 @@ pub fn new_vpk_container<P: Platform>(asset_manager: &Arc<AssetManager<P>>, asse
 
   Package::read(&path, asset_file, move |path| {
     let mgr = asset_manager.upgrade()
-      .ok_or(IOError::new(ErrorKind::Other, "Manager dropped"))?;
+      .ok_or_else(|| IOError::new(ErrorKind::Other, "Manager dropped"))?;
     mgr.load_file(path)
-      .ok_or(IOError::new(ErrorKind::NotFound, "File not found"))
+      .ok_or_else(|| IOError::new(ErrorKind::NotFound, "File not found"))
   }).map(|package|
     Box::new(VPKContainer::<P> {
       package
