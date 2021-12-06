@@ -5,12 +5,11 @@ use log::{trace, warn};
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::ThreadHandle;
 use sourcerenderer_core::platform::{Platform, io::IO};
-use sourcerenderer_core::{Vec3, Vec4, graphics};
+use sourcerenderer_core::{Vec4, graphics};
 use sourcerenderer_core::graphics::TextureInfo;
 use std::hash::Hash;
 
 use std::sync::Weak;
-use std::time::Duration;
 use legion::World;
 use std::io::{Cursor, Seek, SeekFrom, Read, Result as IOResult};
 

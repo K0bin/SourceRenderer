@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool}};
+use std::sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool};
 use crossbeam_channel::{Sender, unbounded};
 
 use log::trace;

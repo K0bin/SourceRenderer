@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex};
 use crate::renderer::passes::web::WebRenderer;
 use crate::renderer::{Renderer, RendererStaticDrawable};
 use crate::transform::interpolation::deconstruct_transform;

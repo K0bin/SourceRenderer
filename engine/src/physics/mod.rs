@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, default};
+use std::collections::{HashMap, HashSet};
 
 use instant::Duration;
 use rapier3d::prelude::*;

@@ -1,21 +1,17 @@
-use std::{ops::Add, sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
+use std::sync::Arc;
 use std::time::Duration;
 
 use legion::{Resources, Schedule, World};
 
 use log::trace;
 use nalgebra::UnitQuaternion;
-use sourcerenderer_core::{Platform, Vec3, atomic_refcell::AtomicRefCell, platform::ThreadHandle};
+use sourcerenderer_core::{Platform, Vec3};
 
-use crate::{DeltaTime, Tick, TickDelta, TickDuration, TickRate, Transform, asset::loaders::{GltfContainer, GltfLoader}, game::FilterAll, input::Input, renderer::*};
+use crate::{DeltaTime, Tick, TickDelta, TickDuration, TickRate, Transform, asset::loaders::GltfContainer, game::FilterAll, renderer::*};
 use crate::transform;
-use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
+use crate::asset::AssetManager;
 use crate::fps_camera;
-use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader, CSGODirectoryContainer, MDLModelLoader};
-use legion::query::{FilterResult, LayoutFilter};
-use legion::storage::ComponentTypeId;
-use crate::input::InputState;
-use crate::{fps_camera::FPSCamera, renderer::RendererInterface};
+use crate::renderer::RendererInterface;
 use instant::Instant;
 use crate::game::Game;
 use crate::physics::PhysicsWorld;

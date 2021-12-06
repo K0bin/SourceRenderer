@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::hash::Hash;
 use legion::{Entity, IntoQuery, maybe_changed, EntityStore};
 
 use legion::systems::Builder;

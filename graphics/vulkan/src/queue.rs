@@ -13,7 +13,6 @@ use crate::VkBackend;
 use crate::VkCommandBufferRecorder;
 use crate::command::VkInnerCommandBufferInfo;
 use crate::raw::RawVkDevice;
-use crate::command::VkCommandPool;
 use crate::swapchain::{VkSwapchain, VkSwapchainState};
 use crate::sync::VkSemaphore;
 use crate::sync::VkFence;
@@ -22,7 +21,6 @@ use crate::thread_manager::VkThreadManager;
 use crate::{VkShared};
 use crate::VkCommandBufferSubmission;
 use crate::transfer::VkTransferCommandBuffer;
-use crate::buffer::BufferAllocator;
 use smallvec::SmallVec;
 
 #[derive(Clone, Debug, Copy)]

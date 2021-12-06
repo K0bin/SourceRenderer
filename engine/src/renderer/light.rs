@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Quaternion, Vec3, atomic_refcell::AtomicRefCell, graphics::Backend};
+use sourcerenderer_core::{Vec3, atomic_refcell::AtomicRefCell, graphics::Backend};
 
 #[repr(C)]
 #[derive(Debug, Clone)]

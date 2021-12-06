@@ -1,21 +1,16 @@
 use std::{sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}};
 use std::time::Duration;
 
-use legion::{Resources, Schedule, World};
-
 use log::trace;
-use nalgebra::UnitQuaternion;
-use sourcerenderer_core::{Platform, Vec3, atomic_refcell::AtomicRefCell, platform::ThreadHandle};
+use sourcerenderer_core::{Platform, atomic_refcell::AtomicRefCell, platform::ThreadHandle};
 
-use crate::{Transform, asset::loaders::{GltfContainer, GltfLoader}, game_internal::GameInternal, input::Input, renderer::*};
-use crate::transform;
-use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
-use crate::fps_camera;
-use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader, CSGODirectoryContainer, MDLModelLoader};
+use crate::{asset::loaders::GltfLoader, game_internal::GameInternal, input::Input, renderer::*};
+use crate::asset::AssetManager;
+use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader, MDLModelLoader};
 use legion::query::{FilterResult, LayoutFilter};
 use legion::storage::ComponentTypeId;
 use crate::input::InputState;
-use crate::{fps_camera::FPSCamera, renderer::RendererInterface};
+use crate::{fps_camera::FPSCamera};
 use instant::Instant;
 
 pub struct TimeStampedInputState(InputState, Instant);
@@ -76,6 +71,7 @@ impl<P: Platform> Game<P> {
     asset_manager.add_loader(Box::new(VTFTextureLoader::new()));
     asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
     asset_manager.add_loader(Box::new(MDLModelLoader::new()));
+    asset_manager.add_loader(Box::new(GltfLoader::new()));
 
     #[cfg(target_os = "linux")]
         //let csgo_path = "~/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";

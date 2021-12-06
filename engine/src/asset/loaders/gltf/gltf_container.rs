@@ -1,4 +1,4 @@
-use std::{fs::File, io::{Cursor, Error as IOError, ErrorKind, Result as IOResult}, path::Path, usize};
+use std::{io::{Cursor, Error as IOError, ErrorKind, Result as IOResult}, path::Path, usize};
 use gltf::{Glb, Gltf, buffer::Data as GltfBufferData, image::Data as GltfImageData, import};
 use log::trace;
 use sourcerenderer_core::{Platform, platform::io::IO};
