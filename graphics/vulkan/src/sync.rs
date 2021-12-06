@@ -67,6 +67,14 @@ impl Deref for VkSemaphore {
   }
 }
 
+impl PartialEq for VkSemaphore {
+  fn eq(&self, other: &Self) -> bool {
+      self.semaphore == other.semaphore
+  }
+}
+
+impl Eq for VkSemaphore {}
+
 #[repr(u32)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum VkFenceState {

@@ -43,7 +43,8 @@ pub struct VkQueue {
 struct VkQueueInner {
   virtual_queue: Vec<VkVirtualSubmission>,
   queue: vk::Queue,
-  last_fence: Option<Arc<VkFence>>
+  last_fence: Option<Arc<VkFence>>,
+  signalled_semaphores: SmallVec<[Arc<VkSemaphore>; 8]>,
 }
 
 enum VkVirtualSubmission {
@@ -68,7 +69,8 @@ impl VkQueue {
       queue: Mutex::new(VkQueueInner {
         virtual_queue: Vec::new(),
         queue,
-        last_fence: None
+        last_fence: None,
+        signalled_semaphores: SmallVec::new()
       }),
       device: device.clone(),
       shared: shared.clone(),
@@ -333,16 +335,28 @@ impl Queue<VkBackend> for VkQueue {
     let frame_local = self.threads.get_thread_local().get_frame_local();
     let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
     let mut signal_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(signal_semaphores.len());
-    for sem in wait_semaphores {
-      wait_semaphore_refs.push(sem.as_ref());
-      frame_local.track_semaphore(*sem);
-    }
-    for sem in signal_semaphores {
-      signal_semaphore_refs.push(sem.as_ref());
-      frame_local.track_semaphore(*sem);
-    }
-    if let Some(fence) = fence {
-      frame_local.track_fence(fence);
+
+    {
+      let mut inner = self.queue.lock().unwrap();
+      for sem in wait_semaphores {
+        wait_semaphore_refs.push(sem.as_ref());
+        frame_local.track_semaphore(*sem);
+        let signalled_index = inner.signalled_semaphores.iter().enumerate().find(|(_, signalled)| signalled == sem).map(|(index, _)| index);
+        if let Some(signalled_index) = signalled_index {
+          inner.signalled_semaphores.remove(signalled_index);
+        }
+      }
+      for sem in signal_semaphores {
+        signal_semaphore_refs.push(sem.as_ref());
+        frame_local.track_semaphore(*sem);
+        inner.signalled_semaphores.push((*sem).clone());
+      }
+      if let Some(fence) = fence {
+        frame_local.track_fence(fence);
+      }
+      if inner.signalled_semaphores.len() > 16 {
+        println!("Exceeded 32 signalled semaphores. There's probably signalled semaphores that never get used.");
+      }
     }
     // TODO: clean up
 
@@ -353,9 +367,16 @@ impl Queue<VkBackend> for VkQueue {
   fn present(&self, swapchain: &Arc<VkSwapchain>, wait_semaphores: &[&Arc<VkSemaphore>]) {
     let frame_local = self.threads.get_thread_local().get_frame_local();
     let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
-    for sem in wait_semaphores {
-      wait_semaphore_refs.push(sem.as_ref());
-      frame_local.track_semaphore(*sem);
+    {
+      let mut inner = self.queue.lock().unwrap();
+      for sem in wait_semaphores {
+        wait_semaphore_refs.push(sem.as_ref());
+        frame_local.track_semaphore(*sem);
+        let signalled_index = inner.signalled_semaphores.iter().enumerate().find(|(_, signalled)| signalled == sem).map(|(index, _)| index);
+        if let Some(signalled_index) = signalled_index {
+          inner.signalled_semaphores.remove(signalled_index);
+        }
+      }
     }
     self.present(swapchain, swapchain.acquired_image(), &wait_semaphore_refs);
   }
