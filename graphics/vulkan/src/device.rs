@@ -120,13 +120,11 @@ impl VkDevice {
 
 impl Device<VkBackend> for VkDevice {
   fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
-    debug_assert!(get_default_state(memory_usage).is_empty() || info.usage.intersects(get_default_state(memory_usage)));
     self.context.get_shared().get_buffer_allocator().get_slice(info, memory_usage, name)
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> where T: 'static + Send + Sync + Sized + Clone {
     assert_ne!(memory_usage, MemoryUsage::GpuOnly);
-    debug_assert!(get_default_state(memory_usage).is_empty() || usage.intersects(get_default_state(memory_usage)));
     let slice = self.context.get_shared().get_buffer_allocator().get_slice(&BufferInfo {
       size: std::mem::size_of_val(data),
       usage

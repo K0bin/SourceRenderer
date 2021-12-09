@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType}};
+use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -31,7 +31,7 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     let clustering_pipeline = device.create_compute_pipeline(&clustering_shader);
     let buffer = device.create_buffer(&BufferInfo {
         size: std::mem::size_of::<Vec4>() * 2 * 16 * 9 * 24,
-        usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::COMPUTE_SHADER_STORAGE_READ,
+        usage: BufferUsage::STORAGE,
     }, MemoryUsage::GpuOnly, Some("Clusters"));
 
     Self {
@@ -58,24 +58,14 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
       z_far: far_plane
     };
 
-    let screen_to_view_cbuffer = command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::COMPUTE_SHADER_STORAGE_READ);
+    let screen_to_view_cbuffer = command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE);
     command_buffer.barrier(&[
       Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
-        new_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        old_usages: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
-        new_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::STORAGE_READ,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
         buffer: &self.clusters_buffer
-      },
-      Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::COMPUTE_SHADER_CONSTANT,
-        new_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
-        old_usages: BufferUsage::COMPUTE_SHADER_CONSTANT,
-        new_usages: BufferUsage::COMPUTE_SHADER_STORAGE_READ
-          | BufferUsage::COMPUTE_SHADER_CONSTANT
-          | BufferUsage::VERTEX_SHADER_CONSTANT
-          | BufferUsage::FRAGMENT_SHADER_CONSTANT,
-        buffer: camera_buffer
       }
     ]);
 

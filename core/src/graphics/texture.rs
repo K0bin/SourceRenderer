@@ -3,29 +3,33 @@ use std::sync::Arc;
 
 bitflags! {
   pub struct TextureUsage: u32 {
-    const FRAGMENT_SHADER_SAMPLED            = 0b1;
-    const VERTEX_SHADER_SAMPLED              = 0b10;
-    const COMPUTE_SHADER_SAMPLED             = 0b100;
-    const FRAGMENT_SHADER_STORAGE_READ       = 0b1000;
-    const VERTEX_SHADER_STORAGE_READ         = 0b10000;
-    const COMPUTE_SHADER_STORAGE_READ        = 0b100000;
-    const FRAGMENT_SHADER_STORAGE_WRITE      = 0b1000000;
-    const VERTEX_SHADER_STORAGE_WRITE        = 0b10000000;
-    const COMPUTE_SHADER_STORAGE_WRITE       = 0b100000000;
-    const FRAGMENT_SHADER_LOCAL              = 0b1000000000;
-    const RENDER_TARGET                      = 0b10000000000;
-    const DEPTH_READ                         = 0b100000000000;
-    const DEPTH_WRITE                        = 0b1000000000000;
-    const RESOLVE_SRC                        = 0b10000000000000;
-    const RESOLVE_DST                        = 0b100000000000000;
-    const BLIT_SRC                           = 0b1000000000000000;
-    const BLIT_DST                           = 0b10000000000000000;
-    const COPY_SRC                           = 0b100000000000000000;
-    const COPY_DST                           = 0b1000000000000000000;
-    const PRESENT                            = 0b10000000000000000000;
-
-    const UNINITIALIZED                      = 0;
+    const SAMPLED       = 0b1;
+    const RENDER_TARGET = 0b10;
+    const STORAGE       = 0b100;
+    const COPY_SRC      = 0b1000;
+    const COPY_DST      = 0b10000;
+    const RESOLVE_SRC   = 0b100000;
+    const RESOLVE_DST   = 0b1000000;
+    const BLIT_SRC      = 0b10000000;
+    const BLIT_DST      = 0b100000000;
+    const DEPTH_STENCIL = 0b1000000000;
   }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TextureLayout {
+  Undefined,
+  General,
+  Sampled,
+  Present,
+  RenderTarget,
+  DepthStencilRead,
+  DepthStencilReadWrite,
+  Storage,
+  CopySrc,
+  CopyDst,
+  ResolveSrc,
+  ResolveDst
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]

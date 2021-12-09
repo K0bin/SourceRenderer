@@ -7,44 +7,11 @@ bitflags! {
   pub struct BufferUsage: u32 {
     const VERTEX                             = 0b1;
     const INDEX                              = 0b10;
-    const FRAGMENT_SHADER_STORAGE_READ       = 0b100;
-    const VERTEX_SHADER_STORAGE_READ         = 0b1000;
-    const COMPUTE_SHADER_STORAGE_READ        = 0b10000;
-    const FRAGMENT_SHADER_STORAGE_WRITE      = 0b100000;
-    const VERTEX_SHADER_STORAGE_WRITE        = 0b1000000;
-    const COMPUTE_SHADER_STORAGE_WRITE       = 0b10000000;
-    const COPY_SRC                           = 0b100000000;
-    const COPY_DST                           = 0b1000000000;
-    const FRAGMENT_SHADER_CONSTANT           = 0b10000000000;
-    const VERTEX_SHADER_CONSTANT             = 0b100000000000;
-    const COMPUTE_SHADER_CONSTANT            = 0b1000000000000;
-    const INDIRECT                           = 0b10000000000000;
-
-    const STORAGE = Self::VERTEX_SHADER_STORAGE_READ.bits() | Self::VERTEX_SHADER_STORAGE_WRITE.bits()
-     | Self::FRAGMENT_SHADER_STORAGE_READ.bits() | Self::FRAGMENT_SHADER_STORAGE_WRITE.bits()
-     | Self::COMPUTE_SHADER_STORAGE_READ.bits() | Self::COMPUTE_SHADER_STORAGE_WRITE.bits();
-    const STORAGE_READ = Self::VERTEX_SHADER_STORAGE_READ.bits()
-    | Self::FRAGMENT_SHADER_STORAGE_READ.bits()
-    | Self::COMPUTE_SHADER_STORAGE_READ.bits();
-    const CONSTANT = Self::VERTEX_SHADER_CONSTANT.bits() | Self::FRAGMENT_SHADER_CONSTANT.bits() | Self::COMPUTE_SHADER_CONSTANT.bits();
-    const READ = Self::VERTEX_SHADER_STORAGE_READ.bits()
-    | Self::FRAGMENT_SHADER_STORAGE_READ.bits()
-    | Self::COMPUTE_SHADER_STORAGE_READ.bits()
-    | Self::VERTEX_SHADER_CONSTANT.bits()
-    | Self::FRAGMENT_SHADER_CONSTANT.bits()
-    | Self::COMPUTE_SHADER_CONSTANT.bits()
-    | Self::COPY_SRC.bits()
-    | Self::VERTEX.bits()
-    | Self::INDEX.bits()
-    | Self::INDIRECT.bits();
-  }
-}
-
-pub fn get_default_state(memory_usage: MemoryUsage) -> BufferUsage {
-  match memory_usage {
-    MemoryUsage::CpuOnly | MemoryUsage::CpuToGpu => BufferUsage::READ,
-    MemoryUsage::GpuToCpu => BufferUsage::COPY_DST,
-    MemoryUsage::GpuOnly => BufferUsage::empty()
+    const STORAGE                            = 0b100;
+    const CONSTANT                           = 0b1000;
+    const COPY_SRC                           = 0b100000;
+    const COPY_DST                           = 0b1000000;
+    const INDIRECT                           = 0b10000000;
   }
 }
 

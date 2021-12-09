@@ -215,7 +215,7 @@ impl<P: Platform> RendererAssets<P> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::VERTEX_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED | TextureUsage::COPY_DST
+      usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0);
     let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo {

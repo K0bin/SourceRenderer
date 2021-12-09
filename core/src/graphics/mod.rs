@@ -13,7 +13,6 @@ pub use self::buffer::MappedBuffer;
 pub use self::buffer::MutMappedBuffer;
 pub use self::buffer::BufferUsage;
 pub use self::buffer::BufferInfo;
-pub use self::buffer::get_default_state;
 pub use self::command::Queue;
 pub use self::device::MemoryUsage;
 pub use self::format::Format;
@@ -31,10 +30,12 @@ pub use self::command::PipelineBinding;
 pub use self::command::RenderPassBeginInfo;
 pub use self::command::RenderPassAttachment;
 pub use self::command::RenderPassAttachmentView;
+pub use self::command::BarrierSync;
+pub use self::command::BarrierAccess;
 pub use self::texture::{
   TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode, TextureUnorderedAccessView,
   SamplerInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo,
-  TextureDepthStencilView, TextureDepthStencilViewInfo 
+  TextureDepthStencilView, TextureDepthStencilViewInfo, TextureLayout
 };
 pub use self::sync::Fence;
 

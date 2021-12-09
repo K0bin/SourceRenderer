@@ -1,4 +1,4 @@
-use sourcerenderer_core::{graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, CommandBuffer, Device, Filter, Format, PipelineBinding, SamplerInfo, ShaderType, Swapchain, Texture, TextureInfo, TextureShaderResourceView, TextureUnorderedAccessView, TextureUnorderedAccessViewInfo, TextureUsage}};
+use sourcerenderer_core::{graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, CommandBuffer, Device, Filter, Format, PipelineBinding, SamplerInfo, ShaderType, Swapchain, Texture, TextureInfo, TextureShaderResourceView, TextureUnorderedAccessView, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -43,7 +43,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: sourcerenderer_core::graphics::SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::COPY_SRC,
+      usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC,
     }, Some("SharpenOutput"));
     let uav = device.create_unordered_access_view(&texture, &TextureUnorderedAccessViewInfo {
       base_mip_level: 0,
@@ -54,10 +54,12 @@ impl<B: GraphicsBackend> SharpenPass<B> {
 
     init_cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::COPY_SRC,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::CopySrc,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::COPY_READ,
+        old_sync: BarrierSync::empty(),
+        new_sync: BarrierSync::COPY,
         texture: &texture,
       }
     ]);
@@ -73,19 +75,23 @@ impl<B: GraphicsBackend> SharpenPass<B> {
     cmd_buffer.begin_label("Sharpening pass");
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_layout: TextureLayout::Storage,
+        new_layout: TextureLayout::Sampled,
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
         texture: input_image.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COPY_SRC,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
-        texture: self.sharpen_uav.texture()
-      },
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Storage,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::STORAGE_WRITE,
+        old_sync: BarrierSync::COPY,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        texture: self.sharpen_uav.texture(),
+      }
     ]);
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));

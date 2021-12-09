@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage}};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage, BarrierSync, BarrierAccess, TextureLayout}};
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
 
@@ -80,12 +80,14 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
 
     cmd_buf.barrier(&[
         Barrier::TextureBarrier {
-          old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-          new_primary_usage: TextureUsage::COPY_SRC,
-          old_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-          new_usages: TextureUsage::COPY_SRC,
+          old_layout: TextureLayout::Storage,
+          new_layout: TextureLayout::CopySrc,
+          old_sync: BarrierSync::COMPUTE_SHADER,
+          new_sync: BarrierSync::COPY,
+          old_access: BarrierAccess::STORAGE_WRITE,
+          new_access: BarrierAccess::COPY_READ,
           texture: self.sharpen.sharpened_texture(),
-        }
+        },
       ]
     );
 
@@ -99,30 +101,30 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
 
     let back_buffer = back_buffer_res.unwrap();
 
-    cmd_buf.barrier(
-      &[
+    cmd_buf.barrier(&[
         Barrier::TextureBarrier {
-          old_primary_usage: TextureUsage::UNINITIALIZED,
-          new_primary_usage: TextureUsage::COPY_DST,
-          old_usages: TextureUsage::empty(),
-          new_usages: TextureUsage::empty(),
+          old_sync: BarrierSync::empty(),
+          new_sync: BarrierSync::COPY,
+          old_access: BarrierAccess::empty(),
+          new_access: BarrierAccess::COPY_WRITE,
+          old_layout: TextureLayout::Undefined,
+          new_layout: TextureLayout::CopyDst,
           texture: back_buffer.texture(),
         }
-      ]
-    );
+    ]);
     cmd_buf.flush_barriers();
     cmd_buf.blit(self.sharpen.sharpened_texture(), 0, 0, back_buffer.texture(), 0, 0);
-    cmd_buf.barrier(
-      &[
+    cmd_buf.barrier(&[
         Barrier::TextureBarrier {
-          old_primary_usage: TextureUsage::COPY_DST,
-          new_primary_usage: TextureUsage::PRESENT,
-          old_usages: TextureUsage::empty(),
-          new_usages: TextureUsage::empty(),
+          old_sync: BarrierSync::COPY,
+          new_sync: BarrierSync::empty(),
+          old_access: BarrierAccess::COPY_WRITE,
+          new_access: BarrierAccess::empty(),
+          old_layout: TextureLayout::CopyDst,
+          new_layout: TextureLayout::Present,
           texture: back_buffer.texture(),
         }
-      ]
-    );
+    ]);
 
     if let Some(late_latching) = late_latching {
       let input_state = input.poll();

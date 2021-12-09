@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout}, platform::io::IO};
 
 use rand::random;
 
@@ -38,7 +38,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::COMPUTE_SHADER_SAMPLED,
+      usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
     }, Some("SSAO"));
     let blurred_texture = device.create_texture(&TextureInfo {
       format: Format::R16Float,
@@ -48,7 +48,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::COMPUTE_SHADER_STORAGE_READ | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED,
+      usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
     }, Some("SSAOBlurred"));
     let blurred_texture_b = device.create_texture(&TextureInfo {
       format: Format::R16Float,
@@ -58,7 +58,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE | TextureUsage::COMPUTE_SHADER_STORAGE_READ | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED,
+      usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
     }, Some("SSAOBlurred_b"));
 
     let uav_info = TextureUnorderedAccessViewInfo {
@@ -90,24 +90,30 @@ impl<B: GraphicsBackend> SsaoPass<B> {
 
     init_cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::empty(),
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Sampled,
         texture: &ssao_texture,
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::empty(),
+        new_sync: BarrierSync::FRAGMENT_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Sampled,
         texture: &blurred_texture,
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::empty(),
+        new_sync: BarrierSync::FRAGMENT_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Sampled,
         texture: &blurred_texture_b,
       }
     ]);
@@ -219,7 +225,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
 
     let buffer = device.create_buffer(&BufferInfo {
       size: std::mem::size_of_val(&ssao_kernel[..]),
-      usage: BufferUsage::COPY_DST | BufferUsage::COMPUTE_SHADER_CONSTANT,
+      usage: BufferUsage::COPY_DST | BufferUsage::CONSTANT,
     }, MemoryUsage::GpuOnly, Some("SSAOKernel"));
 
     let temp_buffer = device.upload_data(&ssao_kernel[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
@@ -247,7 +253,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COPY_DST | TextureUsage::COMPUTE_SHADER_SAMPLED,
+      usage: TextureUsage::COPY_DST | TextureUsage::SAMPLED,
     }, Some("SSAONoise"));
     let buffer = device.upload_data(&ssao_noise[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     device.init_texture(&texture, &buffer, 0, 0);
@@ -263,31 +269,39 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.begin_label("SSAO pass");
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::STORAGE_WRITE,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Storage,
         texture: &self.ssao_texture,
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::DEPTH_WRITE,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::DEPTH_WRITE,
-        new_usages: TextureUsage::DEPTH_READ | TextureUsage::DEPTH_WRITE | TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+        new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+        old_access: BarrierAccess::DEPTH_STENCIL_WRITE,
+        new_access: BarrierAccess::STORAGE_READ | BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+        old_layout: TextureLayout::DepthStencilReadWrite,
+        new_layout: TextureLayout::Sampled,
         texture: depth.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::RENDER_TARGET,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::RENDER_TARGET,
-        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_sync: BarrierSync::RENDER_TARGET,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::RENDER_TARGET_WRITE,
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::RenderTarget,
+        new_layout: TextureLayout::Sampled,
         texture: normals.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::RENDER_TARGET,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::RENDER_TARGET,
-        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_sync: BarrierSync::RENDER_TARGET,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::RENDER_TARGET_WRITE,
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::RenderTarget,
+        new_layout: TextureLayout::Sampled,
         texture: motion_srv.texture(),
       },
     ]);
@@ -304,25 +318,22 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.dispatch((ssao_info.width + 15) / 16, (ssao_info.height + 15) / 16, ssao_info.depth);
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::Storage,
+        new_layout: TextureLayout::Sampled,
         texture: &self.ssao_texture,
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::FRAGMENT_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::STORAGE_WRITE,
+        old_layout: TextureLayout::Sampled,
+        new_layout: TextureLayout::Storage,
         texture: &self.blurred_texture,
-      },
-      Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
-        texture: &self.blurred_texture_b,
       },
     ]);
     cmd_buffer.flush_barriers();

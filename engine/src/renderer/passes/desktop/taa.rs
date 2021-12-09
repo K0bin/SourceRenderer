@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Vec2, graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, CommandBuffer, Device, Filter, Format, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Swapchain, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage}};
+use sourcerenderer_core::{Vec2, graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, CommandBuffer, Device, Filter, Format, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Swapchain, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -91,7 +91,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+      usage: TextureUsage::SAMPLED | TextureUsage::STORAGE,
     };
     let taa_texture = device.create_texture(&texture_info, Some("TAAOutput"));
     let taa_texture_b = device.create_texture(&texture_info, Some("TAAOutput_b"));
@@ -116,17 +116,21 @@ impl<B: GraphicsBackend> TAAPass<B> {
 
     init_cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::empty(),
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Sampled,
         texture: &taa_texture,
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::empty(),
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Sampled,
         texture: &taa_texture_b,
       }
     ]);
@@ -155,17 +159,21 @@ impl<B: GraphicsBackend> TAAPass<B> {
     cmd_buf.begin_label("TAA pass");
     cmd_buf.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::RENDER_TARGET,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::RENDER_TARGET,
-        new_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
+        old_sync: BarrierSync::RENDER_TARGET,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::RENDER_TARGET_WRITE,
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::RenderTarget,
+        new_layout: TextureLayout::Sampled,
         texture: output_srv.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        old_usages: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        new_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::STORAGE_WRITE,
+        old_layout: TextureLayout::Sampled,
+        new_layout: TextureLayout::Storage,
         texture: self.taa_srv.texture(),
       }
     ]);

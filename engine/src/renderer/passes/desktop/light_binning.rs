@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType}};
+use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -33,7 +33,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>) -> Self {
     let buffer = device.create_buffer(&BufferInfo {
       size: std::mem::size_of::<u32>() * 16 * 9 * 24,
-      usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE | BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_CONSTANT
+      usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
     }, MemoryUsage::GpuOnly, Some("LightBitmaskBuffer"));
 
     let shader = {
@@ -41,7 +41,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("light_binning.comp.spv"))
-    };  
+    };
     let pipeline = device.create_compute_pipeline(&shader);
 
     Self {
@@ -62,30 +62,29 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
       radius: (l.intensity / LIGHT_CUTOFF).sqrt()
     }).collect();
 
-    let light_info_buffer = cmd_buffer.upload_dynamic_data(&[setup_info], BufferUsage::COMPUTE_SHADER_STORAGE_READ);
-    let point_lights_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::COMPUTE_SHADER_STORAGE_READ);
+    let light_info_buffer = cmd_buffer.upload_dynamic_data(&[setup_info], BufferUsage::STORAGE);
+    let point_lights_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE);
 
     cmd_buffer.barrier(&[
       Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: BufferUsage::COMPUTE_SHADER_CONSTANT,
-        old_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_usages: BufferUsage::COMPUTE_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT
-          | BufferUsage::COMPUTE_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ | BufferUsage::FRAGMENT_SHADER_STORAGE_READ,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER,
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::CONSTANT_READ | BarrierAccess::STORAGE_READ,
         buffer: camera_buffer,
       },
       Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
-        old_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_usages: BufferUsage::COMPUTE_SHADER_STORAGE_READ,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::STORAGE_READ,
         buffer: clusters_buffer,
       },
       Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ,
-        new_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        old_usages: BufferUsage::FRAGMENT_SHADER_STORAGE_READ,
-        new_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
+        old_sync: BarrierSync::FRAGMENT_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE,
         buffer: &self.light_bitmask_buffer,
       }
     ]);

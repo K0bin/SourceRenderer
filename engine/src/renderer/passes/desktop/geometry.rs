@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport}};
+use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess}};
 use std::sync::Arc;
 use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -43,7 +43,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COMPUTE_SHADER_SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC,
+      usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC,
     }, Some("GeometryPassOutput"));
     let rtv = device.create_render_target_view(&output, &TextureRenderTargetViewInfo {
       base_mip_level: 0,
@@ -75,149 +75,151 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
 
 
-  let vertex_shader = {
-    let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("textured.vert.spv"))).unwrap();
-    let mut bytes: Vec<u8> = Vec::new();
-    file.read_to_end(&mut bytes).unwrap();
-    device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
-  };
+    let vertex_shader = {
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("textured.vert.spv"))).unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.create_shader(ShaderType::VertexShader, &bytes, Some("textured.vert.spv"))
+    };
 
-  let fragment_shader = {
-    let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("textured.frag.spv"))).unwrap();
-    let mut bytes: Vec<u8> = Vec::new();
-    file.read_to_end(&mut bytes).unwrap();
-    device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
-  };
+    let fragment_shader = {
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("textured.frag.spv"))).unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.create_shader(ShaderType::FragmentShader, &bytes, Some("textured.frag.spv"))
+    };
 
-  let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
-    vs: vertex_shader,
-    fs: Some(fragment_shader),
-    gs: None,
-    tcs: None,
-    tes: None,
-    primitive_type: PrimitiveType::Triangles,
-    vertex_layout: VertexLayoutInfo {
-      input_assembler: vec![
-        InputAssemblerElement {
-          binding: 0,
-          stride: 44,
-          input_rate: InputRate::PerVertex
-        }
-      ],
-      shader_inputs: vec![
-        ShaderInputElement {
-          input_assembler_binding: 0,
-          location_vk_mtl: 0,
-          semantic_name_d3d: String::from(""),
-          semantic_index_d3d: 0,
-          offset: 0,
-          format: Format::RGB32Float
-        },
-        ShaderInputElement {
-          input_assembler_binding: 0,
-          location_vk_mtl: 1,
-          semantic_name_d3d: String::from(""),
-          semantic_index_d3d: 0,
-          offset: 12,
-          format: Format::RGB32Float
-        },
-        ShaderInputElement {
-          input_assembler_binding: 0,
-          location_vk_mtl: 2,
-          semantic_name_d3d: String::from(""),
-          semantic_index_d3d: 0,
-          offset: 24,
-          format: Format::RG32Float
-        },
-        ShaderInputElement {
-          input_assembler_binding: 0,
-          location_vk_mtl: 3,
-          semantic_name_d3d: String::from(""),
-          semantic_index_d3d: 0,
-          offset: 32,
-          format: Format::RG32Float
-        },
-        ShaderInputElement {
-          input_assembler_binding: 0,
-          location_vk_mtl: 4,
-          semantic_name_d3d: String::from(""),
-          semantic_index_d3d: 0,
-          offset: 40,
-          format: Format::R32Float
-        }
-      ]
-    },
-    rasterizer: RasterizerInfo {
-      fill_mode: FillMode::Fill,
-      cull_mode: CullMode::Back,
-      front_face: FrontFace::CounterClockwise,
-      sample_count: SampleCount::Samples1
-    },
-    depth_stencil: DepthStencilInfo {
-      depth_test_enabled: true,
-      depth_write_enabled: false,
-      depth_func: CompareFunc::LessEqual,
-      stencil_enable: false,
-      stencil_read_mask: 0u8,
-      stencil_write_mask: 0u8,
-      stencil_front: StencilInfo::default(),
-      stencil_back: StencilInfo::default()
-    },
-    blend: BlendInfo {
-      alpha_to_coverage_enabled: false,
-      logic_op_enabled: false,
-      logic_op: LogicOp::And,
-      constants: [0f32, 0f32, 0f32, 0f32],
-      attachments: vec![
-        AttachmentBlendInfo::default()
-      ]
-    }
-  };
-  let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
-    attachments: vec![
-      AttachmentInfo {
-        format: output.get_info().format,
-        samples: output.get_info().samples,
-        load_op: LoadOp::DontCare,
-        store_op: StoreOp::DontCare,
-        stencil_load_op: LoadOp::DontCare,
-        stencil_store_op: StoreOp::DontCare,
-      },
-      AttachmentInfo {
-        format: Format::D24S8,
-        samples: SampleCount::Samples1,
-        load_op: LoadOp::DontCare,
-        store_op: StoreOp::DontCare,
-        stencil_load_op: LoadOp::DontCare,
-        stencil_store_op: StoreOp::DontCare,
-      }
-    ],
-    subpasses: vec![
-      SubpassInfo {
-        input_attachments: vec![],
-        output_color_attachments: vec![
-          OutputAttachmentRef {
-            index: 0,
-            resolve_attachment_index: None
+    let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
+      vs: vertex_shader,
+      fs: Some(fragment_shader),
+      gs: None,
+      tcs: None,
+      tes: None,
+      primitive_type: PrimitiveType::Triangles,
+      vertex_layout: VertexLayoutInfo {
+        input_assembler: vec![
+          InputAssemblerElement {
+            binding: 0,
+            stride: 44,
+            input_rate: InputRate::PerVertex
           }
         ],
-        depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-          index: 1,
-          read_only: true,
-        }),
+        shader_inputs: vec![
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 0,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 0,
+            format: Format::RGB32Float
+          },
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 1,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 12,
+            format: Format::RGB32Float
+          },
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 2,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 24,
+            format: Format::RG32Float
+          },
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 3,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 32,
+            format: Format::RG32Float
+          },
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 4,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 40,
+            format: Format::R32Float
+          }
+        ]
+      },
+      rasterizer: RasterizerInfo {
+        fill_mode: FillMode::Fill,
+        cull_mode: CullMode::Back,
+        front_face: FrontFace::CounterClockwise,
+        sample_count: SampleCount::Samples1
+      },
+      depth_stencil: DepthStencilInfo {
+        depth_test_enabled: true,
+        depth_write_enabled: false,
+        depth_func: CompareFunc::LessEqual,
+        stencil_enable: false,
+        stencil_read_mask: 0u8,
+        stencil_write_mask: 0u8,
+        stencil_front: StencilInfo::default(),
+        stencil_back: StencilInfo::default()
+      },
+      blend: BlendInfo {
+        alpha_to_coverage_enabled: false,
+        logic_op_enabled: false,
+        logic_op: LogicOp::And,
+        constants: [0f32, 0f32, 0f32, 0f32],
+        attachments: vec![
+          AttachmentBlendInfo::default()
+        ]
       }
-    ]
-  }, 0);
+    };
+    let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
+      attachments: vec![
+        AttachmentInfo {
+          format: output.get_info().format,
+          samples: output.get_info().samples,
+          load_op: LoadOp::DontCare,
+          store_op: StoreOp::DontCare,
+          stencil_load_op: LoadOp::DontCare,
+          stencil_store_op: StoreOp::DontCare,
+        },
+        AttachmentInfo {
+          format: Format::D24S8,
+          samples: SampleCount::Samples1,
+          load_op: LoadOp::DontCare,
+          store_op: StoreOp::DontCare,
+          stencil_load_op: LoadOp::DontCare,
+          stencil_store_op: StoreOp::DontCare,
+        }
+      ],
+      subpasses: vec![
+        SubpassInfo {
+          input_attachments: vec![],
+          output_color_attachments: vec![
+            OutputAttachmentRef {
+              index: 0,
+              resolve_attachment_index: None
+            }
+          ],
+          depth_stencil_attachment: Some(DepthStencilAttachmentRef {
+            index: 1,
+            read_only: true,
+          }),
+        }
+      ]
+    }, 0);
 
-  init_cmd_buffer.barrier(&[
-    Barrier::TextureBarrier {
-      old_primary_usage: TextureUsage::UNINITIALIZED,
-      new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-      old_usages: TextureUsage::empty(),
-      new_usages: TextureUsage::empty(),
-      texture: rtv.texture(),
-    }
-  ]);
+    init_cmd_buffer.barrier(&[
+      Barrier::TextureBarrier {
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::Sampled,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_sync: BarrierSync::empty(),
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        texture: rtv.texture(),
+      }
+    ]);
 
     Self {
       srv,
@@ -247,32 +249,38 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::RENDER_TARGET,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::RENDER_TARGET,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::RenderTarget,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
         texture: self.rtv.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::DEPTH_READ,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
-        texture: prepass_depth.texture()
-      },
-      Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: BufferUsage::FRAGMENT_SHADER_STORAGE_READ,
-        old_usages: BufferUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_usages: BufferUsage::FRAGMENT_SHADER_STORAGE_READ,
-        buffer: light_bitmask_buffer,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+        old_layout: TextureLayout::Sampled,
+        new_layout: TextureLayout::DepthStencilRead,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::DEPTH_STENCIL_READ,
+        texture: prepass_depth.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
-        old_usages: TextureUsage::COMPUTE_SHADER_STORAGE_WRITE,
-        new_usages: TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::COMPUTE_SHADER_SAMPLED,
-        texture: ssao.texture()
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
+        old_layout: TextureLayout::Storage,
+        new_layout: TextureLayout::Sampled,
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        texture: ssao.texture(),
+      },
+      Barrier::BufferBarrier {
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::FRAGMENT_SHADER,
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::STORAGE_READ,
+        buffer: light_bitmask_buffer,
       },
     ]);
 
@@ -338,9 +346,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         intensity: directional_light.intensity
       });
     }
-    let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT);
-    let point_light_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
-    let directional_light_buffer = cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::FRAGMENT_SHADER_STORAGE_READ | BufferUsage::VERTEX_SHADER_STORAGE_READ);
+    let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
+    let point_light_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE);
+    let directional_light_buffer = cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE);
 
     let inheritance = cmd_buffer.inheritance();
     const CHUNK_SIZE: usize = 128;
@@ -437,7 +445,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           },
           None => {}
         }
-        let material_info_buffer = command_buffer.upload_dynamic_data(&[material_info], BufferUsage::FRAGMENT_SHADER_CONSTANT);
+        let material_info_buffer = command_buffer.upload_dynamic_data(&[material_info], BufferUsage::CONSTANT);
         command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 4, &material_info_buffer);
 
         let lightmap_ref = &lightmap.view;

@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout}, platform::io::IO};
 
 use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, renderer_scene::RendererScene}};
 
@@ -22,7 +22,7 @@ impl<B: Backend> GeometryPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::DEPTH_READ | TextureUsage::DEPTH_WRITE,
+      usage: TextureUsage::DEPTH_STENCIL,
     }, None);
 
     let dsv = device.create_depth_stencil_view(&ds, &TextureDepthStencilViewInfo {
@@ -187,10 +187,12 @@ impl<B: Backend> GeometryPass<B> {
     });
 
     init_cmd_buffer.barrier(&[Barrier::TextureBarrier {
-      old_primary_usage: TextureUsage::UNINITIALIZED,
-      new_primary_usage: TextureUsage::DEPTH_WRITE,
-      old_usages: TextureUsage::empty(),
-      new_usages: TextureUsage::empty(),
+      old_sync: BarrierSync::empty(),
+      new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+      old_access: BarrierAccess::empty(),
+      new_access: BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+      old_layout: TextureLayout::Undefined,
+      new_layout: TextureLayout::DepthStencilReadWrite,
       texture: &ds,
     }]);
 
@@ -215,10 +217,12 @@ impl<B: Backend> GeometryPass<B> {
     let backbuffer = self.swapchain.prepare_back_buffer(&semaphore).unwrap();
 
     cmd_buffer.barrier(&[Barrier::TextureBarrier {
-      old_primary_usage: TextureUsage::UNINITIALIZED,
-      new_primary_usage: TextureUsage::RENDER_TARGET,
-      old_usages: TextureUsage::empty(),
-      new_usages: TextureUsage::empty(),
+      old_sync: BarrierSync::empty(),
+      new_sync: BarrierSync::RENDER_TARGET,
+      old_access: BarrierAccess::empty(),
+      new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
+      old_layout: TextureLayout::Undefined,
+      new_layout: TextureLayout::RenderTarget,
       texture: backbuffer.texture(),
     }]);
 
@@ -298,10 +302,12 @@ impl<B: Backend> GeometryPass<B> {
     cmd_buffer.end_render_pass();
 
     cmd_buffer.barrier(&[Barrier::TextureBarrier {
-      old_primary_usage: TextureUsage::RENDER_TARGET,
-      new_primary_usage: TextureUsage::PRESENT,
-      old_usages: TextureUsage::RENDER_TARGET,
-      new_usages: TextureUsage::PRESENT,
+      old_sync: BarrierSync::RENDER_TARGET,
+      new_sync: BarrierSync::empty(),
+      old_access: BarrierAccess::RENDER_TARGET_WRITE,
+      new_access: BarrierAccess::empty(),
+      old_layout: TextureLayout::RenderTarget,
+      new_layout: TextureLayout::Present,
       texture: backbuffer.texture(),
     }]);
 

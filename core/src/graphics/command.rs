@@ -11,6 +11,7 @@ use super::RenderpassRecordingMode;
 use super::ShaderType;
 use super::StoreOp;
 use super::SubpassInfo;
+use super::texture::TextureLayout;
 
 #[derive(Clone)]
 pub struct Viewport {
@@ -96,20 +97,64 @@ pub struct RenderPassBeginInfo<'a, B: Backend> {
   pub subpasses: &'a [SubpassInfo]
 }
 
+bitflags! {
+  pub struct BarrierSync: u32 {
+    const VERTEX_INPUT    = 0b1;
+    const VERTEX_SHADER   = 0b10;
+    const FRAGMENT_SHADER = 0b100;
+    const COMPUTE_SHADER  = 0b1000;
+    const EARLY_DEPTH     = 0b10000;
+    const LATE_DEPTH      = 0b100000;
+    const RENDER_TARGET   = 0b1000000;
+    const COPY            = 0b10000000;
+    const RESOLVE         = 0b100000000;
+    const INDIRECT        = 0b1000000000;
+    const INDEX_INPUT     = 0b10000000000;
+  }
+}
+
+bitflags! {
+  pub struct BarrierAccess: u32 {
+    const INDEX_READ           = 0b1;
+    const INDIRECT_READ        = 0b10;
+    const VERTEX_INPUT_READ    = 0b100;
+    const CONSTANT_READ        = 0b1000;
+    const STORAGE_READ         = 0b10000;
+    const STORAGE_WRITE        = 0b100000;
+    const SHADER_RESOURCE_READ = 0b1000000;
+    const COPY_READ            = 0b10000000;
+    const COPY_WRITE           = 0b100000000;
+    const RESOLVE_READ         = 0b1000000000;
+    const RESOLVE_WRITE        = 0b10000000000;
+    const DEPTH_STENCIL_READ   = 0b100000000000;
+    const DEPTH_STENCIL_WRITE  = 0b1000000000000;
+    const RENDER_TARGET_READ   = 0b10000000000000;
+    const RENDER_TARGET_WRITE  = 0b100000000000000;
+  }
+}
+
 pub enum Barrier<'a, B: Backend> {
   TextureBarrier {
-    old_primary_usage: TextureUsage,
-    new_primary_usage: TextureUsage,
-    old_usages: TextureUsage,
-    new_usages: TextureUsage,
+    old_sync: BarrierSync,
+    new_sync: BarrierSync,
+    old_layout: TextureLayout,
+    new_layout: TextureLayout,
+    old_access: BarrierAccess,
+    new_access: BarrierAccess,
     texture: &'a Arc<B::Texture>
   },
   BufferBarrier {
-    old_primary_usage: BufferUsage,
-    new_primary_usage: BufferUsage,
-    old_usages: BufferUsage,
-    new_usages: BufferUsage,
+    old_sync: BarrierSync,
+    new_sync: BarrierSync,
+    old_access: BarrierAccess,
+    new_access: BarrierAccess,
     buffer: &'a Arc<B::Buffer>
+  },
+  GlobalBarrier {
+    old_sync: BarrierSync,
+    new_sync: BarrierSync,
+    old_access: BarrierAccess,
+    new_access: BarrierAccess,
   }
 }
 

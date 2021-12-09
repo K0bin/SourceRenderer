@@ -49,7 +49,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
             mip_levels: 1,
             array_length: 1,
             samples: SampleCount::Samples1,
-            usage: TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::VERTEX_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::BLIT_DST
+            usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST
           },
           data: Box::new([mipmap.frames[0].faces[0].slices[0].data.clone()]),
         }
@@ -66,7 +66,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
             mip_levels: 1,
             array_length: 1,
             samples: SampleCount::Samples1,
-            usage: TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::VERTEX_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED | TextureUsage::BLIT_DST
+            usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST
           },
           data: Box::new([mipmap.frames[0].faces[0].slices[0].data.clone()]),
         }

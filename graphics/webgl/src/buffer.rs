@@ -97,7 +97,7 @@ pub(crate) fn buffer_usage_to_target(usage: BufferUsage) -> u32 {
     WebGl2RenderingContext::PIXEL_UNPACK_BUFFER
   } else if usage.contains(BufferUsage::COPY_DST) {
     WebGl2RenderingContext::PIXEL_PACK_BUFFER
-  } else if usage.intersects(BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::FRAGMENT_SHADER_CONSTANT) {
+  } else if usage.intersects(BufferUsage::CONSTANT) {
     WebGl2RenderingContext::UNIFORM_BUFFER
   } else {
     panic!("Can not determine buffer target {:?}", usage)

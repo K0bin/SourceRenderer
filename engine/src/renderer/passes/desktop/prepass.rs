@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Barrier, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo};
+use sourcerenderer_core::graphics::{Barrier, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureLayout, BarrierAccess, BarrierSync};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::{RendererScene, drawable::View, passes::desktop::taa::scaled_halton_point};
@@ -47,7 +47,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::DEPTH_READ | TextureUsage::DEPTH_WRITE | TextureUsage::COMPUTE_SHADER_SAMPLED,
+      usage: TextureUsage::DEPTH_STENCIL | TextureUsage::SAMPLED,
     }, Some("PrepassDepth"));
     let dsv = device.create_depth_stencil_view(&depth_buffer, &TextureDepthStencilViewInfo {
       base_mip_level: 0,
@@ -70,7 +70,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::RENDER_TARGET | TextureUsage::COMPUTE_SHADER_SAMPLED,
+      usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
     }, Some("Motion"));
     let motion_view = device.create_render_target_view(&motion, &TextureRenderTargetViewInfo {
       base_mip_level: 0,
@@ -93,7 +93,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::RENDER_TARGET | TextureUsage::COMPUTE_SHADER_SAMPLED | TextureUsage::FRAGMENT_SHADER_SAMPLED,
+      usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
     }, Some("Normals"));
     let normals_view = device.create_render_target_view(&normals, &TextureRenderTargetViewInfo {
       base_mip_level: 0,
@@ -231,30 +231,6 @@ impl<B: GraphicsBackend> Prepass<B> {
       ],
     }, 0);
 
-    init_cmd_buffer.barrier(&[
-      Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
-        texture: motion_view.texture(),
-      },
-      Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::FRAGMENT_SHADER_SAMPLED,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
-        texture: normals_view.texture(),
-      },
-      Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::UNINITIALIZED,
-        new_primary_usage: TextureUsage::DEPTH_READ,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
-        texture: depth_srv.texture(),
-      },
-    ]);
-
     Self {
       depth_buffer: dsv,
       motion: motion_view,
@@ -282,31 +258,30 @@ impl<B: GraphicsBackend> Prepass<B> {
 
     cmd_buffer.barrier(&[
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::DEPTH_READ,
-        new_primary_usage: TextureUsage::DEPTH_WRITE,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+        new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::DepthStencilReadWrite,
         texture: self.depth_buffer.texture()
       },
-      Barrier::BufferBarrier {
-        old_primary_usage: BufferUsage::COMPUTE_SHADER_CONSTANT,
-        new_primary_usage: BufferUsage::VERTEX_SHADER_CONSTANT,
-        old_usages: BufferUsage::empty(),
-        new_usages: BufferUsage::empty(),
-        buffer: camera_buffer,
-      },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::RENDER_TARGET,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::RENDER_TARGET,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::empty(),
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::RenderTarget,
         texture: self.motion.texture(),
       },
       Barrier::TextureBarrier {
-        old_primary_usage: TextureUsage::COMPUTE_SHADER_SAMPLED,
-        new_primary_usage: TextureUsage::RENDER_TARGET,
-        old_usages: TextureUsage::empty(),
-        new_usages: TextureUsage::empty(),
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::RENDER_TARGET,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
+        old_layout: TextureLayout::Undefined,
+        new_layout: TextureLayout::RenderTarget,
         texture: self.normals.texture(),
       },
     ]);
@@ -355,7 +330,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       swapchain_transform,
       halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32)
     };
-    let transform_constant_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT);
+    let transform_constant_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
 
     let inheritance = cmd_buffer.inheritance();
     const CHUNK_SIZE: usize = 128;

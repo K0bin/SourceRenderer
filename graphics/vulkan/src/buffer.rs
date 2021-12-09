@@ -181,20 +181,11 @@ impl Buffer for VkBufferSlice {
 pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   let mut flags = vk::BufferUsageFlags::empty();
 
-  let storage_usages = BufferUsage::VERTEX_SHADER_STORAGE_READ
-  | BufferUsage::VERTEX_SHADER_STORAGE_WRITE
-  | BufferUsage::COMPUTE_SHADER_STORAGE_READ
-  | BufferUsage::COMPUTE_SHADER_STORAGE_WRITE
-  | BufferUsage::FRAGMENT_SHADER_STORAGE_READ
-  | BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE;
-  if usage.intersects(storage_usages) {
+  if usage.contains(BufferUsage::STORAGE) {
     flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
   }
 
-  let constant_usages = BufferUsage::VERTEX_SHADER_CONSTANT
-  | BufferUsage::FRAGMENT_SHADER_CONSTANT
-  | BufferUsage::COMPUTE_SHADER_CONSTANT;
-  if usage.intersects(constant_usages) {
+  if usage.contains(BufferUsage::CONSTANT) {
     flags |= vk::BufferUsageFlags::UNIFORM_BUFFER;
   }
 
@@ -367,16 +358,11 @@ impl BufferAllocator {
 
     let mut info = info.clone();
     let mut alignment: usize = 4;
-    if info.usage.intersects(BufferUsage::FRAGMENT_SHADER_CONSTANT | BufferUsage::VERTEX_SHADER_CONSTANT | BufferUsage::COMPUTE_SHADER_CONSTANT) {
+    if info.usage.contains(BufferUsage::CONSTANT) {
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_uniform_buffer_offset_alignment as usize);
     }
-    if info.usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_READ)
-      || info.usage.contains(BufferUsage::VERTEX_SHADER_STORAGE_WRITE)
-      || info.usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_READ)
-      || info.usage.contains(BufferUsage::FRAGMENT_SHADER_STORAGE_WRITE)
-      || info.usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_READ)
-      || info.usage.contains(BufferUsage::COMPUTE_SHADER_STORAGE_WRITE) {
+    if info.usage.contains(BufferUsage::STORAGE){
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_storage_buffer_offset_alignment as usize);
     }
