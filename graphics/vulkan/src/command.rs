@@ -1177,6 +1177,18 @@ fn barrier_access_to_access(access: BarrierAccess) -> vk::AccessFlags {
   if access.contains(BarrierAccess::RENDER_TARGET_WRITE) {
     vk_access |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
   }
+  if access.contains(BarrierAccess::SHADER_READ) {
+    vk_access |= vk::AccessFlags::SHADER_READ;
+  }
+  if access.contains(BarrierAccess::SHADER_WRITE) {
+    vk_access |= vk::AccessFlags::SHADER_WRITE;
+  }
+  if access.contains(BarrierAccess::MEMORY_READ) {
+    vk_access |= vk::AccessFlags::MEMORY_READ;
+  }
+  if access.contains(BarrierAccess::MEMORY_WRITE) {
+    vk_access |= vk::AccessFlags::MEMORY_WRITE;
+  }
   vk_access
 }
 
