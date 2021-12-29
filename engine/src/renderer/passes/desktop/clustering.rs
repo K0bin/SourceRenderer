@@ -61,9 +61,9 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     let screen_to_view_cbuffer = command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE);
     command_buffer.barrier(&[
       Barrier::BufferBarrier {
-        old_access: BarrierAccess::STORAGE_WRITE,
-        new_access: BarrierAccess::STORAGE_READ,
-        old_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::STORAGE_WRITE,
+        old_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER,
         new_sync: BarrierSync::COMPUTE_SHADER,
         buffer: &self.clusters_buffer
       }
@@ -75,6 +75,15 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer);
     command_buffer.finish_binding();
     command_buffer.dispatch(cluster_count.x, cluster_count.y, cluster_count.z);
+    command_buffer.barrier(&[
+      Barrier::BufferBarrier {
+        old_access: BarrierAccess::STORAGE_WRITE,
+        new_access: BarrierAccess::STORAGE_READ | BarrierAccess::CONSTANT_READ,
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER,
+        buffer: &self.clusters_buffer
+      }
+    ]);
 
     command_buffer.end_label();
   }

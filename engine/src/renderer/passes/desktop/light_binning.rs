@@ -74,13 +74,6 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
         buffer: camera_buffer,
       },
       Barrier::BufferBarrier {
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::COMPUTE_SHADER,
-        old_access: BarrierAccess::STORAGE_WRITE,
-        new_access: BarrierAccess::STORAGE_READ,
-        buffer: clusters_buffer,
-      },
-      Barrier::BufferBarrier {
         old_sync: BarrierSync::FRAGMENT_SHADER,
         new_sync: BarrierSync::COMPUTE_SHADER,
         old_access: BarrierAccess::empty(),
