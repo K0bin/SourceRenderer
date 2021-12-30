@@ -18,7 +18,7 @@ pub struct VkInstance {
 
 impl VkInstance {
   pub fn new(instance_extensions: &[&str], debug_layers: bool) -> Self {
-    let entry: ash::Entry = unsafe { ash::Entry::new().unwrap() };
+    let entry: ash::Entry = unsafe { ash::Entry::load().unwrap() };
 
     let extensions = entry.enumerate_instance_extension_properties().unwrap();
     let layers = entry.enumerate_instance_layer_properties().unwrap();
@@ -105,8 +105,10 @@ impl VkInstance {
         let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
         let debug_messenger = debug_utils_loader.create_debug_utils_messenger(&vk::DebugUtilsMessengerCreateInfoEXT {
           flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-          message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::all(),
-          message_type: vk::DebugUtilsMessageTypeFlagsEXT::all(),
+          message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+            | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+          message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+            | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
           pfn_user_callback: Some(VkInstance::debug_callback),
           p_user_data: std::ptr::null_mut(),
           ..Default::default()
