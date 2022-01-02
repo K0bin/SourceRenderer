@@ -12,6 +12,8 @@ layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D history;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2, rgba8) uniform writeonly image2D outputTexture;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform sampler2D motion;
 
+// TODO: improve https://www.elopezr.com/temporal-aa-and-the-quest-for-the-holy-trail/
+
 const int HISTORY_FRAMES = 8;
 
 vec3 clamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColor) {
