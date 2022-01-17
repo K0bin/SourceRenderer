@@ -12,7 +12,7 @@ pub struct OcclusionPass<B: Backend> {
   occluder_vb: Arc<B::Buffer>,
   occluder_ib: Arc<B::Buffer>,
   pipeline: Arc<B::GraphicsPipeline>,
-  occlusion_query_map: HashMap<u32, u32>
+  occlusion_query_maps: [HashMap<u32, u32>; 5]
 }
 
 impl<B: Backend> OcclusionPass<B> {
@@ -32,6 +32,14 @@ impl<B: Backend> OcclusionPass<B> {
       let mut map = buffer.map_mut::<[u32; QUERY_COUNT]>().unwrap();
       *map = [!0u32; 16384];
     }
+
+    let occlusion_query_maps: [HashMap<u32, u32>; 5] = [
+      HashMap::new(),
+      HashMap::new(),
+      HashMap::new(),
+      HashMap::new(),
+      HashMap::new(),
+    ];
 
     let occluder_vb = device.create_buffer(&BufferInfo {
       size: std::mem::size_of::<Vec4>() * 8,
@@ -144,12 +152,14 @@ impl<B: Backend> OcclusionPass<B> {
       ],
     }, 0);
 
+    assert_eq!(query_buffers.len(), occlusion_query_maps.len());
+
     Self {
       query_buffers,
       occluder_vb,
       occluder_ib,
       pipeline,
-      occlusion_query_map: HashMap::new()
+      occlusion_query_maps
     }
   }
 
@@ -162,7 +172,10 @@ impl<B: Backend> OcclusionPass<B> {
     scene: &RendererScene<B>,
     view: &View
   ) {
-    self.occlusion_query_map.clear();
+    let query_buffer_index = (frame % self.query_buffers.len() as u64) as usize;
+    let occlusion_query_map = &mut self.occlusion_query_maps[query_buffer_index];
+
+    occlusion_query_map.clear();
 
     command_buffer.begin_label("Occlusion query tests");
     let query_range = command_buffer.create_query_range(QUERY_COUNT as u32);
@@ -212,7 +225,7 @@ impl<B: Backend> OcclusionPass<B> {
 
       let drawable_query_index = query_count;
       query_count += 1;
-      self.occlusion_query_map.insert(index as u32, drawable_query_index);
+      occlusion_query_map.insert(index as u32, drawable_query_index);
 
       let bb = bb.unwrap();
       let mut bb_scale = bb.max - bb.min;
@@ -232,8 +245,10 @@ impl<B: Backend> OcclusionPass<B> {
 
     command_buffer.end_render_pass();
 
+    std::mem::drop(occlusion_query_map);
+
     if query_count != 0 {
-      let query_buffer = &self.query_buffers[(frame % self.query_buffers.len() as u64) as usize];
+      let query_buffer = &self.query_buffers[query_buffer_index];
       command_buffer.barrier(&[Barrier::BufferBarrier {
         old_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH | BarrierSync::RENDER_TARGET,
         new_sync: BarrierSync::COPY,
@@ -250,13 +265,14 @@ impl<B: Backend> OcclusionPass<B> {
 
   pub fn write_occlusion_query_results(&self, frame: u64, bitset: &mut Vec<u32>) {
     bitset.fill(!0u32);
-    // TODO are the queries guaranteed to be done here?
     let frame_diff = self.query_buffers.len() as u64 - 1;
     if frame < frame_diff {
       return;
     }
-    let mapped_buffer = self.query_buffers[((frame - frame_diff) % self.query_buffers.len() as u64) as usize].map::<[u32; QUERY_COUNT]>().unwrap();
-    for (drawable_index, query_index) in &self.occlusion_query_map {
+    let query_buffer_index = ((frame - frame_diff) % self.query_buffers.len() as u64) as usize;
+    let occlusion_query_map = &self.occlusion_query_maps[query_buffer_index];
+    let mapped_buffer = self.query_buffers[query_buffer_index].map::<[u32; QUERY_COUNT]>().unwrap();
+    for (drawable_index, query_index) in occlusion_query_map {
       let samples = mapped_buffer[*query_index as usize];
       bitset.bit_cond(*drawable_index as usize, samples > 0);
     }
