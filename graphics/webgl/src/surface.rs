@@ -79,7 +79,7 @@ impl WebGLSwapchain {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::RENDER_TARGET | TextureUsage::PRESENT,
+      usage: TextureUsage::RENDER_TARGET,
     }, sender));
 
     let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureRenderTargetViewInfo {

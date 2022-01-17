@@ -25,4 +25,5 @@ impl Backend for WebGLBackend {
   type Sampler = WebGLSampler;
   type TextureDepthStencilView = WebGLDepthStencilView;
   type Queue = WebGLQueue;
+  type QueryRange = ();
 }

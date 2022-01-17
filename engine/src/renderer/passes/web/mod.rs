@@ -29,6 +29,10 @@ impl<B: Backend> WebRenderer<B> {
 }
 
 impl<B: Backend> RenderPath<B> for WebRenderer<B> {
+  fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {
+    // nop for now
+  }
+
   fn on_swapchain_changed(&mut self, _swapchain: &std::sync::Arc<B::Swapchain>) {
   }
 
@@ -39,7 +43,8 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     _zero_texture_view: &Arc<B::TextureShaderResourceView>,
     _lightmap: &std::sync::Arc<crate::renderer::renderer_assets::RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
-    input: &Input
+    input: &Input,
+    _frame: u64
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
 
     let queue = self.device.graphics_queue();

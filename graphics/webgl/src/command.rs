@@ -373,8 +373,24 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
 
   type CommandBufferInheritance = ();
 
-  fn execute_inner(&mut self, submission: Vec<WebGLCommandSubmission>) {
+  fn execute_inner(&mut self, _submission: Vec<WebGLCommandSubmission>) {
     panic!("WebGL does not support inner command buffers")
+  }
+
+  fn create_query_range(&mut self, _count: u32) -> Arc<()> {
+    todo!()
+  }
+
+  fn begin_query(&mut self, _query_range: &Arc<()>, _query_index: u32) {
+    todo!()
+  }
+
+  fn end_query(&mut self, _query_range: &Arc<()>, _query_index: u32) {
+    todo!()
+  }
+
+  fn copy_query_results_to_buffer(&mut self, _query_range: &Arc<()>, _buffer: &Arc<WebGLBuffer>, _start_index: u32, _count: u32) {
+    todo!()
   }
 }
 
