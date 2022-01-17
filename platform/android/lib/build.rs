@@ -15,7 +15,7 @@ fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
       to_buf.push(to);
       to_buf.push(entry.file_name());
       if !to_buf.exists() {
-        std::fs::create_dir(&to_buf).expect(format!("Failed to create target directory {:?}.", to_buf).as_str());
+        std::fs::create_dir(&to_buf).unwrap_or_else(|_| panic!("{}", format!("Failed to create target directory {:?}.", to_buf)));
       }
       copy_directory_rec(&from_buf, &to_buf, file_filter);
       continue;
@@ -28,7 +28,7 @@ fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
     dst_path.push(to);
     dst_path.push(entry.file_name());
     println!("cargo:rerun-if-changed={}", entry.path().to_str().unwrap());
-    std::fs::copy(&entry.path(), &dst_path).expect(format!("Failed to copy file over: {:?} to {:?}", entry.path(), &dst_path).as_str());
+    std::fs::copy(&entry.path(), &dst_path).unwrap_or_else(|_| panic!("{}", format!("Failed to copy file over: {:?} to {:?}", entry.path(), &dst_path)));
   }
 }
 
@@ -124,7 +124,7 @@ fn main() {
   libcpp_src.push(&target);
   libcpp_src.push("libc++_shared.so");
 
-  let mut lib_path = manifest_dir.clone();
+  let mut lib_path = manifest_dir;
   lib_path.pop();
   lib_path.push("app");
   lib_path.push("app");
@@ -146,7 +146,7 @@ fn main() {
   let profile = env::var("PROFILE").unwrap_or_else(|_| "release".to_string());
   if profile == "debug" {
     // Copy validation layers
-    let mut validation_layer_src = ndk_path.clone();
+    let mut validation_layer_src = ndk_path;
     validation_layer_src.push("sources");
     validation_layer_src.push("third_party");
     validation_layer_src.push("vulkan");
