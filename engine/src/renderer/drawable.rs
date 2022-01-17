@@ -19,6 +19,8 @@ pub struct RendererStaticDrawable<B: Backend> {
 
 #[derive(Clone)]
 pub struct View {
+  pub camera_position: Vec3,
+  pub camera_rotation: Quaternion,
   pub view_matrix: Matrix4,
   pub proj_matrix: Matrix4,
   pub old_camera_matrix: Matrix4,
@@ -35,6 +37,8 @@ pub struct View {
 impl Default for View {
   fn default() -> Self {
     Self {
+      camera_position: Vec3::default(),
+      camera_rotation: Quaternion::default(),
       camera_transform: Matrix4::identity(),
       old_camera_matrix: Matrix4::identity(),
       view_matrix: Matrix4::identity(),

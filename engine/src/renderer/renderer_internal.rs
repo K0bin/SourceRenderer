@@ -8,7 +8,7 @@ use log::trace;
 use crate::renderer::command::RendererCommand;
 use std::time::Duration;
 use crate::asset::AssetManager;
-use sourcerenderer_core::{Platform, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Platform, Vec2UI, Vec3, Vec4, Matrix4};
 use sourcerenderer_core::graphics::{SwapchainError, Backend,Swapchain, Device};
 use crate::renderer::View;
 use sourcerenderer_core::platform::Event;
@@ -153,6 +153,8 @@ impl<P: Platform> RendererInternal<P> {
           view.camera_fov = fov;
           view.old_camera_matrix = view.proj_matrix * view.view_matrix;
           let (position, rotation, _) = deconstruct_transform(&camera_transform_mat);
+          view.camera_position = position;
+          view.camera_rotation = rotation;
           view.view_matrix = make_camera_view(position, rotation);
           view.proj_matrix = make_camera_proj(view.camera_fov, view.aspect_ratio, view.near_plane, view.far_plane)
         }
@@ -286,6 +288,8 @@ impl<P: Platform> RendererInternal<P> {
 
     let frustum = Frustum::new(view_mut.near_plane, view_mut.far_plane, view_mut.camera_fov, view_mut.aspect_ratio);
     let camera_matrix = view_mut.view_matrix;
+    let camera_forward = view_mut.camera_rotation.transform_vector(&Vec3::new(0.0f32, 0.0f32, -1.0f32));
+    let camera_position = view_mut.camera_position + (camera_forward * 0.15f32); // move camera a bit forward
     const CHUNK_SIZE: usize = 64;
     static_meshes.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
       let mut chunk_visible_parts = SmallVec::<[DrawablePart; CHUNK_SIZE]>::new();
@@ -302,13 +306,14 @@ impl<P: Platform> RendererInternal<P> {
           true
         };
         if !is_visible {
-          //continue;
-          // TODO: frustum culling is broken. :(
+          continue;
         }
 
         visible_drawables.bit_set(index);
         let drawable_index = chunk_index * CHUNK_SIZE + index;
-        if old_visible.len() * 32 > drawable_index && !old_visible.bit_test(drawable_index) {
+        let transformed_bb = bounding_box.as_ref().map(|bb| bb.transform(&(static_mesh.transform * Matrix4::new_scaling(1.2f32))));
+        let camera_in_bb = transformed_bb.map(|bb| bb.contains(&camera_position)).unwrap_or(false);
+        if old_visible.len() * 32 > drawable_index && !old_visible.bit_test(drawable_index) && !camera_in_bb {
           // Mesh was not visible in the previous frame.
           continue;
         }
