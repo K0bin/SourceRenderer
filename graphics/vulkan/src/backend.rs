@@ -28,4 +28,5 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type Fence = VkFence;
   type Semaphore = VkSemaphore;
   type Queue = VkQueue;
+  type QueryRange = VkQueryRange;
 }

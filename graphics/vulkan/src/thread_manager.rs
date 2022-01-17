@@ -8,7 +8,7 @@ use thread_local::ThreadLocal;
 
 use sourcerenderer_core::graphics::Resettable;
 
-use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice};
+use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice, query::VkQueryAllocator};
 use crate::VkCommandPool;
 use crate::{VkSemaphore, VkFence};
 use crate::buffer::BufferAllocator;
@@ -44,7 +44,8 @@ pub struct VkFrameLocal {
   device: Arc<RawVkDevice>,
   buffer_allocator: Arc<BufferAllocator>,
   inner: RefCell<VkFrameLocalInner>,
-  disable_sync: PhantomData<*const u32>
+  disable_sync: PhantomData<*const u32>,
+  query_allocator: Arc<VkQueryAllocator>
 }
 unsafe impl Send for VkFrameLocal {}
 
@@ -165,7 +166,8 @@ impl VkThreadLocal {
 impl VkFrameLocal {
   pub fn new(device: &Arc<RawVkDevice>, shared: &Arc<VkShared>, graphics_queue: &VkQueueInfo, _compute_queue: Option<&VkQueueInfo>, _transfer_queue: Option<&VkQueueInfo>) -> Self {
     let buffer_allocator = Arc::new(BufferAllocator::new(device, false));
-    let command_pool = VkCommandPool::new(device, graphics_queue.queue_family_index as u32, shared, &buffer_allocator);
+    let query_allocator = Arc::new(VkQueryAllocator::new(device));
+    let command_pool = VkCommandPool::new(device, graphics_queue.queue_family_index as u32, shared, &buffer_allocator, &query_allocator);
     Self {
       device: device.clone(),
       buffer_allocator,
@@ -174,6 +176,7 @@ impl VkFrameLocal {
         life_time_trackers: VkLifetimeTrackers::new(),
         frame: 0
       }),
+      query_allocator: query_allocator,
       disable_sync: PhantomData
     }
   }
@@ -208,6 +211,7 @@ impl VkFrameLocal {
 
   pub fn reset(&self) {
     self.buffer_allocator.reset();
+    self.query_allocator.reset();
     let mut inner = self.inner.borrow_mut();
     inner.life_time_trackers.reset();
     inner.command_pool.reset();

@@ -69,6 +69,11 @@ pub trait CommandBuffer<B: Backend> {
   fn barrier(&mut self, barriers: &[Barrier<B>]);
   fn flush_barriers(&mut self);
 
+  fn create_query_range(&mut self, count: u32) -> Arc<B::QueryRange>;
+  fn begin_query(&mut self, query_range: &Arc<B::QueryRange>, query_index: u32);
+  fn end_query(&mut self, query_range: &Arc<B::QueryRange>, query_index: u32);
+  fn copy_query_results_to_buffer(&mut self, query_range: &Arc<B::QueryRange>, buffer: &Arc<B::Buffer>, start_index: u32, count: u32);
+
   fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
   fn execute_inner(&mut self, submission: Vec<B::CommandBufferSubmission>);
@@ -110,6 +115,7 @@ bitflags! {
     const RESOLVE         = 0b100000000;
     const INDIRECT        = 0b1000000000;
     const INDEX_INPUT     = 0b10000000000;
+    const HOST            = 0b100000000000;
   }
 }
 
@@ -134,6 +140,8 @@ bitflags! {
     const SHADER_WRITE         = 0b10000000000000000;
     const MEMORY_READ          = 0b100000000000000000;
     const MEMORY_WRITE         = 0b1000000000000000000;
+    const HOST_READ            = 0b10000000000000000000;
+    const HOST_WRITE           = 0b100000000000000000000;
   }
 }
 

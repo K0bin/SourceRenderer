@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc};
 
 use ash::vk;
@@ -28,7 +28,9 @@ pub struct VkDevice {
   transfer_queue: Option<Arc<VkQueue>>,
   extensions: VkAdapterExtensionSupport,
   context: Arc<VkThreadManager>,
-  transfer: VkTransfer
+  transfer: VkTransfer,
+  shared: Arc<VkShared>,
+  query_count: AtomicU64
 }
 
 impl VkDevice {
@@ -93,7 +95,9 @@ impl VkDevice {
       transfer_queue,
       extensions,
       context,
-      transfer
+      transfer,
+      shared,
+      query_count: AtomicU64::new(0)
     }
   }
 

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{cmp::min, sync::Arc};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -17,6 +18,7 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
+use crate::query::{VkQueryAllocator, VkQueryRange};
 use crate::{raw::RawVkDevice, texture::VkSampler};
 use crate::VkRenderPass;
 use crate::VkFrameBuffer;
@@ -39,11 +41,12 @@ pub struct VkCommandPool {
   sender: Sender<Box<VkCommandBuffer>>,
   shared: Arc<VkShared>,
   queue_family_index: u32,
-  buffer_allocator: Arc<BufferAllocator>
+  buffer_allocator: Arc<BufferAllocator>,
+  query_allocator: Arc<VkQueryAllocator>,
 }
 
 impl VkCommandPool {
-  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
+  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>, query_allocator: &Arc<VkQueryAllocator>) -> Self {
     let create_info = vk::CommandPoolCreateInfo {
       queue_family_index,
       flags: vk::CommandPoolCreateFlags::empty(),
@@ -60,18 +63,19 @@ impl VkCommandPool {
       sender,
       shared: shared.clone(),
       queue_family_index,
-      buffer_allocator: buffer_allocator.clone()
+      buffer_allocator: buffer_allocator.clone(),
+      query_allocator: query_allocator.clone()
     }
   }
 
   pub fn get_command_buffer(&mut self, frame: u64) -> VkCommandBufferRecorder {
-    let mut buffer = self.primary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::PRIMARY, self.queue_family_index, &self.shared, &self.buffer_allocator)));
+    let mut buffer = self.primary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::PRIMARY, self.queue_family_index, &self.shared, &self.buffer_allocator, &self.query_allocator)));
     buffer.begin(frame, None);
     VkCommandBufferRecorder::new(buffer, self.sender.clone())
   }
 
   pub fn get_inner_command_buffer(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) -> VkCommandBufferRecorder {
-    let mut buffer = self.secondary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::SECONDARY, self.queue_family_index, &self.shared, &self.buffer_allocator)));
+    let mut buffer = self.secondary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::SECONDARY, self.queue_family_index, &self.shared, &self.buffer_allocator, &self.query_allocator)));
     buffer.begin(frame, inner_info);
     VkCommandBufferRecorder::new(buffer, self.sender.clone())
   }
@@ -127,12 +131,15 @@ pub struct VkCommandBuffer {
   pending_buffer_barriers: Vec<vk::BufferMemoryBarrier>,
   pending_src_stage_flags: vk::PipelineStageFlags,
   pending_dst_stage_flags: vk::PipelineStageFlags,
+  pending_src_access_flags: vk::AccessFlags,
+  pending_dst_access_flags: vk::AccessFlags,
   frame: u64,
-  inheritance: Option<VkInnerCommandBufferInfo>
+  inheritance: Option<VkInnerCommandBufferInfo>,
+  query_allocator: Arc<VkQueryAllocator>
 }
 
 impl VkCommandBuffer {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>, query_allocator: &Arc<VkQueryAllocator>) -> Self {
     let buffers_create_info = vk::CommandBufferAllocateInfo {
       command_pool: ***pool,
       level: if command_buffer_type == CommandBufferType::PRIMARY { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
@@ -158,8 +165,11 @@ impl VkCommandBuffer {
       pending_image_barriers: Vec::with_capacity(4),
       pending_src_stage_flags: vk::PipelineStageFlags::empty(),
       pending_dst_stage_flags: vk::PipelineStageFlags::empty(),
+      pending_src_access_flags: vk::AccessFlags::empty(),
+      pending_dst_access_flags: vk::AccessFlags::empty(),
       frame: 0,
-      inheritance: None
+      inheritance: None,
+      query_allocator: query_allocator.clone(),
     }
   }
 
@@ -209,13 +219,12 @@ impl VkCommandBuffer {
 
   pub(crate) fn end(&mut self) {
     assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.flush_barriers();
-    self.state = VkCommandBufferState::Finished;
-
     if self.render_pass.is_some() {
       self.end_render_pass();
     }
 
+    self.flush_barriers();
+    self.state = VkCommandBufferState::Finished;
     unsafe {
       self.device.end_command_buffer(self.buffer).unwrap();
     }
@@ -678,7 +687,14 @@ impl VkCommandBuffer {
           self.pending_dst_stage_flags |= if dst_stages.is_empty() { vk::PipelineStageFlags::TOP_OF_PIPE } else { dst_stages };
           self.pending_src_stage_flags |= if src_stages.is_empty() { vk::PipelineStageFlags::BOTTOM_OF_PIPE } else { src_stages };
         },
-        Barrier::GlobalBarrier { old_sync, new_sync, old_access, new_access } => todo!(),
+        Barrier::GlobalBarrier { old_sync, new_sync, old_access, new_access } => {
+          let dst_stages = barrier_sync_to_stage(*new_sync);
+          let src_stages = barrier_sync_to_stage(*old_sync);
+          self.pending_dst_stage_flags |= if dst_stages.is_empty() { vk::PipelineStageFlags::TOP_OF_PIPE } else { dst_stages };
+          self.pending_src_stage_flags |= if src_stages.is_empty() { vk::PipelineStageFlags::BOTTOM_OF_PIPE } else { src_stages };
+          self.pending_src_access_flags |= barrier_access_to_access(*old_access);
+          self.pending_dst_access_flags |= barrier_access_to_access(*new_access);
+        },
       }
     }
   }
@@ -718,13 +734,23 @@ impl VkCommandBuffer {
       self.pending_src_stage_flags = vk::PipelineStageFlags::TOP_OF_PIPE;
     }
 
+    let memory_barrier = [vk::MemoryBarrier {
+      src_access_mask: self.pending_src_access_flags,
+      dst_access_mask: self.pending_dst_access_flags,
+      ..Default::default()
+    }; 1];
+
     unsafe {
       self.device.cmd_pipeline_barrier(
         self.buffer,
         self.pending_src_stage_flags,
         self.pending_dst_stage_flags,
         vk::DependencyFlags::empty(),
-        &[],
+        if self.pending_src_access_flags.is_empty() && self.pending_dst_access_flags.is_empty() {
+          &[]
+        } else {
+          &memory_barrier
+        },
         &self.pending_buffer_barriers[..],
         &self.pending_image_barriers[..]);
     }
@@ -732,6 +758,8 @@ impl VkCommandBuffer {
     self.pending_dst_stage_flags = vk::PipelineStageFlags::empty();
     self.pending_image_barriers.clear();
     self.pending_buffer_barriers.clear();
+    self.pending_src_access_flags = vk::AccessFlags::empty();
+    self.pending_dst_access_flags = vk::AccessFlags::empty();
   }
 
   pub(crate) fn begin_render_pass(&mut self, renderpass_begin_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
@@ -840,6 +868,38 @@ impl VkCommandBuffer {
   ) {
     unsafe {
       self.device.cmd_set_event(self.buffer, event, stage_mask);
+    }
+  }
+
+  pub fn create_query_range(&mut self, count: u32) -> Arc<VkQueryRange> {
+    let query_range = Arc::new(self.query_allocator.get(vk::QueryType::OCCLUSION, count));
+    if !query_range.pool.is_reset() {
+      unsafe {
+        self.device.cmd_reset_query_pool(self.buffer, *query_range.pool.handle(), 0, query_range.pool.query_count());
+      }
+      query_range.pool.mark_reset();
+    }
+    query_range
+  }
+
+  pub fn begin_query(&mut self, query_range: &Arc<VkQueryRange>, index: u32) {
+    unsafe {
+      self.device.cmd_begin_query(self.buffer, *query_range.pool.handle(), query_range.index + index, vk::QueryControlFlags::empty());
+    }
+  }
+
+  pub fn end_query(&mut self, query_range: &Arc<VkQueryRange>, index: u32) {
+    unsafe {
+      self.device.cmd_end_query(self.buffer, *query_range.pool.handle(), query_range.index + index);
+    }
+  }
+
+  pub fn copy_query_results_to_buffer(&mut self, query_range: &Arc<VkQueryRange>, buffer: &Arc<VkBufferSlice>, start_index: u32, count: u32) {
+    let vk_start = query_range.index + start_index;
+    let vk_count = query_range.count.min(count);
+    unsafe {
+      self.device.cmd_copy_query_pool_results(self.buffer, *query_range.pool.handle(), vk_start, vk_count,
+        *buffer.get_buffer().get_handle(), buffer.get_offset_and_length().0 as u64, std::mem::size_of::<u32>() as u64, vk::QueryResultFlags::WAIT)
     }
   }
 }
@@ -1027,26 +1087,50 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     self.item.as_mut().unwrap().flush_barriers();
   }
 
+  #[inline(always)]
   fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
     self.item.as_mut().unwrap().begin_render_pass(renderpass_info, recording_mode);
   }
 
+  #[inline(always)]
   fn advance_subpass(&mut self) {
     self.item.as_mut().unwrap().advance_subpass();
   }
 
+  #[inline(always)]
   fn end_render_pass(&mut self) {
     self.item.as_mut().unwrap().end_render_pass();
   }
 
   type CommandBufferInheritance = VkInnerCommandBufferInfo;
 
+  #[inline(always)]
   fn inheritance(&self) -> &VkInnerCommandBufferInfo {
     self.item.as_ref().unwrap().inheritance()
   }
 
+  #[inline(always)]
   fn execute_inner(&mut self, submission: Vec<VkCommandBufferSubmission>) {
     self.item.as_mut().unwrap().execute_inner(submission);
+  }
+
+  #[inline(always)]
+  fn begin_query(&mut self, query_range: &Arc<VkQueryRange>, query_index: u32) {
+    self.item.as_mut().unwrap().begin_query(query_range, query_index);
+  }
+
+  #[inline(always)]
+  fn end_query(&mut self, query_range: &Arc<VkQueryRange>, query_index: u32) {
+    self.item.as_mut().unwrap().end_query(query_range, query_index);
+  }
+
+  #[inline(always)]
+  fn create_query_range(&mut self, count: u32) -> Arc<VkQueryRange> {
+    self.item.as_mut().unwrap().create_query_range(count)
+  }
+
+  fn copy_query_results_to_buffer(&mut self, query_range: &Arc<VkQueryRange>, buffer: &Arc<VkBufferSlice>, start_index: u32, count: u32) {
+    self.item.as_mut().unwrap().copy_query_results_to_buffer(query_range, buffer, start_index, count);
   }
 }
 
@@ -1128,6 +1212,9 @@ fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags {
   if sync.contains(BarrierSync::VERTEX_SHADER) {
     stages |= vk::PipelineStageFlags::VERTEX_SHADER;
   }
+  if sync.contains(BarrierSync::HOST) {
+    stages |= vk::PipelineStageFlags::HOST;
+  }
   stages
 }
 
@@ -1188,6 +1275,12 @@ fn barrier_access_to_access(access: BarrierAccess) -> vk::AccessFlags {
   }
   if access.contains(BarrierAccess::MEMORY_WRITE) {
     vk_access |= vk::AccessFlags::MEMORY_WRITE;
+  }
+  if access.contains(BarrierAccess::HOST_READ) {
+    vk_access |= vk::AccessFlags::HOST_READ;
+  }
+  if access.contains(BarrierAccess::HOST_WRITE) {
+    vk_access |= vk::AccessFlags::HOST_WRITE;
   }
   vk_access
 }

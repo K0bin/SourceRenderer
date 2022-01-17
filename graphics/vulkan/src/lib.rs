@@ -36,6 +36,7 @@ pub(crate) use self::shared::VkShared;
 pub(crate) use self::lifetime_tracker::VkLifetimeTrackers;
 pub(crate) use self::thread_manager::VkThreadManager;
 pub(crate) use self::sync::VkFenceInner;
+pub(crate) use self::query::*;
 
 mod raw;
 mod backend;
@@ -57,3 +58,4 @@ mod descriptor;
 mod transfer;
 mod shared;
 mod lifetime_tracker;
+mod query;
