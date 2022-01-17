@@ -15,6 +15,8 @@ use smallvec::SmallVec;
 // TODO: clean up descriptor management
 // TODO: determine descriptor and set counts
 
+// TODO: this shit is really slow. rewrite all of it.
+
 bitflags! {
     pub struct DirtyDescriptorSets: u32 {
         const PER_DRAW = 0b0001;
