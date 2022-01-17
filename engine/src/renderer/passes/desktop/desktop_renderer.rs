@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage, BarrierSync, BarrierAccess, TextureLayout}};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferInfo, BufferUsage, MemoryUsage, Buffer}};
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
 
-use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass};
+use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass};
 
 pub struct DesktopRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
@@ -16,7 +16,7 @@ pub struct DesktopRenderer<B: Backend> {
   taa: TAAPass<B>,
   sharpen: SharpenPass<B>,
   ssao: SsaoPass<B>,
-  frame: u64
+  occlusion: OcclusionPass<B>
 }
 
 impl<B: Backend> DesktopRenderer<B> {
@@ -30,6 +30,8 @@ impl<B: Backend> DesktopRenderer<B> {
     let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let ssao = SsaoPass::<B>::new::<P>(device, Vec2UI::new(swapchain.width(), swapchain.height()), &mut init_cmd_buffer);
+    let occlusion = OcclusionPass::<B>::new::<P>(device);
+    device.flush_transfers();
 
     device.graphics_queue().submit(init_cmd_buffer.finish(), None, &[], &[]);
 
@@ -43,12 +45,16 @@ impl<B: Backend> DesktopRenderer<B> {
       taa,
       sharpen,
       ssao,
-      frame: 0
+      occlusion
     }
   }
 }
 
 impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
+  fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>) {
+    self.occlusion.write_occlusion_query_results(frame, bitset);
+  }
+
   fn on_swapchain_changed(&mut self, _swapchain: &std::sync::Arc<B::Swapchain>) {
     todo!()
   }
@@ -59,7 +65,8 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     zero_texture_view: &Arc<B::TextureShaderResourceView>,
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
-    input: &Input) -> Result<(), SwapchainError> {
+    input: &Input,
+    frame: u64) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 
@@ -67,16 +74,18 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     let scene_ref = scene.borrow();
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32,&late_latching_buffer);
+    self.occlusion.execute(&mut cmd_buf, frame, self.prepass.depth_dsv_history(), &late_latching_buffer, &scene_ref, &view_ref);
+    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32, &late_latching_buffer);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), &late_latching_buffer);
-    self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), self.frame, &late_latching_buffer, &late_latching_history_buffer);
+    self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer);
     self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), &late_latching_buffer, self.prepass.motion_srv());
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), self.frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), );
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), );
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
     self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
 
     self.taa.swap_history_resources();
     self.ssao.swap_history_resources();
+    self.prepass.swap_history_resources();
 
     cmd_buf.barrier(&[
         Barrier::TextureBarrier {
@@ -93,7 +102,6 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
 
     let prepare_sem = self.device.create_semaphore();
     let cmd_buf_sem = self.device.create_semaphore();
-    self.frame += 1;
     let back_buffer_res = self.swapchain.prepare_back_buffer(&prepare_sem);
     if back_buffer_res.is_none() {
       return Err(SwapchainError::Other);

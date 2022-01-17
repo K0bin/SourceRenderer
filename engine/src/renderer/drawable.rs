@@ -27,6 +27,8 @@ pub struct View {
   pub near_plane: f32,
   pub far_plane: f32,
   pub aspect_ratio: f32,
+  pub old_visible_drawables_bitset: Vec<u32>,
+  pub visible_drawables_bitset: Vec<u32>,
   pub drawable_parts: Vec<DrawablePart>
 }
 
@@ -41,7 +43,9 @@ impl Default for View {
       near_plane: 0.1f32,
       far_plane: 100f32,
       aspect_ratio: 16.0f32 / 9.0f32,
-      drawable_parts: Vec::new()
+      drawable_parts: Vec::new(),
+      old_visible_drawables_bitset: Vec::new(),
+      visible_drawables_bitset: Vec::new()
     }
   }
 }

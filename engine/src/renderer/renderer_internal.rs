@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use crate::renderer::passes::web::WebRenderer;
 use crate::renderer::{Renderer, RendererStaticDrawable};
 use crate::transform::interpolation::deconstruct_transform;
+use bitset_core::BitSet;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use log::trace;
 use crate::renderer::command::RendererCommand;
@@ -38,6 +39,7 @@ pub(super) struct RendererInternal<P: Platform> {
   receiver: Receiver<RendererCommand>,
   window_event_receiver: Receiver<Event<P>>,
   last_tick: Instant,
+  frame: u64,
   assets: RendererAssets<P>
 }
 
@@ -74,7 +76,8 @@ impl<P: Platform> RendererInternal<P> {
       window_event_receiver,
       last_tick: Instant::now(),
       assets,
-      lightmap
+      lightmap,
+      frame: 0
     }
   }
 
@@ -222,7 +225,7 @@ impl<P: Platform> RendererInternal<P> {
 
     self.lightmap = self.assets.get_texture("lightmap");
 
-    let render_result = self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input());
+    let render_result = self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input(), self.frame);
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -252,10 +255,11 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input()).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input(), self.frame).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }
+    self.frame += 1;
     renderer.dec_queued_frames_counter();
   }
 
@@ -265,16 +269,28 @@ impl<P: Platform> RendererInternal<P> {
 
     let mut view_mut = self.view.borrow_mut();
 
+    let mut old_visible = std::mem::take(&mut view_mut.visible_drawables_bitset);
+    self.render_path.write_occlusion_culling_results(self.frame, &mut old_visible);
+
+    let mut existing_drawable_bitset = std::mem::take(&mut view_mut.old_visible_drawables_bitset);
     let mut existing_parts = std::mem::take(&mut view_mut.drawable_parts);
     // take out vector, creating a new one doesn't allocate until we push an element to it.
+    existing_drawable_bitset.clear();
     existing_parts.clear();
+    let drawable_u32_count = (static_meshes.len() + 31) / 32;
+    if existing_drawable_bitset.len() < drawable_u32_count {
+      existing_drawable_bitset.resize(drawable_u32_count, 0);
+    }
+    let visible_drawables_bitset = Mutex::new(existing_drawable_bitset);
     let visible_parts = Mutex::new(existing_parts);
 
     let frustum = Frustum::new(view_mut.near_plane, view_mut.far_plane, view_mut.camera_fov, view_mut.aspect_ratio);
     let camera_matrix = view_mut.view_matrix;
     const CHUNK_SIZE: usize = 64;
     static_meshes.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
-      let mut chunk_visible_parts = SmallVec::<[DrawablePart; 64]>::new();
+      let mut chunk_visible_parts = SmallVec::<[DrawablePart; CHUNK_SIZE]>::new();
+      let mut visible_drawables = [0u32; CHUNK_SIZE / 32];
+      visible_drawables.bit_init(false);
       for (index, static_mesh) in chunk.iter().enumerate() {
         let model_view_matrix = camera_matrix * static_mesh.transform;
         let model = &static_mesh.model;
@@ -286,9 +302,17 @@ impl<P: Platform> RendererInternal<P> {
           true
         };
         if !is_visible {
+          //continue;
+          // TODO: frustum culling is broken. :(
+        }
+
+        visible_drawables.bit_set(index);
+        let drawable_index = chunk_index * CHUNK_SIZE + index;
+        if old_visible.len() * 32 > drawable_index && !old_visible.bit_test(drawable_index) {
+          // Mesh was not visible in the previous frame.
           continue;
         }
-        let drawable_index = chunk_index * CHUNK_SIZE + index;
+
         for part_index in 0..mesh.parts.len() {
           if chunk_visible_parts.len() == chunk_visible_parts.capacity() {
             let mut global_parts = visible_parts.lock().unwrap();
@@ -303,12 +327,22 @@ impl<P: Platform> RendererInternal<P> {
         }
       }
 
+      debug_assert_eq!(CHUNK_SIZE % 32, 0);
+      let mut global_drawables_bitset = visible_drawables_bitset.lock().unwrap();
+      let global_drawables_bitset_mut: &mut Vec<u32> = global_drawables_bitset.as_mut();
+      let global_drawable_bit_offset = chunk_index * visible_drawables.len();
+      let global_drawable_bit_end = ((chunk_index + 1) * visible_drawables.len()).min(global_drawables_bitset_mut.len() - 1);
+      let slice_len = global_drawable_bit_end - global_drawable_bit_offset + 1;
+      global_drawables_bitset_mut[global_drawable_bit_offset .. global_drawable_bit_end].copy_from_slice(&visible_drawables[.. (slice_len - 1)]);
+
       let mut global_parts = visible_parts.lock().unwrap();
       global_parts.extend_from_slice(&chunk_visible_parts[..]);
       chunk_visible_parts.clear();
     });
 
     view_mut.drawable_parts = visible_parts.into_inner().unwrap();
+    view_mut.visible_drawables_bitset = visible_drawables_bitset.into_inner().unwrap();
+    view_mut.old_visible_drawables_bitset = old_visible;
   }
 
   fn reorder(&mut self) {

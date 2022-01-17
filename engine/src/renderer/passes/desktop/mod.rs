@@ -6,3 +6,4 @@ pub(crate) mod clustering;
 pub(crate) mod light_binning;
 pub(crate) mod ssao;
 pub(crate) mod desktop_renderer;
+pub(crate) mod occlusion;

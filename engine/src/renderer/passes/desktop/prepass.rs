@@ -29,7 +29,9 @@ struct FrameData {
 
 pub struct Prepass<B: GraphicsBackend> {
   depth_buffer: Arc<B::TextureDepthStencilView>,
+  depth_buffer_b: Arc<B::TextureDepthStencilView>,
   depth_srv: Arc<B::TextureShaderResourceView>,
+  depth_srv_b: Arc<B::TextureShaderResourceView>,
   motion: Arc<B::TextureRenderTargetView>,
   motion_srv: Arc<B::TextureShaderResourceView>,
   normals: Arc<B::TextureRenderTargetView>,
@@ -39,7 +41,7 @@ pub struct Prepass<B: GraphicsBackend> {
 
 impl<B: GraphicsBackend> Prepass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
-    let depth_buffer = device.create_texture(&TextureInfo {
+    let depth_info = TextureInfo {
       format: Format::D24S8,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -48,19 +50,25 @@ impl<B: GraphicsBackend> Prepass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::DEPTH_STENCIL | TextureUsage::SAMPLED,
-    }, Some("PrepassDepth"));
-    let dsv = device.create_depth_stencil_view(&depth_buffer, &TextureDepthStencilViewInfo {
+    };
+    let depth_buffer = device.create_texture(&depth_info, Some("PrepassDepth"));
+    let depth_buffer_b = device.create_texture(&depth_info, Some("PrepassDepthB"));
+    let dsv_info = TextureDepthStencilViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
       array_level_length: 1,
-    });
-    let depth_srv = device.create_shader_resource_view(&depth_buffer, &TextureShaderResourceViewInfo {
+    };
+    let dsv = device.create_depth_stencil_view(&depth_buffer, &dsv_info);
+    let dsv_b = device.create_depth_stencil_view(&depth_buffer_b, &dsv_info);
+    let depth_srv_info = TextureShaderResourceViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
       array_level_length: 1,
-    });
+    };
+    let depth_srv = device.create_shader_resource_view(&depth_buffer, &depth_srv_info);
+    let depth_srv_b = device.create_shader_resource_view(&depth_buffer_b, &depth_srv_info);
 
     let motion = device.create_texture(&TextureInfo {
       format: Format::RG32Float,
@@ -115,7 +123,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::VertexShader, &bytes, Some("prepass.vert.spv"))
     };
-  
+
     let fragment_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.frag.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
@@ -231,11 +239,23 @@ impl<B: GraphicsBackend> Prepass<B> {
       ],
     }, 0);
 
+    init_cmd_buffer.barrier(&[Barrier::TextureBarrier {
+      old_sync: BarrierSync::empty(),
+      new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+      old_layout: TextureLayout::Undefined,
+      new_layout: TextureLayout::DepthStencilRead,
+      old_access: BarrierAccess::empty(),
+      new_access: BarrierAccess::DEPTH_STENCIL_READ,
+      texture: &depth_buffer_b,
+    }]);
+
     Self {
       depth_buffer: dsv,
+      depth_buffer_b: dsv_b,
       motion: motion_view,
       motion_srv,
       depth_srv,
+      depth_srv_b,
       normals: normals_view,
       normals_srv,
       pipeline
@@ -387,12 +407,21 @@ impl<B: GraphicsBackend> Prepass<B> {
     cmd_buffer.end_label();
   }
 
+  pub fn swap_history_resources(&mut self) {
+    std::mem::swap(&mut self.depth_buffer, &mut self.depth_buffer_b);
+    std::mem::swap(&mut self.depth_srv, &mut self.depth_srv_b);
+  }
+
   pub fn depth_dsv(&self) -> &Arc<B::TextureDepthStencilView> {
     &self.depth_buffer
   }
 
   pub fn depth_srv(&self) -> &Arc<B::TextureShaderResourceView> {
     &self.depth_srv
+  }
+
+  pub fn depth_dsv_history(&self) -> &Arc<B::TextureDepthStencilView> {
+    &self.depth_buffer_b
   }
 
   pub fn motion_srv(&self) -> &Arc<B::TextureShaderResourceView> {
