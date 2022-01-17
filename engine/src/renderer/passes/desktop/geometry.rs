@@ -416,8 +416,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
         if last_material.as_ref() != Some(material) {
           command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
+          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, zero_texture_view, &self.sampler);
           command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
-          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, zero_texture_view, &self.sampler);
 
           let albedo_value = material.get("albedo").unwrap();
           match albedo_value {
