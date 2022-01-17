@@ -376,6 +376,12 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, ssao, &self.sampler);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer);
+
+      let lightmap_ref = &lightmap.view;
+      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, lightmap_ref, &self.sampler);
+
+      let mut last_material = Option::<Arc<RendererMaterial<B>>>::None;
+
       for part in chunk.iter() {
         let drawable = &static_drawables[part.drawable_index];
 
@@ -404,52 +410,55 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           roughness_factor: 0f32,
           metalness_factor: 0f32
         };
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, zero_texture_view, &self.sampler);
 
         let range = &mesh.parts[part.part_index];
         let material = &materials[part.part_index];
-        let albedo_value = material.get("albedo").unwrap();
-        match albedo_value {
-          RendererMaterialValue::Texture(texture) => {
-            let albedo_view = &texture.view;
-            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
-          },
-          RendererMaterialValue::Vec4(val) => {
-            material_info.albedo = *val
-          },
-          RendererMaterialValue::Float(_) => unimplemented!()
-        }
-        let roughness_value = material.get("roughness");
-        match roughness_value {
-          Some(RendererMaterialValue::Texture(texture)) => {
-            let roughness_view = &texture.view;
-            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, roughness_view, &self.sampler);
-          }
-          Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-          Some(RendererMaterialValue::Float(val)) => {
-            material_info.roughness_factor = *val;
-          },
-          None => {}
-        }
-        let metalness_value = material.get("metalness");
-        match metalness_value {
-          Some(RendererMaterialValue::Texture(texture)) => {
-            let metalness_view = &texture.view;
-            command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, metalness_view, &self.sampler);
-          }
-          Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-          Some(RendererMaterialValue::Float(val)) => {
-            material_info.metalness_factor = *val;
-          },
-          None => {}
-        }
-        let material_info_buffer = command_buffer.upload_dynamic_data(&[material_info], BufferUsage::CONSTANT);
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 4, &material_info_buffer);
 
-        let lightmap_ref = &lightmap.view;
-        command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, lightmap_ref, &self.sampler);
+        if last_material.as_ref() != Some(material) {
+          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
+          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
+          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 3, zero_texture_view, &self.sampler);
+
+          let albedo_value = material.get("albedo").unwrap();
+          match albedo_value {
+            RendererMaterialValue::Texture(texture) => {
+              let albedo_view = &texture.view;
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
+            },
+            RendererMaterialValue::Vec4(val) => {
+              material_info.albedo = *val
+            },
+            RendererMaterialValue::Float(_) => unimplemented!()
+          }
+          let roughness_value = material.get("roughness");
+          match roughness_value {
+            Some(RendererMaterialValue::Texture(texture)) => {
+              let roughness_view = &texture.view;
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, roughness_view, &self.sampler);
+            }
+            Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+            Some(RendererMaterialValue::Float(val)) => {
+              material_info.roughness_factor = *val;
+            },
+            None => {}
+          }
+          let metalness_value = material.get("metalness");
+          match metalness_value {
+            Some(RendererMaterialValue::Texture(texture)) => {
+              let metalness_view = &texture.view;
+              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, metalness_view, &self.sampler);
+            }
+            Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+            Some(RendererMaterialValue::Float(val)) => {
+              material_info.metalness_factor = *val;
+            },
+            None => {}
+          }
+          let material_info_buffer = command_buffer.upload_dynamic_data(&[material_info], BufferUsage::CONSTANT);
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 3, &material_info_buffer);
+          last_material = Some(material.clone());
+        }
+
         command_buffer.finish_binding();
 
         if mesh.indices.is_some() {

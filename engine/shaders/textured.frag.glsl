@@ -14,11 +14,11 @@ layout(location = 3) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 6) uniform sampler2D lightmap;
 layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 0) uniform sampler2D albedo;
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 1) uniform sampler2D lightmap;
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 2) uniform sampler2D roughness_map;
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 3) uniform sampler2D metalness_map;
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 4) uniform Material {
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 1) uniform sampler2D roughness_map;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 2) uniform sampler2D metalness_map;
+layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 3) uniform Material {
   vec4 albedo_color;
   float roughness_factor;
   float metalness_factor;
