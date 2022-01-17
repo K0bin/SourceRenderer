@@ -28,7 +28,7 @@ use crate::raw::*;
 use crate::VkShared;
 use crate::buffer::{VkBufferSlice, BufferAllocator};
 use crate::VkTexture;
-use crate::descriptor::{VkBindingManager, VkBoundResource};
+use crate::descriptor::{VkBindingManager, VkBoundResource, VkBoundResourceRef};
 use crate::texture::VkTextureView;
 use crate::lifetime_tracker::VkLifetimeTrackers;
 
@@ -409,26 +409,26 @@ impl VkCommandBuffer {
 
   pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::SampledTexture(texture.clone(), sampler.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::SampledTexture(texture, sampler));
     self.trackers.track_texture_view(texture);
     self.trackers.track_sampler(sampler);
   }
 
   pub(crate) fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::UniformBuffer(buffer.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::UniformBuffer(buffer));
     self.trackers.track_buffer(buffer);
   }
 
   pub(crate) fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::StorageBuffer(buffer.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageBuffer(buffer));
     self.trackers.track_buffer(buffer);
   }
 
   pub(crate) fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResource::StorageTexture(texture.clone()));
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageTexture(texture));
     self.trackers.track_texture_view(texture);
   }
 

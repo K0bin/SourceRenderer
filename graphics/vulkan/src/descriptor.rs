@@ -423,6 +423,15 @@ impl Default for VkBoundResource {
   }
 }
 
+#[derive(Hash, Eq, PartialEq, Clone)]
+pub(crate) enum VkBoundResourceRef<'a> {
+  None,
+  UniformBuffer(&'a Arc<VkBufferSlice>),
+  StorageBuffer(&'a Arc<VkBufferSlice>),
+  StorageTexture(&'a Arc<VkTextureView>),
+  SampledTexture(&'a Arc<VkTextureView>, &'a Arc<VkSampler>)
+}
+
 pub(crate) struct VkDescriptorSetBinding {
   pub(crate) set: Arc<VkDescriptorSet>,
   pub(crate) dynamic_offset_count: u32,
@@ -472,12 +481,27 @@ impl VkBindingManager {
     self.permanent_pool.reset();
   }
 
-  pub(crate) fn bind(&mut self, frequency: BindingFrequency, slot: u32, binding: VkBoundResource) {
+  pub(crate) fn bind(&mut self, frequency: BindingFrequency, slot: u32, binding: VkBoundResourceRef) {
     let bindings_table = &mut self.bindings[frequency as usize];
     let existing_binding = &mut bindings_table[slot as usize];
-    if existing_binding != &binding {
+    let identical = match (&existing_binding, &binding) {
+        (VkBoundResource::None, VkBoundResourceRef::None) => true,
+        (VkBoundResource::UniformBuffer(old), VkBoundResourceRef::UniformBuffer(new)) => old == *new,
+        (VkBoundResource::StorageBuffer(old), VkBoundResourceRef::StorageBuffer(new)) => old == *new,
+        (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => old == *new,
+        (VkBoundResource::SampledTexture(old_tex, old_sampler), VkBoundResourceRef::SampledTexture(new_tex, new_sampler)) => old_tex == *new_tex && old_sampler == *new_sampler,
+        _ => false
+    };
+
+    if !identical {
       self.dirty.insert(DirtyDescriptorSets::from(frequency));
-      *existing_binding = binding;
+      *existing_binding = match binding {
+        VkBoundResourceRef::None => VkBoundResource::None,
+        VkBoundResourceRef::UniformBuffer(ubo) => VkBoundResource::UniformBuffer(ubo.clone()),
+        VkBoundResourceRef::StorageBuffer(ssbo) => VkBoundResource::StorageBuffer(ssbo.clone()),
+        VkBoundResourceRef::StorageTexture(storage_tex) => VkBoundResource::StorageTexture(storage_tex.clone()),
+        VkBoundResourceRef::SampledTexture(tex, sampler) => VkBoundResource::SampledTexture(tex.clone(), sampler.clone()),
+      };
     }
   }
 
