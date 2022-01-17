@@ -36,5 +36,5 @@ pub trait Backend: 'static + Sized {
   type Fence : Fence + Send + Sync;
   type Semaphore : Send + Sync;
   type Queue : Queue<Self> + Send + Sync;
-  type QueryRange;
+  type QueryRange : Send + Sync;
 }

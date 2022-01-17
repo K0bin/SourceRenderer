@@ -1,7 +1,9 @@
-use std::{sync::Arc, io::Read, path::Path, collections::HashMap};
+use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, io::Read, path::Path, collections::HashMap};
 
 use bitset_core::BitSet;
-use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3};
+use rayon::{slice::ParallelSlice, iter::{ParallelIterator, IndexedParallelIterator}};
+use smallvec::SmallVec;
+use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3};
 
 use crate::renderer::{drawable::View, renderer_scene::RendererScene};
 
@@ -12,7 +14,8 @@ pub struct OcclusionPass<B: Backend> {
   occluder_vb: Arc<B::Buffer>,
   occluder_ib: Arc<B::Buffer>,
   pipeline: Arc<B::GraphicsPipeline>,
-  occlusion_query_maps: [HashMap<u32, u32>; 5]
+  occlusion_query_maps: [HashMap<u32, u32>; 5],
+  visible_drawable_indices: Vec<u32>
 }
 
 impl<B: Backend> OcclusionPass<B> {
@@ -159,12 +162,14 @@ impl<B: Backend> OcclusionPass<B> {
       occluder_vb,
       occluder_ib,
       pipeline,
-      occlusion_query_maps
+      occlusion_query_maps,
+      visible_drawable_indices: Vec::new()
     }
   }
 
   pub fn execute(
     &mut self,
+    device: &B::Device,
     command_buffer: &mut B::CommandBuffer,
     frame: u64,
     history_depth_buffer: &Arc<B::TextureDepthStencilView>,
@@ -173,9 +178,18 @@ impl<B: Backend> OcclusionPass<B> {
     view: &View
   ) {
     let query_buffer_index = (frame % self.query_buffers.len() as u64) as usize;
-    let occlusion_query_map = &mut self.occlusion_query_maps[query_buffer_index];
-
+    let mut occlusion_query_map = std::mem::take(&mut self.occlusion_query_maps[query_buffer_index]);
     occlusion_query_map.clear();
+    let occlusion_query_map_lock = Mutex::new(occlusion_query_map);
+
+    let static_meshes = scene.static_drawables();
+
+    self.visible_drawable_indices.clear();
+    for i in 0..static_meshes.len() {
+      if view.visible_drawables_bitset.bit_test(i) {
+        self.visible_drawable_indices.push(i as u32);
+      }
+    }
 
     command_buffer.begin_label("Occlusion query tests");
     let query_range = command_buffer.create_query_range(QUERY_COUNT as u32);
@@ -193,61 +207,75 @@ impl<B: Backend> OcclusionPass<B> {
           read_only: true
         }),
       }],
-    }, RenderpassRecordingMode::Commands);
+    }, RenderpassRecordingMode::CommandBuffers);
 
-    command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
-    command_buffer.set_scissors(&[Scissor {
-      position: Vec2I::new(0i32, 0i32),
-      extent: Vec2UI::new(99999u32, 99999u32),
-    }]);
-    command_buffer.set_viewports(&[Viewport {
-      position: Vec2::new(0f32, 0f32),
-      extent: Vec2::new(history_depth_buffer.texture().get_info().width as f32, history_depth_buffer.texture().get_info().height as f32),
-      min_depth: 0f32,
-      max_depth: 1f32,
-    }]);
-    command_buffer.set_vertex_buffer(&self.occluder_vb);
-    command_buffer.set_index_buffer(&self.occluder_ib);
-    command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_history_buffer);
-    command_buffer.finish_binding();
+    let query_count = AtomicU32::new(0);
+    const CHUNK_SIZE: usize = 256;
+    let chunks = self.visible_drawable_indices.par_chunks(CHUNK_SIZE);
+    let inheritance = command_buffer.inheritance();
+    let inner_cmd_buffers: Vec::<B::CommandBufferSubmission> = chunks.map(|chunk| {
+      let mut pairs: SmallVec<[(u32, u32); CHUNK_SIZE]> = SmallVec::new();
+      let mut command_buffer = device.graphics_queue().create_inner_command_buffer(inheritance);
+      command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+      command_buffer.set_scissors(&[Scissor {
+        position: Vec2I::new(0i32, 0i32),
+        extent: Vec2UI::new(99999u32, 99999u32),
+      }]);
+      command_buffer.set_viewports(&[Viewport {
+        position: Vec2::new(0f32, 0f32),
+        extent: Vec2::new(history_depth_buffer.texture().get_info().width as f32, history_depth_buffer.texture().get_info().height as f32),
+        min_depth: 0f32,
+        max_depth: 1f32,
+      }]);
+      command_buffer.set_vertex_buffer(&self.occluder_vb);
+      command_buffer.set_index_buffer(&self.occluder_ib);
+      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_history_buffer);
+      command_buffer.finish_binding();
 
-    let mut query_count = 0u32;
+      for drawable_index in chunk {
+        let drawable_index = *drawable_index;
+        let drawable = &static_meshes[drawable_index as usize];
+        let mesh = drawable.model.mesh();
+        let bb = mesh.bounding_box.as_ref();
+        if bb.is_none() {
+          continue;
+        }
 
-    for (index, drawable) in scene.static_drawables().iter().enumerate() {
-      if !view.visible_drawables_bitset.bit_test(index) {
-        continue;
+        let drawable_query_index = query_count.fetch_add(1, Ordering::SeqCst);
+        pairs.push((drawable_index as u32, drawable_query_index));
+
+        let bb = bb.unwrap();
+        let mut bb_scale = bb.max - bb.min;
+        let bb_translation = bb.min + bb_scale / 2.0f32;
+        bb_scale *= 1.1f32; // make bounding box 10% bigger to avoid getting culled by the actual geometry
+        bb_scale.x = bb_scale.x.max(0.4f32);
+        bb_scale.y = bb_scale.y.max(0.4f32);
+        bb_scale.z = bb_scale.z.max(0.4f32);
+        let bb_transform = Matrix4::new_translation(&bb_translation)
+          * Matrix4::new_nonuniform_scaling(&bb_scale);
+
+        command_buffer.upload_dynamic_data_inline(&[drawable.old_transform * bb_transform], ShaderType::VertexShader);
+        command_buffer.begin_query(&query_range, drawable_query_index);
+        command_buffer.draw_indexed(1, 0, 36, 0, 0);
+        command_buffer.end_query(&query_range, drawable_query_index);
       }
-      let mesh = drawable.model.mesh();
-      let bb = mesh.bounding_box.as_ref();
-      if bb.is_none() {
-        continue;
+      let inner_cmd_buffer = command_buffer.finish();
+
+      {
+        let mut guard = occlusion_query_map_lock.lock().unwrap();
+        for (drawable_index, query_index) in pairs {
+          guard.insert(drawable_index, query_index);
+        }
       }
 
-      let drawable_query_index = query_count;
-      query_count += 1;
-      occlusion_query_map.insert(index as u32, drawable_query_index);
+      inner_cmd_buffer
+    }).collect();
 
-      let bb = bb.unwrap();
-      let mut bb_scale = bb.max - bb.min;
-      let bb_translation = bb.min + bb_scale / 2.0f32;
-      bb_scale *= 1.1f32; // make bounding box 10% bigger to avoid getting culled by the actual geometry
-      bb_scale.x = bb_scale.x.max(0.4f32);
-      bb_scale.y = bb_scale.y.max(0.4f32);
-      bb_scale.z = bb_scale.z.max(0.4f32);
-      let bb_transform = Matrix4::new_translation(&bb_translation)
-        * Matrix4::new_nonuniform_scaling(&bb_scale);
-
-      command_buffer.upload_dynamic_data_inline(&[drawable.old_transform * bb_transform], ShaderType::VertexShader);
-      command_buffer.begin_query(&query_range, drawable_query_index);
-      command_buffer.draw_indexed(1, 0, 36, 0, 0);
-      command_buffer.end_query(&query_range, drawable_query_index);
-    }
-
+    command_buffer.execute_inner(inner_cmd_buffers);
     command_buffer.end_render_pass();
 
-    std::mem::drop(occlusion_query_map);
-
-    if query_count != 0 {
+    let final_query_count = query_count.load(Ordering::SeqCst);
+    if final_query_count != 0 {
       let query_buffer = &self.query_buffers[query_buffer_index];
       command_buffer.barrier(&[Barrier::BufferBarrier {
         old_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH | BarrierSync::RENDER_TARGET,
@@ -257,10 +285,11 @@ impl<B: Backend> OcclusionPass<B> {
         buffer: query_buffer,
       }]);
       command_buffer.flush_barriers();
-      command_buffer.copy_query_results_to_buffer(&query_range, &query_buffer, 0, query_count);
+      command_buffer.copy_query_results_to_buffer(&query_range, &query_buffer, 0, final_query_count);
     }
 
     command_buffer.end_label();
+    self.occlusion_query_maps[query_buffer_index] = occlusion_query_map_lock.into_inner().unwrap();
   }
 
   pub fn write_occlusion_query_results(&self, frame: u64, bitset: &mut Vec<u32>) {
