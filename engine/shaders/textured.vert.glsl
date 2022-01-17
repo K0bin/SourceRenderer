@@ -38,6 +38,8 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
 };
 
+invariant gl_Position;
+
 void main(void) {
   vec4 pos = vec4(in_pos, 1);
 
