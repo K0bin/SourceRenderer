@@ -1,5 +1,6 @@
 use sourcerenderer_core::Vec3;
 
+#[derive(Debug)]
 pub struct BoundingBox {
   pub min: Vec3,
   pub max: Vec3
