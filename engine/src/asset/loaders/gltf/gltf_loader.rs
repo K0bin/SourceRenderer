@@ -52,18 +52,25 @@ impl GltfLoader {
       let mut indices = Vec::<u32>::new();
       let mut vertices = Vec::<Vertex>::new();
       let mut parts = Vec::<MeshRange>::with_capacity(mesh.primitives().len());
-      let mut bounding_box = BoundingBox::new(Vec3::new(0f32, 0f32, 0f32), Vec3::new(0f32, 0f32, 0f32));
+      let mut bounding_box = Option::<BoundingBox>::None;
       for primitive in mesh.primitives() {
         let part_start = indices.len();
         GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name, buffer_cache);
         GltfLoader::load_material(&primitive.material(), asset_mgr, &material_path);
         let primitive_bounding_box = primitive.bounding_box();
-        bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]);
-        bounding_box.min.y = f32::min(bounding_box.min.y, primitive_bounding_box.min[1]);
-        bounding_box.min.z = f32::min(bounding_box.min.z, primitive_bounding_box.min[2]);
-        bounding_box.max.x = f32::max(bounding_box.max.x, primitive_bounding_box.max[0]);
-        bounding_box.max.y = f32::max(bounding_box.max.y, primitive_bounding_box.max[1]);
-        bounding_box.max.z = f32::max(bounding_box.max.z, primitive_bounding_box.max[2]);
+        if let Some(bounding_box) = &mut bounding_box {
+          bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]);
+          bounding_box.min.y = f32::min(bounding_box.min.y, primitive_bounding_box.min[1]);
+          bounding_box.min.z = f32::min(bounding_box.min.z, primitive_bounding_box.min[2]);
+          bounding_box.max.x = f32::max(bounding_box.max.x, primitive_bounding_box.max[0]);
+          bounding_box.max.y = f32::max(bounding_box.max.y, primitive_bounding_box.max[1]);
+          bounding_box.max.z = f32::max(bounding_box.max.z, primitive_bounding_box.max[2]);
+        } else {
+          bounding_box = Some(BoundingBox {
+            min: Vec3::new(primitive_bounding_box.min[0], primitive_bounding_box.min[1], primitive_bounding_box.min[2]),
+            max: Vec3::new(primitive_bounding_box.max[0], primitive_bounding_box.max[1], primitive_bounding_box.max[2]),
+          });
+        }
         let range = MeshRange {
           start: part_start as u32,
           count: (indices.len() - part_start) as u32
@@ -88,7 +95,7 @@ impl GltfLoader {
       asset_mgr.add_asset(&mesh_path, Asset::Mesh(Mesh {
         indices: (indices_count > 0).then(|| indices_data),
         vertices: vertices_data,
-        bounding_box: Some(bounding_box),
+        bounding_box: bounding_box,
         parts: parts.into_boxed_slice()
       }), AssetLoadPriority::Normal);
 
