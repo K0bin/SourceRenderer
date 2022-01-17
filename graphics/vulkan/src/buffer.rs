@@ -145,27 +145,23 @@ impl Buffer for VkBufferSlice {
   }
 
   unsafe fn map_unsafe(&self, invalidate: bool) -> Option<*mut u8> {
-    if !self.buffer.is_coherent &&
+    if invalidate && !self.buffer.is_coherent &&
       (self.buffer.memory_usage == MemoryUsage::CpuToGpu
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let allocator = &self.buffer.device.allocator;
-      if invalidate {
-        allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
-      }
+      allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
     }
     self.buffer.map_ptr.map(|ptr| ptr.add(self.offset))
   }
 
   unsafe fn unmap_unsafe(&self, flush: bool) {
-    if !self.buffer.is_coherent &&
+    if flush && !self.buffer.is_coherent &&
       (self.buffer.memory_usage == MemoryUsage::CpuToGpu
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let allocator = &self.buffer.device.allocator;
-      if flush {
-        allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
-      }
+      allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
     }
   }
 
