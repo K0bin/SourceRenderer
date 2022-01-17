@@ -74,10 +74,9 @@ fn main() {
         ast.unset_decoration(texture.id, Decoration::DescriptorSet).unwrap();
       }
 
-      for push_constants in &resources.push_constant_buffers {
+      if let Some(push_constants) = resources.push_constant_buffers.first() {
         ast.set_name(push_constants.id, "push_constants").unwrap();
         ast.set_name(push_constants.base_type_id, "push_constants_t").unwrap();
-        break;
       }
 
       let code_res = ast.compile();
