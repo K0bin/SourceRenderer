@@ -33,7 +33,9 @@ impl<B: Backend> DesktopRenderer<B> {
     let occlusion = OcclusionPass::<B>::new::<P>(device);
     device.flush_transfers();
 
-    device.graphics_queue().submit(init_cmd_buffer.finish(), None, &[], &[]);
+    let c_graphics_queue = device.graphics_queue().clone();
+    c_graphics_queue.submit(init_cmd_buffer.finish(), None, &[], &[], true);
+    rayon::spawn(move || c_graphics_queue.process_submissions());
 
     Self {
       swapchain: swapchain.clone(),
@@ -138,8 +140,11 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       let input_state = input.poll();
       late_latching.before_submit(&input_state, &view_ref);
     }
-    graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem]);
-    graphics_queue.present(&self.swapchain, &[&cmd_buf_sem]);
+    graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem], true);
+    graphics_queue.present(&self.swapchain, &[&cmd_buf_sem], true);
+
+    let c_graphics_queue = graphics_queue.clone();
+    rayon::spawn(move || c_graphics_queue.process_submissions());
 
     if let Some(late_latching) = late_latching {
       late_latching.after_submit(&self.device);

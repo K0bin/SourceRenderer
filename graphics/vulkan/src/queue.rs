@@ -84,7 +84,154 @@ impl VkQueue {
     self.info.supports_presentation
   }
 
-  pub fn process_submissions(&self) {
+  pub fn submit_transfer(&self, command_buffer: &VkTransferCommandBuffer) {
+    debug_assert!(!command_buffer.get_fence().is_signalled());
+    debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
+
+    let vk_cmd_buffer = *command_buffer.get_handle();
+    let submission = VkVirtualSubmission::CommandBuffer {
+      command_buffer: vk_cmd_buffer,
+      wait_semaphores: SmallVec::new(),
+      wait_stages: SmallVec::new(),
+      signal_semaphores: SmallVec::new(),
+      fence: Some(command_buffer.get_fence().clone())
+    };
+    let mut guard = self.queue.lock().unwrap();
+    guard.virtual_queue.push(submission);
+  }
+
+  pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
+    assert_eq!(command_buffer.command_buffer_type(), CommandBufferType::PRIMARY);
+    debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
+    debug_assert!(fence.is_none() || !fence.unwrap().is_signalled());
+    if wait_semaphores.len() > 4 || signal_semaphores.len() > 4 {
+      panic!("Can only signal and wait for 4 semaphores each.");
+    }
+
+    let mut _new_fence = Option::<Arc<VkFence>>::None;
+    let mut fence = fence;
+    if fence.is_none() && !signal_semaphores.is_empty() {
+      _new_fence = Some(self.threads.shared().get_fence());
+      fence = Some(_new_fence.as_ref().unwrap());
+    }
+
+    let mut cmd_buffer_mut = command_buffer;
+    cmd_buffer_mut.mark_submitted();
+    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let signal_semaphore_handles = signal_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let stage_masks = wait_semaphores.iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<SmallVec<[vk::PipelineStageFlags; 4]>>();
+
+    let vk_cmd_buffer = *cmd_buffer_mut.get_handle();
+    let submission = VkVirtualSubmission::CommandBuffer {
+      command_buffer: vk_cmd_buffer,
+      wait_semaphores: wait_semaphore_handles,
+      wait_stages: stage_masks,
+      signal_semaphores: signal_semaphore_handles,
+      fence: fence.cloned()
+    };
+
+    let mut guard = self.queue.lock().unwrap();
+    if fence.is_some() {
+      guard.last_fence = fence.cloned();
+    }
+    guard.virtual_queue.push(submission);
+  }
+
+  pub fn present(&self, swapchain: &Arc<VkSwapchain>, image_index: u32, wait_semaphores: &[ &VkSemaphore ]) {
+    if wait_semaphores.len() > 4 {
+      panic!("Can only wait for 4 semaphores.");
+    }
+    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+
+    let submission = VkVirtualSubmission::Present {
+      wait_semaphores: wait_semaphore_handles,
+      image_index,
+      swapchain: swapchain.clone()
+    };
+    let mut guard = self.queue.lock().unwrap();
+    guard.virtual_queue.push(submission);
+
+    if let Some(fence) = guard.last_fence.as_ref() {
+      self.threads.end_frame(fence);
+    }
+    guard.last_fence = None;
+  }
+
+  pub(crate) fn wait_for_idle(&self) {
+    self.process_submissions();
+    let queue_guard = self.queue.lock().unwrap();
+    unsafe {
+      self.device.queue_wait_idle(queue_guard.queue).unwrap();
+    }
+  }
+}
+
+impl Queue<VkBackend> for VkQueue {
+  fn create_command_buffer(&self) -> VkCommandBufferRecorder {
+    self.threads.get_thread_local().get_frame_local().get_command_buffer()
+  }
+
+  fn submit(&self, submission: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[&Arc<VkSemaphore>], signal_semaphores: &[&Arc<VkSemaphore>], delayed: bool) {
+    let frame_local = self.threads.get_thread_local().get_frame_local();
+    let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
+    let mut signal_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(signal_semaphores.len());
+
+    {
+      let mut inner = self.queue.lock().unwrap();
+      for sem in wait_semaphores {
+        wait_semaphore_refs.push(sem.as_ref());
+        frame_local.track_semaphore(*sem);
+        let signalled_index = inner.signalled_semaphores.iter().enumerate().find(|(_, signalled)| signalled == sem).map(|(index, _)| index);
+        if let Some(signalled_index) = signalled_index {
+          inner.signalled_semaphores.remove(signalled_index);
+        }
+      }
+      for sem in signal_semaphores {
+        signal_semaphore_refs.push(sem.as_ref());
+        frame_local.track_semaphore(*sem);
+        inner.signalled_semaphores.push((*sem).clone());
+      }
+      if let Some(fence) = fence {
+        frame_local.track_fence(fence);
+      }
+      if inner.signalled_semaphores.len() > 16 {
+        println!("Exceeded 32 signalled semaphores. There's probably signalled semaphores that never get used.");
+      }
+    }
+    // TODO: clean up
+
+    self.submit(submission, fence, &wait_semaphore_refs, &signal_semaphore_refs);
+
+    if !delayed {
+      self.process_submissions();
+    }
+  }
+
+  fn present(&self, swapchain: &Arc<VkSwapchain>, wait_semaphores: &[&Arc<VkSemaphore>], delayed: bool) {
+    let frame_local = self.threads.get_thread_local().get_frame_local();
+    let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
+    {
+      let mut inner = self.queue.lock().unwrap();
+      for sem in wait_semaphores {
+        wait_semaphore_refs.push(sem.as_ref());
+        frame_local.track_semaphore(*sem);
+        let signalled_index = inner.signalled_semaphores.iter().enumerate().find(|(_, signalled)| signalled == sem).map(|(index, _)| index);
+        if let Some(signalled_index) = signalled_index {
+          inner.signalled_semaphores.remove(signalled_index);
+        }
+      }
+    }
+    self.present(swapchain, swapchain.acquired_image(), &wait_semaphore_refs);
+    if !delayed {
+      self.process_submissions();
+    }
+  }
+
+  fn create_inner_command_buffer(&self, inheritance: &VkInnerCommandBufferInfo) -> VkCommandBufferRecorder {
+    self.threads.get_thread_local().get_frame_local().get_inner_command_buffer(Some(inheritance))
+  }
+
+  fn process_submissions(&self) {
     let mut guard = self.queue.lock().unwrap();
     if guard.virtual_queue.is_empty() {
       return;
@@ -240,147 +387,6 @@ impl VkQueue {
         }
       }
     }
-  }
-
-  pub fn submit_transfer(&self, command_buffer: &VkTransferCommandBuffer) {
-    debug_assert!(!command_buffer.get_fence().is_signalled());
-    debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
-
-    let vk_cmd_buffer = *command_buffer.get_handle();
-    let submission = VkVirtualSubmission::CommandBuffer {
-      command_buffer: vk_cmd_buffer,
-      wait_semaphores: SmallVec::new(),
-      wait_stages: SmallVec::new(),
-      signal_semaphores: SmallVec::new(),
-      fence: Some(command_buffer.get_fence().clone())
-    };
-    let mut guard = self.queue.lock().unwrap();
-    guard.virtual_queue.push(submission);
-  }
-
-  pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
-    assert_eq!(command_buffer.command_buffer_type(), CommandBufferType::PRIMARY);
-    debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
-    debug_assert!(fence.is_none() || !fence.unwrap().is_signalled());
-    if wait_semaphores.len() > 4 || signal_semaphores.len() > 4 {
-      panic!("Can only signal and wait for 4 semaphores each.");
-    }
-
-    let mut _new_fence = Option::<Arc<VkFence>>::None;
-    let mut fence = fence;
-    if fence.is_none() && !signal_semaphores.is_empty() {
-      _new_fence = Some(self.threads.shared().get_fence());
-      fence = Some(_new_fence.as_ref().unwrap());
-    }
-
-    let mut cmd_buffer_mut = command_buffer;
-    cmd_buffer_mut.mark_submitted();
-    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
-    let signal_semaphore_handles = signal_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
-    let stage_masks = wait_semaphores.iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<SmallVec<[vk::PipelineStageFlags; 4]>>();
-
-    let vk_cmd_buffer = *cmd_buffer_mut.get_handle();
-    let submission = VkVirtualSubmission::CommandBuffer {
-      command_buffer: vk_cmd_buffer,
-      wait_semaphores: wait_semaphore_handles,
-      wait_stages: stage_masks,
-      signal_semaphores: signal_semaphore_handles,
-      fence: fence.cloned()
-    };
-
-    let mut guard = self.queue.lock().unwrap();
-    if fence.is_some() {
-      guard.last_fence = fence.cloned();
-    }
-    guard.virtual_queue.push(submission);
-  }
-
-  pub fn present(&self, swapchain: &Arc<VkSwapchain>, image_index: u32, wait_semaphores: &[ &VkSemaphore ]) {
-    if wait_semaphores.len() > 4 {
-      panic!("Can only wait for 4 semaphores.");
-    }
-    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
-
-    let submission = VkVirtualSubmission::Present {
-      wait_semaphores: wait_semaphore_handles,
-      image_index,
-      swapchain: swapchain.clone()
-    };
-    let mut guard = self.queue.lock().unwrap();
-    guard.virtual_queue.push(submission);
-
-    if let Some(fence) = guard.last_fence.as_ref() {
-      self.threads.end_frame(fence);
-    }
-    guard.last_fence = None;
-  }
-
-  pub(crate) fn wait_for_idle(&self) {
-    self.process_submissions();
-    let queue_guard = self.queue.lock().unwrap();
-    unsafe {
-      self.device.queue_wait_idle(queue_guard.queue).unwrap();
-    }
-  }
-}
-
-impl Queue<VkBackend> for VkQueue {
-  fn create_command_buffer(&self) -> VkCommandBufferRecorder {
-    self.threads.get_thread_local().get_frame_local().get_command_buffer()
-  }
-
-  fn submit(&self, submission: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[&Arc<VkSemaphore>], signal_semaphores: &[&Arc<VkSemaphore>]) {
-    let frame_local = self.threads.get_thread_local().get_frame_local();
-    let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
-    let mut signal_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(signal_semaphores.len());
-
-    {
-      let mut inner = self.queue.lock().unwrap();
-      for sem in wait_semaphores {
-        wait_semaphore_refs.push(sem.as_ref());
-        frame_local.track_semaphore(*sem);
-        let signalled_index = inner.signalled_semaphores.iter().enumerate().find(|(_, signalled)| signalled == sem).map(|(index, _)| index);
-        if let Some(signalled_index) = signalled_index {
-          inner.signalled_semaphores.remove(signalled_index);
-        }
-      }
-      for sem in signal_semaphores {
-        signal_semaphore_refs.push(sem.as_ref());
-        frame_local.track_semaphore(*sem);
-        inner.signalled_semaphores.push((*sem).clone());
-      }
-      if let Some(fence) = fence {
-        frame_local.track_fence(fence);
-      }
-      if inner.signalled_semaphores.len() > 16 {
-        println!("Exceeded 32 signalled semaphores. There's probably signalled semaphores that never get used.");
-      }
-    }
-    // TODO: clean up
-
-    self.submit(submission, fence, &wait_semaphore_refs, &signal_semaphore_refs);
-    self.process_submissions(); // TODO bring back threaded submission
-  }
-
-  fn present(&self, swapchain: &Arc<VkSwapchain>, wait_semaphores: &[&Arc<VkSemaphore>]) {
-    let frame_local = self.threads.get_thread_local().get_frame_local();
-    let mut wait_semaphore_refs = SmallVec::<[&VkSemaphore; 8]>::with_capacity(wait_semaphores.len());
-    {
-      let mut inner = self.queue.lock().unwrap();
-      for sem in wait_semaphores {
-        wait_semaphore_refs.push(sem.as_ref());
-        frame_local.track_semaphore(*sem);
-        let signalled_index = inner.signalled_semaphores.iter().enumerate().find(|(_, signalled)| signalled == sem).map(|(index, _)| index);
-        if let Some(signalled_index) = signalled_index {
-          inner.signalled_semaphores.remove(signalled_index);
-        }
-      }
-    }
-    self.present(swapchain, swapchain.acquired_image(), &wait_semaphore_refs);
-  }
-
-  fn create_inner_command_buffer(&self, inheritance: &VkInnerCommandBufferInfo) -> VkCommandBufferRecorder {
-    self.threads.get_thread_local().get_frame_local().get_inner_command_buffer(Some(inheritance))
   }
 }
 

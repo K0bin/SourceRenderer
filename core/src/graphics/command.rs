@@ -82,8 +82,9 @@ pub trait CommandBuffer<B: Backend> {
 pub trait Queue<B: Backend> {
   fn create_command_buffer(&self) -> B::CommandBuffer;
   fn create_inner_command_buffer(&self, inheritance: &<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance) -> B::CommandBuffer;
-  fn submit(&self, submission: B::CommandBufferSubmission, fence: Option<&Arc<B::Fence>>, wait_semaphores: &[&Arc<B::Semaphore>], signal_semaphores: &[&Arc<B::Semaphore>]);
-  fn present(&self, swapchain: &Arc<B::Swapchain>, wait_semaphores: &[&Arc<B::Semaphore>]);
+  fn submit(&self, submission: B::CommandBufferSubmission, fence: Option<&Arc<B::Fence>>, wait_semaphores: &[&Arc<B::Semaphore>], signal_semaphores: &[&Arc<B::Semaphore>], delayed: bool);
+  fn present(&self, swapchain: &Arc<B::Swapchain>, wait_semaphores: &[&Arc<B::Semaphore>], delayed: bool);
+  fn process_submissions(&self);
 }
 
 pub enum RenderPassAttachmentView<'a, B: Backend> {

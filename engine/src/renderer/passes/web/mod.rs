@@ -19,7 +19,7 @@ impl<B: Backend> WebRenderer<B> {
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
     let geometry_pass = GeometryPass::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let init_submission = init_cmd_buffer.finish();
-    device.graphics_queue().submit(init_submission, None, &[], &[]);
+    device.graphics_queue().submit(init_submission, None, &[], &[], false);
     Self {
       device: device.clone(),
       swapchain: swapchain.clone(),
@@ -61,8 +61,8 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     }
 
     let submit_semaphore = self.device.create_semaphore();
-    queue.submit(cmd_buffer.finish(), None, &[&semaphore], &[&submit_semaphore]);
-    queue.present(&self.swapchain, &[&submit_semaphore]);
+    queue.submit(cmd_buffer.finish(), None, &[&semaphore], &[&submit_semaphore], false);
+    queue.present(&self.swapchain, &[&submit_semaphore], false);
 
     if let Some(late_latching) = late_latching {
       late_latching.after_submit(&self.device);
