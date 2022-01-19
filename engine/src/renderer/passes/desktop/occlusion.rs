@@ -1,7 +1,7 @@
 use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, io::Read, path::Path, collections::HashMap};
 
 use bitset_core::BitSet;
-use rayon::{slice::ParallelSlice, iter::{ParallelIterator, IndexedParallelIterator}};
+use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3};
 
@@ -10,11 +10,11 @@ use crate::renderer::{drawable::View, renderer_scene::RendererScene};
 const QUERY_COUNT: usize = 16384;
 
 pub struct OcclusionPass<B: Backend> {
-  query_buffers: [Arc<B::Buffer>; 5],
+  query_buffers: Vec<Arc<B::Buffer>>,
   occluder_vb: Arc<B::Buffer>,
   occluder_ib: Arc<B::Buffer>,
   pipeline: Arc<B::GraphicsPipeline>,
-  occlusion_query_maps: [HashMap<u32, u32>; 5],
+  occlusion_query_maps: Vec<HashMap<u32, u32>>,
   visible_drawable_indices: Vec<u32>
 }
 
@@ -24,25 +24,20 @@ impl<B: Backend> OcclusionPass<B> {
       size: std::mem::size_of::<u32>() * QUERY_COUNT,
       usage: BufferUsage::COPY_DST,
     };
-    let query_buffers = [
-      device.create_buffer(&buffer_info, MemoryUsage::GpuToCpu, Some("QueryBuffer0")),
-      device.create_buffer(&buffer_info, MemoryUsage::GpuToCpu, Some("QueryBuffer1")),
-      device.create_buffer(&buffer_info, MemoryUsage::GpuToCpu, Some("QueryBuffer2")),
-      device.create_buffer(&buffer_info, MemoryUsage::GpuToCpu, Some("QueryBuffer3")),
-      device.create_buffer(&buffer_info, MemoryUsage::GpuToCpu, Some("QueryBuffer4")),
-    ];
-    for buffer in &query_buffers {
-      let mut map = buffer.map_mut::<[u32; QUERY_COUNT]>().unwrap();
-      *map = [!0u32; 16384];
-    }
 
-    let occlusion_query_maps: [HashMap<u32, u32>; 5] = [
-      HashMap::new(),
-      HashMap::new(),
-      HashMap::new(),
-      HashMap::new(),
-      HashMap::new(),
-    ];
+    let ring_size = device.prerendered_frames() as usize + 2;
+    let mut query_buffers = Vec::with_capacity(ring_size);
+    let mut occlusion_query_maps = Vec::with_capacity(ring_size);
+    for i in 0..ring_size {
+      let name = format!("QueryBuffer{}", i);
+      let buffer = device.create_buffer(&buffer_info, MemoryUsage::GpuToCpu, Some(&name));
+      {
+        let mut map = buffer.map_mut::<[u32; QUERY_COUNT]>().unwrap();
+        *map = [!0u32; 16384];
+      }
+      query_buffers.push(buffer);
+      occlusion_query_maps.push(HashMap::new());
+    }
 
     let occluder_vb = device.create_buffer(&BufferInfo {
       size: std::mem::size_of::<Vec4>() * 8,

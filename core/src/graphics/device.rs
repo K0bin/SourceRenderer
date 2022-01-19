@@ -47,4 +47,5 @@ pub trait Device<B: Backend> {
   fn create_fence(&self) -> Arc<B::Fence>;
   fn create_semaphore(&self) -> Arc<B::Semaphore>;
   fn graphics_queue(&self) -> &Arc<B::Queue>;
+  fn prerendered_frames(&self) -> u32;
 }

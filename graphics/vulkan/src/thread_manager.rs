@@ -120,6 +120,10 @@ impl VkThreadManager {
   pub fn shared(&self) -> &Arc<VkShared> {
     &self.shared
   }
+
+  pub fn prerendered_frames(&self) -> u32 {
+    self.max_prepared_frames
+  }
 }
 
 impl VkThreadLocal {

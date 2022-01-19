@@ -248,6 +248,10 @@ impl Device<VkBackend> for VkDevice {
   fn graphics_queue(&self) -> &Arc<VkQueue> {
     &self.graphics_queue
   }
+
+  fn prerendered_frames(&self) -> u32 {
+    self.context.prerendered_frames()
+  }
 }
 
 impl Drop for VkDevice {
