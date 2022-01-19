@@ -136,7 +136,10 @@ impl<P: Platform> Renderer<P> {
         return;
       }
 
-      self.sender.send(RendererCommand::EndFrame).unwrap();
+      let end_frame_res = self.sender.send(RendererCommand::EndFrame);
+      if end_frame_res.is_err() {
+        println!("Render thread crashed.");
+      }
 
       let mut renderer_impl = self.renderer_impl.borrow_mut();
 
