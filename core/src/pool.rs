@@ -14,7 +14,9 @@ impl<T> Drop for Recyclable<T> {
     let item = unsafe {
       std::mem::replace(&mut self.item, MaybeUninit::uninit()).assume_init()
     };
-    self.sender.send(item).expect("Recycling failed");
+    if self.sender.send(item).is_err() {
+      println!("Recycling failed. Channel disconnected.");
+    }
   }
 }
 
