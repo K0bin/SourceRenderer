@@ -89,7 +89,7 @@ impl VkQueryPool {
       query_count,
       inner: Mutex::new(VkQueryPoolInner {
         used_queries: 0,
-        is_reset: true
+        is_reset: false
       })
     }
   }
