@@ -41,7 +41,6 @@ pub struct VkQueue {
 struct VkQueueInner {
   virtual_queue: Vec<VkVirtualSubmission>,
   queue: vk::Queue,
-  last_fence: Option<Arc<VkFence>>,
   signalled_semaphores: SmallVec<[Arc<VkSemaphore>; 8]>,
 }
 
@@ -67,7 +66,6 @@ impl VkQueue {
       queue: Mutex::new(VkQueueInner {
         virtual_queue: Vec::new(),
         queue,
-        last_fence: None,
         signalled_semaphores: SmallVec::new()
       }),
       device: device.clone(),
@@ -131,9 +129,6 @@ impl VkQueue {
     };
 
     let mut guard = self.queue.lock().unwrap();
-    if fence.is_some() {
-      guard.last_fence = fence.cloned();
-    }
     guard.virtual_queue.push(submission);
   }
 
@@ -150,11 +145,6 @@ impl VkQueue {
     };
     let mut guard = self.queue.lock().unwrap();
     guard.virtual_queue.push(submission);
-
-    if let Some(fence) = guard.last_fence.as_ref() {
-      self.threads.end_frame(fence);
-    }
-    guard.last_fence = None;
   }
 
   pub(crate) fn wait_for_idle(&self) {
@@ -242,6 +232,7 @@ impl Queue<VkBackend> for VkQueue {
       return;
     }
 
+    let mut last_fence = Option::<Arc<VkFence>>::None;
     let mut command_buffers = SmallVec::<[vk::CommandBuffer; 32]>::new();
     let mut batch = SmallVec::<[vk::SubmitInfo; 8]>::new();
     let vk_queue = guard.queue;
@@ -263,6 +254,7 @@ impl Queue<VkBackend> for VkQueue {
 
           if !append {
             if let Some(fence) = fence {
+              last_fence = Some(fence.clone());
               if !batch.is_empty() {
                 unsafe {
                   let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
@@ -374,6 +366,7 @@ impl Queue<VkBackend> for VkQueue {
               }
             }
           }
+          self.threads.end_frame(last_fence.as_ref().unwrap());
         }
       }
     }
