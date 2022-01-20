@@ -212,9 +212,7 @@ impl Queue<VkBackend> for VkQueue {
       }
     }
     self.present(swapchain, swapchain.acquired_image(), &wait_semaphore_refs);
-    if !delayed {
-      self.process_submissions();
-    }
+    self.process_submissions();
   }
 
   fn create_inner_command_buffer(&self, inheritance: &VkInnerCommandBufferInfo) -> VkCommandBufferRecorder {
