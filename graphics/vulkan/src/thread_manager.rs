@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 
 use thread_local::ThreadLocal;
 
-use sourcerenderer_core::graphics::Resettable;
+use sourcerenderer_core::graphics::{Resettable, Fence};
 
 use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice, query::VkQueryAllocator};
 use crate::VkCommandPool;
@@ -81,8 +81,15 @@ impl VkThreadManager {
   }
 
   pub fn begin_frame(&self) {
+    let new_frame = self.frame_counter.load(Ordering::SeqCst);
     let mut guard = self.prepared_frames.lock().unwrap();
-    if guard.len() >= self.max_prepared_frames as usize {
+
+    let mut frame_diff = guard.len() as u32;
+    if let Some(last_frame) = guard.front().as_ref() {
+      frame_diff = frame_diff.max((new_frame - last_frame.counter) as u32)
+    }
+
+    if frame_diff >= self.max_prepared_frames {
       if let Some(frame) = guard.pop_front() {
         frame.fence.await_signal();
         frame.fence.reset();
@@ -98,22 +105,20 @@ impl VkThreadManager {
     self.begin_frame();
 
     let thread_local = self.threads.get_or(|| VkThreadLocal::new(&self.device, &self.shared, &self.graphics_queue, self.compute_queue.as_ref(), self.transfer_queue.as_ref(), self.max_prepared_frames));
-    thread_local.set_frame(self.frame_counter.load(Ordering::SeqCst));
+    thread_local.set_frame(self.frame_counter.load(Ordering::SeqCst) - 1);
     thread_local
   }
 
-  pub fn end_frame(&self, fence: &Arc<VkFence>) {
-    let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst);
-    let mut guard = self.prepared_frames.lock().unwrap();
-    guard.push_back(VkFrame {
-      counter,
-      fence: fence.clone()
-    });
+  pub fn end_frame(&self) -> u64 {
+    self.frame_counter.fetch_add(1, Ordering::SeqCst)
   }
 
-  #[inline]
-  pub fn get_frame_counter(&self) -> u64 {
-    self.frame_counter.load(Ordering::SeqCst)
+  pub fn add_frame_fence(&self, frame: u64, fence: &Arc<VkFence>) {
+    let mut guard = self.prepared_frames.lock().unwrap();
+    guard.push_back(VkFrame {
+      counter: frame,
+      fence: fence.clone()
+    });
   }
 
   #[inline]

@@ -55,7 +55,8 @@ enum VkVirtualSubmission {
   Present {
     wait_semaphores: SmallVec<[vk::Semaphore; 4]>,
     image_index: u32,
-    swapchain: Arc<VkSwapchain>
+    swapchain: Arc<VkSwapchain>,
+    frame: u64
   }
 }
 
@@ -138,10 +139,12 @@ impl VkQueue {
     }
     let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
 
+    let frame = self.threads.end_frame();
     let submission = VkVirtualSubmission::Present {
       wait_semaphores: wait_semaphore_handles,
       image_index,
-      swapchain: swapchain.clone()
+      swapchain: swapchain.clone(),
+      frame
     };
     let mut guard = self.queue.lock().unwrap();
     guard.virtual_queue.push(submission);
@@ -212,7 +215,10 @@ impl Queue<VkBackend> for VkQueue {
       }
     }
     self.present(swapchain, swapchain.acquired_image(), &wait_semaphore_refs);
-    self.process_submissions();
+
+    if !delayed {
+      self.process_submissions();
+    }
   }
 
   fn create_inner_command_buffer(&self, inheritance: &VkInnerCommandBufferInfo) -> VkCommandBufferRecorder {
@@ -318,7 +324,7 @@ impl Queue<VkBackend> for VkQueue {
         }
 
         VkVirtualSubmission::Present {
-          wait_semaphores, image_index, swapchain
+          wait_semaphores, image_index, swapchain, frame
         } => {
           if !batch.is_empty() {
             unsafe {
@@ -364,7 +370,7 @@ impl Queue<VkBackend> for VkQueue {
               }
             }
           }
-          self.threads.end_frame(last_fence.as_ref().unwrap());
+          self.threads.add_frame_fence(frame, last_fence.as_ref().unwrap());
         }
       }
     }
