@@ -112,7 +112,7 @@ impl Window<AndroidPlatform> for AndroidWindow {
 
 pub struct StdThreadHandle(std::thread::JoinHandle<()>);
 impl ThreadHandle for StdThreadHandle {
-  fn join(self) {
-      self.0.join().unwrap();
+  fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>> {
+      self.0.join()
   }
 }
