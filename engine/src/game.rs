@@ -144,8 +144,9 @@ impl<P: Platform> Game<P> {
 
       match game_impl {
         GameImpl::MultiThreaded(thread_handle) => {
-          thread_handle
-            .join();
+          if let Err(e) = thread_handle.join() {
+            log::error!("Game thread did not exit cleanly: {:?}", e);
+          }
         },
         GameImpl::Uninitialized => {
           panic!("Game was already stopped.");

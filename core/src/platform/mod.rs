@@ -21,7 +21,7 @@ pub enum GraphicsApi {
 }
 
 pub trait ThreadHandle : Send + Sync {
-  fn join(self);
+  fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>>;
 }
 
 pub trait Platform: 'static + Sized {

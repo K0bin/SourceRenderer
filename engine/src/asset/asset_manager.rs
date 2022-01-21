@@ -515,7 +515,9 @@ impl<P: Platform> AssetManager<P> {
     self.cond_var.notify_all();
     let mut thread_handles_guard = self.thread_handles.borrow_mut();
     for handle in thread_handles_guard.drain(..) {
-      handle.join();
+      if let Err(e) = handle.join() {
+        log::error!("AssetManager did not exit cleanly: {:?}", e);
+      }
     }
   }
 }

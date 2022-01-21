@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool};
 use crossbeam_channel::{Sender, unbounded};
 
-use log::trace;
+use log::{trace, warn};
 use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::{Event, Platform, ThreadHandle}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
@@ -138,7 +138,7 @@ impl<P: Platform> Renderer<P> {
 
       let end_frame_res = self.sender.send(RendererCommand::EndFrame);
       if end_frame_res.is_err() {
-        println!("Render thread crashed.");
+        log::error!("Render thread crashed.");
       }
 
       let mut renderer_impl = self.renderer_impl.borrow_mut();
@@ -151,8 +151,9 @@ impl<P: Platform> Renderer<P> {
 
       match renderer_impl {
         RendererImpl::MultiThreaded(thread_handle) => {
-          thread_handle
-            .join();
+          if let Err(e) = thread_handle.join() {
+            log::error!("Renderer thread did not exit cleanly: {:?}", e);
+          }
         },
         RendererImpl::Uninitialized => {
           panic!("Renderer was already stopped.");

@@ -140,7 +140,7 @@ impl SDLPlatform {
 
 impl SDLWindow {
   pub fn new(_sdl_context: &Sdl, video_subsystem: &VideoSubsystem, graphics_api: GraphicsApi) -> SDLWindow {
-    let mut window_builder = video_subsystem.window("sourcerenderer", 1280, 720);
+    let mut window_builder = video_subsystem.window("sourcerenderer", 1920, 1080);
     window_builder.position_centered();
 
     match graphics_api {
@@ -239,7 +239,7 @@ impl IO for StdIO {
 
 pub struct StdThreadHandle(std::thread::JoinHandle<()>);
 impl ThreadHandle for StdThreadHandle {
-  fn join(self) {
-      self.0.join().unwrap();
+  fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>> {
+    self.0.join()
   }
 }
