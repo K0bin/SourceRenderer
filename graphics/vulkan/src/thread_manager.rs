@@ -105,7 +105,7 @@ impl VkThreadManager {
     self.begin_frame();
 
     let thread_local = self.threads.get_or(|| VkThreadLocal::new(&self.device, &self.shared, &self.graphics_queue, self.compute_queue.as_ref(), self.transfer_queue.as_ref(), self.max_prepared_frames));
-    thread_local.set_frame(self.frame_counter.load(Ordering::SeqCst) - 1);
+    thread_local.set_frame(self.frame_counter.load(Ordering::SeqCst));
     thread_local
   }
 
