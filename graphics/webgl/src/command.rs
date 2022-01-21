@@ -1,7 +1,5 @@
 use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
-use crossbeam_channel::Sender;
-use log::trace;
 use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
@@ -399,12 +397,12 @@ pub struct WebGLCommandSubmission {
 }
 
 pub struct WebGLQueue {
-  sender: Sender<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>,
+  sender: GLThreadSender,
   handle_allocator: Arc<WebGLHandleAllocator>
 }
 
 impl WebGLQueue {
-  pub fn new(sender: &Sender<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>, handle_allocator: &Arc<WebGLHandleAllocator>) -> Self {
+  pub fn new(sender: &GLThreadSender, handle_allocator: &Arc<WebGLHandleAllocator>) -> Self {
     Self {
       sender: sender.clone(),
       handle_allocator: handle_allocator.clone()
@@ -423,7 +421,7 @@ impl Queue<WebGLBackend> for WebGLQueue {
 
   fn submit(&self, mut submission: WebGLCommandSubmission, _fence: Option<&Arc<WebGLFence>>, _wait_semaphores: &[&Arc<WebGLSemaphore>], _signal_semaphores: &[&Arc<WebGLSemaphore>], _delay: bool) {
     while let Some(cmd) = submission.cmd_buffer.commands.pop_front() {
-      self.sender.send(cmd).unwrap();
+      self.sender.send(cmd);
     }
   }
 
@@ -432,7 +430,7 @@ impl Queue<WebGLBackend> for WebGLQueue {
     let c_swapchain = swapchain.clone();
     self.sender.send(Box::new(move |_context| {
       c_swapchain.bump_frame();
-    })).unwrap();
+    }));
   }
 
   fn process_submissions(&self) {

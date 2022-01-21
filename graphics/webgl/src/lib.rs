@@ -9,10 +9,9 @@ mod pipeline;
 mod sync;
 mod raw_context;
 mod thread;
-extern crate crossbeam_channel;
+mod spinlock;
 
 pub use backend::WebGLBackend;
-use crossbeam_channel::{Receiver, Sender};
 pub use instance::{WebGLInstance, WebGLAdapter};
 pub use device::WebGLDevice;
 pub use surface::{WebGLSurface, WebGLSwapchain};
@@ -26,5 +25,6 @@ pub(crate) use raw_context::RawWebGLContext;
 
 pub use thread::WebGLThreadDevice;
 
-pub type GLThreadSender = Sender<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>;
-pub type GLThreadReceiver = Receiver<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>;
+use std::sync::Arc;
+pub type WebGLWork = Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>;
+pub type GLThreadSender = Arc<thread::WebGLThreadQueue>;

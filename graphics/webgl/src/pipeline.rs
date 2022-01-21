@@ -30,7 +30,7 @@ impl WebGLShader {
     let boxed_data = data.into_boxed_slice();
     sender.send(Box::new(move |device| {
       device.create_shader(handle, shader_type, &boxed_data);
-    })).unwrap();
+    }));
     Self {
       handle,
       shader_type,
@@ -48,7 +48,7 @@ impl Drop for WebGLShader {
     let handle = self.handle;
     self.sender.send(Box::new(move |device| {
       device.remove_shader(handle);
-    })).unwrap();
+    }));
   }
 }
 
@@ -68,7 +68,7 @@ impl WebGLGraphicsPipeline {
     let info = info.clone();
     sender.send(Box::new(move |device| {
       device.create_pipeline(handle, &info);
-    })).unwrap();
+    }));
     Self {
       handle,
       sender: sender.clone()
@@ -85,7 +85,7 @@ impl Drop for WebGLGraphicsPipeline {
     let handle = self.handle;
     self.sender.send(Box::new(move |device| {
       device.remove_pipeline(handle);
-    })).unwrap();
+    }));
   }
 }
 

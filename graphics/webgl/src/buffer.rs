@@ -19,7 +19,7 @@ impl WebGLBuffer {
     let c_info = info.clone();
     sender.send(Box::new(move |device| {
       device.create_buffer(handle, &c_info, memory_usage, None);
-    })).unwrap();
+    }));
 
     Self {
       sender: sender.clone(),
@@ -37,7 +37,7 @@ impl WebGLBuffer {
 impl Drop for WebGLBuffer {
   fn drop(&mut self) {
     let handle = self.handle;
-    self.sender.send(Box::new(move |device| device.remove_buffer(handle))).unwrap();
+    self.sender.send(Box::new(move |device| device.remove_buffer(handle)));
   }
 }
 
@@ -75,7 +75,7 @@ impl Buffer for WebGLBuffer {
         let size = device.get_buffer_parameter(target, WebGl2RenderingContext::BUFFER_SIZE).as_f64().unwrap() as u32;
         assert_eq!(size, expected_size as u32);
       }
-    })).unwrap();
+    }));
   }
 
   fn get_length(&self) -> usize {

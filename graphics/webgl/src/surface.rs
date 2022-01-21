@@ -118,7 +118,7 @@ impl WebGLSwapchain {
       device.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, None);
       device.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, read_fb.as_ref());
       device.blit_framebuffer(0, 0, width, height, 0, 0, width, height, WebGl2RenderingContext::COLOR_BUFFER_BIT, WebGl2RenderingContext::LINEAR);
-    })).unwrap();
+    }));
   }
 }
 

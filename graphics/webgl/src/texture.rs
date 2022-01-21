@@ -20,7 +20,7 @@ impl WebGLTexture {
     let c_info = info.clone();
     sender.send(Box::new(move |device| {
       device.create_texture(id, &c_info);
-    })).unwrap();
+    }));
 
     Self {
       handle: id,
@@ -45,7 +45,7 @@ impl Drop for WebGLTexture {
     let handle = self.handle;
     self.sender.send(Box::new(move |device| {
       device.remove_texture(handle);
-    })).unwrap();
+    }));
   }
 }
 

@@ -1,12 +1,57 @@
-use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc};
+use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
 
-use crossbeam_channel::Receiver;
 use log::warn;
+use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
 
-use crate::{GLThreadReceiver, WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl};
+use crate::{WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl, spinlock::{SpinLock, SpinLockGuard}, WebGLWork};
+
+pub struct WebGLThreadQueue {
+  write_buffer: SpinLock<Vec<WebGLWork>>,
+  read_buffer: SpinLock<Vec<WebGLWork>>
+}
+
+impl WebGLThreadQueue {
+  pub fn new() -> Self {
+    Self {
+      write_buffer: SpinLock::new(Vec::new()),
+      read_buffer: SpinLock::new(Vec::new()),
+    }
+  }
+
+  pub fn send(&self, work: WebGLWork) {
+    let mut guard = self.write_buffer.lock();
+    guard.push(work);
+  }
+
+  pub fn swap_buffers(&self) {
+    let mut write_guard = self.write_buffer.lock();
+    let mut read_guard = self.read_buffer.lock();
+    assert_eq!(read_guard.len(), 0);
+    std::mem::swap(&mut *write_guard, &mut *read_guard);
+  }
+
+  pub fn iter(&self) -> WebGLThreadIterator {
+    let read_guard = self.read_buffer.lock();
+    WebGLThreadIterator {
+      lock: read_guard
+    }
+  }
+}
+
+pub struct WebGLThreadIterator<'a> {
+  lock: SpinLockGuard<'a, Vec<WebGLWork>>
+}
+
+impl<'a> Iterator for WebGLThreadIterator<'a> {
+  type Item = WebGLWork;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    (self.lock.len() != 0).then(|| self.lock.remove(0))
+  }
+}
 
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct FboKey {
@@ -265,7 +310,7 @@ pub struct WebGLThreadDevice {
   shaders: HashMap<ShaderHandle, Rc<WebGLThreadShader>>,
   pipelines: HashMap<PipelineHandle, Rc<WebGLThreadPipeline>>,
   buffers: HashMap<BufferHandle, Rc<WebGLThreadBuffer>>,
-  receiver: Receiver<Box<dyn FnOnce(&mut Self) + Send>>,
+  thread_queue: Arc<WebGLThreadQueue>,
   fbo_cache: HashMap<FboKey, WebGlFramebuffer>
 }
 
@@ -275,14 +320,14 @@ pub type ShaderHandle = u64;
 pub type PipelineHandle = u64;
 
 impl WebGLThreadDevice {
-  pub fn new(receiver: &GLThreadReceiver, surface: &WebGLSurface, document: &Document) -> Self {
+  pub fn new(thread_queue: &Arc<WebGLThreadQueue>, surface: &WebGLSurface, document: &Document) -> Self {
     Self {
       context: Rc::new(RawWebGLContext::new(document, surface)),
       textures: HashMap::new(),
       shaders: HashMap::new(),
       pipelines: HashMap::new(),
       buffers: HashMap::new(),
-      receiver: receiver.clone(),
+      thread_queue: thread_queue.clone(),
       fbo_cache: HashMap::new()
     }
   }
@@ -446,11 +491,18 @@ impl WebGLThreadDevice {
   }
 
   pub fn process(&mut self) {
-    let mut cmd_res = self.receiver.try_recv();
-    while cmd_res.is_ok() {
-      let cmd = cmd_res.unwrap();
+    let mut cmds = SmallVec::<[WebGLWork; 128]>::new();
+
+    {
+      self.thread_queue.swap_buffers();
+      let iter = self.thread_queue.iter();
+      for cmd in iter {
+        cmds.push(cmd);
+      }
+    }
+
+    for cmd in cmds {
       cmd(self);
-      cmd_res = self.receiver.try_recv();
     }
   }
 
