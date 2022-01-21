@@ -218,4 +218,8 @@ impl Device<WebGLBackend> for WebGLDevice {
   fn graphics_queue(&self) -> &Arc<WebGLQueue> {
     &self.queue
   }
+
+  fn prerendered_frames(&self) -> u32 {
+    3
+  }
 }

@@ -29,8 +29,8 @@ impl<B: Backend> WebRenderer<B> {
 }
 
 impl<B: Backend> RenderPath<B> for WebRenderer<B> {
-  fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {
-    // nop for now
+  fn write_occlusion_culling_results(&self, _frame: u64, bitset: &mut Vec<u32>) {
+    bitset.fill(!0u32);
   }
 
   fn on_swapchain_changed(&mut self, _swapchain: &std::sync::Arc<B::Swapchain>) {

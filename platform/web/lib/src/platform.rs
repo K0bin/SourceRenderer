@@ -65,8 +65,9 @@ impl Platform for WebPlatform {
 
 pub struct BusyWaitThreadHandle(Arc<AtomicBool>);
 impl ThreadHandle for BusyWaitThreadHandle {
-  fn join(self) {
+  fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>> {
     // As with everything Web related, this is awful
     while !self.0.load(Ordering::SeqCst) {}
+    Ok(())
   }
 }

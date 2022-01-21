@@ -421,17 +421,21 @@ impl Queue<WebGLBackend> for WebGLQueue {
     panic!("WebGL does not support inner command buffers")
   }
 
-  fn submit(&self, mut submission: WebGLCommandSubmission, _fence: Option<&Arc<WebGLFence>>, _wait_semaphores: &[&Arc<WebGLSemaphore>], _signal_semaphores: &[&Arc<WebGLSemaphore>]) {
+  fn submit(&self, mut submission: WebGLCommandSubmission, _fence: Option<&Arc<WebGLFence>>, _wait_semaphores: &[&Arc<WebGLSemaphore>], _signal_semaphores: &[&Arc<WebGLSemaphore>], _delay: bool) {
     while let Some(cmd) = submission.cmd_buffer.commands.pop_front() {
       self.sender.send(cmd).unwrap();
     }
   }
 
-  fn present(&self, swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>]) {
+  fn present(&self, swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>], _delay: bool) {
     swapchain.present();
     let c_swapchain = swapchain.clone();
     self.sender.send(Box::new(move |_context| {
       c_swapchain.bump_frame();
     })).unwrap();
+  }
+
+  fn process_submissions(&self) {
+    // WebGL Queue isn't threaded right now
   }
 }
