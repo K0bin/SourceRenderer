@@ -8,47 +8,26 @@ mod async_io_worker;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;
 extern crate serde;
-#[macro_use]
 extern crate serde_derive;
 extern crate rayon;
-#[macro_use]
 extern crate lazy_static;
 extern crate crossbeam_channel;
 
 use std::cell::RefCell;
 use std::cell::RefMut;
-use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
-use sourcerenderer_core::Platform;
-use sourcerenderer_core::platform::Window;
 use sourcerenderer_engine::Engine;
-use sourcerenderer_webgl::WebGLSwapchain;
 use crate::pool::WorkerPool;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::window;
-use web_sys::{EventTarget, HtmlCanvasElement, Worker};
+use web_sys::HtmlCanvasElement;
 use self::platform::WebPlatform;
 use sourcerenderer_webgl::WebGLThreadDevice;
 use crossbeam_channel::unbounded;
-
-
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-/*
-use std::alloc::System;
-use wasm_tracing_allocator::WasmTracingAllocator;
-#[global_allocator]
-static GLOBAL_ALLOCATOR: WasmTracingAllocator<System> = WasmTracingAllocator(System);
-*/
 
 #[wasm_bindgen]
 extern "C" {
@@ -86,10 +65,15 @@ struct EngineWrapper {
 }
 
 #[wasm_bindgen(js_name = "startEngine")]
-pub fn start_engine(canvas: HtmlCanvasElement, worker_pool: WorkerPool) -> usize {
+pub fn start_engine(canvas_selector: &str, worker_pool: WorkerPool) -> usize {
   utils::set_panic_hook();
 
   console_log::init_with_level(log::Level::Trace).unwrap();
+
+  let window = window().unwrap();
+  let document = window.document().unwrap();
+  let element = document.query_selector(canvas_selector).unwrap().unwrap();
+  let canvas = element.dyn_into::<HtmlCanvasElement>().unwrap();
 
   console_log!("Initializing platform");
   let platform = WebPlatform::new(canvas, worker_pool);
@@ -102,9 +86,7 @@ pub fn start_engine(canvas: HtmlCanvasElement, worker_pool: WorkerPool) -> usize
   let surface = engine.surface().clone();
   console_log!("Got surface");
   let receiver = device.receiver();
-  let window = platform.window();
-  let document = window.document();
-  let thread_device = WebGLThreadDevice::new(receiver, &surface, document);
+  let thread_device = WebGLThreadDevice::new(receiver, &surface, &document);
 
   let wrapper = Box::new(RefCell::new(EngineWrapper {
     gl_device: thread_device,

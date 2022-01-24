@@ -11,5 +11,6 @@
     "removeComments": true,
     "outDir": "dist",
   },
-  "include": [ "src/*.ts", "../lib/pkg/*.d.ts"]
+  "include": [ "src/**/*.ts", "../lib/pkg/*.d.ts"],
+  "exclude": [ "src/worker.ts" ]
 }
