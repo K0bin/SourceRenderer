@@ -42,6 +42,7 @@ struct VkQueueInner {
   virtual_queue: Vec<VkVirtualSubmission>,
   queue: vk::Queue,
   signalled_semaphores: SmallVec<[Arc<VkSemaphore>; 8]>,
+  last_fence: Option<Arc<VkFence>>,
 }
 
 enum VkVirtualSubmission {
@@ -67,7 +68,8 @@ impl VkQueue {
       queue: Mutex::new(VkQueueInner {
         virtual_queue: Vec::new(),
         queue,
-        signalled_semaphores: SmallVec::new()
+        signalled_semaphores: SmallVec::new(),
+        last_fence: None
       }),
       device: device.clone(),
       shared: shared.clone(),
@@ -236,7 +238,7 @@ impl Queue<VkBackend> for VkQueue {
       return;
     }
 
-    let mut last_fence = Option::<Arc<VkFence>>::None;
+    let mut last_fence = guard.last_fence.take();
     let mut command_buffers = SmallVec::<[vk::CommandBuffer; 32]>::new();
     let mut batch = SmallVec::<[vk::SubmitInfo; 8]>::new();
     let vk_queue = guard.queue;
@@ -370,7 +372,7 @@ impl Queue<VkBackend> for VkQueue {
               }
             }
           }
-          self.threads.add_frame_fence(frame, last_fence.as_ref().unwrap());
+          self.threads.add_frame_fence(frame, last_fence.take().as_ref().unwrap());
         }
       }
     }
@@ -383,6 +385,10 @@ impl Queue<VkBackend> for VkQueue {
           panic!("Submit failed: {:?}", result);
         }
       }
+    }
+
+    if let Some(last_fence) = last_fence {
+      guard.last_fence = Some(last_fence);
     }
   }
 }
