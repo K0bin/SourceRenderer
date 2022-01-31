@@ -129,12 +129,13 @@ impl GltfLoader {
       match light.kind() {
         gltf::khr_lights_punctual::Kind::Directional => {
           entry.add_component(DirectionalLightComponent {
-            intensity: light.intensity(),
+            intensity: light.intensity() / 100f32,
           });
         },
         gltf::khr_lights_punctual::Kind::Point => {
+          println!("Found point light");
           entry.add_component(PointLightComponent {
-            intensity: light.intensity(),
+            intensity: light.intensity() / 100f32,
           });
         },
         gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
