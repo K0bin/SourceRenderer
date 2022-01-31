@@ -3,17 +3,20 @@ use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, io::Read, path::Pat
 use bitset_core::BitSet;
 use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3};
+use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
 use crate::renderer::{drawable::View, renderer_scene::RendererScene};
 
 const QUERY_COUNT: usize = 16384;
+const OCCLUDED_FRAME_COUNT: u32 = 5;
+const QUERY_PING_PONG_FRAMES: u32 = 5;
 
 pub struct OcclusionPass<B: Backend> {
   query_buffers: Vec<Arc<B::Buffer>>,
   occluder_vb: Arc<B::Buffer>,
   occluder_ib: Arc<B::Buffer>,
   pipeline: Arc<B::GraphicsPipeline>,
+  drawable_occluded_frames: AtomicRefCell<HashMap<u32, u32>>,
   occlusion_query_maps: Vec<HashMap<u32, u32>>,
   visible_drawable_indices: Vec<u32>
 }
@@ -158,7 +161,8 @@ impl<B: Backend> OcclusionPass<B> {
       occluder_ib,
       pipeline,
       occlusion_query_maps,
-      visible_drawable_indices: Vec::new()
+      visible_drawable_indices: Vec::new(),
+      drawable_occluded_frames: AtomicRefCell::new(HashMap::new()),
     }
   }
 
@@ -179,9 +183,18 @@ impl<B: Backend> OcclusionPass<B> {
 
     let static_meshes = scene.static_drawables();
 
+    let mut map = self.drawable_occluded_frames.borrow_mut();
     self.visible_drawable_indices.clear();
+    let mut visible_count = 0;
     for i in 0..static_meshes.len() {
       if view.visible_drawables_bitset.bit_test(i) {
+        visible_count += 1;
+        let entry = map.entry(i as u32).or_default();
+        if (visible_count % QUERY_PING_PONG_FRAMES) != (frame % (QUERY_PING_PONG_FRAMES as u64)) as u32 && *entry < OCCLUDED_FRAME_COUNT {
+          // Spread occlusion testing across multiple frames
+          continue;
+        }
+
         self.visible_drawable_indices.push(i as u32);
       }
     }
@@ -296,9 +309,22 @@ impl<B: Backend> OcclusionPass<B> {
     let query_buffer_index = ((frame - frame_diff) % self.query_buffers.len() as u64) as usize;
     let occlusion_query_map = &self.occlusion_query_maps[query_buffer_index];
     let mapped_buffer = self.query_buffers[query_buffer_index].map::<[u32; QUERY_COUNT]>().unwrap();
-    for (drawable_index, query_index) in occlusion_query_map {
-      let samples = mapped_buffer[*query_index as usize];
-      bitset.bit_cond(*drawable_index as usize, samples > 0);
+
+    let mut occluded_frames_map = self.drawable_occluded_frames.borrow_mut();
+    for (drawable_index, occluded_frames) in occluded_frames_map.iter_mut() {
+      let query_index = occlusion_query_map.get(drawable_index);
+
+      if let Some(query_index) = query_index {
+        let samples = mapped_buffer[*query_index as usize];
+        let visible = samples > 0;
+
+        if visible {
+          *occluded_frames = 0;
+        } else {
+          *occluded_frames += 1;
+        }
+      }
+      bitset.bit_cond(*drawable_index as usize, *occluded_frames <= OCCLUDED_FRAME_COUNT);
     }
   }
 }
