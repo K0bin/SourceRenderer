@@ -20,15 +20,14 @@ pub struct VkBuffer {
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
   memory_usage: MemoryUsage,
-  info: BufferInfo,
-  free_slices: Mutex<Vec<VkBufferSliceInner>>
+  info: BufferInfo
 }
 
 unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, slices: usize, memory_usage: MemoryUsage, info: &BufferInfo, allocator: &vk_mem::Allocator, name: Option<&str>) -> Arc<Self> {
+  pub fn new(device: &Arc<RawVkDevice>, memory_usage: MemoryUsage, info: &BufferInfo, allocator: &vk_mem::Allocator, name: Option<&str>) -> Arc<Self> {
     let mut queue_families = SmallVec::<[u32; 2]>::new();
     let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
     if info.usage.contains(BufferUsage::COPY_SRC) {
@@ -40,7 +39,7 @@ impl VkBuffer {
     }
 
     let buffer_info = vk::BufferCreateInfo {
-      size: (info.size * slices) as u64,
+      size: info.size as u64,
       usage: buffer_usage_to_vk(info.usage),
       sharing_mode,
       p_queue_family_indices: queue_families.as_ptr(),
@@ -80,7 +79,7 @@ impl VkBuffer {
       false
     };
 
-    let buffer = Arc::new(VkBuffer {
+    Arc::new(VkBuffer {
       buffer,
       allocation,
       allocation_info,
@@ -88,21 +87,8 @@ impl VkBuffer {
       map_ptr,
       is_coherent,
       memory_usage,
-      info: info.clone(),
-      free_slices: Mutex::new(Vec::with_capacity(slices))
-    });
-
-    {
-      let mut slices_guard = buffer.free_slices.lock().unwrap();
-      for i in 0..slices {
-        slices_guard.push(VkBufferSliceInner {
-          offset: i * info.size,
-          length: info.size
-        });
-      }
-    }
-
-    buffer
+      info: info.clone()
+    })
   }
 
   pub fn get_handle(&self) -> &vk::Buffer {
@@ -168,16 +154,6 @@ impl Buffer for VkBufferSlice {
 
   fn get_info(&self) -> &BufferInfo {
     &self.buffer.info
-  }
-}
-
-impl Drop for VkBufferSlice {
-  fn drop(&mut self) {
-    let mut slices = self.buffer.free_slices.lock().unwrap();
-    slices.push(VkBufferSliceInner {
-      offset: self.offset,
-      length: self.length
-    });
   }
 }
 
@@ -263,18 +239,6 @@ fn align_down_64(value: u64, alignment: u64) -> u64 {
   (value / alignment) * alignment
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct VkBufferSliceInner {
-  offset: usize,
-  length: usize
-}
-
-impl Debug for VkBufferSliceInner {
-  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    write!(f, "(Inner Buffer Slice: {}-{} (length: {}))", self.offset, self.offset + self.length, self.length)
-  }
-}
-
 pub struct VkBufferSlice {
   buffer: Arc<VkBuffer>,
   offset: usize,
@@ -335,16 +299,22 @@ struct BufferKey {
   buffer_usage: BufferUsage
 }
 
+#[derive(Default)]
+struct VkBufferSliceCollection {
+  used_slices: Vec<Arc<VkBufferSlice>>,
+  free_slices: Vec<Arc<VkBufferSlice>>
+}
+
 pub struct BufferAllocator {
   device: Arc<RawVkDevice>,
-  buffers: Mutex<HashMap<BufferKey, Vec<Arc<VkBuffer>>>>,
+  buffers: Mutex<HashMap<BufferKey, VkBufferSliceCollection>>,
   device_limits: vk::PhysicalDeviceLimits,
   reuse_automatically: bool
 }
 
 impl BufferAllocator {
   pub fn new(device: &Arc<RawVkDevice>, reuse_automatically: bool) -> Self {
-    let buffers: HashMap<BufferKey, Vec<Arc<VkBuffer>>> = HashMap::new();
+    let buffers: HashMap<BufferKey, VkBufferSliceCollection> = HashMap::new();
     let mut limits2 = vk::PhysicalDeviceProperties2 {
       ..Default::default()
     };
@@ -363,13 +333,11 @@ impl BufferAllocator {
 
   pub fn get_slice(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
     if info.size > BIG_BUFFER_SLAB_SIZE {
-      let buffer = VkBuffer::new(&self.device, 1, memory_usage, info, &self.device.allocator, name);
-      let mut free_slices = buffer.free_slices.lock().unwrap();
-      let slice = free_slices.pop().unwrap();
+      let buffer = VkBuffer::new(&self.device, memory_usage, info, &self.device.allocator, name);
       return Arc::new(VkBufferSlice {
         buffer: buffer.clone(),
-        offset: slice.offset,
-        length: slice.length
+        offset: 0,
+        length: info.size
       });
     }
 
@@ -387,23 +355,42 @@ impl BufferAllocator {
     let key = BufferKey { memory_usage, buffer_usage: info.usage };
     let mut guard = self.buffers.lock().unwrap();
     let matching_buffers = guard.entry(key).or_default();
-    for buffer in matching_buffers.iter() {
-      if buffer.info.size % alignment != 0 || buffer.info.size < info.size {
-        continue;
+    // TODO: consider a smarter data structure than a simple list of all slices regardless of size.
+    let slice_index = matching_buffers.free_slices.iter()
+      .enumerate()
+      .find(|(_, slice)| slice.offset % alignment == 0 && slice.length % alignment == 0 && slice.length >= info.size)
+      .map(|(index, _b)| index);
+    if let Some(index) = slice_index {
+      let slice = matching_buffers.free_slices.remove(index);
+      matching_buffers.used_slices.push(slice.clone());
+      return slice;
+    }
+
+    if self.reuse_automatically {
+      // This is awful. Completely rewrite this with drain_filter once that's stabilized.
+      // Right now cleaner alternatives would likely need to do more copying and allocations.
+      let mut i: isize = (matching_buffers.used_slices.len() - 1) as isize;
+      while i >= 0 {
+        let index = i as usize;
+        let refcount = {
+          let slice = &matching_buffers.used_slices[index];
+          Arc::strong_count(slice)
+        };
+        if refcount == 1 {
+          matching_buffers.free_slices.push(matching_buffers.used_slices.remove(index));
+          i -= 1;
+        }
+        i -= 1;
       }
-      let slice = {
-        let mut slices = buffer.free_slices.lock().unwrap();
-        slices.pop()
-      };
-      if slice.is_none() {
-        continue;
+      let slice_index = matching_buffers.free_slices.iter()
+        .enumerate()
+        .find(|(_, slice)| slice.offset % alignment == 0 && slice.length % alignment == 0 && slice.length >= info.size)
+        .map(|(index, _b)| index);
+      if let Some(index) = slice_index {
+        let slice = matching_buffers.free_slices.remove(index);
+        matching_buffers.used_slices.push(slice.clone());
+        return slice;
       }
-      let slice = slice.unwrap();
-      return Arc::new(VkBufferSlice {
-        buffer: buffer.clone(),
-        offset: slice.offset,
-        length: slice.length
-      });
     }
 
     let mut slice_size = max(info.size, alignment);
@@ -416,22 +403,31 @@ impl BufferAllocator {
     } else {
       BIG_BUFFER_SLAB_SIZE
     };
-    info.size = slice_size;
+    let slices = SLICED_BUFFER_SIZE / slice_size;
+    info.size = SLICED_BUFFER_SIZE;
 
-    let buffer = VkBuffer::new(&self.device, slice_size, memory_usage, &info, &self.device.allocator, None);
-    let slice = {
-      let mut free_slices = buffer.free_slices.lock().unwrap();
-      let slice = free_slices.pop().unwrap();
-      slice
-    };
-    matching_buffers.push(buffer.clone());
-    Arc::new(VkBufferSlice {
-      buffer,
-      offset: slice.offset,
-      length: slice.length
-    })
+    let buffer = VkBuffer::new(&self.device, memory_usage, &info, &self.device.allocator, None);
+    for i in 0 .. (slices - 1) {
+      let slice = Arc::new(VkBufferSlice {
+        buffer: buffer.clone(),
+        offset: i * slice_size,
+        length: slice_size
+      });
+      matching_buffers.free_slices.push(slice);
+    }
+    let slice = Arc::new(VkBufferSlice {
+      buffer: buffer.clone(),
+      offset: (slices - 1) * slice_size,
+      length: slice_size
+    });
+    matching_buffers.used_slices.push(slice.clone());
+    slice
   }
 
   pub fn reset(&self) {
+    let mut buffers_types = self.buffers.lock().unwrap();
+    for (_key, buffers) in buffers_types.iter_mut() {
+      buffers.free_slices.append(buffers.used_slices.as_mut());
+    }
   }
 }
