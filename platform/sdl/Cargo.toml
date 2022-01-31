@@ -15,4 +15,4 @@ sourcerenderer_core = { path = "../../core" }
 sourcerenderer_vulkan = { path = "../../graphics/vulkan" }
 sourcerenderer_engine = { path = "../../engine" }
 lazy_static = "1.4.0"
-simple_logger = "1.13.0"
+simple_logger = "2.1.0"
