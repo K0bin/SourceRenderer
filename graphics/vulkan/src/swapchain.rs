@@ -67,7 +67,7 @@ impl VkSwapchain {
           }
         }
       };
-      let present_mode = VkSwapchain::pick_present_mode(vsync, present_modes);
+      let present_mode = VkSwapchain::pick_present_mode(vsync, &present_modes);
       let swapchain_loader = SwapchainLoader::new(&instance.instance, vk_device);
 
       let capabilities = match surface.get_capabilities(&physical_device) {
@@ -286,11 +286,17 @@ impl VkSwapchain {
     image_count
   }
 
-  unsafe fn pick_present_mode(vsync: bool, present_modes: Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
+  unsafe fn pick_present_mode(vsync: bool, present_modes: &[vk::PresentModeKHR]) -> vk::PresentModeKHR {
     if !vsync {
       if let Some(mode) = present_modes
         .iter()
         .find(|&&mode| mode == vk::PresentModeKHR::IMMEDIATE) {
+        return *mode;
+      }
+
+      if let Some(mode) = present_modes
+        .iter()
+        .find(|&&mode| mode == vk::PresentModeKHR::MAILBOX) {
         return *mode;
       }
     }
