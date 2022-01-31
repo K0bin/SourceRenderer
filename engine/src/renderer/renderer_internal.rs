@@ -17,7 +17,7 @@ use crate::renderer::drawable::DrawablePart;
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use rayon::prelude::*;
-use crate::math::Frustum;
+use crate::math::{Frustum, BoundingBox};
 use instant::Instant;
 
 use super::PointLight;
@@ -288,8 +288,7 @@ impl<P: Platform> RendererInternal<P> {
 
     let frustum = Frustum::new(view_mut.near_plane, view_mut.far_plane, view_mut.camera_fov, view_mut.aspect_ratio);
     let camera_matrix = view_mut.view_matrix;
-    let camera_forward = view_mut.camera_rotation.transform_vector(&Vec3::new(0.0f32, 0.0f32, -1.0f32));
-    let camera_position = view_mut.camera_position + (camera_forward * 0.15f32); // move camera a bit forward
+    let camera_position = view_mut.camera_position;
     const CHUNK_SIZE: usize = 64;
     static_meshes.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
       let mut chunk_visible_parts = SmallVec::<[DrawablePart; CHUNK_SIZE]>::new();
@@ -311,8 +310,28 @@ impl<P: Platform> RendererInternal<P> {
 
         visible_drawables.bit_set(index);
         let drawable_index = chunk_index * CHUNK_SIZE + index;
-        let transformed_bb = bounding_box.as_ref().map(|bb| bb.transform(&(static_mesh.transform * Matrix4::new_scaling(1.2f32))));
-        let camera_in_bb = transformed_bb.map(|bb| bb.contains(&camera_position)).unwrap_or(false);
+
+        // Enlarge bounding box to check if camera is inside it.
+        // To avoid objects disappearing because of the near plane and/or backface culling.
+        // https://stackoverflow.com/questions/21037241/how-to-determine-a-point-is-inside-or-outside-a-cube
+        let camera_in_bb = if let Some(bb) = bounding_box.as_ref() {
+          let mut bb_scale = bb.max - bb.min;
+          let bb_translation = bb.min + bb_scale / 2.0f32;
+          bb_scale *= 1.2f32; // make bounding box 20% bigger, we used 10% for the occlusion query geo.
+          bb_scale.x = bb_scale.x.max(0.4f32);
+          bb_scale.y = bb_scale.y.max(0.4f32);
+          bb_scale.z = bb_scale.z.max(0.4f32);
+          let bb_transform = Matrix4::new_translation(&bb_translation)
+            * Matrix4::new_nonuniform_scaling(&bb_scale);
+          let transformed_bb = BoundingBox::new(Vec3::new(-0.5f32, -0.5f32, -0.5f32), Vec3::new(0.5f32, 0.5f32, 0.5f32))
+            .transform(&(static_mesh.transform * bb_transform))
+            .enlarge(&Vec3::new(view_mut.near_plane, view_mut.near_plane, view_mut.near_plane)); // Enlarge by the near plane to make check simpler.
+
+          transformed_bb.contains(&camera_position)
+        } else {
+          false
+        };
+
         if old_visible.len() * 32 > drawable_index && !old_visible.bit_test(drawable_index) && !camera_in_bb {
           // Mesh was not visible in the previous frame.
           continue;

@@ -66,10 +66,10 @@ impl GltfLoader {
           bounding_box.max.y = f32::max(bounding_box.max.y, primitive_bounding_box.max[1]);
           bounding_box.max.z = f32::max(bounding_box.max.z, primitive_bounding_box.max[2]);
         } else {
-          bounding_box = Some(BoundingBox {
-            min: Vec3::new(primitive_bounding_box.min[0], primitive_bounding_box.min[1], primitive_bounding_box.min[2]),
-            max: Vec3::new(primitive_bounding_box.max[0], primitive_bounding_box.max[1], primitive_bounding_box.max[2]),
-          });
+          bounding_box = Some(BoundingBox::new(
+            Vec3::new(primitive_bounding_box.min[0], primitive_bounding_box.min[1], primitive_bounding_box.min[2]),
+            Vec3::new(primitive_bounding_box.max[0], primitive_bounding_box.max[1], primitive_bounding_box.max[2]),
+          ));
         }
         let range = MeshRange {
           start: part_start as u32,

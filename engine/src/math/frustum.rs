@@ -27,12 +27,12 @@ impl Frustum {
     }
   }
 
-  pub fn intersects(&self, bounding_box: &BoundingBox, mvp: &Matrix4) -> bool {
+  pub fn intersects(&self, bounding_box: &BoundingBox, model_view: &Matrix4) -> bool {
     let corners = [
-      (mvp * Vec4::new(bounding_box.min.x, bounding_box.min.y, bounding_box.min.z, 1f32)).xyz(),
-      (mvp * Vec4::new(bounding_box.max.x, bounding_box.min.y, bounding_box.min.z, 1f32)).xyz(),
-      (mvp * Vec4::new(bounding_box.min.x, bounding_box.max.y, bounding_box.min.z, 1f32)).xyz(),
-      (mvp * Vec4::new(bounding_box.min.x, bounding_box.min.y, bounding_box.max.z, 1f32)).xyz()
+      (model_view * Vec4::new(bounding_box.min.x, bounding_box.min.y, bounding_box.min.z, 1f32)).xyz(),
+      (model_view * Vec4::new(bounding_box.max.x, bounding_box.min.y, bounding_box.min.z, 1f32)).xyz(),
+      (model_view * Vec4::new(bounding_box.min.x, bounding_box.max.y, bounding_box.min.z, 1f32)).xyz(),
+      (model_view * Vec4::new(bounding_box.min.x, bounding_box.min.y, bounding_box.max.z, 1f32)).xyz()
     ];
 
     let axes = [
