@@ -9,6 +9,7 @@ What's working:
   * temporal anti aliasing
   * SSAO
   * clustered shading (currently only supports point lights)
+  * Frustum culling & occlusion culling (based on GPU queries)
 * loading BSP levels
   * basic brush geometry
   * displacements (at least to some degree)
