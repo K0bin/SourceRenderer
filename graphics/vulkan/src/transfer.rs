@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use crate::buffer::VkBufferSlice;
 use crate::VkFence;
 
-use sourcerenderer_core::graphics::Texture;
+use sourcerenderer_core::graphics::{Texture, Queue};
 use std::cmp::{max, min};
 use std::ffi::CString;
 use crate::{VkShared, VkLifetimeTrackers};
