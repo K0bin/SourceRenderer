@@ -907,7 +907,7 @@ impl VkCommandBuffer {
 impl Drop for VkCommandBuffer {
   fn drop(&mut self) {
     if self.state == VkCommandBufferState::Submitted {
-      unsafe { self.device.device_wait_idle() }.unwrap();
+      unsafe { self.device.wait_for_idle(); }
     }
   }
 }
