@@ -5,7 +5,7 @@ use ash::vk;
 
 use sourcerenderer_core::graphics::*;
 use crate::{queue::VkQueue, texture::VkSampler};
-use crate::queue::VkQueueInfo;
+use crate::queue::{VkQueueInfo, VkQueueType};
 use crate::{VkBackend, VkRenderPass, VkSemaphore};
 use crate::VkAdapterExtensionSupport;
 use crate::pipeline::VkPipeline;
@@ -55,36 +55,39 @@ impl VkDevice {
     };
     let allocator = vk_mem::Allocator::new(&allocator_info).expect("Failed to create memory allocator.");
 
-    let raw = Arc::new(RawVkDevice {
+    let raw_graphics_queue = unsafe { device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
+    let raw_compute_queue = compute_queue_info.map(|info| unsafe { device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) });
+    let raw_transfer_queue = transfer_queue_info.map(|info| unsafe { device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) });
+
+    let raw = Arc::new(RawVkDevice::new(
       device,
       allocator,
       physical_device,
-      instance: instance.clone(),
+      instance.clone(),
       extensions,
       graphics_queue_info,
       transfer_queue_info,
       compute_queue_info,
-      is_alive: AtomicBool::new(true)
-    });
+      raw_graphics_queue,
+      raw_compute_queue,
+      raw_transfer_queue
+    ));
 
     let shared = Arc::new(VkShared::new(&raw));
 
     let context = Arc::new(VkThreadManager::new(&raw, &graphics_queue_info, compute_queue_info.as_ref(), transfer_queue_info.as_ref(), &shared, min(3, max_surface_image_count)));
 
     let graphics_queue = {
-      let vk_queue = unsafe { raw.device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
-      Arc::new(VkQueue::new(graphics_queue_info, vk_queue, &raw, &shared, &context))
+      Arc::new(VkQueue::new(graphics_queue_info, VkQueueType::Graphics, &raw, &shared, &context))
     };
 
-    let compute_queue = compute_queue_info.map(|info| {
-      let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared, &context))
-    });
+    let compute_queue = compute_queue_info.map(|info|
+      Arc::new(VkQueue::new(info, VkQueueType::Compute, &raw, &shared, &context))
+    );
 
-    let transfer_queue = transfer_queue_info.map(|info| {
-      let vk_queue = unsafe { raw.device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) };
-      Arc::new(VkQueue::new(info, vk_queue, &raw, &shared, &context))
-    });
+    let transfer_queue = transfer_queue_info.map(|info|
+      Arc::new(VkQueue::new(info, VkQueueType::Transfer, &raw, &shared, &context))
+    );
 
     let transfer = VkTransfer::new(&raw, &graphics_queue, &transfer_queue, &shared);
 
@@ -193,7 +196,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn wait_for_idle(&self) {
-    unsafe { self.device.device_wait_idle().unwrap(); }
+    unsafe { self.device.wait_for_idle(); }
   }
 
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {

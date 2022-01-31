@@ -1,10 +1,12 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::iter::*;
+use std::sync::MutexGuard;
 use std::sync::atomic::Ordering;
 
 use ash::vk;
 
+use parking_lot::ReentrantMutexGuard;
 use sourcerenderer_core::graphics::Queue;
 use sourcerenderer_core::graphics::{CommandBufferType, Swapchain};
 
@@ -30,17 +32,24 @@ pub struct VkQueueInfo {
   pub supports_presentation: bool
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum VkQueueType {
+  Graphics,
+  Compute,
+  Transfer
+}
+
 pub struct VkQueue {
   info: VkQueueInfo,
   queue: Mutex<VkQueueInner>,
   device: Arc<RawVkDevice>,
   shared: Arc<VkShared>,
-  threads: Arc<VkThreadManager>
+  threads: Arc<VkThreadManager>,
+  queue_type: VkQueueType
 }
 
 struct VkQueueInner {
   virtual_queue: Vec<VkVirtualSubmission>,
-  queue: vk::Queue,
   signalled_semaphores: SmallVec<[Arc<VkSemaphore>; 8]>,
   last_fence: Option<Arc<VkFence>>,
 }
@@ -62,18 +71,18 @@ enum VkVirtualSubmission {
 }
 
 impl VkQueue {
-  pub fn new(info: VkQueueInfo, queue: vk::Queue, device: &Arc<RawVkDevice>, shared: &Arc<VkShared>, threads: &Arc<VkThreadManager>) -> Self {
+  pub fn new(info: VkQueueInfo, queue_type: VkQueueType, device: &Arc<RawVkDevice>, shared: &Arc<VkShared>, threads: &Arc<VkThreadManager>) -> Self {
     Self {
       info,
       queue: Mutex::new(VkQueueInner {
         virtual_queue: Vec::new(),
-        queue,
         signalled_semaphores: SmallVec::new(),
         last_fence: None
       }),
       device: device.clone(),
       shared: shared.clone(),
-      threads: threads.clone()
+      threads: threads.clone(),
+      queue_type
     }
   }
 
@@ -152,11 +161,20 @@ impl VkQueue {
     guard.virtual_queue.push(submission);
   }
 
+  fn lock_queue(&self) -> ReentrantMutexGuard<vk::Queue> {
+    match self.queue_type {
+      VkQueueType::Graphics => self.device.graphics_queue(),
+      VkQueueType::Compute => self.device.compute_queue().unwrap(),
+      VkQueueType::Transfer => self.device.transfer_queue().unwrap()
+    }
+  }
+
   pub(crate) fn wait_for_idle(&self) {
     self.process_submissions();
     let queue_guard = self.queue.lock().unwrap();
+    let queue = self.lock_queue();
     unsafe {
-      self.device.queue_wait_idle(queue_guard.queue).unwrap();
+      self.device.queue_wait_idle(*queue).unwrap();
     }
   }
 }
@@ -241,7 +259,7 @@ impl Queue<VkBackend> for VkQueue {
     let mut last_fence = guard.last_fence.take();
     let mut command_buffers = SmallVec::<[vk::CommandBuffer; 32]>::new();
     let mut batch = SmallVec::<[vk::SubmitInfo; 8]>::new();
-    let vk_queue = guard.queue;
+    let vk_queue = self.lock_queue();
     for submission in guard.virtual_queue.drain(..) {
       let mut append = false;
       match submission {
@@ -263,10 +281,10 @@ impl Queue<VkBackend> for VkQueue {
               last_fence = Some(fence.clone());
               if !batch.is_empty() {
                 unsafe {
-                  let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
+                  let result = self.device.device.queue_submit(*vk_queue, &batch, vk::Fence::null());
                   if result.is_err() {
                     self.device.is_alive.store(true, Ordering::SeqCst);
-                    self.device.queue_wait_idle(vk_queue).unwrap();
+                    self.device.queue_wait_idle(*vk_queue).unwrap();
                     panic!("Submit failed: {:?}", result);
                   }
                 }
@@ -288,20 +306,20 @@ impl Queue<VkBackend> for VkQueue {
               fence.mark_submitted();
               let fence_handle = fence.get_handle();
               unsafe {
-                let result = self.device.device.queue_submit(vk_queue, &[submit], *fence_handle);
+                let result = self.device.device.queue_submit(*vk_queue, &[submit], *fence_handle);
                 if result.is_err() {
                   self.device.is_alive.store(true, Ordering::SeqCst);
-                  self.device.queue_wait_idle(vk_queue).unwrap();
+                  self.device.queue_wait_idle(*vk_queue).unwrap();
                   panic!("Submit failed: {:?}", result);
                 }
               }
             } else {
               if batch.len() == batch.capacity() {
                 unsafe {
-                  let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
+                  let result = self.device.device.queue_submit(*vk_queue, &batch, vk::Fence::null());
                   if result.is_err() {
                     self.device.is_alive.store(true, Ordering::SeqCst);
-                    self.device.queue_wait_idle(vk_queue).unwrap();
+                    self.device.queue_wait_idle(*vk_queue).unwrap();
                     panic!("Submit failed: {:?}", result);
                   }
                 }
@@ -330,10 +348,10 @@ impl Queue<VkBackend> for VkQueue {
         } => {
           if !batch.is_empty() {
             unsafe {
-              let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
+              let result = self.device.device.queue_submit(*vk_queue, &batch, vk::Fence::null());
               if result.is_err() {
                 self.device.is_alive.store(true, Ordering::SeqCst);
-                self.device.queue_wait_idle(vk_queue).unwrap();
+                self.device.queue_wait_idle(*vk_queue).unwrap();
                 panic!("Submit failed: {:?}", result);
               }
             }
@@ -351,7 +369,8 @@ impl Queue<VkBackend> for VkQueue {
             ..Default::default()
           };
           unsafe {
-            let result = swapchain.get_loader().queue_present(vk_queue, &present_info);
+            let before = std::time::Instant::now();
+            let result = swapchain.get_loader().queue_present(*vk_queue, &present_info);
             swapchain.set_presented_image(image_index);
             match result {
               Ok(suboptimal) => {
@@ -365,7 +384,7 @@ impl Queue<VkBackend> for VkQueue {
                   vk::Result::ERROR_SURFACE_LOST_KHR => { swapchain.surface().mark_lost(); }
                   _ => {
                     self.device.is_alive.store(true, Ordering::SeqCst);
-                    self.device.queue_wait_idle(vk_queue).unwrap();
+                    self.device.queue_wait_idle(*vk_queue).unwrap();
                     panic!("Present failed: {:?}", err);
                   }
                 }
@@ -379,7 +398,7 @@ impl Queue<VkBackend> for VkQueue {
 
     if !batch.is_empty() {
       unsafe {
-        let result = self.device.device.queue_submit(vk_queue, &batch, vk::Fence::null());
+        let result = self.device.device.queue_submit(*vk_queue, &batch, vk::Fence::null());
         if result.is_err() {
           self.device.is_alive.store(true, Ordering::SeqCst);
           panic!("Submit failed: {:?}", result);
