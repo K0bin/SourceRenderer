@@ -30,9 +30,8 @@ fn main() {
     if !platform.poll_events(&engine) {
       break 'event_loop;
     }
-    if engine.is_mouse_locked() {
-      platform.reset_mouse_position();
-    }
+
+    platform.update_mouse_lock(engine.is_mouse_locked());
 
     engine.frame();
   }

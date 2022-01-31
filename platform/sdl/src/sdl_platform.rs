@@ -95,13 +95,10 @@ impl SDLPlatform {
             engine.dispatch_event(Event::KeyDown(key));
           }
         }
-        SDLEvent::MouseMotion { x, y, .. } => {
+        SDLEvent::MouseMotion { x, y, xrel, yrel, .. } => {
           if engine.is_mouse_locked() {
-            let (width, height) = self.window.window.drawable_size();
-            if x - width as i32 / 2i32 != 0 || y - height as i32 / 2i32 != 0 {
-              self.mouse_pos += Vec2I::new(x - width as i32 / 2i32, y - height as i32 / 2i32);
+              self.mouse_pos += Vec2I::new(xrel, yrel);
               engine.dispatch_event(Event::MouseMoved(self.mouse_pos));
-            }
           } else {
             engine.dispatch_event(Event::MouseMoved(Vec2I::new(x, y)));
           }
@@ -131,10 +128,13 @@ impl SDLPlatform {
     true
   }
 
-  pub(crate) fn reset_mouse_position(&self) {
+  pub(crate) fn update_mouse_lock(&self, is_locked: bool) {
     let mouse_util = self.sdl_context.mouse();
-    let (width, height) = self.window.sdl_window_handle().drawable_size();
-    mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
+    mouse_util.set_relative_mouse_mode(is_locked);
+    if is_locked {
+      let (width, height) = self.window.window.drawable_size();
+      mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
+    }
   }
 }
 
