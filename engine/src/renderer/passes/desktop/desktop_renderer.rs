@@ -57,8 +57,9 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.occlusion.write_occlusion_query_results(frame, bitset);
   }
 
-  fn on_swapchain_changed(&mut self, _swapchain: &std::sync::Arc<B::Swapchain>) {
-    todo!()
+  fn on_swapchain_changed(&mut self, swapchain: &std::sync::Arc<B::Swapchain>) {
+    // TODO: resize render targets
+    self.swapchain = swapchain.clone();
   }
 
   fn render(&mut self,

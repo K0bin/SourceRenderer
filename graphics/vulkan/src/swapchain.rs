@@ -392,15 +392,13 @@ impl Drop for VkSwapchain {
 
 impl Swapchain<VkBackend> for VkSwapchain {
   fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
-    if old.state() == VkSwapchainState::Retired {
-      VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, None)
-    } else {
-      VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, Some(old))
-    }
+    println!("Recreating swapchain");
+    VkSwapchain::new_internal(old.vsync, width, height, &old.device, &old.surface, if old.state() == VkSwapchainState::Retired { None } else { Some(old) })
   }
 
   fn recreate_on_surface(old: &Self, surface: &Arc<VkSurface>, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
-    VkSwapchain::new_internal(old.vsync, width, height, &old.device, surface, None)
+    println!("Recreating swapchain on new surface");
+    VkSwapchain::new_internal(old.vsync, width, height, &old.device, surface, if old.state() == VkSwapchainState::Retired { None } else { Some(old) })
   }
 
   fn sample_count(&self) -> SampleCount {
