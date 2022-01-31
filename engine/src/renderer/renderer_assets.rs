@@ -199,7 +199,8 @@ pub(super) struct RendererAssets<P: Platform> {
   textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
   texture_usages: HashMap<String, Vec<(String, String)>>,
   material_usages: HashMap<String, Vec<(String, usize)>>,
-  zero_view: Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>,
+  zero_texture: Arc<RendererTexture<P::GraphicsBackend>>,
+  zero_texture_black: Arc<RendererTexture<P::GraphicsBackend>>,
   delayed_assets: Vec<DelayedAsset<P::GraphicsBackend>>
 }
 
@@ -224,6 +225,32 @@ impl<P: Platform> RendererAssets<P> {
       base_array_level: 0,
       array_level_length: 1
     });
+    let zero_rtexture = Arc::new(RendererTexture {
+      view: zero_view,
+    });
+
+    let zero_data_black = [0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8];
+    let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
+    let zero_texture_black = device.create_texture(&TextureInfo {
+      format: Format::RGBA8,
+      width: 2,
+      height: 2,
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
+    }, Some("AssetManagerZeroTextureBlack"));
+    device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0);
+    let zero_view_black = device.create_shader_resource_view(&zero_texture_black, &TextureShaderResourceViewInfo {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1
+    });
+    let zero_rtexture_black = Arc::new(RendererTexture {
+      view: zero_view_black,
+    });
     device.flush_transfers();
 
     Self {
@@ -234,7 +261,8 @@ impl<P: Platform> RendererAssets<P> {
       textures: HashMap::new(),
       material_usages: HashMap::new(),
       texture_usages: HashMap::new(),
-      zero_view,
+      zero_texture: zero_rtexture,
+      zero_texture_black: zero_rtexture_black,
       delayed_assets: Vec::new()
     }
   }
@@ -329,7 +357,7 @@ impl<P: Platform> RendererAssets<P> {
           let texture = self.textures.get(path)
             .cloned()
             .or_else(|| {
-              let zero_view = self.zero_view.clone();
+              let zero_view = self.zero_texture.view.clone();
               Some(self.integrate_texture(path, &zero_view))
             }).unwrap();
 
@@ -390,13 +418,21 @@ impl<P: Platform> RendererAssets<P> {
       .expect("Texture not yet loaded")
   }
 
-  pub fn insert_placeholder_texture(&mut self, texture_path: &str) -> Arc<RendererTexture<P::GraphicsBackend>> {
+  pub fn placeholder_texture(&self) -> &Arc<RendererTexture<P::GraphicsBackend>> {
+    &self.zero_texture
+  }
+
+  pub fn placeholder_black(&self) -> &Arc<RendererTexture<P::GraphicsBackend>> {
+    &self.zero_texture_black
+  }
+
+  pub fn insert_placeholder_texture(&mut self, texture_path: &str, black: bool) -> Arc<RendererTexture<P::GraphicsBackend>> {
     if self.textures.contains_key(texture_path) {
       return self.textures.get(texture_path).unwrap().clone();
     }
 
     let texture = Arc::new(RendererTexture {
-      view: self.zero_view.clone()
+      view: if black { self.zero_texture.view.clone() } else { self.zero_texture_black.view.clone() }
     });
     self.textures.insert(texture_path.to_string(), texture.clone());
     texture
@@ -449,9 +485,5 @@ impl<P: Platform> RendererAssets<P> {
 
     // Make sure the work initializing the resources actually gets submitted
     self.device.flush_transfers();
-  }
-
-  pub(crate) fn zero_view(&self) -> &Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView> {
-    &self.zero_view
   }
 }

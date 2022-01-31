@@ -1,7 +1,7 @@
 
 use nalgebra::Rotation3;
 use sourcerenderer_core::{Platform, Quaternion, Vec4, graphics::{Format, SampleCount, TextureUsage}};
-use crate::asset::{AssetLoader, AssetType, Asset, Model, AssetManager, Mesh};
+use crate::{asset::{AssetLoader, AssetType, Asset, Model, AssetManager, Mesh}, renderer::Lightmap};
 use core::slice;
 use std::{path::Path, u8};
 use std::sync::Arc;
@@ -459,6 +459,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       info: lightmap_info,
       data: Box::new([data])
     }), AssetLoadPriority::Normal);
+
+    world.push((Lightmap { path: "lightmap".to_string() },));
 
     Ok(AssetLoaderResult {
       level: Some(world)

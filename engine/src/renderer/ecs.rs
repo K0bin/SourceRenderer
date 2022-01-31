@@ -18,6 +18,7 @@ pub trait RendererInterface {
   fn unregister_directional_light(&self, entity: Entity);
   fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32);
   fn update_transform(&self, entity: Entity, transform: Matrix4);
+  fn update_lightmap(&self, path: &str);
   fn end_frame(&self);
   fn is_saturated(&self) -> bool;
   fn is_running(&self) -> bool;
@@ -39,6 +40,11 @@ pub struct PointLightComponent {
 #[derive(Clone, Debug, PartialEq)]
 pub struct DirectionalLightComponent {
   pub intensity: f32
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Lightmap {
+  pub path: String
 }
 
 #[derive(Clone, Default, Debug)]
@@ -65,6 +71,7 @@ pub fn install<P: Platform, R: RendererInterface + Send + Sync + 'static>(system
 #[read_component(DirectionalLightComponent)]
 #[read_component(GlobalTransform)]
 #[read_component(Camera)]
+#[read_component(Lightmap)]
 fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
             #[state] renderer: &R,
             #[state] active_static_renderables: &mut ActiveStaticRenderables,
@@ -186,6 +193,14 @@ fn renderer<P: Platform, R: RendererInterface + 'static>(world: &mut SubWorld,
       true
     }
   });
+
+  let mut lightmap_query = <(&Lightmap,)>::query()
+    .filter(maybe_changed::<Lightmap>());
+
+  for (lightmap,) in lightmap_query.iter(world) {
+    renderer.update_lightmap(&lightmap.path);
+    break;
+  }
 
   renderer.end_frame();
 }

@@ -32,7 +32,6 @@ pub(super) struct RendererInternal<P: Platform> {
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
   asset_manager: Arc<AssetManager<P>>,
-  lightmap: Arc<RendererTexture<P::GraphicsBackend>>,
   scene: Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>,
   view: Arc<AtomicRefCell<View>>,
   sender: Sender<RendererCommand>,
@@ -40,7 +39,7 @@ pub(super) struct RendererInternal<P: Platform> {
   window_event_receiver: Receiver<Event<P>>,
   last_tick: Instant,
   frame: u64,
-  assets: RendererAssets<P>
+  assets: RendererAssets<P>,
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -52,8 +51,7 @@ impl<P: Platform> RendererInternal<P> {
     window_event_receiver: Receiver<Event<P>>,
     receiver: Receiver<RendererCommand>) -> Self {
 
-    let mut assets = RendererAssets::new(device);
-    let lightmap = assets.insert_placeholder_texture("lightmap");
+    let assets = RendererAssets::new(device);
 
     let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
@@ -76,7 +74,6 @@ impl<P: Platform> RendererInternal<P> {
       window_event_receiver,
       last_tick: Instant::now(),
       assets,
-      lightmap,
       frame: 0
     }
   }
@@ -208,6 +205,10 @@ impl<P: Platform> RendererInternal<P> {
         RendererCommand::UnregisterDirectionalLight(entity) => {
           scene.remove_directional_light(&entity);
         },
+        RendererCommand::SetLightmap(path) => {
+          let texture = self.assets.get_texture(&path);
+          scene.set_lightmap(Some(&texture));
+        },
       }
 
       let message_res = self.receiver.recv();
@@ -225,9 +226,11 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
-    self.lightmap = self.assets.get_texture("lightmap");
-
-    let render_result = self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input(), self.frame);
+    let lightmap = {
+      let scene = self.scene.borrow_mut();
+      scene.lightmap().cloned().unwrap_or_else(|| self.assets.placeholder_black().clone())
+    };
+    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame);
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -257,7 +260,7 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, self.assets.zero_view(), &self.lightmap, renderer.late_latching(), renderer.input(), self.frame).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }

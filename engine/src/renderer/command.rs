@@ -25,5 +25,6 @@ pub enum RendererCommand {
   UnregisterDirectionalLight(Entity),
   UpdateTransform{ entity: Entity, transform_mat: Matrix4 },
   UpdateCameraTransform { camera_transform_mat: Matrix4, fov: f32 },
+  SetLightmap(String),
   EndFrame
 }

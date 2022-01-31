@@ -267,6 +267,13 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     }
   }
 
+  fn update_lightmap(&self, path: &str) {
+    let result = self.sender.send(RendererCommand::SetLightmap(path.to_string()));
+    if let Result::Err(err) = result {
+      panic!("Sending message to render thread failed {:?}", err);
+    }
+  }
+
   fn is_saturated(&self) -> bool {
     self.queued_frames_counter.load(Ordering::SeqCst) > 1
   }

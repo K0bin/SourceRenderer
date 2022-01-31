@@ -1,9 +1,9 @@
-use std::{collections::{HashMap, VecDeque}, usize};
+use std::{collections::{HashMap, VecDeque}, usize, sync::Arc};
 
 use legion::Entity;
 use sourcerenderer_core::{Matrix4, Vec4, graphics::Backend};
 
-use super::{PointLight, RendererStaticDrawable, light::{DirectionalLight, RendererDirectionalLight, RendererPointLight}};
+use super::{PointLight, RendererStaticDrawable, light::{DirectionalLight, RendererDirectionalLight, RendererPointLight}, renderer_assets::RendererTexture};
 
 pub struct RendererScene<B: Backend> {
   static_meshes: Vec<RendererStaticDrawable<B>>,
@@ -11,7 +11,8 @@ pub struct RendererScene<B: Backend> {
   directional_lights: Vec<RendererDirectionalLight<B>>,
   drawable_entity_map: HashMap<Entity, usize>,
   point_light_entity_map: HashMap<Entity, usize>,
-  directional_light_entity_map: HashMap<Entity, usize>
+  directional_light_entity_map: HashMap<Entity, usize>,
+  lightmap: Option<Arc<RendererTexture<B>>>,
 }
 
 impl<B: Backend> RendererScene<B> {
@@ -22,7 +23,8 @@ impl<B: Backend> RendererScene<B> {
       directional_lights: Vec::new(),
       drawable_entity_map: HashMap::new(),
       point_light_entity_map: HashMap::new(),
-      directional_light_entity_map: HashMap::new()
+      directional_light_entity_map: HashMap::new(),
+      lightmap: None
     }
   }
 
@@ -101,5 +103,13 @@ impl<B: Backend> RendererScene<B> {
     }
     let index = *index.unwrap();
     self.point_lights.remove(index);
+  }
+
+  pub fn set_lightmap(&mut self, lightmap: Option<&Arc<RendererTexture<B>>>) {
+    self.lightmap = lightmap.cloned();
+  }
+
+  pub fn lightmap(&self) -> Option<&Arc<RendererTexture<B>>> {
+    self.lightmap.as_ref()
   }
 }

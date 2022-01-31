@@ -24,7 +24,7 @@ pub use self::ecs::DirectionalLightComponent;
 pub use self::drawable::DrawablePart;
 pub use self::late_latch_camera::LateLatchCamera;
 use self::drawable::View;
-pub use self::ecs::RendererInterface;
+pub use self::ecs::{RendererInterface, Lightmap};
 pub use self::command::RendererCommand;
 pub use self::light::PointLight;
 use self::drawable::RendererStaticDrawable;
