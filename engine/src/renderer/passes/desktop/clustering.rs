@@ -1,10 +1,12 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess}};
+use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess}, atomic_refcell::AtomicRefCell};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
+
+use crate::renderer::drawable::View;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -44,18 +46,19 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     &mut self,
     command_buffer: &mut B::CommandBuffer,
     rt_size: Vec2UI,
-    near_plane: f32,
-    far_plane: f32,
+    view: &Arc<AtomicRefCell<View>>,
     camera_buffer: &Arc<B::Buffer>
   ) {
     command_buffer.begin_label("Clustering pass");
+
+    let view_ref = view.borrow();
 
     let cluster_count = Vector3::<u32>::new(16, 9, 24);
     let screen_to_view = ShaderScreenToView {
       tile_size: Vec2UI::new(((rt_size.x as f32) / cluster_count.x as f32).ceil() as u32, ((rt_size.y as f32) / cluster_count.y as f32).ceil() as u32),
       rt_dimensions: rt_size,
-      z_near: near_plane,
-      z_far: far_plane
+      z_near: view_ref.near_plane,
+      z_far: view_ref.far_plane
     };
 
     let screen_to_view_cbuffer = command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE);

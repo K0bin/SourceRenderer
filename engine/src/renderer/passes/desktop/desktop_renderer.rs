@@ -78,11 +78,11 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
     self.occlusion.execute(&self.device, &mut cmd_buf, frame, self.prepass.depth_dsv_history(), &late_latching_buffer, &scene_ref, &view_ref);
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), 0.1f32, 10f32, &late_latching_buffer);
+    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), view, &late_latching_buffer);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), &late_latching_buffer);
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer);
     self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), &late_latching_buffer, self.prepass.motion_srv());
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), );
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), self.clustering_pass.clusters_buffer());
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
     self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
 

@@ -242,7 +242,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     prepass_depth: &Arc<B::TextureDepthStencilView>,
     light_bitmask_buffer: &Arc<B::Buffer>,
     camera_buffer: &Arc<B::Buffer>,
-    ssao: &Arc<B::TextureShaderResourceView>
+    ssao: &Arc<B::TextureShaderResourceView>,
+    _clusters: &Arc<B::Buffer>
   ) {
     cmd_buffer.begin_label("Geometry pass");
     let static_drawables = scene.static_drawables();
@@ -323,8 +324,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     let per_frame = FrameData {
       swapchain_transform,
       halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32),
-      z_near: view.near_plane,
-      z_far: view.far_plane,
+      z_near: near,
+      z_far: far,
       rt_size: Vector2::<u32>::new(rtv_info.width, rtv_info.height),
       cluster_z_bias,
       cluster_z_scale,
@@ -370,7 +371,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         extent: Vec2UI::new(9999, 9999),
       }]);
 
-      //command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 4, graph_resources.get_buffer(OUTPUT_CLUSTERS, false).expect("Failed to get graph resource"));
+      //command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 7, clusters);
       command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
