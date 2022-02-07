@@ -25,7 +25,7 @@ static mut IO_CLASS: MaybeUninit<GlobalRef> = MaybeUninit::uninit();
 static mut IO_OPEN_FILE_METHOD: MaybeUninit<JStaticMethodID<'static>> = MaybeUninit::uninit();
 
 pub fn initialize_globals(env: JNIEnv, asset_manager: JObject) {
-  let asset_manager = unsafe { AAssetManager_fromJava(std::mem::transmute(env), *asset_manager as *mut c_void) };
+  let asset_manager = unsafe { AAssetManager_fromJava(std::mem::transmute(env), *asset_manager) };
   unsafe {
     ASSET_MANAGER = asset_manager;
     JVM = MaybeUninit::new(env.get_java_vm().unwrap());

@@ -10,13 +10,13 @@ name = "sourcerenderer"
 crate-type = ["cdylib"]
 
 [dependencies]
-ash = "0.33.3+1.2.191"
+ash = "0.35.1+1.2.203"
 sourcerenderer_engine = { path = "../../../engine" }
 sourcerenderer_core = { path = "../../../core" }
 sourcerenderer_vulkan = { path = "../../../graphics/vulkan" }
-ndk = "0.4.0"
-ndk-sys = "0.2.1"
+ndk = "0.6.0"
+ndk-sys = "0.3.0"
 jni = "0.19.0"
 libc = "0.2.84"
-parking_lot = "0.11.1"
+parking_lot = "0.12.0"
 lazy_static = "1.4.0"
