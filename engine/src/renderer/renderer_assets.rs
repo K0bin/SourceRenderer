@@ -409,13 +409,13 @@ impl<P: Platform> RendererAssets<P> {
   pub fn get_model(&self, model_path: &str) -> Arc<RendererModel<P::GraphicsBackend>> {
     self.models.get(model_path)
       .cloned()
-      .expect("Model not yet loaded")
+      .unwrap_or_else(|| panic!("Model not yet loaded: {}", model_path))
   }
 
   pub fn get_texture(&self, texture_path: &str) -> Arc<RendererTexture<P::GraphicsBackend>> {
     self.textures.get(texture_path)
       .cloned()
-      .expect("Texture not yet loaded")
+      .unwrap_or_else(|| panic!("Texture not yet loaded: {}", texture_path))
   }
 
   pub fn placeholder_texture(&self) -> &Arc<RendererTexture<P::GraphicsBackend>> {
