@@ -14,7 +14,7 @@ use crate::texture::VkTexture;
 use crate::sync::VkFence;
 
 use crate::{VkThreadManager, VkShared};
-use crate::raw::{RawVkDevice, RawVkInstance};
+use crate::raw::{RawVkDevice, RawVkInstance, VkFeatures};
 use crate::pipeline::VkGraphicsPipelineInfo;
 use crate::buffer::VkBufferSlice;
 use std::cmp::min;
@@ -26,7 +26,6 @@ pub struct VkDevice {
   graphics_queue: Arc<VkQueue>,
   compute_queue: Option<Arc<VkQueue>>,
   transfer_queue: Option<Arc<VkQueue>>,
-  extensions: VkAdapterExtensionSupport,
   context: Arc<VkThreadManager>,
   transfer: VkTransfer,
   shared: Arc<VkShared>,
@@ -41,14 +40,14 @@ impl VkDevice {
     graphics_queue_info: VkQueueInfo,
     compute_queue_info: Option<VkQueueInfo>,
     transfer_queue_info: Option<VkQueueInfo>,
-    extensions: VkAdapterExtensionSupport,
+    features: VkFeatures,
     max_surface_image_count: u32) -> Self {
 
     let allocator_info = vk_mem::AllocatorCreateInfo {
       physical_device,
       device: device.clone(),
       instance: instance.instance.clone(),
-      flags: if extensions.intersects(VkAdapterExtensionSupport::DEDICATED_ALLOCATION) && extensions.intersects(VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2) { vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION } else { vk_mem::AllocatorCreateFlags::NONE },
+      flags: if features.intersects(VkFeatures::DEDICATED_ALLOCATION) { vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION } else { vk_mem::AllocatorCreateFlags::NONE },
       preferred_large_heap_block_size: 0,
       frame_in_use_count: 3,
       heap_size_limits: None
@@ -64,7 +63,7 @@ impl VkDevice {
       allocator,
       physical_device,
       instance.clone(),
-      extensions,
+      features,
       graphics_queue_info,
       transfer_queue_info,
       compute_queue_info,
@@ -96,7 +95,6 @@ impl VkDevice {
       graphics_queue,
       compute_queue,
       transfer_queue,
-      extensions,
       context,
       transfer,
       shared,

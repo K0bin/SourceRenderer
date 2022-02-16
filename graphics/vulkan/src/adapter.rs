@@ -1,5 +1,5 @@
 
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 
 use std::sync::Arc;
 use std::f32;
@@ -26,6 +26,7 @@ const GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME: &str = "VK_KHR_get_memory_req
 const DEDICATED_ALLOCATION_EXT_NAME: &str = "VK_KHR_dedicated_allocation";
 const DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME: &str = "VK_KHR_descriptor_update_template";
 const SHADER_NON_SEMANTIC_INFO_EXT_NAME: &str = "VK_KHR_shader_non_semantic_info";
+const DESCRIPTOR_INDEXING_EXT_NAME: &str = "VK_EXT_descriptor_indexing";
 
 
 bitflags! {
@@ -36,6 +37,7 @@ bitflags! {
     const GET_MEMORY_PROPERTIES2     = 0b100;
     const DESCRIPTOR_UPDATE_TEMPLATE = 0b1000;
     const SHADER_NON_SEMANTIC_INFO   = 0b10000;
+    const DESCRIPTOR_INDEXING        = 0b100000;
   }
 }
 
@@ -64,6 +66,7 @@ impl VkAdapter {
         GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME => { VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2 },
         DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME => { VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE },
         SHADER_NON_SEMANTIC_INFO_EXT_NAME => { VkAdapterExtensionSupport::SHADER_NON_SEMANTIC_INFO },
+        DESCRIPTOR_INDEXING_EXT_NAME => { VkAdapterExtensionSupport::DESCRIPTOR_INDEXING },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -175,23 +178,62 @@ impl Adapter<VkBackend> for VkAdapter {
         });
       }
 
-      let enabled_features: vk::PhysicalDeviceFeatures = Default::default();
-      let mut extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
+      let mut features = VkFeatures::empty();
 
-      if self.extensions.intersects(VkAdapterExtensionSupport::DEDICATED_ALLOCATION) {
-        extension_names.push(DEDICATED_ALLOCATION_EXT_NAME);
+      let mut supported_features: vk::PhysicalDeviceFeatures2 = Default::default();
+      let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
+      let mut supported_descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
+      let mut descriptor_indexing_properties = vk::PhysicalDeviceDescriptorIndexingPropertiesEXT::default();
+      if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
+        supported_descriptor_indexing_features.p_next = supported_features.p_next;
+        supported_features.p_next = &mut supported_descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void;
+        descriptor_indexing_properties.p_next = properties.p_next;
+        properties.p_next = &mut descriptor_indexing_properties as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT as *mut c_void;
       }
+      self.instance.get_physical_device_features2(self.physical_device, &mut supported_features);
+      self.instance.get_physical_device_properties2(self.physical_device, &mut properties);
 
-      if self.extensions.intersects(VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2) {
+      let enabled_features: vk::PhysicalDeviceFeatures = Default::default();
+      let mut descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
+      let mut extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
+      let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
+
+      if self.extensions.intersects(VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2) && self.extensions.intersects(VkAdapterExtensionSupport::DEDICATED_ALLOCATION) {
         extension_names.push(GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME);
+        extension_names.push(DEDICATED_ALLOCATION_EXT_NAME);
+        features |= VkFeatures::DEDICATED_ALLOCATION;
       }
 
       if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE) {
         extension_names.push(DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME);
+        features |= VkFeatures::DESCRIPTOR_TEMPLATE;
       }
 
       if self.instance.debug_utils.is_some() && self.extensions.intersects(VkAdapterExtensionSupport::SHADER_NON_SEMANTIC_INFO) {
         extension_names.push(SHADER_NON_SEMANTIC_INFO_EXT_NAME);
+      }
+
+      if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
+        extension_names.push(DESCRIPTOR_INDEXING_EXT_NAME);
+        let supported = supported_descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
+          && supported_descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind == vk::TRUE
+          && supported_descriptor_indexing_features.descriptor_binding_variable_descriptor_count == vk::TRUE
+          && supported_descriptor_indexing_features.runtime_descriptor_array == vk::TRUE
+          && supported_descriptor_indexing_features.descriptor_binding_update_unused_while_pending == vk::TRUE
+          && descriptor_indexing_properties.shader_sampled_image_array_non_uniform_indexing_native == vk::TRUE
+          && descriptor_indexing_properties.max_descriptor_set_update_after_bind_sampled_images > 500_000;
+
+        if supported {
+          println!("VkKHRDescriptorIndexing supported.");
+          descriptor_indexing_features.p_next = device_creation_pnext;
+          device_creation_pnext = &mut descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void;
+          descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
+          descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
+          descriptor_indexing_features.descriptor_binding_variable_descriptor_count = vk::TRUE;
+          descriptor_indexing_features.runtime_descriptor_array = vk::TRUE;
+          descriptor_indexing_features.descriptor_binding_update_unused_while_pending = vk::TRUE;
+          features |= VkFeatures::DESCRIPTOR_INDEXING;
+        }
       }
 
       let extension_names_c: Vec<CString> = extension_names
@@ -209,6 +251,7 @@ impl Adapter<VkBackend> for VkAdapter {
         p_enabled_features: &enabled_features,
         pp_enabled_extension_names: extension_names_ptr.as_ptr(),
         enabled_extension_count: extension_names_c.len() as u32,
+        p_next: device_creation_pnext,
         ..Default::default()
       };
       let vk_device = self.instance.instance.create_device(self.physical_device, &device_create_info, None).unwrap();
@@ -227,7 +270,7 @@ impl Adapter<VkBackend> for VkAdapter {
         graphics_queue_info,
         compute_queue_info,
         transfer_queue_info,
-        self.extensions,
+        features,
         max_image_count)
     };
   }

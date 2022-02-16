@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use ash::vk;
-use crate::{raw::RawVkDevice, texture::VkSampler};
+use crate::{raw::{RawVkDevice, VkFeatures}, texture::VkSampler};
 use sourcerenderer_core::graphics::{BindingFrequency};
 use std::collections::HashMap;
 
@@ -102,7 +102,7 @@ impl VkDescriptorSetLayout {
       set: 0
     };
     let template = if !vk_template_entries.is_empty() &&
-      device.extensions.contains(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE) {
+      device.features.contains(VkFeatures::DESCRIPTOR_TEMPLATE) {
       Some(unsafe {
         device.create_descriptor_update_template(&template_info, None)
       }.unwrap())

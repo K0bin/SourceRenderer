@@ -9,12 +9,20 @@ use crate::raw::RawVkInstance;
 use crate::VkAdapterExtensionSupport;
 use crate::queue::VkQueueInfo;
 
+bitflags! {
+  pub struct VkFeatures : u32 {
+    const DESCRIPTOR_INDEXING        = 0b1;
+    const DEDICATED_ALLOCATION       = 0b10;
+    const DESCRIPTOR_TEMPLATE = 0b100;
+  }
+}
+
 pub struct RawVkDevice {
   pub device: ash::Device,
   pub allocator: vk_mem::Allocator,
   pub physical_device: vk::PhysicalDevice,
   pub instance: Arc<RawVkInstance>,
-  pub extensions: VkAdapterExtensionSupport,
+  pub features: VkFeatures,
   pub graphics_queue_info: VkQueueInfo,
   pub compute_queue_info: Option<VkQueueInfo>,
   pub transfer_queue_info: Option<VkQueueInfo>,
@@ -30,7 +38,7 @@ impl RawVkDevice {
     allocator: vk_mem::Allocator,
     physical_device: vk::PhysicalDevice,
     instance: Arc<RawVkInstance>,
-    extensions: VkAdapterExtensionSupport,
+    features: VkFeatures,
     graphics_queue_info: VkQueueInfo,
     compute_queue_info: Option<VkQueueInfo>,
     transfer_queue_info: Option<VkQueueInfo>,
@@ -42,7 +50,7 @@ impl RawVkDevice {
         allocator,
         physical_device,
         instance,
-        extensions,
+        features,
         graphics_queue_info,
         compute_queue_info,
         transfer_queue_info,
