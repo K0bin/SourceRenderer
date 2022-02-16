@@ -8,7 +8,7 @@ use sourcerenderer_vvd::{Header as VVDHeader, Vertex, VertexFileFixup};
 use crate::asset::loaders::bsp::Vertex as BspVertex;
 use nalgebra::{Vector2, Vector3};
 use crate::asset::{Mesh as AssetMesh, Model as AssetModel, AssetType};
-use sourcerenderer_core::platform::Platform;
+use sourcerenderer_core::{platform::Platform, Vec3};
 use std::slice;
 
 const SCALING_FACTOR: f32 = 0.0236f32;
@@ -217,11 +217,16 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, vertices_count * std::mem::size_of::<BspVertex>()) as *mut [u8] };
     let vertices_data = unsafe { Box::from_raw(data_ptr) };
 
+    let hull_min = fixup_position(&header.hull_min);
+    let hull_max = fixup_position(&header.hull_max);
+    let min = Vec3::new(hull_min.x.min(hull_max.x), hull_min.y.min(hull_max.y), hull_min.z.min(hull_max.z));
+    let max = Vec3::new(hull_min.x.max(hull_max.x), hull_min.y.max(hull_max.y), hull_min.z.max(hull_max.z));
+
     manager.add_asset(&vtx_path, Asset::Mesh(AssetMesh {
       indices: Some(indices_data),
       vertices: vertices_data,
       parts: ranges.into_boxed_slice(),
-      bounding_box: Some(BoundingBox::new(fixup_position(&header.hull_min), fixup_position(&header.hull_max)))
+      bounding_box: Some(BoundingBox::new(min, max))
     }), AssetLoadPriority::Normal);
 
     manager.add_asset_with_progress(&file.path, Asset::Model(AssetModel {

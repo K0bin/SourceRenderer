@@ -379,11 +379,16 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, indices_count * std::mem::size_of::<u32>()) as *mut [u8] };
       let indices_data = unsafe { Box::from_raw(data_ptr) };
 
+      let model_min = Self::fixup_position(&model.min);
+      let model_max = Self::fixup_position(&model.max);
+      let min = Vec3::new(model_min.x.min(model_max.x), model_min.y.min(model_max.y), model_min.z.min(model_max.z));
+      let max = Vec3::new(model_min.x.max(model_max.x), model_min.y.max(model_max.y), model_min.z.max(model_max.z));
+
       let mesh = Mesh {
         vertices: vertices_data,
         indices: Some(indices_data),
         parts: mesh_ranges.into_boxed_slice(),
-        bounding_box: Some(BoundingBox::new(Self::fixup_position(&model.min), Self::fixup_position(&model.max)))
+        bounding_box: Some(BoundingBox::new(min, max))
       };
 
       let mesh_name = format!("brushes_mesh_{}", model_index);
