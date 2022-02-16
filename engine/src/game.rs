@@ -73,18 +73,6 @@ impl<P: Platform> Game<P> {
     asset_manager.add_loader(Box::new(MDLModelLoader::new()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
 
-    #[cfg(target_os = "linux")]
-        //let csgo_path = "~/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
-        let csgo_path = "/run/media/robin/System/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive";
-    #[cfg(target_os = "windows")]
-        let csgo_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive";
-    #[cfg(target_os = "android")]
-      let csgo_path = "content://com.android.externalstorage.documents/tree/primary%3Agames%2Fcsgo/document/primary%3Agames%2Fcsgo";
-    #[cfg(target_arch = "wasm32")]
-      let csgo_path = "";
-
-    trace!("Csgo path: {:?}", csgo_path);
-
     let game = Arc::new(Self {
       input: input.clone(),
       fps_camera: Mutex::new(FPSCamera::new()),

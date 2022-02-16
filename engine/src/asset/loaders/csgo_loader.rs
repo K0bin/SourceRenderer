@@ -24,7 +24,10 @@ impl CSGODirectoryContainer {
   pub fn new<P: Platform>(path: &str) -> Result<Self, CSGOMapLoaderError> {
     let mut exe_path = PathBuf::new();
     exe_path.push(path.to_owned());
+    #[cfg(target_os = "windows")]
     exe_path.push("csgo.exe");
+    #[cfg(target_os = "linux")]
+    exe_path.push("csgo_linux64");
 
     if !<P::IO as IO>::external_asset_exists(exe_path) {
       return Err(CSGONotFound);

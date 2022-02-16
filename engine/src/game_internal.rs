@@ -7,9 +7,10 @@ use log::trace;
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3};
 
+use crate::asset::loaders::{GltfLoader, CSGODirectoryContainer};
 use crate::{DeltaTime, Tick, TickDelta, TickDuration, TickRate, Transform, asset::loaders::GltfContainer, game::FilterAll, renderer::*};
 use crate::transform;
-use crate::asset::AssetManager;
+use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 use crate::fps_camera;
 use crate::renderer::RendererInterface;
 use instant::Instant;
@@ -37,21 +38,33 @@ impl GameInternal {
 
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
-    //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
-    //c_asset_manager.add_loader(Box::new(GltfLoader::new()));
-    //let mut level = c_asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+    //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+    asset_manager.add_loader(Box::new(GltfLoader::new()));
+    //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
     //let mut level = c_asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
-    let mut level = World::new(legion::WorldOptions::default());
+    //let mut level = World::new(legion::WorldOptions::default());
 
-    /*let mut level = {
-      c_asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
-      let progress = c_asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
+    #[cfg(target_os = "linux")]
+    let csgo_path = "/home/robin/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
+    //let csgo_path = "/run/media/robin/System/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive";
+    #[cfg(target_os = "windows")]
+        let csgo_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive";
+    #[cfg(target_os = "android")]
+      let csgo_path = "content://com.android.externalstorage.documents/tree/primary%3Agames%2Fcsgo/document/primary%3Agames%2Fcsgo";
+    #[cfg(target_arch = "wasm32")]
+      let csgo_path = "";
+
+    trace!("Csgo path: {:?}", csgo_path);
+
+    let mut level = {
+      asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
+      let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
       while !progress.is_done() {
         // wait until our container is loaded
       }
-      c_asset_manager.load_level("de_overpass.bsp").unwrap()
-    };*/
+      asset_manager.load_level("de_overpass.bsp").unwrap()
+    };
     trace!("Done loading level");
 
     PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule, tick_duration);
