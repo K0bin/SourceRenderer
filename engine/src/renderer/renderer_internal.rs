@@ -128,10 +128,15 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   fn receive_messages(&mut self) {
+    let message_res = self.receiver.recv();
+
+    // recv blocks, so do the preparation after receiving the first event
+    self.receive_window_events();
+    self.assets.receive_assets(&self.asset_manager);
+
     let mut scene = self.scene.borrow_mut();
     let mut view = self.view.borrow_mut();
 
-    let message_res = self.receiver.recv();
     if let Result::Err(err) = &message_res {
       panic!("Rendering channel closed {:?}", err);
     }
@@ -220,8 +225,6 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   pub(super) fn render(&mut self, renderer: &Renderer<P>) {
-    self.receive_window_events();
-    self.assets.receive_assets(&self.asset_manager);
     self.receive_messages();
     self.update_visibility();
     self.reorder();
