@@ -98,6 +98,9 @@ impl VkBuffer {
 
 impl Drop for VkBuffer {
   fn drop(&mut self) {
+    if self.map_ptr.is_some() {
+      self.device.allocator.unmap_memory(&self.allocation);
+    }
     self.device.allocator.destroy_buffer(self.buffer, &self.allocation);
   }
 }
