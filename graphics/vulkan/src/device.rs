@@ -65,8 +65,8 @@ impl VkDevice {
       instance.clone(),
       features,
       graphics_queue_info,
-      transfer_queue_info,
       compute_queue_info,
+      transfer_queue_info,
       raw_graphics_queue,
       raw_compute_queue,
       raw_transfer_queue
