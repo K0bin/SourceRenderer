@@ -366,7 +366,7 @@ impl BufferAllocator {
       return slice;
     }
 
-    if self.reuse_automatically {
+    if self.reuse_automatically && !matching_buffers.used_slices.is_empty() {
       // This is awful. Completely rewrite this with drain_filter once that's stabilized.
       // Right now cleaner alternatives would likely need to do more copying and allocations.
       let mut i: isize = (matching_buffers.used_slices.len() - 1) as isize;
