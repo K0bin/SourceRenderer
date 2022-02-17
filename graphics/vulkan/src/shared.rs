@@ -5,8 +5,10 @@ use sourcerenderer_core::pool::{Pool, Recyclable};
 use crate::texture::VkTextureView;
 use crate::{VkFenceInner, VkRenderPass, VkSemaphore};
 use crate::buffer::BufferAllocator;
+use std::borrow::Borrow;
+use std::hash::Hash;
 use std::sync::{RwLock, Arc};
-use crate::descriptor::VkDescriptorSetLayout;
+use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkDescriptorSetBinding, VkConstantRange, COMPUTE_SHADER_CONSTS};
 use crate::pipeline::VkPipelineLayout;
 use std::collections::HashMap;
 use crate::raw::RawVkDevice;
@@ -14,16 +16,24 @@ use crate::VkFence;
 use crate::sync::{VkEvent, VkFenceState, VkSemaphoreInner};
 use crate::renderpass::VkFrameBuffer;
 
+use ash::vk;
+
 pub struct VkShared {
   device: Arc<RawVkDevice>,
   semaphores: Pool<VkSemaphoreInner>,
   fences: Pool<VkFenceInner>,
   events: Pool<VkEvent>,
   buffers: BufferAllocator, // consider per thread
-  descriptor_set_layouts: RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>>,
-  pipeline_layouts: RwLock<HashMap<u64, Arc<VkPipelineLayout>>>,
+  descriptor_set_layouts: RwLock<HashMap<Vec<VkDescriptorSetEntryInfo>, Arc<VkDescriptorSetLayout>>>,
+  pipeline_layouts: RwLock<HashMap<VkPipelineLayoutKey, Arc<VkPipelineLayout>>>,
   render_passes: RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>>,
   frame_buffers: RwLock<HashMap<SmallVec<[u64; 8]>, Arc<VkFrameBuffer>>>
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub(crate) struct VkPipelineLayoutKey {
+  pub(crate) bindings: [Vec<VkDescriptorSetEntryInfo>; 4],
+  pub(crate) push_constant_ranges: [Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]
 }
 
 impl VkShared {
@@ -75,14 +85,40 @@ impl VkShared {
     Arc::new(VkFence::new(inner))
   }
 
-  #[inline]
-  pub(crate) fn get_descriptor_set_layouts(&self) -> &RwLock<HashMap<u64, Arc<VkDescriptorSetLayout>>> {
-    &self.descriptor_set_layouts
+  pub(crate) fn get_descriptor_set_layout(&self, bindings: &[VkDescriptorSetEntryInfo]) -> Arc<VkDescriptorSetLayout> {
+    {
+      let cache = self.descriptor_set_layouts.read().unwrap();
+      if let Some(layout) = cache.get(bindings) {
+        return layout.clone();
+      }
+    }
+
+    let layout = Arc::new(VkDescriptorSetLayout::new(&bindings, &self.device));
+    let mut cache = self.descriptor_set_layouts.write().unwrap();
+    let key: Vec<VkDescriptorSetEntryInfo> = bindings.iter().cloned().collect();
+    cache.insert(key, layout.clone());
+    layout
   }
 
   #[inline]
-  pub(crate) fn get_pipeline_layouts(&self) -> &RwLock<HashMap<u64, Arc<VkPipelineLayout>>> {
-    &self.pipeline_layouts
+  pub(crate) fn get_pipeline_layout(&self, layout_key: &VkPipelineLayoutKey) -> Arc<VkPipelineLayout> {
+    {
+      let cache = self.pipeline_layouts.read().unwrap();
+      if let Some(layout) = cache.get(layout_key) {
+        return layout.clone();
+      }
+    }
+
+    let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; 4] = Default::default();
+    for i in 0..layout_key.bindings.len() {
+      let bindings = &layout_key.bindings[i];
+      descriptor_sets[i] = Some(self.get_descriptor_set_layout(&bindings[..]));
+    }
+
+    let pipeline_layout = Arc::new(VkPipelineLayout::new(&descriptor_sets, &layout_key.push_constant_ranges, &self.device));
+    let mut cache = self.pipeline_layouts.write().unwrap();
+    cache.insert(layout_key.clone(), pipeline_layout.clone());
+    pipeline_layout
   }
 
   #[inline]

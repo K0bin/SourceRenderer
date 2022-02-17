@@ -18,6 +18,7 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
+use crate::pipeline::shader_type_to_vk;
 use crate::query::{VkQueryAllocator, VkQueryRange};
 use crate::{raw::RawVkDevice, texture::VkSampler};
 use crate::VkRenderPass;
@@ -500,7 +501,7 @@ impl VkCommandBuffer {
       self.device.cmd_push_constants(
         self.buffer,
         *pipeline_layout.get_handle(),
-        range.stage_flags,
+        shader_type_to_vk(visible_for_shader_type),
         range.offset,
         std::slice::from_raw_parts(data.as_ptr() as *const u8, min(size, range.size as usize))
       );

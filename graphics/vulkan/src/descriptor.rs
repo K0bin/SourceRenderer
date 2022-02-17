@@ -37,26 +37,36 @@ impl From<BindingFrequency> for DirtyDescriptorSets {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub(crate) struct VkDescriptorSetBindingInfo {
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub(crate) struct VkDescriptorSetEntryInfo {
   pub(crate) shader_stage: vk::ShaderStageFlags,
   pub(crate) index: u32,
   pub(crate) descriptor_type: vk::DescriptorType,
   pub(crate) writable: bool
 }
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub(crate) struct VkConstantRange {
+  pub(crate) offset: u32,
+  pub(crate) size: u32,
+}
+
+pub(crate) const VERTEX_SHADER_CONSTS: usize = 0;
+pub(crate) const FRAGMENT_SHADER_CONSTS: usize = 1;
+pub(crate) const COMPUTE_SHADER_CONSTS: usize = 2;
+
 pub(crate) struct VkDescriptorSetLayout {
   pub device: Arc<RawVkDevice>,
   layout: vk::DescriptorSetLayout,
-  binding_infos: [Option<VkDescriptorSetBindingInfo>; 16],
+  binding_infos: [Option<VkDescriptorSetEntryInfo>; 16],
   template: Option<vk::DescriptorUpdateTemplate>
 }
 
 impl VkDescriptorSetLayout {
-  pub fn new(bindings: &[VkDescriptorSetBindingInfo], device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(bindings: &[VkDescriptorSetEntryInfo], device: &Arc<RawVkDevice>) -> Self {
     let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
     let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
-    let mut binding_infos: [Option<VkDescriptorSetBindingInfo>; 16] = Default::default();
+    let mut binding_infos: [Option<VkDescriptorSetEntryInfo>; 16] = Default::default();
 
     for binding in bindings.iter() {
       binding_infos[binding.index as usize] = Some(binding.clone());
@@ -540,7 +550,7 @@ impl VkBindingManager {
 
   fn finish_set(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout, frequency: BindingFrequency) -> Option<VkDescriptorSetBinding> {
     let layout_option = pipeline_layout.get_descriptor_set_layout(frequency as u32);
-    if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) && layout_option.is_some() {
+    if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
       return None;
     }
 
