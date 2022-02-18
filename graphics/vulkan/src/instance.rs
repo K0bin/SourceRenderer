@@ -151,11 +151,6 @@ impl VkInstance {
       return vk::FALSE;
     }
 
-    if callback_data.message_id_number as u32 == 0xa44449d4u32 {
-      // False positive: https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2754
-      return vk::FALSE;
-    }
-
     println!("VK: {:?} - {:?}: {:?}", message_severity, message_types, CStr::from_ptr(callback_data.p_message));
     vk::FALSE
   }
