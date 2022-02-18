@@ -21,10 +21,11 @@ use sourcerenderer_core::graphics::BlendOp;
 use sourcerenderer_core::graphics::ColorComponents;
 use sourcerenderer_core::graphics::PrimitiveType;
 
+use crate::bindless::{BINDLESS_TEXTURE_COUNT, BINDLESS_TEXTURE_SET_INDEX};
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::VkBackend;
-use crate::shared::VkPipelineLayoutKey;
+use crate::shared::{VkPipelineLayoutKey, VkDescriptorSetLayoutKey};
 use std::hash::{Hasher, Hash};
 use crate::VkRenderPass;
 use spirv_cross::spirv::Decoration;
@@ -47,7 +48,8 @@ pub struct VkShader {
   shader_module: vk::ShaderModule,
   device: Arc<RawVkDevice>,
   descriptor_set_bindings: HashMap<u32, Vec<VkDescriptorSetEntryInfo>>,
-  push_constants_range: Option<vk::PushConstantRange>
+  push_constants_range: Option<vk::PushConstantRange>,
+  uses_bindless_texture_set: bool,
 }
 
 impl PartialEq for VkShader {
@@ -74,6 +76,7 @@ impl VkShader {
     };
     let vk_device = &device.device;
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
+    let mut uses_bindless_texture_set = false;
 
     let module = spirv::Module::from_words(unsafe { std::slice::from_raw_parts(bytecode.as_ptr() as *const u32, bytecode.len() / std::mem::size_of::<u32>()) });
     let ast = spirv::Ast::<glsl::Target>::parse(&module).expect("Failed to parse shader with SPIR-V Cross");
@@ -105,6 +108,32 @@ impl VkShader {
       push_constant_range
     });
 
+    for resource in resources.separate_images {
+      let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
+      if set_index == BINDLESS_TEXTURE_SET_INDEX {
+        uses_bindless_texture_set = true;
+        continue;
+      }
+      set.push(VkDescriptorSetEntryInfo {
+        index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+        shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
+        writable: false
+      });
+    }
+    for resource in resources.separate_samplers {
+      let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
+      set.push(VkDescriptorSetEntryInfo {
+        index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+        descriptor_type: vk::DescriptorType::SAMPLER,
+        shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
+        writable: false
+      });
+    }
     for resource in resources.sampled_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let set = sets.entry(set_index).or_insert_with(Vec::new);
@@ -112,6 +141,7 @@ impl VkShader {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
         writable: false
       });
     }
@@ -122,6 +152,7 @@ impl VkShader {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
         writable: false
       });
     }
@@ -132,6 +163,7 @@ impl VkShader {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
         shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
         writable: false
       });
     }
@@ -142,6 +174,7 @@ impl VkShader {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER },
         shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
         writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true)
       });
     }
@@ -152,6 +185,7 @@ impl VkShader {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
         shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
         writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true)
       });
     }
@@ -175,7 +209,8 @@ impl VkShader {
       shader_module,
       device: device.clone(),
       descriptor_set_bindings: sets,
-      push_constants_range
+      push_constants_range,
+      uses_bindless_texture_set
     }
   }
 
@@ -203,7 +238,8 @@ pub struct VkPipeline {
   pipeline: vk::Pipeline,
   layout: Arc<VkPipelineLayout>,
   device: Arc<RawVkDevice>,
-  is_graphics: bool
+  is_graphics: bool,
+  uses_bindless_texture_set: bool,
 }
 
 impl PartialEq for VkPipeline {
@@ -332,8 +368,9 @@ impl VkPipeline {
   pub fn new_graphics(device: &Arc<RawVkDevice>, info: &VkGraphicsPipelineInfo, shared: &VkShared) -> Self {
     let vk_device = &device.device;
     let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
-    let mut descriptor_set_layout_bindings = <[Vec<VkDescriptorSetEntryInfo>; 4]>::default();
+    let mut descriptor_set_layouts = <[VkDescriptorSetLayoutKey; 5]>::default();
     let mut push_constants_ranges = <[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]>::default();
+    let mut uses_bindless_texture_set = false;
 
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -347,14 +384,14 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layouts[*index as usize];
         for binding in shader_set {
-          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.push(binding.clone());
+            set.bindings.push(binding.clone());
           }
         }
       }
@@ -364,6 +401,7 @@ impl VkPipeline {
           size: push_constants_range.size
         });
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     if let Some(shader) = info.info.fs.clone() {
@@ -375,14 +413,14 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layouts[*index as usize];
         for binding in shader_set {
-          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.push(binding.clone());
+            set.bindings.push(binding.clone());
           }
         }
       }
@@ -392,6 +430,7 @@ impl VkPipeline {
           size: push_constants_range.size
         });
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     if let Some(shader) = info.info.gs.clone() {
@@ -403,14 +442,14 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layouts[*index as usize];
         for binding in shader_set {
-          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.push(binding.clone());
+            set.bindings.push(binding.clone());
           }
         }
       }
@@ -420,6 +459,7 @@ impl VkPipeline {
           size: push_constants_range.size
         });
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     if let Some(shader) = info.info.tes.clone() {
@@ -431,20 +471,21 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layouts[*index as usize];
         for binding in shader_set {
-          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.push(binding.clone());
+            set.bindings.push(binding.clone());
           }
         }
       }
       if let Some(_push_constants_range) = &shader.push_constants_range {
         unimplemented!();
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     if let Some(shader) = info.info.tcs.clone() {
@@ -456,20 +497,21 @@ impl VkPipeline {
       };
       shader_stages.push(shader_stage);
       for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layout_bindings[*index as usize];
+        let set = &mut descriptor_set_layouts[*index as usize];
         for binding in shader_set {
-          let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
             assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.push(binding.clone());
+            set.bindings.push(binding.clone());
           }
         }
       }
       if let Some(_push_constants_range) = &shader.push_constants_range {
         unimplemented!();
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
@@ -600,6 +642,19 @@ impl VkPipeline {
       ..Default::default()
     };
 
+    if uses_bindless_texture_set {
+      descriptor_set_layouts[4] = VkDescriptorSetLayoutKey {
+        bindings: vec![VkDescriptorSetEntryInfo {
+          shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
+          index: 0,
+          descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+          count: BINDLESS_TEXTURE_COUNT,
+          writable: false
+        }],
+        flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
+      };
+    }
+
     let mut offset = 0u32;
     let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]>::default();
     if let Some(range) = &push_constants_ranges[VERTEX_SHADER_CONSTS] {
@@ -617,7 +672,7 @@ impl VkPipeline {
     }
 
     let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-      bindings: descriptor_set_layout_bindings,
+      descriptor_set_layouts: descriptor_set_layouts,
       push_constant_ranges: push_constants_ranges,
     });
 
@@ -672,12 +727,13 @@ impl VkPipeline {
       pipeline,
       device: device.clone(),
       layout,
-      is_graphics: true
+      is_graphics: true,
+      uses_bindless_texture_set
     }
   }
 
   pub fn new_compute(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, shared: &VkShared) -> Self {
-    let mut descriptor_set_layout_bindings: [Vec<VkDescriptorSetEntryInfo>; 4] = Default::default();
+    let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5] = Default::default();
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
     let shader_stage = vk::PipelineShaderStageCreateInfo {
@@ -688,16 +744,29 @@ impl VkPipeline {
     };
 
     for (index, shader_set) in &shader.descriptor_set_bindings {
-      let set = &mut descriptor_set_layout_bindings[*index as usize];
+      let set = &mut descriptor_set_layouts[*index as usize];
       for binding in shader_set {
-        let existing_binding_option = set.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
         if let Some(existing_binding) = existing_binding_option {
           assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
           existing_binding.shader_stage |= binding.shader_stage;
         } else {
-          set.push(binding.clone());
+          set.bindings.push(binding.clone());
         }
       }
+    }
+
+    if shader.uses_bindless_texture_set {
+      descriptor_set_layouts[4] = VkDescriptorSetLayoutKey {
+        bindings: vec![VkDescriptorSetEntryInfo {
+          shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
+          index: 0,
+          descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+          count: BINDLESS_TEXTURE_COUNT,
+          writable: false
+        }],
+        flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
+      };
     }
 
     let mut push_constants_ranges = <[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]>::default();
@@ -709,7 +778,7 @@ impl VkPipeline {
     }
 
     let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-      bindings: descriptor_set_layout_bindings,
+      descriptor_set_layouts: descriptor_set_layouts,
       push_constant_ranges: push_constants_ranges,
     });
 
@@ -729,7 +798,8 @@ impl VkPipeline {
       pipeline,
       device: device.clone(),
       layout,
-      is_graphics: false
+      is_graphics: false,
+      uses_bindless_texture_set: shader.uses_bindless_texture_set
     }
   }
 
@@ -747,6 +817,11 @@ impl VkPipeline {
   pub(crate) fn is_graphics(&self) -> bool {
     self.is_graphics
   }
+
+  #[inline]
+  pub(crate) fn uses_bindless_texture_set(&self) -> bool {
+    self.uses_bindless_texture_set
+  }
 }
 
 impl Drop for VkPipeline {
@@ -761,12 +836,12 @@ impl Drop for VkPipeline {
 pub(crate) struct VkPipelineLayout {
   device: Arc<RawVkDevice>,
   layout: vk::PipelineLayout,
-  descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 4],
+  descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 5],
   push_constant_ranges: [Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]
 }
 
 impl VkPipelineLayout {
-  pub fn new(descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 4], push_constant_ranges: &[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1], device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 5], push_constant_ranges: &[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1], device: &Arc<RawVkDevice>) -> Self {
     let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts.iter()
       .filter(|descriptor_set_layout| descriptor_set_layout.is_some())
       .map(|descriptor_set_layout| {

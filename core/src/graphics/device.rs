@@ -48,4 +48,6 @@ pub trait Device<B: Backend> {
   fn create_semaphore(&self) -> Arc<B::Semaphore>;
   fn graphics_queue(&self) -> &Arc<B::Queue>;
   fn prerendered_frames(&self) -> u32;
+  fn supports_bindless(&self) -> bool;
+  fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureShaderResourceView>) -> u32;
 }

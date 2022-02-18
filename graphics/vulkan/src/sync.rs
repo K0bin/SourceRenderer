@@ -158,6 +158,15 @@ impl VkFenceInner {
   }
 }
 
+impl Drop for VkFenceInner {
+  fn drop(&mut self) {
+    let lock = self.fence.lock().unwrap();
+    unsafe {
+      self.device.destroy_fence(*lock, None);
+    }
+  }
+}
+
 impl Future for VkFence {
   type Output = ();
 

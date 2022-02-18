@@ -2,6 +2,7 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_GOOGLE_include_directive : enable
 // #extension GL_EXT_debug_printf : enable
+#extension GL_EXT_nonuniform_qualifier : require
 
 #include "descriptor_sets.h"
 
@@ -22,7 +23,10 @@ layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 3) uniform Material {
   vec4 albedo_color;
   float roughness_factor;
   float metalness_factor;
+  uint albedoTextureIndex;
 } material;
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 7) uniform sampler albedoSampler;
+layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
 
 struct Cluster {
   vec4 minPoint;
@@ -116,7 +120,8 @@ void main(void) {
 
   float roughness = material.roughness_factor * texture(roughness_map, in_uv).r;
   float metalness = material.metalness_factor * texture(metalness_map, in_uv).r;
-  vec3 albedo = material.albedo_color.rgb * texture(albedo, in_uv).rgb;
+  //vec3 albedo = material.albedo_color.rgb * texture(albedo, in_uv).rgb;
+  vec3 albedo = material.albedo_color.rgb * texture(sampler2D(albedo_global[nonuniformEXT(material.albedoTextureIndex)], albedoSampler), in_uv).rgb;
 
   vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
   vec3 f0 = vec3(0.04);

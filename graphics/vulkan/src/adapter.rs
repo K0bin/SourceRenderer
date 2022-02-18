@@ -16,6 +16,7 @@ use crate::VkDevice;
 
 use crate::VkSurface;
 
+use crate::bindless::BINDLESS_TEXTURE_COUNT;
 use crate::queue::VkQueueInfo;
 use crate::VkBackend;
 use crate::raw::*;
@@ -219,9 +220,10 @@ impl Adapter<VkBackend> for VkAdapter {
           && supported_descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind == vk::TRUE
           && supported_descriptor_indexing_features.descriptor_binding_variable_descriptor_count == vk::TRUE
           && supported_descriptor_indexing_features.runtime_descriptor_array == vk::TRUE
+          && supported_descriptor_indexing_features.descriptor_binding_partially_bound == vk::TRUE
           && supported_descriptor_indexing_features.descriptor_binding_update_unused_while_pending == vk::TRUE
           && descriptor_indexing_properties.shader_sampled_image_array_non_uniform_indexing_native == vk::TRUE
-          && descriptor_indexing_properties.max_descriptor_set_update_after_bind_sampled_images > 500_000;
+          && descriptor_indexing_properties.max_descriptor_set_update_after_bind_sampled_images > BINDLESS_TEXTURE_COUNT;
 
         if supported {
           println!("VkKHRDescriptorIndexing supported.");
@@ -231,6 +233,7 @@ impl Adapter<VkBackend> for VkAdapter {
           descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
           descriptor_indexing_features.descriptor_binding_variable_descriptor_count = vk::TRUE;
           descriptor_indexing_features.runtime_descriptor_array = vk::TRUE;
+          descriptor_indexing_features.descriptor_binding_partially_bound = vk::TRUE;
           descriptor_indexing_features.descriptor_binding_update_unused_while_pending = vk::TRUE;
           features |= VkFeatures::DESCRIPTOR_INDEXING;
         }

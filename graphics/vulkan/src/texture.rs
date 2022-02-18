@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::Weak;
 
 use ash::vk;
 
@@ -7,6 +9,7 @@ use sourcerenderer_core::graphics::TextureRenderTargetView;
 use sourcerenderer_core::graphics::TextureUsage;
 use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
 
+use crate::bindless::VkBindlessDescriptorSet;
 use crate::{VkBackend, raw::RawVkDevice};
 use crate::format::format_to_vk;
 
@@ -21,7 +24,13 @@ pub struct VkTexture {
   image: vk::Image,
   allocation: Option<vk_mem::Allocation>,
   device: Arc<RawVkDevice>,
-  info: TextureInfo
+  info: TextureInfo,
+  bindless_slot: Mutex<Option<VkTextureBindlessSlot>>
+}
+
+struct VkTextureBindlessSlot {
+  bindless_set: Weak<VkBindlessDescriptorSet>,
+  slot: u32
 }
 
 impl VkTexture {
@@ -67,6 +76,7 @@ impl VkTexture {
       allocation: Some(allocation),
       device: device.clone(),
       info: info.clone(),
+      bindless_slot: Mutex::new(None)
     }
   }
 
@@ -75,12 +85,21 @@ impl VkTexture {
       image,
       device: device.clone(),
       info,
-      allocation: None
+      allocation: None,
+      bindless_slot: Mutex::new(None)
     }
   }
 
   pub fn get_handle(&self) -> &vk::Image {
     &self.image
+  }
+
+  pub(crate) fn set_bindless_slot(&self, bindless_set: &Arc<VkBindlessDescriptorSet>, slot: u32) {
+    let mut lock = self.bindless_slot.lock().unwrap();
+    *lock = Some(VkTextureBindlessSlot {
+      bindless_set: Arc::downgrade(bindless_set),
+      slot,
+    });
   }
 }
 
@@ -122,6 +141,14 @@ fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
 
 impl Drop for VkTexture {
   fn drop(&mut self) {
+    let mut bindless_slot = self.bindless_slot.lock().unwrap();
+    if let Some(bindless_slot) = bindless_slot.take() {
+      let set = bindless_slot.bindless_set.upgrade();
+      if let Some(set) = set {
+        set.free_slot(bindless_slot.slot);
+      }
+    }
+
     if let Some(alloc) = &self.allocation {
       self.device.allocator.destroy_image(self.image, alloc);
     }

@@ -2,16 +2,16 @@ use ash::vk::Handle;
 use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{RenderPassInfo, Texture};
 use sourcerenderer_core::pool::{Pool, Recyclable};
+use crate::bindless::VkBindlessDescriptorSet;
 use crate::texture::VkTextureView;
 use crate::{VkFenceInner, VkRenderPass, VkSemaphore};
 use crate::buffer::BufferAllocator;
-use std::borrow::Borrow;
 use std::hash::Hash;
 use std::sync::{RwLock, Arc};
-use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkDescriptorSetBinding, VkConstantRange, COMPUTE_SHADER_CONSTS};
+use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkConstantRange, COMPUTE_SHADER_CONSTS};
 use crate::pipeline::VkPipelineLayout;
 use std::collections::HashMap;
-use crate::raw::RawVkDevice;
+use crate::raw::{RawVkDevice, VkFeatures};
 use crate::VkFence;
 use crate::sync::{VkEvent, VkFenceState, VkSemaphoreInner};
 use crate::renderpass::VkFrameBuffer;
@@ -24,15 +24,22 @@ pub struct VkShared {
   fences: Pool<VkFenceInner>,
   events: Pool<VkEvent>,
   buffers: BufferAllocator, // consider per thread
-  descriptor_set_layouts: RwLock<HashMap<Vec<VkDescriptorSetEntryInfo>, Arc<VkDescriptorSetLayout>>>,
+  descriptor_set_layouts: RwLock<HashMap<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>>,
   pipeline_layouts: RwLock<HashMap<VkPipelineLayoutKey, Arc<VkPipelineLayout>>>,
   render_passes: RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>>,
-  frame_buffers: RwLock<HashMap<SmallVec<[u64; 8]>, Arc<VkFrameBuffer>>>
+  frame_buffers: RwLock<HashMap<SmallVec<[u64; 8]>, Arc<VkFrameBuffer>>>,
+  bindless_texture_descriptor_set: Option<Arc<VkBindlessDescriptorSet>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
+pub(crate) struct VkDescriptorSetLayoutKey {
+  pub(crate) bindings: Vec<VkDescriptorSetEntryInfo>,
+  pub(crate) flags: vk::DescriptorSetLayoutCreateFlags
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub(crate) struct VkPipelineLayoutKey {
-  pub(crate) bindings: [Vec<VkDescriptorSetEntryInfo>; 4],
+  pub(crate) descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5],
   pub(crate) push_constant_ranges: [Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]
 }
 
@@ -41,6 +48,17 @@ impl VkShared {
     let semaphores_device_clone = device.clone();
     let fences_device_clone = device.clone();
     let events_device_clone = device.clone();
+    let mut descriptor_set_layouts = HashMap::<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>::new();
+
+    let bindless_texture_descriptor_set = if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+      let bindless_set = Arc::new(VkBindlessDescriptorSet::new(device, vk::DescriptorType::SAMPLED_IMAGE));
+      let (layout_key, descriptor_layout) = bindless_set.get_layout();
+      descriptor_set_layouts.insert(layout_key.clone(), descriptor_layout.clone());
+      Some(bindless_set)
+    } else {
+      None
+    };
+
     Self {
       device: device.clone(),
       semaphores: Pool::new(Box::new(move ||
@@ -53,10 +71,11 @@ impl VkShared {
         VkEvent::new(&events_device_clone)
       )),
       buffers: BufferAllocator::new(device, true),
-      descriptor_set_layouts: RwLock::new(HashMap::new()),
+      descriptor_set_layouts: RwLock::new(descriptor_set_layouts),
       pipeline_layouts: RwLock::new(HashMap::new()),
       render_passes: RwLock::new(HashMap::new()),
-      frame_buffers: RwLock::new(HashMap::new())
+      frame_buffers: RwLock::new(HashMap::new()),
+      bindless_texture_descriptor_set,
     }
   }
 
@@ -85,18 +104,17 @@ impl VkShared {
     Arc::new(VkFence::new(inner))
   }
 
-  pub(crate) fn get_descriptor_set_layout(&self, bindings: &[VkDescriptorSetEntryInfo]) -> Arc<VkDescriptorSetLayout> {
+  pub(crate) fn get_descriptor_set_layout(&self, layout_key: &VkDescriptorSetLayoutKey) -> Arc<VkDescriptorSetLayout> {
     {
       let cache = self.descriptor_set_layouts.read().unwrap();
-      if let Some(layout) = cache.get(bindings) {
+      if let Some(layout) = cache.get(layout_key) {
         return layout.clone();
       }
     }
 
-    let layout = Arc::new(VkDescriptorSetLayout::new(&bindings, &self.device));
+    let layout = Arc::new(VkDescriptorSetLayout::new(&layout_key.bindings, layout_key.flags, &self.device));
     let mut cache = self.descriptor_set_layouts.write().unwrap();
-    let key: Vec<VkDescriptorSetEntryInfo> = bindings.iter().cloned().collect();
-    cache.insert(key, layout.clone());
+    cache.insert(layout_key.clone(), layout.clone());
     layout
   }
 
@@ -109,10 +127,10 @@ impl VkShared {
       }
     }
 
-    let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; 4] = Default::default();
-    for i in 0..layout_key.bindings.len() {
-      let bindings = &layout_key.bindings[i];
-      descriptor_sets[i] = Some(self.get_descriptor_set_layout(&bindings[..]));
+    let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; 5] = Default::default();
+    for i in 0..layout_key.descriptor_set_layouts.len() {
+      let set_key = &layout_key.descriptor_set_layouts[i];
+      descriptor_sets[i] = Some(self.get_descriptor_set_layout(set_key));
     }
 
     let pipeline_layout = Arc::new(VkPipelineLayout::new(&descriptor_sets, &layout_key.push_constant_ranges, &self.device));
@@ -157,5 +175,10 @@ impl VkShared {
   #[inline]
   pub(crate) fn get_buffer_allocator(&self) -> &BufferAllocator {
     &self.buffers
+  }
+
+  #[inline]
+  pub(crate) fn bindless_texture_descriptor_set(&self) -> Option<&Arc<VkBindlessDescriptorSet>> {
+    self.bindless_texture_descriptor_set.as_ref()
   }
 }
