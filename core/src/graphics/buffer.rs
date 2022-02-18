@@ -12,6 +12,7 @@ bitflags! {
     const COPY_SRC                           = 0b100000;
     const COPY_DST                           = 0b1000000;
     const INDIRECT                           = 0b10000000;
+    const ACCELERATION_STRUCTURE             = 0b100000000;
   }
 }
 

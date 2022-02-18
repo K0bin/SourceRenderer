@@ -9,7 +9,7 @@ use crate::graphics::Buffer;
 use crate::graphics::Swapchain;
 use crate::graphics::TextureUnorderedAccessView;
 use crate::graphics::TextureRenderTargetView;
-use super::Queue;
+use super::{Queue, AccelerationStructure};
 use super::texture::TextureDepthStencilView;
 
 use std::hash::Hash;
@@ -37,4 +37,5 @@ pub trait Backend: 'static + Sized {
   type Semaphore : Send + Sync;
   type Queue : Queue<Self> + Send + Sync;
   type QueryRange : Send + Sync;
+  type AccelerationStructure : AccelerationStructure + Send + Sync;
 }

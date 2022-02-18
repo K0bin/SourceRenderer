@@ -32,12 +32,14 @@ pub use self::command::RenderPassAttachment;
 pub use self::command::RenderPassAttachmentView;
 pub use self::command::BarrierSync;
 pub use self::command::BarrierAccess;
+pub use self::command::IndexFormat;
 pub use self::texture::{
   TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode, TextureUnorderedAccessView,
   SamplerInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo,
   TextureDepthStencilView, TextureDepthStencilViewInfo, TextureLayout
 };
 pub use self::sync::Fence;
+pub use self::rt::{AccelerationStructure, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo};
 
 mod device;
 mod instance;
@@ -51,6 +53,7 @@ mod renderpass;
 mod backend;
 mod sync;
 mod resource;
+mod rt;
 
 // TODO: find a better place for this
 pub trait Resettable {

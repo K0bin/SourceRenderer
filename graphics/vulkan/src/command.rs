@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::{cmp::min, sync::Arc};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -10,7 +11,7 @@ use ash::vk;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout};
+use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -20,6 +21,7 @@ use sourcerenderer_core::graphics::Resettable;
 
 use crate::pipeline::shader_type_to_vk;
 use crate::query::{VkQueryAllocator, VkQueryRange};
+use crate::rt::VkAccelerationStructure;
 use crate::{raw::RawVkDevice, texture::VkSampler};
 use crate::VkRenderPass;
 use crate::VkFrameBuffer;
@@ -294,11 +296,11 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>) {
+  pub(crate) fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>, format: IndexFormat) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(index_buffer);
     unsafe {
-      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), index_buffer.get_offset() as u64, vk::IndexType::UINT32);
+      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), index_buffer.get_offset() as u64, index_format_to_vk(format));
     }
   }
 
@@ -540,6 +542,13 @@ impl VkCommandBuffer {
     }
   }
 
+  pub(crate) fn allocate_scratch_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<VkBufferSlice> {
+    self.buffer_allocator.get_slice(&BufferInfo {
+      size: info.size as usize,
+      usage: info.usage
+    }, memory_usage,  None)
+  }
+
   pub(crate) fn begin_label(&self, label: &str) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let label_cstring = CString::new(label).unwrap();
@@ -586,6 +595,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.render_pass.is_none());
     debug_assert!(self.pipeline.is_some());
     debug_assert!(!self.pipeline.as_ref().unwrap().is_graphics());
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
@@ -936,12 +946,22 @@ impl VkCommandBuffer {
     }
     self.trackers.track_buffer(buffer);
   }
+
+  pub fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<VkBackend>, size: usize, target_buffer: &Arc<VkBufferSlice>, scratch_buffer: &Arc<VkBufferSlice>) -> Arc<VkAccelerationStructure> {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.render_pass.is_none());
+    self.trackers.track_buffer(scratch_buffer);
+    self.trackers.track_buffer(target_buffer);
+    let acceleration_structure = Arc::new(VkAccelerationStructure::new_bottom_level(&self.device, info, size, target_buffer, scratch_buffer, self.get_handle()));
+    self.trackers.track_acceleration_structure(&acceleration_structure);
+    acceleration_structure
+  }
 }
 
 impl Drop for VkCommandBuffer {
   fn drop(&mut self) {
     if self.state == VkCommandBufferState::Submitted {
-      unsafe { self.device.wait_for_idle(); }
+      self.device.wait_for_idle();
     }
   }
 }
@@ -1003,6 +1023,10 @@ impl VkCommandBufferRecorder {
   ) {
     self.item.as_mut().unwrap().signal_event(event, stage_mask);
   }
+
+  pub(crate) fn allocate_scratch_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<VkBufferSlice> {
+    self.item.as_mut().unwrap().allocate_scratch_buffer(info, memory_usage)
+  }
 }
 
 impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
@@ -1017,8 +1041,8 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>) {
-    self.item.as_mut().unwrap().set_index_buffer(index_buffer)
+  fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>, format: IndexFormat) {
+    self.item.as_mut().unwrap().set_index_buffer(index_buffer, format)
   }
 
   #[inline(always)]
@@ -1170,6 +1194,10 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 
   fn copy_query_results_to_buffer(&mut self, query_range: &Arc<VkQueryRange>, buffer: &Arc<VkBufferSlice>, start_index: u32, count: u32) {
     self.item.as_mut().unwrap().copy_query_results_to_buffer(query_range, buffer, start_index, count);
+  }
+
+  fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<VkBackend>, size: usize, target_buffer: &Arc<VkBufferSlice>, scratch_buffer: &Arc<VkBufferSlice>) -> Arc<VkAccelerationStructure> {
+    self.item.as_mut().unwrap().create_bottom_level_acceleration_structure(info, size, target_buffer, scratch_buffer)
   }
 }
 
@@ -1338,6 +1366,13 @@ fn texture_layout_to_image_layout(layout: TextureLayout) -> vk::ImageLayout {
     TextureLayout::ResolveDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
     TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
     TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
+  }
+}
+
+pub(crate) fn index_format_to_vk(format: IndexFormat) -> vk::IndexType {
+  match format {
+    IndexFormat::U16 => vk::IndexType::UINT16,
+    IndexFormat::U32 => vk::IndexType::UINT32,
   }
 }
 

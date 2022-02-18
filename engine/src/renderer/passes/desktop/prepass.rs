@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Barrier, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureLayout, BarrierAccess, BarrierSync};
+use sourcerenderer_core::graphics::{Barrier, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::{RendererScene, drawable::View, passes::desktop::taa::scaled_halton_point};
@@ -388,7 +388,7 @@ impl<B: GraphicsBackend> Prepass<B> {
 
         command_buffer.set_vertex_buffer(&mesh.vertices);
         if mesh.indices.is_some() {
-          command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap());
+          command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap(), IndexFormat::U32);
         }
 
         let range = &mesh.parts[part.part_index];

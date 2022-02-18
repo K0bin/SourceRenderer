@@ -6,7 +6,7 @@ use std::ffi::CString;
 
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
-use ash::vk;
+use ash::vk::{self, BufferDeviceAddressInfo};
 use ash::vk::Handle;
 
 use crate::raw::*;
@@ -20,7 +20,8 @@ pub struct VkBuffer {
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
   memory_usage: MemoryUsage,
-  info: BufferInfo
+  info: BufferInfo,
+  va: Option<vk::DeviceSize>
 }
 
 unsafe impl Send for VkBuffer {}
@@ -71,6 +72,17 @@ impl VkBuffer {
       None
     };
 
+    let va = if buffer_info.usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
+      unsafe {
+        Some(device.get_buffer_device_address(&BufferDeviceAddressInfo {
+          buffer,
+          ..Default::default()
+        }))
+      }
+    } else {
+      None
+    };
+
     let is_coherent = if memory_usage != MemoryUsage::GpuOnly {
       let memory_type = allocation_info.get_memory_type();
       let memory_properties = allocator.get_memory_type_properties(memory_type).unwrap();
@@ -87,12 +99,17 @@ impl VkBuffer {
       map_ptr,
       is_coherent,
       memory_usage,
-      info: info.clone()
+      info: info.clone(),
+      va
     })
   }
 
   pub fn get_handle(&self) -> &vk::Buffer {
     &self.buffer
+  }
+
+  pub fn va(&self) -> Option<vk::DeviceAddress> {
+    self.va
   }
 }
 
@@ -172,11 +189,15 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   }
 
   if usage.contains(BufferUsage::VERTEX) {
-    flags |= vk::BufferUsageFlags::VERTEX_BUFFER;
+    flags |= vk::BufferUsageFlags::VERTEX_BUFFER
+    | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
   }
 
   if usage.contains(BufferUsage::INDEX) {
-    flags |= vk::BufferUsageFlags::INDEX_BUFFER;
+    flags |= vk::BufferUsageFlags::INDEX_BUFFER
+      | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+      | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
   }
 
   if usage.contains(BufferUsage::INDIRECT) {
@@ -189,6 +210,11 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
 
   if usage.contains(BufferUsage::COPY_DST) {
     flags |= vk::BufferUsageFlags::TRANSFER_DST;
+  }
+
+  if usage.contains(BufferUsage::ACCELERATION_STRUCTURE) {
+    flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+      | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
   }
 
   flags
@@ -288,6 +314,10 @@ impl VkBufferSlice {
   pub fn get_length(&self) -> usize {
     self.length
   }
+
+  pub fn va(&self) -> Option<vk::DeviceAddress> {
+    self.buffer.va().map(|va| va + self.offset as vk::DeviceSize)
+  }
 }
 
 const SLICED_BUFFER_SIZE: usize = 16384;
@@ -353,6 +383,10 @@ impl BufferAllocator {
     if info.usage.contains(BufferUsage::STORAGE){
       // TODO max doesnt guarantee both alignments
       alignment = max(alignment, self.device_limits.min_storage_buffer_offset_alignment as usize);
+    }
+    if info.usage.contains(BufferUsage::ACCELERATION_STRUCTURE){
+      // TODO max doesnt guarantee both alignments
+      alignment = max(alignment, 256);
     }
 
     let key = BufferKey { memory_usage, buffer_usage: info.usage };

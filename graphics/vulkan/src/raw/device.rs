@@ -4,6 +4,7 @@ use std::sync::atomic::AtomicBool;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 
 use ash::vk;
+use ash::extensions::khr;
 
 use crate::raw::RawVkInstance;
 use crate::VkAdapterExtensionSupport;
@@ -31,6 +32,14 @@ pub struct RawVkDevice {
   pub graphics_queue: ReentrantMutex<vk::Queue>,
   pub compute_queue: Option<ReentrantMutex<vk::Queue>>,
   pub transfer_queue: Option<ReentrantMutex<vk::Queue>>,
+  pub rt: Option<RawVkRTEntries>
+}
+
+pub struct RawVkRTEntries {
+  pub acceleration_structure: khr::AccelerationStructure,
+  pub rt_pipelines: khr::RayTracingPipeline,
+  pub deferred_operations: khr::DeferredHostOperations,
+  pub bda: khr::BufferDeviceAddress,
 }
 
 impl RawVkDevice {
@@ -46,6 +55,18 @@ impl RawVkDevice {
     graphics_queue: vk::Queue,
     compute_queue: Option<vk::Queue>,
     transfer_queue: Option<vk::Queue>) -> Self {
+
+      let rt = if features.contains(VkFeatures::RAY_TRACING) {
+        Some(RawVkRTEntries {
+          acceleration_structure: khr::AccelerationStructure::new(&instance, &device),
+          rt_pipelines: khr::RayTracingPipeline::new(&instance, &device),
+          deferred_operations: khr::DeferredHostOperations::new(&instance, &device),
+          bda: khr::BufferDeviceAddress::new(&instance, &device)
+        })
+      } else {
+        None
+      };
+
       Self {
         device,
         allocator,
@@ -58,7 +79,8 @@ impl RawVkDevice {
         graphics_queue: ReentrantMutex::new(graphics_queue),
         compute_queue: compute_queue.map(|queue| ReentrantMutex::new(queue)),
         transfer_queue: transfer_queue.map(|queue| ReentrantMutex::new(queue)),
-        is_alive: AtomicBool::new(true)
+        is_alive: AtomicBool::new(true),
+        rt
       }
   }
 

@@ -6,6 +6,7 @@ use crate::Vec2UI;
 
 use crate::graphics::{Backend, BufferUsage, TextureUsage};
 
+use super::BottomLevelAccelerationStructureInfo;
 use super::LoadOp;
 use super::RenderpassRecordingMode;
 use super::ShaderType;
@@ -39,10 +40,16 @@ pub enum PipelineBinding<'a, B: Backend> {
   Compute(&'a Arc<B::ComputePipeline>)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum IndexFormat {
+  U16,
+  U32
+}
+
 pub trait CommandBuffer<B: Backend> {
   fn set_pipeline(&mut self, pipeline: PipelineBinding<B>);
   fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<B::Buffer>);
-  fn set_index_buffer(&mut self, index_buffer: &Arc<B::Buffer>);
+  fn set_index_buffer(&mut self, index_buffer: &Arc<B::Buffer>, format: IndexFormat);
   fn set_viewports(&mut self, viewports: &[ Viewport ]);
   fn set_scissors(&mut self, scissors: &[ Scissor ]);
   fn init_texture_mip_level(&mut self, src_buffer: &Arc<B::Buffer>, texture: &Arc<B::Texture>, mip_level: u32, array_layer: u32);
@@ -78,6 +85,9 @@ pub trait CommandBuffer<B: Backend> {
   fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
   fn execute_inner(&mut self, submission: Vec<B::CommandBufferSubmission>);
+
+  // RT
+  fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &Arc<B::Buffer>, scratch_buffer: &Arc<B::Buffer>) -> Arc<B::AccelerationStructure>;
 }
 
 pub trait Queue<B: Backend> {

@@ -1,3 +1,4 @@
+use crate::rt::VkAccelerationStructure;
 use crate::{VkDevice, texture::VkSampler};
 use crate::*;
 use crate::pipeline::VkShader;
@@ -29,4 +30,5 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type Semaphore = VkSemaphore;
   type Queue = VkQueue;
   type QueryRange = VkQueryRange;
+  type AccelerationStructure = VkAccelerationStructure;
 }

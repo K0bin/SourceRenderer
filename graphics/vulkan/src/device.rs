@@ -5,6 +5,7 @@ use ash::vk;
 
 use sourcerenderer_core::graphics::*;
 use crate::bindless::VkBindlessDescriptorSet;
+use crate::rt::VkAccelerationStructure;
 use crate::{queue::VkQueue, texture::VkSampler};
 use crate::queue::{VkQueueInfo, VkQueueType};
 use crate::{VkBackend, VkRenderPass, VkSemaphore};
@@ -264,6 +265,10 @@ impl Device<VkBackend> for VkDevice {
     let slot = bindless_set.write_texture_descriptor(texture);
     texture.texture().set_bindless_slot(bindless_set, slot);
     slot
+  }
+
+  fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
+    VkAccelerationStructure::bottom_level_size(&self.device, info)
   }
 }
 
