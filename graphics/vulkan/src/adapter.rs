@@ -28,6 +28,12 @@ const DEDICATED_ALLOCATION_EXT_NAME: &str = "VK_KHR_dedicated_allocation";
 const DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME: &str = "VK_KHR_descriptor_update_template";
 const SHADER_NON_SEMANTIC_INFO_EXT_NAME: &str = "VK_KHR_shader_non_semantic_info";
 const DESCRIPTOR_INDEXING_EXT_NAME: &str = "VK_EXT_descriptor_indexing";
+const ACCELERATION_STRUCTURE_EXT_NAME: &str = "VK_KHR_acceleration_structure";
+const BUFFER_DEVICE_ADDRESS_EXT_NAME: &str = "VK_KHR_buffer_device_address";
+const DEFERRED_HOST_OPERATIONS_EXT_NAME: &str = "VK_KHR_deferred_host_operations";
+const RAY_TRACING_PIPELINE_EXT_NAME: &str = "VK_KHR_ray_tracing_pipeline";
+const RAY_QUERY_EXT_NAME: &str = "VK_KHR_ray_query";
+const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
 
 
 bitflags! {
@@ -39,6 +45,12 @@ bitflags! {
     const DESCRIPTOR_UPDATE_TEMPLATE = 0b1000;
     const SHADER_NON_SEMANTIC_INFO   = 0b10000;
     const DESCRIPTOR_INDEXING        = 0b100000;
+    const ACCELERATION_STRUCTURE     = 0b1000000;
+    const BUFFER_DEVICE_ADDRESS      = 0b10000000;
+    const DEFERRED_HOST_OPERATIONS   = 0b100000000;
+    const RAY_TRACING_PIPELINE       = 0b1000000000;
+    const RAY_QUERY                  = 0b10000000000;
+    const PIPELINE_LIBRARY           = 0b100000000000;
   }
 }
 
@@ -68,6 +80,12 @@ impl VkAdapter {
         DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME => { VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE },
         SHADER_NON_SEMANTIC_INFO_EXT_NAME => { VkAdapterExtensionSupport::SHADER_NON_SEMANTIC_INFO },
         DESCRIPTOR_INDEXING_EXT_NAME => { VkAdapterExtensionSupport::DESCRIPTOR_INDEXING },
+        ACCELERATION_STRUCTURE_EXT_NAME => { VkAdapterExtensionSupport::ACCELERATION_STRUCTURE },
+        PIPELINE_LIBRARY_EXT_NAME => { VkAdapterExtensionSupport::PIPELINE_LIBRARY },
+        BUFFER_DEVICE_ADDRESS_EXT_NAME => { VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS },
+        RAY_QUERY_EXT_NAME => { VkAdapterExtensionSupport::RAY_QUERY },
+        RAY_TRACING_PIPELINE_EXT_NAME => { VkAdapterExtensionSupport::RAY_TRACING_PIPELINE },
+        DEFERRED_HOST_OPERATIONS_EXT_NAME => { VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -185,17 +203,37 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
       let mut supported_descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
       let mut descriptor_indexing_properties = vk::PhysicalDeviceDescriptorIndexingPropertiesEXT::default();
+      let mut supported_acceleration_structure_features = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+      let mut supported_rt_pipeline_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+      let mut supported_bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
       if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
         supported_descriptor_indexing_features.p_next = supported_features.p_next;
         supported_features.p_next = &mut supported_descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void;
         descriptor_indexing_properties.p_next = properties.p_next;
         properties.p_next = &mut descriptor_indexing_properties as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT as *mut c_void;
       }
+      if self.extensions.intersects(VkAdapterExtensionSupport::ACCELERATION_STRUCTURE) {
+        supported_acceleration_structure_features.p_next = supported_features.p_next;
+        supported_features.p_next = &mut supported_acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void;
+      }
+      if self.extensions.intersects(VkAdapterExtensionSupport::RAY_TRACING_PIPELINE) {
+        supported_rt_pipeline_features.p_next = supported_features.p_next;
+        supported_features.p_next = &mut supported_rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void;
+      }
+      if self.extensions.intersects(VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS) {
+        supported_bda_features.p_next = supported_features.p_next;
+        supported_features.p_next = &mut supported_bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void;
+      }
+
+
       self.instance.get_physical_device_features2(self.physical_device, &mut supported_features);
       self.instance.get_physical_device_properties2(self.physical_device, &mut properties);
 
       let enabled_features: vk::PhysicalDeviceFeatures = Default::default();
       let mut descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
+      let mut acceleration_structure_features = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+      let mut rt_pipeline_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+      let mut bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
       let mut extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
       let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
@@ -214,9 +252,10 @@ impl Adapter<VkBackend> for VkAdapter {
         extension_names.push(SHADER_NON_SEMANTIC_INFO_EXT_NAME);
       }
 
+      let mut supports_descriptor_indexing = false;
       if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
         extension_names.push(DESCRIPTOR_INDEXING_EXT_NAME);
-        let supported = supported_descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
+        supports_descriptor_indexing = supported_descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
           && supported_descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind == vk::TRUE
           && supported_descriptor_indexing_features.descriptor_binding_variable_descriptor_count == vk::TRUE
           && supported_descriptor_indexing_features.runtime_descriptor_array == vk::TRUE
@@ -225,8 +264,8 @@ impl Adapter<VkBackend> for VkAdapter {
           && descriptor_indexing_properties.shader_sampled_image_array_non_uniform_indexing_native == vk::TRUE
           && descriptor_indexing_properties.max_descriptor_set_update_after_bind_sampled_images > BINDLESS_TEXTURE_COUNT;
 
-        if supported {
-          println!("VkKHRDescriptorIndexing supported.");
+        if supports_descriptor_indexing {
+          println!("Bindless supported.");
           descriptor_indexing_features.p_next = device_creation_pnext;
           device_creation_pnext = &mut descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void;
           descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
@@ -236,6 +275,34 @@ impl Adapter<VkBackend> for VkAdapter {
           descriptor_indexing_features.descriptor_binding_partially_bound = vk::TRUE;
           descriptor_indexing_features.descriptor_binding_update_unused_while_pending = vk::TRUE;
           features |= VkFeatures::DESCRIPTOR_INDEXING;
+        }
+      }
+
+      if supports_descriptor_indexing && self.extensions.contains(
+          VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
+          | VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS
+          | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
+          | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
+        extension_names.push(BUFFER_DEVICE_ADDRESS_EXT_NAME);
+        extension_names.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
+        extension_names.push(ACCELERATION_STRUCTURE_EXT_NAME);
+        extension_names.push(RAY_TRACING_PIPELINE_EXT_NAME);
+        extension_names.push(PIPELINE_LIBRARY_EXT_NAME);
+
+        let supported = supported_acceleration_structure_features.acceleration_structure == vk::TRUE
+            && supported_rt_pipeline_features.ray_tracing_pipeline == vk::TRUE
+            && supported_bda_features.buffer_device_address == vk::TRUE;
+        if supported {
+          println!("Ray tracing supported.");
+          features |= VkFeatures::RAY_TRACING;
+          acceleration_structure_features.acceleration_structure = vk::TRUE;
+          rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
+          acceleration_structure_features.p_next = device_creation_pnext;
+          device_creation_pnext = &mut acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void;
+          rt_pipeline_features.p_next = device_creation_pnext;
+          device_creation_pnext = &mut rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void;
+          bda_features.p_next = device_creation_pnext;
+          device_creation_pnext = &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void;
         }
       }
 

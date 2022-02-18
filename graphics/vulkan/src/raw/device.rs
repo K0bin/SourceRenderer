@@ -14,6 +14,7 @@ bitflags! {
     const DESCRIPTOR_INDEXING        = 0b1;
     const DEDICATED_ALLOCATION       = 0b10;
     const DESCRIPTOR_TEMPLATE        = 0b100;
+    const RAY_TRACING                = 0b1000;
   }
 }
 
