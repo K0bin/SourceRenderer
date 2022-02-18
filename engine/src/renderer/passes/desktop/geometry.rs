@@ -377,6 +377,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, ssao, &self.sampler);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer);
+      command_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
 
       let lightmap_ref = &lightmap.view;
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, lightmap_ref, &self.sampler);
@@ -404,12 +405,14 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         struct MaterialInfo {
           albedo: Vec4,
           roughness_factor: f32,
-          metalness_factor: f32
+          metalness_factor: f32,
+          albedo_texture_index: u32
         }
         let mut material_info = MaterialInfo {
           albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
           roughness_factor: 0f32,
-          metalness_factor: 0f32
+          metalness_factor: 0f32,
+          albedo_texture_index: 0u32
         };
 
         let range = &mesh.parts[part.part_index];
@@ -425,6 +428,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             RendererMaterialValue::Texture(texture) => {
               let albedo_view = &texture.view;
               command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
+              material_info.albedo_texture_index = texture.bindless_index.unwrap();
             },
             RendererMaterialValue::Vec4(val) => {
               material_info.albedo = *val

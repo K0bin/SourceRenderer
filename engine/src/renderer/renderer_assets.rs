@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage}};
+use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage, SamplerInfo, Filter, AddressMode}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureShaderResourceViewInfo, BufferUsage };
@@ -9,7 +9,8 @@ use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Form
 use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
 
 pub struct RendererTexture<B: Backend> {
-  pub(super) view: Arc<B::TextureShaderResourceView>
+  pub(super) view: Arc<B::TextureShaderResourceView>,
+  pub(super) bindless_index: Option<u32>
 }
 
 impl<B: Backend> PartialEq for RendererTexture<B> {
@@ -225,8 +226,14 @@ impl<P: Platform> RendererAssets<P> {
       base_array_level: 0,
       array_level_length: 1
     });
+    let zero_index = if device.supports_bindless() {
+      Some(device.insert_texture_into_bindless_heap(&zero_view))
+    } else {
+      None
+    };
     let zero_rtexture = Arc::new(RendererTexture {
       view: zero_view,
+      bindless_index: zero_index
     });
 
     let zero_data_black = [0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8];
@@ -248,8 +255,14 @@ impl<P: Platform> RendererAssets<P> {
       base_array_level: 0,
       array_level_length: 1
     });
+    let zero_black_index = if device.supports_bindless() {
+      Some(device.insert_texture_into_bindless_heap(&zero_view_black))
+    } else {
+      None
+    };
     let zero_rtexture_black = Arc::new(RendererTexture {
       view: zero_view_black,
+      bindless_index: zero_black_index
     });
     device.flush_transfers();
 
@@ -268,8 +281,14 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>) -> Arc<RendererTexture<P::GraphicsBackend>> {
+    let bindless_index = if self.device.supports_bindless() {
+      Some(self.device.insert_texture_into_bindless_heap(&texture))
+    } else {
+      None
+    };
     let renderer_texture = Arc::new(RendererTexture {
-      view: texture.clone()
+      view: texture.clone(),
+      bindless_index
     });
     self.textures.insert(texture_path.to_owned(), renderer_texture.clone());
 
@@ -432,7 +451,8 @@ impl<P: Platform> RendererAssets<P> {
     }
 
     let texture = Arc::new(RendererTexture {
-      view: if black { self.zero_texture.view.clone() } else { self.zero_texture_black.view.clone() }
+      view: if black { self.zero_texture.view.clone() } else { self.zero_texture_black.view.clone() },
+      bindless_index: if black { self.zero_texture.bindless_index } else { self.zero_texture_black.bindless_index },
     });
     self.textures.insert(texture_path.to_string(), texture.clone());
     texture

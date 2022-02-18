@@ -4,6 +4,7 @@ use std::sync::{Arc};
 use ash::vk;
 
 use sourcerenderer_core::graphics::*;
+use crate::bindless::VkBindlessDescriptorSet;
 use crate::{queue::VkQueue, texture::VkSampler};
 use crate::queue::{VkQueueInfo, VkQueueType};
 use crate::{VkBackend, VkRenderPass, VkSemaphore};
@@ -29,7 +30,7 @@ pub struct VkDevice {
   context: Arc<VkThreadManager>,
   transfer: VkTransfer,
   shared: Arc<VkShared>,
-  query_count: AtomicU64
+  query_count: AtomicU64,
 }
 
 impl VkDevice {
@@ -98,7 +99,7 @@ impl VkDevice {
       context,
       transfer,
       shared,
-      query_count: AtomicU64::new(0)
+      query_count: AtomicU64::new(0),
     }
   }
 
@@ -252,6 +253,17 @@ impl Device<VkBackend> for VkDevice {
 
   fn prerendered_frames(&self) -> u32 {
     self.context.prerendered_frames()
+  }
+
+  fn supports_bindless(&self) -> bool {
+    self.device.features.contains(VkFeatures::DESCRIPTOR_INDEXING)
+  }
+
+  fn insert_texture_into_bindless_heap(&self, texture: &Arc<VkTextureView>) -> u32 {
+    let bindless_set = self.shared.bindless_texture_descriptor_set().expect("Descriptor indexing is not supported on this device.");
+    let slot = bindless_set.write_texture_descriptor(texture);
+    texture.texture().set_bindless_slot(bindless_set, slot);
+    slot
   }
 }
 

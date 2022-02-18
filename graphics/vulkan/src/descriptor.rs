@@ -23,6 +23,7 @@ bitflags! {
         const PER_MATERIAL = 0b0010;
         const PER_FRAME = 0b0100;
         const RARELY = 0b1000;
+        const BINDLESS_TEXTURES = 0b10000;
     }
 }
 
@@ -41,6 +42,7 @@ impl From<BindingFrequency> for DirtyDescriptorSets {
 pub(crate) struct VkDescriptorSetEntryInfo {
   pub(crate) shader_stage: vk::ShaderStageFlags,
   pub(crate) index: u32,
+  pub(crate) count: u32,
   pub(crate) descriptor_type: vk::DescriptorType,
   pub(crate) writable: bool
 }
@@ -63,7 +65,7 @@ pub(crate) struct VkDescriptorSetLayout {
 }
 
 impl VkDescriptorSetLayout {
-  pub fn new(bindings: &[VkDescriptorSetEntryInfo], device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(bindings: &[VkDescriptorSetEntryInfo], flags: vk::DescriptorSetLayoutCreateFlags, device: &Arc<RawVkDevice>) -> Self {
     let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
     let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
     let mut binding_infos: [Option<VkDescriptorSetEntryInfo>; 16] = Default::default();
@@ -73,7 +75,7 @@ impl VkDescriptorSetLayout {
 
       vk_bindings.push(vk::DescriptorSetLayoutBinding {
         binding: binding.index,
-        descriptor_count: 1,
+        descriptor_count: binding.count,
         descriptor_type: binding.descriptor_type,
         stage_flags: binding.shader_stage,
         p_immutable_samplers: std::ptr::null()
@@ -92,6 +94,7 @@ impl VkDescriptorSetLayout {
     let info = vk::DescriptorSetLayoutCreateInfo {
       p_bindings: vk_bindings.as_ptr(),
       binding_count: vk_bindings.len() as u32,
+      flags,
       ..Default::default()
     };
     let layout = unsafe {
@@ -130,6 +133,10 @@ impl VkDescriptorSetLayout {
 
   pub(crate) fn get_handle(&self) -> &vk::DescriptorSetLayout {
     &self.layout
+  }
+
+  pub(crate) fn binding_count(&self) -> usize {
+    self.binding_infos.len()
   }
 }
 
@@ -187,7 +194,7 @@ impl VkDescriptorPool {
       max_sets: 4096,
       p_pool_sizes: pool_sizes.as_ptr(),
       pool_size_count: pool_sizes.len() as u32,
-      flags: if is_transient { vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET } else { vk::DescriptorPoolCreateFlags::empty() },
+      flags: if !is_transient { vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET } else { vk::DescriptorPoolCreateFlags::empty() },
       ..Default::default()
     };
     let descriptor_pool = Mutex::new(unsafe {
@@ -328,6 +335,16 @@ impl VkDescriptorSet {
               write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
               write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
             },
+            VkBoundResource::Sampler(sampler) => {
+              let texture_info = vk::DescriptorImageInfo {
+                image_view: vk::ImageView::null(),
+                sampler: *sampler.get_handle(),
+                image_layout: vk::ImageLayout::UNDEFINED
+              };
+              image_writes.push(texture_info);
+              write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
+              write.descriptor_type = vk::DescriptorType::SAMPLER;
+            },
             _ => unimplemented!()
           }
           assert_eq!(layout.binding_infos[binding].as_ref().unwrap().descriptor_type, write.descriptor_type);
@@ -373,6 +390,13 @@ impl VkDescriptorSet {
                 image_view: *texture.get_view_handle(),
                 sampler: vk::Sampler::null(),
                 image_layout: vk::ImageLayout::GENERAL
+              };
+            },
+            VkBoundResource::Sampler(sampler) => {
+              entry.image = vk::DescriptorImageInfo {
+                image_view: vk::ImageView::null(),
+                sampler: *sampler.get_handle(),
+                image_layout: vk::ImageLayout::UNDEFINED
               };
             },
             _ => {}
@@ -424,7 +448,8 @@ pub(crate) enum VkBoundResource {
   UniformBuffer(Arc<VkBufferSlice>),
   StorageBuffer(Arc<VkBufferSlice>),
   StorageTexture(Arc<VkTextureView>),
-  SampledTexture(Arc<VkTextureView>, Arc<VkSampler>)
+  SampledTexture(Arc<VkTextureView>, Arc<VkSampler>),
+  Sampler(Arc<VkSampler>),
 }
 
 impl Default for VkBoundResource {
@@ -439,7 +464,8 @@ pub(crate) enum VkBoundResourceRef<'a> {
   UniformBuffer(&'a Arc<VkBufferSlice>),
   StorageBuffer(&'a Arc<VkBufferSlice>),
   StorageTexture(&'a Arc<VkTextureView>),
-  SampledTexture(&'a Arc<VkTextureView>, &'a Arc<VkSampler>)
+  SampledTexture(&'a Arc<VkTextureView>, &'a Arc<VkSampler>),
+  Sampler(&'a Arc<VkSampler>),
 }
 
 pub(crate) struct VkDescriptorSetBinding {
@@ -500,6 +526,7 @@ impl VkBindingManager {
         (VkBoundResource::StorageBuffer(old), VkBoundResourceRef::StorageBuffer(new)) => old == *new,
         (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => old == *new,
         (VkBoundResource::SampledTexture(old_tex, old_sampler), VkBoundResourceRef::SampledTexture(new_tex, new_sampler)) => old_tex == *new_tex && old_sampler == *new_sampler,
+        (VkBoundResource::Sampler(old_sampler), VkBoundResourceRef::Sampler(new_sampler)) => old_sampler == *new_sampler,
         _ => false
     };
 
@@ -511,6 +538,7 @@ impl VkBindingManager {
         VkBoundResourceRef::StorageBuffer(ssbo) => VkBoundResource::StorageBuffer(ssbo.clone()),
         VkBoundResourceRef::StorageTexture(storage_tex) => VkBoundResource::StorageTexture(storage_tex.clone()),
         VkBoundResourceRef::SampledTexture(tex, sampler) => VkBoundResource::SampledTexture(tex.clone(), sampler.clone()),
+        VkBoundResourceRef::Sampler(sampler) => VkBoundResource::Sampler(sampler.clone()),
       };
     }
   }
@@ -555,6 +583,10 @@ impl VkBindingManager {
     }
 
     let layout = layout_option.unwrap();
+    if layout.binding_count() == 0 {
+      return None;
+    }
+
     let cached_set = self.find_compatible_set(frame, layout, frequency, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
 
     let bindings = self.bindings.get(frequency as usize).unwrap();
@@ -595,6 +627,18 @@ impl VkBindingManager {
       })
     }
     Some(set_binding)
+  }
+
+  pub fn mark_all_dirty(&mut self) {
+    self.dirty |= DirtyDescriptorSets::PER_DRAW;
+    self.dirty |= DirtyDescriptorSets::PER_MATERIAL;
+    self.dirty |= DirtyDescriptorSets::PER_FRAME;
+    self.dirty |= DirtyDescriptorSets::RARELY;
+    self.dirty |= DirtyDescriptorSets::BINDLESS_TEXTURES;
+  }
+
+  pub fn dirty_sets(&self) -> DirtyDescriptorSets {
+    self.dirty
   }
 
   pub fn finish(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout) -> [Option<VkDescriptorSetBinding>; 4] {

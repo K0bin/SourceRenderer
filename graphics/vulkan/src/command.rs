@@ -29,7 +29,7 @@ use crate::raw::*;
 use crate::VkShared;
 use crate::buffer::{VkBufferSlice, BufferAllocator};
 use crate::VkTexture;
-use crate::descriptor::{VkBindingManager, VkBoundResource, VkBoundResourceRef};
+use crate::descriptor::{VkBindingManager, VkBoundResourceRef, DirtyDescriptorSets};
 use crate::texture::VkTextureView;
 use crate::lifetime_tracker::VkLifetimeTrackers;
 
@@ -47,7 +47,13 @@ pub struct VkCommandPool {
 }
 
 impl VkCommandPool {
-  pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>, query_allocator: &Arc<VkQueryAllocator>) -> Self {
+  pub fn new(
+    device: &Arc<RawVkDevice>,
+    queue_family_index: u32,
+    shared: &Arc<VkShared>,
+    buffer_allocator: &Arc<BufferAllocator>,
+    query_allocator: &Arc<VkQueryAllocator>
+  ) -> Self {
     let create_info = vk::CommandPoolCreateInfo {
       queue_family_index,
       flags: vk::CommandPoolCreateFlags::empty(),
@@ -242,6 +248,9 @@ impl VkCommandBuffer {
         }
 
         self.trackers.track_pipeline(*graphics_pipeline);
+        if graphics_pipeline.uses_bindless_texture_set() && !self.device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+          panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+        }
         self.pipeline = Some((*graphics_pipeline).clone())
       }
       PipelineBinding::Compute(compute_pipeline) => {
@@ -250,9 +259,13 @@ impl VkCommandBuffer {
           self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::COMPUTE, *vk_pipeline);
         }
         self.trackers.track_pipeline(*compute_pipeline);
+        if compute_pipeline.uses_bindless_texture_set() && !self.device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+          panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+        }
         self.pipeline = Some((*compute_pipeline).clone())
       },
     };
+    self.descriptor_manager.mark_all_dirty();
   }
 
   pub(crate) fn end_render_pass(&mut self) {
@@ -433,6 +446,12 @@ impl VkCommandBuffer {
     self.trackers.track_texture_view(texture);
   }
 
+  pub(crate) fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<VkSampler>) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::Sampler(sampler));
+    self.trackers.track_sampler(sampler);
+  }
+
   pub(crate) fn finish_binding(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
@@ -440,7 +459,7 @@ impl VkCommandBuffer {
     self.flush_barriers();
 
     let mut offsets = SmallVec::<[u32; 16]>::new();
-    let mut descriptor_sets = SmallVec::<[vk::DescriptorSet; 4]>::new();
+    let mut descriptor_sets = SmallVec::<[vk::DescriptorSet; 5]>::new();
     let mut base_index = 0;
 
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
@@ -467,10 +486,23 @@ impl VkCommandBuffer {
         }
       }
     }
+    if !descriptor_sets.is_empty() && base_index + descriptor_sets.len() as u32 != 4 {
+      unsafe {
+        self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
+      }
+      offsets.clear();
+      descriptor_sets.clear();
+      base_index = 4;
+    }
+
+    if pipeline.uses_bindless_texture_set() {
+      let bindless_texture_descriptor_set = self.shared.bindless_texture_descriptor_set().unwrap();
+      descriptor_sets.push(bindless_texture_descriptor_set.get_descriptor_set_handle());
+    }
 
     if !descriptor_sets.is_empty() {
       unsafe {
-        self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
+        self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
       }
     }
   }
@@ -902,6 +934,7 @@ impl VkCommandBuffer {
       self.device.cmd_copy_query_pool_results(self.buffer, *query_range.pool.handle(), vk_start, vk_count,
         *buffer.get_buffer().get_handle(), buffer.get_offset_and_length().0 as u64, std::mem::size_of::<u32>() as u64, vk::QueryResultFlags::WAIT)
     }
+    self.trackers.track_buffer(buffer);
   }
 }
 
@@ -1043,6 +1076,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
     self.item.as_mut().unwrap().bind_storage_texture(frequency, binding, texture);
+  }
+
+  #[inline(always)]
+  fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<VkSampler>) {
+    self.item.as_mut().unwrap().bind_sampler(frequency, binding, sampler);
   }
 
   #[inline(always)]
