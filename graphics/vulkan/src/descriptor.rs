@@ -44,7 +44,8 @@ pub(crate) struct VkDescriptorSetEntryInfo {
   pub(crate) index: u32,
   pub(crate) count: u32,
   pub(crate) descriptor_type: vk::DescriptorType,
-  pub(crate) writable: bool
+  pub(crate) writable: bool,
+  pub(crate) flags: vk::DescriptorBindingFlags
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -67,6 +68,7 @@ pub(crate) struct VkDescriptorSetLayout {
 impl VkDescriptorSetLayout {
   pub fn new(bindings: &[VkDescriptorSetEntryInfo], flags: vk::DescriptorSetLayoutCreateFlags, device: &Arc<RawVkDevice>) -> Self {
     let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
+    let mut vk_binding_flags: Vec<vk::DescriptorBindingFlags> = Vec::new();
     let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
     let mut binding_infos: [Option<VkDescriptorSetEntryInfo>; 16] = Default::default();
 
@@ -80,6 +82,7 @@ impl VkDescriptorSetLayout {
         stage_flags: binding.shader_stage,
         p_immutable_samplers: std::ptr::null()
       });
+      vk_binding_flags.push(binding.flags);
 
       vk_template_entries.push(vk::DescriptorUpdateTemplateEntry {
         dst_binding: binding.index,
@@ -91,7 +94,14 @@ impl VkDescriptorSetLayout {
       });
     }
 
+    let binding_flags_struct = vk::DescriptorSetLayoutBindingFlagsCreateInfo {
+      binding_count: vk_binding_flags.len() as u32,
+      p_binding_flags: vk_binding_flags.as_ptr(),
+      ..Default::default()
+    };
+
     let info = vk::DescriptorSetLayoutCreateInfo {
+      p_next: &binding_flags_struct as *const vk::DescriptorSetLayoutBindingFlagsCreateInfo as *const c_void,
       p_bindings: vk_bindings.as_ptr(),
       binding_count: vk_bindings.len() as u32,
       flags,
@@ -437,7 +447,7 @@ impl Drop for VkDescriptorSet {
       return;
     }
     unsafe {
-      self.device.free_descriptor_sets(*self.pool.get_handle(), &[self.descriptor_set]).unwrap();
+      //self.device.free_descriptor_sets(*self.pool.get_handle(), &[self.descriptor_set]).unwrap();
     }
   }
 }

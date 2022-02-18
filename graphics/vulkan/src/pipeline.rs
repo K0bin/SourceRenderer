@@ -120,7 +120,8 @@ impl VkShader {
         descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
-        writable: false
+        writable: false,
+        flags: vk::DescriptorBindingFlags::empty()
       });
     }
     for resource in resources.separate_samplers {
@@ -131,7 +132,8 @@ impl VkShader {
         descriptor_type: vk::DescriptorType::SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
-        writable: false
+        writable: false,
+        flags: vk::DescriptorBindingFlags::empty()
       });
     }
     for resource in resources.sampled_images {
@@ -142,7 +144,8 @@ impl VkShader {
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
-        writable: false
+        writable: false,
+        flags: vk::DescriptorBindingFlags::empty()
       });
     }
     for resource in resources.subpass_inputs {
@@ -153,7 +156,8 @@ impl VkShader {
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
-        writable: false
+        writable: false,
+        flags: vk::DescriptorBindingFlags::empty()
       });
     }
     for resource in resources.uniform_buffers {
@@ -164,7 +168,8 @@ impl VkShader {
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
-        writable: false
+        writable: false,
+        flags: vk::DescriptorBindingFlags::empty()
       });
     }
     for resource in resources.storage_buffers {
@@ -175,7 +180,8 @@ impl VkShader {
         descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER },
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
-        writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true)
+        writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true),
+        flags: vk::DescriptorBindingFlags::empty()
       });
     }
     for resource in resources.storage_images {
@@ -186,7 +192,8 @@ impl VkShader {
         descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
-        writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true)
+        writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true),
+        flags: vk::DescriptorBindingFlags::empty()
       });
     }
 
@@ -649,7 +656,8 @@ impl VkPipeline {
           index: 0,
           descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
           count: BINDLESS_TEXTURE_COUNT,
-          writable: false
+          writable: false,
+          flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
         }],
         flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
       };
@@ -763,7 +771,8 @@ impl VkPipeline {
           index: 0,
           descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
           count: BINDLESS_TEXTURE_COUNT,
-          writable: false
+          writable: false,
+          flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
         }],
         flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
       };

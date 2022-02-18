@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, ffi::CString};
 
-use ash::vk;
+use ash::vk::{self, Handle};
 use crate::{raw::RawVkDevice, shared::VkDescriptorSetLayoutKey, descriptor::{VkDescriptorSetEntryInfo, VkDescriptorSetLayout}, texture::VkTextureView};
 
 pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
@@ -30,7 +30,8 @@ impl VkBindlessDescriptorSet {
         index: 0,
         descriptor_type,
         count: BINDLESS_TEXTURE_COUNT,
-        writable: descriptor_type != vk::DescriptorType::SAMPLED_IMAGE && descriptor_type != vk::DescriptorType::COMBINED_IMAGE_SAMPLER
+        writable: descriptor_type != vk::DescriptorType::SAMPLED_IMAGE && descriptor_type != vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
       }],
       flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
     };
@@ -50,6 +51,18 @@ impl VkBindlessDescriptorSet {
       }, None).unwrap()
     };
 
+    if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+      let name_cstring = CString::new("BindlessTexturesPool").unwrap();
+      unsafe {
+        debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+          object_type: vk::ObjectType::DESCRIPTOR_POOL,
+          object_handle: descriptor_pool.as_raw(),
+          p_object_name: name_cstring.as_ptr(),
+          ..Default::default()
+        }).unwrap();
+      }
+    }
+
     let descriptor_set = unsafe {
       device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo {
         descriptor_pool: descriptor_pool,
@@ -58,6 +71,18 @@ impl VkBindlessDescriptorSet {
         ..Default::default()
       }).unwrap().pop().unwrap()
     };
+
+    if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+      let name_cstring = CString::new("BindlessTextures").unwrap();
+      unsafe {
+        debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+          object_type: vk::ObjectType::DESCRIPTOR_SET,
+          object_handle: descriptor_set.as_raw(),
+          p_object_name: name_cstring.as_ptr(),
+          ..Default::default()
+        }).unwrap();
+      }
+    }
 
     Self {
       device: device.clone(),
