@@ -7,3 +7,4 @@ pub(crate) mod light_binning;
 pub(crate) mod ssao;
 pub(crate) mod desktop_renderer;
 pub(crate) mod occlusion;
+pub(crate) mod rt;

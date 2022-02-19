@@ -4,7 +4,7 @@ use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCe
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
 
-use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass};
+use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, rt::RayTracingPass};
 
 pub struct DesktopRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
@@ -16,7 +16,8 @@ pub struct DesktopRenderer<B: Backend> {
   taa: TAAPass<B>,
   sharpen: SharpenPass<B>,
   ssao: SsaoPass<B>,
-  occlusion: OcclusionPass<B>
+  occlusion: OcclusionPass<B>,
+  rt: RayTracingPass<B>
 }
 
 impl<B: Backend> DesktopRenderer<B> {
@@ -31,11 +32,14 @@ impl<B: Backend> DesktopRenderer<B> {
     let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let ssao = SsaoPass::<B>::new::<P>(device, Vec2UI::new(swapchain.width(), swapchain.height()), &mut init_cmd_buffer);
     let occlusion = OcclusionPass::<B>::new::<P>(device);
+    let rt = RayTracingPass::<B>::new(device, &mut init_cmd_buffer);
     device.flush_transfers();
 
     let c_graphics_queue = device.graphics_queue().clone();
     c_graphics_queue.submit(init_cmd_buffer.finish(), None, &[], &[], true);
     rayon::spawn(move || c_graphics_queue.process_submissions());
+
+    device.wait_for_idle();
 
     Self {
       swapchain: swapchain.clone(),
@@ -47,7 +51,8 @@ impl<B: Backend> DesktopRenderer<B> {
       taa,
       sharpen,
       ssao,
-      occlusion
+      occlusion,
+      rt
     }
   }
 }
@@ -73,10 +78,15 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 
+    println!("pre frame");
+
     let view_ref = view.borrow();
     let scene_ref = scene.borrow();
+    self.device.wait_for_idle();
+
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+    self.rt.update(&mut cmd_buf, &scene_ref, &late_latching_buffer);
     self.occlusion.execute(&self.device, &mut cmd_buf, frame, self.prepass.depth_dsv_history(), &late_latching_buffer, &scene_ref, &view_ref);
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), view, &late_latching_buffer);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), &late_latching_buffer);
@@ -141,6 +151,8 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       let input_state = input.poll();
       late_latching.before_submit(&input_state, &view_ref);
     }
+    self.device.wait_for_idle();
+    println!("submitting frame");
     graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem], true);
     graphics_queue.present(&self.swapchain, &[&cmd_buf_sem], true);
 
@@ -150,6 +162,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     if let Some(late_latching) = late_latching {
       late_latching.after_submit(&self.device);
     }
+    self.device.wait_for_idle();
 
     Ok(())
   }
