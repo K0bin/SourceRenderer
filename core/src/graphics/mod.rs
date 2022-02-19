@@ -39,7 +39,7 @@ pub use self::texture::{
   TextureDepthStencilView, TextureDepthStencilViewInfo, TextureLayout
 };
 pub use self::sync::Fence;
-pub use self::rt::{AccelerationStructure, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, AccelerationStructureInstance};
+pub use self::rt::{AccelerationStructure, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, AccelerationStructureInstance, AccelerationStructureMeshRange};
 
 mod device;
 mod instance;
