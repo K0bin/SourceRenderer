@@ -8,7 +8,9 @@ use crate::graphics::{Backend, BufferUsage, TextureUsage};
 
 use super::AccelerationStructureInstance;
 use super::BottomLevelAccelerationStructureInfo;
+use super::BufferInfo;
 use super::LoadOp;
+use super::MemoryUsage;
 use super::RenderpassRecordingMode;
 use super::ShaderType;
 use super::StoreOp;
@@ -59,6 +61,7 @@ pub trait CommandBuffer<B: Backend> {
   where T: 'static + Send + Sync + Sized + Clone;
   fn upload_dynamic_data_inline<T>(&mut self, data: &[T], visible_for_shader_stage: ShaderType)
     where T: 'static + Send + Sync + Sized + Clone;
+  fn create_temporary_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<B::Buffer>;
   fn draw(&mut self, vertices: u32, offset: u32);
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
   fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureShaderResourceView>, sampler: &Arc<B::Sampler>);
@@ -120,44 +123,48 @@ pub struct RenderPassBeginInfo<'a, B: Backend> {
 
 bitflags! {
   pub struct BarrierSync: u32 {
-    const VERTEX_INPUT    = 0b1;
-    const VERTEX_SHADER   = 0b10;
-    const FRAGMENT_SHADER = 0b100;
-    const COMPUTE_SHADER  = 0b1000;
-    const EARLY_DEPTH     = 0b10000;
-    const LATE_DEPTH      = 0b100000;
-    const RENDER_TARGET   = 0b1000000;
-    const COPY            = 0b10000000;
-    const RESOLVE         = 0b100000000;
-    const INDIRECT        = 0b1000000000;
-    const INDEX_INPUT     = 0b10000000000;
-    const HOST            = 0b100000000000;
+    const VERTEX_INPUT                 = 0b1;
+    const VERTEX_SHADER                = 0b10;
+    const FRAGMENT_SHADER              = 0b100;
+    const COMPUTE_SHADER               = 0b1000;
+    const EARLY_DEPTH                  = 0b10000;
+    const LATE_DEPTH                   = 0b100000;
+    const RENDER_TARGET                = 0b1000000;
+    const COPY                         = 0b10000000;
+    const RESOLVE                      = 0b100000000;
+    const INDIRECT                     = 0b1000000000;
+    const INDEX_INPUT                  = 0b10000000000;
+    const HOST                         = 0b100000000000;
+    const ACCELERATION_STRUCTURE_BUILD = 0b1000000000000;
+    const RAY_TRACING                  = 0b10000000000000;
   }
 }
 
 bitflags! {
   pub struct BarrierAccess: u32 {
-    const INDEX_READ           = 0b1;
-    const INDIRECT_READ        = 0b10;
-    const VERTEX_INPUT_READ    = 0b100;
-    const CONSTANT_READ        = 0b1000;
-    const STORAGE_READ         = 0b10000;
-    const STORAGE_WRITE        = 0b100000;
-    const SHADER_RESOURCE_READ = 0b1000000;
-    const COPY_READ            = 0b10000000;
-    const COPY_WRITE           = 0b100000000;
-    const RESOLVE_READ         = 0b1000000000;
-    const RESOLVE_WRITE        = 0b10000000000;
-    const DEPTH_STENCIL_READ   = 0b100000000000;
-    const DEPTH_STENCIL_WRITE  = 0b1000000000000;
-    const RENDER_TARGET_READ   = 0b10000000000000;
-    const RENDER_TARGET_WRITE  = 0b100000000000000;
-    const SHADER_READ          = 0b1000000000000000;
-    const SHADER_WRITE         = 0b10000000000000000;
-    const MEMORY_READ          = 0b100000000000000000;
-    const MEMORY_WRITE         = 0b1000000000000000000;
-    const HOST_READ            = 0b10000000000000000000;
-    const HOST_WRITE           = 0b100000000000000000000;
+    const INDEX_READ                   = 0b1;
+    const INDIRECT_READ                = 0b10;
+    const VERTEX_INPUT_READ            = 0b100;
+    const CONSTANT_READ                = 0b1000;
+    const STORAGE_READ                 = 0b10000;
+    const STORAGE_WRITE                = 0b100000;
+    const SHADER_RESOURCE_READ         = 0b1000000;
+    const COPY_READ                    = 0b10000000;
+    const COPY_WRITE                   = 0b100000000;
+    const RESOLVE_READ                 = 0b1000000000;
+    const RESOLVE_WRITE                = 0b10000000000;
+    const DEPTH_STENCIL_READ           = 0b100000000000;
+    const DEPTH_STENCIL_WRITE          = 0b1000000000000;
+    const RENDER_TARGET_READ           = 0b10000000000000;
+    const RENDER_TARGET_WRITE          = 0b100000000000000;
+    const SHADER_READ                  = 0b1000000000000000;
+    const SHADER_WRITE                 = 0b10000000000000000;
+    const MEMORY_READ                  = 0b100000000000000000;
+    const MEMORY_WRITE                 = 0b1000000000000000000;
+    const HOST_READ                    = 0b10000000000000000000;
+    const HOST_WRITE                   = 0b100000000000000000000;
+    const ACCELERATION_STRUCTURE_READ  = 0b1000000000000000000000;
+    const ACCELERATION_STRUCTURE_WRITE = 0b10000000000000000000000;
   }
 }
 

@@ -27,8 +27,8 @@ pub struct AccelerationStructureMeshRange {
 }
 
 pub struct TopLevelAccelerationStructureInfo<'a, B: Backend> {
-  pub instances: &'a Arc<B::Buffer>,
-  pub instances_count: u32
+  pub instances_buffer: &'a Arc<B::Buffer>,
+  pub instances: &'a [AccelerationStructureInstance<'a, B>],
 }
 
 pub struct AccelerationStructureInstance<'a, B: Backend> {

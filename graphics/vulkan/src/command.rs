@@ -958,6 +958,9 @@ impl VkCommandBuffer {
   }
 
   fn upload_top_level_instances(&mut self, instances: &[AccelerationStructureInstance<VkBackend>]) -> Arc<VkBufferSlice> {
+    for instance in instances {
+      self.trackers.track_acceleration_structure(instance.acceleration_structure);
+    }
     VkAccelerationStructure::upload_top_level_instances(self, instances)
   }
 
@@ -1225,6 +1228,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   fn create_top_level_acceleration_structure(&mut self, info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<VkBackend>, size: usize, target_buffer: &Arc<VkBufferSlice>, scratch_buffer: &Arc<VkBufferSlice>) -> Arc<VkAccelerationStructure> {
     self.item.as_mut().unwrap().create_top_level_acceleration_structure(info, size, target_buffer, scratch_buffer)
   }
+
+  #[inline(always)]
+  fn create_temporary_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<VkBufferSlice> {
+    self.item.as_mut().unwrap().allocate_scratch_buffer(info, memory_usage)
+  }
 }
 
 pub struct VkCommandBufferSubmission {
@@ -1308,6 +1316,12 @@ fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags {
   if sync.contains(BarrierSync::HOST) {
     stages |= vk::PipelineStageFlags::HOST;
   }
+  if sync.contains(BarrierSync::ACCELERATION_STRUCTURE_BUILD) {
+    stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
+  }
+  if sync.contains(BarrierSync::RAY_TRACING) {
+    stages |= vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR;
+  }
   stages
 }
 
@@ -1374,6 +1388,12 @@ fn barrier_access_to_access(access: BarrierAccess) -> vk::AccessFlags {
   }
   if access.contains(BarrierAccess::HOST_WRITE) {
     vk_access |= vk::AccessFlags::HOST_WRITE;
+  }
+  if access.contains(BarrierAccess::ACCELERATION_STRUCTURE_READ) {
+    vk_access |= vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR;
+  }
+  if access.contains(BarrierAccess::ACCELERATION_STRUCTURE_WRITE) {
+    vk_access |= vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR;
   }
   vk_access
 }

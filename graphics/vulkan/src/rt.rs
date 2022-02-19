@@ -13,6 +13,7 @@ pub struct VkAccelerationStructure {
   device: Arc<RawVkDevice>,
   buffer: Arc<VkBufferSlice>,
   acceleration_structure: vk::AccelerationStructureKHR,
+  bottom_level_structures: Vec<Arc<VkAccelerationStructure>>,
   va: vk::DeviceAddress
 }
 
@@ -43,7 +44,7 @@ impl VkAccelerationStructure {
     let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
       array_of_pointers: vk::FALSE,
       data: DeviceOrHostAddressConstKHR {
-        device_address: info.instances.va().unwrap(),
+        device_address: info.instances_buffer.va().unwrap(),
       },
       ..Default::default()
     };
@@ -75,7 +76,7 @@ impl VkAccelerationStructure {
       rt.acceleration_structure.get_acceleration_structure_build_sizes(
         vk::AccelerationStructureBuildTypeKHR::DEVICE,
         &build_info,
-        &[info.instances_count]
+        &[info.instances.len() as u32]
       )
     };
     AccelerationStructureSizes {
@@ -110,7 +111,7 @@ impl VkAccelerationStructure {
     let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
       array_of_pointers: vk::FALSE,
       data: DeviceOrHostAddressConstKHR {
-        device_address: info.instances.va().unwrap(),
+        device_address: info.instances_buffer.va().unwrap(),
       },
       ..Default::default()
     };
@@ -141,18 +142,21 @@ impl VkAccelerationStructure {
     unsafe {
       rt.acceleration_structure.cmd_build_acceleration_structures(*cmd_buffer, &[build_info], &[&[
         vk::AccelerationStructureBuildRangeInfoKHR {
-          primitive_count: info.instances_count,
+          primitive_count: info.instances.len() as u32,
           primitive_offset: 0,
           first_vertex: 0,
           transform_offset: 0,
         }
       ]]);
     }
+
+    let bottom_level_structures: Vec<Arc<VkAccelerationStructure>> = info.instances.iter().map(|i| i.acceleration_structure).cloned().collect();
     Self {
       buffer: target_buffer.clone(),
       device: device.clone(),
       acceleration_structure: acceleration_structure,
-      va
+      va,
+      bottom_level_structures,
     }
   }
 
@@ -313,6 +317,7 @@ impl VkAccelerationStructure {
       buffer: target_buffer.clone(),
       device: device.clone(),
       acceleration_structure: acceleration_structure,
+      bottom_level_structures: Vec::new(),
       va
     }
   }
