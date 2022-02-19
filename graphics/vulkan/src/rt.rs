@@ -6,6 +6,7 @@ use crate::VkBackend;
 use crate::{raw::RawVkDevice, buffer::VkBufferSlice};
 
 use ash::vk;
+use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{BottomLevelAccelerationStructureInfo, AccelerationStructure, AccelerationStructureSizes};
 
 pub struct VkAccelerationStructure {
@@ -44,15 +45,31 @@ impl VkAccelerationStructure {
       ..Default::default()
     };
 
+    let mut geometries = SmallVec::<[*const vk::AccelerationStructureGeometryKHR; 16]>::with_capacity(info.mesh_parts.len());
+    let mut range_infos = SmallVec::<[vk::AccelerationStructureBuildRangeInfoKHR; 16]>::with_capacity(info.mesh_parts.len());
+    let mut max_primitive_count = 0;
+    for part in info.mesh_parts.iter() {
+      geometries.push(&geometry as *const vk::AccelerationStructureGeometryKHR);
+      range_infos.push(vk::AccelerationStructureBuildRangeInfoKHR {
+        primitive_count: part.primitive_count,
+        primitive_offset: part.primitive_start,
+        first_vertex: 0,
+        transform_offset: 0,
+      });
+      if part.primitive_count > max_primitive_count {
+        max_primitive_count = part.primitive_count;
+      }
+    }
+
     let build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
       ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
       flags: vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
       mode: vk::BuildAccelerationStructureModeKHR::BUILD,
       src_acceleration_structure: vk::AccelerationStructureKHR::null(),
       dst_acceleration_structure: vk::AccelerationStructureKHR::null(),
-      geometry_count: 1,
-      p_geometries: &geometry as *const vk::AccelerationStructureGeometryKHR,
-      pp_geometries: std::ptr::null(),
+      geometry_count: geometries.len() as u32,
+      p_geometries: std::ptr::null(),
+      pp_geometries: geometries.as_ptr(),
       scratch_data: vk::DeviceOrHostAddressKHR {
         host_address: std::ptr::null_mut()
       },
@@ -63,7 +80,7 @@ impl VkAccelerationStructure {
       rt.acceleration_structure.get_acceleration_structure_build_sizes(
         vk::AccelerationStructureBuildTypeKHR::DEVICE,
         &build_info,
-        &[info.primitive_count]
+        &[max_primitive_count]
       )
     };
     AccelerationStructureSizes {
@@ -114,30 +131,35 @@ impl VkAccelerationStructure {
       ..Default::default()
     };
 
-    let mut build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
+    let mut geometries = SmallVec::<[*const vk::AccelerationStructureGeometryKHR; 16]>::with_capacity(info.mesh_parts.len());
+    let mut range_infos = SmallVec::<[vk::AccelerationStructureBuildRangeInfoKHR; 16]>::with_capacity(info.mesh_parts.len());
+    for part in info.mesh_parts.iter() {
+      geometries.push(&geometry as *const vk::AccelerationStructureGeometryKHR);
+      range_infos.push(vk::AccelerationStructureBuildRangeInfoKHR {
+        primitive_count: part.primitive_count,
+        primitive_offset: part.primitive_start,
+        first_vertex: 0,
+        transform_offset: 0,
+      });
+    }
+
+    let build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
       ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
       flags: vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
       mode: vk::BuildAccelerationStructureModeKHR::BUILD,
       src_acceleration_structure: vk::AccelerationStructureKHR::null(),
       dst_acceleration_structure: acceleration_structure,
-      geometry_count: 1,
-      p_geometries: &geometry as *const vk::AccelerationStructureGeometryKHR,
-      pp_geometries: std::ptr::null(),
+      geometry_count: geometries.len() as u32,
+      p_geometries: std::ptr::null(),
+      pp_geometries: geometries.as_ptr(),
       scratch_data: vk::DeviceOrHostAddressKHR {
         device_address: scratch_buffer.va().unwrap()
       },
       ..Default::default()
     };
 
-    let range_info = vk::AccelerationStructureBuildRangeInfoKHR {
-      primitive_count: info.primitive_count,
-      primitive_offset: 0,
-      first_vertex: 0,
-      transform_offset: 0,
-    };
-
     unsafe {
-      rt.acceleration_structure.cmd_build_acceleration_structures(*cmd_buffer, &[build_info], &[&[range_info]]);
+      rt.acceleration_structure.cmd_build_acceleration_structures(*cmd_buffer, &[build_info], &[&range_infos[..]]);
     }
     Self {
       buffer: target_buffer.clone(),
