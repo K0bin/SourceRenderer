@@ -221,6 +221,11 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   }
 
   if usage.contains(BufferUsage::ACCELERATION_STRUCTURE) {
+    flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+      | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
+  }
+
+  if usage.contains(BufferUsage::ACCELERATION_STRUCTURE_BUILD) {
     flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
       | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
   }

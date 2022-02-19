@@ -58,7 +58,7 @@ impl VkAccelerationStructure {
     };
 
     let build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
-      ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+      ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
       flags: vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
       mode: vk::BuildAccelerationStructureModeKHR::BUILD,
       src_acceleration_structure: vk::AccelerationStructureKHR::null(),
@@ -95,7 +95,7 @@ impl VkAccelerationStructure {
         buffer: *target_buffer.get_buffer().get_handle(),
         offset: target_buffer.get_offset() as vk::DeviceSize,
         size: size as vk::DeviceSize,
-        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
         device_address: 0,
         ..Default::default()
       }, None)
@@ -125,16 +125,16 @@ impl VkAccelerationStructure {
     };
 
     let build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
-      ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+      ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
       flags: vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
       mode: vk::BuildAccelerationStructureModeKHR::BUILD,
       src_acceleration_structure: vk::AccelerationStructureKHR::null(),
-      dst_acceleration_structure: vk::AccelerationStructureKHR::null(),
+      dst_acceleration_structure: acceleration_structure,
       geometry_count: 1,
       p_geometries: &geometry as *const vk::AccelerationStructureGeometryKHR,
       pp_geometries: std::ptr::null(),
       scratch_data: vk::DeviceOrHostAddressKHR {
-        host_address: std::ptr::null_mut()
+        device_address: scratch_buffer.va().unwrap()
       },
       ..Default::default()
     };
@@ -191,7 +191,7 @@ impl VkAccelerationStructure {
 
     let mut geometries = SmallVec::<[*const vk::AccelerationStructureGeometryKHR; 16]>::with_capacity(info.mesh_parts.len());
     let mut range_infos = SmallVec::<[vk::AccelerationStructureBuildRangeInfoKHR; 16]>::with_capacity(info.mesh_parts.len());
-    let mut max_primitive_count = 0;
+    let mut max_primitive_counts = SmallVec::<[u32; 16]>::with_capacity(info.mesh_parts.len());
     for part in info.mesh_parts.iter() {
       geometries.push(&geometry as *const vk::AccelerationStructureGeometryKHR);
       range_infos.push(vk::AccelerationStructureBuildRangeInfoKHR {
@@ -200,9 +200,7 @@ impl VkAccelerationStructure {
         first_vertex: 0,
         transform_offset: 0,
       });
-      if part.primitive_count > max_primitive_count {
-        max_primitive_count = part.primitive_count;
-      }
+      max_primitive_counts.push(part.primitive_count);
     }
 
     let build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
@@ -224,7 +222,7 @@ impl VkAccelerationStructure {
       rt.acceleration_structure.get_acceleration_structure_build_sizes(
         vk::AccelerationStructureBuildTypeKHR::DEVICE,
         &build_info,
-        &[max_primitive_count]
+        &max_primitive_counts[..]
       )
     };
     AccelerationStructureSizes {
