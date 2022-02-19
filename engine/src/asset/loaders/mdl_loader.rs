@@ -226,7 +226,8 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
       indices: Some(indices_data),
       vertices: vertices_data,
       parts: ranges.into_boxed_slice(),
-      bounding_box: Some(BoundingBox::new(min, max))
+      bounding_box: Some(BoundingBox::new(min, max)),
+      vertex_count: vertices_count as u32
     }), AssetLoadPriority::Normal);
 
     manager.add_asset_with_progress(&file.path, Asset::Model(AssetModel {

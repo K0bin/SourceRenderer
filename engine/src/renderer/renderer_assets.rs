@@ -179,7 +179,8 @@ pub struct RendererMesh<B: Backend> {
   pub vertices: Arc<B::Buffer>,
   pub indices: Option<Arc<B::Buffer>>,
   pub parts: Box<[MeshRange]>,
-  pub bounding_box: Option<BoundingBox>
+  pub bounding_box: Option<BoundingBox>,
+  pub vertex_count: u32,
 }
 
 
@@ -337,7 +338,8 @@ impl<P: Platform> RendererAssets<P> {
       vertices: vertex_buffer,
       indices: index_buffer,
       parts: mesh.parts.iter().cloned().collect(), // TODO: change base type to boxed slice
-      bounding_box: mesh.bounding_box
+      bounding_box: mesh.bounding_box,
+      vertex_count: mesh.vertex_count
     });
     self.meshes.insert(mesh_path.to_owned(), mesh);
   }

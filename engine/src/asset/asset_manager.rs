@@ -59,7 +59,8 @@ pub struct Mesh {
   pub indices: Option<Box<[u8]>>,
   pub vertices: Box<[u8]>,
   pub parts: Box<[MeshRange]>,
-  pub bounding_box: Option<BoundingBox>
+  pub bounding_box: Option<BoundingBox>,
+  pub vertex_count: u32,
 }
 
 #[derive(Clone)]
@@ -255,12 +256,13 @@ impl<P: Platform> AssetManager<P> {
     &self.device
   }
 
-  pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, index_buffer_data: Box<[u8]>, parts: Box<[MeshRange]>, bounding_box: Option<BoundingBox>) {
+  pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, vertex_count: u32, index_buffer_data: Box<[u8]>, parts: Box<[MeshRange]>, bounding_box: Option<BoundingBox>) {
     let mesh = Mesh {
       vertices: vertex_buffer_data,
       indices: if !index_buffer_data.is_empty() { Some(index_buffer_data) } else { None },
       parts,
-      bounding_box
+      bounding_box,
+      vertex_count
     };
     self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
   }

@@ -20,8 +20,8 @@ pub struct VkAccelerationStructure {
 impl VkAccelerationStructure {
   pub fn upload_top_level_instances(command_buffer: &mut VkCommandBuffer, instances: &[AccelerationStructureInstance<VkBackend>]) -> Arc<VkBufferSlice> {
     let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances.iter().map(|instance| {
-      let mut transform_data = [1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32];
-      transform_data.copy_from_slice(&instance.transform.data.as_slice()[0 .. 12]);
+      let mut transform_data = [0f32; 12];
+      transform_data.copy_from_slice(&instance.transform.transpose().data.as_slice()[0 .. 12]);
 
       vk::AccelerationStructureInstanceKHR {
         transform: vk::TransformMatrixKHR {
@@ -169,7 +169,7 @@ impl VkAccelerationStructure {
         device_address: info.vertex_buffer.va().unwrap() + info.vertex_position_offset as vk::DeviceSize
       },
       vertex_stride: info.vertex_stride as vk::DeviceSize,
-      max_vertex: info.vertex_buffer.get_length() as u32 / info.vertex_stride,
+      max_vertex: info.max_vertex,
       index_type: index_format_to_vk(info.index_format),
       index_data: vk::DeviceOrHostAddressConstKHR {
         device_address: info.index_buffer.va().unwrap()

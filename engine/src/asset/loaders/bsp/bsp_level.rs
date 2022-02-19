@@ -388,7 +388,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
         vertices: vertices_data,
         indices: Some(indices_data),
         parts: mesh_ranges.into_boxed_slice(),
-        bounding_box: Some(BoundingBox::new(min, max))
+        bounding_box: Some(BoundingBox::new(min, max)),
+        vertex_count: vertices_count as u32
       };
 
       let mesh_name = format!("brushes_mesh_{}", model_index);

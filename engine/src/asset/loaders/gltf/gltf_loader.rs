@@ -96,7 +96,8 @@ impl GltfLoader {
         indices: (indices_count > 0).then(|| indices_data),
         vertices: vertices_data,
         bounding_box: bounding_box,
-        parts: parts.into_boxed_slice()
+        parts: parts.into_boxed_slice(),
+        vertex_count: vertices_count as u32
       }), AssetLoadPriority::Normal);
 
       let model_path = gltf_file_name.to_string() + "/model/" + &model_name;
@@ -305,15 +306,15 @@ impl GltfLoader {
     let color = pbr.base_color_factor();
     asset_mgr.add_material_color(material_name, Vec4::new(color[0], color[1], color[2], color[3]), pbr.roughness_factor(), pbr.metallic_factor());
 
-    /*let albedo = material.pbr_metallic_roughness().base_color_texture().unwrap();
+    let albedo = material.pbr_metallic_roughness().base_color_texture().unwrap();
     let albedo_source = albedo.texture().source().source();
     match albedo_source {
       gltf::image::Source::View { view, .. } => {
 
       },
-      gltf::image::Source::Uri { .. } => unimplemented!(),
-    }*/
-    //unimplemented!()
+      gltf::image::Source::Uri { uri, .. } => {
+      },
+    }
   }
 }
 

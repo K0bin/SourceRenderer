@@ -19,6 +19,7 @@ pub struct BottomLevelAccelerationStructureInfo<'a, B: Backend> {
   pub index_buffer: &'a Arc<B::Buffer>,
   pub opaque: bool,
   pub mesh_parts: &'a [AccelerationStructureMeshRange],
+  pub max_vertex: u32,
 }
 #[derive(Clone)]
 pub struct AccelerationStructureMeshRange {

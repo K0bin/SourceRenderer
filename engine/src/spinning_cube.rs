@@ -245,7 +245,7 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
   let triangle_data = unsafe { std::slice::from_raw_parts(triangle.as_ptr() as *const u8, std::mem::size_of_val(&triangle[..])) }.to_vec().into_boxed_slice();
   let index_data = unsafe { std::slice::from_raw_parts(indices.as_ptr() as *const u8, std::mem::size_of_val(&indices[..])) }.to_vec().into_boxed_slice();
   let bounding_box = BoundingBox::new(Vec3::new(-1f32, -1f32, -1f32), Vec3::new(1f32, 1f32, 1f32));
-  asset_manager.add_mesh("cube_mesh", triangle_data, index_data, vec![MeshRange {
+  asset_manager.add_mesh("cube_mesh", triangle_data, triangle.len() as u32, index_data, vec![MeshRange {
     start: 0,
     count: indices.len() as u32
   }].into_boxed_slice(), Some(bounding_box));

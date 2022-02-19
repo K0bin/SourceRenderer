@@ -63,6 +63,7 @@ impl<B: Backend> RayTracingPass<B> {
         vertex_stride: 44,
         mesh_parts: &parts,
         opaque: true,
+        max_vertex: mesh.vertex_count
       };
       let sizes = self.device.get_bottom_level_acceleration_structure_size(&info);
 
