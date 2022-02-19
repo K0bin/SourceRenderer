@@ -34,6 +34,8 @@ const DEFERRED_HOST_OPERATIONS_EXT_NAME: &str = "VK_KHR_deferred_host_operations
 const RAY_TRACING_PIPELINE_EXT_NAME: &str = "VK_KHR_ray_tracing_pipeline";
 const RAY_QUERY_EXT_NAME: &str = "VK_KHR_ray_query";
 const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
+const SPIRV_1_4_EXT_NAME: &str = "VK_KHR_spirv_1_4";
+const SHADER_FLOAT_CONTROLS_EXT_NAME: &str = "VK_KHR_shader_float_controls";
 
 
 bitflags! {
@@ -51,6 +53,8 @@ bitflags! {
     const RAY_TRACING_PIPELINE       = 0b1000000000;
     const RAY_QUERY                  = 0b10000000000;
     const PIPELINE_LIBRARY           = 0b100000000000;
+    const SPIRV_1_4                  = 0b1000000000000;
+    const SHADER_FLOAT_CONTROLS      = 0b10000000000000;
   }
 }
 
@@ -86,6 +90,8 @@ impl VkAdapter {
         RAY_QUERY_EXT_NAME => { VkAdapterExtensionSupport::RAY_QUERY },
         RAY_TRACING_PIPELINE_EXT_NAME => { VkAdapterExtensionSupport::RAY_TRACING_PIPELINE },
         DEFERRED_HOST_OPERATIONS_EXT_NAME => { VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS },
+        SPIRV_1_4_EXT_NAME => { VkAdapterExtensionSupport::SPIRV_1_4 },
+        SHADER_FLOAT_CONTROLS_EXT_NAME => { VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -282,12 +288,16 @@ impl Adapter<VkBackend> for VkAdapter {
           VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
           | VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS
           | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
-          | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
+          | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS
+          | VkAdapterExtensionSupport::SPIRV_1_4
+          | VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS) {
         extension_names.push(BUFFER_DEVICE_ADDRESS_EXT_NAME);
         extension_names.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
         extension_names.push(ACCELERATION_STRUCTURE_EXT_NAME);
         extension_names.push(RAY_TRACING_PIPELINE_EXT_NAME);
         extension_names.push(PIPELINE_LIBRARY_EXT_NAME);
+        extension_names.push(SPIRV_1_4_EXT_NAME);
+        extension_names.push(SHADER_FLOAT_CONTROLS_EXT_NAME);
 
         let supported = supported_acceleration_structure_features.acceleration_structure == vk::TRUE
             && supported_rt_pipeline_features.ray_tracing_pipeline == vk::TRUE
