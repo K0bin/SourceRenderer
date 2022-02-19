@@ -59,7 +59,7 @@ impl VkAccelerationStructure {
 
     let build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
       ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-      flags: vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
+      flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
       mode: vk::BuildAccelerationStructureModeKHR::BUILD,
       src_acceleration_structure: vk::AccelerationStructureKHR::null(),
       dst_acceleration_structure: vk::AccelerationStructureKHR::null(),
@@ -126,7 +126,7 @@ impl VkAccelerationStructure {
 
     let build_info = vk::AccelerationStructureBuildGeometryInfoKHR {
       ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-      flags: vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION | vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
+      flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
       mode: vk::BuildAccelerationStructureModeKHR::BUILD,
       src_acceleration_structure: vk::AccelerationStructureKHR::null(),
       dst_acceleration_structure: acceleration_structure,
