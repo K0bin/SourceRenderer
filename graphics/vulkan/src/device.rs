@@ -270,6 +270,10 @@ impl Device<VkBackend> for VkDevice {
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
     VkAccelerationStructure::bottom_level_size(&self.device, info)
   }
+
+  fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
+    VkAccelerationStructure::top_level_size(&self.device, info)
+  }
 }
 
 impl Drop for VkDevice {

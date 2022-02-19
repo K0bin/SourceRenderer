@@ -6,12 +6,14 @@ use crate::Vec2UI;
 
 use crate::graphics::{Backend, BufferUsage, TextureUsage};
 
+use super::AccelerationStructureInstance;
 use super::BottomLevelAccelerationStructureInfo;
 use super::LoadOp;
 use super::RenderpassRecordingMode;
 use super::ShaderType;
 use super::StoreOp;
 use super::SubpassInfo;
+use super::TopLevelAccelerationStructureInfo;
 use super::texture::TextureLayout;
 
 #[derive(Clone)]
@@ -88,6 +90,8 @@ pub trait CommandBuffer<B: Backend> {
 
   // RT
   fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &Arc<B::Buffer>, scratch_buffer: &Arc<B::Buffer>) -> Arc<B::AccelerationStructure>;
+  fn upload_top_level_instances(&mut self, instances: &[AccelerationStructureInstance<B>]) -> Arc<B::Buffer>;
+  fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &Arc<B::Buffer>, scratch_buffer: &Arc<B::Buffer>) -> Arc<B::AccelerationStructure>;
 }
 
 pub trait Queue<B: Backend> {

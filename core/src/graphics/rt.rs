@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use super::{Format, IndexFormat, Backend};
+use crate::Matrix4;
+
+use super::{Format, IndexFormat, Backend, FrontFace};
 
 pub struct AccelerationStructureSizes {
   pub size: u64,
@@ -22,6 +24,17 @@ pub struct BottomLevelAccelerationStructureInfo<'a, B: Backend> {
 pub struct AccelerationStructureMeshRange {
   pub primitive_start: u32,
   pub primitive_count: u32
+}
+
+pub struct TopLevelAccelerationStructureInfo<'a, B: Backend> {
+  pub instances: &'a Arc<B::Buffer>,
+  pub instances_count: u32
+}
+
+pub struct AccelerationStructureInstance<'a, B: Backend> {
+  pub acceleration_structure: &'a Arc<B::AccelerationStructure>,
+  pub transform: Matrix4,
+  pub front_face: FrontFace,
 }
 
 pub trait AccelerationStructure {}

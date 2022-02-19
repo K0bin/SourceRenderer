@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend};
 
-use super::{RenderPassInfo, TextureRenderTargetViewInfo, buffer::BufferInfo, texture::{SamplerInfo, TextureDepthStencilViewInfo, TextureUnorderedAccessViewInfo}, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo};
+use super::{RenderPassInfo, TextureRenderTargetViewInfo, buffer::BufferInfo, texture::{SamplerInfo, TextureDepthStencilViewInfo, TextureUnorderedAccessViewInfo}, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
@@ -51,4 +51,5 @@ pub trait Device<B: Backend> {
   fn supports_bindless(&self) -> bool;
   fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureShaderResourceView>) -> u32;
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
+  fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
 }

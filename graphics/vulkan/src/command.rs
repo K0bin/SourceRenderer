@@ -11,7 +11,7 @@ use ash::vk;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo};
+use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -956,6 +956,20 @@ impl VkCommandBuffer {
     self.trackers.track_acceleration_structure(&acceleration_structure);
     acceleration_structure
   }
+
+  fn upload_top_level_instances(&mut self, instances: &[AccelerationStructureInstance<VkBackend>]) -> Arc<VkBufferSlice> {
+    VkAccelerationStructure::upload_top_level_instances(self, instances)
+  }
+
+  fn create_top_level_acceleration_structure(&mut self, info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<VkBackend>, size: usize, target_buffer: &Arc<VkBufferSlice>, scratch_buffer: &Arc<VkBufferSlice>) -> Arc<VkAccelerationStructure> {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.render_pass.is_none());
+    self.trackers.track_buffer(scratch_buffer);
+    self.trackers.track_buffer(target_buffer);
+    let acceleration_structure = Arc::new(VkAccelerationStructure::new_top_level(&self.device, info, size, target_buffer, scratch_buffer, self.get_handle()));
+    self.trackers.track_acceleration_structure(&acceleration_structure);
+    acceleration_structure
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -1192,12 +1206,24 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
     self.item.as_mut().unwrap().create_query_range(count)
   }
 
+  #[inline(always)]
   fn copy_query_results_to_buffer(&mut self, query_range: &Arc<VkQueryRange>, buffer: &Arc<VkBufferSlice>, start_index: u32, count: u32) {
     self.item.as_mut().unwrap().copy_query_results_to_buffer(query_range, buffer, start_index, count);
   }
 
+  #[inline(always)]
   fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<VkBackend>, size: usize, target_buffer: &Arc<VkBufferSlice>, scratch_buffer: &Arc<VkBufferSlice>) -> Arc<VkAccelerationStructure> {
     self.item.as_mut().unwrap().create_bottom_level_acceleration_structure(info, size, target_buffer, scratch_buffer)
+  }
+
+  #[inline(always)]
+  fn upload_top_level_instances(&mut self, instances: &[AccelerationStructureInstance<VkBackend>]) -> Arc<VkBufferSlice> {
+    self.item.as_mut().unwrap().upload_top_level_instances(instances)
+  }
+
+  #[inline(always)]
+  fn create_top_level_acceleration_structure(&mut self, info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<VkBackend>, size: usize, target_buffer: &Arc<VkBufferSlice>, scratch_buffer: &Arc<VkBufferSlice>) -> Arc<VkAccelerationStructure> {
+    self.item.as_mut().unwrap().create_top_level_acceleration_structure(info, size, target_buffer, scratch_buffer)
   }
 }
 
