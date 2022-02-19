@@ -369,6 +369,11 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
       let vertices_box = brush_vertices.clone().into_boxed_slice();
       let vertices_count = brush_vertices.len();
+
+      if vertices_count == 0 {
+        continue;
+      }
+
       let ptr = Box::into_raw(vertices_box);
       let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, vertices_count * std::mem::size_of::<Vertex>()) as *mut [u8] };
       let vertices_data = unsafe { Box::from_raw(data_ptr) };
