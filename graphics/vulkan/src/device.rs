@@ -45,16 +45,26 @@ impl VkDevice {
     features: VkFeatures,
     max_surface_image_count: u32) -> Self {
 
+    let mut vma_flags = vk_mem::AllocatorCreateFlags::NONE;
+    if features.intersects(VkFeatures::DEDICATED_ALLOCATION) {
+      vma_flags |= vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION;
+    }
+    if features.intersects(VkFeatures::RAY_TRACING) {
+      vma_flags |= vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS;
+    }
+
     let allocator_info = vk_mem::AllocatorCreateInfo {
       physical_device,
       device: device.clone(),
       instance: instance.instance.clone(),
-      flags: if features.intersects(VkFeatures::DEDICATED_ALLOCATION) { vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION } else { vk_mem::AllocatorCreateFlags::NONE },
+      flags: vma_flags,
       preferred_large_heap_block_size: 0,
       frame_in_use_count: 3,
-      heap_size_limits: None
+      heap_size_limits: None,
+      allocation_callbacks: None,
+      vulkan_api_version: vk::API_VERSION_1_1
     };
-    let allocator = vk_mem::Allocator::new(&allocator_info).expect("Failed to create memory allocator.");
+    let allocator = unsafe { vk_mem::Allocator::new(&allocator_info).expect("Failed to create memory allocator.") };
 
     let raw_graphics_queue = unsafe { device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
     let raw_compute_queue = compute_queue_info.map(|info| unsafe { device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) });

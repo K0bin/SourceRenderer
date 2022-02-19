@@ -307,6 +307,7 @@ impl Adapter<VkBackend> for VkAdapter {
           features |= VkFeatures::RAY_TRACING;
           acceleration_structure_features.acceleration_structure = vk::TRUE;
           rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
+          bda_features.buffer_device_address = vk::TRUE;
           acceleration_structure_features.p_next = device_creation_pnext;
           device_creation_pnext = &mut acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void;
           rt_pipeline_features.p_next = device_creation_pnext;

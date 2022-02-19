@@ -7,6 +7,9 @@ pub struct VkStaging {
   buffer_allocation_info: AllocationInfo,
 }
 
+unsafe impl Send for VkStaging {}
+unsafe impl Sync for VkStaging {}
+
 impl VkStaging {
   pub fn new(allocator: &mut Allocator, size: u64) -> Box<Self> {
      let create_info = vk_mem::AllocationCreateInfo {

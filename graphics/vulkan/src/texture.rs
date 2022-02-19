@@ -28,6 +28,9 @@ pub struct VkTexture {
   bindless_slot: Mutex<Option<VkTextureBindlessSlot>>
 }
 
+unsafe impl Send for VkTexture {}
+unsafe impl Sync for VkTexture {}
+
 struct VkTextureBindlessSlot {
   bindless_set: Weak<VkBindlessDescriptorSet>,
   slot: u32
@@ -57,7 +60,7 @@ impl VkTexture {
       usage: MemoryUsage::GpuOnly,
       ..Default::default()
     };
-    let (image, allocation, _allocation_info) = device.allocator.create_image(&create_info, &alloc_info).unwrap();
+    let (image, allocation, _allocation_info) = unsafe { device.allocator.create_image(&create_info, &alloc_info).unwrap() };
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
         let name_cstring = CString::new(name).unwrap();
@@ -149,8 +152,10 @@ impl Drop for VkTexture {
       }
     }
 
-    if let Some(alloc) = &self.allocation {
-      self.device.allocator.destroy_image(self.image, alloc);
+    if let Some(alloc) = self.allocation {
+      unsafe {
+        self.device.allocator.destroy_image(self.image, alloc);
+      }
     }
   }
 }

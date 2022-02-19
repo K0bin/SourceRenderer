@@ -114,8 +114,8 @@ impl Deref for RawVkDevice {
 
 impl Drop for RawVkDevice {
   fn drop(&mut self) {
-    self.allocator.destroy();
     unsafe {
+      self.allocator.destroy();
       self.device.destroy_device(None);
     }
   }

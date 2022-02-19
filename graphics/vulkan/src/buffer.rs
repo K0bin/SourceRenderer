@@ -51,7 +51,7 @@ impl VkBuffer {
       usage: memory_usage_to_vma(memory_usage),
       ..Default::default()
     };
-    let (buffer, allocation, allocation_info) = allocator.create_buffer(&buffer_info, &allocation_info).expect("Failed to create buffer.");
+    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).expect("Failed to create buffer.") };
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
         let name_cstring = CString::new(name).unwrap();
@@ -66,18 +66,24 @@ impl VkBuffer {
       }
     }
 
-    let map_ptr: Option<*mut u8> = if memory_usage != MemoryUsage::GpuOnly {
-      Some(allocator.map_memory(&allocation).unwrap())
-    } else {
-      None
+    let map_ptr: Option<*mut u8> = unsafe {
+      if memory_usage != MemoryUsage::GpuOnly {
+        Some(allocator.map_memory(allocation).unwrap())
+      } else {
+        None
+      }
     };
 
     let va = if buffer_info.usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
-      unsafe {
-        Some(device.get_buffer_device_address(&BufferDeviceAddressInfo {
-          buffer,
-          ..Default::default()
-        }))
+      if let Some(rt) = device.rt.as_ref() {
+        unsafe {
+          Some(rt.bda.get_buffer_device_address(&BufferDeviceAddressInfo {
+            buffer,
+            ..Default::default()
+          }))
+        }
+      } else {
+        None
       }
     } else {
       None
@@ -85,7 +91,7 @@ impl VkBuffer {
 
     let is_coherent = if memory_usage != MemoryUsage::GpuOnly {
       let memory_type = allocation_info.get_memory_type();
-      let memory_properties = allocator.get_memory_type_properties(memory_type).unwrap();
+      let memory_properties = unsafe { allocator.get_memory_type_properties(memory_type).unwrap() };
       memory_properties.intersects(vk::MemoryPropertyFlags::HOST_COHERENT)
     } else {
       false
@@ -115,10 +121,12 @@ impl VkBuffer {
 
 impl Drop for VkBuffer {
   fn drop(&mut self) {
-    if self.map_ptr.is_some() {
-      self.device.allocator.unmap_memory(&self.allocation);
+    unsafe {
+      if self.map_ptr.is_some() {
+        self.device.allocator.unmap_memory(self.allocation);
+      }
+      self.device.allocator.destroy_buffer(self.buffer, self.allocation);
     }
-    self.device.allocator.destroy_buffer(self.buffer, &self.allocation);
   }
 }
 
@@ -153,7 +161,7 @@ impl Buffer for VkBufferSlice {
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let allocator = &self.buffer.device.allocator;
-      allocator.invalidate_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
+      allocator.invalidate_allocation(self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
     self.buffer.map_ptr.map(|ptr| ptr.add(self.offset))
   }
@@ -164,7 +172,7 @@ impl Buffer for VkBufferSlice {
         || self.buffer.memory_usage == MemoryUsage::CpuOnly
         || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
       let allocator = &self.buffer.device.allocator;
-      allocator.flush_allocation(&self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length);
+      allocator.flush_allocation(self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
   }
 

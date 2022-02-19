@@ -21,7 +21,7 @@ pub struct RawVkImage {
 impl Drop for RawVkImage {
   fn drop(&mut self) {
     unsafe {
-      if let Some(alloc) = &self.allocation {
+      if let Some(alloc) = self.allocation {
         self.device.allocator.destroy_image(self.image, alloc);
       } else {
         self.device.device.destroy_image(self.image, None)
