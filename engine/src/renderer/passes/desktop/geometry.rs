@@ -243,6 +243,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     light_bitmask_buffer: &Arc<B::Buffer>,
     camera_buffer: &Arc<B::Buffer>,
     ssao: &Arc<B::TextureShaderResourceView>,
+    shadows: &Arc<B::TextureShaderResourceView>,
     _clusters: &Arc<B::Buffer>
   ) {
     cmd_buffer.begin_label("Geometry pass");
@@ -377,6 +378,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, ssao, &self.sampler);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer);
+      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 8,  shadows, &self.sampler);
       command_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
 
       let lightmap_ref = &lightmap.view;

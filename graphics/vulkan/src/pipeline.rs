@@ -831,9 +831,9 @@ impl VkPipeline {
         ..Default::default()
       };
       let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
-        ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
-        general_shader: stages.len() as u32,
-        closest_hit_shader: vk::SHADER_UNUSED_KHR,
+        ty: vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+        general_shader: vk::SHADER_UNUSED_KHR,
+        closest_hit_shader: stages.len() as u32,
         any_hit_shader: vk::SHADER_UNUSED_KHR,
         intersection_shader: vk::SHADER_UNUSED_KHR,
         p_shader_group_capture_replay_handle: std::ptr::null(),
@@ -948,6 +948,8 @@ impl VkPipeline {
     let handle_size = rt.rt_pipeline_properties.shader_group_handle_size;
     let handle_alignment = rt.rt_pipeline_properties.shader_group_handle_alignment;
     let handle_stride = align_up_32(align_up_32(handle_size, handle_alignment), rt.rt_pipeline_properties.shader_group_base_alignment);
+
+    println!("got {} groups, handle size: {}, handle stride: {}, buffer size: {}", groups.len(), handle_size, handle_stride, handle_stride as usize * groups.len());
 
     let handles = unsafe { rt.rt_pipelines.get_ray_tracing_shader_group_handles(pipeline, 0, groups.len() as u32, handle_stride as usize * groups.len()) }.unwrap();
 

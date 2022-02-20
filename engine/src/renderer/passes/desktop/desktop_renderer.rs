@@ -36,6 +36,7 @@ impl<B: Backend> DesktopRenderer<B> {
     let occlusion = OcclusionPass::<B>::new::<P>(device);
     let acceleration_structure_update = AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer);
     let rt_shadows = RTShadowPass::<B>::new::<P>(device, resolution, &mut init_cmd_buffer);
+    init_cmd_buffer.flush_barriers();
     device.flush_transfers();
 
     let c_graphics_queue = device.graphics_queue().clone();
@@ -91,7 +92,8 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, self.clustering_pass.clusters_buffer(), &late_latching_buffer);
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer);
     self.ssao.execute(&mut cmd_buf, self.prepass.normals_srv(), self.prepass.depth_srv(), &late_latching_buffer, self.prepass.motion_srv());
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), self.clustering_pass.clusters_buffer());
+    self.rt_shadows.execute(&mut cmd_buf, self.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, self.prepass.depth_srv());
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), self.rt_shadows.shadows_srv(), self.clustering_pass.clusters_buffer());
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
     self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
 

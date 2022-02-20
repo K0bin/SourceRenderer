@@ -136,4 +136,8 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
       new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::SHADER_READ,
     }]);
   }
+
+  pub fn acceleration_structure(&self) -> &Arc<B::AccelerationStructure> {
+    &self.acceleration_structure
+  }
 }

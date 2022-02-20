@@ -282,13 +282,21 @@ impl VkDescriptorSet {
       device.allocate_descriptor_sets(&set_create_info)
     }.unwrap().pop().unwrap();
 
-    match layout.template {
+    match Option::<vk::DescriptorUpdateTemplate>::None {
       None => {
         let mut writes: SmallVec<[vk::WriteDescriptorSet; 16]> = Default::default();
         let mut image_writes: SmallVec<[vk::DescriptorImageInfo; 16]> = Default::default();
         let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; 16]> = Default::default();
+        let mut acceleration_structures: SmallVec<[vk::AccelerationStructureKHR; 2]> = Default::default();
         let mut acceleration_structure_writes: SmallVec<[vk::WriteDescriptorSetAccelerationStructureKHR; 2]> = Default::default();
         for (binding, resource) in bindings.iter().enumerate() {
+          // We're using pointers to elements in those vecs, so we cant relocate
+          assert_ne!(writes.len(), writes.capacity());
+          assert_ne!(image_writes.len(), image_writes.capacity());
+          assert_ne!(buffer_writes.len(), buffer_writes.capacity());
+          assert_ne!(acceleration_structures.len(), acceleration_structures.capacity());
+          assert_ne!(acceleration_structure_writes.len(), acceleration_structure_writes.capacity());
+
           let binding_info = &layout.binding_infos[binding];
           if binding_info.is_none() {
             continue;
@@ -355,13 +363,17 @@ impl VkDescriptorSet {
               write.descriptor_type = vk::DescriptorType::SAMPLER;
             },
             VkBoundResource::AccelerationStructure(accel_struct) => {
-              acceleration_structure_writes.push(vk::WriteDescriptorSetAccelerationStructureKHR {
+              acceleration_structures.push(*accel_struct.handle());
+              let acceleration_structure_write = vk::WriteDescriptorSetAccelerationStructureKHR {
                 acceleration_structure_count: 1,
-                p_acceleration_structures: accel_struct.handle(),
+                p_acceleration_structures: unsafe { acceleration_structures.as_ptr().offset(acceleration_structures.len() as isize - 1) },
                 ..Default::default()
-              });
-            }
-            _ => unimplemented!()
+              };
+              acceleration_structure_writes.push(acceleration_structure_write);
+              write.p_next = unsafe { acceleration_structure_writes.as_ptr().offset(acceleration_structure_writes.len() as isize - 1) as _ };
+              write.descriptor_type = vk::DescriptorType::ACCELERATION_STRUCTURE_KHR;
+            },
+            VkBoundResource::None => panic!("Shader expectes resource in binding: {}", binding)
           }
           assert_eq!(layout.binding_infos[binding].as_ref().unwrap().descriptor_type, write.descriptor_type);
           writes.push(write);

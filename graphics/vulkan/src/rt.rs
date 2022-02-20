@@ -34,7 +34,7 @@ impl VkAccelerationStructure {
         transform: vk::TransformMatrixKHR {
           matrix: transform_data
         },
-        instance_custom_index_and_mask: vk::Packed24_8::new(0, 1),
+        instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xFF),
         instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(0, if instance.front_face == FrontFace::CounterClockwise { vk::GeometryInstanceFlagsKHR::TRIANGLE_FRONT_COUNTERCLOCKWISE.as_raw() as u8 } else { 0 }),
         acceleration_structure_reference: AccelerationStructureReferenceKHR {
           device_handle: instance.acceleration_structure.va()
@@ -42,7 +42,7 @@ impl VkAccelerationStructure {
       }
     }).collect();
 
-    command_buffer.upload_dynamic_data(&instances[..], BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE)
+    command_buffer.upload_dynamic_data(&instances[..], BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE)
   }
 
   pub fn top_level_size(device: &Arc<RawVkDevice>, info: &TopLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
