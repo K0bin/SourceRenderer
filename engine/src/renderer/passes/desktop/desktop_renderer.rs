@@ -39,8 +39,6 @@ impl<B: Backend> DesktopRenderer<B> {
     c_graphics_queue.submit(init_cmd_buffer.finish(), None, &[], &[], true);
     rayon::spawn(move || c_graphics_queue.process_submissions());
 
-    device.wait_for_idle();
-
     Self {
       swapchain: swapchain.clone(),
       device: device.clone(),
@@ -78,11 +76,8 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 
-    println!("pre frame");
-
     let view_ref = view.borrow();
     let scene_ref = scene.borrow();
-    self.device.wait_for_idle();
 
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
@@ -151,8 +146,6 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       let input_state = input.poll();
       late_latching.before_submit(&input_state, &view_ref);
     }
-    self.device.wait_for_idle();
-    println!("submitting frame");
     graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem], true);
     graphics_queue.present(&self.swapchain, &[&cmd_buf_sem], true);
 
@@ -162,7 +155,6 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     if let Some(late_latching) = late_latching {
       late_latching.after_submit(&self.device);
     }
-    self.device.wait_for_idle();
 
     Ok(())
   }
