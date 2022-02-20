@@ -1,3 +1,4 @@
+use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::command::{index_format_to_vk, VkCommandBuffer};
@@ -332,6 +333,24 @@ impl VkAccelerationStructure {
 
   fn va(&self) -> vk::DeviceAddress {
     self.va
+  }
+
+  pub(crate) fn handle(&self) -> &vk::AccelerationStructureKHR {
+    &self.acceleration_structure
+  }
+}
+
+impl PartialEq for VkAccelerationStructure {
+  fn eq(&self, other: &Self) -> bool {
+    self.acceleration_structure == other.acceleration_structure
+  }
+}
+
+impl Eq for VkAccelerationStructure {}
+
+impl Hash for VkAccelerationStructure {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.acceleration_structure.hash(state);
   }
 }
 

@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use ash::vk;
-use crate::{raw::{RawVkDevice, VkFeatures}, texture::VkSampler};
+use crate::{raw::{RawVkDevice, VkFeatures}, texture::VkSampler, rt::VkAccelerationStructure};
 use sourcerenderer_core::graphics::{BindingFrequency};
 use std::collections::HashMap;
 
@@ -247,7 +247,8 @@ impl Drop for VkDescriptorPool {
 union VkDescriptorEntry {
   image: vk::DescriptorImageInfo,
   buffer: vk::DescriptorBufferInfo,
-  buffer_view: vk::BufferView
+  buffer_view: vk::BufferView,
+  acceleration_structure: vk::AccelerationStructureKHR
 }
 
 impl Default for VkDescriptorEntry {
@@ -286,6 +287,7 @@ impl VkDescriptorSet {
         let mut writes: SmallVec<[vk::WriteDescriptorSet; 16]> = Default::default();
         let mut image_writes: SmallVec<[vk::DescriptorImageInfo; 16]> = Default::default();
         let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; 16]> = Default::default();
+        let mut acceleration_structure_writes: SmallVec<[vk::WriteDescriptorSetAccelerationStructureKHR; 2]> = Default::default();
         for (binding, resource) in bindings.iter().enumerate() {
           let binding_info = &layout.binding_infos[binding];
           if binding_info.is_none() {
@@ -352,6 +354,13 @@ impl VkDescriptorSet {
               write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
               write.descriptor_type = vk::DescriptorType::SAMPLER;
             },
+            VkBoundResource::AccelerationStructure(accel_struct) => {
+              acceleration_structure_writes.push(vk::WriteDescriptorSetAccelerationStructureKHR {
+                acceleration_structure_count: 1,
+                p_acceleration_structures: accel_struct.handle(),
+                ..Default::default()
+              });
+            }
             _ => unimplemented!()
           }
           assert_eq!(layout.binding_infos[binding].as_ref().unwrap().descriptor_type, write.descriptor_type);
@@ -406,6 +415,9 @@ impl VkDescriptorSet {
                 image_layout: vk::ImageLayout::UNDEFINED
               };
             },
+            VkBoundResource::AccelerationStructure(acceleration_structure) => {
+              entry.acceleration_structure = *acceleration_structure.handle();
+            },
             _ => {}
           }
           entries.push(entry);
@@ -445,6 +457,7 @@ impl Drop for VkDescriptorSet {
     }
     unsafe {
       //self.device.free_descriptor_sets(*self.pool.get_handle(), &[self.descriptor_set]).unwrap();
+      // TODO
     }
   }
 }
@@ -457,6 +470,7 @@ pub(crate) enum VkBoundResource {
   StorageTexture(Arc<VkTextureView>),
   SampledTexture(Arc<VkTextureView>, Arc<VkSampler>),
   Sampler(Arc<VkSampler>),
+  AccelerationStructure(Arc<VkAccelerationStructure>),
 }
 
 impl Default for VkBoundResource {
@@ -473,6 +487,7 @@ pub(crate) enum VkBoundResourceRef<'a> {
   StorageTexture(&'a Arc<VkTextureView>),
   SampledTexture(&'a Arc<VkTextureView>, &'a Arc<VkSampler>),
   Sampler(&'a Arc<VkSampler>),
+  AccelerationStructure(&'a Arc<VkAccelerationStructure>),
 }
 
 pub(crate) struct VkDescriptorSetBinding {
@@ -534,6 +549,7 @@ impl VkBindingManager {
         (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => old == *new,
         (VkBoundResource::SampledTexture(old_tex, old_sampler), VkBoundResourceRef::SampledTexture(new_tex, new_sampler)) => old_tex == *new_tex && old_sampler == *new_sampler,
         (VkBoundResource::Sampler(old_sampler), VkBoundResourceRef::Sampler(new_sampler)) => old_sampler == *new_sampler,
+        (VkBoundResource::AccelerationStructure(old), VkBoundResourceRef::AccelerationStructure(new)) => old == *new,
         _ => false
     };
 
@@ -546,6 +562,7 @@ impl VkBindingManager {
         VkBoundResourceRef::StorageTexture(storage_tex) => VkBoundResource::StorageTexture(storage_tex.clone()),
         VkBoundResourceRef::SampledTexture(tex, sampler) => VkBoundResource::SampledTexture(tex.clone(), sampler.clone()),
         VkBoundResourceRef::Sampler(sampler) => VkBoundResource::Sampler(sampler.clone()),
+        VkBoundResourceRef::AccelerationStructure(acceleration_structure) => VkBoundResource::AccelerationStructure(acceleration_structure.clone())
       };
     }
   }

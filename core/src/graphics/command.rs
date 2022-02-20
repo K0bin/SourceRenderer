@@ -70,6 +70,7 @@ pub trait CommandBuffer<B: Backend> {
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
   fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureUnorderedAccessView>);
   fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<B::Sampler>);
+  fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<B::AccelerationStructure>);
   fn finish_binding(&mut self);
   fn begin_label(&mut self, label: &str);
   fn end_label(&mut self);

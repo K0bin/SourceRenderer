@@ -1044,6 +1044,12 @@ impl VkCommandBuffer {
       );
     }
   }
+
+  fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<VkAccelerationStructure>) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::AccelerationStructure(acceleration_structure));
+    self.trackers.track_acceleration_structure(acceleration_structure);
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -1308,6 +1314,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
     self.item.as_mut().unwrap().trace_ray(width, height, depth);
+  }
+
+  #[inline(always)]
+  fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<VkAccelerationStructure>) {
+    self.item.as_mut().unwrap().bind_acceleration_structure(frequency, binding, acceleration_structure);
   }
 }
 

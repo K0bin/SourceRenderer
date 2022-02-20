@@ -201,6 +201,18 @@ impl VkShader {
         flags: vk::DescriptorBindingFlags::empty()
       });
     }
+    for resource in resources.acceleration_structures {
+      let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
+      let set = sets.entry(set_index).or_insert_with(Vec::new);
+      set.push(VkDescriptorSetEntryInfo {
+        index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
+        descriptor_type: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+        shader_stage: shader_type_to_vk(shader_type),
+        count: 1,
+        writable: false,
+        flags: vk::DescriptorBindingFlags::empty()
+      });
+    }
 
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
