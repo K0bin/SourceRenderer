@@ -317,6 +317,8 @@ impl<P: Platform> RendererAssets<P> {
     let vb_name = mesh_path.to_string() + "_vertices";
     let ib_name = mesh_path.to_string() + "_indices";
 
+    assert_ne!(mesh.vertex_count, 0);
+
     let vertex_buffer = self.device.create_buffer(&BufferInfo {
       size: std::mem::size_of_val(&mesh.vertices[..]),
       usage: BufferUsage::COPY_DST | BufferUsage::VERTEX

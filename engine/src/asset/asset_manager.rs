@@ -257,6 +257,7 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn add_mesh(&self, path: &str, vertex_buffer_data: Box<[u8]>, vertex_count: u32, index_buffer_data: Box<[u8]>, parts: Box<[MeshRange]>, bounding_box: Option<BoundingBox>) {
+    assert_ne!(vertex_count, 0);
     let mesh = Mesh {
       vertices: vertex_buffer_data,
       indices: if !index_buffer_data.is_empty() { Some(index_buffer_data) } else { None },
@@ -332,6 +333,7 @@ impl<P: Platform> AssetManager<P> {
         }).unwrap();
       }
       Asset::Mesh(mesh) => {
+        assert_ne!(mesh.vertex_count, 0);
         self.renderer_sender.send(LoadedAsset {
           asset: Asset::Mesh(mesh),
           path: path.to_owned(),
