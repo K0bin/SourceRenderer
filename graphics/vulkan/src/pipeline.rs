@@ -6,7 +6,7 @@ use ash::vk;
 use smallvec::SmallVec;
 use spirv_cross::{spirv, glsl};
 
-use sourcerenderer_core::graphics::{BindingFrequency, InputRate, RayTracingPipelineInfo};
+use sourcerenderer_core::graphics::{BindingFrequency, InputRate, RayTracingPipelineInfo, BufferInfo, MemoryUsage, BufferUsage, Buffer};
 use sourcerenderer_core::graphics::GraphicsPipelineInfo;
 use sourcerenderer_core::graphics::ShaderType;
 use sourcerenderer_core::graphics::Shader;
@@ -23,6 +23,7 @@ use sourcerenderer_core::graphics::ColorComponents;
 use sourcerenderer_core::graphics::PrimitiveType;
 
 use crate::bindless::{BINDLESS_TEXTURE_COUNT, BINDLESS_TEXTURE_SET_INDEX};
+use crate::buffer::{align_up_32, VkBufferSlice};
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::VkBackend;
@@ -258,6 +259,14 @@ pub struct VkPipeline {
   device: Arc<RawVkDevice>,
   pipeline_type: VkPipelineType,
   uses_bindless_texture_set: bool,
+  sbt: Option<VkShaderBindingTables>,
+}
+
+struct VkShaderBindingTables {
+  buffer: Arc<VkBufferSlice>,
+  raygen_region: vk::StridedDeviceAddressRegionKHR,
+  closest_hit_region: vk::StridedDeviceAddressRegionKHR,
+  miss_region: vk::StridedDeviceAddressRegionKHR,
 }
 
 impl PartialEq for VkPipeline {
@@ -673,7 +682,8 @@ impl VkPipeline {
       device: device.clone(),
       layout,
       pipeline_type: VkPipelineType::Graphics,
-      uses_bindless_texture_set
+      uses_bindless_texture_set,
+      sbt: None,
     }
   }
 
@@ -746,7 +756,8 @@ impl VkPipeline {
       device: device.clone(),
       layout,
       pipeline_type: VkPipelineType::Compute,
-      uses_bindless_texture_set: shader.uses_bindless_texture_set
+      uses_bindless_texture_set: shader.uses_bindless_texture_set,
+      sbt: None,
     }
   }
 
@@ -759,118 +770,124 @@ impl VkPipeline {
     let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5] = Default::default();
     let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
 
-    let raygen_info = vk::PipelineShaderStageCreateInfo {
-      flags: vk::PipelineShaderStageCreateFlags::empty(),
-      stage: vk::ShaderStageFlags::RAYGEN_KHR,
-      module: info.ray_gen_shader.get_shader_module(),
-      p_name: entry_point.as_ptr() as *const c_char,
-      ..Default::default()
-    };
-    let raygen_group_info = vk::RayTracingShaderGroupCreateInfoKHR {
-      ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
-      general_shader: stages.len() as u32,
-      closest_hit_shader: vk::SHADER_UNUSED_KHR,
-      any_hit_shader: vk::SHADER_UNUSED_KHR,
-      intersection_shader: vk::SHADER_UNUSED_KHR,
-      p_shader_group_capture_replay_handle: std::ptr::null(),
-      ..Default::default()
-    };
-    stages.push(raygen_info);
-    groups.push(raygen_group_info);
-    for (index, shader_set) in &info.ray_gen_shader.descriptor_set_bindings {
-      let set = &mut descriptor_set_layouts[*index as usize];
-      for binding in shader_set {
-        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
-        if let Some(existing_binding) = existing_binding_option {
-          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-          existing_binding.shader_stage |= binding.shader_stage;
-        } else {
-          set.bindings.push(binding.clone());
+    for shader in info.ray_gen_shaders.iter() {
+      let stage_info = vk::PipelineShaderStageCreateInfo {
+        flags: vk::PipelineShaderStageCreateFlags::empty(),
+        stage: vk::ShaderStageFlags::RAYGEN_KHR,
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const c_char,
+        ..Default::default()
+      };
+      let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
+        ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
+        general_shader: stages.len() as u32,
+        closest_hit_shader: vk::SHADER_UNUSED_KHR,
+        any_hit_shader: vk::SHADER_UNUSED_KHR,
+        intersection_shader: vk::SHADER_UNUSED_KHR,
+        p_shader_group_capture_replay_handle: std::ptr::null(),
+        ..Default::default()
+      };
+      stages.push(stage_info);
+      groups.push(group_info);
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let set = &mut descriptor_set_layouts[*index as usize];
+        for binding in shader_set {
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.bindings.push(binding.clone());
+          }
         }
       }
-    }
-    if let Some(push_constants_range) = &info.ray_gen_shader.push_constants_range {
-      push_constants_ranges[0] = Some(VkConstantRange {
-        offset: push_constants_range.offset,
-        size: push_constants_range.size,
-        shader_stage: vk::ShaderStageFlags::RAYGEN_KHR,
-      });
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges[0] = Some(VkConstantRange {
+          offset: push_constants_range.offset,
+          size: push_constants_range.size,
+          shader_stage: vk::ShaderStageFlags::RAYGEN_KHR,
+        });
+      }
     }
 
-    let closest_hit_info = vk::PipelineShaderStageCreateInfo {
-      flags: vk::PipelineShaderStageCreateFlags::empty(),
-      stage: vk::ShaderStageFlags::RAYGEN_KHR,
-      module: info.closest_hit_shader.get_shader_module(),
-      p_name: entry_point.as_ptr() as *const c_char,
-      ..Default::default()
-    };
-    let raygen_group_group_info = vk::RayTracingShaderGroupCreateInfoKHR {
-      ty: vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
-      general_shader: vk::SHADER_UNUSED_KHR,
-      closest_hit_shader: stages.len() as u32,
-      any_hit_shader: vk::SHADER_UNUSED_KHR,
-      intersection_shader: vk::SHADER_UNUSED_KHR,
-      p_shader_group_capture_replay_handle: std::ptr::null(),
-      ..Default::default()
-    };
-    stages.push(closest_hit_info);
-    groups.push(raygen_group_group_info);
-    for (index, shader_set) in &info.closest_hit_shader.descriptor_set_bindings {
-      let set = &mut descriptor_set_layouts[*index as usize];
-      for binding in shader_set {
-        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
-        if let Some(existing_binding) = existing_binding_option {
-          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-          existing_binding.shader_stage |= binding.shader_stage;
-        } else {
-          set.bindings.push(binding.clone());
+    for shader in info.closest_hit_shaders.iter() {
+      let stage_info = vk::PipelineShaderStageCreateInfo {
+        flags: vk::PipelineShaderStageCreateFlags::empty(),
+        stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const c_char,
+        ..Default::default()
+      };
+      let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
+        ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
+        general_shader: stages.len() as u32,
+        closest_hit_shader: vk::SHADER_UNUSED_KHR,
+        any_hit_shader: vk::SHADER_UNUSED_KHR,
+        intersection_shader: vk::SHADER_UNUSED_KHR,
+        p_shader_group_capture_replay_handle: std::ptr::null(),
+        ..Default::default()
+      };
+      stages.push(stage_info);
+      groups.push(group_info);
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let set = &mut descriptor_set_layouts[*index as usize];
+        for binding in shader_set {
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.bindings.push(binding.clone());
+          }
         }
       }
-    }
-    if let Some(push_constants_range) = &info.closest_hit_shader.push_constants_range {
-      push_constants_ranges[1] = Some(VkConstantRange {
-        offset: push_constants_range.offset,
-        size: push_constants_range.size,
-        shader_stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-      });
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges[0] = Some(VkConstantRange {
+          offset: push_constants_range.offset,
+          size: push_constants_range.size,
+          shader_stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+        });
+      }
     }
 
-    let miss_info = vk::PipelineShaderStageCreateInfo {
-      flags: vk::PipelineShaderStageCreateFlags::empty(),
-      stage: vk::ShaderStageFlags::RAYGEN_KHR,
-      module: info.miss_shader.get_shader_module(),
-      p_name: entry_point.as_ptr() as *const c_char,
-      ..Default::default()
-    };
-    let miss_group_info = vk::RayTracingShaderGroupCreateInfoKHR {
-      ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
-      general_shader: stages.len() as u32,
-      closest_hit_shader: vk::SHADER_UNUSED_KHR,
-      any_hit_shader: vk::SHADER_UNUSED_KHR,
-      intersection_shader: vk::SHADER_UNUSED_KHR,
-      p_shader_group_capture_replay_handle: std::ptr::null(),
-      ..Default::default()
-    };
-    stages.push(miss_info);
-    groups.push(miss_group_info);
-    for (index, shader_set) in &info.miss_shader.descriptor_set_bindings {
-      let set = &mut descriptor_set_layouts[*index as usize];
-      for binding in shader_set {
-        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
-        if let Some(existing_binding) = existing_binding_option {
-          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-          existing_binding.shader_stage |= binding.shader_stage;
-        } else {
-          set.bindings.push(binding.clone());
+    for shader in info.miss_shaders.iter() {
+      let stage_info = vk::PipelineShaderStageCreateInfo {
+        flags: vk::PipelineShaderStageCreateFlags::empty(),
+        stage: vk::ShaderStageFlags::MISS_KHR,
+        module: shader.get_shader_module(),
+        p_name: entry_point.as_ptr() as *const c_char,
+        ..Default::default()
+      };
+      let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
+        ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
+        general_shader: stages.len() as u32,
+        closest_hit_shader: vk::SHADER_UNUSED_KHR,
+        any_hit_shader: vk::SHADER_UNUSED_KHR,
+        intersection_shader: vk::SHADER_UNUSED_KHR,
+        p_shader_group_capture_replay_handle: std::ptr::null(),
+        ..Default::default()
+      };
+      stages.push(stage_info);
+      groups.push(group_info);
+      for (index, shader_set) in &shader.descriptor_set_bindings {
+        let set = &mut descriptor_set_layouts[*index as usize];
+        for binding in shader_set {
+          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+          if let Some(existing_binding) = existing_binding_option {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            existing_binding.shader_stage |= binding.shader_stage;
+          } else {
+            set.bindings.push(binding.clone());
+          }
         }
       }
-    }
-    if let Some(push_constants_range) = &info.miss_shader.push_constants_range {
-      push_constants_ranges[1] = Some(VkConstantRange {
-        offset: push_constants_range.offset,
-        size: push_constants_range.size,
-        shader_stage: vk::ShaderStageFlags::MISS_KHR,
-      });
+      if let Some(push_constants_range) = &shader.push_constants_range {
+        push_constants_ranges[0] = Some(VkConstantRange {
+          offset: push_constants_range.offset,
+          size: push_constants_range.size,
+          shader_stage: vk::ShaderStageFlags::MISS_KHR,
+        });
+      }
     }
 
     let mut offset = 0u32;
@@ -896,7 +913,7 @@ impl VkPipeline {
       push_constant_ranges: remapped_push_constant_ranges,
     });
 
-    let info = vk::RayTracingPipelineCreateInfoKHR {
+    let vk_info = vk::RayTracingPipelineCreateInfoKHR {
         flags: vk::PipelineCreateFlags::empty(),
         stage_count: stages.len() as u32,
         p_stages: stages.as_ptr(),
@@ -912,8 +929,43 @@ impl VkPipeline {
         ..Default::default()
     };
     let pipeline = unsafe {
-      rt.rt_pipelines.create_ray_tracing_pipelines(vk::DeferredOperationKHR::null(), vk::PipelineCache::null(), &[info], None)
+      rt.rt_pipelines.create_ray_tracing_pipelines(vk::DeferredOperationKHR::null(), vk::PipelineCache::null(), &[vk_info], None)
     }.unwrap().pop().unwrap();
+
+    // SBT
+    let handle_size = rt.rt_pipeline_properties.shader_group_handle_size;
+    let handle_alignment = rt.rt_pipeline_properties.shader_group_handle_alignment;
+    let handle_stride = align_up_32(align_up_32(handle_size, handle_alignment), rt.rt_pipeline_properties.shader_group_base_alignment);
+
+    let handles = unsafe { rt.rt_pipelines.get_ray_tracing_shader_group_handles(pipeline, 0, groups.len() as u32, handle_stride as usize * groups.len()) }.unwrap();
+
+    let sbt = shared.get_buffer_allocator().get_slice(&BufferInfo {
+      size: handles.len(),
+      usage: BufferUsage::SHADER_BINDING_TABLE,
+    }, MemoryUsage::CpuToGpu, None);
+    unsafe {
+      let map = sbt.map_unsafe(false).unwrap();
+      std::ptr::copy_nonoverlapping(handles.as_ptr() as *const u8, map, handles.len());
+      sbt.unmap_unsafe(true);
+    }
+
+    let raygen_region = vk::StridedDeviceAddressRegionKHR {
+      device_address: sbt.va().unwrap(),
+      stride: handle_stride as u64,
+      size: info.ray_gen_shaders.len() as u64 * handle_stride as u64,
+    };
+
+    let closest_hit_region = vk::StridedDeviceAddressRegionKHR {
+      device_address: sbt.va().unwrap() + raygen_region.size,
+      stride: handle_stride as u64,
+      size: info.closest_hit_shaders.len() as u64 * handle_stride as u64,
+    };
+
+    let miss_region = vk::StridedDeviceAddressRegionKHR {
+      device_address: sbt.va().unwrap() + raygen_region.size + closest_hit_region.size,
+      stride: handle_stride as u64,
+      size: info.miss_shaders.len() as u64 * handle_stride as u64,
+    };
 
     Self {
       pipeline: pipeline,
@@ -921,6 +973,12 @@ impl VkPipeline {
       device: device.clone(),
       pipeline_type: VkPipelineType::RayTracing,
       uses_bindless_texture_set: true,
+      sbt: Some(VkShaderBindingTables {
+        buffer: sbt,
+        raygen_region,
+        closest_hit_region,
+        miss_region
+      }),
     }
   }
 
@@ -941,6 +999,26 @@ impl VkPipeline {
   #[inline]
   pub(crate) fn uses_bindless_texture_set(&self) -> bool {
     self.uses_bindless_texture_set
+  }
+
+  #[inline]
+  pub(crate) fn sbt_buffer(&self) -> &Arc<VkBufferSlice> {
+    &self.sbt.as_ref().unwrap().buffer
+  }
+
+  #[inline]
+  pub(crate) fn raygen_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
+    &self.sbt.as_ref().unwrap().raygen_region
+  }
+
+  #[inline]
+  pub(crate) fn closest_hit_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
+    &self.sbt.as_ref().unwrap().closest_hit_region
+  }
+
+  #[inline]
+  pub(crate) fn miss_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
+    &self.sbt.as_ref().unwrap().miss_region
   }
 }
 

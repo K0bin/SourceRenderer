@@ -266,6 +266,17 @@ impl VkCommandBuffer {
         }
         self.pipeline = Some((*compute_pipeline).clone())
       },
+      PipelineBinding::RayTracing(rt_pipeline) => {
+        let vk_pipeline = rt_pipeline.get_handle();
+        unsafe {
+          self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::RAY_TRACING_KHR, *vk_pipeline);
+        }
+        self.trackers.track_pipeline(*rt_pipeline);
+        if rt_pipeline.uses_bindless_texture_set() && !self.device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+          panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+        }
+        self.pipeline = Some((*rt_pipeline).clone())
+      },
     };
     self.descriptor_manager.mark_all_dirty();
   }
@@ -1012,6 +1023,27 @@ impl VkCommandBuffer {
     self.trackers.track_acceleration_structure(&acceleration_structure);
     acceleration_structure
   }
+
+  fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.render_pass.is_none());
+    debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::RayTracing);
+
+    let rt = self.device.rt.as_ref().unwrap();
+    let rt_pipeline = self.pipeline.as_ref().unwrap();
+    unsafe {
+      rt.rt_pipelines.cmd_trace_rays(
+        self.buffer,
+        rt_pipeline.raygen_sbt_region(),
+        rt_pipeline.miss_sbt_region(),
+        rt_pipeline.closest_hit_sbt_region(),
+        &vk::StridedDeviceAddressRegionKHR::default(),
+        width,
+        height,
+        depth
+      );
+    }
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -1271,6 +1303,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn create_temporary_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<VkBufferSlice> {
     self.item.as_mut().unwrap().allocate_scratch_buffer(info, memory_usage)
+  }
+
+  #[inline(always)]
+  fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
+    self.item.as_mut().unwrap().trace_ray(width, height, depth);
   }
 }
 

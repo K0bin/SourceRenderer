@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use std::sync::{Arc, MutexGuard, Mutex};
 use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
@@ -40,7 +41,11 @@ pub struct RawVkRTEntries {
   pub rt_pipelines: khr::RayTracingPipeline,
   pub deferred_operations: khr::DeferredHostOperations,
   pub bda: khr::BufferDeviceAddress,
+  pub rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR
 }
+
+unsafe impl Send for RawVkRTEntries {}
+unsafe impl Sync for RawVkRTEntries {}
 
 impl RawVkDevice {
   pub fn new(
@@ -57,11 +62,20 @@ impl RawVkDevice {
     transfer_queue: Option<vk::Queue>) -> Self {
 
       let rt = if features.contains(VkFeatures::RAY_TRACING) {
+        let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+        let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
+
+        rt_pipeline_properties.p_next = properties.p_next;
+        properties.p_next = &mut rt_pipeline_properties as *mut vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut c_void;
+
+        unsafe { instance.get_physical_device_properties2(physical_device, &mut properties) };
+
         Some(RawVkRTEntries {
           acceleration_structure: khr::AccelerationStructure::new(&instance, &device),
           rt_pipelines: khr::RayTracingPipeline::new(&instance, &device),
           deferred_operations: khr::DeferredHostOperations::new(&instance, &device),
-          bda: khr::BufferDeviceAddress::new(&instance, &device)
+          bda: khr::BufferDeviceAddress::new(&instance, &device),
+          rt_pipeline_properties
         })
       } else {
         None

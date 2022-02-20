@@ -41,7 +41,8 @@ pub enum CommandBufferType {
 #[derive(Clone)]
 pub enum PipelineBinding<'a, B: Backend> {
   Graphics(&'a Arc<B::GraphicsPipeline>),
-  Compute(&'a Arc<B::ComputePipeline>)
+  Compute(&'a Arc<B::ComputePipeline>),
+  RayTracing(&'a Arc<B::RayTracingPipeline>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -95,6 +96,7 @@ pub trait CommandBuffer<B: Backend> {
   fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &Arc<B::Buffer>, scratch_buffer: &Arc<B::Buffer>) -> Arc<B::AccelerationStructure>;
   fn upload_top_level_instances(&mut self, instances: &[AccelerationStructureInstance<B>]) -> Arc<B::Buffer>;
   fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &Arc<B::Buffer>, scratch_buffer: &Arc<B::Buffer>) -> Arc<B::AccelerationStructure>;
+  fn trace_ray(&mut self, width: u32, height: u32, depth: u32);
 }
 
 pub trait Queue<B: Backend> {
