@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{Backend, CommandBuffer, AccelerationStructureInstance, Device, TopLevelAccelerationStructureInfo, BufferInfo, BufferUsage, MemoryUsage, BottomLevelAccelerationStructureInfo, AccelerationStructureMeshRange, IndexFormat, Format, Barrier, BarrierSync, BarrierAccess, FrontFace};
+use nalgebra::Vector3;
+use sourcerenderer_core::{graphics::{Backend, CommandBuffer, AccelerationStructureInstance, Device, TopLevelAccelerationStructureInfo, BufferInfo, BufferUsage, MemoryUsage, BottomLevelAccelerationStructureInfo, AccelerationStructureMeshRange, IndexFormat, Format, Barrier, BarrierSync, BarrierAccess, FrontFace}, Matrix4};
 
 use crate::renderer::renderer_scene::RendererScene;
 
@@ -40,20 +41,21 @@ impl<B: Backend> RayTracingPass<B> {
     camera_buffer: &Arc<B::Buffer>
   ) {
     let static_drawables = scene.static_drawables();
-    {
-      if static_drawables.len() != 0 {
-        println!("GOT A SCENE");
-      }
-    }
 
-    let bl_acceleration_structures: Vec<Arc<B::AccelerationStructure>> = static_drawables.iter().map(|drawable| {
+    let bl_acceleration_structures: Vec<Arc<B::AccelerationStructure>> = static_drawables
+      .iter()
+      .map(|drawable| {
       let mesh = drawable.model.mesh();
       let parts: Vec<AccelerationStructureMeshRange> = mesh.parts.iter().map(|p| {
+        debug_assert_eq!(p.start % 3, 0);
+        debug_assert_eq!(p.count % 3, 0);
         AccelerationStructureMeshRange {
           primitive_start: p.start / 3,
           primitive_count: p.count / 3
         }
       }).collect();
+
+      debug_assert_ne!(mesh.vertex_count, 0);
       let info = BottomLevelAccelerationStructureInfo {
         vertex_buffer: &mesh.vertices,
         index_buffer: mesh.indices.as_ref().unwrap(),
@@ -63,7 +65,7 @@ impl<B: Backend> RayTracingPass<B> {
         vertex_stride: 44,
         mesh_parts: &parts,
         opaque: true,
-        max_vertex: mesh.vertex_count
+        max_vertex: mesh.vertex_count - 1
       };
       let sizes = self.device.get_bottom_level_acceleration_structure_size(&info);
 
