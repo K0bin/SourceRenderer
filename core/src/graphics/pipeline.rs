@@ -314,7 +314,9 @@ pub enum ShaderType {
   TessellationControlShader,
   TessellationEvaluationShader,
   ComputeShader,
-  // TODO add RT shader types
+  RayGen,
+  RayMiss,
+  RayClosestHit,
   // TODO add mesh shaders (?)
 }
 

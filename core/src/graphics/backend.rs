@@ -33,6 +33,7 @@ pub trait Backend: 'static + Sized {
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
   type GraphicsPipeline: Send + Sync;
   type ComputePipeline: Send + Sync;
+  type RayTracingPipeline: Send + Sync;
   type Fence : Fence + Send + Sync;
   type Semaphore : Send + Sync;
   type Queue : Queue<Self> + Send + Sync;

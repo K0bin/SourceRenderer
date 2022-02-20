@@ -4,7 +4,7 @@ use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCe
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
 
-use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, acceleration_structure_update::AccelerationStructureUpdatePass};
+use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass};
 
 pub struct DesktopRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
@@ -17,12 +17,14 @@ pub struct DesktopRenderer<B: Backend> {
   sharpen: SharpenPass<B>,
   ssao: SsaoPass<B>,
   occlusion: OcclusionPass<B>,
-  acceleration_structure_update: AccelerationStructureUpdatePass<B>
+  acceleration_structure_update: AccelerationStructureUpdatePass<B>,
+  rt_shadows: RTShadowPass<B>,
 }
 
 impl<B: Backend> DesktopRenderer<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
+    let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
     let clustering = ClusteringPass::<B>::new::<P>(device);
     let light_binning = LightBinningPass::<B>::new::<P>(device);
@@ -30,9 +32,10 @@ impl<B: Backend> DesktopRenderer<B> {
     let geometry = GeometryPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
     let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut init_cmd_buffer);
-    let ssao = SsaoPass::<B>::new::<P>(device, Vec2UI::new(swapchain.width(), swapchain.height()), &mut init_cmd_buffer);
+    let ssao = SsaoPass::<B>::new::<P>(device, resolution, &mut init_cmd_buffer);
     let occlusion = OcclusionPass::<B>::new::<P>(device);
     let acceleration_structure_update = AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer);
+    let rt_shadows = RTShadowPass::<B>::new::<P>(device, resolution, &mut init_cmd_buffer);
     device.flush_transfers();
 
     let c_graphics_queue = device.graphics_queue().clone();
@@ -50,7 +53,8 @@ impl<B: Backend> DesktopRenderer<B> {
       sharpen,
       ssao,
       occlusion,
-      acceleration_structure_update
+      acceleration_structure_update,
+      rt_shadows,
     }
   }
 }

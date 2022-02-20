@@ -284,6 +284,10 @@ impl Device<VkBackend> for VkDevice {
   fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
     VkAccelerationStructure::top_level_size(&self.device, info)
   }
+
+  fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<VkBackend>) -> Arc<VkPipeline> {
+    Arc::new(VkPipeline::new_ray_tracing(&self.device, info, &self.shared))
+  }
 }
 
 impl Drop for VkDevice {

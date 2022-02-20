@@ -8,3 +8,4 @@ pub(crate) mod ssao;
 pub(crate) mod desktop_renderer;
 pub(crate) mod occlusion;
 pub(crate) mod acceleration_structure_update;
+pub(crate) mod rt_shadows;

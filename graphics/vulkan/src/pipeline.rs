@@ -3,9 +3,10 @@ use std::ffi::{CString};
 
 use ash::vk;
 
+use smallvec::SmallVec;
 use spirv_cross::{spirv, glsl};
 
-use sourcerenderer_core::graphics::{BindingFrequency, InputRate};
+use sourcerenderer_core::graphics::{BindingFrequency, InputRate, RayTracingPipelineInfo};
 use sourcerenderer_core::graphics::GraphicsPipelineInfo;
 use sourcerenderer_core::graphics::ShaderType;
 use sourcerenderer_core::graphics::Shader;
@@ -31,7 +32,7 @@ use crate::VkRenderPass;
 use spirv_cross::spirv::Decoration;
 use ash::vk::{Handle, PipelineRasterizationStateCreateFlags};
 use std::collections::HashMap;
-use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkConstantRange, COMPUTE_SHADER_CONSTS, VERTEX_SHADER_CONSTS, FRAGMENT_SHADER_CONSTS};
+use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkConstantRange};
 use crate::VkShared;
 use std::os::raw::c_char;
 
@@ -92,6 +93,9 @@ impl VkShader {
           ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
           ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
           ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+          ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+          ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
+          ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
           _ => unimplemented!()
         },
         offset: 0u32,
@@ -241,11 +245,18 @@ impl Drop for VkShader {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VkPipelineType {
+  Graphics,
+  Compute,
+  RayTracing
+}
+
 pub struct VkPipeline {
   pipeline: vk::Pipeline,
   layout: Arc<VkPipelineLayout>,
   device: Arc<RawVkDevice>,
-  is_graphics: bool,
+  pipeline_type: VkPipelineType,
   uses_bindless_texture_set: bool,
 }
 
@@ -264,7 +275,10 @@ pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
     ShaderType::GeometryShader => vk::ShaderStageFlags::GEOMETRY,
     ShaderType::TessellationControlShader => vk::ShaderStageFlags::TESSELLATION_CONTROL,
     ShaderType::TessellationEvaluationShader => vk::ShaderStageFlags::TESSELLATION_EVALUATION,
-    ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE
+    ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+    ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+    ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+    ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
   }
 }
 
@@ -376,7 +390,7 @@ impl VkPipeline {
     let vk_device = &device.device;
     let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
     let mut descriptor_set_layouts = <[VkDescriptorSetLayoutKey; 5]>::default();
-    let mut push_constants_ranges = <[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]>::default();
+    let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
     let mut uses_bindless_texture_set = false;
 
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
@@ -403,9 +417,10 @@ impl VkPipeline {
         }
       }
       if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges[VERTEX_SHADER_CONSTS] = Some(VkConstantRange {
+        push_constants_ranges[0] = Some(VkConstantRange {
           offset: push_constants_range.offset,
-          size: push_constants_range.size
+          size: push_constants_range.size,
+          shader_stage: vk::ShaderStageFlags::VERTEX,
         });
       }
       uses_bindless_texture_set |= shader.uses_bindless_texture_set;
@@ -432,91 +447,11 @@ impl VkPipeline {
         }
       }
       if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges[FRAGMENT_SHADER_CONSTS] = Some(VkConstantRange {
+        push_constants_ranges[1] = Some(VkConstantRange {
           offset: push_constants_range.offset,
-          size: push_constants_range.size
+          size: push_constants_range.size,
+          shader_stage: vk::ShaderStageFlags::FRAGMENT,
         });
-      }
-      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
-    }
-
-    if let Some(shader) = info.info.gs.clone() {
-      let shader_stage = vk::PipelineShaderStageCreateInfo {
-        module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const c_char,
-        stage: shader_type_to_vk(shader.get_shader_type()),
-        ..Default::default()
-      };
-      shader_stages.push(shader_stage);
-      for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layouts[*index as usize];
-        for binding in shader_set {
-          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
-          if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-            existing_binding.shader_stage |= binding.shader_stage;
-          } else {
-            set.bindings.push(binding.clone());
-          }
-        }
-      }
-      if let Some(push_constants_range) = &shader.push_constants_range {
-        push_constants_ranges[COMPUTE_SHADER_CONSTS] = Some(VkConstantRange {
-          offset: push_constants_range.offset,
-          size: push_constants_range.size
-        });
-      }
-      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
-    }
-
-    if let Some(shader) = info.info.tes.clone() {
-      let shader_stage = vk::PipelineShaderStageCreateInfo {
-        module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const c_char,
-        stage: shader_type_to_vk(shader.get_shader_type()),
-        ..Default::default()
-      };
-      shader_stages.push(shader_stage);
-      for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layouts[*index as usize];
-        for binding in shader_set {
-          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
-          if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-            existing_binding.shader_stage |= binding.shader_stage;
-          } else {
-            set.bindings.push(binding.clone());
-          }
-        }
-      }
-      if let Some(_push_constants_range) = &shader.push_constants_range {
-        unimplemented!();
-      }
-      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
-    }
-
-    if let Some(shader) = info.info.tcs.clone() {
-      let shader_stage = vk::PipelineShaderStageCreateInfo {
-        module: shader.get_shader_module(),
-        p_name: entry_point.as_ptr() as *const c_char,
-        stage: shader_type_to_vk(shader.get_shader_type()),
-        ..Default::default()
-      };
-      shader_stages.push(shader_stage);
-      for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut descriptor_set_layouts[*index as usize];
-        for binding in shader_set {
-          let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
-          if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-            existing_binding.shader_stage |= binding.shader_stage;
-          } else {
-            set.bindings.push(binding.clone());
-          }
-        }
-      }
-      if let Some(_push_constants_range) = &shader.push_constants_range {
-        unimplemented!();
       }
       uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
@@ -664,24 +599,26 @@ impl VkPipeline {
     }
 
     let mut offset = 0u32;
-    let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]>::default();
-    if let Some(range) = &push_constants_ranges[VERTEX_SHADER_CONSTS] {
-      remapped_push_constant_ranges[VERTEX_SHADER_CONSTS] = Some(VkConstantRange {
+    let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
+    if let Some(range) = &push_constants_ranges[0] {
+      remapped_push_constant_ranges[0] = Some(VkConstantRange {
         offset: offset,
-        size: range.size
+        size: range.size,
+        shader_stage: vk::ShaderStageFlags::VERTEX,
       });
       offset += range.size;
     }
-    if let Some(range) = &push_constants_ranges[FRAGMENT_SHADER_CONSTS] {
-      remapped_push_constant_ranges[FRAGMENT_SHADER_CONSTS] = Some(VkConstantRange {
+    if let Some(range) = &push_constants_ranges[1] {
+      remapped_push_constant_ranges[1] = Some(VkConstantRange {
         offset: offset,
-        size: range.size
+        size: range.size,
+        shader_stage: vk::ShaderStageFlags::FRAGMENT,
       });
     }
 
     let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
       descriptor_set_layouts: descriptor_set_layouts,
-      push_constant_ranges: push_constants_ranges,
+      push_constant_ranges: remapped_push_constant_ranges,
     });
 
     let viewport_info = vk::PipelineViewportStateCreateInfo {
@@ -735,7 +672,7 @@ impl VkPipeline {
       pipeline,
       device: device.clone(),
       layout,
-      is_graphics: true,
+      pipeline_type: VkPipelineType::Graphics,
       uses_bindless_texture_set
     }
   }
@@ -778,11 +715,12 @@ impl VkPipeline {
       };
     }
 
-    let mut push_constants_ranges = <[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]>::default();
+    let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
     if let Some(push_constants_range) = &shader.push_constants_range {
-      push_constants_ranges[COMPUTE_SHADER_CONSTS] = Some(VkConstantRange {
+      push_constants_ranges[0] = Some(VkConstantRange {
         offset: push_constants_range.offset,
-        size: push_constants_range.size
+        size: push_constants_range.size,
+        shader_stage: vk::ShaderStageFlags::COMPUTE
       });
     }
 
@@ -807,8 +745,182 @@ impl VkPipeline {
       pipeline,
       device: device.clone(),
       layout,
-      is_graphics: false,
+      pipeline_type: VkPipelineType::Compute,
       uses_bindless_texture_set: shader.uses_bindless_texture_set
+    }
+  }
+
+  pub fn new_ray_tracing(device: &Arc<RawVkDevice>, info: &RayTracingPipelineInfo<VkBackend>, shared: &VkShared) -> Self {
+    let rt = device.rt.as_ref().unwrap();
+    let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
+
+    let mut stages = SmallVec::<[vk::PipelineShaderStageCreateInfo; 4]>::new();
+    let mut groups = SmallVec::<[vk::RayTracingShaderGroupCreateInfoKHR; 4]>::new();
+    let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5] = Default::default();
+    let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
+
+    let raygen_info = vk::PipelineShaderStageCreateInfo {
+      flags: vk::PipelineShaderStageCreateFlags::empty(),
+      stage: vk::ShaderStageFlags::RAYGEN_KHR,
+      module: info.ray_gen_shader.get_shader_module(),
+      p_name: entry_point.as_ptr() as *const c_char,
+      ..Default::default()
+    };
+    let raygen_group_info = vk::RayTracingShaderGroupCreateInfoKHR {
+      ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
+      general_shader: stages.len() as u32,
+      closest_hit_shader: vk::SHADER_UNUSED_KHR,
+      any_hit_shader: vk::SHADER_UNUSED_KHR,
+      intersection_shader: vk::SHADER_UNUSED_KHR,
+      p_shader_group_capture_replay_handle: std::ptr::null(),
+      ..Default::default()
+    };
+    stages.push(raygen_info);
+    groups.push(raygen_group_info);
+    for (index, shader_set) in &info.ray_gen_shader.descriptor_set_bindings {
+      let set = &mut descriptor_set_layouts[*index as usize];
+      for binding in shader_set {
+        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+        if let Some(existing_binding) = existing_binding_option {
+          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          existing_binding.shader_stage |= binding.shader_stage;
+        } else {
+          set.bindings.push(binding.clone());
+        }
+      }
+    }
+    if let Some(push_constants_range) = &info.ray_gen_shader.push_constants_range {
+      push_constants_ranges[0] = Some(VkConstantRange {
+        offset: push_constants_range.offset,
+        size: push_constants_range.size,
+        shader_stage: vk::ShaderStageFlags::RAYGEN_KHR,
+      });
+    }
+
+    let closest_hit_info = vk::PipelineShaderStageCreateInfo {
+      flags: vk::PipelineShaderStageCreateFlags::empty(),
+      stage: vk::ShaderStageFlags::RAYGEN_KHR,
+      module: info.closest_hit_shader.get_shader_module(),
+      p_name: entry_point.as_ptr() as *const c_char,
+      ..Default::default()
+    };
+    let raygen_group_group_info = vk::RayTracingShaderGroupCreateInfoKHR {
+      ty: vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+      general_shader: vk::SHADER_UNUSED_KHR,
+      closest_hit_shader: stages.len() as u32,
+      any_hit_shader: vk::SHADER_UNUSED_KHR,
+      intersection_shader: vk::SHADER_UNUSED_KHR,
+      p_shader_group_capture_replay_handle: std::ptr::null(),
+      ..Default::default()
+    };
+    stages.push(closest_hit_info);
+    groups.push(raygen_group_group_info);
+    for (index, shader_set) in &info.closest_hit_shader.descriptor_set_bindings {
+      let set = &mut descriptor_set_layouts[*index as usize];
+      for binding in shader_set {
+        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+        if let Some(existing_binding) = existing_binding_option {
+          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          existing_binding.shader_stage |= binding.shader_stage;
+        } else {
+          set.bindings.push(binding.clone());
+        }
+      }
+    }
+    if let Some(push_constants_range) = &info.closest_hit_shader.push_constants_range {
+      push_constants_ranges[1] = Some(VkConstantRange {
+        offset: push_constants_range.offset,
+        size: push_constants_range.size,
+        shader_stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+      });
+    }
+
+    let miss_info = vk::PipelineShaderStageCreateInfo {
+      flags: vk::PipelineShaderStageCreateFlags::empty(),
+      stage: vk::ShaderStageFlags::RAYGEN_KHR,
+      module: info.miss_shader.get_shader_module(),
+      p_name: entry_point.as_ptr() as *const c_char,
+      ..Default::default()
+    };
+    let miss_group_info = vk::RayTracingShaderGroupCreateInfoKHR {
+      ty: vk::RayTracingShaderGroupTypeKHR::GENERAL,
+      general_shader: stages.len() as u32,
+      closest_hit_shader: vk::SHADER_UNUSED_KHR,
+      any_hit_shader: vk::SHADER_UNUSED_KHR,
+      intersection_shader: vk::SHADER_UNUSED_KHR,
+      p_shader_group_capture_replay_handle: std::ptr::null(),
+      ..Default::default()
+    };
+    stages.push(miss_info);
+    groups.push(miss_group_info);
+    for (index, shader_set) in &info.miss_shader.descriptor_set_bindings {
+      let set = &mut descriptor_set_layouts[*index as usize];
+      for binding in shader_set {
+        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+        if let Some(existing_binding) = existing_binding_option {
+          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          existing_binding.shader_stage |= binding.shader_stage;
+        } else {
+          set.bindings.push(binding.clone());
+        }
+      }
+    }
+    if let Some(push_constants_range) = &info.miss_shader.push_constants_range {
+      push_constants_ranges[1] = Some(VkConstantRange {
+        offset: push_constants_range.offset,
+        size: push_constants_range.size,
+        shader_stage: vk::ShaderStageFlags::MISS_KHR,
+      });
+    }
+
+    let mut offset = 0u32;
+    let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
+    if let Some(range) = &push_constants_ranges[0] {
+      remapped_push_constant_ranges[0] = Some(VkConstantRange {
+        offset: offset,
+        size: range.size,
+        shader_stage: vk::ShaderStageFlags::VERTEX,
+      });
+      offset += range.size;
+    }
+    if let Some(range) = &push_constants_ranges[1] {
+      remapped_push_constant_ranges[1] = Some(VkConstantRange {
+        offset: offset,
+        size: range.size,
+        shader_stage: vk::ShaderStageFlags::FRAGMENT,
+      });
+    }
+
+    let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
+      descriptor_set_layouts: descriptor_set_layouts,
+      push_constant_ranges: remapped_push_constant_ranges,
+    });
+
+    let info = vk::RayTracingPipelineCreateInfoKHR {
+        flags: vk::PipelineCreateFlags::empty(),
+        stage_count: stages.len() as u32,
+        p_stages: stages.as_ptr(),
+        group_count: groups.len() as u32,
+        p_groups: groups.as_ptr(),
+        max_pipeline_ray_recursion_depth: 2,
+        p_library_info: std::ptr::null(),
+        p_library_interface: std::ptr::null(),
+        p_dynamic_state: std::ptr::null(),
+        layout: *layout.get_handle(),
+        base_pipeline_handle: vk::Pipeline::null(),
+        base_pipeline_index: 0,
+        ..Default::default()
+    };
+    let pipeline = unsafe {
+      rt.rt_pipelines.create_ray_tracing_pipelines(vk::DeferredOperationKHR::null(), vk::PipelineCache::null(), &[info], None)
+    }.unwrap().pop().unwrap();
+
+    Self {
+      pipeline: pipeline,
+      layout,
+      device: device.clone(),
+      pipeline_type: VkPipelineType::RayTracing,
+      uses_bindless_texture_set: true,
     }
   }
 
@@ -822,9 +934,8 @@ impl VkPipeline {
     &self.layout
   }
 
-  #[inline]
-  pub(crate) fn is_graphics(&self) -> bool {
-    self.is_graphics
+  pub(crate) fn pipeline_type(&self) -> VkPipelineType {
+    self.pipeline_type
   }
 
   #[inline]
@@ -846,11 +957,11 @@ pub(crate) struct VkPipelineLayout {
   device: Arc<RawVkDevice>,
   layout: vk::PipelineLayout,
   descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 5],
-  push_constant_ranges: [Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]
+  push_constant_ranges: [Option<VkConstantRange>; 3]
 }
 
 impl VkPipelineLayout {
-  pub fn new(descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 5], push_constant_ranges: &[Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1], device: &Arc<RawVkDevice>) -> Self {
+  pub fn new(descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 5], push_constant_ranges: &[Option<VkConstantRange>; 3], device: &Arc<RawVkDevice>) -> Self {
     let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts.iter()
       .filter(|descriptor_set_layout| descriptor_set_layout.is_some())
       .map(|descriptor_set_layout| {
@@ -864,12 +975,7 @@ impl VkPipelineLayout {
       .map(|(index, r)| {
         let r = r.as_ref().unwrap();
         vk::PushConstantRange {
-          stage_flags: match index {
-            VERTEX_SHADER_CONSTS => vk::ShaderStageFlags::VERTEX,
-            FRAGMENT_SHADER_CONSTS => vk::ShaderStageFlags::FRAGMENT,
-            COMPUTE_SHADER_CONSTS => vk::ShaderStageFlags::COMPUTE,
-            _ => unreachable!()
-          },
+          stage_flags: r.shader_stage,
           offset: r.offset,
           size: r.size,
     }}).collect();
@@ -905,9 +1011,12 @@ impl VkPipelineLayout {
 
   pub(crate) fn push_constant_range(&self, shader_type: ShaderType) -> Option<&VkConstantRange> {
     match shader_type {
-      ShaderType::VertexShader => self.push_constant_ranges[VERTEX_SHADER_CONSTS].as_ref(),
-      ShaderType::FragmentShader => self.push_constant_ranges[FRAGMENT_SHADER_CONSTS].as_ref(),
-      ShaderType::ComputeShader => self.push_constant_ranges[COMPUTE_SHADER_CONSTS].as_ref(),
+      ShaderType::VertexShader => self.push_constant_ranges[0].as_ref(),
+      ShaderType::FragmentShader => self.push_constant_ranges[1].as_ref(),
+      ShaderType::ComputeShader => self.push_constant_ranges[0].as_ref(),
+      ShaderType::RayGen => self.push_constant_ranges[0].as_ref(),
+      ShaderType::RayClosestHit => self.push_constant_ranges[1].as_ref(),
+      ShaderType::RayMiss => self.push_constant_ranges[2].as_ref(),
       _ => None
     }
   }

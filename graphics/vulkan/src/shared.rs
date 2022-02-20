@@ -8,7 +8,7 @@ use crate::{VkFenceInner, VkRenderPass, VkSemaphore};
 use crate::buffer::BufferAllocator;
 use std::hash::Hash;
 use std::sync::{RwLock, Arc};
-use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkConstantRange, COMPUTE_SHADER_CONSTS};
+use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkConstantRange};
 use crate::pipeline::VkPipelineLayout;
 use std::collections::HashMap;
 use crate::raw::{RawVkDevice, VkFeatures};
@@ -40,7 +40,7 @@ pub(crate) struct VkDescriptorSetLayoutKey {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub(crate) struct VkPipelineLayoutKey {
   pub(crate) descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5],
-  pub(crate) push_constant_ranges: [Option<VkConstantRange>; COMPUTE_SHADER_CONSTS + 1]
+  pub(crate) push_constant_ranges: [Option<VkConstantRange>; 3]
 }
 
 impl VkShared {

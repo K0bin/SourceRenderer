@@ -19,7 +19,7 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
-use crate::pipeline::shader_type_to_vk;
+use crate::pipeline::{shader_type_to_vk, VkPipelineType};
 use crate::query::{VkQueryAllocator, VkQueryRange};
 use crate::rt::VkAccelerationStructure;
 use crate::{raw::RawVkDevice, texture::VkSampler};
@@ -340,7 +340,7 @@ impl VkCommandBuffer {
   pub(crate) fn draw(&mut self, vertices: u32, offset: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
-    debug_assert!(self.pipeline.as_ref().unwrap().is_graphics());
+    debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     unsafe {
       self.device.cmd_draw(self.buffer, vertices, 1, offset, 0);
@@ -350,7 +350,7 @@ impl VkCommandBuffer {
   pub(crate) fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
-    debug_assert!(self.pipeline.as_ref().unwrap().is_graphics());
+    debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     unsafe {
       self.device.cmd_draw_indexed(self.buffer, indices, instances, first_index, vertex_offset, first_instance);
@@ -473,7 +473,18 @@ impl VkCommandBuffer {
         None => {
           if !descriptor_sets.is_empty() {
             unsafe {
-              self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
+              self.device.cmd_bind_descriptor_sets(
+                self.buffer,
+                match pipeline.pipeline_type() {
+                  VkPipelineType::Graphics => vk::PipelineBindPoint::GRAPHICS,
+                  VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
+                  VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
+                },
+                *pipeline_layout.get_handle(),
+                base_index,
+                &descriptor_sets,
+                &offsets
+              );
               offsets.clear();
               descriptor_sets.clear();
             }
@@ -490,7 +501,18 @@ impl VkCommandBuffer {
     }
     if !descriptor_sets.is_empty() && base_index + descriptor_sets.len() as u32 != 4 {
       unsafe {
-        self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
+        self.device.cmd_bind_descriptor_sets(
+          self.buffer,
+          match pipeline.pipeline_type() {
+              VkPipelineType::Graphics => vk::PipelineBindPoint::GRAPHICS,
+              VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
+              VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
+          },
+          *pipeline_layout.get_handle(),
+          base_index,
+          &descriptor_sets,
+          &offsets
+        );
       }
       offsets.clear();
       descriptor_sets.clear();
@@ -504,7 +526,18 @@ impl VkCommandBuffer {
 
     if !descriptor_sets.is_empty() {
       unsafe {
-        self.device.cmd_bind_descriptor_sets(self.buffer, if pipeline.is_graphics() { vk::PipelineBindPoint::GRAPHICS } else { vk::PipelineBindPoint::COMPUTE }, *pipeline_layout.get_handle(), base_index, &descriptor_sets, &offsets);
+        self.device.cmd_bind_descriptor_sets(
+          self.buffer,
+          match pipeline.pipeline_type() {
+              VkPipelineType::Graphics => vk::PipelineBindPoint::GRAPHICS,
+              VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
+              VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
+          },
+          *pipeline_layout.get_handle(),
+          base_index,
+          &descriptor_sets,
+          &offsets
+        );
       }
     }
   }
@@ -597,7 +630,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.render_pass.is_none());
     debug_assert!(self.pipeline.is_some());
-    debug_assert!(!self.pipeline.as_ref().unwrap().is_graphics());
+    debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Compute);
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
     unsafe {
       self.device.cmd_dispatch(self.buffer, group_count_x, group_count_y, group_count_z);

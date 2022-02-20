@@ -52,11 +52,8 @@ pub(crate) struct VkDescriptorSetEntryInfo {
 pub(crate) struct VkConstantRange {
   pub(crate) offset: u32,
   pub(crate) size: u32,
+  pub(crate) shader_stage: vk::ShaderStageFlags,
 }
-
-pub(crate) const VERTEX_SHADER_CONSTS: usize = 0;
-pub(crate) const FRAGMENT_SHADER_CONSTS: usize = 1;
-pub(crate) const COMPUTE_SHADER_CONSTS: usize = 2;
 
 pub(crate) struct VkDescriptorSetLayout {
   pub device: Arc<RawVkDevice>,
