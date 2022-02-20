@@ -5,12 +5,12 @@ use sourcerenderer_core::{graphics::{Backend, CommandBuffer, AccelerationStructu
 
 use crate::renderer::renderer_scene::RendererScene;
 
-pub struct RayTracingPass<B: Backend> {
+pub struct AccelerationStructureUpdatePass<B: Backend> {
   device: Arc<B::Device>,
   acceleration_structure: Arc<B::AccelerationStructure>
 }
 
-impl<B: Backend> RayTracingPass<B> {
+impl<B: Backend> AccelerationStructureUpdatePass<B> {
   pub fn new(device: &Arc<B::Device>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let instances_buffer = init_cmd_buffer.upload_top_level_instances(&[]);
     let info = TopLevelAccelerationStructureInfo {
@@ -34,7 +34,7 @@ impl<B: Backend> RayTracingPass<B> {
     }
   }
 
-  pub fn update(
+  pub fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
     scene: &RendererScene<B>,
