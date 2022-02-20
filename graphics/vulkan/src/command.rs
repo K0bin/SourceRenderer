@@ -952,6 +952,8 @@ impl VkCommandBuffer {
     debug_assert!(self.render_pass.is_none());
     self.trackers.track_buffer(scratch_buffer);
     self.trackers.track_buffer(target_buffer);
+    self.trackers.track_buffer(info.vertex_buffer);
+    self.trackers.track_buffer(info.index_buffer);
     let acceleration_structure = Arc::new(VkAccelerationStructure::new_bottom_level(&self.device, info, size, target_buffer, scratch_buffer, self.get_handle()));
     self.trackers.track_acceleration_structure(&acceleration_structure);
     acceleration_structure
@@ -969,6 +971,10 @@ impl VkCommandBuffer {
     debug_assert!(self.render_pass.is_none());
     self.trackers.track_buffer(scratch_buffer);
     self.trackers.track_buffer(target_buffer);
+    self.trackers.track_buffer(info.instances_buffer);
+    for instance in info.instances {
+      self.trackers.track_acceleration_structure(instance.acceleration_structure);
+    }
     let acceleration_structure = Arc::new(VkAccelerationStructure::new_top_level(&self.device, info, size, target_buffer, scratch_buffer, self.get_handle()));
     self.trackers.track_acceleration_structure(&acceleration_structure);
     acceleration_structure
