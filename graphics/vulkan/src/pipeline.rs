@@ -782,6 +782,8 @@ impl VkPipeline {
     let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5] = Default::default();
     let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
 
+    let mut uses_bindless_texture_set = false;
+
     {
       let shader = info.ray_gen_shader;
       let stage_info = vk::PipelineShaderStageCreateInfo {
@@ -821,6 +823,7 @@ impl VkPipeline {
           shader_stage: vk::ShaderStageFlags::RAYGEN_KHR,
         });
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     for shader in info.closest_hit_shaders.iter() {
@@ -861,6 +864,7 @@ impl VkPipeline {
           shader_stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
         });
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     for shader in info.miss_shaders.iter() {
@@ -901,6 +905,7 @@ impl VkPipeline {
           shader_stage: vk::ShaderStageFlags::MISS_KHR,
         });
       }
+      uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     }
 
     let mut offset = 0u32;
@@ -1022,7 +1027,7 @@ impl VkPipeline {
       layout,
       device: device.clone(),
       pipeline_type: VkPipelineType::RayTracing,
-      uses_bindless_texture_set: true,
+      uses_bindless_texture_set,
       sbt: Some(VkShaderBindingTables {
         buffer: sbt,
         raygen_region,
