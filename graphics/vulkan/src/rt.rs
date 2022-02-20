@@ -8,7 +8,7 @@ use crate::{raw::RawVkDevice, buffer::VkBufferSlice};
 
 use ash::vk::{self, AccelerationStructureReferenceKHR, DeviceOrHostAddressConstKHR};
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{BottomLevelAccelerationStructureInfo, AccelerationStructure, AccelerationStructureSizes, TopLevelAccelerationStructureInfo, FrontFace, BufferUsage, AccelerationStructureInstance};
+use sourcerenderer_core::graphics::{BottomLevelAccelerationStructureInfo, AccelerationStructure, AccelerationStructureSizes, TopLevelAccelerationStructureInfo, FrontFace, BufferUsage, AccelerationStructureInstance, IndexFormat};
 
 pub struct VkAccelerationStructure {
   device: Arc<RawVkDevice>,
@@ -205,7 +205,7 @@ impl VkAccelerationStructure {
       geometries.push(&geometry as *const vk::AccelerationStructureGeometryKHR);
       range_infos.push(vk::AccelerationStructureBuildRangeInfoKHR {
         primitive_count: part.primitive_count,
-        primitive_offset: part.primitive_start,
+        primitive_offset: part.primitive_start * 3 * if info.index_format == IndexFormat::U32 { std::mem::size_of::<u32>() as u32 } else { std::mem::size_of::<u16>() as u32 },
         first_vertex: 0,
         transform_offset: 0,
       });
@@ -296,7 +296,7 @@ impl VkAccelerationStructure {
       geometries.push(&geometry as *const vk::AccelerationStructureGeometryKHR);
       range_infos.push(vk::AccelerationStructureBuildRangeInfoKHR {
         primitive_count: part.primitive_count,
-        primitive_offset: part.primitive_start,
+        primitive_offset: part.primitive_start * 3 * if info.index_format == IndexFormat::U32 { std::mem::size_of::<u32>() as u32 } else { std::mem::size_of::<u16>() as u32 },
         first_vertex: 0,
         transform_offset: 0,
       });
