@@ -782,7 +782,8 @@ impl VkPipeline {
     let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5] = Default::default();
     let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
 
-    for shader in info.ray_gen_shaders.iter() {
+    {
+      let shader = info.ray_gen_shader;
       let stage_info = vk::PipelineShaderStageCreateInfo {
         flags: vk::PipelineShaderStageCreateFlags::empty(),
         stage: vk::ShaderStageFlags::RAYGEN_KHR,
@@ -962,20 +963,18 @@ impl VkPipeline {
     let mut dst_offset = 0u64;
     let raygen_region = vk::StridedDeviceAddressRegionKHR {
       device_address: sbt.va().unwrap(),
-      stride: handle_stride as u64,
-      size: align_up_64(info.ray_gen_shaders.len() as u64 * handle_stride as u64, group_alignment),
+      stride: align_up_64(handle_stride as u64, group_alignment),
+      size: align_up_64(handle_stride as u64, group_alignment),
     };
-    for _ in 0..info.ray_gen_shaders.len() {
-      unsafe {
-        std::ptr::copy_nonoverlapping(
-          (handles.as_ptr() as *const u8).add(src_offset as usize),
-          map.add(dst_offset as usize),
-          handle_size as usize
-        );
-      }
-      src_offset += handle_size as u64;
-      dst_offset += handle_stride as u64;
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        (handles.as_ptr() as *const u8).add(src_offset as usize),
+        map.add(dst_offset as usize),
+        handle_size as usize
+      );
     }
+    src_offset += handle_size as u64;
+    dst_offset += handle_stride as u64;
 
     dst_offset =  align_up_64(dst_offset as u64, group_alignment);
     let closest_hit_region = vk::StridedDeviceAddressRegionKHR {

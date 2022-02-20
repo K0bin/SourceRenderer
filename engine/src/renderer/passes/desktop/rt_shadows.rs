@@ -72,7 +72,7 @@ impl<B: Backend> RTShadowPass<B> {
     };
 
     let pipeline = device.create_raytracing_pipeline(&RayTracingPipelineInfo::<B> {
-      ray_gen_shaders: &[&ray_gen_shader],
+      ray_gen_shader: &ray_gen_shader,
       closest_hit_shaders: &[&closest_hit_shader],
       miss_shaders: &[&miss_shader],
     });
