@@ -23,7 +23,7 @@ use sourcerenderer_core::graphics::ColorComponents;
 use sourcerenderer_core::graphics::PrimitiveType;
 
 use crate::bindless::{BINDLESS_TEXTURE_COUNT, BINDLESS_TEXTURE_SET_INDEX};
-use crate::buffer::{align_up_32, VkBufferSlice};
+use crate::buffer::{align_up_32, VkBufferSlice, align_up_64, align_down_32};
 use crate::raw::RawVkDevice;
 use crate::format::format_to_vk;
 use crate::VkBackend;
@@ -947,39 +947,76 @@ impl VkPipeline {
     // SBT
     let handle_size = rt.rt_pipeline_properties.shader_group_handle_size;
     let handle_alignment = rt.rt_pipeline_properties.shader_group_handle_alignment;
-    let handle_stride = align_up_32(align_up_32(handle_size, handle_alignment), rt.rt_pipeline_properties.shader_group_base_alignment);
+    let handle_stride = align_up_32(handle_size, handle_alignment);
+    let group_alignment = rt.rt_pipeline_properties.shader_group_base_alignment as u64;
 
-    println!("got {} groups, handle size: {}, handle stride: {}, buffer size: {}", groups.len(), handle_size, handle_stride, handle_stride as usize * groups.len());
-
-    let handles = unsafe { rt.rt_pipelines.get_ray_tracing_shader_group_handles(pipeline, 0, groups.len() as u32, handle_stride as usize * groups.len()) }.unwrap();
+    let handles = unsafe { rt.rt_pipelines.get_ray_tracing_shader_group_handles(pipeline, 0, groups.len() as u32, handle_size as usize * groups.len()) }.unwrap();
 
     let sbt = shared.get_buffer_allocator().get_slice(&BufferInfo {
-      size: handles.len(),
+      size: align_up_32(handle_stride, group_alignment as u32) as usize * groups.len(),
       usage: BufferUsage::SHADER_BINDING_TABLE,
     }, MemoryUsage::CpuToGpu, None);
-    unsafe {
-      let map = sbt.map_unsafe(false).unwrap();
-      std::ptr::copy_nonoverlapping(handles.as_ptr() as *const u8, map, handles.len());
-      sbt.unmap_unsafe(true);
-    }
+    let map = unsafe { sbt.map_unsafe(false).unwrap() };
 
+    let mut src_offset = 0u64;
+    let mut dst_offset = 0u64;
     let raygen_region = vk::StridedDeviceAddressRegionKHR {
       device_address: sbt.va().unwrap(),
       stride: handle_stride as u64,
-      size: info.ray_gen_shaders.len() as u64 * handle_stride as u64,
+      size: align_up_64(info.ray_gen_shaders.len() as u64 * handle_stride as u64, group_alignment),
     };
+    for _ in 0..info.ray_gen_shaders.len() {
+      unsafe {
+        std::ptr::copy_nonoverlapping(
+          (handles.as_ptr() as *const u8).add(src_offset as usize),
+          map.add(dst_offset as usize),
+          handle_size as usize
+        );
+      }
+      src_offset += handle_size as u64;
+      dst_offset += handle_stride as u64;
+    }
 
+    dst_offset =  align_up_64(dst_offset as u64, group_alignment);
     let closest_hit_region = vk::StridedDeviceAddressRegionKHR {
-      device_address: sbt.va().unwrap() + raygen_region.size,
+      device_address: sbt.va().unwrap() + dst_offset,
       stride: handle_stride as u64,
-      size: info.closest_hit_shaders.len() as u64 * handle_stride as u64,
+      size: align_up_64(info.closest_hit_shaders.len() as u64 * handle_stride as u64, group_alignment),
     };
+    for _ in 0..info.closest_hit_shaders.len() {
+      unsafe {
+        std::ptr::copy_nonoverlapping(
+          (handles.as_ptr() as *const u8).add(src_offset as usize),
+          map.add(dst_offset as usize),
+          handle_size as usize
+        );
+      }
+      src_offset += handle_size as u64;
+      dst_offset += handle_stride as u64;
+    }
 
+    dst_offset =  align_up_64(dst_offset as u64, group_alignment);
     let miss_region = vk::StridedDeviceAddressRegionKHR {
-      device_address: sbt.va().unwrap() + raygen_region.size + closest_hit_region.size,
+      device_address: sbt.va().unwrap() + dst_offset,
       stride: handle_stride as u64,
-      size: info.miss_shaders.len() as u64 * handle_stride as u64,
+      size: align_up_64(info.miss_shaders.len() as u64 * handle_stride as u64, group_alignment),
     };
+    for _ in 0..info.miss_shaders.len() {
+      unsafe {
+        std::ptr::copy_nonoverlapping(
+          (handles.as_ptr() as *const u8).add(src_offset as usize),
+          map.add(dst_offset as usize),
+          handle_size as usize
+        );
+      }
+      src_offset += handle_size as u64;
+      dst_offset += handle_stride as u64;
+    }
+
+    unsafe {
+      sbt.unmap_unsafe(true);
+    }
+
 
     Self {
       pipeline: pipeline,
