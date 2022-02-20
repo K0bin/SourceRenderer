@@ -153,7 +153,8 @@ pub struct RendererModel<B: Backend> {
 
 struct RendererModelInner<B: Backend> {
   mesh: Arc<RendererMesh<B>>,
-  materials: Box<[Arc<RendererMaterial<B>>]>
+  materials: Box<[Arc<RendererMaterial<B>>]>,
+  acceleration_structure: Option<Arc<B::AccelerationStructure>>,
 }
 
 impl<B: Backend> RendererModel<B> {
@@ -161,7 +162,8 @@ impl<B: Backend> RendererModel<B> {
     Self {
       inner: AtomicRefCell::new(RendererModelInner::<B> {
         mesh: mesh.clone(),
-        materials
+        materials,
+        acceleration_structure: None
       })
     }
   }
@@ -172,6 +174,15 @@ impl<B: Backend> RendererModel<B> {
 
   pub fn materials(&self) -> AtomicRef<Box<[Arc<RendererMaterial<B>>]>> {
     AtomicRef::map(self.inner.borrow(), |inner| &inner.materials)
+  }
+
+  pub fn acceleration_structure(&self) -> AtomicRef<Option<Arc<B::AccelerationStructure>>> {
+    AtomicRef::map(self.inner.borrow(), |inner| &inner.acceleration_structure)
+  }
+
+  pub fn set_acceleration_structure(&self, acceleration_structure: &Arc<B::AccelerationStructure>) {
+    let mut inner = self.inner.borrow_mut();
+    inner.acceleration_structure = Some(acceleration_structure.clone());
   }
 }
 

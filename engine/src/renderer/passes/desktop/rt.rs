@@ -42,51 +42,62 @@ impl<B: Backend> RayTracingPass<B> {
   ) {
     let static_drawables = scene.static_drawables();
 
+    let mut created_blas = false;
     let bl_acceleration_structures: Vec<Arc<B::AccelerationStructure>> = static_drawables
       .iter()
       .map(|drawable| {
-      let mesh = drawable.model.mesh();
-      let parts: Vec<AccelerationStructureMeshRange> = mesh.parts.iter().map(|p| {
-        debug_assert_eq!(p.start % 3, 0);
-        debug_assert_eq!(p.count % 3, 0);
-        AccelerationStructureMeshRange {
-          primitive_start: p.start / 3,
-          primitive_count: p.count / 3
-        }
-      }).collect();
+        let blas = drawable.model.acceleration_structure().clone();
+        blas.unwrap_or_else(|| {
+          let blas = {
+            let mesh = drawable.model.mesh();
+            let parts: Vec<AccelerationStructureMeshRange> = mesh.parts.iter().map(|p| {
+              debug_assert_eq!(p.start % 3, 0);
+              debug_assert_eq!(p.count % 3, 0);
+              AccelerationStructureMeshRange {
+                primitive_start: p.start / 3,
+                primitive_count: p.count / 3
+              }
+            }).collect();
 
-      debug_assert_ne!(mesh.vertex_count, 0);
-      let info = BottomLevelAccelerationStructureInfo {
-        vertex_buffer: &mesh.vertices,
-        index_buffer: mesh.indices.as_ref().unwrap(),
-        index_format: IndexFormat::U32,
-        vertex_position_offset: 0,
-        vertex_format: Format::RGB32Float,
-        vertex_stride: 44,
-        mesh_parts: &parts,
-        opaque: true,
-        max_vertex: mesh.vertex_count - 1
-      };
-      let sizes = self.device.get_bottom_level_acceleration_structure_size(&info);
+            debug_assert_ne!(mesh.vertex_count, 0);
+            let info = BottomLevelAccelerationStructureInfo {
+              vertex_buffer: &mesh.vertices,
+              index_buffer: mesh.indices.as_ref().unwrap(),
+              index_format: IndexFormat::U32,
+              vertex_position_offset: 0,
+              vertex_format: Format::RGB32Float,
+              vertex_stride: 44,
+              mesh_parts: &parts,
+              opaque: true,
+              max_vertex: mesh.vertex_count - 1
+            };
+            let sizes = self.device.get_bottom_level_acceleration_structure_size(&info);
 
-      let scratch_buffer = cmd_buffer.create_temporary_buffer(&BufferInfo {
-        size: sizes.build_scratch_size as usize,
-        usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-      }, MemoryUsage::GpuOnly);
-      let buffer = self.device.create_buffer(&BufferInfo {
-        size: sizes.size as usize,
-        usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-      }, MemoryUsage::GpuOnly, Some("AccelerationStructure"));
-      cmd_buffer.create_bottom_level_acceleration_structure(&info, sizes.size as usize, &buffer, &scratch_buffer)
+            let scratch_buffer = cmd_buffer.create_temporary_buffer(&BufferInfo {
+              size: sizes.build_scratch_size as usize,
+              usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
+            }, MemoryUsage::GpuOnly);
+            let buffer = self.device.create_buffer(&BufferInfo {
+              size: sizes.size as usize,
+              usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
+            }, MemoryUsage::GpuOnly, Some("AccelerationStructure"));
+          cmd_buffer.create_bottom_level_acceleration_structure(&info, sizes.size as usize, &buffer, &scratch_buffer)
+        };
+        drawable.model.set_acceleration_structure(&blas);
+        created_blas = true;
+        blas
+      })
     }).collect();
 
-    cmd_buffer.barrier(&[Barrier::GlobalBarrier {
-      old_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
-      new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
-      old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE | BarrierAccess::SHADER_WRITE,
-      new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::SHADER_READ,
-    }]);
-    cmd_buffer.flush_barriers();
+    if (created_blas) {
+      cmd_buffer.barrier(&[Barrier::GlobalBarrier {
+        old_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+        new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+        old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE | BarrierAccess::SHADER_WRITE,
+        new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::SHADER_READ,
+      }]);
+      cmd_buffer.flush_barriers();
+    }
 
     let mut instances = Vec::<AccelerationStructureInstance<B>>::with_capacity(static_drawables.len());
     for (bl, drawable) in bl_acceleration_structures.iter().zip(static_drawables.iter()) {
