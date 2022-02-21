@@ -89,12 +89,12 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
       })
     }).collect();
 
-    if (created_blas) {
+    if created_blas {
       cmd_buffer.barrier(&[Barrier::GlobalBarrier {
         old_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
         new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
         old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE | BarrierAccess::SHADER_WRITE,
-        new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::SHADER_READ,
+        new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::ACCELERATION_STRUCTURE_WRITE | BarrierAccess::SHADER_READ,
       }]);
       cmd_buffer.flush_barriers();
     }

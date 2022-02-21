@@ -26,6 +26,7 @@ layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 3) uniform Material {
   uint albedoTextureIndex;
 } material;
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 7) uniform sampler albedoSampler;
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 8) uniform sampler2D shadows;
 layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
 
 struct Cluster {
@@ -131,6 +132,8 @@ void main(void) {
   lighting += 0.3;
   lighting += texture(lightmap, in_lightmap_uv).xyz;
   lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
+  lighting *= texture(shadows, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
+  lighting += 0.3;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
@@ -162,6 +165,8 @@ void main(void) {
     }
   }
   out_color = vec4(lighting * albedo, 1);
+  //out_color = vec4(in_worldPosition, 1.0);
+  //out_color = vec4(texture(shadows, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr, 1.0);
 }
 
 vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness) {

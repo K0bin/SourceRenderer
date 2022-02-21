@@ -12,7 +12,7 @@ pub struct RTShadowPass<B: Backend> {
 impl<B: Backend> RTShadowPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let texture = device.create_texture(&TextureInfo {
-      format: Format::R16,
+      format: Format::RGBA8,
       width: resolution.x,
       height: resolution.y,
       depth: 1,
@@ -115,7 +115,7 @@ impl<B: Backend> RTShadowPass<B> {
     cmd_buffer.finish_binding();
     cmd_buffer.trace_ray(info.width, info.height, 1);
     cmd_buffer.barrier(&[Barrier::TextureBarrier {
-      old_sync: BarrierSync::RAY_TRACING,
+      old_sync: BarrierSync::RAY_TRACING | BarrierSync::COMPUTE_SHADER,
       new_sync: BarrierSync::FRAGMENT_SHADER,
       old_layout: TextureLayout::Storage,
       new_layout: TextureLayout::Sampled,
