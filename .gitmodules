@@ -2,5 +2,5 @@
 	path = vendor/vk-mem-rs
 	url = git@github.com:K0bin/vk-mem-rs.git
 [submodule "vendor/spirv_cross"]
-	path = platform/sdl/vendor/spirv_cross
+	path = vendor/spirv_cross
 	url = git@github.com:K0bin/spirv_cross.git
