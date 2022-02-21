@@ -18,8 +18,8 @@ fn main() {
     .for_each(|file| {
       println!("cargo:rerun-if-changed={}", file.path().as_path().to_str().unwrap());
 
-      if file.path().file_stem().and_then(|ext| ext.to_str()).map(|s| s.ends_with("comp")).unwrap_or(false) {
-        // Cant support compute
+      if file.path().file_stem().and_then(|ext| ext.to_str()).map(|s| !s.contains(".web.")).unwrap_or(false) {
+        // Limit it to shaders with .web in the name
         return;
       }
 

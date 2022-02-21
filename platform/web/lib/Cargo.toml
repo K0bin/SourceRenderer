@@ -12,34 +12,26 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-js-sys = "0.3.55"
-wasm-bindgen = { version = "0.2.78", features = ["serde-serialize"] }
+js-sys = "0.3.56"
+wasm-bindgen = { version = "0.2.79", features = ["serde-serialize"] }
 sourcerenderer_core = { path = "../../../core" }
 sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["threading", "web"] }
 sourcerenderer_webgl = { path = "../../../graphics/webgl" }
-serde = "1.0.130"
-serde_derive = "1.0.130"
+serde = "1.0.134"
+serde_derive = "1.0.134"
 rayon = "1.5.1"
 lazy_static = "1.4.0"
-crossbeam-channel = "0.5.1"
+crossbeam-channel = "0.5.2"
 async-channel = "1.6.1"
-wasm-bindgen-futures = "0.4.28"
+wasm-bindgen-futures = "0.4.29"
 log = "0.4.14"
 console_log = "0.2.0"
-wasm-tracing-allocator = "0.1.0"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
 # code size when deploying.
 console_error_panic_hook = { version = "0.1.7", optional = true }
-
-# `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
-# compared to the default allocator's ~10K. It is slower than the default
-# allocator, however.
-#
-# Unfortunately, `wee_alloc` requires nightly Rust when targeting wasm for now.
-wee_alloc = { version = "0.4.5", optional = true }
 
 [dependencies.web-sys]
 version = "0.3.55"

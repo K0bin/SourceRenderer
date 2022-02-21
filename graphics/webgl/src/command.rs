@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}, rt::WebGLAccelerationStructureStub};
 
 use bitflags::bitflags;
 
@@ -16,7 +16,7 @@ bitflags! {
 pub struct WebGLCommandBuffer {
   sender: GLThreadSender,
   pipeline: Option<Arc<WebGLGraphicsPipeline>>,
-  commands: VecDeque<Box<dyn FnOnce(&mut crate::thread::WebGLThreadDevice) + Send>>,
+  commands: VecDeque<Box<dyn FnMut(&mut crate::thread::WebGLThreadDevice) + Send>>,
   inline_buffer: Arc<WebGLBuffer>,
   handles: Arc<WebGLHandleAllocator>,
   used_buffers: Vec<Arc<WebGLBuffer>>,
@@ -96,7 +96,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
           }
         }));
       },
-      PipelineBinding::Compute(_) => panic!("WebGL does not support compute shaders")
+      PipelineBinding::Compute(_) => panic!("WebGL does not support compute shaders"),
+      PipelineBinding::RayTracing(_) => panic!("WebGL does not support ray tracing")
     }
   }
 
@@ -105,8 +106,12 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     self.dirty |= WebGLCommandBufferDirty::VAO;
   }
 
-  fn set_index_buffer(&mut self, index_buffer: &Arc<WebGLBuffer>) {
+  fn set_index_buffer(&mut self, index_buffer: &Arc<WebGLBuffer>, index_format: IndexFormat) {
     // TODO: maybe track dirty and do before draw
+
+    if index_format != IndexFormat::U32 {
+      unimplemented!("16 bit indices are not implemented");
+    }
 
     let handle = index_buffer.handle();
     self.commands.push_back(Box::new(move |device| {
@@ -389,6 +394,34 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
 
   fn copy_query_results_to_buffer(&mut self, _query_range: &Arc<()>, _buffer: &Arc<WebGLBuffer>, _start_index: u32, _count: u32) {
     todo!()
+  }
+
+  fn create_temporary_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<WebGLBuffer> {
+    panic!("WebGL does not support bindless")
+  }
+
+  fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<WebGLSampler>) {
+    panic!("WebGL does not support separate samplers")
+  }
+
+  fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<WebGLAccelerationStructureStub>) {
+    panic!("WebGL does not support ray tracing")
+  }
+
+  fn create_bottom_level_acceleration_structure(&mut self, info: &sourcerenderer_core::graphics::BottomLevelAccelerationStructureInfo<WebGLBackend>, size: usize, target_buffer: &Arc<WebGLBuffer>, scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
+    panic!("WebGL does not support ray tracing")
+  }
+
+  fn upload_top_level_instances(&mut self, instances: &[sourcerenderer_core::graphics::AccelerationStructureInstance<WebGLBackend>]) -> Arc<WebGLBuffer> {
+    panic!("WebGL does not support ray tracing")
+  }
+
+  fn create_top_level_acceleration_structure(&mut self, info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<WebGLBackend>, size: usize, target_buffer: &Arc<WebGLBuffer>, scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
+    panic!("WebGL does not support ray tracing")
+  }
+
+  fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
+    panic!("WebGL does not support ray tracing")
   }
 }
 

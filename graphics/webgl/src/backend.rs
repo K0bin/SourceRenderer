@@ -1,5 +1,5 @@
 use sourcerenderer_core::graphics::Backend;
-use crate::{WebGLAdapter, WebGLBuffer, WebGLCommandBuffer, WebGLCommandSubmission, WebGLComputePipeline, WebGLDevice, WebGLFence, WebGLGraphicsPipeline, WebGLInstance, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView}};
+use crate::{WebGLAdapter, WebGLBuffer, WebGLCommandBuffer, WebGLCommandSubmission, WebGLComputePipeline, WebGLDevice, WebGLFence, WebGLGraphicsPipeline, WebGLInstance, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView}, rt::WebGLAccelerationStructureStub};
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum WebGLBackend {}
@@ -26,4 +26,6 @@ impl Backend for WebGLBackend {
   type TextureDepthStencilView = WebGLDepthStencilView;
   type Queue = WebGLQueue;
   type QueryRange = ();
+  type AccelerationStructure = WebGLAccelerationStructureStub;
+  type RayTracingPipeline = ();
 }
