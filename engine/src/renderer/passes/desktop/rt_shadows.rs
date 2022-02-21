@@ -1,6 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureUnorderedAccessViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureUnorderedAccessView, Texture, Barrier, BarrierSync, TextureLayout, BarrierAccess, TextureShaderResourceViewInfo, AddressMode, Filter, SamplerInfo}, Vec2UI, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureUnorderedAccessViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureUnorderedAccessView, Texture, Barrier, BarrierSync, TextureLayout, BarrierAccess, TextureShaderResourceViewInfo, AddressMode, Filter, SamplerInfo, BufferUsage}, Vec2UI, Platform, platform::io::IO};
 
 pub struct RTShadowPass<B: Backend> {
   texture_view: Arc<B::TextureUnorderedAccessView>,
@@ -95,7 +95,7 @@ impl<B: Backend> RTShadowPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, depth: &Arc<B::TextureShaderResourceView>) {
+  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, frame: u64, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, depth: &Arc<B::TextureShaderResourceView>) {
     cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&self.pipeline));
     cmd_buffer.bind_acceleration_structure(BindingFrequency::PerFrame, 0, acceleration_structure);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerFrame, 1, &self.texture_view);
@@ -111,6 +111,18 @@ impl<B: Backend> RTShadowPass<B> {
       new_access: BarrierAccess::SHADER_WRITE | BarrierAccess::ACCELERATION_STRUCTURE_READ,
       texture: self.texture_view.texture(),
     }]);
+
+    #[derive(Clone)]
+    struct FrameData {
+      frame: u32,
+      directional_light_count: u32,
+    }
+    let frame_data = cmd_buffer.upload_dynamic_data(&[FrameData {
+      frame: frame as u32,
+      directional_light_count: 0
+    }], BufferUsage::CONSTANT);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &frame_data);
+
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();
     cmd_buffer.trace_ray(info.width, info.height, 1);
