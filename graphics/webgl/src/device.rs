@@ -1,8 +1,9 @@
 use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}};
 use log::warn;
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, WHOLE_BUFFER};
-use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue}};
+use wasm_bindgen::JsCast;
+use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, DedicatedWorkerGlobalScope};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue}, messages::{WebGLCreateBufferCommand, send_message}};
 
 pub struct WebGLHandleAllocator {
   next_buffer_id: AtomicU64,
@@ -71,13 +72,14 @@ impl WebGLDevice {
 impl Device<WebGLBackend> for WebGLDevice {
   fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, _name: Option<&str>) -> Arc<WebGLBuffer> {
     let id = self.handles.new_buffer_handle();
-    Arc::new(WebGLBuffer::new(id, info, memory_usage, &self.thread_queue))
+
+    Arc::new(WebGLBuffer::new(id, info, memory_usage))
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: sourcerenderer_core::graphics::MemoryUsage, usage: sourcerenderer_core::graphics::BufferUsage) -> Arc<WebGLBuffer> where T: 'static + Send + Sync + Sized + Clone {
     let data = data.clone();
     let id = self.handles.new_buffer_handle();
-    let buffer = Arc::new(WebGLBuffer::new(id, &BufferInfo { size: std::mem::size_of_val(data), usage }, memory_usage, &self.thread_queue));
+    let buffer = Arc::new(WebGLBuffer::new(id, &BufferInfo { size: std::mem::size_of_val(data), usage }, memory_usage));
     unsafe {
       let ptr = buffer.map_unsafe(true).unwrap();
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());

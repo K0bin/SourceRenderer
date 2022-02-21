@@ -1,28 +1,25 @@
 use std::{cell::UnsafeCell, sync::Mutex};
 
+use js_sys::{ArrayBuffer, WebAssembly::Memory, SharedArrayBuffer, Uint8Array};
 use log::trace;
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
+use wasm_bindgen::JsCast;
 use web_sys::{WebGlRenderingContext, WebGl2RenderingContext};
 
-use crate::{GLThreadSender, thread::BufferHandle};
+use crate::{GLThreadSender, thread::BufferHandle, messages::{send_message, WebGLCreateBufferCommand, WebGLDestroyBufferCommand, WebGLSetBufferDataCommand}};
 
 pub struct WebGLBuffer {
   handle: crate::thread::BufferHandle,
-  sender: GLThreadSender,
   info: BufferInfo,
   mapped_data: Mutex<Option<UnsafeCell<Box<[u8]>>>>
 }
 
 impl WebGLBuffer {
-  pub fn new(handle: BufferHandle, info: &BufferInfo, memory_usage: MemoryUsage, sender: &GLThreadSender) -> Self {
-    let c_info = info.clone();
-    sender.send(Box::new(move |device| {
-      device.create_buffer(handle, &c_info, memory_usage, None);
-    }));
+  pub fn new(handle: BufferHandle, info: &BufferInfo, _memory_usage: MemoryUsage) -> Self {
+    send_message(&WebGLCreateBufferCommand::new(handle as u32, info.size as u32));
 
     Self {
-      sender: sender.clone(),
       handle,
       info: info.clone(),
       mapped_data: Mutex::new(None)
@@ -36,8 +33,7 @@ impl WebGLBuffer {
 
 impl Drop for WebGLBuffer {
   fn drop(&mut self) {
-    let handle = self.handle;
-    self.sender.send(Box::new(move |device| device.remove_buffer(handle)));
+    send_message(&WebGLDestroyBufferCommand::new(self.handle as u32));
   }
 }
 
@@ -62,20 +58,26 @@ impl Buffer for WebGLBuffer {
     let mut mapped_data = self.mapped_data.lock().unwrap();
     let data = mapped_data.take().unwrap();
     let handle = self.handle;
+    let data = &*(data.get());
+    let array_buffer = ArrayBuffer::new(data.len() as u32);
+    let u8_array = Uint8Array::new(&array_buffer);
+    u8_array.copy_from(&data[..]);
+    send_message(&WebGLSetBufferDataCommand::new(handle as u32, array_buffer.dyn_ref().unwrap()));
+
+    /*
     let usage = self.info.usage;
     let expected_size = self.info.size;
     self.sender.send(Box::new(move |device| {
       let buffer = device.buffer(handle).clone();
       let target = buffer_usage_to_target(usage);
       device.bind_buffer(target, Some(buffer.gl_buffer()));
-      let data = &*(data.get());
       device.buffer_data_with_u8_array(target, &data[..], buffer.gl_usage());
       #[cfg(debug_assertions)]
       {
         let size = device.get_buffer_parameter(target, WebGl2RenderingContext::BUFFER_SIZE).as_f64().unwrap() as u32;
         assert_eq!(size, expected_size as u32);
       }
-    }));
+    }));*/
   }
 
   fn length(&self) -> usize {

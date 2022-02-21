@@ -11,6 +11,7 @@ async function start() {
 
   let rustWasm = await wasm_bindgen('libsourcerenderer.wasm');
   let module = (wasm_bindgen as any).__wbindgen_wasm_module;
+  initWebGLServer(canvas);
   populateWorkerPool(6, module, rustWasm.memory);
 
   const pool = new WorkerPool(6);

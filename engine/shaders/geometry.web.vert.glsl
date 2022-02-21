@@ -33,5 +33,7 @@ void main(void) {
   out_lightmap_uv = in_lightmap_uv;
   out_normal = normalize((model * vec4(in_normal, 0)).xyz);
 
-  gl_Position = vec4(out_worldPosition, 1.0);
+  gl_Position = mvp * pos;
+  //gl_Position.y = -gl_Position.y;
+  //gl_Position = pos;
 }

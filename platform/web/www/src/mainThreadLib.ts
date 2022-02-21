@@ -1,4 +1,4 @@
-let webglServer = new WebGLServer();
+let webglServer: WebGLServer | null = null;
 let workerPool = new Array<PooledWorker>();
 
 class PooledWorker {
@@ -40,6 +40,10 @@ function startThread(functionPointer: number) {
   worker.worker.postMessage(new WorkerWorkCommand(functionPointer));
 }
 
+function initWebGLServer(canvas: HTMLCanvasElement) {
+  webglServer = new WebGLServer(canvas);
+}
+
 function onWorkerMessage(event: MessageEvent) {
   if (!event.data) {
     console.error("Broken worker message");
@@ -50,4 +54,6 @@ function onWorkerMessage(event: MessageEvent) {
   if (event.data.commandType === ReturnWorkerCommand.COMMAND_TYPE) {
     workerPool[event.data.workerId].isBusy = false;
   }
+
+  webglServer?.tryExecute(event.data);
 }

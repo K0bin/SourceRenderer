@@ -11,6 +11,7 @@ mod raw_context;
 mod thread;
 mod spinlock;
 mod rt;
+mod messages;
 
 pub use backend::WebGLBackend;
 pub use instance::{WebGLInstance, WebGLAdapter};

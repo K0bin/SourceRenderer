@@ -16,5 +16,8 @@ layout(location = 0) out vec4 out_color;
 layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 0) uniform sampler2D albedo;
 
 void main(void) {
-  out_color = texture(albedo, in_uv);
+  //out_color = vec4(texture(albedo, in_uv).xyz + vec3(1.0, 0.0, 0.2), 1.0);
+  out_color = vec4(in_uv, 0.0, 1.0);
+  //out_color = vec4(in_worldPosition, 1.0);
+  //out_color = vec4(in_normal / 2.0 - 0.5, 1.0);
 }

@@ -14,7 +14,6 @@ bitflags! {
 }
 
 pub struct WebGLCommandBuffer {
-  sender: GLThreadSender,
   pipeline: Option<Arc<WebGLGraphicsPipeline>>,
   commands: VecDeque<Box<dyn FnMut(&mut crate::thread::WebGLThreadDevice) + Send>>,
   inline_buffer: Arc<WebGLBuffer>,
@@ -28,15 +27,14 @@ pub struct WebGLCommandBuffer {
 }
 
 impl WebGLCommandBuffer {
-  pub fn new(sender: &GLThreadSender, handle_allocator: &Arc<WebGLHandleAllocator>) -> Self {
+  pub fn new(handle_allocator: &Arc<WebGLHandleAllocator>) -> Self {
     let inline_buffer = Arc::new(WebGLBuffer::new(handle_allocator.new_buffer_handle(), &BufferInfo {
       size: 256,
       usage: BufferUsage::CONSTANT,
-    }, MemoryUsage::CpuToGpu, sender));
+    }, MemoryUsage::CpuToGpu));
     WebGLCommandBuffer {
       pipeline: None,
       commands: VecDeque::new(),
-      sender: sender.clone(),
       handles: handle_allocator.clone(),
       inline_buffer,
       used_buffers: Vec::new(),
@@ -155,7 +153,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Arc<WebGLBuffer>
   where T: 'static + Send + Sync + Sized + Clone {
     let buffer_handle = self.handles.new_buffer_handle();
-    let buffer = Arc::new(WebGLBuffer::new(buffer_handle, &BufferInfo { size: std::mem::size_of_val(data), usage }, MemoryUsage::CpuToGpu, &self.sender));
+    let buffer = Arc::new(WebGLBuffer::new(buffer_handle, &BufferInfo { size: std::mem::size_of_val(data), usage }, MemoryUsage::CpuToGpu));
     unsafe {
       let mapped = buffer.map_unsafe(false).unwrap();
       std::ptr::copy(data.as_ptr() as *const u8, mapped, std::mem::size_of_val(data));
@@ -422,7 +420,7 @@ impl WebGLQueue {
 
 impl Queue<WebGLBackend> for WebGLQueue {
   fn create_command_buffer(&self) -> WebGLCommandBuffer {
-    WebGLCommandBuffer::new(&self.sender, &self.handle_allocator)
+    WebGLCommandBuffer::new(&self.handle_allocator)
   }
 
   fn create_inner_command_buffer(&self, _inheritance: &()) -> WebGLCommandBuffer {

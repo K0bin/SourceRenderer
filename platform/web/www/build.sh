@@ -12,4 +12,3 @@ tsc
 tsc -p tsconfig.worker.json
 cp index.html dist/
 cp manifest.json dist/
-cp src/worker.js dist/
