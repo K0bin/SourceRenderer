@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex, MutexGuard};
-use ash::vk;
+use ash::{vk, prelude::VkResult};
 use crate::{raw::{RawVkDevice, VkFeatures}, texture::VkSampler, rt::VkAccelerationStructure};
 use sourcerenderer_core::graphics::{BindingFrequency};
 use std::collections::HashMap;
@@ -183,22 +183,22 @@ impl VkDescriptorPool {
     // TODO figure out proper numbers
     let pool_sizes = [vk::DescriptorPoolSize {
       ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-      descriptor_count: 16384
+      descriptor_count: 256
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-      descriptor_count: 4096
+      descriptor_count: 512
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::UNIFORM_BUFFER,
-      descriptor_count: 4096
+      descriptor_count: 256
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::STORAGE_BUFFER,
-      descriptor_count: 4096
+      descriptor_count: 256
     }, vk::DescriptorPoolSize {
       ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
-      descriptor_count: 512
+      descriptor_count: 256
     }];
     let info = vk::DescriptorPoolCreateInfo {
-      max_sets: 4096,
+      max_sets: 128,
       p_pool_sizes: pool_sizes.as_ptr(),
       pool_size_count: pool_sizes.len() as u32,
       flags: if !is_transient { vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET } else { vk::DescriptorPoolCreateFlags::empty() },
@@ -229,7 +229,7 @@ impl VkDescriptorPool {
     }
   }
 
-  pub fn new_set(self: &Arc<Self>, layout: &Arc<VkDescriptorSetLayout>, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 16]) -> VkDescriptorSet {
+  pub fn new_set(self: &Arc<Self>, layout: &Arc<VkDescriptorSetLayout>, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 16]) -> VkResult<VkDescriptorSet> {
     VkDescriptorSet::new(self, &self.device, layout, self.is_transient, dynamic_buffer_offsets, bindings)
   }
 }
@@ -270,7 +270,7 @@ pub(crate) struct VkDescriptorSet {
 }
 
 impl VkDescriptorSet {
-  fn new(pool: &Arc<VkDescriptorPool>, device: &Arc<RawVkDevice>, layout: &Arc<VkDescriptorSetLayout>, is_transient: bool, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 16]) -> Self {
+  fn new(pool: &Arc<VkDescriptorPool>, device: &Arc<RawVkDevice>, layout: &Arc<VkDescriptorSetLayout>, is_transient: bool, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 16]) -> VkResult<Self> {
     let pool_guard = pool.get_handle();
     let set_create_info = vk::DescriptorSetAllocateInfo {
       descriptor_pool: *pool_guard,
@@ -280,7 +280,7 @@ impl VkDescriptorSet {
     };
     let set = unsafe {
       device.allocate_descriptor_sets(&set_create_info)
-    }.unwrap().pop().unwrap();
+    }?.pop().unwrap();
 
     match Option::<vk::DescriptorUpdateTemplate>::None {
       None => {
@@ -440,7 +440,7 @@ impl VkDescriptorSet {
       }
     }
 
-    Self {
+    Ok(Self {
       descriptor_set: set,
       pool: pool.clone(),
       layout: layout.clone(),
@@ -448,7 +448,7 @@ impl VkDescriptorSet {
       is_using_dynamic_buffer_offsets: dynamic_buffer_offsets,
       bindings: bindings.clone(),
       device: device.clone(),
-    }
+    })
   }
 
   #[inline]
@@ -514,8 +514,8 @@ struct VkDescriptorSetCacheEntry {
 }
 
 pub(crate) struct VkBindingManager {
-  transient_pool: Arc<VkDescriptorPool>,
-  permanent_pool: Arc<VkDescriptorPool>,
+  transient_pools: Vec<Arc<VkDescriptorPool>>,
+  permanent_pools: Vec<Arc<VkDescriptorPool>>,
   device: Arc<RawVkDevice>,
   current_sets: [Option<VkDescriptorSet>; 4],
   dirty: DirtyDescriptorSets,
@@ -531,8 +531,8 @@ impl VkBindingManager {
     let permanent_pool = Arc::new(VkDescriptorPool::new(device, false));
 
     Self {
-      transient_pool,
-      permanent_pool,
+      transient_pools: vec![transient_pool],
+      permanent_pools: vec![permanent_pool],
       device: device.clone(),
       current_sets: Default::default(),
       dirty: DirtyDescriptorSets::empty(),
@@ -547,8 +547,12 @@ impl VkBindingManager {
     self.dirty = DirtyDescriptorSets::empty();
     self.bindings = Default::default();
     self.transient_cache.clear();
-    self.transient_pool.reset();
-    self.permanent_pool.reset();
+    for pool in &mut self.transient_pools {
+      pool.reset();
+    }
+    for pool in &mut self.permanent_pools {
+      pool.reset();
+    }
   }
 
   pub(crate) fn bind(&mut self, frequency: BindingFrequency, slot: u32, binding: VkBoundResourceRef) {
@@ -624,22 +628,39 @@ impl VkBindingManager {
     }
 
     let cached_set = self.find_compatible_set(frame, layout, frequency, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
-
     let bindings = self.bindings.get(frequency as usize).unwrap();
-    let mut is_new = false;
-    let set = cached_set.unwrap_or_else(|| {
-      let pool = if frequency == BindingFrequency::Rarely { &self.permanent_pool } else { &self.transient_pool };
-      let new_set = Arc::new(VkDescriptorSet::new(pool, &self.device, layout, frequency != BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw, bindings));
-      is_new = true;
-      new_set
-    });
-    if is_new {
+
+    let set = if let Some(cached_set) = cached_set {
+      cached_set
+    } else {
+      let transient = frequency != BindingFrequency::Rarely;
+      let pools = if !transient { &mut self.permanent_pools } else { &mut self.transient_pools };
+      let mut new_set = Option::<VkDescriptorSet>::None;
+      'pools_iter: for pool in pools.iter() {
+        let set_res = VkDescriptorSet::new(pool, &self.device, layout, transient, frequency == BindingFrequency::PerDraw, bindings);
+        match set_res {
+          Ok(set) => {
+            new_set = Some(set);
+            break 'pools_iter;
+          },
+          Err(vk::Result::ERROR_OUT_OF_HOST_MEMORY) => panic!("Out of host memory."),
+          _ => {}
+        }
+      }
+      if new_set.is_none() {
+        let pool = Arc::new(VkDescriptorPool::new(&self.device, transient));
+        new_set = VkDescriptorSet::new(&pool, &self.device, layout, transient, frequency == BindingFrequency::PerDraw, bindings).ok();
+        pools.push(pool);
+      }
+      let new_set = Arc::new(new_set.unwrap());
+
       let cache = if frequency == BindingFrequency::Rarely { &mut self.permanent_cache } else { &mut self.transient_cache };
       cache.entry(layout.clone()).or_default().push(VkDescriptorSetCacheEntry {
-        set: set.clone(),
+        set: new_set.clone(),
         last_used_frame: frame
       });
-    }
+      new_set
+    };
     let mut set_binding = VkDescriptorSetBinding {
       set,
       dynamic_offsets: Default::default(),
