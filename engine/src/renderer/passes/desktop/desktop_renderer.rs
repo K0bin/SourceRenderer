@@ -95,7 +95,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.rt_shadows.execute(&mut cmd_buf, frame, self.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, self.prepass.depth_srv());
     self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, self.prepass.depth_dsv(), self.light_binning_pass.light_bitmask_buffer(), &late_latching_buffer, self.ssao.ssao_srv(), self.rt_shadows.shadows_srv(), self.clustering_pass.clusters_buffer());
     self.taa.execute(&mut cmd_buf, self.geometry.output_srv(), self.prepass.motion_srv());
-    self.sharpen.execute(&mut cmd_buf, self.taa.taa_srv());
+    self.sharpen.execute(&mut cmd_buf, self.taa.taa_uav());
 
     self.taa.swap_history_resources();
     self.ssao.swap_history_resources();

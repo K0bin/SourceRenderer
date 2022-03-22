@@ -130,7 +130,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
         old_access: BarrierAccess::empty(),
         new_access: BarrierAccess::SHADER_RESOURCE_READ,
         old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::Sampled,
+        new_layout: TextureLayout::Storage,
         texture: &taa_texture_b,
       }
     ]);
@@ -175,6 +175,15 @@ impl<B: GraphicsBackend> TAAPass<B> {
         old_layout: TextureLayout::Sampled,
         new_layout: TextureLayout::Storage,
         texture: self.taa_srv.texture(),
+      },
+      Barrier::TextureBarrier {
+        old_sync: BarrierSync::COMPUTE_SHADER,
+        new_sync: BarrierSync::COMPUTE_SHADER,
+        old_access: BarrierAccess::empty(),
+        new_access: BarrierAccess::SHADER_RESOURCE_READ,
+        old_layout: TextureLayout::Storage,
+        new_layout: TextureLayout::Sampled,
+        texture: self.taa_srv_b.texture(),
       }
     ]);
 
@@ -192,6 +201,10 @@ impl<B: GraphicsBackend> TAAPass<B> {
 
   pub fn taa_srv(&self) -> &Arc<B::TextureShaderResourceView> {
     &self.taa_srv
+  }
+
+  pub fn taa_uav(&self) -> &Arc<B::TextureUnorderedAccessView> {
+    &self.taa_uav
   }
 
   pub fn swap_history_resources(&mut self) {
