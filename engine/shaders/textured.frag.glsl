@@ -89,7 +89,11 @@ float schlickGGX(float nDotV, float roughness);
 float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float k);
 vec3 fresnelSchlick(float cosTheta, vec3 f0);
 
+vec2 unjitterTextureUv(vec2 uv, vec2 jitter);
+
 void main(void) {
+  vec2 uv = unjitterTextureUv(in_uv, jitterPoint * vec2(rtSize));
+
   vec2 tileSize = vec2(rtSize) / vec2(clusterCount.xy);
 
   float z = linearizeDepth(gl_FragCoord.z, zNear, zFar);
@@ -119,10 +123,10 @@ void main(void) {
   }
   */
 
-  float roughness = material.roughness_factor * texture(roughness_map, in_uv).r;
-  float metalness = material.metalness_factor * texture(metalness_map, in_uv).r;
-  //vec3 albedo = material.albedo_color.rgb * texture(albedo, in_uv).rgb;
-  vec3 albedo = material.albedo_color.rgb * texture(sampler2D(albedo_global[nonuniformEXT(material.albedoTextureIndex)], albedoSampler), in_uv).rgb;
+  float roughness = material.roughness_factor * texture(roughness_map, uv).r;
+  float metalness = material.metalness_factor * texture(metalness_map, uv).r;
+  //vec3 albedo = material.albedo_color.rgb * texture(albedo, uv).rgb;
+  vec3 albedo = material.albedo_color.rgb * texture(sampler2D(albedo_global[nonuniformEXT(material.albedoTextureIndex)], albedoSampler), uv).rgb;
 
   vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
   vec3 f0 = vec3(0.04);
@@ -167,6 +171,10 @@ void main(void) {
   out_color = vec4(lighting * albedo, 1);
   //out_color = vec4(in_worldPosition, 1.0);
   //out_color = vec4(texture(shadows, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr, 1.0);
+}
+
+vec2 unjitterTextureUv(vec2 uv, vec2 jitter) {
+  return uv - dFdx(uv) * jitter.x + dFdy(uv) * jitter.y;
 }
 
 vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness) {
