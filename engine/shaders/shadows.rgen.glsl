@@ -30,14 +30,7 @@ layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 4, std430) readonly buf
 };*/
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 5) uniform sampler2D depthMap;
 
-layout(location = 0) rayPayloadEXT float hitValue0;
-layout(location = 1) rayPayloadEXT float hitValue1;
-layout(location = 2) rayPayloadEXT float hitValue2;
-layout(location = 3) rayPayloadEXT float hitValue3;
-layout(location = 4) rayPayloadEXT float hitValue4;
-layout(location = 5) rayPayloadEXT float hitValue5;
-layout(location = 6) rayPayloadEXT float hitValue6;
-layout(location = 7) rayPayloadEXT float hitValue7;
+layout(location = 0) rayPayloadEXT float hitValue;
 
 vec3 worldSpacePosition(vec2 uv);
 
@@ -102,23 +95,8 @@ void main() {
 
   vec3 rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
   traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 0);
-  rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
-  traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 1);
-  rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
-  traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 2);
-  rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
-  traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 3);
-  rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
-  traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 4);
-  rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
-  traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 5);
-  rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
-  traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 6);
-  rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
-  traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 7);
 
-  float shadow = hitValue0 + hitValue1 + hitValue2 + hitValue3 + hitValue4 + hitValue5 + hitValue6 + hitValue7;
-  shadow /= 8;
+  float shadow = hitValue;
 
   imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(shadow, shadow, shadow, 1.0));
 }
