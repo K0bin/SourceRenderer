@@ -89,7 +89,7 @@ float schlickGGX(float nDotV, float roughness);
 float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float k);
 vec3 fresnelSchlick(float cosTheta, vec3 f0);
 
-vec2 unjitterTextureUv(vec2 uv, vec2 jitter);
+vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx);
 
 void main(void) {
   vec2 uv = unjitterTextureUv(in_uv, jitterPoint * vec2(rtSize));
@@ -173,8 +173,8 @@ void main(void) {
   //out_color = vec4(texture(shadows, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr, 1.0);
 }
 
-vec2 unjitterTextureUv(vec2 uv, vec2 jitter) {
-  return uv - dFdx(uv) * jitter.x + dFdy(uv) * jitter.y;
+vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx) {
+  return uv - dFdxFine(uv) * jitterPx.x - dFdyFine(uv) * jitterPx.y;
 }
 
 vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness) {
