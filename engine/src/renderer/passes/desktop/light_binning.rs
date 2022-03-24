@@ -6,7 +6,9 @@ use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 
-use crate::renderer::RendererScene;
+use crate::renderer::{RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}};
+
+use super::clustering::ClusteringPass;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -25,17 +27,13 @@ pub struct CullingPointLight {
 const LIGHT_CUTOFF: f32 = 0.05f32;
 
 pub struct LightBinningPass<B: GraphicsBackend> {
-  light_bitmask_buffer: Arc<B::Buffer>,
   light_binning_pipeline: Arc<B::ComputePipeline>
 }
 
 impl<B: GraphicsBackend> LightBinningPass<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>) -> Self {
-    let buffer = device.create_buffer(&BufferInfo {
-      size: std::mem::size_of::<u32>() * 16 * 9 * 24,
-      usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
-    }, MemoryUsage::GpuOnly, Some("LightBitmaskBuffer"));
+  pub const LIGHT_BINNING_BUFFER_NAME: &'static str = "binned_lights";
 
+  pub fn new<P: Platform>(device: &Arc<B::Device>, barriers: &mut RendererResources<B>) -> Self {
     let shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("light_binning.comp.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
@@ -44,13 +42,17 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     };
     let pipeline = device.create_compute_pipeline(&shader);
 
+    barriers.create_buffer(Self::LIGHT_BINNING_BUFFER_NAME, &BufferInfo {
+      size: std::mem::size_of::<u32>() * 16 * 9 * 24,
+      usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
+    }, MemoryUsage::GpuOnly, false);
+
     Self {
-      light_bitmask_buffer: buffer,
       light_binning_pipeline: pipeline
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B>, clusters_buffer: &Arc<B::Buffer>, camera_buffer: &Arc<B::Buffer>) {
+  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B>, camera_buffer: &Arc<B::Buffer>, barriers: &mut RendererResources<B>) {
     cmd_buffer.begin_label("Light binning");
     let cluster_count = Vector3::<u32>::new(16, 9, 24);
     let setup_info = SetupInfo {
@@ -72,28 +74,20 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
         old_access: BarrierAccess::STORAGE_WRITE,
         new_access: BarrierAccess::CONSTANT_READ | BarrierAccess::STORAGE_READ,
         buffer: camera_buffer,
-      },
-      Barrier::BufferBarrier {
-        old_sync: BarrierSync::FRAGMENT_SHADER,
-        new_sync: BarrierSync::COMPUTE_SHADER,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE,
-        buffer: &self.light_bitmask_buffer,
       }
     ]);
 
+    let light_bitmask_buffer = barriers.access_buffer(cmd_buffer, Self::LIGHT_BINNING_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE, HistoryResourceEntry::Current);
+    let clusters_buffer = barriers.access_buffer(cmd_buffer, ClusteringPass::<B>::CLUSTERS_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ, HistoryResourceEntry::Current);
+
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.light_binning_pipeline));
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, camera_buffer);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, clusters_buffer);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &*clusters_buffer);
     cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 2, &light_info_buffer);
     cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 3, &point_lights_buffer);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 4, &self.light_bitmask_buffer);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 4, &*light_bitmask_buffer);
     cmd_buffer.finish_binding();
     cmd_buffer.dispatch((cluster_count.x * cluster_count.y * cluster_count.z + 63) / 64, 1, 1);
     cmd_buffer.end_label();
-  }
-
-  pub fn light_bitmask_buffer(&self) -> &Arc<B::Buffer> {
-    &self.light_bitmask_buffer
   }
 }

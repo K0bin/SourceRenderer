@@ -9,6 +9,7 @@ mod renderer_internal;
 mod renderer_scene;
 mod light;
 mod render_path;
+mod renderer_resources;
 
 mod late_latch_camera;
 pub(crate) mod passes;

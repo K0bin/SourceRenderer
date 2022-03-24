@@ -25,12 +25,7 @@ impl<B: Backend> GeometryPass<B> {
       usage: TextureUsage::DEPTH_STENCIL,
     }, None);
 
-    let dsv = device.create_depth_stencil_view(&ds, &TextureDepthStencilViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
+    let dsv = device.create_depth_stencil_view(&ds, &TextureDepthStencilViewInfo::default());
 
     let shader_file_extension = if cfg!(target_family = "wasm") {
       "glsl"

@@ -3,9 +3,9 @@ use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, io::Read, path::Pat
 use bitset_core::BitSet;
 use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
+use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureDepthStencilViewInfo}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
-use crate::renderer::{drawable::View, renderer_scene::RendererScene};
+use crate::renderer::{drawable::View, renderer_scene::RendererScene, passes::desktop::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;
@@ -171,11 +171,24 @@ impl<B: Backend> OcclusionPass<B> {
     device: &B::Device,
     command_buffer: &mut B::CommandBuffer,
     frame: u64,
-    history_depth_buffer: &Arc<B::TextureDepthStencilView>,
+    resources: &RendererResources<B>,
     camera_history_buffer: &Arc<B::Buffer>,
     scene: &RendererScene<B>,
     view: &View
   ) {
+    let history_depth_buffer_ref = resources.access_dsv(
+      command_buffer,
+      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+      BarrierAccess::DEPTH_STENCIL_READ,
+      TextureLayout::DepthStencilRead,
+      false,
+      &TextureDepthStencilViewInfo::default(),
+      HistoryResourceEntry::Past
+    );
+
+    let history_depth_buffer = &*history_depth_buffer_ref;
+
     let query_buffer_index = (frame % self.query_buffers.len() as u64) as usize;
     let mut occlusion_query_map = std::mem::take(&mut self.occlusion_query_maps[query_buffer_index]);
     occlusion_query_map.clear();
@@ -203,7 +216,7 @@ impl<B: Backend> OcclusionPass<B> {
     let query_range = command_buffer.create_query_range(QUERY_COUNT as u32);
     command_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[RenderPassAttachment {
-        view: RenderPassAttachmentView::DepthStencil(history_depth_buffer),
+        view: RenderPassAttachmentView::DepthStencil(&*history_depth_buffer),
         load_op: LoadOp::Load,
         store_op: StoreOp::Store,
       }],

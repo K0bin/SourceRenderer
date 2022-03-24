@@ -1,8 +1,8 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, Barrier, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilView, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat}};
+use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDepthStencilViewInfo}};
 use std::sync::Arc;
-use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene};
+use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::desktop::{light_binning, ssao::SsaoPass, prepass::Prepass, rt_shadows::RTShadowPass}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::passes::desktop::taa::scaled_halton_point;
 use std::path::Path;
@@ -27,15 +27,15 @@ struct FrameData {
 }
 
 pub struct GeometryPass<B: GraphicsBackend> {
-  rtv: Arc<B::TextureRenderTargetView>,
-  srv: Arc<B::TextureShaderResourceView>,
   sampler: Arc<B::Sampler>,
   pipeline: Arc<B::GraphicsPipeline>
 }
 
 impl<B: GraphicsBackend> GeometryPass<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
-    let output = device.create_texture(&TextureInfo {
+  pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
+
+  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, barriers: &mut RendererResources<B>) -> Self {
+    let texture_info = TextureInfo {
       format: Format::RGBA8,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -43,21 +43,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC,
-    }, Some("GeometryPassOutput"));
-    let rtv = device.create_render_target_view(&output, &TextureRenderTargetViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
-    let srv = device.create_shader_resource_view(&output, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
-
+      usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+    };
+    barriers.create_texture(Self::GEOMETRY_PASS_TEXTURE_NAME, &texture_info, false);
 
     let sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,
@@ -72,8 +60,6 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       min_lod: 0.0,
       max_lod: 1.0,
     });
-
-
 
     let vertex_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("textured.vert.spv"))).unwrap();
@@ -176,8 +162,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
       attachments: vec![
         AttachmentInfo {
-          format: output.get_info().format,
-          samples: output.get_info().samples,
+          format: texture_info.format,
+          samples: texture_info.samples,
           load_op: LoadOp::DontCare,
           store_op: StoreOp::DontCare,
           stencil_load_op: LoadOp::DontCare,
@@ -209,21 +195,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       ]
     }, 0);
 
-    init_cmd_buffer.barrier(&[
-      Barrier::TextureBarrier {
-        old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::Sampled,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::SHADER_RESOURCE_READ,
-        old_sync: BarrierSync::empty(),
-        new_sync: BarrierSync::COMPUTE_SHADER,
-        texture: rtv.texture(),
-      }
-    ]);
-
     Self {
-      srv,
-      rtv,
       sampler,
       pipeline
     }
@@ -239,62 +211,77 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     lightmap: &Arc<RendererTexture<B>>,
     swapchain_transform: Matrix4,
     frame: u64,
-    prepass_depth: &Arc<B::TextureDepthStencilView>,
-    light_bitmask_buffer: &Arc<B::Buffer>,
-    camera_buffer: &Arc<B::Buffer>,
-    ssao: &Arc<B::TextureShaderResourceView>,
-    shadows: &Arc<B::TextureShaderResourceView>,
-    _clusters: &Arc<B::Buffer>
+    barriers: &RendererResources<B>,
+    camera_buffer: &Arc<B::Buffer>
   ) {
     cmd_buffer.begin_label("Geometry pass");
     let static_drawables = scene.static_drawables();
 
-    cmd_buffer.barrier(&[
-      Barrier::TextureBarrier {
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::RENDER_TARGET,
-        old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::RenderTarget,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
-        texture: self.rtv.texture(),
-      },
-      Barrier::TextureBarrier {
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
-        old_layout: TextureLayout::Sampled,
-        new_layout: TextureLayout::DepthStencilRead,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::DEPTH_STENCIL_READ,
-        texture: prepass_depth.texture(),
-      },
-      Barrier::TextureBarrier {
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
-        old_layout: TextureLayout::Storage,
-        new_layout: TextureLayout::Sampled,
-        old_access: BarrierAccess::STORAGE_WRITE,
-        new_access: BarrierAccess::SHADER_RESOURCE_READ,
-        texture: ssao.texture(),
-      },
-      Barrier::BufferBarrier {
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::FRAGMENT_SHADER,
-        old_access: BarrierAccess::STORAGE_WRITE,
-        new_access: BarrierAccess::STORAGE_READ,
-        buffer: light_bitmask_buffer,
-      },
-    ]);
+    let rtv_ref = barriers.access_rtv(
+      cmd_buffer,
+      Self::GEOMETRY_PASS_TEXTURE_NAME,
+      BarrierSync::RENDER_TARGET,
+      BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
+      TextureLayout::RenderTarget, true,
+      &TextureRenderTargetViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+    let rtv = &*rtv_ref;
+
+    let prepass_depth_ref = barriers.access_dsv(
+      cmd_buffer,
+      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+      BarrierAccess::DEPTH_STENCIL_READ,
+      TextureLayout::DepthStencilRead,
+      false,
+      &TextureDepthStencilViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+    let prepass_depth = &*prepass_depth_ref;
+
+    let ssao_ref = barriers.access_srv(
+      cmd_buffer,
+      SsaoPass::<B>::SSAO_TEXTURE_NAME,
+      BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
+      BarrierAccess::SHADER_RESOURCE_READ,
+      TextureLayout::Sampled,
+      false,
+      &TextureShaderResourceViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+    let ssao = &*ssao_ref;
+
+    let light_bitmask_buffer_ref = barriers.access_buffer(
+      cmd_buffer,
+      light_binning::LightBinningPass::<B>::LIGHT_BINNING_BUFFER_NAME,
+      BarrierSync::FRAGMENT_SHADER,
+      BarrierAccess::STORAGE_READ,
+      HistoryResourceEntry::Current
+    );
+    let light_bitmask_buffer = &*light_bitmask_buffer_ref;
+
+    let shadows_ref = barriers.access_srv(
+      cmd_buffer,
+      RTShadowPass::<B>::SHADOWS_TEXTURE_NAME,
+      BarrierSync::FRAGMENT_SHADER,
+      BarrierAccess::SHADER_RESOURCE_READ,
+      TextureLayout::Sampled,
+      false,
+      &TextureShaderResourceViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+    let shadows = &*shadows_ref;
 
     cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
-          view: RenderPassAttachmentView::RenderTarget(&self.rtv),
+          view: RenderPassAttachmentView::RenderTarget(&rtv),
           load_op: LoadOp::Clear,
           store_op: StoreOp::Store,
         },
         RenderPassAttachment {
-          view: RenderPassAttachmentView::DepthStencil(prepass_depth),
+          view: RenderPassAttachmentView::DepthStencil(&prepass_depth),
           load_op: LoadOp::Load,
           store_op: StoreOp::Store
         }
@@ -316,7 +303,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       ]
     }, RenderpassRecordingMode::CommandBuffers);
 
-    let rtv_info = self.rtv.texture().get_info();
+    let rtv_info = rtv.texture().get_info();
     let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
     let near = view.near_plane;
     let far = view.far_plane;
@@ -375,10 +362,10 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       //command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 7, clusters);
       command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer);
-      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, light_bitmask_buffer);
-      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, ssao, &self.sampler);
+      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, &light_bitmask_buffer);
+      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, &ssao, &self.sampler);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer);
-      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 8,  shadows, &self.sampler);
+      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
       command_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
 
       let lightmap_ref = &lightmap.view;
@@ -480,9 +467,5 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     cmd_buffer.execute_inner(inner_cmd_buffers);
     cmd_buffer.end_render_pass();
     cmd_buffer.end_label();
-  }
-
-  pub fn output_srv(&self) -> &Arc<B::TextureShaderResourceView> {
-    &self.srv
   }
 }

@@ -36,7 +36,7 @@ impl<P: Platform> Engine<P> {
   pub fn initialize_global() {}
 
   pub fn run(platform: &P) -> Self {
-    let instance = platform.create_graphics(false).expect("Failed to initialize graphics");
+    let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
     let input = Arc::new(Input::new());

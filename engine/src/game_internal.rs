@@ -41,7 +41,7 @@ impl GameInternal {
     //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
     //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
-    //let mut level = c_asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
+    //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
     //let mut level = World::new(legion::WorldOptions::default());
 

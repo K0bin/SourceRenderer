@@ -1,6 +1,7 @@
-use sourcerenderer_core::graphics::{Barrier, OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat};
+use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
+use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
 use crate::renderer::{RendererScene, drawable::View, passes::desktop::taa::scaled_halton_point};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
@@ -28,19 +29,15 @@ struct FrameData {
 }
 
 pub struct Prepass<B: GraphicsBackend> {
-  depth_buffer: Arc<B::TextureDepthStencilView>,
-  depth_buffer_b: Arc<B::TextureDepthStencilView>,
-  depth_srv: Arc<B::TextureShaderResourceView>,
-  depth_srv_b: Arc<B::TextureShaderResourceView>,
-  motion: Arc<B::TextureRenderTargetView>,
-  motion_srv: Arc<B::TextureShaderResourceView>,
-  normals: Arc<B::TextureRenderTargetView>,
-  normals_srv: Arc<B::TextureShaderResourceView>,
   pipeline: Arc<B::GraphicsPipeline>
 }
 
 impl<B: GraphicsBackend> Prepass<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
+  pub const DEPTH_TEXTURE_NAME: &'static str = "PrepassDepth";
+  pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
+  pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
+
+  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
     let depth_info = TextureInfo {
       format: Format::D24S8,
       width: swapchain.width(),
@@ -51,26 +48,9 @@ impl<B: GraphicsBackend> Prepass<B> {
       samples: SampleCount::Samples1,
       usage: TextureUsage::DEPTH_STENCIL | TextureUsage::SAMPLED,
     };
-    let depth_buffer = device.create_texture(&depth_info, Some("PrepassDepth"));
-    let depth_buffer_b = device.create_texture(&depth_info, Some("PrepassDepthB"));
-    let dsv_info = TextureDepthStencilViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    };
-    let dsv = device.create_depth_stencil_view(&depth_buffer, &dsv_info);
-    let dsv_b = device.create_depth_stencil_view(&depth_buffer_b, &dsv_info);
-    let depth_srv_info = TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    };
-    let depth_srv = device.create_shader_resource_view(&depth_buffer, &depth_srv_info);
-    let depth_srv_b = device.create_shader_resource_view(&depth_buffer_b, &depth_srv_info);
+    resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_info, true);
 
-    let motion = device.create_texture(&TextureInfo {
+    resources.create_texture(Self::MOTION_TEXTURE_NAME, &TextureInfo {
       format: Format::RG32Float,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -79,21 +59,9 @@ impl<B: GraphicsBackend> Prepass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
-    }, Some("Motion"));
-    let motion_view = device.create_render_target_view(&motion, &TextureRenderTargetViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
-    let motion_srv = device.create_shader_resource_view(&motion, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
+    }, true);
 
-    let normals = device.create_texture(&TextureInfo {
+    resources.create_texture(Self::NORMALS_TEXTURE_NAME, &TextureInfo {
       format: Format::RGBA32Float,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -102,20 +70,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
-    }, Some("Normals"));
-    let normals_view = device.create_render_target_view(&normals, &TextureRenderTargetViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
-    let normals_srv = device.create_shader_resource_view(&normals, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
-
+    }, false);
 
     let vertex_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
@@ -239,25 +194,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       ],
     }, 0);
 
-    init_cmd_buffer.barrier(&[Barrier::TextureBarrier {
-      old_sync: BarrierSync::empty(),
-      new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
-      old_layout: TextureLayout::Undefined,
-      new_layout: TextureLayout::DepthStencilRead,
-      old_access: BarrierAccess::empty(),
-      new_access: BarrierAccess::DEPTH_STENCIL_READ,
-      texture: &depth_buffer_b,
-    }]);
-
     Self {
-      depth_buffer: dsv,
-      depth_buffer_b: dsv_b,
-      motion: motion_view,
-      motion_srv,
-      depth_srv,
-      depth_srv_b,
-      normals: normals_view,
-      normals_srv,
       pipeline
     }
   }
@@ -271,55 +208,59 @@ impl<B: GraphicsBackend> Prepass<B> {
     swapchain_transform: Matrix4,
     frame: u64,
     camera_buffer: &Arc<B::Buffer>,
-    camera_history_buffer: &Arc<B::Buffer>
+    camera_history_buffer: &Arc<B::Buffer>,
+    resources: &RendererResources<B>
   ) {
     cmd_buffer.begin_label("Depth prepass");
     let static_drawables = scene.static_drawables();
 
-    cmd_buffer.barrier(&[
-      Barrier::TextureBarrier {
-        old_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
-        new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
-        old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::DepthStencilReadWrite,
-        texture: self.depth_buffer.texture()
-      },
-      Barrier::TextureBarrier {
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::RENDER_TARGET,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::empty(),
-        old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::RenderTarget,
-        texture: self.motion.texture(),
-      },
-      Barrier::TextureBarrier {
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::RENDER_TARGET,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
-        old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::RenderTarget,
-        texture: self.normals.texture(),
-      },
-    ]);
+    let depth_buffer = resources.access_dsv(
+      cmd_buffer,
+      Self::DEPTH_TEXTURE_NAME,
+      BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+      BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+      TextureLayout::DepthStencilReadWrite,
+      true,
+      &TextureDepthStencilViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    let motion = resources.access_rtv(
+      cmd_buffer,
+      Self::MOTION_TEXTURE_NAME,
+      BarrierSync::RENDER_TARGET,
+      BarrierAccess::RENDER_TARGET_WRITE,
+      TextureLayout::RenderTarget,
+      true,
+      &TextureRenderTargetViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    let normals = resources.access_rtv(
+      cmd_buffer,
+      Self::NORMALS_TEXTURE_NAME,
+      BarrierSync::RENDER_TARGET,
+      BarrierAccess::RENDER_TARGET_WRITE,
+      TextureLayout::RenderTarget,
+      true,
+      &TextureRenderTargetViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
 
     cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
-          view: RenderPassAttachmentView::RenderTarget(&self.motion),
+          view: RenderPassAttachmentView::RenderTarget(&*motion),
           load_op: LoadOp::Clear,
           store_op: StoreOp::Store,
         },
         RenderPassAttachment {
-          view: RenderPassAttachmentView::RenderTarget(&self.normals),
+          view: RenderPassAttachmentView::RenderTarget(&*normals),
           load_op: LoadOp::Clear,
           store_op: StoreOp::Store
         },
         RenderPassAttachment {
-          view: RenderPassAttachmentView::DepthStencil(&self.depth_buffer),
+          view: RenderPassAttachmentView::DepthStencil(&*depth_buffer),
           load_op: LoadOp::Clear,
           store_op: StoreOp::Store
         }
@@ -345,7 +286,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       ],
     }, RenderpassRecordingMode::CommandBuffers);
 
-    let info = self.motion.texture().get_info();
+    let info = motion.texture().get_info();
     let per_frame = FrameData {
       swapchain_transform,
       halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32)
@@ -405,30 +346,5 @@ impl<B: GraphicsBackend> Prepass<B> {
     cmd_buffer.execute_inner(inner_cmd_buffers);
     cmd_buffer.end_render_pass();
     cmd_buffer.end_label();
-  }
-
-  pub fn swap_history_resources(&mut self) {
-    std::mem::swap(&mut self.depth_buffer, &mut self.depth_buffer_b);
-    std::mem::swap(&mut self.depth_srv, &mut self.depth_srv_b);
-  }
-
-  pub fn depth_dsv(&self) -> &Arc<B::TextureDepthStencilView> {
-    &self.depth_buffer
-  }
-
-  pub fn depth_srv(&self) -> &Arc<B::TextureShaderResourceView> {
-    &self.depth_srv
-  }
-
-  pub fn depth_dsv_history(&self) -> &Arc<B::TextureDepthStencilView> {
-    &self.depth_buffer_b
-  }
-
-  pub fn motion_srv(&self) -> &Arc<B::TextureShaderResourceView> {
-    &self.motion_srv
-  }
-
-  pub fn normals_srv(&self) -> &Arc<B::TextureShaderResourceView> {
-    &self.normals_srv
   }
 }

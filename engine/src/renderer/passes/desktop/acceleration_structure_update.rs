@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
-use sourcerenderer_core::{graphics::{Backend, CommandBuffer, AccelerationStructureInstance, Device, TopLevelAccelerationStructureInfo, BufferInfo, BufferUsage, MemoryUsage, BottomLevelAccelerationStructureInfo, AccelerationStructureMeshRange, IndexFormat, Format, Barrier, BarrierSync, BarrierAccess, FrontFace}, Matrix4};
+use sourcerenderer_core::{graphics::{Backend, CommandBuffer, AccelerationStructureInstance, Device, TopLevelAccelerationStructureInfo, BufferInfo, BufferUsage, MemoryUsage, BottomLevelAccelerationStructureInfo, AccelerationStructureMeshRange, IndexFormat, Format, Barrier, BarrierSync, BarrierAccess, FrontFace}};
 
 use crate::renderer::renderer_scene::RendererScene;
 
@@ -38,7 +37,7 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
     scene: &RendererScene<B>,
-    camera_buffer: &Arc<B::Buffer>
+    _camera_buffer: &Arc<B::Buffer>
   ) {
     let static_drawables = scene.static_drawables();
 

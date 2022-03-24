@@ -30,6 +30,7 @@ bitset-core = "0.1.1"
 instant = "0.1"
 log = "0.4.14"
 rapier3d = { version = "*", features = [ "enhanced-determinism", "f32" ] }
+half = "1.8.2"
 
 [features]
 default = ["threading", "late-latching"]

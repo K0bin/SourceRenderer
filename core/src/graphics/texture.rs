@@ -62,7 +62,7 @@ pub enum AddressMode {
   ClampToBorder
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct TextureShaderResourceViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
@@ -70,7 +70,18 @@ pub struct TextureShaderResourceViewInfo {
   pub array_level_length: u32,
 }
 
-#[derive(Clone)]
+impl Default for TextureShaderResourceViewInfo {
+  fn default() -> Self {
+    Self {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1
+    }
+  }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct TextureRenderTargetViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
@@ -78,7 +89,18 @@ pub struct TextureRenderTargetViewInfo {
   pub array_level_length: u32,
 }
 
-#[derive(Clone)]
+impl Default for TextureRenderTargetViewInfo {
+  fn default() -> Self {
+    Self {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1
+    }
+  }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct TextureUnorderedAccessViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
@@ -86,12 +108,34 @@ pub struct TextureUnorderedAccessViewInfo {
   pub array_level_length: u32,
 }
 
-#[derive(Clone)]
+impl Default for TextureUnorderedAccessViewInfo {
+  fn default() -> Self {
+    Self {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1
+    }
+  }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct TextureDepthStencilViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
   pub base_array_level: u32,
   pub array_level_length: u32,
+}
+
+impl Default for TextureDepthStencilViewInfo {
+  fn default() -> Self {
+    Self {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_level: 0,
+      array_level_length: 1
+    }
+  }
 }
 
 #[derive(Clone)]

@@ -1,20 +1,25 @@
 use half::f16;
-use sourcerenderer_core::{graphics::{AddressMode, Backend as GraphicsBackend, Barrier, BindingFrequency, CommandBuffer, Device, Filter, Format, PipelineBinding, SamplerInfo, ShaderType, Swapchain, Texture, TextureInfo, TextureShaderResourceView, TextureUnorderedAccessView, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage}, Vec4, Vec2UI, Vec2};
+use sourcerenderer_core::{graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureUnorderedAccessView, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage}, Vec4, Vec2UI, Vec2};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 
+use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
+
+use super::geometry::GeometryPass;
+
 const USE_CAS: bool = true;
 
 pub struct SharpenPass<B: GraphicsBackend> {
-  pipeline: Arc<B::ComputePipeline>,
-  sharpen_uav: Arc<B::TextureUnorderedAccessView>
+  pipeline: Arc<B::ComputePipeline>
 }
 
 impl<B: GraphicsBackend> SharpenPass<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
+  pub const SHAPENED_TEXTURE_NAME: &'static str = "Sharpened";
+
+  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
     let sharpen_compute_shader = if !USE_CAS {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("sharpen.comp.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
@@ -28,7 +33,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
     };
     let pipeline = device.create_compute_pipeline(&sharpen_compute_shader);
 
-    let texture = device.create_texture(&TextureInfo {
+    resources.create_texture(Self::SHAPENED_TEXTURE_NAME, &TextureInfo {
       format: Format::RGBA8,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -37,54 +42,37 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       array_length: 1,
       samples: sourcerenderer_core::graphics::SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC,
-    }, Some("SharpenOutput"));
-    let uav = device.create_unordered_access_view(&texture, &TextureUnorderedAccessViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
-    });
-
-    init_cmd_buffer.barrier(&[
-      Barrier::TextureBarrier {
-        old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::CopySrc,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::COPY_READ,
-        old_sync: BarrierSync::empty(),
-        new_sync: BarrierSync::COPY,
-        texture: &texture,
-      }
-    ]);
+    }, false);
 
     Self {
-      pipeline,
-      sharpen_uav: uav
+      pipeline
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, input_image_uav: &Arc<B::TextureUnorderedAccessView>) {
+  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>) {
+    let input_image_uav = resources.access_uav(
+      cmd_buffer,
+      GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME,
+      BarrierSync::COMPUTE_SHADER,
+      BarrierAccess::STORAGE_READ,
+      TextureLayout::Storage,
+      false,
+      &TextureUnorderedAccessViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    let sharpen_uav = resources.access_uav(
+      cmd_buffer,
+      Self::SHAPENED_TEXTURE_NAME,
+      BarrierSync::COMPUTE_SHADER,
+      BarrierAccess::STORAGE_WRITE,
+      TextureLayout::Storage,
+      true,
+      &TextureUnorderedAccessViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
     cmd_buffer.begin_label("Sharpening pass");
-    cmd_buffer.barrier(&[
-      Barrier::TextureBarrier {
-        old_layout: TextureLayout::Storage,
-        new_layout: TextureLayout::Storage,
-        old_access: BarrierAccess::STORAGE_WRITE,
-        new_access: BarrierAccess::SHADER_RESOURCE_READ,
-        old_sync: BarrierSync::COMPUTE_SHADER,
-        new_sync: BarrierSync::COMPUTE_SHADER,
-        texture: input_image_uav.texture(),
-      },
-      Barrier::TextureBarrier {
-        old_layout: TextureLayout::Undefined,
-        new_layout: TextureLayout::Storage,
-        old_access: BarrierAccess::empty(),
-        new_access: BarrierAccess::STORAGE_WRITE,
-        old_sync: BarrierSync::COPY,
-        new_sync: BarrierSync::COMPUTE_SHADER,
-        texture: self.sharpen_uav.texture(),
-      }
-    ]);
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     if USE_CAS {
@@ -93,24 +81,20 @@ impl<B: GraphicsBackend> SharpenPass<B> {
         input_image_uav.texture().get_info().height,
       );
       let output_size = Vec2UI::new(
-        self.sharpen_uav.texture().get_info().width,
-        self.sharpen_uav.texture().get_info().height,
+        sharpen_uav.texture().get_info().width,
+        sharpen_uav.texture().get_info().height,
       );
       let setup_data = cas_setup(1f32, input_size, output_size);
       let cas_setup_ubo = cmd_buffer.upload_dynamic_data(&[setup_data], BufferUsage::CONSTANT);
       cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, &cas_setup_ubo);
     }
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, input_image_uav);
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &self.sharpen_uav);
+    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &*input_image_uav);
+    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &*sharpen_uav);
     cmd_buffer.finish_binding();
 
-    let info = self.sharpen_uav.texture().get_info();
+    let info = sharpen_uav.texture().get_info();
     cmd_buffer.dispatch((info.width + 15) / 16, (info.height + 15) / 16, 1);
     cmd_buffer.end_label();
-  }
-
-  pub fn sharpened_texture(&self) -> &Arc<B::Texture> {
-    self.sharpen_uav.texture()
   }
 }
 

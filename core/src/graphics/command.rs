@@ -171,6 +171,20 @@ bitflags! {
   }
 }
 
+impl BarrierAccess {
+  pub fn write_mask() -> BarrierAccess {
+    BarrierAccess::STORAGE_WRITE | BarrierAccess::COPY_WRITE | BarrierAccess::DEPTH_STENCIL_WRITE
+      | BarrierAccess::RESOLVE_WRITE | BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_WRITE
+      | BarrierAccess::SHADER_WRITE | BarrierAccess::MEMORY_WRITE | BarrierAccess::HOST_WRITE | BarrierAccess::ACCELERATION_STRUCTURE_WRITE
+  }
+
+  pub fn is_write(&self) -> bool {
+    let writes = Self::write_mask();
+
+    self.intersects(writes)
+  }
+}
+
 pub enum Barrier<'a, B: Backend> {
   TextureBarrier {
     old_sync: BarrierSync,

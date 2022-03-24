@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage, SamplerInfo, Filter, AddressMode}};
+use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureShaderResourceViewInfo, BufferUsage };
@@ -232,12 +232,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0);
-    let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1
-    });
+    let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo::default());
     let zero_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view))
     } else {
@@ -261,12 +256,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTextureBlack"));
     device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0);
-    let zero_view_black = device.create_shader_resource_view(&zero_texture_black, &TextureShaderResourceViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1
-    });
+    let zero_view_black = device.create_shader_resource_view(&zero_texture_black, &TextureShaderResourceViewInfo::default());
     let zero_black_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view_black))
     } else {
@@ -373,12 +363,7 @@ impl<P: Platform> RendererAssets<P> {
       }
     }
     let view = self.device.create_shader_resource_view(
-      &gpu_texture, &TextureShaderResourceViewInfo {
-          base_mip_level: 0,
-          mip_level_length: texture.info.mip_levels,
-          base_array_level: 0,
-          array_level_length: texture.info.array_length
-    });
+      &gpu_texture, &TextureShaderResourceViewInfo::default());
 
     (view, fence)
   }
