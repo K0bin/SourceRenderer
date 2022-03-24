@@ -92,7 +92,8 @@ vec3 fresnelSchlick(float cosTheta, vec3 f0);
 vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx);
 
 void main(void) {
-  vec2 uv = unjitterTextureUv(in_uv, jitterPoint * vec2(rtSize));
+  vec2 uv = in_uv;
+  vec2 albedoUV = unjitterTextureUv(in_uv, jitterPoint * vec2(rtSize));
 
   vec2 tileSize = vec2(rtSize) / vec2(clusterCount.xy);
 
@@ -126,7 +127,7 @@ void main(void) {
   float roughness = material.roughness_factor * texture(roughness_map, uv).r;
   float metalness = material.metalness_factor * texture(metalness_map, uv).r;
   //vec3 albedo = material.albedo_color.rgb * texture(albedo, uv).rgb;
-  vec3 albedo = material.albedo_color.rgb * texture(sampler2D(albedo_global[nonuniformEXT(material.albedoTextureIndex)], albedoSampler), uv).rgb;
+  vec3 albedo = material.albedo_color.rgb * texture(sampler2D(albedo_global[nonuniformEXT(material.albedoTextureIndex)], albedoSampler), albedoUV).rgb;
 
   vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
   vec3 f0 = vec3(0.04);
