@@ -31,7 +31,7 @@ impl VkBindlessDescriptorSet {
         descriptor_type,
         count: BINDLESS_TEXTURE_COUNT,
         writable: descriptor_type != vk::DescriptorType::SAMPLED_IMAGE && descriptor_type != vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT | vk::DescriptorBindingFlags::PARTIALLY_BOUND
+        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT
       }],
       flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
     };
