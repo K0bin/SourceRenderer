@@ -39,6 +39,12 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
     let texture = match file.data {
       AssetFileData::File(file) => {
         let mut texture = VtfTexture::new(BufReader::new(file)).unwrap();
+        let mut data = Vec::<Box<[u8]>>::new();
+        for i in 0..texture.header().mipmap_count {
+          let reversed_mip = texture.header().mipmap_count - 1 - i;
+          let mipmap = &texture.read_mip_map(reversed_mip as u32).unwrap();
+          data.push(mipmap.frames[0].faces[0].slices[0].data.clone());
+        }
         let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
         Texture {
           info: TextureInfo {
@@ -46,29 +52,35 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
             width: mipmap.width,
             height: mipmap.height,
             depth: 1,
-            mip_levels: 1,
+            mip_levels: texture.header().mipmap_count as u32,
             array_length: 1,
             samples: SampleCount::Samples1,
             usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST
           },
-          data: Box::new([mipmap.frames[0].faces[0].slices[0].data.clone()]),
+          data: data.into_boxed_slice(),
         }
       }
       AssetFileData::Memory(cursor) => {
         let mut texture = VtfTexture::new(BufReader::new(cursor)).unwrap();
         let mipmap = texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
+        let mut data = Vec::<Box<[u8]>>::new();
+        for i in 0..texture.header().mipmap_count {
+          let reversed_mip = texture.header().mipmap_count - 1 - i;
+          let mipmap = &texture.read_mip_map(reversed_mip as u32).unwrap();
+          data.push(mipmap.frames[0].faces[0].slices[0].data.clone());
+        }
         Texture {
           info: TextureInfo {
             format: convert_vtf_texture_format(mipmap.format),
             width: mipmap.width,
             height: mipmap.height,
             depth: 1,
-            mip_levels: 1,
+            mip_levels: texture.header().mipmap_count as u32,
             array_length: 1,
             samples: SampleCount::Samples1,
             usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST
           },
-          data: Box::new([mipmap.frames[0].faces[0].slices[0].data.clone()]),
+          data: data.into_boxed_slice(),
         }
       }
     };
