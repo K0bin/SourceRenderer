@@ -20,7 +20,7 @@ pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
 
 pub(crate) fn halton_point(index: u32) -> Vec2 {
   Vec2::new(
-    halton_sequence(index, 2) - 0.5f32, halton_sequence(index, 3) - 0.5f32
+    halton_sequence(index, 2) * 2.0f32 - 1f32, halton_sequence(index, 3) * 2.0f32 - 1f32
   )
 }
 
