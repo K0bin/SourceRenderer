@@ -209,7 +209,7 @@ pub struct VkTextureView {
 }
 
 impl VkTextureView {
-  pub(crate) fn new_shader_resource_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo, name: Option<&str>) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
       view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
@@ -237,45 +237,23 @@ impl VkTextureView {
       device.create_image_view(&view_create_info, None)
     }.unwrap();
 
+    if let Some(name) = name {
+      if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        let name_cstring = CString::new(name).unwrap();
+        unsafe {
+          debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+            object_type: vk::ObjectType::IMAGE_VIEW,
+            object_handle: view.as_raw(),
+            p_object_name: name_cstring.as_ptr(),
+            ..Default::default()
+          }).unwrap();
+        }
+      }
+    }
+
     Self {
       view,
       texture: texture.clone(),
-      device: device.clone()
-    }
-  }
-
-  pub(crate) fn new_attachment_view(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>) -> Self {
-    let info = texture.get_info();
-    let vk_info = vk::ImageViewCreateInfo {
-      image: *texture.get_handle(),
-      view_type: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
-      format: format_to_vk(info.format),
-      components: vk::ComponentMapping {
-        r: vk::ComponentSwizzle::IDENTITY,
-        g: vk::ComponentSwizzle::IDENTITY,
-        b: vk::ComponentSwizzle::IDENTITY,
-        a: vk::ComponentSwizzle::IDENTITY,
-      },
-      subresource_range: vk::ImageSubresourceRange {
-        aspect_mask: if texture.get_info().format.is_depth() && texture.info.format.is_stencil() {
-          vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
-        } else if texture.get_info().format.is_depth() {
-          vk::ImageAspectFlags::DEPTH
-        } else {
-          vk::ImageAspectFlags::COLOR
-        },
-        base_mip_level: 0,
-        level_count: 1,
-        base_array_layer: 0,
-        layer_count: 1
-      },
-      ..Default::default()
-    };
-    let view = unsafe { device.create_image_view(&vk_info, None).unwrap() };
-
-    VkTextureView {
-      texture: texture.clone(),
-      view,
       device: device.clone()
     }
   }

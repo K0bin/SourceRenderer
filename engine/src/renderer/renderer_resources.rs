@@ -172,7 +172,7 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow_mut()
       };
-      let view = self.device.create_shader_resource_view(&texture_mut.texture, info);
+      let view = self.device.create_shader_resource_view(&texture_mut.texture, info, Some(&(name.to_string() + "_srv")));
       texture_mut.srvs.insert(info.clone(), view);
     }
 
@@ -212,7 +212,7 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow_mut()
       };
-      let view = self.device.create_unordered_access_view(&texture_mut.texture, info);
+      let view = self.device.create_unordered_access_view(&texture_mut.texture, info, Some(&(name.to_string() + "_uav")));
       texture_mut.uavs.insert(info.clone(), view);
     }
 
@@ -252,7 +252,7 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow_mut()
       };
-      let view = self.device.create_render_target_view(&texture_mut.texture, info);
+      let view = self.device.create_render_target_view(&texture_mut.texture, info, Some(&(name.to_string() + "_rtv")));
       texture_mut.rtvs.insert(info.clone(), view);
     }
 
@@ -292,7 +292,7 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow_mut()
       };
-      let view = self.device.create_depth_stencil_view(&texture_mut.texture, info);
+      let view = self.device.create_depth_stencil_view(&texture_mut.texture, info, Some(&(name.to_string() + "_dsv")));
       texture_mut.dsvs.insert(info.clone(), view);
     }
 

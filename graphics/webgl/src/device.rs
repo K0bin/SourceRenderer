@@ -96,7 +96,7 @@ impl Device<WebGLBackend> for WebGLDevice {
     Arc::new(WebGLTexture::new(id, info, &self.thread_queue))
   }
 
-  fn create_shader_resource_view(&self, texture: &Arc<WebGLTexture>, info: &sourcerenderer_core::graphics::TextureShaderResourceViewInfo) -> Arc<WebGLTextureShaderResourceView> {
+  fn create_shader_resource_view(&self, texture: &Arc<WebGLTexture>, info: &sourcerenderer_core::graphics::TextureShaderResourceViewInfo, _name: Option<&str>) -> Arc<WebGLTextureShaderResourceView> {
     Arc::new(WebGLTextureShaderResourceView::new(texture, info))
   }
 
@@ -187,15 +187,15 @@ impl Device<WebGLBackend> for WebGLDevice {
     // nop
   }
 
-  fn create_render_target_view(&self, texture: &Arc<WebGLTexture>, info: &TextureRenderTargetViewInfo) -> Arc<WebGLRenderTargetView> {
+  fn create_render_target_view(&self, texture: &Arc<WebGLTexture>, info: &TextureRenderTargetViewInfo, _name: Option<&str>) -> Arc<WebGLRenderTargetView> {
     Arc::new(WebGLRenderTargetView::new(texture, info))
   }
 
-  fn create_unordered_access_view(&self, texture: &Arc<WebGLTexture>, info: &TextureUnorderedAccessViewInfo) -> Arc<WebGLUnorderedAccessView> {
+  fn create_unordered_access_view(&self, _texture: &Arc<WebGLTexture>, _info: &TextureUnorderedAccessViewInfo, _name: Option<&str>) -> Arc<WebGLUnorderedAccessView> {
     panic!("WebGL does not support storage textures")
   }
 
-  fn create_depth_stencil_view(&self, texture: &Arc<WebGLTexture>, info: &TextureDepthStencilViewInfo) -> Arc<WebGLDepthStencilView> {
+  fn create_depth_stencil_view(&self, texture: &Arc<WebGLTexture>, info: &TextureDepthStencilViewInfo, _name: Option<&str>) -> Arc<WebGLDepthStencilView> {
     Arc::new(WebGLDepthStencilView::new(texture, info))
   }
 
@@ -238,5 +238,9 @@ impl Device<WebGLBackend> for WebGLDevice {
 
   fn create_raytracing_pipeline(&self, _info: &sourcerenderer_core::graphics::RayTracingPipelineInfo<WebGLBackend>) -> Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::RayTracingPipeline> {
     panic!("WebGL does not support ray tracing")
+  }
+
+  fn supports_ray_tracing(&self) -> bool {
+    false
   }
 }

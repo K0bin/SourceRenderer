@@ -31,10 +31,10 @@ pub trait Device<B: Backend> {
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<B::Shader>;
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;
-  fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo) -> Arc<B::TextureShaderResourceView>;
-  fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureRenderTargetViewInfo) -> Arc<B::TextureRenderTargetView>;
-  fn create_unordered_access_view(&self, texture: &Arc<B::Texture>, info: &TextureUnorderedAccessViewInfo) -> Arc<B::TextureUnorderedAccessView>;
-  fn create_depth_stencil_view(&self, texture: &Arc<B::Texture>, info: &TextureDepthStencilViewInfo) -> Arc<B::TextureDepthStencilView>;
+  fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo, name: Option<&str>) -> Arc<B::TextureShaderResourceView>;
+  fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureRenderTargetViewInfo, name: Option<&str>) -> Arc<B::TextureRenderTargetView>;
+  fn create_unordered_access_view(&self, texture: &Arc<B::Texture>, info: &TextureUnorderedAccessViewInfo, name: Option<&str>) -> Arc<B::TextureUnorderedAccessView>;
+  fn create_depth_stencil_view(&self, texture: &Arc<B::Texture>, info: &TextureDepthStencilViewInfo, name: Option<&str>) -> Arc<B::TextureDepthStencilView>;
   fn create_compute_pipeline(&self, shader: &Arc<B::Shader>) -> Arc<B::ComputePipeline>;
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<B::GraphicsPipeline>;

@@ -188,7 +188,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }, Some("SSAONoise"));
     let buffer = device.upload_data(&ssao_noise[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     device.init_texture(&texture, &buffer, 0, 0);
-    device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo::default())
+    device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo::default(), Some("SSAONoiseView"))
   }
 
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, camera: &Arc<B::Buffer>, resources: &RendererResources<B>) {

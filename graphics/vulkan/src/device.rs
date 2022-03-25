@@ -162,31 +162,31 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkTexture::new(&self.device, info, name))
   }
 
-  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo) -> Arc<VkTextureView> {
-    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, info))
+  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
+    Arc::new(VkTextureView::new(&self.device, texture, info, name))
   }
 
-  fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureRenderTargetViewInfo) -> Arc<VkTextureView> {
+  fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureRenderTargetViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
     let srv_info = TextureShaderResourceViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
       base_array_level: info.base_array_level,
       array_level_length: info.array_level_length,
     };
-    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, &srv_info))
+    Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
   }
 
-  fn create_unordered_access_view(&self, texture: &Arc<VkTexture>, info: &TextureUnorderedAccessViewInfo) -> Arc<VkTextureView> {
+  fn create_unordered_access_view(&self, texture: &Arc<VkTexture>, info: &TextureUnorderedAccessViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
     let srv_info = TextureShaderResourceViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
       base_array_level: info.base_array_level,
       array_level_length: info.array_level_length,
     };
-    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, &srv_info))
+    Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
   }
 
-  fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureDepthStencilViewInfo) -> Arc<VkTextureView> {
+  fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureDepthStencilViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
     assert!(texture.get_info().format.is_depth() || texture.get_info().format.is_stencil());
     let srv_info = TextureShaderResourceViewInfo {
       base_mip_level: info.base_mip_level,
@@ -194,7 +194,7 @@ impl Device<VkBackend> for VkDevice {
       base_array_level: info.base_array_level,
       array_level_length: info.array_level_length,
     };
-    Arc::new(VkTextureView::new_shader_resource_view(&self.device, texture, &srv_info))
+    Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
   }
 
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<VkSampler> {
@@ -206,7 +206,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn wait_for_idle(&self) {
-    unsafe { self.device.wait_for_idle(); }
+    self.device.wait_for_idle();
   }
 
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {

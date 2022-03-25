@@ -232,7 +232,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0);
-    let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo::default());
+    let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo::default(), Some("AssetManagerZeroTextureView"));
     let zero_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view))
     } else {
@@ -256,7 +256,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTextureBlack"));
     device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0);
-    let zero_view_black = device.create_shader_resource_view(&zero_texture_black, &TextureShaderResourceViewInfo::default());
+    let zero_view_black = device.create_shader_resource_view(&zero_texture_black, &TextureShaderResourceViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
     let zero_black_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view_black))
     } else {
@@ -368,7 +368,7 @@ impl<P: Platform> RendererAssets<P> {
         mip_level_length: texture.info.mip_levels,
         base_array_level: 0,
         array_level_length: 1,
-    });
+    }, Some(texture_path));
 
     (view, fence)
   }
