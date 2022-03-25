@@ -396,32 +396,36 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     todo!()
   }
 
-  fn create_temporary_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<WebGLBuffer> {
-    panic!("WebGL does not support bindless")
+  fn create_temporary_buffer(&mut self, _info: &BufferInfo, _memory_usage: MemoryUsage) -> Arc<WebGLBuffer> {
+    unimplemented!()
   }
 
-  fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<WebGLSampler>) {
+  fn bind_sampler(&mut self, _frequency: BindingFrequency, _binding: u32, _sampler: &Arc<WebGLSampler>) {
     panic!("WebGL does not support separate samplers")
   }
 
-  fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<WebGLAccelerationStructureStub>) {
+  fn bind_acceleration_structure(&mut self, _frequency: BindingFrequency, _binding: u32, _acceleration_structure: &Arc<WebGLAccelerationStructureStub>) {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn create_bottom_level_acceleration_structure(&mut self, info: &sourcerenderer_core::graphics::BottomLevelAccelerationStructureInfo<WebGLBackend>, size: usize, target_buffer: &Arc<WebGLBuffer>, scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
+  fn create_bottom_level_acceleration_structure(&mut self, _info: &sourcerenderer_core::graphics::BottomLevelAccelerationStructureInfo<WebGLBackend>, _size: usize, _target_buffer: &Arc<WebGLBuffer>, _scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn upload_top_level_instances(&mut self, instances: &[sourcerenderer_core::graphics::AccelerationStructureInstance<WebGLBackend>]) -> Arc<WebGLBuffer> {
+  fn upload_top_level_instances(&mut self, _instances: &[sourcerenderer_core::graphics::AccelerationStructureInstance<WebGLBackend>]) -> Arc<WebGLBuffer> {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn create_top_level_acceleration_structure(&mut self, info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<WebGLBackend>, size: usize, target_buffer: &Arc<WebGLBuffer>, scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
+  fn create_top_level_acceleration_structure(&mut self, _info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<WebGLBackend>, _size: usize, _target_buffer: &Arc<WebGLBuffer>, _scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
+  fn trace_ray(&mut self, _width: u32, _height: u32, _depth: u32) {
     panic!("WebGL does not support ray tracing")
+  }
+
+  fn track_texture_view(&mut self, _texture_view: &Arc<WebGLTextureShaderResourceView>) {
+    // nop
   }
 }
 

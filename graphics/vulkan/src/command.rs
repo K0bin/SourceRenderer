@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::ops::Deref;
 use std::{cmp::min, sync::Arc};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -31,7 +29,7 @@ use crate::raw::*;
 use crate::VkShared;
 use crate::buffer::{VkBufferSlice, BufferAllocator};
 use crate::VkTexture;
-use crate::descriptor::{VkBindingManager, VkBoundResourceRef, DirtyDescriptorSets};
+use crate::descriptor::{VkBindingManager, VkBoundResourceRef};
 use crate::texture::VkTextureView;
 use crate::lifetime_tracker::VkLifetimeTrackers;
 
@@ -1050,6 +1048,10 @@ impl VkCommandBuffer {
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::AccelerationStructure(acceleration_structure));
     self.trackers.track_acceleration_structure(acceleration_structure);
   }
+
+  fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
+    self.trackers.track_texture_view(texture_view);
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -1319,6 +1321,11 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<VkAccelerationStructure>) {
     self.item.as_mut().unwrap().bind_acceleration_structure(frequency, binding, acceleration_structure);
+  }
+
+  #[inline(always)]
+  fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
+    self.item.as_mut().unwrap().track_texture_view(texture_view);
   }
 }
 

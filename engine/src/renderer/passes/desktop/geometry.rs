@@ -422,6 +422,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             RendererMaterialValue::Texture(texture) => {
               let albedo_view = &texture.view;
               command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
+              command_buffer.track_texture_view(albedo_view);
               material_info.albedo_texture_index = texture.bindless_index.unwrap();
             },
             RendererMaterialValue::Vec4(val) => {
