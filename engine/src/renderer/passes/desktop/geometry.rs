@@ -408,6 +408,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           metalness_factor: 0f32,
           albedo_texture_index: 0u32
         };
+        command_buffer.track_texture_view(zero_texture_view);
 
         let range = &mesh.parts[part.part_index];
         let material = &materials[part.part_index];
