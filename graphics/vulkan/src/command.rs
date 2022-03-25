@@ -630,8 +630,9 @@ impl VkCommandBuffer {
     unsafe {
       self.device.cmd_execute_commands(self.buffer, &submission_handles);
     }
-    for submission in &mut submissions {
+    for mut submission in submissions.drain(..) {
       submission.mark_submitted();
+      self.trackers.track_inner_command_buffer(submission);
     }
   }
 
@@ -1366,7 +1367,7 @@ impl VkCommandBufferSubmission {
 impl Drop for VkCommandBufferSubmission {
   fn drop(&mut self) {
     let item = std::mem::replace(&mut self.item, None).unwrap();
-    self.sender.send(item).unwrap();
+    let _ = self.sender.send(item);
   }
 }
 
