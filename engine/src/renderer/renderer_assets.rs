@@ -363,7 +363,12 @@ impl<P: Platform> RendererAssets<P> {
       }
     }
     let view = self.device.create_shader_resource_view(
-      &gpu_texture, &TextureShaderResourceViewInfo::default());
+      &gpu_texture, &TextureShaderResourceViewInfo {
+        base_mip_level: 0,
+        mip_level_length: texture.info.mip_levels,
+        base_array_level: 0,
+        array_level_length: 1,
+    });
 
     (view, fence)
   }
