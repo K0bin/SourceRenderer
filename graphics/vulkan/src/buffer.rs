@@ -41,7 +41,7 @@ impl VkBuffer {
 
     let buffer_info = vk::BufferCreateInfo {
       size: info.size as u64,
-      usage: buffer_usage_to_vk(info.usage),
+      usage: buffer_usage_to_vk(info.usage, device.features.contains(VkFeatures::RAY_TRACING)),
       sharing_mode,
       p_queue_family_indices: queue_families.as_ptr(),
       queue_family_index_count: queue_families.len() as u32,
@@ -51,7 +51,7 @@ impl VkBuffer {
       usage: memory_usage_to_vma(memory_usage),
       ..Default::default()
     };
-    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).expect("Failed to create buffer.") };
+    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).unwrap_or_else(|e| panic!("Failed to create buffer: {:?}. vk info: {:?}, allocation info: {:?}", e, &buffer_info, &allocation_info)) };
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
         let name_cstring = CString::new(name).unwrap();
@@ -185,7 +185,7 @@ impl Buffer for VkBufferSlice {
   }
 }
 
-pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
+pub fn buffer_usage_to_vk(usage: BufferUsage, rt_supported: bool) -> vk::BufferUsageFlags {
   let mut flags = vk::BufferUsageFlags::empty();
 
   if usage.contains(BufferUsage::STORAGE) {
@@ -197,15 +197,21 @@ pub fn buffer_usage_to_vk(usage: BufferUsage) -> vk::BufferUsageFlags {
   }
 
   if usage.contains(BufferUsage::VERTEX) {
-    flags |= vk::BufferUsageFlags::VERTEX_BUFFER
-    | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
+    flags |= vk::BufferUsageFlags::VERTEX_BUFFER;
+
+    if rt_supported {
+      flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
+    }
   }
 
   if usage.contains(BufferUsage::INDEX) {
-    flags |= vk::BufferUsageFlags::INDEX_BUFFER
-      | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-      | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
+    flags |= vk::BufferUsageFlags::INDEX_BUFFER;
+
+    if rt_supported {
+      flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
+    }
   }
 
   if usage.contains(BufferUsage::INDIRECT) {

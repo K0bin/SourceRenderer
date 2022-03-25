@@ -18,8 +18,12 @@ pub struct DesktopRenderer<B: Backend> {
   sharpen: SharpenPass<B>,
   ssao: SsaoPass<B>,
   occlusion: OcclusionPass<B>,
+  rt_passes: Option<RTPasses<B>>
+}
+
+pub struct RTPasses<B: Backend> {
   acceleration_structure_update: AccelerationStructureUpdatePass<B>,
-  rt_shadows: RTShadowPass<B>,
+  shadows: RTShadowPass<B>
 }
 
 impl<B: Backend> DesktopRenderer<B> {
@@ -37,8 +41,10 @@ impl<B: Backend> DesktopRenderer<B> {
     let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut barriers);
     let ssao = SsaoPass::<B>::new::<P>(device, resolution, &mut barriers);
     let occlusion = OcclusionPass::<B>::new::<P>(device);
-    let acceleration_structure_update = AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer);
-    let rt_shadows = RTShadowPass::<B>::new::<P>(device, resolution, &mut barriers);
+    let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
+      acceleration_structure_update: AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer),
+      shadows: RTShadowPass::<B>::new::<P>(device, resolution, &mut barriers)
+    });
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
 
@@ -58,8 +64,7 @@ impl<B: Backend> DesktopRenderer<B> {
       sharpen,
       ssao,
       occlusion,
-      acceleration_structure_update,
-      rt_shadows,
+      rt_passes,
     }
   }
 }
@@ -90,13 +95,17 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
 
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
-    self.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer);
+    if let Some(rt_passes) = self.rt_passes.as_mut() {
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer);
+    }
     self.occlusion.execute(&self.device, &mut cmd_buf, frame, &self.barriers, &late_latching_buffer, &scene_ref, &view_ref);
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), view, &late_latching_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer, &mut self.barriers);
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
     self.ssao.execute(&mut cmd_buf, &late_latching_buffer, &self.barriers);
-    self.rt_shadows.execute(&mut cmd_buf, frame, self.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers);
+    if let Some(rt_passes) = self.rt_passes.as_mut() {
+      rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers);
+    }
     self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer);
     self.taa.execute(&mut cmd_buf, &self.barriers);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);

@@ -270,6 +270,10 @@ impl Device<VkBackend> for VkDevice {
     self.device.features.contains(VkFeatures::DESCRIPTOR_INDEXING)
   }
 
+  fn supports_ray_tracing(&self) -> bool {
+    self.device.features.contains(VkFeatures::RAY_TRACING)
+  }
+
   fn insert_texture_into_bindless_heap(&self, texture: &Arc<VkTextureView>) -> u32 {
     let bindless_set = self.shared.bindless_texture_descriptor_set().expect("Descriptor indexing is not supported on this device.");
     let slot = bindless_set.write_texture_descriptor(texture);

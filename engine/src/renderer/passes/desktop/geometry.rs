@@ -1,7 +1,7 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDepthStencilViewInfo}};
-use std::sync::Arc;
+use std::{sync::Arc, cell::Ref};
 use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::desktop::{light_binning, ssao::SsaoPass, prepass::Prepass, rt_shadows::RTShadowPass}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::passes::desktop::taa::scaled_halton_point;
@@ -261,17 +261,22 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     );
     let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-    let shadows_ref = barriers.access_srv(
-      cmd_buffer,
-      RTShadowPass::<B>::SHADOWS_TEXTURE_NAME,
-      BarrierSync::FRAGMENT_SHADER,
-      BarrierAccess::SHADER_RESOURCE_READ,
-      TextureLayout::Sampled,
-      false,
-      &TextureShaderResourceViewInfo::default(),
-      HistoryResourceEntry::Current
-    );
-    let shadows = &*shadows_ref;
+    let rt_shadows: Ref<Arc<B::TextureShaderResourceView>>;
+    let shadows = if device.supports_ray_tracing() {
+      rt_shadows = barriers.access_srv(
+        cmd_buffer,
+        RTShadowPass::<B>::SHADOWS_TEXTURE_NAME,
+        BarrierSync::FRAGMENT_SHADER,
+        BarrierAccess::SHADER_RESOURCE_READ,
+        TextureLayout::Sampled,
+        false,
+        &TextureShaderResourceViewInfo::default(),
+        HistoryResourceEntry::Current
+      );
+      &*rt_shadows
+    } else {
+      zero_texture_view
+    };
 
     cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[

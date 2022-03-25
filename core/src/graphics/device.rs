@@ -49,6 +49,7 @@ pub trait Device<B: Backend> {
   fn graphics_queue(&self) -> &Arc<B::Queue>;
   fn prerendered_frames(&self) -> u32;
   fn supports_bindless(&self) -> bool;
+  fn supports_ray_tracing(&self) -> bool;
   fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureShaderResourceView>) -> u32;
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
