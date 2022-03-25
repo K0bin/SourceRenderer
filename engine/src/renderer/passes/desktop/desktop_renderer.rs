@@ -83,6 +83,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
     zero_texture_view: &Arc<B::TextureShaderResourceView>,
+    zero_texture_view_black: &Arc<B::TextureShaderResourceView>,
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
@@ -106,7 +107,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers);
     }
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer);
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, zero_texture_view_black, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer);
     self.taa.execute(&mut cmd_buf, &self.barriers);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
 

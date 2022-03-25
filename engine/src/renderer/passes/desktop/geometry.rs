@@ -208,6 +208,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     scene: &RendererScene<B>,
     view: &View,
     zero_texture_view: &Arc<B::TextureShaderResourceView>,
+    zero_texture_view_black: &Arc<B::TextureShaderResourceView>,
     lightmap: &Arc<RendererTexture<B>>,
     swapchain_transform: Matrix4,
     frame: u64,
@@ -373,6 +374,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
       command_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
 
+      command_buffer.track_texture_view(zero_texture_view);
+      command_buffer.track_texture_view(zero_texture_view_black);
+
       let lightmap_ref = &lightmap.view;
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, lightmap_ref, &self.sampler);
 
@@ -408,7 +412,6 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           metalness_factor: 0f32,
           albedo_texture_index: 0u32
         };
-        command_buffer.track_texture_view(zero_texture_view);
 
         let range = &mesh.parts[part.part_index];
         let material = &materials[part.part_index];

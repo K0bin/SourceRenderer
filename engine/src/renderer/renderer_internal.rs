@@ -233,7 +233,7 @@ impl<P: Platform> RendererInternal<P> {
       let scene = self.scene.borrow_mut();
       scene.lightmap().cloned().unwrap_or_else(|| self.assets.placeholder_black().clone())
     };
-    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame);
+    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame);
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -263,7 +263,7 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }

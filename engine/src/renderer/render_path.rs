@@ -14,6 +14,7 @@ pub(super) trait RenderPath<B: Backend> {
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
     zero_texture_view: &Arc<B::TextureShaderResourceView>,
+    zero_texture_view_black: &Arc<B::TextureShaderResourceView>,
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
