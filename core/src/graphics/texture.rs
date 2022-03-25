@@ -150,7 +150,7 @@ pub struct SamplerInfo {
   pub max_anisotropy: f32,
   pub compare_op: Option<CompareFunc>,
   pub min_lod: f32,
-  pub max_lod: f32,
+  pub max_lod: Option<f32>,
 }
 
 pub trait TextureShaderResourceView<B: Backend> {

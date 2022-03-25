@@ -82,7 +82,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       max_anisotropy: 0.0f32,
       compare_op: None,
       min_lod: 0.0f32,
-      max_lod: 1.0f32,
+      max_lod: None,
     });
     let nearest_sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Nearest,
@@ -95,7 +95,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       max_anisotropy: 0.0f32,
       compare_op: None,
       min_lod: 0.0f32,
-      max_lod: 1.0f32,
+      max_lod: None,
     });
     let linear = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,
@@ -108,7 +108,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       max_anisotropy: 0.0f32,
       compare_op: None,
       min_lod: 0.0f32,
-      max_lod: 1.0f32,
+      max_lod: None,
     });
     let blur_sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,
@@ -121,7 +121,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       max_anisotropy: 0.0f32,
       compare_op: None,
       min_lod: 0.0f32,
-      max_lod: 1.0f32,
+      max_lod: None,
     });
 
     Self {

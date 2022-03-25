@@ -58,7 +58,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       max_anisotropy: 0.0,
       compare_op: None,
       min_lod: 0.0,
-      max_lod: 1.0,
+      max_lod: None,
     });
 
     let vertex_shader = {

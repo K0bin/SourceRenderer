@@ -66,7 +66,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       max_anisotropy: 0.0,
       compare_op: None,
       min_lod: 0.0,
-      max_lod: 1.0,
+      max_lod: None,
     });
 
     let nearest_sampler = device.create_sampler(&SamplerInfo {
@@ -80,7 +80,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       max_anisotropy: 0.0,
       compare_op: None,
       min_lod: 0.0,
-      max_lod: 1.0,
+      max_lod: None,
     });
 
     let texture_info = TextureInfo {

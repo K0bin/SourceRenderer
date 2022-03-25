@@ -8,7 +8,7 @@ use sourcerenderer_core::platform::io::IO;
 
 use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
 
-use super::geometry::GeometryPass;
+use super::{geometry::GeometryPass, taa::TAAPass};
 
 const USE_CAS: bool = true;
 
@@ -52,7 +52,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>) {
     let input_image_uav = resources.access_uav(
       cmd_buffer,
-      GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME,
+      TAAPass::<B>::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_READ,
       TextureLayout::Storage,

@@ -35,7 +35,7 @@ impl<B: Backend> RTShadowPass<B> {
       max_anisotropy: 0.0f32,
       compare_op: None,
       min_lod: 0.0f32,
-      max_lod: 0.0f32,
+      max_lod: None,
     });
 
     let ray_gen_shader = {

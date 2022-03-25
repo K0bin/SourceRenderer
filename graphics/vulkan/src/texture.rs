@@ -336,7 +336,7 @@ impl VkSampler {
       compare_enable: info.compare_op.is_some() as u32,
       compare_op: info.compare_op.map_or(vk::CompareOp::ALWAYS, compare_func_to_vk),
       min_lod: info.min_lod,
-      max_lod: info.max_lod,
+      max_lod: info.max_lod.unwrap_or(vk::LOD_CLAMP_NONE),
       border_color: vk::BorderColor::INT_OPAQUE_BLACK,
       unnormalized_coordinates: 0,
       ..Default::default()
