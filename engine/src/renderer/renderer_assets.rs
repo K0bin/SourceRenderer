@@ -284,7 +284,13 @@ impl<P: Platform> RendererAssets<P> {
 
   pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>) -> Arc<RendererTexture<P::GraphicsBackend>> {
     let bindless_index = if self.device.supports_bindless() {
-      Some(self.device.insert_texture_into_bindless_heap(&texture))
+      if texture == &self.zero_texture.view {
+        self.zero_texture.bindless_index
+      } else if texture == &self.zero_texture_black.view {
+        self.zero_texture_black.bindless_index
+      } else {
+        Some(self.device.insert_texture_into_bindless_heap(&texture))
+      }
     } else {
       None
     };
