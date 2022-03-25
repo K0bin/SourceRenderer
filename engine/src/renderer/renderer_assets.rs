@@ -353,7 +353,7 @@ impl<P: Platform> RendererAssets<P> {
     let mut fence = Option::<Arc<<P::GraphicsBackend as Backend>::Fence>>::None;
     for subresource in 0..subresources {
       let mip_level = subresource % texture.info.mip_levels;
-      let array_index = subresource / texture.info.array_length;
+      let array_index = subresource / texture.info.mip_levels;
       let init_buffer = self.device.upload_data(
         &texture.data[subresource as usize][..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
       if do_async {
