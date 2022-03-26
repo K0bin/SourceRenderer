@@ -163,7 +163,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     cmd_buf.finish_binding();
 
     let info = taa_uav.texture().get_info();
-    cmd_buf.dispatch((info.width + 15) / 16, (info.height + 15) / 16, 1);
+    cmd_buf.dispatch((info.width + 15) / 16, (info.height + 3) / 4, 1);
     cmd_buf.end_label();
   }
 }
