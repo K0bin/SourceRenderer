@@ -398,25 +398,25 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap(), IndexFormat::U32);
         }
 
-        #[repr(C)]
-        #[derive(Clone, Copy)]
-        struct MaterialInfo {
-          albedo: Vec4,
-          roughness_factor: f32,
-          metalness_factor: f32,
-          albedo_texture_index: u32
-        }
-        let mut material_info = MaterialInfo {
-          albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
-          roughness_factor: 0f32,
-          metalness_factor: 0f32,
-          albedo_texture_index: 0u32
-        };
-
         let range = &mesh.parts[part.part_index];
         let material = &materials[part.part_index];
 
         if last_material.as_ref() != Some(material) {
+          #[repr(C)]
+          #[derive(Clone, Copy)]
+          struct MaterialInfo {
+            albedo: Vec4,
+            roughness_factor: f32,
+            metalness_factor: f32,
+            albedo_texture_index: u32
+          }
+          let mut material_info = MaterialInfo {
+            albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
+            roughness_factor: 0f32,
+            metalness_factor: 0f32,
+            albedo_texture_index: 0u32
+          };
+
           command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
           command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, zero_texture_view, &self.sampler);
           command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
