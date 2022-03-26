@@ -13,8 +13,9 @@ layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2, rgba8) uniform writeonly imag
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform sampler2D motion;
 
 // TODO: improve https://www.elopezr.com/temporal-aa-and-the-quest-for-the-holy-trail/
+// reference: https://sugulee.wordpress.com/2021/06/21/temporal-anti-aliasingtaa-tutorial/
 
-const int HISTORY_FRAMES = 8;
+const int HISTORY_FRAMES = 10;
 
 vec3 clamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColor) {
   vec2 pixel = vec2(1.0 / float(textureSize.x), 1.0 / float(textureSize.y));
@@ -63,5 +64,5 @@ void main() {
     vec3 historyColor = clamp(color, texCoord, texSize, texture(history, historyTexCoord).xyz);
     bool useHistory = historyTexCoord.x >= 0.0 && historyTexCoord.x <= 1.0 && historyTexCoord.y >= 0.0 && historyTexCoord.y <= 1.0;
     float taaFactor = useHistory ? (1.0 - 1.0 / float(HISTORY_FRAMES)) : 0.0;
-    imageStore(outputTexture, storageTexCoord, vec4(color * (1.0 - taaFactor) + historyColor * taaFactor, 1.0));
+    imageStore(outputTexture, storageTexCoord, vec4(mix(color, historyColor, taaFactor), 1.0));
 }

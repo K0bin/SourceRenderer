@@ -10,6 +10,11 @@ layout(local_size_x = 16,
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, rgba8) uniform image2D frame;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1, rgba8) uniform writeonly image2D outputTexture;
 
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform const_buffer
+{
+  float sharpeningIntensity;
+};
+
 void main() {
     ivec2 texCoord = ivec2(gl_GlobalInvocationID.xy);
 
@@ -20,7 +25,7 @@ void main() {
     */
     uvec2 frameSize = imageSize(frame);
     vec3 color = imageLoad(frame, texCoord).xyz;
-    uint sampleCount = 0;
+    uint sampleCount = 1;
     vec3 sharpened = vec3(0.0);
     for (int kernelX = 0; kernelX < 2; kernelX++) {
       ivec2 coord = texCoord + ivec2(kernelX * 2 - 1, 0);
@@ -40,7 +45,6 @@ void main() {
     }
     sharpened += float(sampleCount) * color;
 
-    float sharpeningIntensity = 0.3;
     vec3 finalColor = mix(color, sharpened, sharpeningIntensity);
     imageStore(outputTexture, texCoord, vec4(finalColor, 1.0));
 }

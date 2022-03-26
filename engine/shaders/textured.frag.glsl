@@ -175,7 +175,10 @@ void main(void) {
 }
 
 vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx) {
-  return uv - dFdxFine(uv) * jitterPx.x - dFdyFine(uv) * jitterPx.y;
+  return uv - vec2(
+    -dFdxFine(uv.x) * jitterPx.x,
+    dFdyFine(uv.y) * jitterPx.y
+  );
 }
 
 vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness) {
