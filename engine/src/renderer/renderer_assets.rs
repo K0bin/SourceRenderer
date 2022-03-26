@@ -518,3 +518,10 @@ impl<P: Platform> RendererAssets<P> {
     self.device.flush_transfers();
   }
 }
+
+impl<P: Platform> Drop for RendererAssets<P> {
+  fn drop(&mut self) {
+    // workaround for https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/3729
+    self.device.wait_for_idle();
+  }
+}
