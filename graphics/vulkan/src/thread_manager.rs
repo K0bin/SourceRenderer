@@ -229,6 +229,6 @@ impl VkFrameLocal {
 
 impl Drop for VkFrameLocal {
   fn drop(&mut self) {
-    unsafe { self.device.wait_for_idle(); }
+    self.device.wait_for_idle();
   }
 }

@@ -458,9 +458,9 @@ impl Drop for VkTransfer {
     // The queue keeps handles to transfer command buffers, so we need to make sure it doesn't
     // submit them to the Vulkan queue after we drop them.
     if let Some(queue) = self.transfer_queue.as_ref() {
-      queue.process_submissions();
+      queue.wait_for_idle();
     }
-    self.graphics_queue.process_submissions();
+    self.graphics_queue.wait_for_idle();
   }
 }
 
