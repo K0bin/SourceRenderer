@@ -60,7 +60,8 @@ enum VkVirtualSubmission {
     wait_semaphores: SmallVec<[vk::Semaphore; 4]>,
     wait_stages: SmallVec<[vk::PipelineStageFlags; 4]>,
     signal_semaphores: SmallVec<[vk::Semaphore; 4]>,
-    fence: Option<Arc<VkFence>>
+    fence: Option<Arc<VkFence>>,
+    submission: Option<VkCommandBufferSubmission>
   },
   Present {
     wait_semaphores: SmallVec<[vk::Semaphore; 4]>,
@@ -104,7 +105,8 @@ impl VkQueue {
       wait_semaphores: SmallVec::new(),
       wait_stages: SmallVec::new(),
       signal_semaphores: SmallVec::new(),
-      fence: Some(command_buffer.get_fence().clone())
+      fence: Some(command_buffer.get_fence().clone()),
+      submission: None
     };
     let mut guard = self.queue.lock().unwrap();
     guard.virtual_queue.push(submission);
@@ -137,7 +139,8 @@ impl VkQueue {
       wait_semaphores: wait_semaphore_handles,
       wait_stages: stage_masks,
       signal_semaphores: signal_semaphore_handles,
-      fence: fence.cloned()
+      fence: fence.cloned(),
+      submission: Some(cmd_buffer_mut)
     };
 
     let mut guard = self.queue.lock().unwrap();
@@ -171,7 +174,7 @@ impl VkQueue {
 
   pub(crate) fn wait_for_idle(&self) {
     self.process_submissions();
-    let queue_guard = self.queue.lock().unwrap();
+    let _queue_guard = self.queue.lock().unwrap();
     let queue = self.lock_queue();
     unsafe {
       self.device.queue_wait_idle(*queue).unwrap();
@@ -259,12 +262,13 @@ impl Queue<VkBackend> for VkQueue {
     let mut last_fence = guard.last_fence.take();
     let mut command_buffers = SmallVec::<[vk::CommandBuffer; 32]>::new();
     let mut batch = SmallVec::<[vk::SubmitInfo; 8]>::new();
+    let mut submissions = SmallVec::<[VkCommandBufferSubmission; 8]>::new();
     let vk_queue = self.lock_queue();
     for submission in guard.virtual_queue.drain(..) {
       let mut append = false;
       match submission {
         VkVirtualSubmission::CommandBuffer {
-          command_buffer, wait_semaphores, wait_stages, signal_semaphores, fence
+          command_buffer, wait_semaphores, wait_stages, signal_semaphores, fence, submission
         } => {
           if fence.is_none() && wait_semaphores.is_empty() && signal_semaphores.is_empty() {
             if let Some(last_info) = batch.last_mut() {
@@ -289,6 +293,7 @@ impl Queue<VkBackend> for VkQueue {
                   }
                 }
                 batch.clear();
+                submissions.clear();
                 command_buffers.clear();
               }
 
@@ -323,6 +328,7 @@ impl Queue<VkBackend> for VkQueue {
                     panic!("Submit failed: {:?}", result);
                   }
                 }
+                submissions.clear();
                 batch.clear();
                 command_buffers.clear();
               }
@@ -338,6 +344,9 @@ impl Queue<VkBackend> for VkQueue {
                 p_signal_semaphores: signal_semaphores.as_ptr(),
                 ..Default::default()
               };
+              if let Some(submission) = submission {
+                submissions.push(submission);
+              }
               batch.push(submit);
             }
           }
@@ -355,6 +364,7 @@ impl Queue<VkBackend> for VkQueue {
                 panic!("Submit failed: {:?}", result);
               }
             }
+            submissions.clear();
             batch.clear();
             command_buffers.clear();
           }
@@ -369,7 +379,6 @@ impl Queue<VkBackend> for VkQueue {
             ..Default::default()
           };
           unsafe {
-            let before = std::time::Instant::now();
             let result = swapchain.get_loader().queue_present(*vk_queue, &present_info);
             swapchain.set_presented_image(image_index);
             match result {

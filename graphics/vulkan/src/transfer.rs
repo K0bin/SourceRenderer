@@ -453,6 +453,17 @@ impl VkTransfer {
   }
 }
 
+impl Drop for VkTransfer {
+  fn drop(&mut self) {
+    // The queue keeps handles to transfer command buffers, so we need to make sure it doesn't
+    // submit them to the Vulkan queue after we drop them.
+    if let Some(queue) = self.transfer_queue.as_ref() {
+      queue.process_submissions();
+    }
+    self.graphics_queue.process_submissions();
+  }
+}
+
 pub struct VkTransferCommandBuffer {
   cmd_buffer: vk::CommandBuffer,
   device: Arc<RawVkDevice>,
