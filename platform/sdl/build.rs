@@ -51,6 +51,20 @@ fn main() {
 
     copy_directory_rec(&shader_dir, &shader_dest_dir, &(|f: &Path| f.extension().map(|ext| ext == "spv").unwrap_or(false)));
 
+    let mut assets_dest_dir = manifest_dir.clone();
+    assets_dest_dir.push("assets");
+
+    if !assets_dest_dir.exists() {
+        std::fs::create_dir(&assets_dest_dir).expect("Failed to create shader target directory.");
+    }
+
+    let mut assets_dir = manifest_dir.clone();
+    assets_dir.pop();
+    assets_dir.pop();
+    assets_dir.push("engine");
+    assets_dir.push("assets");
+    copy_directory_rec(&assets_dir, &assets_dest_dir, &(|f: &Path| true));
+
     // Copy SDL2.dll
     let target = env::var("TARGET").unwrap();
     if target.contains("pc-windows") {
