@@ -29,6 +29,7 @@ layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 4, std430) readonly buf
   DirectionalLight directionalLights[];
 };*/
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 5) uniform sampler2D depthMap;
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 6) uniform sampler2D noise;
 
 layout(location = 0) rayPayloadEXT float hitValue;
 
@@ -66,7 +67,8 @@ mat4 rotationMatrix(vec3 axis, float angle) {
 #define SUN_ANGLE 0.53
 
 vec3 randomRotateDirection(vec3 dir, float randomDegrees) {
-  vec3 rotationVec = normalize(vec3(random() * 2.0 - 1.0, random() * 2.0 - 1.0, random() * 2.0 - 1.0));
+  vec3 noiseSample = textureLod(noise, vec2(gl_LaunchIDEXT.xy) / vec2(textureSize(noise, 0)) + vec2(0.5), 0).xyz;
+  vec3 rotationVec = normalize(noiseSample * 2.0 - 1.0);
   rotationVec *= randomDegrees * (PI / 180.0);
   mat4 rotation = rotationMatrix(vec3(1, 0, 0), rotationVec.x) * rotationMatrix(vec3(0, 1, 0), rotationVec.y) * rotationMatrix(vec3(0, 0, 1), rotationVec.z);
   return (rotation * vec4(dir, 0)).xyz;

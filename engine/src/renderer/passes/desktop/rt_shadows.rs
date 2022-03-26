@@ -6,7 +6,7 @@ use crate::renderer::{passes::desktop::prepass::Prepass, renderer_resources::{Hi
 
 pub struct RTShadowPass<B: Backend> {
   pipeline: Arc<B::RayTracingPipeline>,
-  sampler: Arc<B::Sampler>,
+  sampler: Arc<B::Sampler>
 }
 
 impl<B: Backend> RTShadowPass<B> {
@@ -71,7 +71,7 @@ impl<B: Backend> RTShadowPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, frame: u64, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, resources: &RendererResources<B>) {
+  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, frame: u64, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, resources: &RendererResources<B>, blue_noise: &Arc<B::TextureShaderResourceView>, blue_noise_sampler: &Arc<B::Sampler>) {
     let texture_uav = resources.access_uav(
       cmd_buffer,
       Self::SHADOWS_TEXTURE_NAME,
@@ -99,6 +99,7 @@ impl<B: Backend> RTShadowPass<B> {
     cmd_buffer.bind_storage_texture(BindingFrequency::PerFrame, 1, &*texture_uav);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, camera_buffer);
     cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 5, &*depth, &self.sampler);
+    cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, blue_noise, blue_noise_sampler);
     let info = texture_uav.texture().get_info();
 
     #[derive(Clone)]

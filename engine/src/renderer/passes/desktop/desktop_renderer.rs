@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout}};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::blue_noise::BlueNoise}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass};
 
@@ -18,7 +18,8 @@ pub struct DesktopRenderer<B: Backend> {
   sharpen: SharpenPass<B>,
   ssao: SsaoPass<B>,
   occlusion: OcclusionPass<B>,
-  rt_passes: Option<RTPasses<B>>
+  rt_passes: Option<RTPasses<B>>,
+  blue_noise: BlueNoise<B>
 }
 
 pub struct RTPasses<B: Backend> {
@@ -32,6 +33,8 @@ impl<B: Backend> DesktopRenderer<B> {
     let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
     let mut barriers = RendererResources::<B>::new(device);
+
+    let blue_noise = BlueNoise::new::<P>(device);
 
     let clustering = ClusteringPass::<B>::new::<P>(device, &mut barriers);
     let light_binning = LightBinningPass::<B>::new::<P>(device, &mut barriers);
@@ -65,6 +68,7 @@ impl<B: Backend> DesktopRenderer<B> {
       ssao,
       occlusion,
       rt_passes,
+      blue_noise,
     }
   }
 }
@@ -105,7 +109,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
     self.ssao.execute(&mut cmd_buf, &late_latching_buffer, &self.barriers);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers);
+      rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
     self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, zero_texture_view_black, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer);
     self.taa.execute(&mut cmd_buf, &self.barriers);
