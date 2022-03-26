@@ -216,7 +216,6 @@ pub enum BindingFrequency {
   PerDraw = 0,
   PerMaterial = 1,
   PerFrame = 2,
-  Rarely = 3
 }
 
 pub trait InnerCommandBufferProvider<B: Backend> : Send + Sync {

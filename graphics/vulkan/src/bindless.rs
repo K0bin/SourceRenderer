@@ -4,7 +4,7 @@ use ash::vk::{self, Handle};
 use crate::{raw::RawVkDevice, shared::VkDescriptorSetLayoutKey, descriptor::{VkDescriptorSetEntryInfo, VkDescriptorSetLayout}, texture::VkTextureView};
 
 pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
-pub(crate) const BINDLESS_TEXTURE_SET_INDEX: u32 = 4;
+pub(crate) const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
 pub struct VkBindlessDescriptorSet {
   device: Arc<RawVkDevice>,

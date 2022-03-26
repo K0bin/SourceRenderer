@@ -2,7 +2,7 @@ use ash::vk::Handle;
 use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{RenderPassInfo, Texture};
 use sourcerenderer_core::pool::{Pool, Recyclable};
-use crate::bindless::VkBindlessDescriptorSet;
+use crate::bindless::{VkBindlessDescriptorSet, BINDLESS_TEXTURE_SET_INDEX};
 use crate::texture::VkTextureView;
 use crate::{VkFenceInner, VkRenderPass, VkSemaphore};
 use crate::buffer::BufferAllocator;
@@ -39,7 +39,7 @@ pub(crate) struct VkDescriptorSetLayoutKey {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub(crate) struct VkPipelineLayoutKey {
-  pub(crate) descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5],
+  pub(crate) descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
   pub(crate) push_constant_ranges: [Option<VkConstantRange>; 3]
 }
 

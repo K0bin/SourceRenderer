@@ -17,6 +17,7 @@ use sourcerenderer_core::graphics::Viewport;
 use sourcerenderer_core::graphics::Scissor;
 use sourcerenderer_core::graphics::Resettable;
 
+use crate::bindless::BINDLESS_TEXTURE_SET_INDEX;
 use crate::pipeline::{shader_type_to_vk, VkPipelineType};
 use crate::query::{VkQueryAllocator, VkQueryRange};
 use crate::rt::VkAccelerationStructure;
@@ -470,7 +471,7 @@ impl VkCommandBuffer {
     self.flush_barriers();
 
     let mut offsets = SmallVec::<[u32; 16]>::new();
-    let mut descriptor_sets = SmallVec::<[vk::DescriptorSet; 5]>::new();
+    let mut descriptor_sets = SmallVec::<[vk::DescriptorSet; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize]>::new();
     let mut base_index = 0;
 
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
@@ -525,7 +526,7 @@ impl VkCommandBuffer {
       }
       offsets.clear();
       descriptor_sets.clear();
-      base_index = 4;
+      base_index = BINDLESS_TEXTURE_SET_INDEX;
     }
 
     if pipeline.uses_bindless_texture_set() {

@@ -410,7 +410,7 @@ impl VkPipeline {
   pub fn new_graphics(device: &Arc<RawVkDevice>, info: &VkGraphicsPipelineInfo, shared: &VkShared) -> Self {
     let vk_device = &device.device;
     let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
-    let mut descriptor_set_layouts = <[VkDescriptorSetLayoutKey; 5]>::default();
+    let mut descriptor_set_layouts = <[VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize]>::default();
     let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
     let mut uses_bindless_texture_set = false;
 
@@ -606,7 +606,7 @@ impl VkPipeline {
     };
 
     if uses_bindless_texture_set {
-      descriptor_set_layouts[4] = VkDescriptorSetLayoutKey {
+      descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] = VkDescriptorSetLayoutKey {
         bindings: vec![VkDescriptorSetEntryInfo {
           shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
           index: 0,
@@ -700,7 +700,7 @@ impl VkPipeline {
   }
 
   pub fn new_compute(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, shared: &VkShared) -> Self {
-    let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5] = Default::default();
+    let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
     let shader_stage = vk::PipelineShaderStageCreateInfo {
@@ -724,7 +724,7 @@ impl VkPipeline {
     }
 
     if shader.uses_bindless_texture_set {
-      descriptor_set_layouts[4] = VkDescriptorSetLayoutKey {
+      descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] = VkDescriptorSetLayoutKey {
         bindings: vec![VkDescriptorSetEntryInfo {
           shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
           index: 0,
@@ -779,7 +779,7 @@ impl VkPipeline {
 
     let mut stages = SmallVec::<[vk::PipelineShaderStageCreateInfo; 4]>::new();
     let mut groups = SmallVec::<[vk::RayTracingShaderGroupCreateInfoKHR; 4]>::new();
-    let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; 5] = Default::default();
+    let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
     let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
 
     let mut uses_bindless_texture_set = false;

@@ -22,7 +22,6 @@ bitflags! {
         const PER_DRAW = 0b0001;
         const PER_MATERIAL = 0b0010;
         const PER_FRAME = 0b0100;
-        const RARELY = 0b1000;
         const BINDLESS_TEXTURES = 0b10000;
     }
 }
@@ -33,7 +32,6 @@ impl From<BindingFrequency> for DirtyDescriptorSets {
       BindingFrequency::PerDraw => DirtyDescriptorSets::PER_DRAW,
       BindingFrequency::PerMaterial => DirtyDescriptorSets::PER_MATERIAL,
       BindingFrequency::PerFrame => DirtyDescriptorSets::PER_FRAME,
-      BindingFrequency::Rarely => DirtyDescriptorSets::RARELY
     }
   }
 }
@@ -626,13 +624,13 @@ impl VkBindingManager {
       return None;
     }
 
-    let cached_set = self.find_compatible_set(frame, layout, frequency, frequency == BindingFrequency::Rarely, frequency == BindingFrequency::PerDraw);
+    let cached_set = self.find_compatible_set(frame, layout, frequency, false, frequency == BindingFrequency::PerDraw);
     let bindings = self.bindings.get(frequency as usize).unwrap();
 
     let set = if let Some(cached_set) = cached_set {
       cached_set
     } else {
-      let transient = frequency != BindingFrequency::Rarely;
+      let transient = true;
       let pools = if !transient { &mut self.permanent_pools } else { &mut self.transient_pools };
       let mut new_set = Option::<VkDescriptorSet>::None;
       'pools_iter: for pool in pools.iter() {
@@ -653,7 +651,7 @@ impl VkBindingManager {
       }
       let new_set = Arc::new(new_set.unwrap());
 
-      let cache = if frequency == BindingFrequency::Rarely { &mut self.permanent_cache } else { &mut self.transient_cache };
+      let cache = &mut self.transient_cache;
       cache.entry(layout.clone()).or_default().push(VkDescriptorSetCacheEntry {
         set: new_set.clone(),
         last_used_frame: frame
@@ -689,7 +687,6 @@ impl VkBindingManager {
     self.dirty |= DirtyDescriptorSets::PER_DRAW;
     self.dirty |= DirtyDescriptorSets::PER_MATERIAL;
     self.dirty |= DirtyDescriptorSets::PER_FRAME;
-    self.dirty |= DirtyDescriptorSets::RARELY;
     self.dirty |= DirtyDescriptorSets::BINDLESS_TEXTURES;
   }
 
@@ -697,17 +694,16 @@ impl VkBindingManager {
     self.dirty
   }
 
-  pub fn finish(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout) -> [Option<VkDescriptorSetBinding>; 4] {
+  pub fn finish(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout) -> [Option<VkDescriptorSetBinding>; 3] {
     if self.dirty.is_empty() {
       return Default::default();
     }
     self.clean(frame);
 
-    let mut set_bindings: [Option<VkDescriptorSetBinding>; 4] = Default::default();
+    let mut set_bindings: [Option<VkDescriptorSetBinding>; 3] = Default::default();
     set_bindings[BindingFrequency::PerDraw as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerDraw);
     set_bindings[BindingFrequency::PerFrame as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerFrame);
     set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerMaterial);
-    set_bindings[BindingFrequency::Rarely as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::Rarely);
 
     self.dirty = DirtyDescriptorSets::empty();
     set_bindings
