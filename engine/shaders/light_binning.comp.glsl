@@ -1,7 +1,7 @@
 // https://github.com/pezcode/Cluster/blob/master/src/Renderer/Shaders/cs_clustered_lightculling.sc
 
 #version 450
-#extension GL_EXT_debug_printf : enable
+// #extension GL_EXT_debug_printf : enable
 #extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 64) in;
 
@@ -77,7 +77,7 @@ void main() {
         PointLight light = pointLights[lightIndex];
         light.position = viewSpacePointLights[i];
         if (pointLightIntersectsCluster(light, cluster)) {
-          debugPrintfEXT("Light %d visible in cluster %d.", lightIndex, clusterIndex);
+          // debugPrintfEXT("Light %d visible in cluster %d.", lightIndex, clusterIndex);
           atomicOr(lightBitmasks[bitmaskCount * clusterIndex + bitmaskIndex], 1 << bitIndex);
         }
       }

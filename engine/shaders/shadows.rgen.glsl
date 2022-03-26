@@ -33,7 +33,7 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 6) uniform sampler2D noise;
 
 layout(location = 0) rayPayloadEXT float hitValue;
 
-vec3 worldSpacePosition(vec2 uv);
+#include "util.h"
 
 uint seed;
 uint hash(uint s) {
@@ -83,7 +83,7 @@ void main() {
   const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
-  vec3 origin = worldSpacePosition(inUV);
+  vec3 origin = worldSpacePosition(inUV, texture(depthMap, inUV).r, camera.invView * camera.invProj);
 
   uint rayFlags = gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT;
   uint cullMask = 0xff;
@@ -101,12 +101,4 @@ void main() {
   float shadow = hitValue;
 
   imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(shadow, shadow, shadow, 1.0));
-}
-
-vec3 worldSpacePosition(vec2 uv) {
-  float depth = texture(depthMap, uv).r;
-  vec4 clipSpacePosition = vec4(uv * 2.0 - 1.0, depth, 1.0);
-  clipSpacePosition.y = -clipSpacePosition.y;
-  vec4 worldSpacePosTemp = (camera.invView * camera.invProj) * clipSpacePosition;
-  return worldSpacePosTemp.xyz / worldSpacePosTemp.w;
 }

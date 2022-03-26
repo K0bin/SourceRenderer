@@ -9,9 +9,8 @@
 const float PI = 3.14159265359;
 
 layout(location = 0) in vec3 in_worldPosition;
-layout(location = 1) in vec3 in_normal;
-layout(location = 2) in vec2 in_uv;
-layout(location = 3) in vec2 in_lightmap_uv;
+layout(location = 1) in vec2 in_uv;
+layout(location = 2) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
@@ -82,7 +81,9 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 4) uniform sampler2D ssao;
   Cluster clusters[];
 };*/
 
-float linearizeDepth(float d, float zNear,float zFar);
+#define FS
+#include "util.h"
+
 vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness);
 float distributionGGX(vec3 normal, vec3 halfway, float roughness);
 float schlickGGX(float nDotV, float roughness);
@@ -94,6 +95,8 @@ vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx);
 void main(void) {
   vec2 uv = in_uv;
   vec2 albedoUV = unjitterTextureUv(in_uv, jitterPoint * vec2(rtSize));
+
+  vec3 normal = reconstructNormalFS(gl_FragCoord.xy / vec2(rtSize), gl_FragCoord.z, camera.invView * camera.invProj);
 
   vec2 tileSize = vec2(rtSize) / vec2(clusterCount.xy);
 
@@ -142,7 +145,7 @@ void main(void) {
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
-    lighting += pbr(-light.direction, viewDir, in_normal, f0, albedo, vec3(light.intensity), roughness, metalness);
+    lighting += pbr(-light.direction, viewDir, normal, f0, albedo, vec3(light.intensity), roughness, metalness);
   }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
@@ -165,7 +168,7 @@ void main(void) {
         vec3 fragToLight = light.position - in_worldPosition;
         vec3 lightDir = normalize(fragToLight);
         float lightSquaredDist = dot(fragToLight, fragToLight);
-        lighting += pbr(lightDir, viewDir, in_normal, f0, albedo, vec3(light.intensity / lightSquaredDist), roughness, metalness);
+        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.intensity / lightSquaredDist), roughness, metalness);
       }
     }
   }
@@ -195,10 +198,6 @@ vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 ra
   vec3 specular = (ndf * g * f) / (4.0 * max(dot(normal, viewDir), 0.0) * max(dot(normal, lightDir), 0.0) + 0.0001);
   float nDotL = max(dot(normal, lightDir), 0.0);
   return (kD * albedo / PI + specular) * radiance * nDotL;
-}
-
-float linearizeDepth(float d, float zNear,float zFar) {
-  return 2.0 * zNear * zFar / (zFar + zNear - d * (zFar - zNear));
 }
 
 float distributionGGX(vec3 normal, vec3 halfway, float roughness) {
