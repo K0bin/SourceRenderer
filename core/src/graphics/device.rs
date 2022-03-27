@@ -26,6 +26,8 @@ pub trait Adapter<B: Backend> {
   fn create_device(&self, surface: &Arc<B::Surface>) -> B::Device;
 }
 
+pub const WHOLE_BUFFER: usize = usize::MAX;
+
 pub trait Device<B: Backend> {
   fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<B::Buffer>;
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
@@ -39,9 +41,9 @@ pub trait Device<B: Backend> {
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<B::GraphicsPipeline>;
   fn wait_for_idle(&self);
-  fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32);
-  fn init_texture_async(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32) -> Option<Arc<B::Fence>>;
-  fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>);
+  fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize);
+  fn init_texture_async(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<Arc<B::Fence>>;
+  fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>, src_offset: usize, dst_offset: usize, length: usize);
   fn flush_transfers(&self);
   fn free_completed_transfers(&self);
   fn create_fence(&self) -> Arc<B::Fence>;

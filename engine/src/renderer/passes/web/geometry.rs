@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER}, platform::io::IO};
 
 use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, renderer_scene::RendererScene}};
 
@@ -264,7 +264,7 @@ impl<B: Backend> GeometryPass<B> {
     }]);
 
     //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
 
     let drawables = scene.static_drawables();
     let parts = &view.drawable_parts;
@@ -286,9 +286,9 @@ impl<B: Backend> GeometryPass<B> {
       }
       cmd_buffer.finish_binding();
 
-      cmd_buffer.set_vertex_buffer(&mesh.vertices);
+      cmd_buffer.set_vertex_buffer(&mesh.vertices, 0);
       if let Some(indices) = mesh.indices.as_ref() {
-        cmd_buffer.set_index_buffer(indices, IndexFormat::U32);
+        cmd_buffer.set_index_buffer(indices, 0, IndexFormat::U32);
         cmd_buffer.draw_indexed(1, 0, range.count, range.start, 0);
       } else {
         cmd_buffer.draw(range.count, range.start);

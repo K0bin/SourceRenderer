@@ -44,6 +44,7 @@ pub use self::rt::{AccelerationStructure, AccelerationStructureSizes,
   AccelerationStructureInstance, AccelerationStructureMeshRange,
   RayTracingPipelineInfo
 };
+pub use self::device::WHOLE_BUFFER;
 
 mod device;
 mod instance;

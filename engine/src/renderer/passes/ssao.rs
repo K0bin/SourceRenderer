@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureSamplingViewInfo, TextureStorageViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView}, platform::io::IO, atomic_refcell::AtomicRef};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureSamplingViewInfo, TextureStorageViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER}, platform::io::IO, atomic_refcell::AtomicRef};
 
 use rand::random;
 
@@ -142,7 +142,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }, MemoryUsage::GpuOnly, Some("SSAOKernel"));
 
     let temp_buffer = device.upload_data(&ssao_kernel[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    device.init_buffer(&temp_buffer, &buffer);
+    device.init_buffer(&temp_buffer, &buffer, 0, 0, WHOLE_BUFFER);
     buffer
   }
 
@@ -190,10 +190,10 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.begin_label("SSAO pass");
     cmd_buffer.flush_barriers();
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &self.kernel);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &self.kernel, 0, WHOLE_BUFFER);
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 1, blue_noise_view, blue_noise_sampler);
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 2, &*depth_srv, &self.linear_sampler);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, camera);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, camera, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 4, &*ssao_uav);
     cmd_buffer.finish_binding();
     let ssao_info = ssao_uav.texture().get_info();

@@ -1,5 +1,5 @@
 use half::f16;
-use sourcerenderer_core::{graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureStorageViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage}, Vec4, Vec2UI, Vec2};
+use sourcerenderer_core::{graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureStorageViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER}, Vec4, Vec2UI, Vec2};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -76,7 +76,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, &sharpen_setup_ubo);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, &sharpen_setup_ubo, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &*input_image_uav);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &*sharpen_uav);
     cmd_buffer.finish_binding();

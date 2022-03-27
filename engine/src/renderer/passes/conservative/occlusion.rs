@@ -3,7 +3,7 @@ use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, io::Read, path::Pat
 use bitset_core::BitSet;
 use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureDepthStencilViewInfo}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
+use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureDepthStencilViewInfo, WHOLE_BUFFER}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
 use crate::renderer::{drawable::View, renderer_scene::RendererScene, passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
 
@@ -71,8 +71,8 @@ impl<B: Backend> OcclusionPass<B> {
       5u32, 4u32, 7u32, 7u32, 6u32, 5u32
     ], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
 
-    device.init_buffer(&occluder_vb_data, &occluder_vb);
-    device.init_buffer(&occluder_ib_data, &occluder_ib);
+    device.init_buffer(&occluder_vb_data, &occluder_vb, 0, 0, WHOLE_BUFFER);
+    device.init_buffer(&occluder_ib_data, &occluder_ib, 0, 0, WHOLE_BUFFER);
 
     let vertex_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("occlusion.vert.spv"))).unwrap();
@@ -248,9 +248,9 @@ impl<B: Backend> OcclusionPass<B> {
         min_depth: 0f32,
         max_depth: 1f32,
       }]);
-      command_buffer.set_vertex_buffer(&self.occluder_vb);
-      command_buffer.set_index_buffer(&self.occluder_ib, IndexFormat::U32);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_history_buffer);
+      command_buffer.set_vertex_buffer(&self.occluder_vb, 0);
+      command_buffer.set_index_buffer(&self.occluder_ib, 0, IndexFormat::U32);
+      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_history_buffer, 0, WHOLE_BUFFER);
       command_buffer.finish_binding();
 
       for drawable_index in chunk {

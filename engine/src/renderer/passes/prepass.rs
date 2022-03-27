@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture};
+use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture, WHOLE_BUFFER};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::passes::taa::scaled_halton_point;
@@ -311,10 +311,10 @@ impl<B: GraphicsBackend> Prepass<B> {
         position: Vec2I::new(0, 0),
         extent: Vec2UI::new(9999, 9999),
       }]);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer);
+      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer, 0, WHOLE_BUFFER);
 
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, camera_history_buffer);
+      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, camera_history_buffer, 0, WHOLE_BUFFER);
       command_buffer.finish_binding();
 
       for part in chunk.iter() {
@@ -328,9 +328,9 @@ impl<B: GraphicsBackend> Prepass<B> {
 
         let mesh = &model.mesh();
 
-        command_buffer.set_vertex_buffer(&mesh.vertices);
+        command_buffer.set_vertex_buffer(&mesh.vertices, 0);
         if mesh.indices.is_some() {
-          command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap(), IndexFormat::U32);
+          command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap(), 0, IndexFormat::U32);
         }
 
         let range = &mesh.parts[part.part_index];

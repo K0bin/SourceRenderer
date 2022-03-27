@@ -1,6 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureStorageViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureSamplingViewInfo, AddressMode, Filter, SamplerInfo, BufferUsage}, Vec2UI, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureStorageViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureSamplingViewInfo, AddressMode, Filter, SamplerInfo, BufferUsage, WHOLE_BUFFER}, Vec2UI, Platform, platform::io::IO};
 
 use crate::renderer::{passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
 
@@ -97,7 +97,7 @@ impl<B: Backend> RTShadowPass<B> {
     cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&self.pipeline));
     cmd_buffer.bind_acceleration_structure(BindingFrequency::PerFrame, 0, acceleration_structure);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerFrame, 1, &*texture_uav);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, camera_buffer);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, camera_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 5, &*depth, &self.sampler);
     cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, blue_noise, blue_noise_sampler);
     let info = texture_uav.texture().get_info();
@@ -111,7 +111,7 @@ impl<B: Backend> RTShadowPass<B> {
       frame: frame as u32,
       directional_light_count: 0
     }], BufferUsage::CONSTANT);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &frame_data);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &frame_data, 0, WHOLE_BUFFER);
 
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();

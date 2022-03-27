@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use crate::buffer::VkBufferSlice;
 use crate::VkFence;
 
-use sourcerenderer_core::graphics::{Texture, Queue};
+use sourcerenderer_core::graphics::{Texture, Queue, WHOLE_BUFFER};
 use std::cmp::{max, min};
 use std::ffi::CString;
 use crate::{VkShared, VkLifetimeTrackers};
@@ -113,7 +113,7 @@ impl VkTransfer {
     }
   }
 
-  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
+  pub fn init_texture(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32, buffer_offset: usize) {
     let mut guard = self.inner.lock().unwrap();
     guard.graphics.pre_barriers.push(VkTransferBarrier::Image (
       vk::ImageMemoryBarrier {
@@ -138,7 +138,7 @@ impl VkTransfer {
       src: src_buffer.clone(),
       dst: texture.clone(),
       region: vk::BufferImageCopy {
-        buffer_offset: src_buffer.get_offset_and_length().0 as u64,
+        buffer_offset: (src_buffer.get_offset() + buffer_offset) as u64,
         image_offset: vk::Offset3D {
           x: 0,
           y: 0,
@@ -180,15 +180,21 @@ impl VkTransfer {
     })));
   }
 
-  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
+  pub fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>, src_offset: usize, dst_offset: usize, length: usize) {
+    debug_assert_ne!(length, 0);
+
     let mut guard = self.inner.lock().unwrap();
     guard.graphics.copies.push(VkTransferCopy::BufferToBuffer {
       src: src_buffer.clone(),
       dst: dst_buffer.clone(),
       region: vk::BufferCopy {
-        src_offset: src_buffer.get_offset() as u64,
-        dst_offset: dst_buffer.get_offset() as u64,
-        size: min(src_buffer.get_length(), dst_buffer.get_length()) as u64
+        src_offset: (src_buffer.get_offset() + src_offset) as vk::DeviceSize,
+        dst_offset: (dst_buffer.get_offset() + dst_offset) as vk::DeviceSize,
+        size: if length == WHOLE_BUFFER {
+          dst_buffer.get_length() as vk::DeviceSize
+        } else {
+          length as vk::DeviceSize
+        }
       }
     });
 
@@ -199,18 +205,18 @@ impl VkTransfer {
         src_queue_family_index: self.graphics_queue.get_queue_family_index(),
         dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
         buffer: *dst_buffer.get_buffer().get_handle(),
-        offset: dst_buffer.get_offset() as u64,
-        size: dst_buffer.get_length() as u64,
+        offset: dst_buffer.get_offset() as vk::DeviceSize,
+        size: if length == WHOLE_BUFFER { dst_buffer.get_length() as vk::DeviceSize } else { length as vk::DeviceSize },
         ..Default::default()
       }
     )));
   }
 
-  pub fn init_texture_async(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Option<Arc<VkFence>> {
+  pub fn init_texture_async(&self, texture: &Arc<VkTexture>, src_buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<Arc<VkFence>> {
     let mut guard = self.inner.lock().unwrap();
     if guard.transfer.is_none() {
       std::mem::drop(guard);
-      self.init_texture(texture, src_buffer, mip_level, array_layer);
+      self.init_texture(texture, src_buffer, mip_level, array_layer, buffer_offset);
       return None;
     }
 
@@ -240,7 +246,7 @@ impl VkTransfer {
         src: src_buffer.clone(),
         dst: texture.clone(),
         region: vk::BufferImageCopy {
-          buffer_offset: src_buffer.get_offset_and_length().0 as u64,
+          buffer_offset: (src_buffer.get_offset() + buffer_offset) as u64,
           image_offset: vk::Offset3D {
             x: 0,
             y: 0,

@@ -230,16 +230,16 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkPipeline::new_graphics(&self.device, &vk_info, shared))
   }
 
-  fn init_texture(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) {
-    self.transfer.init_texture(texture, buffer, mip_level, array_layer);
+  fn init_texture(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32, buffer_offset: usize) {
+    self.transfer.init_texture(texture, buffer, mip_level, array_layer, buffer_offset);
   }
 
-  fn init_texture_async(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32) -> Option<Arc<VkFence>> {
-    self.transfer.init_texture_async(texture, buffer, mip_level, array_layer)
+  fn init_texture_async(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<Arc<VkFence>> {
+    self.transfer.init_texture_async(texture, buffer, mip_level, array_layer, buffer_offset)
   }
 
-  fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>) {
-    self.transfer.init_buffer(src_buffer, dst_buffer);
+  fn init_buffer(&self, src_buffer: &Arc<VkBufferSlice>, dst_buffer: &Arc<VkBufferSlice>, src_offset: usize, dst_offset: usize, length: usize) {
+    self.transfer.init_buffer(src_buffer, dst_buffer, src_offset, dst_offset, length);
   }
 
   fn flush_transfers(&self) {

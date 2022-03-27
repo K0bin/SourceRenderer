@@ -23,7 +23,8 @@ pub struct WebGLCommandBuffer {
   used_textures: Vec<Arc<WebGLTexture>>,
   used_pipelines: Vec<Arc<WebGLGraphicsPipeline>>,
   dirty: WebGLCommandBufferDirty,
-  vertex_buffer: Option<Arc<WebGLBuffer>>
+  vertex_buffer: Option<Arc<WebGLBuffer>>,
+  index_buffer_offset: usize
 }
 
 impl WebGLCommandBuffer {
@@ -42,7 +43,8 @@ impl WebGLCommandBuffer {
       used_textures: Vec::new(),
       used_pipelines: Vec::new(),
       dirty: WebGLCommandBufferDirty::empty(),
-      vertex_buffer: None
+      vertex_buffer: None,
+      index_buffer_offset: 0,
     }
   }
 
@@ -101,17 +103,19 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }
   }
 
-  fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<WebGLBuffer>) {
+  fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<WebGLBuffer>, offset: usize) {
     self.vertex_buffer = Some(vertex_buffer.clone());
     self.dirty |= WebGLCommandBufferDirty::VAO;
   }
 
-  fn set_index_buffer(&mut self, index_buffer: &Arc<WebGLBuffer>, index_format: IndexFormat) {
+  fn set_index_buffer(&mut self, index_buffer: &Arc<WebGLBuffer>, offset: usize, index_format: IndexFormat) {
     // TODO: maybe track dirty and do before draw
 
     if index_format != IndexFormat::U32 {
       unimplemented!("16 bit indices are not implemented");
     }
+
+    self.index_buffer_offset = offset;
 
     let handle = index_buffer.handle();
     self.commands.push_back(Box::new(move |device| {
@@ -146,43 +150,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
       let scissor = scissors.first().unwrap();
       device.scissor(scissor.position.x as i32, scissor.position.y as i32, scissor.extent.x as i32, scissor.extent.y as i32);
     }));
-  }
-
-  fn init_texture_mip_level(&mut self, src_buffer: &Arc<WebGLBuffer>, texture: &Arc<WebGLTexture>, mip_level: u32, array_layer: u32) {
-    /*let info = texture.get_info();
-    let data_ref = src_buffer.data();
-    let data = data_ref.as_ref().unwrap();
-    let target = texture.target();
-    let bind_texture = self.context.get_parameter(target).unwrap();
-    self.context.bind_texture(target, Some(texture.handle()));
-    if info.format.is_compressed() {
-      self.context.compressed_tex_image_2d_with_u8_array(
-        if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
-        mip_level as i32,
-        format_to_internal_gl(info.format),
-        info.width as i32,
-        info.height as i32,
-        0,
-        &data[..]
-      );
-    } else {
-      self.context.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
-        if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
-        mip_level as i32,
-        format_to_internal_gl(info.format) as i32,
-        info.width as i32,
-        info.height as i32,
-        0,
-        format_to_internal_gl(info.format), // TODO: change for Webgl 2
-        WebGlRenderingContext::UNSIGNED_BYTE,
-        Some(&data[..])
-      ).unwrap();
-    }
-    if !bind_texture.is_null() {
-      let bind_texture = bind_texture.unchecked_into::<WebGlTexture>();
-      self.context.bind_texture(target, Some(&bind_texture));
-    }*/
-    unimplemented!()
   }
 
   fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Arc<WebGLBuffer>
@@ -239,13 +206,14 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     assert_eq!(first_instance, 0);
     assert_eq!(vertex_offset, 0);
     let pipeline_handle = self.pipeline.as_ref().unwrap().handle();
+    let index_offset = self.index_buffer_offset as i32;
     self.commands.push_back(Box::new(move |device| {
       let pipeline = device.pipeline(pipeline_handle);
       device.draw_elements_with_i32(
         pipeline.gl_draw_mode(),
         indices as i32,
         WebGlRenderingContext::UNSIGNED_INT,
-        first_index as i32 * std::mem::size_of::<u32>() as i32,
+        first_index as i32 * std::mem::size_of::<u32>() as i32 + index_offset,
       );
     }));
   }

@@ -9,7 +9,7 @@ use ash::vk;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance};
+use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance, WHOLE_BUFFER};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -298,19 +298,19 @@ impl VkCommandBuffer {
     self.sub_pass += 1;
   }
 
-  pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>) {
+  pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>, offset: usize) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(vertex_buffer);
     unsafe {
-      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[vertex_buffer.get_offset() as u64]);
+      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[(vertex_buffer.get_offset() + offset) as u64]);
     }
   }
 
-  pub(crate) fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>, format: IndexFormat) {
+  pub(crate) fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>, offset: usize, format: IndexFormat) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(index_buffer);
     unsafe {
-      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), index_buffer.get_offset() as u64, index_format_to_vk(format));
+      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), (index_buffer.get_offset() + offset) as u64, index_format_to_vk(format));
     }
   }
 
@@ -367,72 +367,6 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn init_texture_mip_level(&mut self, src_buffer: &Arc<VkBufferSlice>, texture: &Arc<VkTexture>, mip_level: u32, array_layer: u32) {
-    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    unsafe {
-      self.device.cmd_pipeline_barrier(self.buffer, vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], &[
-      vk::ImageMemoryBarrier {
-        src_access_mask: vk::AccessFlags::empty(),
-        dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-        old_layout: vk::ImageLayout::UNDEFINED,
-        new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        src_queue_family_index: self.queue_family_index,
-        dst_queue_family_index: self.queue_family_index,
-        subresource_range: vk::ImageSubresourceRange {
-          base_mip_level: mip_level,
-          level_count: 1,
-          base_array_layer: array_layer,
-          aspect_mask: vk::ImageAspectFlags::COLOR,
-          layer_count: 1
-        },
-        image: *texture.get_handle(),
-        ..Default::default()
-      }]);
-      self.device.cmd_copy_buffer_to_image(self.buffer, *src_buffer.get_buffer().get_handle(), *texture.get_handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[
-        vk::BufferImageCopy {
-          buffer_offset: src_buffer.get_offset_and_length().0 as u64,
-          image_offset: vk::Offset3D {
-            x: 0,
-            y: 0,
-            z: 0
-          },
-          buffer_row_length: 0,
-          buffer_image_height: 0,
-          image_extent: vk::Extent3D {
-            width: max(texture.get_info().width >> mip_level, 1),
-            height: max(texture.get_info().height >> mip_level, 1),
-            depth: max(texture.get_info().depth >> mip_level, 1),
-          },
-          image_subresource: vk::ImageSubresourceLayers {
-            mip_level,
-            base_array_layer: array_layer,
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            layer_count: 1
-          }
-      }]);
-      self.device.cmd_pipeline_barrier(self.buffer, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER, vk::DependencyFlags::empty(), &[], &[], &[
-        vk::ImageMemoryBarrier {
-          src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-          dst_access_mask: vk::AccessFlags::SHADER_READ,
-          old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-          new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-          src_queue_family_index: self.queue_family_index,
-          dst_queue_family_index: self.queue_family_index,
-          subresource_range: vk::ImageSubresourceRange {
-            base_mip_level: mip_level,
-            level_count: 1,
-            base_array_layer: array_layer,
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            layer_count: 1
-          },
-          image: *texture.get_handle(),
-          ..Default::default()
-        }]);
-    }
-    self.trackers.track_buffer(src_buffer);
-    self.trackers.track_texture(texture);
-  }
-
   pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::SampledTexture(texture, sampler));
@@ -440,15 +374,17 @@ impl VkCommandBuffer {
     self.trackers.track_sampler(sampler);
   }
 
-  pub(crate) fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+  pub(crate) fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::UniformBuffer(buffer));
+    debug_assert_ne!(length, 0);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::UniformBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.get_length() } else { length } });
     self.trackers.track_buffer(buffer);
   }
 
-  pub(crate) fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
+  pub(crate) fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageBuffer(buffer));
+    debug_assert_ne!(length, 0);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.get_length() } else { length } });
     self.trackers.track_buffer(buffer);
   }
 
@@ -1134,13 +1070,13 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>) {
-    self.item.as_mut().unwrap().set_vertex_buffer(vertex_buffer)
+  fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>, offset: usize) {
+    self.item.as_mut().unwrap().set_vertex_buffer(vertex_buffer, offset)
   }
 
   #[inline(always)]
-  fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>, format: IndexFormat) {
-    self.item.as_mut().unwrap().set_index_buffer(index_buffer, format)
+  fn set_index_buffer(&mut self, index_buffer: &Arc<VkBufferSlice>, offset: usize, format: IndexFormat) {
+    self.item.as_mut().unwrap().set_index_buffer(index_buffer, offset, format)
   }
 
   #[inline(always)]
@@ -1151,11 +1087,6 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn set_scissors(&mut self, scissors: &[Scissor]) {
     self.item.as_mut().unwrap().set_scissors(scissors);
-  }
-
-  #[inline(always)]
-  fn init_texture_mip_level(&mut self, src_buffer: &Arc<VkBufferSlice>, texture: &Arc<VkTexture>, mip_level: u32, array_layer: u32) {
-    self.item.as_mut().unwrap().init_texture_mip_level(src_buffer, texture, mip_level, array_layer);
   }
 
   #[inline(always)]
@@ -1186,13 +1117,13 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
-    self.item.as_mut().unwrap().bind_uniform_buffer(frequency, binding, buffer);
+  fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
+    self.item.as_mut().unwrap().bind_uniform_buffer(frequency, binding, buffer, offset, length);
   }
 
   #[inline(always)]
-  fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>) {
-    self.item.as_mut().unwrap().bind_storage_buffer(frequency, binding, buffer);
+  fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
+    self.item.as_mut().unwrap().bind_storage_buffer(frequency, binding, buffer, offset, length);
   }
 
   #[inline(always)]

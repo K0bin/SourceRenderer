@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureSamplingViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDepthStencilViewInfo}};
+use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureSamplingViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDepthStencilViewInfo, WHOLE_BUFFER}};
 use std::{sync::Arc, cell::Ref};
 use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, prepass::Prepass, rt_shadows::RTShadowPass}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -351,7 +351,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     let inner_cmd_buffers: Vec::<B::CommandBufferSubmission> = chunks.map(|chunk| {
       let mut command_buffer = device.graphics_queue().create_inner_command_buffer(inheritance);
 
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &per_frame_buffer);
+      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &per_frame_buffer, 0, WHOLE_BUFFER);
 
       command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
       command_buffer.set_viewports(&[Viewport {
@@ -366,11 +366,11 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       }]);
 
       //command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 7, clusters);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer);
-      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer);
-      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, &light_bitmask_buffer);
+      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, &light_bitmask_buffer, 0, WHOLE_BUFFER);
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, &ssao, &self.sampler);
-      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer);
+      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer, 0, WHOLE_BUFFER);
       command_buffer.bind_texture_view(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
       command_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
 
@@ -393,9 +393,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         let mesh = model.mesh();
         let materials = model.materials();
 
-        command_buffer.set_vertex_buffer(&mesh.vertices);
+        command_buffer.set_vertex_buffer(&mesh.vertices, 0);
         if mesh.indices.is_some() {
-          command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap(), IndexFormat::U32);
+          command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap(), 0, IndexFormat::U32);
         }
 
         let range = &mesh.parts[part.part_index];
@@ -459,7 +459,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             None => {}
           }
           let material_info_buffer = command_buffer.upload_dynamic_data(&[material_info], BufferUsage::CONSTANT);
-          command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 3, &material_info_buffer);
+          command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 3, &material_info_buffer, 0, WHOLE_BUFFER);
           last_material = Some(material.clone());
         }
 

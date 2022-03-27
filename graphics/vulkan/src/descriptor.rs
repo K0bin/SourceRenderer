@@ -310,11 +310,11 @@ impl VkDescriptorSet {
           };
 
           match resource {
-            VkBoundResource::StorageBuffer(buffer) => {
+            VkBoundResource::StorageBuffer { buffer, offset, length } => {
               let buffer_info = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
-                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                range: *length as vk::DeviceSize
               };
               buffer_writes.push(buffer_info);
               write.p_buffer_info = unsafe { buffer_writes.as_ptr().offset(buffer_writes.len() as isize - 1) };
@@ -330,11 +330,11 @@ impl VkDescriptorSet {
               write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
               write.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
             },
-            VkBoundResource::UniformBuffer(buffer) => {
+            VkBoundResource::UniformBuffer { buffer, offset, length } => {
               let buffer_info = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
-                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                range: *length as vk::DeviceSize
               };
               buffer_writes.push(buffer_info);
               write.p_buffer_info = unsafe { buffer_writes.as_ptr().offset(buffer_writes.len() as isize - 1) };
@@ -390,18 +390,18 @@ impl VkDescriptorSet {
           }
           let mut entry = VkDescriptorEntry::default();
           match resource {
-            VkBoundResource::StorageBuffer(buffer) => {
+            VkBoundResource::StorageBuffer { buffer, offset, length } => {
               entry.buffer = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
-                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                range: *length as vk::DeviceSize
               };
             },
-            VkBoundResource::UniformBuffer(buffer) => {
+            VkBoundResource::UniformBuffer { buffer, offset, length } => {
               entry.buffer = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { buffer.get_offset_and_length().0 as vk::DeviceSize },
-                range: buffer.get_offset_and_length().1 as vk::DeviceSize
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                range: *length as vk::DeviceSize
               };
             },
             VkBoundResource::SampledTexture(texture, sampler) => {
@@ -474,8 +474,16 @@ impl Drop for VkDescriptorSet {
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub(crate) enum VkBoundResource {
   None,
-  UniformBuffer(Arc<VkBufferSlice>),
-  StorageBuffer(Arc<VkBufferSlice>),
+  UniformBuffer{
+    buffer: Arc<VkBufferSlice>,
+    offset: usize,
+    length: usize,
+  },
+  StorageBuffer{
+    buffer: Arc<VkBufferSlice>,
+    offset: usize,
+    length: usize,
+  },
   StorageTexture(Arc<VkTextureView>),
   SampledTexture(Arc<VkTextureView>, Arc<VkSampler>),
   Sampler(Arc<VkSampler>),
@@ -491,8 +499,16 @@ impl Default for VkBoundResource {
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub(crate) enum VkBoundResourceRef<'a> {
   None,
-  UniformBuffer(&'a Arc<VkBufferSlice>),
-  StorageBuffer(&'a Arc<VkBufferSlice>),
+  UniformBuffer {
+    buffer: &'a Arc<VkBufferSlice>,
+    offset: usize,
+    length: usize,
+  },
+  StorageBuffer {
+    buffer: &'a Arc<VkBufferSlice>,
+    offset: usize,
+    length: usize,
+  },
   StorageTexture(&'a Arc<VkTextureView>),
   SampledTexture(&'a Arc<VkTextureView>, &'a Arc<VkSampler>),
   Sampler(&'a Arc<VkSampler>),
@@ -557,8 +573,16 @@ impl VkBindingManager {
     let existing_binding = &mut bindings_table[slot as usize];
     let identical = match (&existing_binding, &binding) {
         (VkBoundResource::None, VkBoundResourceRef::None) => true,
-        (VkBoundResource::UniformBuffer(old), VkBoundResourceRef::UniformBuffer(new)) => old == *new,
-        (VkBoundResource::StorageBuffer(old), VkBoundResourceRef::StorageBuffer(new)) => old == *new,
+        (VkBoundResource::UniformBuffer {
+          buffer: old, offset: old_offset, length: old_length
+        }, VkBoundResourceRef::UniformBuffer {
+          buffer: new, offset: new_offset, length: new_length
+        }) => old == *new && *old_offset == *new_offset && *old_length == *new_length,
+        (VkBoundResource::StorageBuffer {
+          buffer: old, offset: old_offset, length: old_length
+        }, VkBoundResourceRef::StorageBuffer {
+          buffer: new, offset: new_offset, length: new_length
+        }) => old == *new && *old_offset == *new_offset && *old_length == *new_length,
         (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => old == *new,
         (VkBoundResource::SampledTexture(old_tex, old_sampler), VkBoundResourceRef::SampledTexture(new_tex, new_sampler)) => old_tex == *new_tex && old_sampler == *new_sampler,
         (VkBoundResource::Sampler(old_sampler), VkBoundResourceRef::Sampler(new_sampler)) => old_sampler == *new_sampler,
@@ -570,8 +594,12 @@ impl VkBindingManager {
       self.dirty.insert(DirtyDescriptorSets::from(frequency));
       *existing_binding = match binding {
         VkBoundResourceRef::None => VkBoundResource::None,
-        VkBoundResourceRef::UniformBuffer(ubo) => VkBoundResource::UniformBuffer(ubo.clone()),
-        VkBoundResourceRef::StorageBuffer(ssbo) => VkBoundResource::StorageBuffer(ssbo.clone()),
+        VkBoundResourceRef::UniformBuffer {
+          buffer, offset, length
+        } => VkBoundResource::UniformBuffer { buffer: buffer.clone(), offset, length },
+        VkBoundResourceRef::StorageBuffer {
+          buffer, offset, length
+        } => VkBoundResource::StorageBuffer { buffer: buffer.clone(), offset, length },
         VkBoundResourceRef::StorageTexture(storage_tex) => VkBoundResource::StorageTexture(storage_tex.clone()),
         VkBoundResourceRef::SampledTexture(tex, sampler) => VkBoundResource::SampledTexture(tex.clone(), sampler.clone()),
         VkBoundResourceRef::Sampler(sampler) => VkBoundResource::Sampler(sampler.clone()),
@@ -596,10 +624,11 @@ impl VkBindingManager {
                         binding == &bindings[index]
                       } else {
                         // https://github.com/rust-lang/rust/issues/53667
-                        if let (VkBoundResource::UniformBuffer(entry_buffer), VkBoundResource::UniformBuffer(buffer)) = (binding, &bindings[index]) {
+                        if let (VkBoundResource::UniformBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResource::UniformBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
                           buffer.get_buffer() == entry_buffer.get_buffer()
-                        } else if let (VkBoundResource::StorageBuffer(entry_buffer), VkBoundResource::StorageBuffer(buffer)) = (binding, &bindings[index]) {
+                        } else if let (VkBoundResource::StorageBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResource::StorageBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
                           buffer.get_buffer() == entry_buffer.get_buffer()
+                          && *length == *entry_length
                         } else {
                           binding == &bindings[index]
                         }
@@ -667,12 +696,12 @@ impl VkBindingManager {
       bindings.iter().enumerate().for_each(|(index, binding)| {
         if layout.binding_infos[index].is_some() {
           match binding {
-            VkBoundResource::UniformBuffer(buffer) => {
-              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+            VkBoundResource::UniformBuffer { buffer, offset, length: _ } => {
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.get_offset() + offset) as u64;
               set_binding.dynamic_offset_count += 1;
             }
-            VkBoundResource::StorageBuffer(buffer) => {
-              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = buffer.get_offset() as u64;
+            VkBoundResource::StorageBuffer { buffer, offset, length: _ } => {
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.get_offset() + offset) as u64;
               set_binding.dynamic_offset_count += 1;
             },
             _ => {}

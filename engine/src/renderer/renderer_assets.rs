@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage}};
+use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage, WHOLE_BUFFER}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureSamplingViewInfo, BufferUsage };
@@ -231,7 +231,7 @@ impl<P: Platform> RendererAssets<P> {
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTexture"));
-    device.init_texture(&zero_texture, &zero_buffer, 0, 0);
+    device.init_texture(&zero_texture, &zero_buffer, 0, 0, 0);
     let zero_view = device.create_sampling_view(&zero_texture, &TextureSamplingViewInfo::default(), Some("AssetManagerZeroTextureView"));
     let zero_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view))
@@ -255,7 +255,7 @@ impl<P: Platform> RendererAssets<P> {
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTextureBlack"));
-    device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0);
+    device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0, 0);
     let zero_view_black = device.create_sampling_view(&zero_texture_black, &TextureSamplingViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
     let zero_black_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view_black))
@@ -331,7 +331,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: BufferUsage::COPY_DST | BufferUsage::VERTEX
      }, MemoryUsage::GpuOnly, Some(&vb_name));
     let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    self.device.init_buffer(&temp_vertex_buffer, &vertex_buffer);
+    self.device.init_buffer(&temp_vertex_buffer, &vertex_buffer, 0, 0, WHOLE_BUFFER);
     let index_buffer = mesh.indices.map(|indices| {
       let buffer = self.device.create_buffer(
       &BufferInfo {
@@ -339,7 +339,7 @@ impl<P: Platform> RendererAssets<P> {
         usage: BufferUsage::COPY_DST | BufferUsage::INDEX
       },MemoryUsage::GpuOnly, Some(&ib_name));
       let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-      self.device.init_buffer(&temp_buffer, &buffer);
+      self.device.init_buffer(&temp_buffer, &buffer, 0, 0, WHOLE_BUFFER);
       buffer
     });
 
@@ -363,9 +363,9 @@ impl<P: Platform> RendererAssets<P> {
       let init_buffer = self.device.upload_data(
         &texture.data[subresource as usize][..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
       if do_async {
-        fence = self.device.init_texture_async(&gpu_texture, &init_buffer, mip_level, array_index);
+        fence = self.device.init_texture_async(&gpu_texture, &init_buffer, mip_level, array_index, 0);
       } else {
-        self.device.init_texture(&gpu_texture, &init_buffer, mip_level, array_index);
+        self.device.init_texture(&gpu_texture, &init_buffer, mip_level, array_index, 0);
       }
     }
     let view = self.device.create_sampling_view(
