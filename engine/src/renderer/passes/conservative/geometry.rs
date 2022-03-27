@@ -393,9 +393,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         let mesh = model.mesh();
         let materials = model.materials();
 
-        command_buffer.set_vertex_buffer(&mesh.vertices, 0);
-        if mesh.indices.is_some() {
-          command_buffer.set_index_buffer(mesh.indices.as_ref().unwrap(), 0, IndexFormat::U32);
+        command_buffer.set_vertex_buffer(mesh.vertices.buffer(), mesh.vertices.offset() as usize);
+        if let Some(indices) = mesh.indices.as_ref() {
+          command_buffer.set_index_buffer(indices.buffer(), indices.offset() as usize, IndexFormat::U32);
         }
 
         let range = &mesh.parts[part.part_index];

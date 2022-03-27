@@ -338,6 +338,10 @@ impl VkBufferSlice {
   pub fn va(&self) -> Option<vk::DeviceAddress> {
     self.buffer.va().map(|va| va + self.offset as vk::DeviceSize)
   }
+
+  pub fn va_offset(&self, offset: usize) -> Option<vk::DeviceAddress> {
+    self.buffer.va().map(|va| va + (self.offset + offset) as vk::DeviceSize)
+  }
 }
 
 const SLICED_BUFFER_SIZE: usize = 16384;

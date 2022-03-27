@@ -267,13 +267,13 @@ impl VkAccelerationStructure {
     let geometry_data = vk::AccelerationStructureGeometryTrianglesDataKHR {
       vertex_format: format_to_vk(info.vertex_format),
       vertex_data: vk::DeviceOrHostAddressConstKHR {
-        device_address: info.vertex_buffer.va().unwrap() + info.vertex_position_offset as vk::DeviceSize
+        device_address: info.vertex_buffer.va_offset(info.vertex_buffer_offset).unwrap() + info.vertex_position_offset as vk::DeviceSize
       },
       vertex_stride: info.vertex_stride as vk::DeviceSize,
       max_vertex: info.vertex_buffer.length() as u32 / info.vertex_stride,
       index_type: index_format_to_vk(info.index_format),
       index_data: vk::DeviceOrHostAddressConstKHR {
-        device_address: info.index_buffer.va().unwrap()
+        device_address: info.index_buffer.va_offset(info.index_buffer_offset).unwrap()
       },
       transform_data: vk::DeviceOrHostAddressConstKHR {
         host_address: std::ptr::null()

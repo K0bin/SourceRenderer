@@ -8,6 +8,8 @@ use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Form
 
 use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
 
+use super::asset_buffer::{AssetBuffer, AssetBufferSlice};
+
 pub struct RendererTexture<B: Backend> {
   pub(super) view: Arc<B::TextureSamplingView>,
   pub(super) bindless_index: Option<u32>
@@ -187,8 +189,8 @@ impl<B: Backend> RendererModel<B> {
 }
 
 pub struct RendererMesh<B: Backend> {
-  pub vertices: Arc<B::Buffer>,
-  pub indices: Option<Arc<B::Buffer>>,
+  pub vertices: AssetBufferSlice<B>,
+  pub indices: Option<AssetBufferSlice<B>,>,
   pub parts: Box<[MeshRange]>,
   pub bounding_box: Option<BoundingBox>,
   pub vertex_count: u32,
@@ -214,7 +216,9 @@ pub(super) struct RendererAssets<P: Platform> {
   material_usages: HashMap<String, Vec<(String, usize)>>,
   zero_texture: Arc<RendererTexture<P::GraphicsBackend>>,
   zero_texture_black: Arc<RendererTexture<P::GraphicsBackend>>,
-  delayed_assets: Vec<DelayedAsset<P::GraphicsBackend>>
+  delayed_assets: Vec<DelayedAsset<P::GraphicsBackend>>,
+  vertex_buffer: AssetBuffer<P::GraphicsBackend>,
+  index_buffer: AssetBuffer<P::GraphicsBackend>,
 }
 
 impl<P: Platform> RendererAssets<P> {
@@ -266,6 +270,10 @@ impl<P: Platform> RendererAssets<P> {
       view: zero_view_black,
       bindless_index: zero_black_index
     });
+
+    let vertex_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_BIG, BufferUsage::VERTEX | BufferUsage::COPY_DST);
+    let index_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_SMALL, BufferUsage::INDEX | BufferUsage::COPY_DST);
+
     device.flush_transfers();
 
     Self {
@@ -278,7 +286,9 @@ impl<P: Platform> RendererAssets<P> {
       texture_usages: HashMap::new(),
       zero_texture: zero_rtexture,
       zero_texture_black: zero_rtexture_black,
-      delayed_assets: Vec::new()
+      delayed_assets: Vec::new(),
+      vertex_buffer,
+      index_buffer,
     }
   }
 
@@ -321,25 +331,16 @@ impl<P: Platform> RendererAssets<P> {
   }
 
   pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: Mesh) {
-    let vb_name = mesh_path.to_string() + "_vertices";
-    let ib_name = mesh_path.to_string() + "_indices";
-
     assert_ne!(mesh.vertex_count, 0);
 
-    let vertex_buffer = self.device.create_buffer(&BufferInfo {
-      size: std::mem::size_of_val(&mesh.vertices[..]),
-      usage: BufferUsage::COPY_DST | BufferUsage::VERTEX
-     }, MemoryUsage::GpuOnly, Some(&vb_name));
+    let vertex_buffer = self.vertex_buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]));
     let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-    self.device.init_buffer(&temp_vertex_buffer, &vertex_buffer, 0, 0, WHOLE_BUFFER);
+    self.device.init_buffer(&temp_vertex_buffer, vertex_buffer.buffer(), 0, vertex_buffer.offset() as usize, vertex_buffer.size() as usize);
+
     let index_buffer = mesh.indices.map(|indices| {
-      let buffer = self.device.create_buffer(
-      &BufferInfo {
-        size: std::mem::size_of_val(&indices[..]),
-        usage: BufferUsage::COPY_DST | BufferUsage::INDEX
-      },MemoryUsage::GpuOnly, Some(&ib_name));
+      let buffer = self.index_buffer.get_slice(std::mem::size_of_val(&indices[..]));
       let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
-      self.device.init_buffer(&temp_buffer, &buffer, 0, 0, WHOLE_BUFFER);
+      self.device.init_buffer(&temp_buffer, buffer.buffer(), 0, buffer.offset() as usize, buffer.size() as usize);
       buffer
     });
 
@@ -516,6 +517,11 @@ impl<P: Platform> RendererAssets<P> {
 
     // Make sure the work initializing the resources actually gets submitted
     self.device.flush_transfers();
+  }
+
+  pub fn bump_frame(&self) {
+    self.vertex_buffer.bump_frame(&self.device);
+    self.index_buffer.bump_frame(&self.device);
   }
 }
 

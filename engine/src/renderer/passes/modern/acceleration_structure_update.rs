@@ -60,8 +60,10 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
 
             debug_assert_ne!(mesh.vertex_count, 0);
             let info = BottomLevelAccelerationStructureInfo {
-              vertex_buffer: &mesh.vertices,
-              index_buffer: mesh.indices.as_ref().unwrap(),
+              vertex_buffer: mesh.vertices.buffer(),
+              vertex_buffer_offset: mesh.vertices.offset() as usize,
+              index_buffer: mesh.indices.as_ref().unwrap().buffer(),
+              index_buffer_offset: mesh.indices.as_ref().unwrap().offset() as usize,
               index_format: IndexFormat::U32,
               vertex_position_offset: 0,
               vertex_format: Format::RGB32Float,

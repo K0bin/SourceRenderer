@@ -14,6 +14,7 @@ mod renderer_resources;
 mod late_latch_camera;
 pub(crate) mod passes;
 mod renderer_assets;
+mod asset_buffer;
 mod late_latching;
 
 #[cfg(feature = "threading")]

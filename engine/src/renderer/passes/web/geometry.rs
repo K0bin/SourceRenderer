@@ -286,9 +286,9 @@ impl<B: Backend> GeometryPass<B> {
       }
       cmd_buffer.finish_binding();
 
-      cmd_buffer.set_vertex_buffer(&mesh.vertices, 0);
+      cmd_buffer.set_vertex_buffer(mesh.vertices.buffer(), mesh.vertices.offset() as usize);
       if let Some(indices) = mesh.indices.as_ref() {
-        cmd_buffer.set_index_buffer(indices, 0, IndexFormat::U32);
+        cmd_buffer.set_index_buffer(indices.buffer(), indices.offset() as usize, IndexFormat::U32);
         cmd_buffer.draw_indexed(1, 0, range.count, range.start, 0);
       } else {
         cmd_buffer.draw(range.count, range.start);
