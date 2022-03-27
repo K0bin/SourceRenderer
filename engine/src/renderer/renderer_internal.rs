@@ -23,7 +23,7 @@ use instant::Instant;
 use super::PointLight;
 use super::drawable::{make_camera_proj, make_camera_view};
 use super::light::DirectionalLight;
-use super::passes::desktop::desktop_renderer::DesktopRenderer;
+use super::passes::conservative::desktop_renderer::ConservativeRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
 
@@ -59,7 +59,7 @@ impl<P: Platform> RendererInternal<P> {
     let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
       Box::new(WebRenderer::new::<P>(device, swapchain))
     } else {
-      Box::new(DesktopRenderer::new::<P>(device, swapchain))
+      Box::new(ConservativeRenderer::new::<P>(device, swapchain))
     };
 
     Self {

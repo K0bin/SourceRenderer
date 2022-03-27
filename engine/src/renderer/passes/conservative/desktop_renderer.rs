@@ -6,7 +6,7 @@ use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass};
 
-pub struct DesktopRenderer<B: Backend> {
+pub struct ConservativeRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
   device: Arc<B::Device>,
   barriers: RendererResources<B>,
@@ -27,7 +27,7 @@ pub struct RTPasses<B: Backend> {
   shadows: RTShadowPass<B>
 }
 
-impl<B: Backend> DesktopRenderer<B> {
+impl<B: Backend> ConservativeRenderer<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
     let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
@@ -73,7 +73,7 @@ impl<B: Backend> DesktopRenderer<B> {
   }
 }
 
-impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
+impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
   fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>) {
     self.occlusion.write_occlusion_query_results(frame, bitset);
   }
@@ -112,7 +112,7 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
     self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, zero_texture_view_black, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer);
-    self.taa.execute(&mut cmd_buf, &self.barriers);
+    self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
 
     let sharpened_texture = self.barriers.access_texture(

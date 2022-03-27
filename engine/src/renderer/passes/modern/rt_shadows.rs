@@ -2,7 +2,7 @@ use std::{sync::Arc, path::Path, io::Read};
 
 use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureUnorderedAccessViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureUnorderedAccessView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureShaderResourceViewInfo, AddressMode, Filter, SamplerInfo, BufferUsage}, Vec2UI, Platform, platform::io::IO};
 
-use crate::renderer::{passes::desktop::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
+use crate::renderer::{passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 pub struct RTShadowPass<B: Backend> {
   pipeline: Arc<B::RayTracingPipeline>,

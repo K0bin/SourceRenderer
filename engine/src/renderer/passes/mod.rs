@@ -1,3 +1,12 @@
-pub(crate) mod desktop;
+pub(crate) mod conservative;
 pub(crate) mod web;
+pub(crate) mod modern;
 pub(crate) mod blue_noise;
+pub(crate) mod ssao;
+pub(crate) mod sharpen;
+pub(crate) mod taa;
+pub(crate) mod light_binning;
+pub(crate) mod clustering;
+pub(crate) mod prepass;
+use modern::acceleration_structure_update;
+use modern::rt_shadows;

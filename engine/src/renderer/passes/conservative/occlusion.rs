@@ -5,7 +5,7 @@ use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureDepthStencilViewInfo}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
-use crate::renderer::{drawable::View, renderer_scene::RendererScene, passes::desktop::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
+use crate::renderer::{drawable::View, renderer_scene::RendererScene, passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;

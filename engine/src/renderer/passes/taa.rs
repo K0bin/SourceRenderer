@@ -7,7 +7,7 @@ use sourcerenderer_core::platform::io::IO;
 
 use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
 
-use super::{geometry::GeometryPass, prepass::Prepass};
+use super::prepass::Prepass;
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
   let width_frac = 1.0f32 / width as f32;
@@ -107,13 +107,14 @@ impl<B: GraphicsBackend> TAAPass<B> {
   pub fn execute(
     &mut self,
     cmd_buf: &mut B::CommandBuffer,
+    input_name: &str,
     resources: &RendererResources<B>
   ) {
     cmd_buf.begin_label("TAA pass");
 
     let output_srv = resources.access_srv(
       cmd_buf,
-      GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME,
+      input_name,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,

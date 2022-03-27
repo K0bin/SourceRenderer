@@ -1,8 +1,9 @@
 use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
+use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
-use crate::renderer::{RendererScene, drawable::View, passes::desktop::taa::scaled_halton_point};
+use crate::renderer::{RendererScene, drawable::View};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
 use std::io::Read;
