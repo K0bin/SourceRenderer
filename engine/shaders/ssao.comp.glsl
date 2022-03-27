@@ -13,20 +13,20 @@ layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform kernel {
 };
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D noise;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform sampler2D depthMap;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform sampler2D normals;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4, std140) uniform Camera {
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3, std140) uniform Camera {
   mat4 viewProj;
   mat4 invProj;
   mat4 view;
   mat4 proj;
-} camera;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 5, r16f) uniform writeonly image2D outputTexture;
-
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 6, std140) uniform Setup {
+  mat4 invView;
+  vec4 position;
+  mat4 invViewProj;
   float zNear;
   float zFar;
-};
+} camera;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4, r16f) uniform writeonly image2D outputTexture;
 
+#define CS
 #include "util.h"
 
 // REFERENCE:
@@ -43,11 +43,12 @@ void main() {
 
   float depth = textureLod(depthMap, texCoord, 0).x;
   vec3 fragPos = viewSpacePosition(texCoord, depth, camera.invProj);
-  vec3 worldNormal = textureLod(normals, texCoord, 0).xyz;
+  vec3 worldNormal = reconstructNormalCS(depthMap, texCoord, camera.invViewProj);
   vec3 normal = worldSpaceNormalToViewSpace(worldNormal, camera.view);
 
   vec2 noiseScale = textureSize(depthMap, 0) / textureSize(noise, 0);
-  vec3 randomVec = texture(noise, texCoord * noiseScale).xyz * 2.0 - 1.0;
+  vec2 noiseXY = texture(noise, texCoord * noiseScale).xy * 2.0 - 1.0;
+  vec3 randomVec = vec3(noiseXY, 0.0);
 
   vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
   vec3 bitangent = cross(tangent, normal);
@@ -70,7 +71,7 @@ void main() {
     offset.xy = offset.xy * 0.5 + 0.5;
 
     float sampleDepth = textureLod(depthMap, offset.xy, 0).x;
-    float sampleZ = -linearizeDepth(sampleDepth, zNear, zFar);
+    float sampleZ = -linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
 
     float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleZ));
     occlusion += (sampleZ >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;

@@ -18,7 +18,10 @@ struct LateLatchCamerabuffer {
   view: Matrix4,
   proj: Matrix4,
   inv_view: Matrix4,
-  position: Vec4
+  position: Vec4,
+  inv_proj_view: Matrix4,
+  z_near: f32,
+  z_far: f32
 }
 
 pub struct LateLatchCamera<B: Backend> {
@@ -60,6 +63,9 @@ impl<B: Backend> LateLatching<B> for LateLatchCamera<B> {
     buffer_data.inv_proj = proj.try_inverse().unwrap();
     buffer_data.view_proj = proj * view;
     buffer_data.position = Vec4::new(position.x, position.y, position.z, 1f32);
+    buffer_data.inv_proj_view = view.try_inverse().unwrap() * proj.try_inverse().unwrap();
+    buffer_data.z_near = self.z_near;
+    buffer_data.z_far = self.z_far;
   }
 
   fn after_submit(&self, device: &B::Device) {

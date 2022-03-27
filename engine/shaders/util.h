@@ -31,6 +31,8 @@ vec3 reconstructNormalFS(vec2 uv, float depth, mat4 invViewProj) {
 }
 #endif
 
+#ifdef CS
+// TODO: https://wickedengine.net/2019/09/22/improved-normal-reconstruction-from-depth/
 vec3 reconstructNormalCS(sampler2D depth, vec2 uv, mat4 invViewProj) {
   vec2 depthSize = textureSize(depth, 0);
   vec2 depthTexelSize = 1.0 / depthSize;
@@ -46,5 +48,6 @@ vec3 reconstructNormalCS(sampler2D depth, vec2 uv, mat4 invViewProj) {
   vec3 pos2 = worldSpacePosition(uv2, depth2, invViewProj);
   return normalize(cross(pos2 - pos0, pos1 - pos0));
 }
+#endif
 
 #endif
