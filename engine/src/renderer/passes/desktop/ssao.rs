@@ -1,10 +1,10 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureUnorderedAccessView}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureUnorderedAccessView}, platform::io::IO, atomic_refcell::AtomicRef};
 
 use rand::random;
 
-use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, drawable::View};
 
 use super::prepass::Prepass;
 
@@ -191,8 +191,13 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo::default(), Some("SSAONoiseView"))
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, camera: &Arc<B::Buffer>, resources: &RendererResources<B>) {
-
+  pub fn execute(
+    &mut self,
+    cmd_buffer: &mut B::CommandBuffer,
+    camera: &Arc<B::Buffer>,
+    view_ref: &AtomicRef<View>,
+    resources: &RendererResources<B>
+  ){
     let ssao_uav = resources.access_uav(
       cmd_buffer,
       Self::SSAO_INTERNAL_TEXTURE_NAME,
@@ -237,6 +242,13 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Current
     );
 
+    #[repr(C)]
+    #[derive(Clone)]
+    struct SSAOSetup {
+      z_near: f32,
+      z_far: f32
+    }
+
     cmd_buffer.begin_label("SSAO pass");
     cmd_buffer.flush_barriers();
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
@@ -246,6 +258,11 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, &*normals_srv, &self.linear_sampler);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 4, camera);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 5, &*ssao_uav);
+    let setup_ubo = cmd_buffer.upload_dynamic_data(&[SSAOSetup {
+      z_near: view_ref.near_plane,
+      z_far: view_ref.far_plane,
+    }], BufferUsage::CONSTANT);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 6, &setup_ubo);
     cmd_buffer.finish_binding();
     let ssao_info = ssao_uav.texture().get_info();
     cmd_buffer.dispatch((ssao_info.width + 15) / 16, (ssao_info.height + 3) / 4, ssao_info.depth);

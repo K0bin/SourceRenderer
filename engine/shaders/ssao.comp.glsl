@@ -1,5 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : enable
+// #extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = 16,
        local_size_y = 4,
@@ -21,19 +22,12 @@ layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4, std140) uniform Camera {
 } camera;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 5, r16f) uniform writeonly image2D outputTexture;
 
-vec3 viewSpacePosition(vec2 uv) {
-  float depth = texture(depthMap, uv).r;
-  vec4 screenSpacePosition = vec4(uv * 2.0 - 1.0, depth, 1.0);
-  screenSpacePosition.y = -screenSpacePosition.y;
-  vec4 viewSpaceTemp = camera.invProj * screenSpacePosition;
-  return viewSpaceTemp.xyz / viewSpaceTemp.w;
-}
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 6, std140) uniform Setup {
+  float zNear;
+  float zFar;
+};
 
-vec3 worldSpaceNormalToViewSpace(vec2 uv) {
-  vec3 worldSpaceNormal = texture(normals, uv).xyz;
-  vec3 viewSpaceNormal = (transpose(inverse(camera.view)) * vec4(worldSpaceNormal, 0.0)).xyz;
-  return viewSpaceNormal;
-}
+#include "util.h"
 
 // REFERENCE:
 // http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html
@@ -47,8 +41,10 @@ void main() {
   }
   vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
 
-  vec3 fragPos = viewSpacePosition(texCoord);
-  vec3 normal = worldSpaceNormalToViewSpace(texCoord);
+  float depth = textureLod(depthMap, texCoord, 0).x;
+  vec3 fragPos = viewSpacePosition(texCoord, depth, camera.invProj);
+  vec3 worldNormal = textureLod(normals, texCoord, 0).xyz;
+  vec3 normal = worldSpaceNormalToViewSpace(worldNormal, camera.view);
 
   vec2 noiseScale = textureSize(depthMap, 0) / textureSize(noise, 0);
   vec3 randomVec = texture(noise, texCoord * noiseScale).xyz * 2.0 - 1.0;
@@ -70,15 +66,14 @@ void main() {
     vec4 offset = vec4(samplePos, 1.0);
     offset.y = -offset.y;
     offset = camera.proj * offset;
-    offset.xyz /= offset.w;
-    offset.xyz = offset.xyz * 0.5 + 0.5;
+    offset.xy /= offset.w;
+    offset.xy = offset.xy * 0.5 + 0.5;
 
-    // TODO: linearize depth instead of calculating view space position
-    // we only need the depth
-    float sampleDepth = viewSpacePosition(offset.xy).z;
+    float sampleDepth = textureLod(depthMap, offset.xy, 0).x;
+    float sampleZ = -linearizeDepth(sampleDepth, zNear, zFar);
 
-    float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));
-    occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
+    float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleZ));
+    occlusion += (sampleZ >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
   }
   occlusion = 1.0 - (occlusion / kernelSize);
   ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));

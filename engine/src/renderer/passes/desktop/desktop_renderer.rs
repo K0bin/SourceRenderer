@@ -104,10 +104,10 @@ impl<B: Backend> RenderPath<B> for DesktopRenderer<B> {
       rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer);
     }
     self.occlusion.execute(&self.device, &mut cmd_buf, frame, &self.barriers, &late_latching_buffer, &scene_ref, &view_ref);
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), view, &late_latching_buffer, &mut self.barriers);
+    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), &view_ref, &late_latching_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer, &mut self.barriers);
     self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
-    self.ssao.execute(&mut cmd_buf, &late_latching_buffer, &self.barriers);
+    self.ssao.execute(&mut cmd_buf, &late_latching_buffer, &view_ref, &self.barriers);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
