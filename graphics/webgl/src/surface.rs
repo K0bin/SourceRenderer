@@ -108,7 +108,7 @@ impl WebGLSwapchain {
 
   pub(crate) fn present(&self) {
     let backbuffer_handle = self.backbuffer_view.texture().handle();
-    let info = self.backbuffer_view.texture().get_info();
+    let info = self.backbuffer_view.texture().info();
     let width = info.width as i32;
     let height = info.height as i32;
     self.sender.send(Box::new(move |device| {

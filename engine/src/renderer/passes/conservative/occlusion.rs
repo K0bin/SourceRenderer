@@ -244,7 +244,7 @@ impl<B: Backend> OcclusionPass<B> {
       }]);
       command_buffer.set_viewports(&[Viewport {
         position: Vec2::new(0f32, 0f32),
-        extent: Vec2::new(history_depth_buffer.texture().get_info().width as f32, history_depth_buffer.texture().get_info().height as f32),
+        extent: Vec2::new(history_depth_buffer.texture().info().width as f32, history_depth_buffer.texture().info().height as f32),
         min_depth: 0f32,
         max_depth: 1f32,
       }]);

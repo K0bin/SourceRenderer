@@ -187,7 +187,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureDepthStencilViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    assert!(texture.get_info().format.is_depth() || texture.get_info().format.is_stencil());
+    assert!(texture.info().format.is_depth() || texture.info().format.is_stencil());
     let srv_info = TextureSamplingViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,

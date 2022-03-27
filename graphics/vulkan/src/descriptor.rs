@@ -313,7 +313,7 @@ impl VkDescriptorSet {
             VkBoundResource::StorageBuffer { buffer, offset, length } => {
               let buffer_info = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
               buffer_writes.push(buffer_info);
@@ -333,7 +333,7 @@ impl VkDescriptorSet {
             VkBoundResource::UniformBuffer { buffer, offset, length } => {
               let buffer_info = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
               buffer_writes.push(buffer_info);
@@ -393,14 +393,14 @@ impl VkDescriptorSet {
             VkBoundResource::StorageBuffer { buffer, offset, length } => {
               entry.buffer = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
             },
             VkBoundResource::UniformBuffer { buffer, offset, length } => {
               entry.buffer = vk::DescriptorBufferInfo {
                 buffer: *buffer.get_buffer().get_handle(),
-                offset: if dynamic_buffer_offsets { 0 } else { (buffer.get_offset() + *offset) as vk::DeviceSize },
+                offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
             },
@@ -697,11 +697,11 @@ impl VkBindingManager {
         if layout.binding_infos[index].is_some() {
           match binding {
             VkBoundResource::UniformBuffer { buffer, offset, length: _ } => {
-              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.get_offset() + offset) as u64;
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.offset() + offset) as u64;
               set_binding.dynamic_offset_count += 1;
             }
             VkBoundResource::StorageBuffer { buffer, offset, length: _ } => {
-              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.get_offset() + offset) as u64;
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.offset() + offset) as u64;
               set_binding.dynamic_offset_count += 1;
             },
             _ => {}

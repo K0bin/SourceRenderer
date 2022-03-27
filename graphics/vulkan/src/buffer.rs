@@ -163,7 +163,7 @@ impl Buffer for VkBufferSlice {
       let allocator = &self.buffer.device.allocator;
       allocator.invalidate_allocation(self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
-    self.buffer.map_ptr.map(|ptr| ptr.add(self.offset))
+    self.buffer.map_ptr.map(|ptr| ptr.add(self.offset()))
   }
 
   unsafe fn unmap_unsafe(&self, flush: bool) {
@@ -176,11 +176,11 @@ impl Buffer for VkBufferSlice {
     }
   }
 
-  fn get_length(&self) -> usize {
+  fn length(&self) -> usize {
     self.length
   }
 
-  fn get_info(&self) -> &BufferInfo {
+  fn info(&self) -> &BufferInfo {
     &self.buffer.info
   }
 }
@@ -327,15 +327,11 @@ impl VkBufferSlice {
     &self.buffer
   }
 
-  pub fn get_offset_and_length(&self) -> (usize, usize) {
-    (self.offset, self.length)
-  }
-
-  pub fn get_offset(&self) -> usize {
+  pub fn offset(&self) -> usize {
     self.offset
   }
 
-  pub fn get_length(&self) -> usize {
+  pub fn length(&self) -> usize {
     self.length
   }
 

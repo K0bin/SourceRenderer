@@ -1,5 +1,6 @@
 pub mod loaders;
 mod asset_manager;
+mod asset_buffer;
 
 pub use asset_manager::Asset;
 pub use asset_manager::AssetLoader;

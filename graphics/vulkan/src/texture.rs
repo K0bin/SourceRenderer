@@ -161,7 +161,7 @@ impl Drop for VkTexture {
 }
 
 impl Texture for VkTexture {
-  fn get_info(&self) -> &TextureInfo {
+  fn info(&self) -> &TextureInfo {
     &self.info
   }
 }
@@ -212,7 +212,7 @@ impl VkTextureView {
   pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureSamplingViewInfo, name: Option<&str>) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
-      view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
+      view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
       format: format_to_vk(texture.info.format),
       components: vk::ComponentMapping {
         r: vk::ComponentSwizzle::IDENTITY,
@@ -221,7 +221,7 @@ impl VkTextureView {
         a: vk::ComponentSwizzle::IDENTITY,
       },
       subresource_range: vk::ImageSubresourceRange {
-        aspect_mask: if texture.get_info().format.is_depth() {
+        aspect_mask: if texture.info().format.is_depth() {
           vk::ImageAspectFlags::DEPTH
         } else {
           vk::ImageAspectFlags::COLOR

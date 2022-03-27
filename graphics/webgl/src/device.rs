@@ -1,6 +1,6 @@
 use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}};
 use log::warn;
-use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo};
+use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, WHOLE_BUFFER};
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
 use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue}};
 
@@ -113,7 +113,7 @@ impl Device<WebGLBackend> for WebGLDevice {
     // Can't implement that but it's also not our problem
   }
 
-  fn init_texture(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32) {
+  fn init_texture(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32, src_buffer_offset: usize) {
     return;
     let buffer_id = buffer.handle();
     let texture_id = texture.handle();
@@ -135,7 +135,7 @@ impl Device<WebGLBackend> for WebGLDevice {
           0,
           format_to_gl(info.format),
           format_to_type(info.format),
-          0
+          src_buffer_offset as i32
         ).unwrap();
       } else {
         device.compressed_tex_image_2d_with_i32_and_i32(
@@ -146,18 +146,18 @@ impl Device<WebGLBackend> for WebGLDevice {
           info.height as i32,
           0,
           buffer.info().size as i32,
-          0
+          src_buffer_offset as i32
         );
       }
     }));
   }
 
-  fn init_texture_async(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32) -> Option<Arc<WebGLFence>> {
-    self.init_texture(texture, buffer, mip_level, array_layer);
+  fn init_texture_async(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<Arc<WebGLFence>> {
+    self.init_texture(texture, buffer, mip_level, array_layer, buffer_offset);
     Some(Arc::new(WebGLFence::new()))
   }
 
-  fn init_buffer(&self, src_buffer: &Arc<WebGLBuffer>, dst_buffer: &Arc<WebGLBuffer>) {
+  fn init_buffer(&self, src_buffer: &Arc<WebGLBuffer>, dst_buffer: &Arc<WebGLBuffer>, src_buffer_offset: usize, dst_buffer_offset: usize, length: usize) {
     let src_buffer_id = src_buffer.handle();
     let dst_buffer_id = dst_buffer.handle();
     self.thread_queue.send(Box::new(move |device| {
@@ -166,15 +166,15 @@ impl Device<WebGLBackend> for WebGLDevice {
 
       if dst_buffer.info().usage.contains(BufferUsage::INDEX) {
         // WebGL does not allow using the index buffer for anything else, so we have to do the copy on the CPU
-        let mut read_data = vec![0; src_buffer.info().size];
+        let mut read_data = vec![0; if length == WHOLE_BUFFER { src_buffer.info().size } else { length }];
         device.bind_buffer(WebGl2RenderingContext::COPY_READ_BUFFER, Some(src_buffer.gl_buffer()));
-        device.get_buffer_sub_data_with_i32_and_u8_array(WebGl2RenderingContext::COPY_READ_BUFFER, 0, &mut read_data);
+        device.get_buffer_sub_data_with_i32_and_u8_array(WebGl2RenderingContext::COPY_READ_BUFFER, src_buffer_offset as i32, &mut read_data[..dst_buffer.info().size.min(length)]);
         device.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(dst_buffer.gl_buffer()));
         device.buffer_data_with_u8_array(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, &read_data, dst_buffer.gl_usage());
       } else {
         device.bind_buffer(WebGl2RenderingContext::COPY_READ_BUFFER, Some(src_buffer.gl_buffer()));
         device.bind_buffer(WebGl2RenderingContext::COPY_WRITE_BUFFER, Some(dst_buffer.gl_buffer()));
-        device.copy_buffer_sub_data_with_i32_and_i32_and_i32(WebGl2RenderingContext::COPY_READ_BUFFER, WebGl2RenderingContext::COPY_WRITE_BUFFER, 0, 0, dst_buffer.info().size.min(src_buffer.info().size) as i32);
+        device.copy_buffer_sub_data_with_i32_and_i32_and_i32(WebGl2RenderingContext::COPY_READ_BUFFER, WebGl2RenderingContext::COPY_WRITE_BUFFER, src_buffer_offset as i32, dst_buffer_offset as i32, if length == WHOLE_BUFFER { dst_buffer.info().size.min(src_buffer.info().size) as i32 } else { length as i32 });
       }
     }));
   }

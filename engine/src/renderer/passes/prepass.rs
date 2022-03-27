@@ -287,7 +287,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       ],
     }, RenderpassRecordingMode::CommandBuffers);
 
-    let info = motion.texture().get_info();
+    let info = motion.texture().info();
     let per_frame = FrameData {
       swapchain_transform,
       halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32)

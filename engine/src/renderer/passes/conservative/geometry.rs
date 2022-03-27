@@ -309,7 +309,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       ]
     }, RenderpassRecordingMode::CommandBuffers);
 
-    let rtv_info = rtv.texture().get_info();
+    let rtv_info = rtv.texture().info();
     let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
     let near = view.near_plane;
     let far = view.far_plane;

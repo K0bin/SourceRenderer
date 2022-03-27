@@ -35,7 +35,7 @@ impl WebGLTexture {
 }
 
 impl Texture for WebGLTexture {
-  fn get_info(&self) -> &TextureInfo {
+  fn info(&self) -> &TextureInfo {
     &self.info
   }
 }

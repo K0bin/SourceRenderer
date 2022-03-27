@@ -222,7 +222,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     /*assert_eq!(frequency, BindingFrequency::High);
     let gl_texture = texture.texture().handle();
     let view_info = texture.info();
-    let info = texture.texture().get_info();
+    let info = texture.texture().info();
     let is_cubemap = info.array_length == 6;
     let target = if is_cubemap { WebGlRenderingContext::TEXTURE_BINDING_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_BINDING_2D };
     let bind_texture = self.context.get_parameter(target).unwrap();

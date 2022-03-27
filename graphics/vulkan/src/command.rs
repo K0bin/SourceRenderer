@@ -302,7 +302,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(vertex_buffer);
     unsafe {
-      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[(vertex_buffer.get_offset() + offset) as u64]);
+      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[(vertex_buffer.offset() + offset) as u64]);
     }
   }
 
@@ -310,7 +310,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(index_buffer);
     unsafe {
-      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), (index_buffer.get_offset() + offset) as u64, index_format_to_vk(format));
+      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), (index_buffer.offset() + offset) as u64, index_format_to_vk(format));
     }
   }
 
@@ -377,14 +377,14 @@ impl VkCommandBuffer {
   pub(crate) fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert_ne!(length, 0);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::UniformBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.get_length() } else { length } });
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::UniformBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.length() } else { length } });
     self.trackers.track_buffer(buffer);
   }
 
   pub(crate) fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert_ne!(length, 0);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.get_length() } else { length } });
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.length() } else { length } });
     self.trackers.track_buffer(buffer);
   }
 
@@ -589,8 +589,8 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.render_pass.is_none());
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
-    let src_info = src_texture.get_info();
-    let dst_info = dst_texture.get_info();
+    let src_info = src_texture.info();
+    let dst_info = dst_texture.info();
     let mut src_aspect = vk::ImageAspectFlags::empty();
     if src_info.format.is_stencil() {
       src_aspect |= vk::ImageAspectFlags::STENCIL;
@@ -659,7 +659,7 @@ impl VkCommandBuffer {
     for barrier in barriers {
       match barrier {
         Barrier::TextureBarrier { old_sync, new_sync, old_layout, new_layout, old_access, new_access, texture } => {
-          let info = texture.get_info();
+          let info = texture.info();
           let mut aspect_mask = vk::ImageAspectFlags::empty();
           if info.format.is_depth() {
             aspect_mask |= vk::ImageAspectFlags::DEPTH;
@@ -701,8 +701,8 @@ impl VkCommandBuffer {
             src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
             dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
             buffer: *buffer.get_buffer().get_handle(),
-            offset: buffer.get_offset() as u64,
-            size: buffer.get_length() as u64,
+            offset: buffer.offset() as u64,
+            size: buffer.length() as u64,
             ..Default::default()
           });
           let dst_stages = barrier_sync_to_stage(*new_sync);
@@ -803,7 +803,7 @@ impl VkCommandBuffer {
         sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(view) => *view
       };
 
-      let info = view.texture().get_info();
+      let info = view.texture().info();
       attachment_infos.push(AttachmentInfo {
         format: info.format,
         samples: info.samples,
@@ -922,7 +922,7 @@ impl VkCommandBuffer {
     let vk_count = query_range.count.min(count);
     unsafe {
       self.device.cmd_copy_query_pool_results(self.buffer, *query_range.pool.handle(), vk_start, vk_count,
-        *buffer.get_buffer().get_handle(), buffer.get_offset_and_length().0 as u64, std::mem::size_of::<u32>() as u64, vk::QueryResultFlags::WAIT)
+        *buffer.get_buffer().get_handle(), buffer.offset() as u64, std::mem::size_of::<u32>() as u64, vk::QueryResultFlags::WAIT)
     }
     self.trackers.track_buffer(buffer);
   }

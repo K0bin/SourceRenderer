@@ -81,7 +81,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &*sharpen_uav);
     cmd_buffer.finish_binding();
 
-    let info = sharpen_uav.texture().get_info();
+    let info = sharpen_uav.texture().info();
     cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
     cmd_buffer.end_label();
   }

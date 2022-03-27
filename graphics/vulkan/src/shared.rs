@@ -165,7 +165,7 @@ impl VkShared {
         return framebuffer.clone();
       }
     }
-    let (width, height) = attachments.iter().fold((0, 0), |old, a| (a.texture().get_info().width.max(old.0), a.texture().get_info().height.max(old.1)));
+    let (width, height) = attachments.iter().fold((0, 0), |old, a| (a.texture().info().width.max(old.0), a.texture().info().height.max(old.1)));
     let frame_buffer = Arc::new(VkFrameBuffer::new(&self.device, width, height, render_pass, attachments));
     let mut cache = self.frame_buffers.write().unwrap();
     cache.insert(key, frame_buffer.clone());

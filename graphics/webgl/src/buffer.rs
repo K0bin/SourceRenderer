@@ -54,7 +54,7 @@ impl Buffer for WebGLBuffer {
 
   unsafe fn map_unsafe(&self, _invalidate: bool) -> Option<*mut u8> {
     let mut mapped_data = self.mapped_data.lock().unwrap();
-    *mapped_data = Some(UnsafeCell::new(vec![0; self.get_length()].into_boxed_slice()));
+    *mapped_data = Some(UnsafeCell::new(vec![0; self.length()].into_boxed_slice()));
     Some(mapped_data.as_mut().unwrap().get_mut().as_mut_ptr())
   }
 
@@ -78,11 +78,11 @@ impl Buffer for WebGLBuffer {
     }));
   }
 
-  fn get_length(&self) -> usize {
+  fn length(&self) -> usize {
     self.info.size
   }
 
-  fn get_info(&self) -> &BufferInfo {
+  fn info(&self) -> &BufferInfo {
     &self.info
   }
 }

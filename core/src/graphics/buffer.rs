@@ -34,9 +34,9 @@ pub trait Buffer {
   unsafe fn map_unsafe(&self, invalidate: bool) -> Option<*mut u8>;
   unsafe fn unmap_unsafe(&self, flush: bool);
 
-  fn get_length(&self) -> usize;
+  fn length(&self) -> usize;
 
-  fn get_info(&self) -> &BufferInfo;
+  fn info(&self) -> &BufferInfo;
 }
 
 pub struct MutMappedBuffer<'a, B, T>

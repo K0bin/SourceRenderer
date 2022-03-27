@@ -100,7 +100,7 @@ impl<B: Backend> RTShadowPass<B> {
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, camera_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 5, &*depth, &self.sampler);
     cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, blue_noise, blue_noise_sampler);
-    let info = texture_uav.texture().get_info();
+    let info = texture_uav.texture().info();
 
     #[derive(Clone)]
     struct FrameData {

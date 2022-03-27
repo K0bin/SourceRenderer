@@ -138,7 +138,7 @@ impl VkTransfer {
       src: src_buffer.clone(),
       dst: texture.clone(),
       region: vk::BufferImageCopy {
-        buffer_offset: (src_buffer.get_offset() + buffer_offset) as u64,
+        buffer_offset: (src_buffer.offset() + buffer_offset) as u64,
         image_offset: vk::Offset3D {
           x: 0,
           y: 0,
@@ -147,9 +147,9 @@ impl VkTransfer {
         buffer_row_length: 0,
         buffer_image_height: 0,
         image_extent: vk::Extent3D {
-          width: max(texture.get_info().width >> mip_level, 1),
-          height: max(texture.get_info().height >> mip_level, 1),
-          depth: max(texture.get_info().depth >> mip_level, 1),
+          width: max(texture.info().width >> mip_level, 1),
+          height: max(texture.info().height >> mip_level, 1),
+          depth: max(texture.info().depth >> mip_level, 1),
         },
         image_subresource: vk::ImageSubresourceLayers {
           mip_level,
@@ -188,10 +188,11 @@ impl VkTransfer {
       src: src_buffer.clone(),
       dst: dst_buffer.clone(),
       region: vk::BufferCopy {
-        src_offset: (src_buffer.get_offset() + src_offset) as vk::DeviceSize,
-        dst_offset: (dst_buffer.get_offset() + dst_offset) as vk::DeviceSize,
+        src_offset: (src_buffer.offset() + src_offset) as vk::DeviceSize,
+        dst_offset: (dst_buffer.offset() + dst_offset) as vk::DeviceSize,
         size: if length == WHOLE_BUFFER {
-          dst_buffer.get_length() as vk::DeviceSize
+          (src_buffer.length() as vk::DeviceSize - src_offset as vk::DeviceSize)
+          .min(dst_buffer.length() as vk::DeviceSize - dst_offset as vk::DeviceSize)
         } else {
           length as vk::DeviceSize
         }
@@ -205,8 +206,13 @@ impl VkTransfer {
         src_queue_family_index: self.graphics_queue.get_queue_family_index(),
         dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
         buffer: *dst_buffer.get_buffer().get_handle(),
-        offset: dst_buffer.get_offset() as vk::DeviceSize,
-        size: if length == WHOLE_BUFFER { dst_buffer.get_length() as vk::DeviceSize } else { length as vk::DeviceSize },
+        offset: dst_buffer.offset() as vk::DeviceSize,
+        size: if length == WHOLE_BUFFER {
+          (src_buffer.length() as vk::DeviceSize - src_offset as vk::DeviceSize)
+          .min(dst_buffer.length() as vk::DeviceSize - dst_offset as vk::DeviceSize)
+        } else {
+          length as vk::DeviceSize
+        },
         ..Default::default()
       }
     )));
@@ -246,7 +252,7 @@ impl VkTransfer {
         src: src_buffer.clone(),
         dst: texture.clone(),
         region: vk::BufferImageCopy {
-          buffer_offset: (src_buffer.get_offset() + buffer_offset) as u64,
+          buffer_offset: (src_buffer.offset() + buffer_offset) as u64,
           image_offset: vk::Offset3D {
             x: 0,
             y: 0,
@@ -255,9 +261,9 @@ impl VkTransfer {
           buffer_row_length: 0,
           buffer_image_height: 0,
           image_extent: vk::Extent3D {
-            width: max(texture.get_info().width >> mip_level, 1),
-            height: max(texture.get_info().height >> mip_level, 1),
-            depth: max(texture.get_info().depth >> mip_level, 1),
+            width: max(texture.info().width >> mip_level, 1),
+            height: max(texture.info().height >> mip_level, 1),
+            depth: max(texture.info().depth >> mip_level, 1),
           },
           image_subresource: vk::ImageSubresourceLayers {
             mip_level,

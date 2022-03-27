@@ -325,11 +325,11 @@ impl VkSwapchain {
   }
 
   pub fn get_width(&self) -> u32 {
-     self.textures.first().unwrap().get_info().width
+     self.textures.first().unwrap().info().width
   }
 
   pub fn get_height(&self) -> u32 {
-    self.textures.first().unwrap().get_info().height
+    self.textures.first().unwrap().info().height
   }
 
   #[allow(clippy::logic_bug)]
@@ -409,11 +409,11 @@ impl Swapchain<VkBackend> for VkSwapchain {
   }
 
   fn sample_count(&self) -> SampleCount {
-    self.textures.first().unwrap().get_info().samples
+    self.textures.first().unwrap().info().samples
   }
 
   fn format(&self) -> Format {
-    self.textures.first().unwrap().get_info().format
+    self.textures.first().unwrap().info().format
   }
 
   fn surface(&self) -> &Arc<VkSurface> {

@@ -45,7 +45,7 @@ pub struct TextureInfo {
 }
 
 pub trait Texture {
-  fn get_info(&self) -> &TextureInfo;
+  fn info(&self) -> &TextureInfo;
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]

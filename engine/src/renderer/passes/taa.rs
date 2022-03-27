@@ -163,7 +163,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     cmd_buf.bind_texture_view(BindingFrequency::PerDraw, 3, &*motion_srv, &self.nearest_sampler);
     cmd_buf.finish_binding();
 
-    let info = taa_uav.texture().get_info();
+    let info = taa_uav.texture().info();
     cmd_buf.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
     cmd_buf.end_label();
   }

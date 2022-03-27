@@ -142,7 +142,7 @@ impl<B: Backend> GeometryPass<B> {
           stencil_store_op: StoreOp::DontCare,
         },
         AttachmentInfo {
-          format: ds.get_info().format,
+          format: ds.info().format,
           samples: SampleCount::Samples1,
           load_op: LoadOp::DontCare,
           store_op: StoreOp::DontCare,
@@ -249,7 +249,7 @@ impl<B: Backend> GeometryPass<B> {
       ],
     }, RenderpassRecordingMode::Commands);
 
-    let rtv_info = backbuffer.texture().get_info();
+    let rtv_info = backbuffer.texture().info();
 
     cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
     cmd_buffer.set_viewports(&[Viewport {

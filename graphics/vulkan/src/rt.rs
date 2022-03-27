@@ -100,7 +100,7 @@ impl VkAccelerationStructure {
       rt.acceleration_structure.create_acceleration_structure(&vk::AccelerationStructureCreateInfoKHR {
         create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
         buffer: *target_buffer.get_buffer().get_handle(),
-        offset: target_buffer.get_offset() as vk::DeviceSize,
+        offset: target_buffer.offset() as vk::DeviceSize,
         size: size as vk::DeviceSize,
         ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
         device_address: 0,
@@ -248,7 +248,7 @@ impl VkAccelerationStructure {
       rt.acceleration_structure.create_acceleration_structure(&vk::AccelerationStructureCreateInfoKHR {
         create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
         buffer: *target_buffer.get_buffer().get_handle(),
-        offset: target_buffer.get_offset() as vk::DeviceSize,
+        offset: target_buffer.offset() as vk::DeviceSize,
         size: size as vk::DeviceSize,
         ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         device_address: 0,
@@ -270,7 +270,7 @@ impl VkAccelerationStructure {
         device_address: info.vertex_buffer.va().unwrap() + info.vertex_position_offset as vk::DeviceSize
       },
       vertex_stride: info.vertex_stride as vk::DeviceSize,
-      max_vertex: info.vertex_buffer.get_length() as u32 / info.vertex_stride,
+      max_vertex: info.vertex_buffer.length() as u32 / info.vertex_stride,
       index_type: index_format_to_vk(info.index_format),
       index_data: vk::DeviceOrHostAddressConstKHR {
         device_address: info.index_buffer.va().unwrap()
