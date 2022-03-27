@@ -426,7 +426,6 @@ impl WebGLThreadDevice {
         0 => BindingFrequency::PerDraw,
         1 => BindingFrequency::PerMaterial,
         2 => BindingFrequency::PerFrame,
-        3 => BindingFrequency::Rarely,
         _ => panic!("Invalid binding frequency")
       };
       ubo_infos.insert((frequency, descriptor_set_binding.parse::<u32>().unwrap()), WebGLBlockInfo {
