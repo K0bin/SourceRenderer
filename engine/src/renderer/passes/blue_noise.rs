@@ -3,11 +3,11 @@ use std::{sync::Arc, io::Cursor};
 use std::io::Read;
 use image::io::Reader as ImageReader;
 
-use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, TextureUsage, MemoryUsage, BufferUsage, TextureShaderResourceViewInfo, SamplerInfo, Filter, AddressMode};
+use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, TextureUsage, MemoryUsage, BufferUsage, TextureSamplingViewInfo, SamplerInfo, Filter, AddressMode};
 use sourcerenderer_core::{graphics::Backend, Platform, platform::io::IO};
 
 pub struct BlueNoise<B: Backend> {
-  frames: [Arc<B::TextureShaderResourceView>; 8],
+  frames: [Arc<B::TextureSamplingView>; 8],
   sampler: Arc<B::Sampler>
 }
 
@@ -40,7 +40,7 @@ impl<B: Backend> BlueNoise<B> {
     }
   }
 
-  fn load_frame<P: Platform>(device: &Arc<B::Device>, index: u32) -> Arc<B::TextureShaderResourceView> {
+  fn load_frame<P: Platform>(device: &Arc<B::Device>, index: u32) -> Arc<B::TextureSamplingView> {
     let path = Path::new("assets").join(Path::new("stbn")).join(Path::new(&format!("stbn_vec3_2Dx1D_128x128x64_{}.png", index)));
     let mut file = P::IO::open_asset(&path).unwrap_or_else(|e| panic!("Failed to open {:?}: {:?}", &path, e));
     let mut buffer = Vec::<u8>::new();
@@ -62,7 +62,7 @@ impl<B: Backend> BlueNoise<B> {
     let buffer = device.upload_data(&rgba_data[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     device.init_texture(&texture, &buffer, 0, 0);
 
-    device.create_shader_resource_view(&texture, &TextureShaderResourceViewInfo {
+    device.create_sampling_view(&texture, &TextureSamplingViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,
@@ -70,7 +70,7 @@ impl<B: Backend> BlueNoise<B> {
     }, Some(&format!("STBlueNoiseUAV{}", index)))
   }
 
-  pub fn frame(&self, index: u64) -> &Arc<B::TextureShaderResourceView> {
+  pub fn frame(&self, index: u64) -> &Arc<B::TextureSamplingView> {
     &self.frames[(index % (self.frames.len() as u64)) as usize]
   }
 

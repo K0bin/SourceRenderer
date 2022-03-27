@@ -63,14 +63,14 @@ pub enum AddressMode {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct TextureShaderResourceViewInfo {
+pub struct TextureSamplingViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
   pub base_array_level: u32,
   pub array_level_length: u32,
 }
 
-impl Default for TextureShaderResourceViewInfo {
+impl Default for TextureSamplingViewInfo {
   fn default() -> Self {
     Self {
       base_mip_level: 0,
@@ -101,14 +101,14 @@ impl Default for TextureRenderTargetViewInfo {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct TextureUnorderedAccessViewInfo {
+pub struct TextureStorageViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
   pub base_array_level: u32,
   pub array_level_length: u32,
 }
 
-impl Default for TextureUnorderedAccessViewInfo {
+impl Default for TextureStorageViewInfo {
   fn default() -> Self {
     Self {
       base_mip_level: 0,
@@ -153,11 +153,11 @@ pub struct SamplerInfo {
   pub max_lod: Option<f32>,
 }
 
-pub trait TextureShaderResourceView<B: Backend> {
+pub trait TextureSamplingView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
 }
 
-pub trait TextureUnorderedAccessView<B: Backend> {
+pub trait TextureStorageView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
 }
 

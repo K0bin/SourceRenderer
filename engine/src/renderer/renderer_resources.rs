@@ -1,7 +1,7 @@
 
 use std::{collections::HashMap, sync::Arc, cell::{RefCell, Ref}};
 
-use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureDepthStencilViewInfo, TextureShaderResourceViewInfo, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage};
+use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureDepthStencilViewInfo, TextureSamplingViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage};
 
 struct AB<T> {
   a: T,
@@ -13,10 +13,10 @@ struct TrackedTexture<B: Backend> {
   access: BarrierAccess,
   layout: TextureLayout,
   texture: Arc<B::Texture>,
-  srvs: HashMap<TextureShaderResourceViewInfo, Arc<B::TextureShaderResourceView>>,
+  srvs: HashMap<TextureSamplingViewInfo, Arc<B::TextureSamplingView>>,
   dsvs: HashMap<TextureDepthStencilViewInfo, Arc<B::TextureDepthStencilView>>,
   rtvs: HashMap<TextureRenderTargetViewInfo, Arc<B::TextureRenderTargetView>>,
-  uavs: HashMap<TextureUnorderedAccessViewInfo, Arc<B::TextureUnorderedAccessView>>,
+  uavs: HashMap<TextureStorageViewInfo, Arc<B::TextureStorageView>>,
 }
 
 struct TrackedBuffer<B: Backend> {
@@ -146,7 +146,7 @@ impl<B: Backend> RendererResources<B> {
     Ref::map(texture_ref, |r| &r.texture)
   }
 
-  pub fn access_srv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureShaderResourceViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureShaderResourceView>> {
+  pub fn access_srv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureSamplingViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureSamplingView>> {
     debug_assert_eq!(layout, TextureLayout::Sampled);
     debug_assert_eq!(access & !(BarrierAccess::SHADER_RESOURCE_READ | BarrierAccess::SHADER_READ), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
@@ -172,7 +172,7 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow_mut()
       };
-      let view = self.device.create_shader_resource_view(&texture_mut.texture, info, Some(&(name.to_string() + "_srv")));
+      let view = self.device.create_sampling_view(&texture_mut.texture, info, Some(&(name.to_string() + "_srv")));
       texture_mut.srvs.insert(info.clone(), view);
     }
 
@@ -186,7 +186,7 @@ impl<B: Backend> RendererResources<B> {
     }
   }
 
-  pub fn access_uav(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureUnorderedAccessViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureUnorderedAccessView>> {
+  pub fn access_uav(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureStorageViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureStorageView>> {
     debug_assert_eq!(layout, TextureLayout::Storage);
     debug_assert_eq!(access & !(BarrierAccess::SHADER_READ | BarrierAccess::SHADER_WRITE | BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
@@ -212,7 +212,7 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow_mut()
       };
-      let view = self.device.create_unordered_access_view(&texture_mut.texture, info, Some(&(name.to_string() + "_uav")));
+      let view = self.device.create_storage_view(&texture_mut.texture, info, Some(&(name.to_string() + "_uav")));
       texture_mut.uavs.insert(info.clone(), view);
     }
 

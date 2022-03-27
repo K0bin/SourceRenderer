@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Vec2, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Swapchain, TextureInfo, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureUnorderedAccessView, Texture}};
+use sourcerenderer_core::{Vec2, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Filter, Format, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Swapchain, TextureInfo, TextureSamplingViewInfo, TextureStorageViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -119,7 +119,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       false,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -130,7 +130,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
       true,
-      &TextureUnorderedAccessViewInfo::default(),
+      &TextureStorageViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -141,7 +141,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       false,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Past
     );
 
@@ -152,7 +152,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       true,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Current
     );
 

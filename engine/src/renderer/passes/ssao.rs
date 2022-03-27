@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureShaderResourceViewInfo, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureUnorderedAccessView}, platform::io::IO, atomic_refcell::AtomicRef};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{AddressMode, Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Filter, Format, MemoryUsage, PipelineBinding, SampleCount, SamplerInfo, ShaderType, Texture, TextureInfo, TextureSamplingViewInfo, TextureStorageViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView}, platform::io::IO, atomic_refcell::AtomicRef};
 
 use rand::random;
 
@@ -150,7 +150,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
     camera: &Arc<B::Buffer>,
-    blue_noise_view: &Arc<B::TextureShaderResourceView>,
+    blue_noise_view: &Arc<B::TextureSamplingView>,
     blue_noise_sampler: &Arc<B::Sampler>,
     resources: &RendererResources<B>
   ){
@@ -161,7 +161,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
       true,
-      &TextureUnorderedAccessViewInfo::default(),
+      &TextureStorageViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -172,7 +172,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       false,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -183,7 +183,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       false,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -207,7 +207,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       false,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -218,7 +218,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
       false,
-      &TextureUnorderedAccessViewInfo::default(),
+      &TextureStorageViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -229,7 +229,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       false,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Past
     );
 

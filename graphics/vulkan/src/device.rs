@@ -162,12 +162,12 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkTexture::new(&self.device, info, name))
   }
 
-  fn create_shader_resource_view(&self, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
+  fn create_sampling_view(&self, texture: &Arc<VkTexture>, info: &TextureSamplingViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
     Arc::new(VkTextureView::new(&self.device, texture, info, name))
   }
 
   fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureRenderTargetViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    let srv_info = TextureShaderResourceViewInfo {
+    let srv_info = TextureSamplingViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
       base_array_level: info.base_array_level,
@@ -176,8 +176,8 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
   }
 
-  fn create_unordered_access_view(&self, texture: &Arc<VkTexture>, info: &TextureUnorderedAccessViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    let srv_info = TextureShaderResourceViewInfo {
+  fn create_storage_view(&self, texture: &Arc<VkTexture>, info: &TextureStorageViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
+    let srv_info = TextureSamplingViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
       base_array_level: info.base_array_level,
@@ -188,7 +188,7 @@ impl Device<VkBackend> for VkDevice {
 
   fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureDepthStencilViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
     assert!(texture.get_info().format.is_depth() || texture.get_info().format.is_stencil());
-    let srv_info = TextureShaderResourceViewInfo {
+    let srv_info = TextureSamplingViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
       base_array_level: info.base_array_level,

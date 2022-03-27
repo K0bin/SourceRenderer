@@ -34,8 +34,8 @@ pub use self::command::BarrierSync;
 pub use self::command::BarrierAccess;
 pub use self::command::IndexFormat;
 pub use self::texture::{
-  TextureShaderResourceView, TextureShaderResourceViewInfo, Filter, AddressMode, TextureUnorderedAccessView,
-  SamplerInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureUnorderedAccessViewInfo,
+  TextureSamplingView, TextureSamplingViewInfo, Filter, AddressMode, TextureStorageView,
+  SamplerInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureStorageViewInfo,
   TextureDepthStencilView, TextureDepthStencilViewInfo, TextureLayout
 };
 pub use self::sync::Fence;

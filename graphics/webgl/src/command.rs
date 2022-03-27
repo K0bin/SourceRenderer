@@ -3,7 +3,7 @@ use std::{collections::VecDeque, rc::Rc, sync::Arc};
 use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}, rt::WebGLAccelerationStructureStub};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}, rt::WebGLAccelerationStructureStub};
 
 use bitflags::bitflags;
 
@@ -250,8 +250,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }));
   }
 
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureShaderResourceView>, sampler: &Arc<WebGLSampler>) {
-    /*assert_eq!(frequency, BindingFrequency::PerDraw);
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, sampler: &Arc<WebGLSampler>) {
+    /*assert_eq!(frequency, BindingFrequency::High);
     let gl_texture = texture.texture().handle();
     let view_info = texture.info();
     let info = texture.texture().get_info();
@@ -424,7 +424,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn track_texture_view(&mut self, _texture_view: &Arc<WebGLTextureShaderResourceView>) {
+  fn track_texture_view(&mut self, _texture_view: &Arc<WebGLTextureSamplingView>) {
     // nop
   }
 }

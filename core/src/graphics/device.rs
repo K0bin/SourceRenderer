@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::graphics::{TextureInfo, TextureShaderResourceViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend};
+use crate::graphics::{TextureInfo, TextureSamplingViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend};
 
-use super::{RenderPassInfo, TextureRenderTargetViewInfo, buffer::BufferInfo, texture::{SamplerInfo, TextureDepthStencilViewInfo, TextureUnorderedAccessViewInfo}, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, rt::RayTracingPipelineInfo};
+use super::{RenderPassInfo, TextureRenderTargetViewInfo, buffer::BufferInfo, texture::{SamplerInfo, TextureDepthStencilViewInfo, TextureStorageViewInfo}, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, rt::RayTracingPipelineInfo};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
@@ -31,9 +31,9 @@ pub trait Device<B: Backend> {
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<B::Shader>;
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;
-  fn create_shader_resource_view(&self, texture: &Arc<B::Texture>, info: &TextureShaderResourceViewInfo, name: Option<&str>) -> Arc<B::TextureShaderResourceView>;
+  fn create_sampling_view(&self, texture: &Arc<B::Texture>, info: &TextureSamplingViewInfo, name: Option<&str>) -> Arc<B::TextureSamplingView>;
   fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureRenderTargetViewInfo, name: Option<&str>) -> Arc<B::TextureRenderTargetView>;
-  fn create_unordered_access_view(&self, texture: &Arc<B::Texture>, info: &TextureUnorderedAccessViewInfo, name: Option<&str>) -> Arc<B::TextureUnorderedAccessView>;
+  fn create_storage_view(&self, texture: &Arc<B::Texture>, info: &TextureStorageViewInfo, name: Option<&str>) -> Arc<B::TextureStorageView>;
   fn create_depth_stencil_view(&self, texture: &Arc<B::Texture>, info: &TextureDepthStencilViewInfo, name: Option<&str>) -> Arc<B::TextureDepthStencilView>;
   fn create_compute_pipeline(&self, shader: &Arc<B::Shader>) -> Arc<B::ComputePipeline>;
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;
@@ -50,7 +50,7 @@ pub trait Device<B: Backend> {
   fn prerendered_frames(&self) -> u32;
   fn supports_bindless(&self) -> bool;
   fn supports_ray_tracing(&self) -> bool;
-  fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureShaderResourceView>) -> u32;
+  fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureSamplingView>) -> u32;
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<B>) -> Arc<B::RayTracingPipeline>;

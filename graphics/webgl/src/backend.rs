@@ -1,5 +1,5 @@
 use sourcerenderer_core::graphics::Backend;
-use crate::{WebGLAdapter, WebGLBuffer, WebGLCommandBuffer, WebGLCommandSubmission, WebGLComputePipeline, WebGLDevice, WebGLFence, WebGLGraphicsPipeline, WebGLInstance, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureShaderResourceView, command::WebGLQueue, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView}, rt::WebGLAccelerationStructureStub};
+use crate::{WebGLAdapter, WebGLBuffer, WebGLCommandBuffer, WebGLCommandSubmission, WebGLComputePipeline, WebGLDevice, WebGLFence, WebGLGraphicsPipeline, WebGLInstance, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView}, rt::WebGLAccelerationStructureStub};
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum WebGLBackend {}
@@ -13,9 +13,9 @@ impl Backend for WebGLBackend {
   type CommandBuffer = WebGLCommandBuffer;
   type CommandBufferSubmission = WebGLCommandSubmission;
   type Texture = WebGLTexture;
-  type TextureShaderResourceView = WebGLTextureShaderResourceView;
+  type TextureSamplingView = WebGLTextureSamplingView;
   type TextureRenderTargetView = WebGLRenderTargetView;
-  type TextureUnorderedAccessView = WebGLUnorderedAccessView;
+  type TextureStorageView = WebGLUnorderedAccessView;
   type Buffer = WebGLBuffer;
   type Shader = WebGLShader;
   type GraphicsPipeline = WebGLGraphicsPipeline;

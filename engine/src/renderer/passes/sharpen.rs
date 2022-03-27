@@ -1,5 +1,5 @@
 use half::f16;
-use sourcerenderer_core::{graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureUnorderedAccessView, TextureUnorderedAccessViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage}, Vec4, Vec2UI, Vec2};
+use sourcerenderer_core::{graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureStorageViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage}, Vec4, Vec2UI, Vec2};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -57,7 +57,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       BarrierAccess::STORAGE_READ,
       TextureLayout::Storage,
       false,
-      &TextureUnorderedAccessViewInfo::default(),
+      &TextureStorageViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -68,7 +68,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
       true,
-      &TextureUnorderedAccessViewInfo::default(),
+      &TextureStorageViewInfo::default(),
       HistoryResourceEntry::Current
     );
 

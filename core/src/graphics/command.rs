@@ -65,13 +65,13 @@ pub trait CommandBuffer<B: Backend> {
   fn create_temporary_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<B::Buffer>;
   fn draw(&mut self, vertices: u32, offset: u32);
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureShaderResourceView>, sampler: &Arc<B::Sampler>);
+  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>, sampler: &Arc<B::Sampler>);
   fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>);
-  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureUnorderedAccessView>);
+  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureStorageView>);
   fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<B::Sampler>);
   fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<B::AccelerationStructure>);
-  fn track_texture_view(&mut self, texture_view: &Arc<B::TextureShaderResourceView>);
+  fn track_texture_view(&mut self, texture_view: &Arc<B::TextureSamplingView>);
   fn finish_binding(&mut self);
   fn begin_label(&mut self, label: &str);
   fn end_label(&mut self);

@@ -7,7 +7,7 @@ use ash::vk;
 use sourcerenderer_core::graphics::TextureDepthStencilView;
 use sourcerenderer_core::graphics::TextureRenderTargetView;
 use sourcerenderer_core::graphics::TextureUsage;
-use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureSamplingView, TextureSamplingViewInfo, TextureStorageView};
 
 use crate::bindless::VkBindlessDescriptorSet;
 use crate::{VkBackend, raw::RawVkDevice};
@@ -209,7 +209,7 @@ pub struct VkTextureView {
 }
 
 impl VkTextureView {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureShaderResourceViewInfo, name: Option<&str>) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureSamplingViewInfo, name: Option<&str>) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.get_handle(),
       view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.get_info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.get_info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
@@ -276,13 +276,13 @@ impl Drop for VkTextureView {
   }
 }
 
-impl TextureShaderResourceView<VkBackend> for VkTextureView {
+impl TextureSamplingView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
   }
 }
 
-impl TextureUnorderedAccessView<VkBackend> for VkTextureView {
+impl TextureStorageView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
   }

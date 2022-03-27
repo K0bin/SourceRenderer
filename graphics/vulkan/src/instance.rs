@@ -151,6 +151,11 @@ impl VkInstance {
       return vk::FALSE;
     }
 
+    let msg = CStr::from_ptr(callback_data.p_message).to_str().unwrap();
+    if msg.contains("DestroyImageView") {
+      //panic!("HELP");
+    }
+
     println!("VK: {:?} - {:?}: {:?}", message_severity, message_types, CStr::from_ptr(callback_data.p_message));
     vk::FALSE
   }

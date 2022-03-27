@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc};
 
-use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureShaderResourceViewInfo, TextureUnorderedAccessView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureSamplingView, TextureSamplingViewInfo, TextureStorageView};
 
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebGlTexture as WebGLTextureHandle, WebglCompressedTextureS3tc};
 
@@ -57,13 +57,13 @@ impl PartialEq for WebGLTexture {
 
 impl Eq for WebGLTexture {}
 
-pub struct WebGLTextureShaderResourceView {
+pub struct WebGLTextureSamplingView {
   texture: Arc<WebGLTexture>,
-  info: TextureShaderResourceViewInfo
+  info: TextureSamplingViewInfo
 }
 
-impl WebGLTextureShaderResourceView {
-  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureShaderResourceViewInfo) -> Self {
+impl WebGLTextureSamplingView {
+  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureSamplingViewInfo) -> Self {
     Self {
       texture: texture.clone(),
       info: info.clone()
@@ -74,24 +74,24 @@ impl WebGLTextureShaderResourceView {
     &self.texture
   }
 
-  pub fn info(&self) -> &TextureShaderResourceViewInfo {
+  pub fn info(&self) -> &TextureSamplingViewInfo {
     &self.info
   }
 }
 
-impl TextureShaderResourceView<WebGLBackend> for WebGLTextureShaderResourceView {
+impl TextureSamplingView<WebGLBackend> for WebGLTextureSamplingView {
   fn texture(&self) -> &Arc<WebGLTexture> {
     &self.texture
   }
 }
 
-impl PartialEq for WebGLTextureShaderResourceView {
+impl PartialEq for WebGLTextureSamplingView {
   fn eq(&self, other: &Self) -> bool {
     self.texture == other.texture
   }
 }
 
-impl Eq for WebGLTextureShaderResourceView {}
+impl Eq for WebGLTextureSamplingView {}
 
 pub struct WebGLRenderTargetView {
   texture: Arc<WebGLTexture>,
@@ -167,7 +167,7 @@ impl Eq for WebGLDepthStencilView {}
 
 pub struct WebGLUnorderedAccessView {}
 
-impl TextureUnorderedAccessView<WebGLBackend> for WebGLUnorderedAccessView {
+impl TextureStorageView<WebGLBackend> for WebGLUnorderedAccessView {
   fn texture(&self) -> &Arc<WebGLTexture> {
     panic!("WebGL does not support storage textures")
   }

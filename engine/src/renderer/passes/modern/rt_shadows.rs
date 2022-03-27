@@ -1,6 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureUnorderedAccessViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureUnorderedAccessView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureShaderResourceViewInfo, AddressMode, Filter, SamplerInfo, BufferUsage}, Vec2UI, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureStorageViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureSamplingViewInfo, AddressMode, Filter, SamplerInfo, BufferUsage}, Vec2UI, Platform, platform::io::IO};
 
 use crate::renderer::{passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
 
@@ -71,7 +71,7 @@ impl<B: Backend> RTShadowPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, frame: u64, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, resources: &RendererResources<B>, blue_noise: &Arc<B::TextureShaderResourceView>, blue_noise_sampler: &Arc<B::Sampler>) {
+  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, frame: u64, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, resources: &RendererResources<B>, blue_noise: &Arc<B::TextureSamplingView>, blue_noise_sampler: &Arc<B::Sampler>) {
     let texture_uav = resources.access_uav(
       cmd_buffer,
       Self::SHADOWS_TEXTURE_NAME,
@@ -79,7 +79,7 @@ impl<B: Backend> RTShadowPass<B> {
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
       true,
-      &TextureUnorderedAccessViewInfo::default(),
+      &TextureStorageViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -90,7 +90,7 @@ impl<B: Backend> RTShadowPass<B> {
       BarrierAccess::SHADER_RESOURCE_READ,
       TextureLayout::Sampled,
       false,
-      &TextureShaderResourceViewInfo::default(),
+      &TextureSamplingViewInfo::default(),
       HistoryResourceEntry::Current
     );
 

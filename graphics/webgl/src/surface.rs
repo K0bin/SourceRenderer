@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
-use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureRenderTargetViewInfo, TextureShaderResourceView, TextureUsage};
+use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureRenderTargetViewInfo, TextureSamplingView, TextureUsage};
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 

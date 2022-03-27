@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
-use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureShaderResourceViewInfo, BufferUsage };
+use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureSamplingViewInfo, BufferUsage };
 
 use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
 
 pub struct RendererTexture<B: Backend> {
-  pub(super) view: Arc<B::TextureShaderResourceView>,
+  pub(super) view: Arc<B::TextureSamplingView>,
   pub(super) bindless_index: Option<u32>
 }
 
@@ -77,7 +77,7 @@ impl<B: Backend> Ord for RendererMaterialValue<B> {
       (RendererMaterialValue::Float(_), RendererMaterialValue::Vec4(_)) => std::cmp::Ordering::Less,
       (RendererMaterialValue::Texture(_), RendererMaterialValue::Float(_)) => std::cmp::Ordering::Greater,
       (RendererMaterialValue::Texture(_), RendererMaterialValue::Vec4(_)) => std::cmp::Ordering::Greater,
-      (RendererMaterialValue::Texture(tex1), RendererMaterialValue::Texture(tex2)) => (tex1.view.as_ref() as *const B::TextureShaderResourceView).cmp(&(tex2.view.as_ref() as *const B::TextureShaderResourceView)),
+      (RendererMaterialValue::Texture(tex1), RendererMaterialValue::Texture(tex2)) => (tex1.view.as_ref() as *const B::TextureSamplingView).cmp(&(tex2.view.as_ref() as *const B::TextureSamplingView)),
       (RendererMaterialValue::Vec4(val1), RendererMaterialValue::Vec4(val2)) => ((val1.x * 100f32) as u32).cmp(&((val2.x * 100f32) as u32))
                                                                                                                                       .then(((val1.y * 100f32) as u32).cmp(&((val2.y * 100f32) as u32)))
                                                                                                                                       .then(((val1.z * 100f32) as u32).cmp(&((val2.z * 100f32) as u32)))
@@ -201,7 +201,7 @@ struct DelayedAsset<B: Backend> {
   asset: DelayedAssetType<B>
 }
 enum DelayedAssetType<B: Backend> {
-  TextureView(Arc<B::TextureShaderResourceView>)
+  TextureView(Arc<B::TextureSamplingView>)
 }
 
 pub(super) struct RendererAssets<P: Platform> {
@@ -232,7 +232,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0);
-    let zero_view = device.create_shader_resource_view(&zero_texture, &TextureShaderResourceViewInfo::default(), Some("AssetManagerZeroTextureView"));
+    let zero_view = device.create_sampling_view(&zero_texture, &TextureSamplingViewInfo::default(), Some("AssetManagerZeroTextureView"));
     let zero_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view))
     } else {
@@ -256,7 +256,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTextureBlack"));
     device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0);
-    let zero_view_black = device.create_shader_resource_view(&zero_texture_black, &TextureShaderResourceViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
+    let zero_view_black = device.create_sampling_view(&zero_texture_black, &TextureSamplingViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
     let zero_black_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view_black))
     } else {
@@ -282,7 +282,7 @@ impl<P: Platform> RendererAssets<P> {
     }
   }
 
-  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>) -> Arc<RendererTexture<P::GraphicsBackend>> {
+  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>) -> Arc<RendererTexture<P::GraphicsBackend>> {
     let bindless_index = if self.device.supports_bindless() {
       if texture == &self.zero_texture.view {
         self.zero_texture.bindless_index
@@ -353,7 +353,7 @@ impl<P: Platform> RendererAssets<P> {
     self.meshes.insert(mesh_path.to_owned(), mesh);
   }
 
-  pub fn upload_texture(&mut self, texture_path: &str, texture: Texture, do_async: bool) -> (Arc<<P::GraphicsBackend as Backend>::TextureShaderResourceView>, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
+  pub fn upload_texture(&mut self, texture_path: &str, texture: Texture, do_async: bool) -> (Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
     let gpu_texture = self.device.create_texture(&texture.info, Some(texture_path));
     let subresources = texture.info.array_length * texture.info.mip_levels;
     let mut fence = Option::<Arc<<P::GraphicsBackend as Backend>::Fence>>::None;
@@ -368,8 +368,8 @@ impl<P: Platform> RendererAssets<P> {
         self.device.init_texture(&gpu_texture, &init_buffer, mip_level, array_index);
       }
     }
-    let view = self.device.create_shader_resource_view(
-      &gpu_texture, &TextureShaderResourceViewInfo {
+    let view = self.device.create_sampling_view(
+      &gpu_texture, &TextureSamplingViewInfo {
         base_mip_level: 0,
         mip_level_length: texture.info.mip_levels,
         base_array_level: 0,

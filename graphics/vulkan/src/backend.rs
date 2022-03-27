@@ -22,8 +22,8 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
   type ComputePipeline = VkPipeline;
   type RayTracingPipeline = VkPipeline;
   type Swapchain = VkSwapchain;
-  type TextureShaderResourceView = VkTextureView;
-  type TextureUnorderedAccessView = VkTextureView;
+  type TextureSamplingView = VkTextureView;
+  type TextureStorageView = VkTextureView;
   type TextureRenderTargetView = VkTextureView;
   type TextureDepthStencilView = VkTextureView;
   type Sampler = VkSampler;
