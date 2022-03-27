@@ -265,7 +265,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 6, &setup_ubo);
     cmd_buffer.finish_binding();
     let ssao_info = ssao_uav.texture().get_info();
-    cmd_buffer.dispatch((ssao_info.width + 15) / 16, (ssao_info.height + 3) / 4, ssao_info.depth);
+    cmd_buffer.dispatch((ssao_info.width + 7) / 8, (ssao_info.height + 7) / 8, ssao_info.depth);
 
     std::mem::drop(ssao_uav);
     let ssao_srv = resources.access_srv(
@@ -309,7 +309,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.bind_texture_view(BindingFrequency::PerDraw, 3, &*motion_srv, &self.nearest_sampler);
     cmd_buffer.finish_binding();
     let blur_info = blurred_uav.texture().get_info();
-    cmd_buffer.dispatch((blur_info.width + 15) / 16, (blur_info.height + 3) / 4, blur_info.depth);
+    cmd_buffer.dispatch((blur_info.width + 7) / 8, (blur_info.height + 7) / 8, blur_info.depth);
     cmd_buffer.end_label();
   }
 }
