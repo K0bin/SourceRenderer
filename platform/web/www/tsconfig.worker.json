@@ -3,6 +3,4 @@
   "compilerOptions": {
     "lib": ["ES2017", "webworker"],
   },
-  "include": ["src/worker.ts", "src/command.ts", "../lib/pkg/*.d.ts"],
-  "exclude": []
 }

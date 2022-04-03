@@ -9,6 +9,8 @@ cp ../lib/pkg/sourcerenderer_web.js dist/libsourcerenderer_glue.js
 
 # Build web code
 tsc
-tsc -p tsconfig.worker.json
 cp index.html dist/
 cp manifest.json dist/
+cp src/worker.js dist/
+# Rust tracing allocator for debugging
+cp src/hooks.js dist/
