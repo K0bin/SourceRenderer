@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
 use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}, rt::WebGLAccelerationStructureStub};
@@ -244,7 +244,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }*/
   }
 
-  fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<WebGLBuffer>) {
+  fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<WebGLBuffer>, offset: usize, length: usize) {
     assert!(self.pipeline.is_some());
 
     self.used_buffers.push(buffer.clone());
@@ -258,12 +258,17 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
       if let Some(info) = info {
         debug_assert!(buffer.info().size as u32 >= info.size);
         let binding_index = info.binding;
-        device.bind_buffer_base(WebGl2RenderingContext::UNIFORM_BUFFER, binding_index, Some(buffer.gl_buffer()));
+        let size = if length == WHOLE_BUFFER {
+          info.size as i32
+        } else {
+          length as i32
+        };
+        device.bind_buffer_range_with_i32_and_i32(WebGl2RenderingContext::UNIFORM_BUFFER, binding_index, Some(buffer.gl_buffer()), offset as i32, size);
       }
     }));
   }
 
-  fn bind_storage_buffer(&mut self, _frequency: BindingFrequency, _binding: u32, _buffer: &Arc<WebGLBuffer>) {
+  fn bind_storage_buffer(&mut self, _frequency: BindingFrequency, _binding: u32, _buffer: &Arc<WebGLBuffer>, _offset: usize, _length: usize) {
     panic!("WebGL does not support storage buffers");
   }
 

@@ -12,5 +12,3 @@ tsc
 cp index.html dist/
 cp manifest.json dist/
 cp src/worker.js dist/
-# Rust tracing allocator for debugging
-cp src/hooks.js dist/

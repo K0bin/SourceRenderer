@@ -500,7 +500,7 @@ impl WebGLThreadDevice {
       }
     }
 
-    for cmd in cmds {
+    for mut cmd in cmds {
       cmd(self);
     }
   }

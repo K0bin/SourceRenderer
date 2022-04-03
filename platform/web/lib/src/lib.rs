@@ -37,19 +37,6 @@ use sourcerenderer_webgl::WebGLThreadDevice;
 use crossbeam_channel::unbounded;
 
 
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-/*
-use std::alloc::System;
-use wasm_tracing_allocator::WasmTracingAllocator;
-#[global_allocator]
-static GLOBAL_ALLOCATOR: WasmTracingAllocator<System> = WasmTracingAllocator(System);
-*/
-
 #[wasm_bindgen]
 extern "C" {
     // Use `js_namespace` here to bind `console.log(..)` instead of just
