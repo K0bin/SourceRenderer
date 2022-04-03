@@ -5,25 +5,23 @@ start();
 
 let enginePtr: number = 0;
 
-function start() {
+async function start() {
   const canvas = document.querySelector("#canvas") as HTMLCanvasElement;
   resizeCanvasToDisplaySize(canvas);
 
-  wasm_bindgen('libsourcerenderer.wasm')
-      .then(() => {
-        const pool = new WorkerPool(6);
-        let rayonInit = startRayonWorkers(pool, 1);
-        let intervalHandle = setInterval(() => {
-          if (rayonInit.isDone()) {
-            clearInterval(intervalHandle);
-            enginePtr = startEngine(canvas, pool);
-            requestAnimationFrame(frame);
-          }
-        }, 20);
-      })
-      .catch((e) => {
-          console.error("Failed initializing WASM: " + e);
-      });
+  let rustWasm = await wasm_bindgen('libsourcerenderer.wasm');
+  let module = (wasm_bindgen as any).__wbindgen_wasm_module;
+  populateWorkerPool(6, module, rustWasm.memory);
+
+  const pool = new WorkerPool(6);
+  let rayonInit = startRayonWorkers(pool, 1);
+  let intervalHandle = setInterval(() => {
+    if (rayonInit.isDone()) {
+      clearInterval(intervalHandle);
+      enginePtr = startEngine("canvas", pool);
+      requestAnimationFrame(frame);
+    }
+  }, 20);
 }
 
 function frame() {
