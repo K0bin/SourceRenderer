@@ -29,6 +29,7 @@ use crate::math::BoundingBox;
 // http://web.archive.org/web/20050426034532/http://www.geocities.com/cofrdrbob/bspformat.html
 // https://github.com/toji/webgl-source/blob/a435841a856bb3d43f9783d3d2e7ac1cb63992a5/js/source-bsp.js
 // https://github.com/Galaco/kero/blob/master/scene/loaders/bsp.go
+// https://github.com/magcius/noclip.website/blob/master/src/SourceEngine/BSPFile.ts
 
 // VBSP IS CURSED
 
