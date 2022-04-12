@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use instant::Duration;
 use legion::{Entity, IntoQuery, maybe_changed, EntityStore};
 
 use legion::systems::Builder;
@@ -21,6 +22,7 @@ pub trait RendererInterface {
   fn update_lightmap(&self, path: &str);
   fn end_frame(&self);
   fn is_saturated(&self) -> bool;
+  fn wait_until_available(&self, timeout: Duration);
   fn is_running(&self) -> bool;
 }
 

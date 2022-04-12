@@ -1,7 +1,8 @@
-use std::sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool};
+use std::sync::{Arc, Mutex, MutexGuard, atomic::AtomicBool, Condvar};
 use crossbeam_channel::{Sender, unbounded};
 
-use log::{trace, warn};
+use instant::Duration;
+use log::trace;
 use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::{Event, Platform, ThreadHandle}};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
@@ -32,11 +33,12 @@ pub struct Renderer<P: Platform> {
   window_event_sender: Sender<Event<P>>,
   instance: Arc<<P::GraphicsBackend as Backend>::Instance>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
-  queued_frames_counter: AtomicUsize,
+  queued_frames_counter: Mutex<u32>,
   surface: Mutex<Arc<<P::GraphicsBackend as Backend>::Surface>>,
   is_running: AtomicBool,
   input: Arc<Input>,
   late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>,
+  cond_var: Condvar,
   renderer_impl: AtomicRefCell<RendererImpl<P>>
 }
 
@@ -54,12 +56,13 @@ impl<P: Platform> Renderer<P> {
       sender,
       instance: instance.clone(),
       device: device.clone(),
-      queued_frames_counter: AtomicUsize::new(0),
+      queued_frames_counter: Mutex::new(0),
       surface: Mutex::new(surface.clone()),
       is_running: AtomicBool::new(true),
       window_event_sender,
       late_latching: late_latching.cloned(),
       input: input.clone(),
+      cond_var: Condvar::new(),
       renderer_impl: AtomicRefCell::new(RendererImpl::Uninitialized)
     }
   }
@@ -120,8 +123,10 @@ impl<P: Platform> Renderer<P> {
     self.surface.lock().unwrap()
   }
 
-  pub(super) fn dec_queued_frames_counter(&self) -> usize {
-    self.queued_frames_counter.fetch_sub(1, Ordering::SeqCst)
+  pub(super) fn dec_queued_frames_counter(&self) {
+    let mut counter_guard = self.queued_frames_counter.lock().unwrap();
+    *counter_guard -= 1;
+    self.cond_var.notify_all();
   }
 
   pub(crate) fn instance(&self) -> &Arc<<P::GraphicsBackend as Backend>::Instance> {
@@ -260,7 +265,8 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
   }
 
   fn end_frame(&self) {
-    self.queued_frames_counter.fetch_add(1, Ordering::SeqCst);
+    let mut queued_guard = self.queued_frames_counter.lock().unwrap();
+    *queued_guard += 1;
     let result = self.sender.send(RendererCommand::EndFrame);
     if let Result::Err(err) = result {
       panic!("Sending message to render thread failed {:?}", err);
@@ -274,8 +280,14 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     }
   }
 
+  fn wait_until_available(&self, timeout: Duration) {
+    let queued_guard = self.queued_frames_counter.lock().unwrap();
+    let _ = self.cond_var.wait_timeout_while(queued_guard, timeout, |queued| *queued > 1).unwrap();
+  }
+
   fn is_saturated(&self) -> bool {
-    self.queued_frames_counter.load(Ordering::SeqCst) > 1
+    let queued_guard = self.queued_frames_counter.lock().unwrap();
+    *queued_guard > 1
   }
 
   fn is_running(&self) -> bool {
