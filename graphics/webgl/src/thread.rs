@@ -1,7 +1,6 @@
-use std::{cell::RefCell, collections::{HashMap}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::{HashMap, VecDeque}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
 
 use log::warn;
-use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
@@ -9,35 +8,32 @@ use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle
 use crate::{WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl, spinlock::{SpinLock, SpinLockGuard}, WebGLWork};
 
 pub struct WebGLThreadQueue {
-  write_buffer: SpinLock<Vec<WebGLWork>>,
-  read_buffer: SpinLock<Vec<WebGLWork>>
+  write_queue: SpinLock<VecDeque<WebGLWork>>,
+  read_queue: SpinLock<VecDeque<WebGLWork>>
 }
 
 impl WebGLThreadQueue {
   pub fn new() -> Self {
     Self {
-      write_buffer: SpinLock::new(Vec::new()),
-      read_buffer: SpinLock::new(Vec::new()),
+      write_queue: SpinLock::new(VecDeque::new()),
+      read_queue: SpinLock::new(VecDeque::new()),
     }
   }
 
   pub fn send(&self, work: WebGLWork) {
-    let mut guard = self.write_buffer.lock();
-    guard.push(work);
+    let mut guard = self.write_queue.lock();
+    guard.push_back(work);
   }
 
   pub fn swap_buffers(&self) {
-    let mut write_guard = self.write_buffer.lock();
-    let mut read_guard = self.read_buffer.lock();
+    let mut write_guard = self.write_queue.lock();
+    let mut read_guard = self.read_queue.lock();
     assert_eq!(read_guard.len(), 0);
     std::mem::swap(&mut *write_guard, &mut *read_guard);
   }
 
-  pub fn iter(&self) -> WebGLThreadIterator {
-    let read_guard = self.read_buffer.lock();
-    WebGLThreadIterator {
-      lock: read_guard
-    }
+  pub fn read_queue(&self) -> SpinLockGuard<VecDeque<WebGLWork>> {
+    self.read_queue.lock()
   }
 }
 
@@ -490,18 +486,15 @@ impl WebGLThreadDevice {
   }
 
   pub fn process(&mut self) {
-    let mut cmds = SmallVec::<[WebGLWork; 128]>::new();
-
-    {
-      self.thread_queue.swap_buffers();
-      let iter = self.thread_queue.iter();
-      for cmd in iter {
-        cmds.push(cmd);
+    let queue = self.thread_queue.clone();
+    queue.swap_buffers();
+    let mut read_queue = queue.read_queue();
+    if read_queue.is_empty() {
+      log::warn!("No WebGL calls to process on the main thread. The render thread is too slow.");
+    } else {
+      for cmd in read_queue.drain(..) {
+        cmd(self);
       }
-    }
-
-    for mut cmd in cmds {
-      cmd(self);
     }
   }
 

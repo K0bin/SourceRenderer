@@ -3,7 +3,7 @@ use std::{collections::VecDeque, rc::Rc, sync::Arc};
 use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}, rt::WebGLAccelerationStructureStub};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}, rt::WebGLAccelerationStructureStub, WebGLWork};
 
 use bitflags::bitflags;
 
@@ -16,7 +16,7 @@ bitflags! {
 pub struct WebGLCommandBuffer {
   sender: GLThreadSender,
   pipeline: Option<Arc<WebGLGraphicsPipeline>>,
-  commands: VecDeque<Box<dyn FnMut(&mut crate::thread::WebGLThreadDevice) + Send>>,
+  commands: VecDeque<WebGLWork>,
   inline_buffer: Arc<WebGLBuffer>,
   handles: Arc<WebGLHandleAllocator>,
   used_buffers: Vec<Arc<WebGLBuffer>>,
@@ -439,7 +439,7 @@ impl Queue<WebGLBackend> for WebGLQueue {
     swapchain.present();
     let c_swapchain = swapchain.clone();
     self.sender.send(Box::new(move |_context| {
-      c_swapchain.bump_frame();
+      c_swapchain.bump_processed_frame();
     }));
   }
 

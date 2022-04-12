@@ -101,12 +101,14 @@ impl WebGLSwapchain {
     }
   }
 
-  pub(crate) fn bump_frame(self: &Arc<Self>) {
+  pub(crate) fn bump_processed_frame(self: &Arc<Self>) {
     // Has to be called on the GL thread
     self.processed_frame.fetch_add(1, Ordering::SeqCst);
   }
 
   pub(crate) fn present(&self) {
+    self.prepared_frame.fetch_add(1, Ordering::SeqCst);
+
     let backbuffer_handle = self.backbuffer_view.texture().handle();
     let info = self.backbuffer_view.texture().info();
     let width = info.width as i32;
@@ -151,8 +153,6 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
     while self.processed_frame.load(Ordering::SeqCst) + 1 < self.prepared_frame.load(Ordering::SeqCst) {
       // Block so we dont run too far ahead of the GL thread
     }
-
-    self.prepared_frame.fetch_add(1, Ordering::SeqCst);
     Some(self.backbuffer_view.clone())
   }
 
