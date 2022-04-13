@@ -33,6 +33,17 @@ impl Input {
       Event::MouseMoved(position) => {
         input_guard.mouse_pos = position;
       }
+      Event::FingerDown(finger_index) => {
+        input_guard.fingers_down |= 1 << finger_index;
+      }
+      Event::FingerUp(finger_index) => {
+        input_guard.fingers_down &= !(1 << finger_index);
+      }
+      Event::FingerMoved { index, position } => {
+        if (index as usize) < input_guard.finger_pos.len() {
+          input_guard.finger_pos[index as usize] = position;
+        }
+      }
       _ => unreachable!()
     }
   }
