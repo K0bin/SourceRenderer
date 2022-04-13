@@ -17,7 +17,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : enable
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 layout(local_size_x = 8,
        local_size_y = 8,

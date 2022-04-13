@@ -2,7 +2,7 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_GOOGLE_include_directive : enable
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 const float PI = 3.14159265359;
 

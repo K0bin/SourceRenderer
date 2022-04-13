@@ -4,7 +4,7 @@
 // #extension GL_EXT_debug_printf : enable
 #extension GL_EXT_nonuniform_qualifier : require
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 const float PI = 3.14159265359;
 
@@ -82,7 +82,7 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 4) uniform sampler2D ssao;
 };*/
 
 #define FS
-#include "util.h"
+#include "util.inc.glsl"
 
 vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness);
 float distributionGGX(vec3 normal, vec3 halfway, float roughness);

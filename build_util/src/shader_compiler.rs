@@ -11,6 +11,7 @@ pub fn compile_shaders<F>(source_dir: &Path, out_dir: &Path, file_filter: F)
     .map(|file_result| file_result.unwrap())
     .filter(|file|
       file.path().extension().and_then(|os_str| os_str.to_str()).unwrap_or("") == "glsl"
+      && !file.path().file_stem().and_then(|ext| ext.to_str()).map(|s| s.contains(".inc")).unwrap_or(false)
       && file_filter(&file.path())
     )
     .for_each(|file| {

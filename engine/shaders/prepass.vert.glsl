@@ -2,7 +2,7 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_GOOGLE_include_directive : enable
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 layout(location = 0) in vec3 in_pos;
 layout(location = 1) in vec3 in_normal;
@@ -37,10 +37,8 @@ void main(void) {
 
     mat4 mvp = swapchainTransform * viewProj * model;
     vec4 transformedPos = mvp * pos;
-    transformedPos.y = -transformedPos.y;
 
     vec4 transformedOldPos = (swapchainTransform * (oldViewProjection * oldModel)) * pos;
-    transformedOldPos.y = -transformedOldPos.y;
 
     mat4 normalMat = transpose(inverse(model));
     out_normal = normalize((normalMat * vec4(in_normal, 0.0)).xyz); // shouldnt be necessary
@@ -53,6 +51,5 @@ void main(void) {
     jitterMat[2] = vec4(0.0, 0.0, 1.0, 0.0);
     jitterMat[3] = vec4(jitterPoint.x, jitterPoint.y, 0.0, 1.0);
     vec4 jitteredPoint = (jitterMat * mvp) * pos;
-    jitteredPoint.y = -jitteredPoint.y;
     gl_Position = jitteredPoint;
 }

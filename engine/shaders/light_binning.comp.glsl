@@ -5,7 +5,7 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(local_size_x = 64) in;
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform Camera {
   mat4 viewProj;

@@ -3,7 +3,7 @@
 #extension GL_GOOGLE_include_directive : enable
  #extension GL_EXT_debug_printf : enable
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 1, rgba8) uniform image2D image;
@@ -33,7 +33,7 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 6) uniform sampler2D noise;
 
 layout(location = 0) rayPayloadEXT float hitValue;
 
-#include "util.h"
+#include "util.inc.glsl"
 
 uint seed;
 uint hash(uint s) {

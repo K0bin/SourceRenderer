@@ -6,7 +6,7 @@ layout(local_size_x = 8,
        local_size_y = 8,
        local_size_z = 1) in;
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform kernel {
   vec4 samples[16];
@@ -27,7 +27,7 @@ layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3, std140) uniform Camera {
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4, r16f) uniform writeonly image2D outputTexture;
 
 #define CS
-#include "util.h"
+#include "util.inc.glsl"
 
 // REFERENCE:
 // http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html

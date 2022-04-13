@@ -320,9 +320,9 @@ impl VkCommandBuffer {
       for (i, viewport) in viewports.iter().enumerate() {
         self.device.cmd_set_viewport(self.buffer, i as u32, &[vk::Viewport {
           x: viewport.position.x,
-          y: viewport.position.y,
+          y: viewport.extent.y - viewport.position.y,
           width: viewport.extent.x,
-          height: viewport.extent.y,
+          height: -viewport.extent.y,
           min_depth: viewport.min_depth,
           max_depth: viewport.max_depth
         }]);

@@ -5,7 +5,7 @@ layout(local_size_x = 8,
        local_size_y = 8,
        local_size_z = 1) in;
 
-#include "descriptor_sets.h"
+#include "descriptor_sets.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0) uniform sampler2D frame;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D history;
