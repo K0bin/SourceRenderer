@@ -4,24 +4,32 @@ use std::io::Write;
 use std::path::*;
 use std::io::Read;
 use spirv_cross::spirv::*;
+use build_util::*;
 
 fn main() {
   let pkg_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
   let shader_dir = Path::new(&pkg_dir).join("..").join("..").join("..").join("engine").join("shaders");
 
-  println!("cargo:rerun-if-changed={}", shader_dir.as_path().to_str().unwrap());
-  let contents = read_dir(&shader_dir).expect("Shader directory couldn't be opened.");
+  let shader_dir_temp = Path::new(&pkg_dir).join("shaders_temp");
+  if !shader_dir_temp.exists() {
+    std::fs::create_dir(&shader_dir_temp).expect("Failed to create shader temp directory.");
+  }
+
+  compile_shaders(&shader_dir, &shader_dir_temp, |f| f.extension().and_then(|os_str| os_str.to_str()).unwrap_or("") == "glsl" && f.file_stem().and_then(|ext| ext.to_str()).map(|s| s.contains(".web.")).unwrap_or(false));
+
+  let compiled_file_folder = Path::new(&pkg_dir).join("..").join("www").join("dist").join("shaders");
+  if !compiled_file_folder.exists() {
+    std::fs::create_dir_all(&compiled_file_folder).expect("Failed to create output shader directory");
+  }
+
+  println!("cargo:rerun-if-changed={}", (&shader_dir_temp).to_str().unwrap());
+  let contents = read_dir(&shader_dir_temp).expect("Shader directory couldn't be opened.");
   contents
     .filter(|file_result| file_result.is_ok())
     .map(|file_result| file_result.unwrap())
-    .filter(|file| file.path().extension().and_then(|os_str| os_str.to_str()).unwrap_or("") == "spv")
+    .filter(|f| f.path().extension().and_then(|os_str| os_str.to_str()).unwrap_or("") == "spv" && f.path().file_stem().and_then(|ext| ext.to_str()).map(|s| s.contains(".web.")).unwrap_or(false))
     .for_each(|file| {
-      println!("cargo:rerun-if-changed={}", file.path().as_path().to_str().unwrap());
-
-      if file.path().file_stem().and_then(|ext| ext.to_str()).map(|s| !s.contains(".web.")).unwrap_or(false) {
-        // Limit it to shaders with .web in the name
-        return;
-      }
+      println!("cargo:rerun-if-changed={}", (&file.path()).to_str().unwrap());
 
       let is_ps = file.path().file_stem().and_then(|ext| ext.to_str()).map(|s| s.ends_with("frag")).unwrap_or(false);
 
@@ -84,10 +92,6 @@ fn main() {
         return;
       }
       let code = code_res.unwrap();
-      let compiled_file_folder = Path::new(&pkg_dir).join("..").join("www").join("dist").join("shaders");
-      if !compiled_file_folder.exists() {
-        std::fs::create_dir_all(&compiled_file_folder).expect("Failed to create output shader directory");
-      }
       let compiled_file_path = compiled_file_folder.join([file.path().file_stem().unwrap().to_str().unwrap(), ".glsl"].concat());
       let mut out_file = File::create(compiled_file_path).unwrap();
       write!(out_file, "{}", code).unwrap();

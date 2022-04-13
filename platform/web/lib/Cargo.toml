@@ -58,6 +58,7 @@ wasm-bindgen-test = "0.3.28"
 
 [build-dependencies]
 spirv_cross = { version = "0.23.1", features = [ 'glsl' ] }
+build-util = { path = "../../../build_util" }
 
 [profile.release]
 # Tell `rustc` to optimize for small code size.

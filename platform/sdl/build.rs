@@ -1,36 +1,6 @@
-use core::panic;
 use std::env;
 use std::path::{PathBuf, Path};
-
-fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
-    where F: Fn(&Path) -> bool {
-    for entry in std::fs::read_dir(from).unwrap() {
-        println!("cargo:rerun-if-changed={}", from.to_str().unwrap());
-        let entry = entry.unwrap();
-        if entry.file_type().unwrap().is_dir() {
-            let mut from_buf = PathBuf::new();
-            from_buf.push(from);
-            from_buf.push(entry.file_name());
-            let mut to_buf = PathBuf::new();
-            to_buf.push(to);
-            to_buf.push(entry.file_name());
-            if !to_buf.exists() {
-                std::fs::create_dir(&to_buf).unwrap_or_else(|_| panic!("Failed to create target directory {:?}.", to_buf));
-            }
-            copy_directory_rec(&from_buf, &to_buf, file_filter);
-            continue;
-        }
-
-        if !(file_filter)(&entry.path()) {
-            continue;
-        }
-        let mut dst_path = PathBuf::new();
-        dst_path.push(to);
-        dst_path.push(entry.file_name());
-        println!("cargo:rerun-if-changed={}", entry.path().to_str().unwrap());
-        std::fs::copy(&entry.path(), &dst_path).unwrap_or_else(|_| panic!("Failed to copy file over: {:?} to {:?}", entry.path(), &dst_path));
-    }
-}
+use build_util::{copy_directory_rec, compile_shaders};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -49,7 +19,7 @@ fn main() {
     shader_dir.push("engine");
     shader_dir.push("shaders");
 
-    copy_directory_rec(&shader_dir, &shader_dest_dir, &(|f: &Path| f.extension().map(|ext| ext == "spv").unwrap_or(false)));
+    compile_shaders(&shader_dir, &shader_dest_dir, |_| true);
 
     let mut assets_dest_dir = manifest_dir.clone();
     assets_dest_dir.push("assets");
@@ -63,7 +33,7 @@ fn main() {
     assets_dir.pop();
     assets_dir.push("engine");
     assets_dir.push("assets");
-    copy_directory_rec(&assets_dir, &assets_dest_dir, &(|f: &Path| true));
+    copy_directory_rec(&assets_dir, &assets_dest_dir, &(|_| true));
 
     // Copy SDL2.dll
     let target = env::var("TARGET").unwrap();
@@ -89,7 +59,7 @@ fn main() {
                 let file_name = file_name.to_str().unwrap();
                 if file_name.ends_with(".dll") {
                     new_file_path.push(file_name);
-                    std::fs::copy(&entry_path, new_file_path.as_path()).expect("Can't copy from DLL dir");
+                    std::fs::copy(&entry_path, &new_file_path).expect("Can't copy from DLL dir");
                 }
             }
         }

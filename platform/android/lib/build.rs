@@ -1,36 +1,7 @@
 use std::env;
 use std::path::{PathBuf, Path};
 use std::collections::HashMap;
-
-fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
-  where F: Fn(&Path) -> bool {
-  for entry in std::fs::read_dir(from).unwrap() {
-    println!("cargo:rerun-if-changed={}", from.to_str().unwrap());
-    let entry = entry.unwrap();
-    if entry.file_type().unwrap().is_dir() {
-      let mut from_buf = PathBuf::new();
-      from_buf.push(from);
-      from_buf.push(entry.file_name());
-      let mut to_buf = PathBuf::new();
-      to_buf.push(to);
-      to_buf.push(entry.file_name());
-      if !to_buf.exists() {
-        std::fs::create_dir(&to_buf).unwrap_or_else(|_| panic!("{}", format!("Failed to create target directory {:?}.", to_buf)));
-      }
-      copy_directory_rec(&from_buf, &to_buf, file_filter);
-      continue;
-    }
-
-    if !(file_filter)(&entry.path()) {
-      continue;
-    }
-    let mut dst_path = PathBuf::new();
-    dst_path.push(to);
-    dst_path.push(entry.file_name());
-    println!("cargo:rerun-if-changed={}", entry.path().to_str().unwrap());
-    std::fs::copy(&entry.path(), &dst_path).unwrap_or_else(|_| panic!("{}", format!("Failed to copy file over: {:?} to {:?}", entry.path(), &dst_path)));
-  }
-}
+use build_util::*;
 
 fn find_ndk() -> Option<PathBuf> {
   if let Some(path) = env::var_os("ANDROID_NDK_HOME") {
@@ -79,17 +50,7 @@ fn main() {
   shader_dir.push("engine");
   shader_dir.push("shaders");
 
-  copy_directory_rec(&shader_dir, &shader_dest_dir, &(|f: &Path| f.extension().map(|ext| ext == "spv").unwrap_or(false)));
-
-  for shader in std::fs::read_dir(shader_dir).unwrap() {
-    let shader = shader.unwrap();
-    if !shader.path().extension().map(|ext| ext == "spv").unwrap_or(false) {
-      continue;
-    }
-    let mut dst_path = shader_dest_dir.clone();
-    dst_path.push(shader.file_name());
-    std::fs::copy(shader.path(), dst_path).expect("Failed to copy shader over");
-  }
+  compile_shaders(&shader_dir, &shader_dest_dir, |_| true);
 
   // Copy libc++_shared over
   let ndk_path = find_ndk().expect("Can't find Android NDK, try setting the environment variable ANDROID_NDK_HOME.");

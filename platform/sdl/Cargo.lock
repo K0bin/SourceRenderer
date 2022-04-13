@@ -131,6 +131,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "build-util"
+version = "0.1.0"
+
+[[package]]
 name = "bumpalo"
 version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -330,6 +334,13 @@ name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
+
+[[package]]
+name = "extension-layer"
+version = "0.1.0"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "flate2"
@@ -1276,6 +1287,7 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "bitset-core",
+ "build-util",
  "lazy_static",
  "sdl2",
  "sdl2-sys",
@@ -1324,6 +1336,7 @@ dependencies = [
  "bitflags",
  "crossbeam-channel",
  "crossbeam-utils",
+ "extension-layer",
  "parking_lot 0.12.0",
  "rayon",
  "smallvec",
