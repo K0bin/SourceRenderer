@@ -24,7 +24,7 @@ use sourcerenderer_core::graphics::PrimitiveType;
 
 use crate::bindless::{BINDLESS_TEXTURE_COUNT, BINDLESS_TEXTURE_SET_INDEX};
 use crate::buffer::{align_up_32, VkBufferSlice, align_up_64, align_down_32};
-use crate::raw::RawVkDevice;
+use crate::raw::{RawVkDevice, VkFeatures};
 use crate::format::format_to_vk;
 use crate::VkBackend;
 use crate::shared::{VkPipelineLayoutKey, VkDescriptorSetLayoutKey};
@@ -606,6 +606,10 @@ impl VkPipeline {
     };
 
     if uses_bindless_texture_set {
+      if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+        panic!("Pipeline is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.");
+      }
+
       descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] = VkDescriptorSetLayoutKey {
         bindings: vec![VkDescriptorSetEntryInfo {
           shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
