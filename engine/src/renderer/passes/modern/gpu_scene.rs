@@ -42,6 +42,8 @@ struct GPUDrawable {
   transform: Matrix4,
   old_transform: Matrix4,
   aabb_index: u32,
+  part_start: u32,
+  part_count: u32
 }
 
 #[repr(C)]
@@ -62,7 +64,6 @@ fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B
 
   let mut mesh_map = HashMap::<u64, u32>::new();
   let mut material_map = HashMap::<u64, u32>::new();
-  let mut drawable_map = HashMap::<u64, u32>::new();
   let mut aabb_count: u32 = 0;
   let mut material_count: u32 = 0;
   let mut drawable_count: u32 = 0;
@@ -90,19 +91,16 @@ fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B
       aabb_index
     };
 
-    let drawable_ptr = drawable as *const RendererStaticDrawable<B> as u64;
-    let drawable_index = if let Some(drawable_index) = drawable_map.get(&drawable_ptr) {
-      *drawable_index
-    } else {
-      let drawable_index = drawable_count;
+    let drawable_index = drawable_count;
+    {
       let gpu_drawable = &mut map.drawables[drawable_index as usize];
       gpu_drawable.transform = drawable.transform;
       gpu_drawable.old_transform = drawable.old_transform;
       gpu_drawable.aabb_index = aabb_index;
-      drawable_map.insert(drawable_ptr, drawable_index);
+      gpu_drawable.part_start = part_count;
+      gpu_drawable.part_count = drawable.model.mesh().parts.len() as u32;
       drawable_count += 1;
-      drawable_index
-    };
+    }
 
     let materials = drawable.model.materials();
     for (index, part) in drawable.model.mesh().parts.iter().enumerate() {
