@@ -9,7 +9,7 @@ use sourcerenderer_core::Matrix4;
 
 use crate::{asset::AssetManager, input::Input, transform::interpolation::InterpolatedTransform};
 
-use std::sync::atomic::{Ordering, AtomicUsize};
+use std::sync::atomic::Ordering;
 
 use crate::renderer::command::RendererCommand;
 use legion::{World, Resources, Entity};
@@ -282,7 +282,10 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
 
   fn wait_until_available(&self, timeout: Duration) {
     let queued_guard = self.queued_frames_counter.lock().unwrap();
+    #[cfg(not(target_arch = "wasm32"))]
     let _ = self.cond_var.wait_timeout_while(queued_guard, timeout, |queued| *queued > 1).unwrap();
+    #[cfg(target_arch = "wasm32")]
+    let _ = self.cond_var.wait_while(queued_guard, |queued| *queued > 1).unwrap();
   }
 
   fn is_saturated(&self) -> bool {
