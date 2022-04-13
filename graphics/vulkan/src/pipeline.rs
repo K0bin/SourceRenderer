@@ -606,7 +606,7 @@ impl VkPipeline {
     };
 
     if uses_bindless_texture_set {
-      if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+      if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
         panic!("Pipeline is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.");
       }
 
