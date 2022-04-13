@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue}};
+use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain}};
 
 use crate::{input::Input, renderer::{LateLatching, render_path::RenderPath}};
 
@@ -48,13 +48,17 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     _frame: u64
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
 
+
+    let semaphore = self.device.create_semaphore();
+    let backbuffer = self.swapchain.prepare_back_buffer(&semaphore).unwrap();
+
     let queue = self.device.graphics_queue();
     let mut cmd_buffer = queue.create_command_buffer();
 
     let scene_ref = scene.borrow();
     let view_ref = view.borrow();
     let late_latching_buffer = late_latching.unwrap().buffer();
-    let semaphore = self.geometry.execute(&mut cmd_buffer, &self.device, &scene_ref, &view_ref, &late_latching_buffer);
+    self.geometry.execute(&mut cmd_buffer, &self.device, &scene_ref, &view_ref, &late_latching_buffer, &backbuffer);
 
     if let Some(late_latching) = late_latching {
       let input_state = input.poll();

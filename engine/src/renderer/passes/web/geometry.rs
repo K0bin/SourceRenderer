@@ -6,7 +6,6 @@ use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, r
 
 pub struct GeometryPass<B: Backend> {
   depth_buffer: Arc<B::TextureDepthStencilView>,
-  swapchain: Arc<B::Swapchain>,
   pipeline: Arc<B::GraphicsPipeline>,
   sampler: Arc<B::Sampler>
 }
@@ -193,7 +192,6 @@ impl<B: Backend> GeometryPass<B> {
 
     Self {
       depth_buffer: dsv,
-      swapchain: swapchain.clone(),
       pipeline,
       sampler
     }
@@ -206,10 +204,8 @@ impl<B: Backend> GeometryPass<B> {
     device: &Arc<B::Device>,
     scene: &RendererScene<B>,
     view: &View,
-    camera_buffer: &Arc<B::Buffer>) -> Arc<B::Semaphore> {
-
-    let semaphore = device.create_semaphore();
-    let backbuffer = self.swapchain.prepare_back_buffer(&semaphore).unwrap();
+    camera_buffer: &Arc<B::Buffer>,
+    backbuffer: &Arc<B::TextureRenderTargetView>) {
 
     cmd_buffer.barrier(&[Barrier::TextureBarrier {
       old_sync: BarrierSync::empty(),
@@ -305,7 +301,5 @@ impl<B: Backend> GeometryPass<B> {
       new_layout: TextureLayout::Present,
       texture: backbuffer.texture(),
     }]);
-
-    semaphore
   }
 }
