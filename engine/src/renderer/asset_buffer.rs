@@ -23,6 +23,7 @@ pub struct AssetBufferSlice<B: Backend> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BufferRange {
   offset: u32,
+  aligned_offset: u32,
   length: u32
 }
 
@@ -36,6 +37,7 @@ impl<B: Backend> AssetBuffer<B> {
     }, MemoryUsage::GpuOnly, Some("AssetBuffer"));
     let free_range = BufferRange {
       offset: 0,
+      aligned_offset: 0,
       length: size
     };
 
@@ -50,16 +52,22 @@ impl<B: Backend> AssetBuffer<B> {
     }
   }
 
-  pub fn get_slice(&self, length: usize) -> AssetBufferSlice<B> {
+  pub fn get_slice(&self, length: usize, alignment: usize) -> AssetBufferSlice<B> {
+    let alignment = alignment as u32;
+
     let mut free_ranges = self.internal.free_ranges.borrow_mut();
     let mut remove_range: bool = false;
     let mut used_range = Option::<(usize, u32)>::None;
     for (index, range) in free_ranges.iter_mut().enumerate() {
-      if range.length >= length as u32 {
+      let mut aligned_range = range.clone();
+      aligned_range.offset = ((aligned_range.offset + alignment - 1) / alignment) * alignment;
+      let alignment_diff = aligned_range.offset - range.offset;
+      aligned_range.length -= alignment_diff;
+      if aligned_range.length >= length as u32 {
         used_range = Some((index, range.offset));
         if range.length != length as u32 {
-          range.offset += length as u32;
-          range.length -= length as u32;
+          range.offset += length as u32 + alignment_diff;
+          range.length -= length as u32 + alignment_diff;
         } else {
           remove_range = true;
         }
@@ -76,6 +84,7 @@ impl<B: Backend> AssetBuffer<B> {
       buffer: self.internal.clone(),
       range: BufferRange {
         offset,
+        aligned_offset: ((offset + alignment - 1) / alignment) * alignment,
         length: length as u32
       }
     }

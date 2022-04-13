@@ -333,12 +333,12 @@ impl<P: Platform> RendererAssets<P> {
   pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: Mesh) {
     assert_ne!(mesh.vertex_count, 0);
 
-    let vertex_buffer = self.vertex_buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]));
+    let vertex_buffer = self.vertex_buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]), 44); // FIXME: hardcoded vertex size
     let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
     self.device.init_buffer(&temp_vertex_buffer, vertex_buffer.buffer(), 0, vertex_buffer.offset() as usize, vertex_buffer.size() as usize);
 
     let index_buffer = mesh.indices.map(|indices| {
-      let buffer = self.index_buffer.get_slice(std::mem::size_of_val(&indices[..]));
+      let buffer = self.index_buffer.get_slice(std::mem::size_of_val(&indices[..]), std::mem::size_of::<u32>());
       let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
       self.device.init_buffer(&temp_buffer, buffer.buffer(), 0, buffer.offset() as usize, buffer.size() as usize);
       buffer
