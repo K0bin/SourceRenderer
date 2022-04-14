@@ -76,13 +76,13 @@ impl VkCommandPool {
   }
 
   pub fn get_command_buffer(&mut self, frame: u64) -> VkCommandBufferRecorder {
-    let mut buffer = self.primary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::PRIMARY, self.queue_family_index, &self.shared, &self.buffer_allocator, &self.query_allocator)));
+    let mut buffer = self.primary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::Primary, self.queue_family_index, &self.shared, &self.buffer_allocator, &self.query_allocator)));
     buffer.begin(frame, None);
     VkCommandBufferRecorder::new(buffer, self.sender.clone())
   }
 
   pub fn get_inner_command_buffer(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) -> VkCommandBufferRecorder {
-    let mut buffer = self.secondary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::SECONDARY, self.queue_family_index, &self.shared, &self.buffer_allocator, &self.query_allocator)));
+    let mut buffer = self.secondary_buffers.pop().unwrap_or_else(|| Box::new(VkCommandBuffer::new(&self.raw.device, &self.raw, CommandBufferType::Secondary, self.queue_family_index, &self.shared, &self.buffer_allocator, &self.query_allocator)));
     buffer.begin(frame, inner_info);
     VkCommandBufferRecorder::new(buffer, self.sender.clone())
   }
@@ -96,7 +96,7 @@ impl Resettable for VkCommandPool {
 
     for mut cmd_buf in self.receiver.try_iter() {
       cmd_buf.reset();
-      let buffers = if cmd_buf.command_buffer_type == CommandBufferType::PRIMARY {
+      let buffers = if cmd_buf.command_buffer_type == CommandBufferType::Primary {
         &mut self.primary_buffers
       } else {
         &mut self.secondary_buffers
@@ -149,7 +149,7 @@ impl VkCommandBuffer {
   pub(crate) fn new(device: &Arc<RawVkDevice>, pool: &Arc<RawVkCommandPool>, command_buffer_type: CommandBufferType, queue_family_index: u32, shared: &Arc<VkShared>, buffer_allocator: &Arc<BufferAllocator>, query_allocator: &Arc<VkQueryAllocator>) -> Self {
     let buffers_create_info = vk::CommandBufferAllocateInfo {
       command_pool: ***pool,
-      level: if command_buffer_type == CommandBufferType::PRIMARY { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
+      level: if command_buffer_type == CommandBufferType::Primary { vk::CommandBufferLevel::PRIMARY } else { vk::CommandBufferLevel::SECONDARY }, // TODO: support secondary command buffers / bundles
       command_buffer_count: 1, // TODO: figure out how many buffers per pool (maybe create a new pool once we've run out?)
       ..Default::default()
     };
@@ -281,7 +281,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn end_render_pass(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(self.render_pass.is_some());
+    debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     unsafe {
       self.device.cmd_end_render_pass(self.buffer);
     }
@@ -290,7 +290,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn advance_subpass(&mut self) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(self.render_pass.is_some());
+    debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     unsafe {
       self.device.cmd_next_subpass(self.buffer, vk::SubpassContents::INLINE);
     }
@@ -351,6 +351,7 @@ impl VkCommandBuffer {
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     unsafe {
       self.device.cmd_draw(self.buffer, vertices, 1, offset, 0);
     }
@@ -361,6 +362,7 @@ impl VkCommandBuffer {
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     unsafe {
       self.device.cmd_draw_indexed(self.buffer, indices, instances, first_index, vertex_offset, first_instance);
     }
@@ -557,7 +559,7 @@ impl VkCommandBuffer {
     }
 
     for submission in &submissions {
-      assert_eq!(submission.command_buffer_type(), CommandBufferType::SECONDARY);
+      assert_eq!(submission.command_buffer_type(), CommandBufferType::Secondary);
     }
     let submission_handles: SmallVec<[vk::CommandBuffer; 16]> = submissions
       .iter()
@@ -786,7 +788,7 @@ impl VkCommandBuffer {
 
   pub(crate) fn begin_render_pass(&mut self, renderpass_begin_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-    debug_assert!(!self.render_pass.is_some());
+    debug_assert!(self.render_pass.is_none());
 
     self.flush_barriers();
 
@@ -995,6 +997,7 @@ impl VkCommandBuffer {
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     self.trackers.track_buffer(draw_buffer);
     self.trackers.track_buffer(count_buffer);
     unsafe {
@@ -1015,6 +1018,7 @@ impl VkCommandBuffer {
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
     debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     self.trackers.track_buffer(draw_buffer);
     self.trackers.track_buffer(count_buffer);
     unsafe {

@@ -113,7 +113,7 @@ impl VkQueue {
   }
 
   pub fn submit(&self, command_buffer: VkCommandBufferSubmission, fence: Option<&Arc<VkFence>>, wait_semaphores: &[ &VkSemaphore ], signal_semaphores: &[ &VkSemaphore ]) {
-    assert_eq!(command_buffer.command_buffer_type(), CommandBufferType::PRIMARY);
+    assert_eq!(command_buffer.command_buffer_type(), CommandBufferType::Primary);
     debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
     debug_assert!(fence.is_none() || !fence.unwrap().is_signalled());
     if wait_semaphores.len() > 4 || signal_semaphores.len() > 4 {

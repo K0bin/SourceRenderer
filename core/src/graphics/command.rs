@@ -34,8 +34,8 @@ pub struct Scissor {
 
 #[derive(Clone, Debug, Copy, PartialEq, Hash)]
 pub enum CommandBufferType {
-  PRIMARY,
-  SECONDARY
+  Primary,
+  Secondary
 }
 
 #[derive(Clone)]
