@@ -64,6 +64,8 @@ pub trait CommandBuffer<B: Backend> {
   fn create_temporary_buffer(&mut self, info: &BufferInfo, memory_usage: MemoryUsage) -> Arc<B::Buffer>;
   fn draw(&mut self, vertices: u32, offset: u32);
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
+  fn draw_indexed_indirect(&mut self, draw_buffer: &Arc<B::Buffer>, draw_buffer_offset: u32, count_buffer: &Arc<B::Buffer>, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
+  fn draw_indirect(&mut self, draw_buffer: &Arc<B::Buffer>, draw_buffer_offset: u32, count_buffer: &Arc<B::Buffer>, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
   fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>, sampler: &Arc<B::Sampler>);
   fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);

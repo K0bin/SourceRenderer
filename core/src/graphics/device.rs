@@ -52,7 +52,7 @@ pub trait Device<B: Backend> {
   fn prerendered_frames(&self) -> u32;
   fn supports_bindless(&self) -> bool;
   fn supports_ray_tracing(&self) -> bool;
-  fn supports_advanced_indirect(&self) -> bool; // TODO turn into flags
+  fn supports_indirect(&self) -> bool; // TODO turn into flags
   fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureSamplingView>) -> u32;
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;

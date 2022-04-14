@@ -33,7 +33,8 @@ pub struct RawVkDevice {
   pub graphics_queue: ReentrantMutex<vk::Queue>,
   pub compute_queue: Option<ReentrantMutex<vk::Queue>>,
   pub transfer_queue: Option<ReentrantMutex<vk::Queue>>,
-  pub rt: Option<RawVkRTEntries>
+  pub rt: Option<RawVkRTEntries>,
+  pub indirect_count: Option<ash::extensions::khr::DrawIndirectCount>
 }
 
 pub struct RawVkRTEntries {
@@ -59,43 +60,48 @@ impl RawVkDevice {
     transfer_queue_info: Option<VkQueueInfo>,
     graphics_queue: vk::Queue,
     compute_queue: Option<vk::Queue>,
-    transfer_queue: Option<vk::Queue>) -> Self {
+    transfer_queue: Option<vk::Queue>
+  ) -> Self {
+    let rt = if features.contains(VkFeatures::RAY_TRACING) {
+      let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+      let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
 
-      let rt = if features.contains(VkFeatures::RAY_TRACING) {
-        let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-        let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
+      rt_pipeline_properties.p_next = properties.p_next;
+      properties.p_next = &mut rt_pipeline_properties as *mut vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut c_void;
 
-        rt_pipeline_properties.p_next = properties.p_next;
-        properties.p_next = &mut rt_pipeline_properties as *mut vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut c_void;
+      unsafe { instance.get_physical_device_properties2(physical_device, &mut properties) };
 
-        unsafe { instance.get_physical_device_properties2(physical_device, &mut properties) };
+      Some(RawVkRTEntries {
+        acceleration_structure: khr::AccelerationStructure::new(&instance, &device),
+        rt_pipelines: khr::RayTracingPipeline::new(&instance, &device),
+        deferred_operations: khr::DeferredHostOperations::new(&instance, &device),
+        bda: khr::BufferDeviceAddress::new(&instance, &device),
+        rt_pipeline_properties
+      })
+    } else {
+      None
+    };
 
-        Some(RawVkRTEntries {
-          acceleration_structure: khr::AccelerationStructure::new(&instance, &device),
-          rt_pipelines: khr::RayTracingPipeline::new(&instance, &device),
-          deferred_operations: khr::DeferredHostOperations::new(&instance, &device),
-          bda: khr::BufferDeviceAddress::new(&instance, &device),
-          rt_pipeline_properties
-        })
-      } else {
-        None
-      };
+    let indirect_count = features.contains(VkFeatures::ADVANCED_INDIRECT).then(|| {
+      ash::extensions::khr::DrawIndirectCount::new(&instance, &device)
+    });
 
-      Self {
-        device,
-        allocator,
-        physical_device,
-        instance,
-        features,
-        graphics_queue_info,
-        compute_queue_info,
-        transfer_queue_info,
-        graphics_queue: ReentrantMutex::new(graphics_queue),
-        compute_queue: compute_queue.map(|queue| ReentrantMutex::new(queue)),
-        transfer_queue: transfer_queue.map(|queue| ReentrantMutex::new(queue)),
-        is_alive: AtomicBool::new(true),
-        rt
-      }
+    Self {
+      device,
+      allocator,
+      physical_device,
+      instance,
+      features,
+      graphics_queue_info,
+      compute_queue_info,
+      transfer_queue_info,
+      graphics_queue: ReentrantMutex::new(graphics_queue),
+      compute_queue: compute_queue.map(|queue| ReentrantMutex::new(queue)),
+      transfer_queue: transfer_queue.map(|queue| ReentrantMutex::new(queue)),
+      is_alive: AtomicBool::new(true),
+      rt,
+      indirect_count
+    }
   }
 
   pub fn graphics_queue(&self) -> ReentrantMutexGuard<vk::Queue> {

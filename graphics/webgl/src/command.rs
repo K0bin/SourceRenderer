@@ -400,6 +400,14 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn track_texture_view(&mut self, _texture_view: &Arc<WebGLTextureSamplingView>) {
     // nop
   }
+
+  fn draw_indexed_indirect(&mut self, _draw_buffer: &Arc<WebGLBuffer>, _draw_buffer_offset: u32, _count_buffer: &Arc<WebGLBuffer>, _count_buffer_offset: u32, _max_draw_count: u32, _stride: u32) {
+    panic!("WebGL does not support indirect rendering.");
+  }
+
+  fn draw_indirect(&mut self, _draw_buffer: &Arc<WebGLBuffer>, _draw_buffer_offset: u32, _count_buffer: &Arc<WebGLBuffer>, _count_buffer_offset: u32, _max_draw_count: u32, _stride: u32) {
+    panic!("WebGL does not support indirect rendering.");
+  }
 }
 
 pub struct WebGLCommandSubmission {

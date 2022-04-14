@@ -274,7 +274,7 @@ impl Device<VkBackend> for VkDevice {
     self.device.features.contains(VkFeatures::RAY_TRACING)
   }
 
-  fn supports_advanced_indirect(&self) -> bool {
+  fn supports_indirect(&self) -> bool {
     self.device.features.contains(VkFeatures::ADVANCED_INDIRECT)
   }
 

@@ -244,7 +244,7 @@ impl Device<WebGLBackend> for WebGLDevice {
     false
   }
 
-  fn supports_advanced_indirect(&self) -> bool {
+  fn supports_indirect(&self) -> bool {
     false
   }
 }

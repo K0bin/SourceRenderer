@@ -1,7 +1,6 @@
 use std::{cmp::min, sync::Arc};
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::cmp::max;
 use std::ffi::{CString};
 
 use ash::vk;
@@ -990,6 +989,46 @@ impl VkCommandBuffer {
   fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
     self.trackers.track_texture_view(texture_view);
   }
+
+  fn draw_indexed_indirect(&mut self, draw_buffer: &Arc<VkBufferSlice>, draw_buffer_offset: u32, count_buffer: &Arc<VkBufferSlice>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pipeline.is_some());
+    debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    self.trackers.track_buffer(draw_buffer);
+    self.trackers.track_buffer(count_buffer);
+    unsafe {
+      self.device.indirect_count.as_ref().unwrap().cmd_draw_indexed_indirect_count(
+        self.buffer,
+        *draw_buffer.get_buffer().get_handle(),
+        draw_buffer.offset() as u64 + draw_buffer_offset as u64,
+        *count_buffer.get_buffer().get_handle(),
+        count_buffer.offset() as u64 + count_buffer_offset as u64,
+        max_draw_count,
+        stride
+      );
+    }
+  }
+
+  fn draw_indirect(&mut self, draw_buffer: &Arc<VkBufferSlice>, draw_buffer_offset: u32, count_buffer: &Arc<VkBufferSlice>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(self.pipeline.is_some());
+    debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
+    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    self.trackers.track_buffer(draw_buffer);
+    self.trackers.track_buffer(count_buffer);
+    unsafe {
+      self.device.indirect_count.as_ref().unwrap().cmd_draw_indirect_count(
+        self.buffer,
+        *draw_buffer.get_buffer().get_handle(),
+        draw_buffer.offset() as u64 + draw_buffer_offset as u64,
+        *count_buffer.get_buffer().get_handle(),
+        count_buffer.offset() as u64 + count_buffer_offset as u64,
+        max_draw_count,
+        stride
+      );
+    }
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -1259,6 +1298,16 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
     self.item.as_mut().unwrap().track_texture_view(texture_view);
+  }
+
+  #[inline(always)]
+  fn draw_indexed_indirect(&mut self, draw_buffer: &Arc<VkBufferSlice>, draw_buffer_offset: u32, count_buffer: &Arc<VkBufferSlice>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    self.item.as_mut().unwrap().draw_indexed_indirect(draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
+  }
+
+  #[inline(always)]
+  fn draw_indirect(&mut self, draw_buffer: &Arc<VkBufferSlice>, draw_buffer_offset: u32, count_buffer: &Arc<VkBufferSlice>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    self.item.as_mut().unwrap().draw_indexed_indirect(draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
   }
 }
 
