@@ -36,6 +36,7 @@ const RAY_QUERY_EXT_NAME: &str = "VK_KHR_ray_query";
 const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
 const SPIRV_1_4_EXT_NAME: &str = "VK_KHR_spirv_1_4";
 const SHADER_FLOAT_CONTROLS_EXT_NAME: &str = "VK_KHR_shader_float_controls";
+const DRAW_INDIRECT_COUNT_EXT_NAME: &str = "VK_KHR_draw_indirect_count";
 
 
 bitflags! {
@@ -55,6 +56,7 @@ bitflags! {
     const PIPELINE_LIBRARY           = 0b100000000000;
     const SPIRV_1_4                  = 0b1000000000000;
     const SHADER_FLOAT_CONTROLS      = 0b10000000000000;
+    const DRAW_INDIRECT_COUNT        = 0b100000000000000;
   }
 }
 
@@ -92,6 +94,7 @@ impl VkAdapter {
         DEFERRED_HOST_OPERATIONS_EXT_NAME => { VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS },
         SPIRV_1_4_EXT_NAME => { VkAdapterExtensionSupport::SPIRV_1_4 },
         SHADER_FLOAT_CONTROLS_EXT_NAME => { VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS },
+        DRAW_INDIRECT_COUNT_EXT_NAME => { VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -315,6 +318,11 @@ impl Adapter<VkBackend> for VkAdapter {
           bda_features.p_next = device_creation_pnext;
           device_creation_pnext = &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void;
         }
+      }
+
+      if self.extensions.contains(VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT) {
+        extension_names.push(DRAW_INDIRECT_COUNT_EXT_NAME);
+        features |= VkFeatures::ADVANCED_INDIRECT;
       }
 
       let extension_names_c: Vec<CString> = extension_names

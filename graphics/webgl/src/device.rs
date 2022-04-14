@@ -243,4 +243,8 @@ impl Device<WebGLBackend> for WebGLDevice {
   fn supports_ray_tracing(&self) -> bool {
     false
   }
+
+  fn supports_advanced_indirect(&self) -> bool {
+    false
+  }
 }

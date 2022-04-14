@@ -1,5 +1,5 @@
 use std::ffi::c_void;
-use std::sync::{Arc, MutexGuard, Mutex};
+use std::sync::Arc;
 use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
@@ -8,7 +8,6 @@ use ash::vk;
 use ash::extensions::khr;
 
 use crate::raw::RawVkInstance;
-use crate::VkAdapterExtensionSupport;
 use crate::queue::VkQueueInfo;
 
 bitflags! {
@@ -17,6 +16,7 @@ bitflags! {
     const DEDICATED_ALLOCATION       = 0b10;
     const DESCRIPTOR_TEMPLATE        = 0b100;
     const RAY_TRACING                = 0b1000;
+    const ADVANCED_INDIRECT          = 0b10000;
   }
 }
 
