@@ -100,6 +100,10 @@ impl<B: Backend> AssetBuffer<B> {
     }
     reuse_ranges.retain(|(_r, frames)| *frames <= device.prerendered_frames() + 1);
   }
+
+  pub fn buffer(&self) -> &Arc<B::Buffer> {
+    &self.internal.buffer
+  }
 }
 
 impl<B: Backend> AssetBufferInternal<B> {

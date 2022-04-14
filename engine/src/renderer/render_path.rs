@@ -18,6 +18,8 @@ pub(super) trait RenderPath<B: Backend> {
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
-    frame: u64
+    frame: u64,
+    vertex_buffer: &Arc<B::Buffer>,
+    index_buffer: &Arc<B::Buffer>
   ) -> Result<(), SwapchainError>;
 }

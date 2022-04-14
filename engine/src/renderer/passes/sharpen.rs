@@ -31,7 +31,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("cas.comp.spv"))
     };
-    let pipeline = device.create_compute_pipeline(&sharpen_compute_shader);
+    let pipeline = device.create_compute_pipeline(&sharpen_compute_shader, Some("Sharpen"));
 
     resources.create_texture(Self::SHAPENED_TEXTURE_NAME, &TextureInfo {
       format: Format::RGBA8,

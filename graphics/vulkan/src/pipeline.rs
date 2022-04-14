@@ -407,7 +407,7 @@ pub struct VkGraphicsPipelineInfo<'a> {
 }
 
 impl VkPipeline {
-  pub fn new_graphics(device: &Arc<RawVkDevice>, info: &VkGraphicsPipelineInfo, shared: &VkShared) -> Self {
+  pub fn new_graphics(device: &Arc<RawVkDevice>, info: &VkGraphicsPipelineInfo, shared: &VkShared, name: Option<&str>) -> Self {
     let vk_device = &device.device;
     let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
     let mut descriptor_set_layouts = <[VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize]>::default();
@@ -693,6 +693,21 @@ impl VkPipeline {
     let pipeline = unsafe {
       vk_device.create_graphics_pipelines(vk::PipelineCache::null(), &[ pipeline_create_info ], None).unwrap()[0]
     };
+
+    if let Some(name) = name {
+      if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        let name_cstring = CString::new(name).unwrap();
+        unsafe {
+          debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+            object_type: vk::ObjectType::PIPELINE,
+            object_handle: pipeline.as_raw(),
+            p_object_name: name_cstring.as_ptr(),
+            ..Default::default()
+          }).unwrap();
+        }
+      }
+    }
+
     Self {
       pipeline,
       device: device.clone(),
@@ -703,7 +718,7 @@ impl VkPipeline {
     }
   }
 
-  pub fn new_compute(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, shared: &VkShared) -> Self {
+  pub fn new_compute(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, shared: &VkShared, name: Option<&str>) -> Self {
     let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -766,6 +781,20 @@ impl VkPipeline {
     let pipeline = unsafe {
       device.create_compute_pipelines(vk::PipelineCache::null(), &[ pipeline_create_info ], None).unwrap()[0]
     };
+
+    if let Some(name) = name {
+      if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        let name_cstring = CString::new(name).unwrap();
+        unsafe {
+          debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+            object_type: vk::ObjectType::PIPELINE,
+            object_handle: pipeline.as_raw(),
+            p_object_name: name_cstring.as_ptr(),
+            ..Default::default()
+          }).unwrap();
+        }
+      }
+    }
 
     VkPipeline {
       pipeline,

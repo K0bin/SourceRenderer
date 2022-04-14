@@ -40,7 +40,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("light_binning.comp.spv"))
     };
-    let pipeline = device.create_compute_pipeline(&shader);
+    let pipeline = device.create_compute_pipeline(&shader, Some("LightBinning"));
 
     barriers.create_buffer(Self::LIGHT_BINNING_BUFFER_NAME, &BufferInfo {
       size: std::mem::size_of::<u32>() * 16 * 9 * 24,

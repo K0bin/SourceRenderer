@@ -164,7 +164,7 @@ impl<B: Backend> GeometryPass<B> {
           }),
         }
       ]
-    }, 0);
+    }, 0, Some("WebGeometry"));
 
     let sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,

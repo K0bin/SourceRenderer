@@ -151,7 +151,7 @@ impl<B: Backend> OcclusionPass<B> {
           )
         }
       ],
-    }, 0);
+    }, 0, Some("Occlusion"));
 
     assert_eq!(query_buffers.len(), occlusion_query_maps.len());
 

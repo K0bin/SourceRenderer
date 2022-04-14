@@ -193,7 +193,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           }),
         }
       ]
-    }, 0);
+    }, 0, Some("Geometry"));
 
     Self {
       sampler,

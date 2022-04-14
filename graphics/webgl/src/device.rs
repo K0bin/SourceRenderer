@@ -100,12 +100,12 @@ impl Device<WebGLBackend> for WebGLDevice {
     Arc::new(WebGLTextureSamplingView::new(texture, info))
   }
 
-  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<WebGLBackend>, _pass_info: &RenderPassInfo, _subpass_index: u32) -> Arc<WebGLGraphicsPipeline> {
+  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<WebGLBackend>, _pass_info: &RenderPassInfo, _subpass_index: u32, _name: Option<&str>) -> Arc<WebGLGraphicsPipeline> {
     let id = self.handles.new_pipeline_handle();
     Arc::new(WebGLGraphicsPipeline::new(id, info, &self.thread_queue))
   }
 
-  fn create_compute_pipeline(&self, _shader: &Arc<WebGLShader>) -> Arc<WebGLComputePipeline> {
+  fn create_compute_pipeline(&self, _shader: &Arc<WebGLShader>, _name: Option<&str>) -> Arc<WebGLComputePipeline> {
     panic!("WebGL does not support compute shaders");
   }
 

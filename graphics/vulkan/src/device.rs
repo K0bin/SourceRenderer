@@ -201,15 +201,15 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkSampler::new(&self.device, info))
   }
 
-  fn create_compute_pipeline(&self, shader: &Arc<VkShader>) -> Arc<VkPipeline> {
-    Arc::new(VkPipeline::new_compute(&self.device, shader, self.context.shared()))
+  fn create_compute_pipeline(&self, shader: &Arc<VkShader>, name: Option<&str>) -> Arc<VkPipeline> {
+    Arc::new(VkPipeline::new_compute(&self.device, shader, self.context.shared(), name))
   }
 
   fn wait_for_idle(&self) {
     self.device.wait_for_idle();
   }
 
-  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
+  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
     let shared = self.context.get_shared();
     let mut rp_opt = {
       let render_passes = shared.get_render_passes().read().unwrap();
@@ -227,7 +227,7 @@ impl Device<VkBackend> for VkDevice {
       render_pass: &rp,
       sub_pass: subpass,
     };
-    Arc::new(VkPipeline::new_graphics(&self.device, &vk_info, shared))
+    Arc::new(VkPipeline::new_graphics(&self.device, &vk_info, shared, name))
   }
 
   fn init_texture(&self, texture: &Arc<VkTexture>, buffer: &Arc<VkBufferSlice>, mip_level: u32, array_layer: u32, buffer_offset: usize) {

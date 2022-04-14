@@ -53,7 +53,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("taa.comp.spv"))
     };
-    let pipeline = device.create_compute_pipeline(&taa_compute_shader);
+    let pipeline = device.create_compute_pipeline(&taa_compute_shader, Some("TAA"));
 
     let linear_sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Linear,

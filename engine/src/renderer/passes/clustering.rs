@@ -31,7 +31,7 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("clustering.comp.spv"))
     };
-    let clustering_pipeline = device.create_compute_pipeline(&clustering_shader);
+    let clustering_pipeline = device.create_compute_pipeline(&clustering_shader, Some("Clustering"));
 
     barriers.create_buffer(Self::CLUSTERS_BUFFER_NAME, &BufferInfo {
       size: std::mem::size_of::<Vec4>() * 2 * 16 * 9 * 24,

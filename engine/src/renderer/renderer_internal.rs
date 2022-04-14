@@ -24,6 +24,7 @@ use super::PointLight;
 use super::drawable::{make_camera_proj, make_camera_view};
 use super::light::DirectionalLight;
 use super::passes::conservative::desktop_renderer::ConservativeRenderer;
+use super::passes::modern::ModernRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
 
@@ -59,7 +60,11 @@ impl<P: Platform> RendererInternal<P> {
     let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
       Box::new(WebRenderer::new::<P>(device, swapchain))
     } else {
-      Box::new(ConservativeRenderer::new::<P>(device, swapchain))
+      if device.supports_indirect() {
+        Box::new(ModernRenderer::new::<P>(device, swapchain))
+      } else {
+        Box::new(ConservativeRenderer::new::<P>(device, swapchain))
+      }
     };
 
     Self {
@@ -233,7 +238,7 @@ impl<P: Platform> RendererInternal<P> {
       let scene = self.scene.borrow_mut();
       scene.lightmap().cloned().unwrap_or_else(|| self.assets.placeholder_black().clone())
     };
-    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame);
+    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, self.assets.vertex_buffer(), self.assets.index_buffer());
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -263,7 +268,7 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, self.assets.vertex_buffer(), self.assets.index_buffer()).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }

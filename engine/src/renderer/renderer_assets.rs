@@ -523,6 +523,14 @@ impl<P: Platform> RendererAssets<P> {
     self.vertex_buffer.bump_frame(&self.device);
     self.index_buffer.bump_frame(&self.device);
   }
+
+  pub fn vertex_buffer(&self) -> &Arc<<P::GraphicsBackend as Backend>::Buffer> {
+    self.vertex_buffer.buffer()
+  }
+
+  pub fn index_buffer(&self) -> &Arc<<P::GraphicsBackend as Backend>::Buffer> {
+    self.index_buffer.buffer()
+  }
 }
 
 impl<P: Platform> Drop for RendererAssets<P> {

@@ -193,7 +193,7 @@ impl<B: GraphicsBackend> Prepass<B> {
           })
         }
       ],
-    }, 0);
+    }, 0, Some("Prepass"));
 
     Self {
       pipeline

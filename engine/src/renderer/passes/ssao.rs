@@ -54,7 +54,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("ssao.comp.spv"))
     };
-    let pipeline = device.create_compute_pipeline(&shader);
+    let pipeline = device.create_compute_pipeline(&shader, Some("SSAO"));
 
     // TODO: Clear history texture
 
@@ -66,7 +66,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("ssao_blur.comp.spv"))
     };
-    let blur_pipeline = device.create_compute_pipeline(&blur_shader);
+    let blur_pipeline = device.create_compute_pipeline(&blur_shader, Some("SSAOBlur"));
 
     let nearest_sampler = device.create_sampler(&SamplerInfo {
       mag_filter: Filter::Nearest,

@@ -83,7 +83,8 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     self.swapchain = swapchain.clone();
   }
 
-  fn render(&mut self,
+  fn render(
+    &mut self,
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
     zero_texture_view: &Arc<B::TextureSamplingView>,
@@ -91,7 +92,10 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
-    frame: u64) -> Result<(), SwapchainError> {
+    frame: u64,
+    vertex_buffer: &Arc<B::Buffer>,
+    index_buffer: &Arc<B::Buffer>
+  ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 

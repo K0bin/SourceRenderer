@@ -37,9 +37,9 @@ pub trait Device<B: Backend> {
   fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureRenderTargetViewInfo, name: Option<&str>) -> Arc<B::TextureRenderTargetView>;
   fn create_storage_view(&self, texture: &Arc<B::Texture>, info: &TextureStorageViewInfo, name: Option<&str>) -> Arc<B::TextureStorageView>;
   fn create_depth_stencil_view(&self, texture: &Arc<B::Texture>, info: &TextureDepthStencilViewInfo, name: Option<&str>) -> Arc<B::TextureDepthStencilView>;
-  fn create_compute_pipeline(&self, shader: &Arc<B::Shader>) -> Arc<B::ComputePipeline>;
+  fn create_compute_pipeline(&self, shader: &Arc<B::Shader>, name: Option<&str>) -> Arc<B::ComputePipeline>;
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;
-  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32) -> Arc<B::GraphicsPipeline>;
+  fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<B::GraphicsPipeline>;
   fn wait_for_idle(&self);
   fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize);
   fn init_texture_async(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<Arc<B::Fence>>;
