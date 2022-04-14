@@ -238,7 +238,7 @@ impl Adapter<VkBackend> for VkAdapter {
       self.instance.get_physical_device_features2(self.physical_device, &mut supported_features);
       self.instance.get_physical_device_properties2(self.physical_device, &mut properties);
 
-      let enabled_features: vk::PhysicalDeviceFeatures = Default::default();
+      let mut enabled_features: vk::PhysicalDeviceFeatures = Default::default();
       let mut descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
       let mut acceleration_structure_features = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
       let mut rt_pipeline_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
@@ -320,9 +320,11 @@ impl Adapter<VkBackend> for VkAdapter {
         }
       }
 
-      if self.extensions.contains(VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT) {
+      if self.extensions.contains(VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT) && supported_features.features.draw_indirect_first_instance == vk::TRUE && supported_features.features.multi_draw_indirect == vk::TRUE {
         extension_names.push(DRAW_INDIRECT_COUNT_EXT_NAME);
         features |= VkFeatures::ADVANCED_INDIRECT;
+        enabled_features.draw_indirect_first_instance = vk::TRUE;
+        enabled_features.multi_draw_indirect = vk::TRUE;
       }
 
       let extension_names_c: Vec<CString> = extension_names
