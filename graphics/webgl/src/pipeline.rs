@@ -53,7 +53,7 @@ impl Drop for WebGLShader {
 }
 
 impl Shader for WebGLShader {
-  fn get_shader_type(&self) -> ShaderType {
+  fn shader_type(&self) -> ShaderType {
     self.shader_type
   }
 }

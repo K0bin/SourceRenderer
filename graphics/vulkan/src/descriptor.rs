@@ -136,7 +136,7 @@ impl VkDescriptorSetLayout {
     }
   }
 
-  pub(crate) fn get_handle(&self) -> &vk::DescriptorSetLayout {
+  pub(crate) fn handle(&self) -> &vk::DescriptorSetLayout {
     &self.layout
   }
 
@@ -213,7 +213,7 @@ impl VkDescriptorPool {
   }
 
   #[inline]
-  fn get_handle(&self) -> MutexGuard<vk::DescriptorPool> {
+  fn handle(&self) -> MutexGuard<vk::DescriptorPool> {
     self.descriptor_pool.lock().unwrap()
   }
 
@@ -221,7 +221,7 @@ impl VkDescriptorPool {
     if !self.is_transient {
       return;
     }
-    let guard = self.get_handle();
+    let guard = self.handle();
     unsafe {
       self.device.reset_descriptor_pool(*guard, vk::DescriptorPoolResetFlags::empty()).unwrap();
     }
@@ -234,7 +234,7 @@ impl VkDescriptorPool {
 
 impl Drop for VkDescriptorPool {
   fn drop(&mut self) {
-    let pool = self.get_handle();
+    let pool = self.handle();
     unsafe {
       self.device.destroy_descriptor_pool(*pool, None);
     }
@@ -269,11 +269,11 @@ pub(crate) struct VkDescriptorSet {
 
 impl VkDescriptorSet {
   fn new(pool: &Arc<VkDescriptorPool>, device: &Arc<RawVkDevice>, layout: &Arc<VkDescriptorSetLayout>, is_transient: bool, dynamic_buffer_offsets: bool, bindings: &[VkBoundResource; 16]) -> VkResult<Self> {
-    let pool_guard = pool.get_handle();
+    let pool_guard = pool.handle();
     let set_create_info = vk::DescriptorSetAllocateInfo {
       descriptor_pool: *pool_guard,
       descriptor_set_count: 1,
-      p_set_layouts: layout.get_handle() as *const vk::DescriptorSetLayout,
+      p_set_layouts: layout.handle() as *const vk::DescriptorSetLayout,
       ..Default::default()
     };
     let set = unsafe {
@@ -312,7 +312,7 @@ impl VkDescriptorSet {
           match resource {
             VkBoundResource::StorageBuffer { buffer, offset, length } => {
               let buffer_info = vk::DescriptorBufferInfo {
-                buffer: *buffer.get_buffer().get_handle(),
+                buffer: *buffer.buffer().handle(),
                 offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
@@ -322,7 +322,7 @@ impl VkDescriptorSet {
             },
             VkBoundResource::StorageTexture(texture) => {
               let texture_info = vk::DescriptorImageInfo {
-                image_view: *texture.get_view_handle(),
+                image_view: *texture.view_handle(),
                 sampler: vk::Sampler::null(),
                 image_layout: if !binding_info.writable { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL } else { vk::ImageLayout::GENERAL }
               };
@@ -332,7 +332,7 @@ impl VkDescriptorSet {
             },
             VkBoundResource::UniformBuffer { buffer, offset, length } => {
               let buffer_info = vk::DescriptorBufferInfo {
-                buffer: *buffer.get_buffer().get_handle(),
+                buffer: *buffer.buffer().handle(),
                 offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
@@ -342,8 +342,8 @@ impl VkDescriptorSet {
             },
             VkBoundResource::SampledTexture(texture, sampler) => {
               let texture_info = vk::DescriptorImageInfo {
-                image_view: *texture.get_view_handle(),
-                sampler: *sampler.get_handle(),
+                image_view: *texture.view_handle(),
+                sampler: *sampler.handle(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
               image_writes.push(texture_info);
@@ -353,7 +353,7 @@ impl VkDescriptorSet {
             VkBoundResource::Sampler(sampler) => {
               let texture_info = vk::DescriptorImageInfo {
                 image_view: vk::ImageView::null(),
-                sampler: *sampler.get_handle(),
+                sampler: *sampler.handle(),
                 image_layout: vk::ImageLayout::UNDEFINED
               };
               image_writes.push(texture_info);
@@ -392,28 +392,28 @@ impl VkDescriptorSet {
           match resource {
             VkBoundResource::StorageBuffer { buffer, offset, length } => {
               entry.buffer = vk::DescriptorBufferInfo {
-                buffer: *buffer.get_buffer().get_handle(),
+                buffer: *buffer.buffer().handle(),
                 offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
             },
             VkBoundResource::UniformBuffer { buffer, offset, length } => {
               entry.buffer = vk::DescriptorBufferInfo {
-                buffer: *buffer.get_buffer().get_handle(),
+                buffer: *buffer.buffer().handle(),
                 offset: if dynamic_buffer_offsets { 0 } else { (buffer.offset() + *offset) as vk::DeviceSize },
                 range: *length as vk::DeviceSize
               };
             },
             VkBoundResource::SampledTexture(texture, sampler) => {
               entry.image = vk::DescriptorImageInfo {
-                image_view: *texture.get_view_handle(),
-                sampler: *sampler.get_handle(),
+                image_view: *texture.view_handle(),
+                sampler: *sampler.handle(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
             },
             VkBoundResource::StorageTexture(texture) => {
               entry.image = vk::DescriptorImageInfo {
-                image_view: *texture.get_view_handle(),
+                image_view: *texture.view_handle(),
                 sampler: vk::Sampler::null(),
                 image_layout: vk::ImageLayout::GENERAL
               };
@@ -421,7 +421,7 @@ impl VkDescriptorSet {
             VkBoundResource::Sampler(sampler) => {
               entry.image = vk::DescriptorImageInfo {
                 image_view: vk::ImageView::null(),
-                sampler: *sampler.get_handle(),
+                sampler: *sampler.handle(),
                 image_layout: vk::ImageLayout::UNDEFINED
               };
             },
@@ -450,7 +450,7 @@ impl VkDescriptorSet {
   }
 
   #[inline]
-  pub(crate) fn get_handle(&self) -> &vk::DescriptorSet {
+  pub(crate) fn handle(&self) -> &vk::DescriptorSet {
     &self.descriptor_set
   }
 
@@ -466,7 +466,7 @@ impl Drop for VkDescriptorSet {
       return;
     }
     unsafe {
-      self.device.free_descriptor_sets(*self.pool.get_handle(), &[self.descriptor_set]).unwrap();
+      self.device.free_descriptor_sets(*self.pool.handle(), &[self.descriptor_set]).unwrap();
     }
   }
 }
@@ -625,9 +625,9 @@ impl VkBindingManager {
                       } else {
                         // https://github.com/rust-lang/rust/issues/53667
                         if let (VkBoundResource::UniformBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResource::UniformBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
-                          buffer.get_buffer() == entry_buffer.get_buffer()
+                          buffer.buffer() == entry_buffer.buffer()
                         } else if let (VkBoundResource::StorageBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResource::StorageBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
-                          buffer.get_buffer() == entry_buffer.get_buffer()
+                          buffer.buffer() == entry_buffer.buffer()
                           && *length == *entry_length
                         } else {
                           binding == &bindings[index]
@@ -643,7 +643,7 @@ impl VkBindingManager {
   }
 
   fn finish_set(&mut self, frame: u64, pipeline_layout: &VkPipelineLayout, frequency: BindingFrequency) -> Option<VkDescriptorSetBinding> {
-    let layout_option = pipeline_layout.get_descriptor_set_layout(frequency as u32);
+    let layout_option = pipeline_layout.descriptor_set_layout(frequency as u32);
     if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
       return None;
     }

@@ -225,7 +225,7 @@ impl VkRenderPass {
     }
   }
 
-  pub fn get_handle(&self) -> &vk::RenderPass {
+  pub fn handle(&self) -> &vk::RenderPass {
     &self.render_pass
   }
 }
@@ -266,7 +266,7 @@ impl VkFrameBuffer {
     let mut vk_attachments = SmallVec::<[vk::ImageView; 8]>::new();
     let mut attachment_refs = SmallVec::<[Arc<VkTextureView>; 8]>::new();
     for attachment in attachments {
-      vk_attachments.push(*attachment.get_view_handle());
+      vk_attachments.push(*attachment.view_handle());
       attachment_refs.push((*attachment).clone());
     }
 
@@ -274,7 +274,7 @@ impl VkFrameBuffer {
       device: device.clone(),
       frame_buffer: unsafe { device.create_framebuffer(&vk::FramebufferCreateInfo {
           flags: vk::FramebufferCreateFlags::empty(),
-          render_pass: *render_pass.get_handle(),
+          render_pass: *render_pass.handle(),
           attachment_count: vk_attachments.len() as u32,
           p_attachments: vk_attachments.as_ptr(),
           width,
@@ -289,7 +289,7 @@ impl VkFrameBuffer {
     }
   }
 
-  pub(crate) fn get_handle(&self) -> &vk::Framebuffer {
+  pub(crate) fn handle(&self) -> &vk::Framebuffer {
     &self.frame_buffer
   }
 

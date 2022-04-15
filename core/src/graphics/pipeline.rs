@@ -330,7 +330,7 @@ pub enum PrimitiveType {
 }
 
 pub trait Shader {
-  fn get_shader_type(&self) -> ShaderType;
+  fn shader_type(&self) -> ShaderType;
 }
 
 #[derive(Hash, Eq, PartialEq)]

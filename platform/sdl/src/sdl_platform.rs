@@ -194,14 +194,14 @@ impl Platform for SDLPlatform {
 
 impl Window<SDLPlatform> for SDLWindow {
   fn create_surface(&self, graphics_instance: Arc<VkInstance>) -> Arc<VkSurface> {
-    let instance_raw = graphics_instance.get_raw();
+    let instance_raw = graphics_instance.raw();
     let surface = self.window.vulkan_create_surface(instance_raw.instance.handle().as_raw() as sdl2::video::VkInstance).unwrap();
     let surface_loader = SurfaceLoader::new(&instance_raw.entry, &instance_raw.instance);
     Arc::new(VkSurface::new(instance_raw, SurfaceKHR::from_raw(surface), surface_loader))
   }
 
   fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> Arc<VkSwapchain> {
-    let device_inner = device.get_inner();
+    let device_inner = device.inner();
     let (width, height) = self.window.drawable_size();
     VkSwapchain::new(vsync, width, height, device_inner, surface).unwrap()
   }

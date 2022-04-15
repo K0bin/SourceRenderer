@@ -115,34 +115,34 @@ impl VkDevice {
   }
 
   #[inline]
-  pub fn get_inner(&self) -> &Arc<RawVkDevice> {
+  pub fn inner(&self) -> &Arc<RawVkDevice> {
     &self.device
   }
 
   #[inline]
-  pub fn get_graphics_queue(&self) -> &Arc<VkQueue> {
+  pub fn graphics_queue(&self) -> &Arc<VkQueue> {
     &self.graphics_queue
   }
 
   #[inline]
-  pub fn get_compute_queue(&self) -> &Option<Arc<VkQueue>> {
+  pub fn compute_queue(&self) -> &Option<Arc<VkQueue>> {
     &self.compute_queue
   }
 
   #[inline]
-  pub fn get_transfer_queue(&self) -> &Option<Arc<VkQueue>> {
+  pub fn transfer_queue(&self) -> &Option<Arc<VkQueue>> {
     &self.transfer_queue
   }
 }
 
 impl Device<VkBackend> for VkDevice {
   fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
-    self.context.get_shared().get_buffer_allocator().get_slice(info, memory_usage, name)
+    self.context.shared().buffer_allocator().get_slice(info, memory_usage, name)
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> where T: 'static + Send + Sync + Sized + Clone {
     assert_ne!(memory_usage, MemoryUsage::GpuOnly);
-    let slice = self.context.get_shared().get_buffer_allocator().get_slice(&BufferInfo {
+    let slice = self.context.shared().buffer_allocator().get_slice(&BufferInfo {
       size: std::mem::size_of_val(data),
       usage
     }, memory_usage, None);
@@ -210,14 +210,14 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
-    let shared = self.context.get_shared();
+    let shared = self.context.shared();
     let mut rp_opt = {
-      let render_passes = shared.get_render_passes().read().unwrap();
+      let render_passes = shared.render_passes().read().unwrap();
       render_passes.get(renderpass_info).cloned()
     };
     if rp_opt.is_none() {
       let rp = Arc::new(VkRenderPass::new(&self.device, renderpass_info));
-      let mut render_passes = shared.get_render_passes().write().unwrap();
+      let mut render_passes = shared.render_passes().write().unwrap();
       render_passes.insert(renderpass_info.clone(), rp.clone());
       rp_opt = Some(rp);
     }

@@ -99,7 +99,7 @@ impl VkAccelerationStructure {
     let acceleration_structure = unsafe {
       rt.acceleration_structure.create_acceleration_structure(&vk::AccelerationStructureCreateInfoKHR {
         create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
-        buffer: *target_buffer.get_buffer().get_handle(),
+        buffer: *target_buffer.buffer().handle(),
         offset: target_buffer.offset() as vk::DeviceSize,
         size: size as vk::DeviceSize,
         ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
@@ -247,7 +247,7 @@ impl VkAccelerationStructure {
     let acceleration_structure = unsafe {
       rt.acceleration_structure.create_acceleration_structure(&vk::AccelerationStructureCreateInfoKHR {
         create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
-        buffer: *target_buffer.get_buffer().get_handle(),
+        buffer: *target_buffer.buffer().handle(),
         offset: target_buffer.offset() as vk::DeviceSize,
         size: size as vk::DeviceSize,
         ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,

@@ -38,9 +38,9 @@ impl GameInternal {
 
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
-    //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+    asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
-    //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+    let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
     //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
     //let mut level = World::new(legion::WorldOptions::default());
@@ -57,14 +57,14 @@ impl GameInternal {
 
     trace!("Csgo path: {:?}", csgo_path);
 
-    let mut level = {
+    /*let mut level = {
       asset_manager.add_container(Box::new(CSGODirectoryContainer::new::<P>(csgo_path).unwrap()));
       let progress = asset_manager.request_asset("pak01_dir", AssetType::Container, AssetLoadPriority::Normal);
       while !progress.is_done() {
         // wait until our container is loaded
       }
       asset_manager.load_level("de_overpass.bsp").unwrap()
-    };
+    };*/
     trace!("Done loading level");
 
     PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule, tick_duration);

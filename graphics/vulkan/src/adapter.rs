@@ -107,11 +107,11 @@ impl VkAdapter {
     }
   }
 
-  pub fn get_physical_device_handle(&self) -> &vk::PhysicalDevice {
+  pub fn physical_device_handle(&self) -> &vk::PhysicalDevice {
     &self.physical_device
   }
 
-  pub fn get_raw_instance(&self) -> &Arc<RawVkInstance> { &self.instance }
+  pub fn raw_instance(&self) -> &Arc<RawVkInstance> { &self.instance }
 }
 
 // Vulkan physical devices are implicitly freed with the instance
@@ -153,7 +153,7 @@ impl Adapter<VkBackend> for VkAdapter {
       let graphics_queue_info = VkQueueInfo {
         queue_family_index: graphics_queue_family_props.0,
         queue_index: 0,
-        supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, *surface.get_surface_handle()).unwrap_or(false)
+        supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, graphics_queue_family_props.0 as u32, *surface.surface_handle()).unwrap_or(false)
       };
 
       let compute_queue_info = compute_queue_family_props.map(
@@ -162,7 +162,7 @@ impl Adapter<VkBackend> for VkAdapter {
           VkQueueInfo {
             queue_family_index: index,
             queue_index: 0,
-            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.get_surface_handle()).unwrap_or(false)
+            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.surface_handle()).unwrap_or(false)
           }
         }
       );
@@ -173,7 +173,7 @@ impl Adapter<VkBackend> for VkAdapter {
           VkQueueInfo {
             queue_family_index: index,
             queue_index: 0,
-            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.get_surface_handle()).unwrap_or(false)
+            supports_presentation: surface_loader.get_physical_device_surface_support(self.physical_device, index as u32, *surface.surface_handle()).unwrap_or(false)
           }
         }
       );

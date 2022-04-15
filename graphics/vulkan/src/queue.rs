@@ -87,7 +87,7 @@ impl VkQueue {
     }
   }
 
-  pub fn get_queue_family_index(&self) -> u32 {
+  pub fn family_index(&self) -> u32 {
     self.info.queue_family_index as u32
   }
 
@@ -96,16 +96,16 @@ impl VkQueue {
   }
 
   pub fn submit_transfer(&self, command_buffer: &VkTransferCommandBuffer) {
-    debug_assert!(!command_buffer.get_fence().is_signalled());
+    debug_assert!(!command_buffer.fence().is_signalled());
     debug_assert_eq!(command_buffer.queue_family_index(), self.info.queue_family_index as u32);
 
-    let vk_cmd_buffer = *command_buffer.get_handle();
+    let vk_cmd_buffer = *command_buffer.handle();
     let submission = VkVirtualSubmission::CommandBuffer {
       command_buffer: vk_cmd_buffer,
       wait_semaphores: SmallVec::new(),
       wait_stages: SmallVec::new(),
       signal_semaphores: SmallVec::new(),
-      fence: Some(command_buffer.get_fence().clone()),
+      fence: Some(command_buffer.fence().clone()),
       submission: None
     };
     let mut guard = self.queue.lock().unwrap();
@@ -129,11 +129,11 @@ impl VkQueue {
 
     let mut cmd_buffer_mut = command_buffer;
     cmd_buffer_mut.mark_submitted();
-    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
-    let signal_semaphore_handles = signal_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let signal_semaphore_handles = signal_semaphores.iter().map(|s| *s.handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
     let stage_masks = wait_semaphores.iter().map(|_| vk::PipelineStageFlags::TOP_OF_PIPE).collect::<SmallVec<[vk::PipelineStageFlags; 4]>>();
 
-    let vk_cmd_buffer = *cmd_buffer_mut.get_handle();
+    let vk_cmd_buffer = *cmd_buffer_mut.handle();
     let submission = VkVirtualSubmission::CommandBuffer {
       command_buffer: vk_cmd_buffer,
       wait_semaphores: wait_semaphore_handles,
@@ -151,7 +151,7 @@ impl VkQueue {
     if wait_semaphores.len() > 4 {
       panic!("Can only wait for 4 semaphores.");
     }
-    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.get_handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
+    let wait_semaphore_handles = wait_semaphores.iter().map(|s| *s.handle()).collect::<SmallVec<[vk::Semaphore; 4]>>();
 
     let frame = self.threads.end_frame();
     let submission = VkVirtualSubmission::Present {
@@ -309,7 +309,7 @@ impl Queue<VkBackend> for VkQueue {
               };
 
               fence.mark_submitted();
-              let fence_handle = fence.get_handle();
+              let fence_handle = fence.handle();
               unsafe {
                 let result = self.device.device.queue_submit(*vk_queue, &[submit], *fence_handle);
                 if result.is_err() {
@@ -369,7 +369,7 @@ impl Queue<VkBackend> for VkQueue {
             command_buffers.clear();
           }
 
-          let swapchain_handle = swapchain.get_handle();
+          let swapchain_handle = swapchain.handle();
           let present_info = vk::PresentInfoKHR {
             p_swapchains: &*swapchain_handle,
             swapchain_count: 1,
@@ -379,7 +379,7 @@ impl Queue<VkBackend> for VkQueue {
             ..Default::default()
           };
           unsafe {
-            let result = swapchain.get_loader().queue_present(*vk_queue, &present_info);
+            let result = swapchain.loader().queue_present(*vk_queue, &present_info);
             swapchain.set_presented_image(image_index);
             match result {
               Ok(suboptimal) => {

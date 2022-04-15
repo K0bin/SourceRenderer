@@ -67,7 +67,7 @@ impl VkBindlessDescriptorSet {
       device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo {
         descriptor_pool: descriptor_pool,
         descriptor_set_count: 1,
-        p_set_layouts: layout.get_handle(),
+        p_set_layouts: layout.handle(),
         ..Default::default()
       }).unwrap().pop().unwrap()
     };
@@ -99,11 +99,11 @@ impl VkBindlessDescriptorSet {
     }
   }
 
-  pub(crate) fn get_layout(&self) -> (&VkDescriptorSetLayoutKey, &Arc<VkDescriptorSetLayout>) {
+  pub(crate) fn layout(&self) -> (&VkDescriptorSetLayoutKey, &Arc<VkDescriptorSetLayout>) {
     (&self.key, &self.layout)
   }
 
-  pub fn get_descriptor_set_handle(&self) -> vk::DescriptorSet {
+  pub fn descriptor_set_handle(&self) -> vk::DescriptorSet {
     let lock = self.inner.lock().unwrap();
     lock.descriptor_set
   }
@@ -120,7 +120,7 @@ impl VkBindlessDescriptorSet {
     };
     let image_info = vk::DescriptorImageInfo {
       sampler: vk::Sampler::null(),
-      image_view: *texture.get_view_handle(),
+      image_view: *texture.view_handle(),
       image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
     };
     unsafe {

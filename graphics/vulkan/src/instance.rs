@@ -131,7 +131,7 @@ impl VkInstance {
     }
   }
 
-  pub fn get_raw(&self) -> &Arc<RawVkInstance> {
+  pub fn raw(&self) -> &Arc<RawVkInstance> {
     &self.raw
   }
 

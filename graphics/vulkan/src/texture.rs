@@ -93,7 +93,7 @@ impl VkTexture {
     }
   }
 
-  pub fn get_handle(&self) -> &vk::Image {
+  pub fn handle(&self) -> &vk::Image {
     &self.image
   }
 
@@ -211,7 +211,7 @@ pub struct VkTextureView {
 impl VkTextureView {
   pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureSamplingViewInfo, name: Option<&str>) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
-      image: *texture.get_handle(),
+      image: *texture.handle(),
       view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
       format: format_to_vk(texture.info.format),
       components: vk::ComponentMapping {
@@ -259,7 +259,7 @@ impl VkTextureView {
   }
 
   #[inline]
-  pub(crate) fn get_view_handle(&self) -> &vk::ImageView {
+  pub(crate) fn view_handle(&self) -> &vk::ImageView {
     &self.view
   }
 
@@ -352,7 +352,7 @@ impl VkSampler {
   }
 
   #[inline]
-  pub(crate) fn get_handle(&self) -> &vk::Sampler {
+  pub(crate) fn handle(&self) -> &vk::Sampler {
     &self.sampler
   }
 }

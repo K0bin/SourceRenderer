@@ -64,7 +64,7 @@ impl VkTransfer {
   pub fn new(device: &Arc<RawVkDevice>, graphics_queue: &Arc<VkQueue>, transfer_queue: &Option<Arc<VkQueue>>, shared: &Arc<VkShared>) -> Self {
     let graphics_pool_info = vk::CommandPoolCreateInfo {
       flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER | vk::CommandPoolCreateFlags::TRANSIENT,
-      queue_family_index: graphics_queue.get_queue_family_index(),
+      queue_family_index: graphics_queue.family_index(),
       ..Default::default()
     };
     let graphics_fence = shared.get_fence();
@@ -73,7 +73,7 @@ impl VkTransfer {
     let transfer_commands = if let Some(transfer_queue) = transfer_queue {
       let transfer_pool_info = vk::CommandPoolCreateInfo {
         flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER | vk::CommandPoolCreateFlags::TRANSIENT,
-        queue_family_index: transfer_queue.get_queue_family_index(),
+        queue_family_index: transfer_queue.family_index(),
         ..Default::default()
       };
       let transfer_pool = Arc::new(RawVkCommandPool::new(device, &transfer_pool_info).unwrap());
@@ -86,7 +86,7 @@ impl VkTransfer {
         used_cmd_buffers: VecDeque::new(),
         fence: transfer_fence,
         queue_name: "Transfer",
-        queue_family_index: transfer_queue.get_queue_family_index()
+        queue_family_index: transfer_queue.family_index()
       })
     } else {
       None
@@ -102,7 +102,7 @@ impl VkTransfer {
           used_cmd_buffers: VecDeque::new(),
           fence: graphics_fence,
           queue_name: "Graphics",
-          queue_family_index: graphics_queue.get_queue_family_index()
+          queue_family_index: graphics_queue.family_index()
         },
         transfer: transfer_commands
       }),
@@ -121,8 +121,8 @@ impl VkTransfer {
         dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
         old_layout: vk::ImageLayout::UNDEFINED,
         new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        src_queue_family_index: self.graphics_queue.get_queue_family_index(),
-        dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
+        src_queue_family_index: self.graphics_queue.family_index(),
+        dst_queue_family_index: self.graphics_queue.family_index(),
         subresource_range: vk::ImageSubresourceRange {
           base_mip_level: mip_level,
           level_count: 1,
@@ -130,7 +130,7 @@ impl VkTransfer {
           aspect_mask: vk::ImageAspectFlags::COLOR,
           layer_count: 1
         },
-        image: *texture.get_handle(),
+        image: *texture.handle(),
         ..Default::default()
       }));
 
@@ -166,8 +166,8 @@ impl VkTransfer {
         dst_access_mask: vk::AccessFlags::MEMORY_READ,
         old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        src_queue_family_index: self.graphics_queue.get_queue_family_index(),
-        dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
+        src_queue_family_index: self.graphics_queue.family_index(),
+        dst_queue_family_index: self.graphics_queue.family_index(),
         subresource_range: vk::ImageSubresourceRange {
           base_mip_level: mip_level,
           level_count: 1,
@@ -175,7 +175,7 @@ impl VkTransfer {
           aspect_mask: vk::ImageAspectFlags::COLOR,
           layer_count: 1
         },
-        image: *texture.get_handle(),
+        image: *texture.handle(),
         ..Default::default()
     })));
   }
@@ -203,9 +203,9 @@ impl VkTransfer {
       vk::BufferMemoryBarrier {
         src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
         dst_access_mask: vk::AccessFlags::MEMORY_READ,
-        src_queue_family_index: self.graphics_queue.get_queue_family_index(),
-        dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
-        buffer: *dst_buffer.get_buffer().get_handle(),
+        src_queue_family_index: self.graphics_queue.family_index(),
+        dst_queue_family_index: self.graphics_queue.family_index(),
+        buffer: *dst_buffer.buffer().handle(),
         offset: dst_buffer.offset() as vk::DeviceSize,
         size: if length == WHOLE_BUFFER {
           (src_buffer.length() as vk::DeviceSize - src_offset as vk::DeviceSize)
@@ -235,8 +235,8 @@ impl VkTransfer {
           dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
           old_layout: vk::ImageLayout::UNDEFINED,
           new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-          src_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
-          dst_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
+          src_queue_family_index: self.transfer_queue.as_ref().unwrap().family_index(),
+          dst_queue_family_index: self.transfer_queue.as_ref().unwrap().family_index(),
           subresource_range: vk::ImageSubresourceRange {
             base_mip_level: mip_level,
             level_count: 1,
@@ -244,7 +244,7 @@ impl VkTransfer {
             aspect_mask: vk::ImageAspectFlags::COLOR,
             layer_count: 1
           },
-          image: *texture.get_handle(),
+          image: *texture.handle(),
           ..Default::default()
         }));
 
@@ -281,8 +281,8 @@ impl VkTransfer {
           dst_access_mask: vk::AccessFlags::empty(),
           old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
           new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-          src_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
-          dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
+          src_queue_family_index: self.transfer_queue.as_ref().unwrap().family_index(),
+          dst_queue_family_index: self.graphics_queue.family_index(),
           subresource_range: vk::ImageSubresourceRange {
             base_mip_level: mip_level,
             level_count: 1,
@@ -290,7 +290,7 @@ impl VkTransfer {
             aspect_mask: vk::ImageAspectFlags::COLOR,
             layer_count: 1
           },
-          image: *texture.get_handle(),
+          image: *texture.handle(),
           ..Default::default()
         })));
 
@@ -304,8 +304,8 @@ impl VkTransfer {
         dst_access_mask: vk::AccessFlags::MEMORY_READ,
         old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        src_queue_family_index: self.transfer_queue.as_ref().unwrap().get_queue_family_index(),
-        dst_queue_family_index: self.graphics_queue.get_queue_family_index(),
+        src_queue_family_index: self.transfer_queue.as_ref().unwrap().family_index(),
+        dst_queue_family_index: self.graphics_queue.family_index(),
         subresource_range: vk::ImageSubresourceRange {
           base_mip_level: mip_level,
           level_count: 1,
@@ -313,7 +313,7 @@ impl VkTransfer {
           aspect_mask: vk::ImageAspectFlags::COLOR,
           layer_count: 1
         },
-        image: *texture.get_handle(),
+        image: *texture.handle(),
         ..Default::default()
       })));
 
@@ -356,7 +356,7 @@ impl VkTransfer {
     };
     debug_assert!(!cmd_buffer.is_used());
     unsafe {
-      self.device.begin_command_buffer(*cmd_buffer.get_handle(), &vk::CommandBufferBeginInfo {
+      self.device.begin_command_buffer(*cmd_buffer.handle(), &vk::CommandBufferBeginInfo {
         flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
         ..Default::default()
       }).unwrap();
@@ -372,7 +372,7 @@ impl VkTransfer {
       }
     }
     unsafe {
-      self.device.cmd_pipeline_barrier(*cmd_buffer.get_handle(), vk::PipelineStageFlags::HOST, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[],
+      self.device.cmd_pipeline_barrier(*cmd_buffer.handle(), vk::PipelineStageFlags::HOST, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[],
                                        &buffer_barriers,
                                        &image_barriers
       );
@@ -387,7 +387,7 @@ impl VkTransfer {
           cmd_buffer.trackers.track_buffer(&src);
           cmd_buffer.trackers.track_buffer(&dst);
           unsafe {
-            self.device.cmd_copy_buffer(*cmd_buffer.get_handle(), *src.get_buffer().get_handle(), *dst.get_buffer().get_handle(), &[region]);
+            self.device.cmd_copy_buffer(*cmd_buffer.handle(), *src.buffer().handle(), *dst.buffer().handle(), &[region]);
           }
         },
         VkTransferCopy::BufferToImage {
@@ -396,7 +396,7 @@ impl VkTransfer {
           cmd_buffer.trackers.track_buffer(&src);
           cmd_buffer.trackers.track_texture(&dst);
           unsafe {
-            self.device.cmd_copy_buffer_to_image(*cmd_buffer.get_handle(), *src.get_buffer().get_handle(), *dst.get_handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[region]);
+            self.device.cmd_copy_buffer_to_image(*cmd_buffer.handle(), *src.buffer().handle(), *dst.handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[region]);
           }
         }
       }
@@ -420,14 +420,14 @@ impl VkTransfer {
     }
     commands.post_barriers.extend(retained_barriers);
     unsafe {
-      self.device.cmd_pipeline_barrier(*cmd_buffer.get_handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[],
+      self.device.cmd_pipeline_barrier(*cmd_buffer.handle(), vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::ALL_COMMANDS, vk::DependencyFlags::empty(), &[],
                                        &buffer_barriers,
                                        &image_barriers
       );
     }
 
     unsafe {
-      self.device.end_command_buffer(*cmd_buffer.get_handle()).unwrap();
+      self.device.end_command_buffer(*cmd_buffer.handle()).unwrap();
     }
 
     cmd_buffer.mark_used();
@@ -521,12 +521,12 @@ impl VkTransferCommandBuffer {
   }
 
   #[inline]
-  pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
+  pub(crate) fn handle(&self) -> &vk::CommandBuffer {
     &self.cmd_buffer
   }
 
   #[inline]
-  pub(crate) fn get_fence(&self) -> &Arc<VkFence> {
+  pub(crate) fn fence(&self) -> &Arc<VkFence> {
     &self.fence
   }
 

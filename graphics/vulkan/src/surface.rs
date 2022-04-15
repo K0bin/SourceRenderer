@@ -28,31 +28,31 @@ impl VkSurface {
   }
 
   #[inline]
-  pub fn get_surface_handle(&self) -> MutexGuard<vk::SurfaceKHR> {
+  pub fn surface_handle(&self) -> MutexGuard<vk::SurfaceKHR> {
     self.surface.lock().unwrap()
   }
 
   #[inline]
-  pub fn get_surface_loader(&self) -> &SurfaceLoader {
+  pub fn surface_loader(&self) -> &SurfaceLoader {
     &self.surface_loader
   }
 
   pub(crate) fn get_capabilities(&self, physical_device: &vk::PhysicalDevice) -> VkResult<vk::SurfaceCapabilitiesKHR> {
-    let handle = self.get_surface_handle();
+    let handle = self.surface_handle();
     unsafe {
       self.surface_loader.get_physical_device_surface_capabilities(*physical_device, *handle)
     }
   }
 
   pub(crate) fn get_formats(&self, physical_device: &vk::PhysicalDevice) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
-    let handle = self.get_surface_handle();
+    let handle = self.surface_handle();
     unsafe {
       self.surface_loader.get_physical_device_surface_formats(*physical_device, *handle)
     }
   }
 
   pub(crate) fn get_present_modes(&self, physical_device: &vk::PhysicalDevice) -> VkResult<Vec<vk::PresentModeKHR>> {
-    let handle = self.get_surface_handle();
+    let handle = self.surface_handle();
     unsafe {
       self.surface_loader.get_physical_device_surface_present_modes(*physical_device, *handle)
     }
@@ -79,7 +79,7 @@ impl Eq for VkSurface {}
 
 impl Drop for VkSurface {
   fn drop(&mut self) {
-    let handle = self.get_surface_handle();
+    let handle = self.surface_handle();
     unsafe {
       self.surface_loader.destroy_surface(*handle, None);
     }

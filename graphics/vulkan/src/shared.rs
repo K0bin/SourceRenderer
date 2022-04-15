@@ -52,7 +52,7 @@ impl VkShared {
 
     let bindless_texture_descriptor_set = if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
       let bindless_set = Arc::new(VkBindlessDescriptorSet::new(device, vk::DescriptorType::SAMPLED_IMAGE));
-      let (layout_key, descriptor_layout) = bindless_set.get_layout();
+      let (layout_key, descriptor_layout) = bindless_set.layout();
       descriptor_set_layouts.insert(layout_key.clone(), descriptor_layout.clone());
       Some(bindless_set)
     } else {
@@ -140,7 +140,7 @@ impl VkShared {
   }
 
   #[inline]
-  pub(crate) fn get_render_passes(&self) -> &RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>> {
+  pub(crate) fn render_passes(&self) -> &RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>> {
     &self.render_passes
   }
 
@@ -158,7 +158,7 @@ impl VkShared {
   }
 
   pub(crate) fn get_framebuffer(&self, render_pass: &Arc<VkRenderPass>, attachments: &[&Arc<VkTextureView>]) -> Arc<VkFrameBuffer> {
-    let key: SmallVec<[u64; 8]> = attachments.iter().map(|a| a.get_view_handle().as_raw()).collect();
+    let key: SmallVec<[u64; 8]> = attachments.iter().map(|a| a.view_handle().as_raw()).collect();
     {
       let cache = self.frame_buffers.read().unwrap();
       if let Some(framebuffer) = cache.get(&key) {
@@ -173,7 +173,7 @@ impl VkShared {
   }
 
   #[inline]
-  pub(crate) fn get_buffer_allocator(&self) -> &BufferAllocator {
+  pub(crate) fn buffer_allocator(&self) -> &BufferAllocator {
     &self.buffers
   }
 

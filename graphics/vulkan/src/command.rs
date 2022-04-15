@@ -180,11 +180,11 @@ impl VkCommandBuffer {
     }
   }
 
-  pub fn get_handle(&self) -> &vk::CommandBuffer {
+  pub fn handle(&self) -> &vk::CommandBuffer {
     &self.buffer
   }
 
-  pub fn get_type(&self) -> CommandBufferType {
+  pub fn cmd_buffer_type(&self) -> CommandBufferType {
     self.command_buffer_type
   }
 
@@ -205,9 +205,9 @@ impl VkCommandBuffer {
       (
         vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
         vk::CommandBufferInheritanceInfo {
-          render_pass: *inner_info.render_pass.get_handle(),
+          render_pass: *inner_info.render_pass.handle(),
           subpass: inner_info.sub_pass,
-          framebuffer: *inner_info.frame_buffer.get_handle(),
+          framebuffer: *inner_info.frame_buffer.handle(),
           ..Default::default()
         }
       )
@@ -242,7 +242,7 @@ impl VkCommandBuffer {
 
     match &pipeline {
       PipelineBinding::Graphics(graphics_pipeline) => {
-        let vk_pipeline = graphics_pipeline.get_handle();
+        let vk_pipeline = graphics_pipeline.handle();
         unsafe {
           self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::GRAPHICS, *vk_pipeline);
         }
@@ -254,7 +254,7 @@ impl VkCommandBuffer {
         self.pipeline = Some((*graphics_pipeline).clone())
       }
       PipelineBinding::Compute(compute_pipeline) => {
-        let vk_pipeline = compute_pipeline.get_handle();
+        let vk_pipeline = compute_pipeline.handle();
         unsafe {
           self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::COMPUTE, *vk_pipeline);
         }
@@ -265,7 +265,7 @@ impl VkCommandBuffer {
         self.pipeline = Some((*compute_pipeline).clone())
       },
       PipelineBinding::RayTracing(rt_pipeline) => {
-        let vk_pipeline = rt_pipeline.get_handle();
+        let vk_pipeline = rt_pipeline.handle();
         unsafe {
           self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::RAY_TRACING_KHR, *vk_pipeline);
         }
@@ -301,7 +301,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(vertex_buffer);
     unsafe {
-      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.get_buffer().get_handle()], &[(vertex_buffer.offset() + offset) as u64]);
+      self.device.cmd_bind_vertex_buffers(self.buffer, 0, &[*vertex_buffer.buffer().handle()], &[(vertex_buffer.offset() + offset) as u64]);
     }
   }
 
@@ -309,7 +309,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.trackers.track_buffer(index_buffer);
     unsafe {
-      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.get_buffer().get_handle(), (index_buffer.offset() + offset) as u64, index_format_to_vk(format));
+      self.device.cmd_bind_index_buffer(self.buffer, *index_buffer.buffer().handle(), (index_buffer.offset() + offset) as u64, index_format_to_vk(format));
     }
   }
 
@@ -412,7 +412,7 @@ impl VkCommandBuffer {
     let mut base_index = 0;
 
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-    let pipeline_layout = pipeline.get_layout();
+    let pipeline_layout = pipeline.layout();
 
     let finished_sets = self.descriptor_manager.finish(self.frame, pipeline_layout);
     for (index, set_option) in finished_sets.iter().enumerate() {
@@ -427,7 +427,7 @@ impl VkCommandBuffer {
                   VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
                   VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
                 },
-                *pipeline_layout.get_handle(),
+                *pipeline_layout.handle(),
                 base_index,
                 &descriptor_sets,
                 &offsets
@@ -439,7 +439,7 @@ impl VkCommandBuffer {
           base_index = index as u32 + 1;
         },
         Some(set_binding) => {
-          descriptor_sets.push(*set_binding.set.get_handle());
+          descriptor_sets.push(*set_binding.set.handle());
           for i in 0..set_binding.dynamic_offset_count as usize {
             offsets.push(set_binding.dynamic_offsets[i] as u32);
           }
@@ -455,7 +455,7 @@ impl VkCommandBuffer {
               VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
               VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
           },
-          *pipeline_layout.get_handle(),
+          *pipeline_layout.handle(),
           base_index,
           &descriptor_sets,
           &offsets
@@ -468,7 +468,7 @@ impl VkCommandBuffer {
 
     if pipeline.uses_bindless_texture_set() {
       let bindless_texture_descriptor_set = self.shared.bindless_texture_descriptor_set().unwrap();
-      descriptor_sets.push(bindless_texture_descriptor_set.get_descriptor_set_handle());
+      descriptor_sets.push(bindless_texture_descriptor_set.descriptor_set_handle());
     }
 
     if !descriptor_sets.is_empty() {
@@ -480,7 +480,7 @@ impl VkCommandBuffer {
               VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
               VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
           },
-          *pipeline_layout.get_handle(),
+          *pipeline_layout.handle(),
           base_index,
           &descriptor_sets,
           &offsets
@@ -508,13 +508,13 @@ impl VkCommandBuffer {
   where T: 'static + Send + Sync + Sized + Clone {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-    let pipeline_layout = pipeline.get_layout();
+    let pipeline_layout = pipeline.layout();
     let range = pipeline_layout.push_constant_range(visible_for_shader_type).expect("No push constants set up for shader");
     let size = std::mem::size_of_val(data);
     unsafe {
       self.device.cmd_push_constants(
         self.buffer,
-        *pipeline_layout.get_handle(),
+        *pipeline_layout.handle(),
         shader_type_to_vk(visible_for_shader_type),
         range.offset,
         std::slice::from_raw_parts(data.as_ptr() as *const u8, min(size, range.size as usize))
@@ -563,7 +563,7 @@ impl VkCommandBuffer {
     }
     let submission_handles: SmallVec<[vk::CommandBuffer; 16]> = submissions
       .iter()
-      .map(|s| *s.get_handle())
+      .map(|s| *s.handle())
       .collect();
     unsafe {
       self.device.cmd_execute_commands(self.buffer, &submission_handles);
@@ -614,7 +614,7 @@ impl VkCommandBuffer {
     }
 
     unsafe {
-      self.device.cmd_blit_image(self.buffer, *src_texture.get_handle(), vk::ImageLayout::TRANSFER_SRC_OPTIMAL, *dst_texture.get_handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+      self.device.cmd_blit_image(self.buffer, *src_texture.handle(), vk::ImageLayout::TRANSFER_SRC_OPTIMAL, *dst_texture.handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL,
       &[vk::ImageBlit {
         src_subresource: vk::ImageSubresourceLayers {
           aspect_mask: src_aspect,
@@ -679,7 +679,7 @@ impl VkCommandBuffer {
             new_layout: texture_layout_to_image_layout(*new_layout),
             src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
             dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-            image: *texture.get_handle(),
+            image: *texture.handle(),
             subresource_range: vk::ImageSubresourceRange {
               aspect_mask,
               base_array_layer: 0,
@@ -701,7 +701,7 @@ impl VkCommandBuffer {
             dst_access_mask: barrier_access_to_access(*new_access),
             src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
             dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-            buffer: *buffer.get_buffer().get_handle(),
+            buffer: *buffer.buffer().handle(),
             offset: buffer.offset() as u64,
             size: buffer.length() as u64,
             ..Default::default()
@@ -844,8 +844,8 @@ impl VkCommandBuffer {
     // TODO: begin info fields
     unsafe {
       let begin_info = vk::RenderPassBeginInfo {
-        framebuffer: *framebuffer.get_handle(),
-        render_pass: *renderpass.get_handle(),
+        framebuffer: *framebuffer.handle(),
+        render_pass: *renderpass.handle(),
         render_area: vk::Rect2D {
           offset: vk::Offset2D { x: 0i32, y: 0i32 },
           extent: vk::Extent2D { width, height }
@@ -923,7 +923,7 @@ impl VkCommandBuffer {
     let vk_count = query_range.count.min(count);
     unsafe {
       self.device.cmd_copy_query_pool_results(self.buffer, *query_range.pool.handle(), vk_start, vk_count,
-        *buffer.get_buffer().get_handle(), buffer.offset() as u64, std::mem::size_of::<u32>() as u64, vk::QueryResultFlags::WAIT)
+        *buffer.buffer().handle(), buffer.offset() as u64, std::mem::size_of::<u32>() as u64, vk::QueryResultFlags::WAIT)
     }
     self.trackers.track_buffer(buffer);
   }
@@ -935,7 +935,7 @@ impl VkCommandBuffer {
     self.trackers.track_buffer(target_buffer);
     self.trackers.track_buffer(info.vertex_buffer);
     self.trackers.track_buffer(info.index_buffer);
-    let acceleration_structure = Arc::new(VkAccelerationStructure::new_bottom_level(&self.device, info, size, target_buffer, scratch_buffer, self.get_handle()));
+    let acceleration_structure = Arc::new(VkAccelerationStructure::new_bottom_level(&self.device, info, size, target_buffer, scratch_buffer, self.handle()));
     self.trackers.track_acceleration_structure(&acceleration_structure);
     acceleration_structure
   }
@@ -956,7 +956,7 @@ impl VkCommandBuffer {
     for instance in info.instances {
       self.trackers.track_acceleration_structure(instance.acceleration_structure);
     }
-    let acceleration_structure = Arc::new(VkAccelerationStructure::new_top_level(&self.device, info, size, target_buffer, scratch_buffer, self.get_handle()));
+    let acceleration_structure = Arc::new(VkAccelerationStructure::new_top_level(&self.device, info, size, target_buffer, scratch_buffer, self.handle()));
     self.trackers.track_acceleration_structure(&acceleration_structure);
     acceleration_structure
   }
@@ -1003,9 +1003,9 @@ impl VkCommandBuffer {
     unsafe {
       self.device.indirect_count.as_ref().unwrap().cmd_draw_indexed_indirect_count(
         self.buffer,
-        *draw_buffer.get_buffer().get_handle(),
+        *draw_buffer.buffer().handle(),
         draw_buffer.offset() as u64 + draw_buffer_offset as u64,
-        *count_buffer.get_buffer().get_handle(),
+        *count_buffer.buffer().handle(),
         count_buffer.offset() as u64 + count_buffer_offset as u64,
         max_draw_count,
         stride
@@ -1024,9 +1024,9 @@ impl VkCommandBuffer {
     unsafe {
       self.device.indirect_count.as_ref().unwrap().cmd_draw_indirect_count(
         self.buffer,
-        *draw_buffer.get_buffer().get_handle(),
+        *draw_buffer.buffer().handle(),
         draw_buffer.offset() as u64 + draw_buffer_offset as u64,
-        *count_buffer.get_buffer().get_handle(),
+        *count_buffer.buffer().handle(),
         count_buffer.offset() as u64 + count_buffer_offset as u64,
         max_draw_count,
         stride
@@ -1336,8 +1336,8 @@ impl VkCommandBufferSubmission {
     item.state = VkCommandBufferState::Submitted;
   }
 
-  pub(crate) fn get_handle(&self) -> &vk::CommandBuffer {
-    self.item.as_ref().unwrap().get_handle()
+  pub(crate) fn handle(&self) -> &vk::CommandBuffer {
+    self.item.as_ref().unwrap().handle()
   }
 
   pub(crate) fn command_buffer_type(&self) -> CommandBufferType {

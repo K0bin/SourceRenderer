@@ -34,7 +34,7 @@ impl VkSemaphoreInner {
     }
   }
 
-  pub fn get_handle(&self) -> &vk::Semaphore {
+  pub fn handle(&self) -> &vk::Semaphore {
     &self.semaphore
   }
 }
@@ -115,7 +115,7 @@ impl VkFenceInner {
     }
   }
 
-  pub fn get_handle(&self) -> MutexGuard<vk::Fence> {
+  pub fn handle(&self) -> MutexGuard<vk::Fence> {
     self.fence.lock().unwrap()
   }
 

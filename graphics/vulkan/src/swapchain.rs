@@ -169,10 +169,10 @@ impl VkSwapchain {
       let swapchain = {
         let old_guard = old_swapchain.map(|sc| {
           sc.set_state(VkSwapchainState::Retired);
-          sc.get_handle()
+          sc.handle()
         });
 
-        let surface_handle = surface.get_surface_handle();
+        let surface_handle = surface.surface_handle();
 
         let swapchain_create_info = vk::SwapchainCreateInfoKHR {
           surface: *surface_handle,
@@ -308,27 +308,27 @@ impl VkSwapchain {
       .expect("No compatible present mode found")
   }
 
-  pub fn get_loader(&self) -> &SwapchainLoader {
+  pub fn loader(&self) -> &SwapchainLoader {
     &self.swapchain_loader
   }
 
-  pub fn get_handle(&self) -> MutexGuard<vk::SwapchainKHR> {
+  pub fn handle(&self) -> MutexGuard<vk::SwapchainKHR> {
     self.swapchain.lock().unwrap()
   }
 
-  pub fn get_textures(&self) -> &[Arc<VkTexture>] {
+  pub fn textures(&self) -> &[Arc<VkTexture>] {
     &self.textures
   }
 
-  pub fn get_views(&self) -> &[Arc<VkTextureView>] {
+  pub fn views(&self) -> &[Arc<VkTextureView>] {
     &self.views[..]
   }
 
-  pub fn get_width(&self) -> u32 {
+  pub fn width(&self) -> u32 {
      self.textures.first().unwrap().info().width
   }
 
-  pub fn get_height(&self) -> u32 {
+  pub fn height(&self) -> u32 {
     self.textures.first().unwrap().info().height
   }
 
@@ -336,8 +336,8 @@ impl VkSwapchain {
   pub fn acquire_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
     while self.presented_image.load(Ordering::SeqCst) != self.acquired_image.load(Ordering::SeqCst) {}
     let result = {
-      let swapchain_handle = self.get_handle();
-      unsafe { self.swapchain_loader.acquire_next_image(*swapchain_handle, std::u64::MAX, *semaphore.get_handle(), vk::Fence::null()) }
+      let swapchain_handle = self.handle();
+      unsafe { self.swapchain_loader.acquire_next_image(*swapchain_handle, std::u64::MAX, *semaphore.handle(), vk::Fence::null()) }
     };
     if let Ok((image, is_optimal)) = result {
       if !is_optimal && false {
@@ -433,11 +433,11 @@ impl Swapchain<VkBackend> for VkSwapchain {
   }
 
   fn width(&self) -> u32 {
-    self.get_width()
+    self.width()
   }
 
   fn height(&self) -> u32 {
-    self.get_height()
+    self.height()
   }
 }
 

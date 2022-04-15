@@ -110,7 +110,7 @@ impl VkBuffer {
     })
   }
 
-  pub fn get_handle(&self) -> &vk::Buffer {
+  pub fn handle(&self) -> &vk::Buffer {
     &self.buffer
   }
 
@@ -323,7 +323,7 @@ impl PartialEq for VkBufferSlice {
 impl Eq for VkBufferSlice {}
 
 impl VkBufferSlice {
-  pub fn get_buffer(&self) -> &Arc<VkBuffer> {
+  pub fn buffer(&self) -> &Arc<VkBuffer> {
     &self.buffer
   }
 

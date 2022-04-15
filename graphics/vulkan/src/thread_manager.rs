@@ -97,10 +97,6 @@ impl VkThreadManager {
     }
   }
 
-  pub fn get_shared(&self) -> &Arc<VkShared> {
-    &self.shared
-  }
-
   pub fn get_thread_local(&self) -> &VkThreadLocal {
     self.begin_frame();
 

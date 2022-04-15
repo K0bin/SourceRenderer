@@ -238,13 +238,13 @@ impl VkShader {
     }
   }
 
-  fn get_shader_module(&self) -> vk::ShaderModule {
+  fn shader_module(&self) -> vk::ShaderModule {
     self.shader_module
   }
 }
 
 impl Shader for VkShader {
-  fn get_shader_type(&self) -> ShaderType {
+  fn shader_type(&self) -> ShaderType {
     self.shader_type
   }
 }
@@ -419,9 +419,9 @@ impl VkPipeline {
     {
       let shader = info.info.vs.clone();
       let shader_stage = vk::PipelineShaderStageCreateInfo {
-        module: shader.get_shader_module(),
+        module: shader.shader_module(),
         p_name: entry_point.as_ptr() as *const c_char,
-        stage: shader_type_to_vk(shader.get_shader_type()),
+        stage: shader_type_to_vk(shader.shader_type()),
         ..Default::default()
       };
       shader_stages.push(shader_stage);
@@ -449,9 +449,9 @@ impl VkPipeline {
 
     if let Some(shader) = info.info.fs.clone() {
       let shader_stage = vk::PipelineShaderStageCreateInfo {
-        module: shader.get_shader_module(),
+        module: shader.shader_module(),
         p_name: entry_point.as_ptr() as *const c_char,
-        stage: shader_type_to_vk(shader.get_shader_type()),
+        stage: shader_type_to_vk(shader.shader_type()),
         ..Default::default()
       };
       shader_stages.push(shader_stage);
@@ -682,8 +682,8 @@ impl VkPipeline {
       p_viewport_state: &viewport_info,
       p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
       p_dynamic_state: &dynamic_state_create_info,
-      layout: *layout.get_handle(),
-      render_pass: *info.render_pass.get_handle(),
+      layout: *layout.handle(),
+      render_pass: *info.render_pass.handle(),
       subpass: info.sub_pass,
       base_pipeline_handle: vk::Pipeline::null(),
       base_pipeline_index: 0i32,
@@ -723,9 +723,9 @@ impl VkPipeline {
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
     let shader_stage = vk::PipelineShaderStageCreateInfo {
-      module: shader.get_shader_module(),
+      module: shader.shader_module(),
       p_name: entry_point.as_ptr() as *const c_char,
-      stage: shader_type_to_vk(shader.get_shader_type()),
+      stage: shader_type_to_vk(shader.shader_type()),
       ..Default::default()
     };
 
@@ -773,7 +773,7 @@ impl VkPipeline {
     let pipeline_create_info = vk::ComputePipelineCreateInfo {
       flags: vk::PipelineCreateFlags::empty(),
       stage: shader_stage,
-      layout: *layout.get_handle(),
+      layout: *layout.handle(),
       base_pipeline_handle: vk::Pipeline::null(),
       base_pipeline_index: 0,
       ..Default::default()
@@ -822,7 +822,7 @@ impl VkPipeline {
       let stage_info = vk::PipelineShaderStageCreateInfo {
         flags: vk::PipelineShaderStageCreateFlags::empty(),
         stage: vk::ShaderStageFlags::RAYGEN_KHR,
-        module: shader.get_shader_module(),
+        module: shader.shader_module(),
         p_name: entry_point.as_ptr() as *const c_char,
         ..Default::default()
       };
@@ -863,7 +863,7 @@ impl VkPipeline {
       let stage_info = vk::PipelineShaderStageCreateInfo {
         flags: vk::PipelineShaderStageCreateFlags::empty(),
         stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-        module: shader.get_shader_module(),
+        module: shader.shader_module(),
         p_name: entry_point.as_ptr() as *const c_char,
         ..Default::default()
       };
@@ -904,7 +904,7 @@ impl VkPipeline {
       let stage_info = vk::PipelineShaderStageCreateInfo {
         flags: vk::PipelineShaderStageCreateFlags::empty(),
         stage: vk::ShaderStageFlags::MISS_KHR,
-        module: shader.get_shader_module(),
+        module: shader.shader_module(),
         p_name: entry_point.as_ptr() as *const c_char,
         ..Default::default()
       };
@@ -974,7 +974,7 @@ impl VkPipeline {
         p_library_info: std::ptr::null(),
         p_library_interface: std::ptr::null(),
         p_dynamic_state: std::ptr::null(),
-        layout: *layout.get_handle(),
+        layout: *layout.handle(),
         base_pipeline_handle: vk::Pipeline::null(),
         base_pipeline_index: 0,
         ..Default::default()
@@ -991,7 +991,7 @@ impl VkPipeline {
 
     let handles = unsafe { rt.rt_pipelines.get_ray_tracing_shader_group_handles(pipeline, 0, groups.len() as u32, handle_size as usize * groups.len()) }.unwrap();
 
-    let sbt = shared.get_buffer_allocator().get_slice(&BufferInfo {
+    let sbt = shared.buffer_allocator().get_slice(&BufferInfo {
       size: align_up_32(handle_stride, group_alignment as u32) as usize * groups.len(),
       usage: BufferUsage::SHADER_BINDING_TABLE,
     }, MemoryUsage::CpuToGpu, None);
@@ -1071,12 +1071,12 @@ impl VkPipeline {
   }
 
   #[inline]
-  pub(crate) fn get_handle(&self) -> &vk::Pipeline {
+  pub(crate) fn handle(&self) -> &vk::Pipeline {
     &self.pipeline
   }
 
   #[inline]
-  pub(crate) fn get_layout(&self) -> &VkPipelineLayout {
+  pub(crate) fn layout(&self) -> &VkPipelineLayout {
     &self.layout
   }
 
@@ -1131,7 +1131,7 @@ impl VkPipelineLayout {
     let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts.iter()
       .filter(|descriptor_set_layout| descriptor_set_layout.is_some())
       .map(|descriptor_set_layout| {
-        *descriptor_set_layout.as_ref().unwrap().get_handle()
+        *descriptor_set_layout.as_ref().unwrap().handle()
       })
       .collect();
 
@@ -1166,12 +1166,12 @@ impl VkPipelineLayout {
   }
 
   #[inline]
-  pub(crate) fn get_handle(&self) -> &vk::PipelineLayout {
+  pub(crate) fn handle(&self) -> &vk::PipelineLayout {
     &self.layout
   }
 
   #[inline]
-  pub(crate) fn get_descriptor_set_layout(&self, index: u32) -> Option<&Arc<VkDescriptorSetLayout>> {
+  pub(crate) fn descriptor_set_layout(&self, index: u32) -> Option<&Arc<VkDescriptorSetLayout>> {
     self.descriptor_set_layouts[index as usize].as_ref()
   }
 
