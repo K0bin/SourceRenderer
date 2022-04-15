@@ -34,7 +34,7 @@ struct GPUScene {
   uint drawableCount;
   uint aabbCount;
   GPUDrawableRange parts[16384 * 32]; // needs 4 byte alignment
-  GPUMaterial materials[1024]; // needs 16 byte alignment
+  GPUMaterial materials[4096]; // needs 16 byte alignment
   GPUDrawable drawables[16384]; // needs 16 byte alignment
-  GPUBoundingBox aabbs[1024]; // needs 16 byte alignment
+  GPUBoundingBox aabbs[4096]; // needs 16 byte alignment
 };

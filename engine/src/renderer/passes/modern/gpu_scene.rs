@@ -14,9 +14,9 @@ struct GPUScene {
   drawable_count: u32,
   aabb_count: u32,
   parts: [GPUDrawableRange; PART_CAPACITY as usize],
-  materials: [GPUMaterial; 1024],
+  materials: [GPUMaterial; 4096],
   drawables: [GPUDrawable; DRAWABLE_CAPACITY as usize],
-  aabbs: [GPUBoundingBox; 1024]
+  aabbs: [GPUBoundingBox; 4096]
 }
 
 #[repr(C)]
