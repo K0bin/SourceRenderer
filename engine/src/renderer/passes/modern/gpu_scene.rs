@@ -58,6 +58,7 @@ struct GPUBoundingBox {
   max: Vec4
 }
 
+#[profiling::function]
 pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B>, zero_view_index: u32) -> Arc<B::Buffer> {
   let buffer = cmd_buffer.create_temporary_buffer(&BufferInfo {
     size: std::mem::size_of::<GPUScene>(),

@@ -201,6 +201,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     }
   }
 
+  #[profiling::function]
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,

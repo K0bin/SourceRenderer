@@ -83,6 +83,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     self.swapchain = swapchain.clone();
   }
 
+  #[profiling::function]
   fn render(
     &mut self,
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,

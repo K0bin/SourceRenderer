@@ -229,6 +229,7 @@ impl<P: Platform> RendererInternal<P> {
     }
   }
 
+  #[profiling::function]
   pub(super) fn render(&mut self, renderer: &Renderer<P>) {
     self.receive_messages();
     self.update_visibility();
@@ -274,8 +275,10 @@ impl<P: Platform> RendererInternal<P> {
     }
     self.frame += 1;
     renderer.dec_queued_frames_counter();
+    profiling::finish_frame!();
   }
 
+  #[profiling::function]
   fn update_visibility(&mut self) {
     let scene = self.scene.borrow();
     let static_meshes = scene.static_drawables();
@@ -380,6 +383,7 @@ impl<P: Platform> RendererInternal<P> {
     view_mut.old_visible_drawables_bitset = old_visible;
   }
 
+  #[profiling::function]
   fn reorder(&mut self) {
     let scene = self.scene.borrow();
     let static_meshes = scene.static_drawables();

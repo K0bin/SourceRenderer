@@ -83,6 +83,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     self.swapchain = swapchain.clone();
   }
 
+  #[profiling::function]
   fn render(
     &mut self,
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,

@@ -31,6 +31,7 @@ log = "0.4.14"
 rapier3d = { version = "*", features = [ "enhanced-determinism", "f32" ] }
 half = "1.8.2"
 nalgebra-glm = "0.15.0"
+profiling = "1.0.5"
 
 [features]
 default = ["threading", "late-latching"]
@@ -38,6 +39,7 @@ late-latching = []
 threading = []
 # threading = ["legion/parallel"] Legion relies on thread parking atm
 web = ["legion/wasm-bindgen", "instant/wasm-bindgen", "instant/inaccurate", "rapier3d/wasm-bindgen"]
+profile = [ "profiling/profile-with-optick" ]
 
 [profile.release]
 debug = true
