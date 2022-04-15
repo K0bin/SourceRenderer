@@ -119,14 +119,14 @@ impl<B: Backend> RendererResources<B> {
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
 
-    if USE_COARSE_BARRIERS {
+    if USE_COARSE_BARRIERS && !access.is_write() {
+      // we're doing a read access
+      // use broad scope of stages & access flags to avoid further unnecessary reading barriers
       let all_graphics: BarrierSync = BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::RENDER_TARGET | BarrierSync::INDIRECT;
       if stages.intersects(all_graphics) {
         stages |= all_graphics;
       }
-      if !access.is_write() {
-        access = BarrierAccess::MEMORY_READ;
-      }
+      access = BarrierAccess::MEMORY_READ;
     }
 
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
@@ -340,14 +340,14 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(stages & !(BarrierSync::COPY | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER
       | BarrierSync::COMPUTE_SHADER | BarrierSync::INDEX_INPUT | BarrierSync::INDIRECT | BarrierSync::ACCELERATION_STRUCTURE_BUILD | BarrierSync::RAY_TRACING), BarrierSync::empty());
 
-    if USE_COARSE_BARRIERS {
+    if USE_COARSE_BARRIERS && !access.is_write() {
+      // we're doing a read access
+      // use broad scope of stages & access flags to avoid further unnecessary reading barriers
       let all_graphics: BarrierSync = BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::RENDER_TARGET | BarrierSync::INDIRECT;
       if stages.intersects(all_graphics) {
         stages |= all_graphics;
       }
-      if !access.is_write() {
-        access = BarrierAccess::MEMORY_READ;
-      }
+      access = BarrierAccess::MEMORY_READ;
     }
 
     let buffer_ab = self.buffers.get(name).unwrap_or_else(|| panic!("No tracked buffer by the name {}", name));
