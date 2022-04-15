@@ -340,7 +340,17 @@ impl VkDescriptorSet {
               write.p_buffer_info = unsafe { buffer_writes.as_ptr().offset(buffer_writes.len() as isize - 1) };
               write.descriptor_type = if dynamic_buffer_offsets { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER };
             },
-            VkBoundResource::SampledTexture(texture, sampler) => {
+            VkBoundResource::SampledTexture(texture) => {
+              let texture_info = vk::DescriptorImageInfo {
+                image_view: *texture.view_handle(),
+                sampler: vk::Sampler::null(),
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+              };
+              image_writes.push(texture_info);
+              write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
+              write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
+            },
+            VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
               let texture_info = vk::DescriptorImageInfo {
                 image_view: *texture.view_handle(),
                 sampler: *sampler.handle(),
@@ -404,7 +414,14 @@ impl VkDescriptorSet {
                 range: *length as vk::DeviceSize
               };
             },
-            VkBoundResource::SampledTexture(texture, sampler) => {
+            VkBoundResource::SampledTexture(texture) => {
+              entry.image = vk::DescriptorImageInfo {
+                image_view: *texture.view_handle(),
+                sampler: vk::Sampler::null(),
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+              };
+            },
+            VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
               entry.image = vk::DescriptorImageInfo {
                 image_view: *texture.view_handle(),
                 sampler: *sampler.handle(),
@@ -485,7 +502,8 @@ pub(crate) enum VkBoundResource {
     length: usize,
   },
   StorageTexture(Arc<VkTextureView>),
-  SampledTexture(Arc<VkTextureView>, Arc<VkSampler>),
+  SampledTexture(Arc<VkTextureView>),
+  SampledTextureAndSampler(Arc<VkTextureView>, Arc<VkSampler>),
   Sampler(Arc<VkSampler>),
   AccelerationStructure(Arc<VkAccelerationStructure>),
 }
@@ -510,7 +528,8 @@ pub(crate) enum VkBoundResourceRef<'a> {
     length: usize,
   },
   StorageTexture(&'a Arc<VkTextureView>),
-  SampledTexture(&'a Arc<VkTextureView>, &'a Arc<VkSampler>),
+  SampledTextureAndSampler(&'a Arc<VkTextureView>, &'a Arc<VkSampler>),
+  SampledTexture(&'a Arc<VkTextureView>),
   Sampler(&'a Arc<VkSampler>),
   AccelerationStructure(&'a Arc<VkAccelerationStructure>),
 }
@@ -584,7 +603,8 @@ impl VkBindingManager {
           buffer: new, offset: new_offset, length: new_length
         }) => old == *new && *old_offset == *new_offset && *old_length == *new_length,
         (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => old == *new,
-        (VkBoundResource::SampledTexture(old_tex, old_sampler), VkBoundResourceRef::SampledTexture(new_tex, new_sampler)) => old_tex == *new_tex && old_sampler == *new_sampler,
+        (VkBoundResource::SampledTexture(old), VkBoundResourceRef::SampledTexture(new)) => old == *new,
+        (VkBoundResource::SampledTextureAndSampler(old_tex, old_sampler), VkBoundResourceRef::SampledTextureAndSampler(new_tex, new_sampler)) => old_tex == *new_tex && old_sampler == *new_sampler,
         (VkBoundResource::Sampler(old_sampler), VkBoundResourceRef::Sampler(new_sampler)) => old_sampler == *new_sampler,
         (VkBoundResource::AccelerationStructure(old), VkBoundResourceRef::AccelerationStructure(new)) => old == *new,
         _ => false
@@ -601,7 +621,8 @@ impl VkBindingManager {
           buffer, offset, length
         } => VkBoundResource::StorageBuffer { buffer: buffer.clone(), offset, length },
         VkBoundResourceRef::StorageTexture(storage_tex) => VkBoundResource::StorageTexture(storage_tex.clone()),
-        VkBoundResourceRef::SampledTexture(tex, sampler) => VkBoundResource::SampledTexture(tex.clone(), sampler.clone()),
+        VkBoundResourceRef::SampledTexture(tex) => VkBoundResource::SampledTexture(tex.clone()),
+        VkBoundResourceRef::SampledTextureAndSampler(tex, sampler) => VkBoundResource::SampledTextureAndSampler(tex.clone(), sampler.clone()),
         VkBoundResourceRef::Sampler(sampler) => VkBoundResource::Sampler(sampler.clone()),
         VkBoundResourceRef::AccelerationStructure(acceleration_structure) => VkBoundResource::AccelerationStructure(acceleration_structure.clone())
       };
