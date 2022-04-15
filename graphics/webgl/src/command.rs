@@ -218,7 +218,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }));
   }
 
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, sampler: &Arc<WebGLSampler>) {
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, sampler: &Arc<WebGLSampler>) {
     /*assert_eq!(frequency, BindingFrequency::High);
     let gl_texture = texture.texture().handle();
     let view_info = texture.info();

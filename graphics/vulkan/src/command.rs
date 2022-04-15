@@ -368,7 +368,7 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
+  pub(crate) fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::SampledTexture(texture, sampler));
     self.trackers.track_texture_view(texture);
@@ -1155,8 +1155,8 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_texture_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
-    self.item.as_mut().unwrap().bind_texture_view(frequency, binding, texture, sampler);
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
+    self.item.as_mut().unwrap().bind_sampling_view_and_sampler(frequency, binding, texture, sampler);
   }
 
   #[inline(always)]

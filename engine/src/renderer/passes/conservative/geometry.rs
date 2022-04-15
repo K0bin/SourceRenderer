@@ -377,16 +377,16 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer, 0, WHOLE_BUFFER);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, &light_bitmask_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, &ssao, &self.sampler);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 4, &ssao, &self.sampler);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
       command_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
 
       command_buffer.track_texture_view(zero_texture_view);
       command_buffer.track_texture_view(zero_texture_view_black);
 
       let lightmap_ref = &lightmap.view;
-      command_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, lightmap_ref, &self.sampler);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 6, lightmap_ref, &self.sampler);
 
       let mut last_material = Option::<Arc<RendererMaterial<B>>>::None;
 
@@ -425,15 +425,15 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             albedo_texture_index: 0u32
           };
 
-          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
-          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, zero_texture_view, &self.sampler);
-          command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 1, zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
 
           let albedo_value = material.get("albedo").unwrap();
           match albedo_value {
             RendererMaterialValue::Texture(texture) => {
               let albedo_view = &texture.view;
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
+              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
               command_buffer.track_texture_view(albedo_view);
               material_info.albedo_texture_index = texture.bindless_index.unwrap();
             },
@@ -446,7 +446,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           match roughness_value {
             Some(RendererMaterialValue::Texture(texture)) => {
               let roughness_view = &texture.view;
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 1, roughness_view, &self.sampler);
+              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 1, roughness_view, &self.sampler);
             }
             Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
             Some(RendererMaterialValue::Float(val)) => {
@@ -458,7 +458,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           match metalness_value {
             Some(RendererMaterialValue::Texture(texture)) => {
               let metalness_view = &texture.view;
-              command_buffer.bind_texture_view(BindingFrequency::PerMaterial, 2, metalness_view, &self.sampler);
+              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 2, metalness_view, &self.sampler);
             }
             Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
             Some(RendererMaterialValue::Float(val)) => {

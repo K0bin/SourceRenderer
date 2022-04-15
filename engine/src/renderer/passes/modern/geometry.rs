@@ -375,11 +375,11 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, &light_bitmask_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 4, &ssao, &self.sampler);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 4, &ssao, &self.sampler);
     cmd_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 6, &lightmap.view, &self.sampler);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 6, &lightmap.view, &self.sampler);
     cmd_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
-    cmd_buffer.bind_texture_view(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
     cmd_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 9, gpu_scene, 0, WHOLE_BUFFER);
 
     cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
