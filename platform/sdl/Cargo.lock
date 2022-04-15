@@ -336,13 +336,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
-name = "extension-layer"
-version = "0.1.0"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "flate2"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -689,6 +682,18 @@ dependencies = [
  "num-traits",
  "simba",
  "typenum",
+]
+
+[[package]]
+name = "nalgebra-glm"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cec137f377549720ff9fbbcd1413a12bbb03b4feea3192cee987e8493158748"
+dependencies = [
+ "approx",
+ "nalgebra",
+ "num-traits",
+ "simba",
 ]
 
 [[package]]
@@ -1257,6 +1262,7 @@ dependencies = [
  "legion",
  "log",
  "nalgebra",
+ "nalgebra-glm",
  "num_cpus",
  "rand",
  "rapier3d",
@@ -1336,7 +1342,6 @@ dependencies = [
  "bitflags",
  "crossbeam-channel",
  "crossbeam-utils",
- "extension-layer",
  "parking_lot 0.12.0",
  "rayon",
  "smallvec",
