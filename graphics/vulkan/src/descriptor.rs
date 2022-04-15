@@ -299,7 +299,6 @@ impl VkDescriptorSet {
           if binding_info.is_none() {
             continue;
           }
-          let binding_info = binding_info.as_ref().unwrap();
 
           let mut write = vk::WriteDescriptorSet {
             dst_set: set,
@@ -324,7 +323,7 @@ impl VkDescriptorSet {
               let texture_info = vk::DescriptorImageInfo {
                 image_view: *texture.view_handle(),
                 sampler: vk::Sampler::null(),
-                image_layout: if !binding_info.writable { vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL } else { vk::ImageLayout::GENERAL }
+                image_layout: vk::ImageLayout::GENERAL
               };
               image_writes.push(texture_info);
               write.p_image_info = unsafe { image_writes.as_ptr().offset(image_writes.len() as isize - 1) };
