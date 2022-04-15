@@ -37,11 +37,21 @@ pub enum HistoryResourceEntry {
   Past
 }
 
+#[derive(Debug)]
+struct GlobalMemoryBarrier {
+  stages: BarrierSync,
+  access: BarrierAccess
+}
+
+const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = false;
+const USE_COARSE_BARRIERS: bool = false;
+
 pub struct RendererResources<B: Backend> {
   device: Arc<B::Device>,
   textures: HashMap<String, AB<RefCell<TrackedTexture<B>>>>,
   buffers: HashMap<String, AB<RefCell<TrackedBuffer<B>>>>,
-  current_pass: ABEntry
+  current_pass: ABEntry,
+  global: RefCell<GlobalMemoryBarrier>
 }
 
 impl<B: Backend> RendererResources<B> {
@@ -50,7 +60,11 @@ impl<B: Backend> RendererResources<B> {
       device: device.clone(),
       textures: HashMap::new(),
       buffers: HashMap::new(),
-      current_pass: ABEntry::A
+      current_pass: ABEntry::A,
+      global: RefCell::new(GlobalMemoryBarrier {
+        stages: BarrierSync::empty(),
+        access: BarrierAccess::empty()
+      })
     }
   }
 
@@ -101,9 +115,20 @@ impl<B: Backend> RendererResources<B> {
     });
   }
 
-  fn access_texture_internal(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, history: HistoryResourceEntry) {
+  fn access_texture_internal(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, mut stages: BarrierSync, mut access: BarrierAccess, layout: TextureLayout, discard: bool, history: HistoryResourceEntry) {
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
+
+    if USE_COARSE_BARRIERS {
+      let all_graphics: BarrierSync = BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::RENDER_TARGET | BarrierSync::INDIRECT;
+      if stages.intersects(all_graphics) {
+        stages |= all_graphics;
+      }
+      if !access.is_write() {
+        access = BarrierAccess::MEMORY_READ;
+      }
+    }
+
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
 
     let mut texture_mut = if !use_b_resource {
@@ -111,7 +136,7 @@ impl<B: Backend> RendererResources<B> {
     } else {
       texture_ab.b.as_ref().unwrap().borrow_mut()
     };
-    let needs_barrier = access.is_write() || texture_mut.access.is_write() || texture_mut.layout != layout || !texture_mut.access.contains(access);
+    let needs_barrier = access.is_write() || texture_mut.access.is_write() || texture_mut.layout != layout || !texture_mut.access.contains(access) || !texture_mut.stages.contains(stages);
     if needs_barrier {
       cmd_buffer.barrier(&[
         Barrier::TextureBarrier {
@@ -306,7 +331,7 @@ impl<B: Backend> RendererResources<B> {
     }
   }
 
-  pub fn access_buffer(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, history: HistoryResourceEntry) -> Ref<Arc<B::Buffer>> {
+  pub fn access_buffer(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, mut stages: BarrierSync, mut access: BarrierAccess, history: HistoryResourceEntry) -> Ref<Arc<B::Buffer>> {
     debug_assert_eq!(access & !(BarrierAccess::VERTEX_INPUT_READ | BarrierAccess::INDEX_READ | BarrierAccess::INDIRECT_READ
       | BarrierAccess::CONSTANT_READ | BarrierAccess::COPY_READ | BarrierAccess::COPY_WRITE | BarrierAccess::STORAGE_READ
       | BarrierAccess::STORAGE_WRITE | BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::ACCELERATION_STRUCTURE_WRITE
@@ -315,19 +340,28 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(stages & !(BarrierSync::COPY | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER
       | BarrierSync::COMPUTE_SHADER | BarrierSync::INDEX_INPUT | BarrierSync::INDIRECT | BarrierSync::ACCELERATION_STRUCTURE_BUILD | BarrierSync::RAY_TRACING), BarrierSync::empty());
 
+    if USE_COARSE_BARRIERS {
+      let all_graphics: BarrierSync = BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::RENDER_TARGET | BarrierSync::INDIRECT;
+      if stages.intersects(all_graphics) {
+        stages |= all_graphics;
+      }
+      if !access.is_write() {
+        access = BarrierAccess::MEMORY_READ;
+      }
+    }
 
     let buffer_ab = self.buffers.get(name).unwrap_or_else(|| panic!("No tracked buffer by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || buffer_ab.b.is_some());
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && buffer_ab.b.is_some();
 
-    {
+    if !USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS {
       let mut buffer_mut = if !use_b_resource {
         buffer_ab.a.borrow_mut()
       } else {
         buffer_ab.b.as_ref().unwrap().borrow_mut()
       };
 
-      let needs_barrier = access.is_write() || buffer_mut.access.is_write() || !buffer_mut.access.contains(access);
+      let needs_barrier = access.is_write() || buffer_mut.access.is_write() || !buffer_mut.access.contains(access) || !buffer_mut.stages.contains(stages);
       if needs_barrier {
         cmd_buffer.barrier(&[
           Barrier::BufferBarrier {
@@ -343,6 +377,24 @@ impl<B: Backend> RendererResources<B> {
       } else {
         buffer_mut.access |= access;
         buffer_mut.stages |= stages;
+      }
+    } else {
+      let mut global_mut = self.global.borrow_mut();
+      let needs_barrier = access.is_write() || global_mut.access.is_write() || !global_mut.access.contains(access) || !global_mut.stages.contains(stages);
+      if needs_barrier {
+        cmd_buffer.barrier(&[
+          Barrier::GlobalBarrier {
+            old_sync: if global_mut.access.is_write() || access.is_write() { global_mut.stages } else { BarrierSync::empty() },
+            new_sync: stages,
+            old_access: global_mut.access & BarrierAccess::write_mask(),
+            new_access: access
+          }
+        ]);
+        global_mut.access = access;
+        global_mut.stages = stages;
+      } else {
+        global_mut.access |= access;
+        global_mut.stages |= stages;
       }
     }
 
