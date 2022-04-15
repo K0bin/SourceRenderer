@@ -77,7 +77,7 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
 
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 4) uniform sampler2D ssao;
 
-/*layout(std430, set = 2, binding = 4, std430) readonly buffer clusterAABB {
+/*layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 9, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };*/
 
@@ -103,7 +103,7 @@ void main(void) {
   float z = linearizeDepth(gl_FragCoord.z, zNear, zFar);
   uvec3 clusterIndex3d = uvec3(
     uint(gl_FragCoord.x / tileSize.x),
-    uint((rtSize.y - gl_FragCoord.y) / tileSize.y),
+    uint(gl_FragCoord.y / tileSize.y),
     uint(max(0.0, log2(z) * clusterZScale + clusterZBias))
   );
 

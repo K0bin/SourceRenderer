@@ -62,11 +62,11 @@ pub struct DrawablePart {
 
 pub(crate) fn make_camera_view(position: Vec3, rotation: Quaternion) -> Matrix4 {
   let position = Point3::<f32>::new(position.x, position.y, position.z);
-  let forward = rotation.transform_vector(&Vec3::new(0.0f32, 0.0f32, -1.0f32));
-  Matrix4::look_at_rh(&position, &(position + forward), &Vec3::new(0.0f32, 1.0f32, 0.0f32))
+  let forward = rotation.transform_vector(&Vec3::new(0.0f32, 0.0f32, 1.0f32));
+  Matrix4::look_at_lh(&position, &(position + forward), &Vec3::new(0.0f32, 1.0f32, 0.0f32))
 }
 
 pub(crate) fn make_camera_proj(fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Matrix4 {
   let vertical_fov = 2f32 * ((fov / 2f32).tan() * (1f32 / aspect_ratio)).atan();
-  Matrix4::new_perspective(aspect_ratio, vertical_fov, z_near, z_far)
+  nalgebra_glm::perspective_lh_zo(aspect_ratio, vertical_fov, z_near, z_far)
 }

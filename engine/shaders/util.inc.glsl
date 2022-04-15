@@ -2,7 +2,8 @@
 #define UTIL_H
 
 float linearizeDepth(float d, float zNear, float zFar) {
-  return 2.0 * zNear * zFar / (zFar + zNear - d * (zFar - zNear));
+  //equivalent to: return 2.0 * zFar * zNear / (zNear + zFar - (2.0 * d - 1.0) * (zFar - zNear));
+  return zNear * zFar / (zFar + d * (zNear - zFar));
 }
 
 vec3 worldSpacePosition(vec2 uv, float depth, mat4 invViewProj) {
@@ -13,10 +14,11 @@ vec3 worldSpacePosition(vec2 uv, float depth, mat4 invViewProj) {
 }
 
 vec3 viewSpacePosition(vec2 uv, float depth, mat4 invProj) {
-  vec4 screenSpacePosition = vec4(uv * 2.0 - 1.0, depth, 1.0);
-  screenSpacePosition.y = -screenSpacePosition.y;
-  vec4 viewSpaceTemp = invProj * screenSpacePosition;
-  return viewSpaceTemp.xyz / viewSpaceTemp.w;
+  // this is counter intuitive
+  // but the actual math is the same, except that
+  // we don't use the inverted view & projection matrix
+  // but just inverted view instead.
+  return worldSpacePosition(uv, depth, invProj);
 }
 
 vec3 worldSpaceNormalToViewSpace(vec3 worldSpaceNormal, mat4 view) {
@@ -47,6 +49,11 @@ vec3 reconstructNormalCS(sampler2D depth, vec2 uv, mat4 invViewProj) {
   vec3 pos1 = worldSpacePosition(uv1, depth1, invViewProj);
   vec3 pos2 = worldSpacePosition(uv2, depth2, invViewProj);
   return normalize(cross(pos2 - pos0, pos1 - pos0));
+}
+
+vec3 reconstructViewSpaceNormalCS(sampler2D depth, vec2 uv, mat4 invProj) {
+  // same idea as viewSpacePosition
+  return reconstructNormalCS(depth, uv, invProj);
 }
 #endif
 

@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess, WHOLE_BUFFER}, atomic_refcell::AtomicRef};
+use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess, WHOLE_BUFFER, Buffer}, atomic_refcell::AtomicRef};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -63,12 +63,16 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
 
     let screen_to_view_cbuffer = command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE);
     let clusters_buffer = barriers.access_buffer(command_buffer, Self::CLUSTERS_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_WRITE, HistoryResourceEntry::Current);
+    debug_assert!(clusters_buffer.info().size as u32 >= cluster_count.x * cluster_count.y * cluster_count.z * 2 * std::mem::size_of::<Vec4>() as u32);
+    debug_assert_eq!(cluster_count.x % 8, 0);
+    debug_assert_eq!(cluster_count.y % 1, 0);
+    debug_assert_eq!(cluster_count.z % 8, 0); // Ensure the cluster count fits with the work group size
     command_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, &*clusters_buffer, 0, WHOLE_BUFFER);
     command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &screen_to_view_cbuffer, 0, WHOLE_BUFFER);
     command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer, 0, WHOLE_BUFFER);
     command_buffer.finish_binding();
-    command_buffer.dispatch(cluster_count.x, cluster_count.y, cluster_count.z);
+    command_buffer.dispatch((cluster_count.x + 7) / 8, cluster_count.y, (cluster_count.z + 7) / 8);
 
     command_buffer.end_label();
   }

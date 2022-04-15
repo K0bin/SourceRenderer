@@ -99,7 +99,7 @@ void main(void) {
   float z = linearizeDepth(gl_FragCoord.z, zNear, zFar);
   uvec3 clusterIndex3d = uvec3(
     uint(gl_FragCoord.x / tileSize.x),
-    uint((rtSize.y - gl_FragCoord.y) / tileSize.y),
+    uint(gl_FragCoord.y / tileSize.y),
     uint(max(0.0, log2(z) * clusterZScale + clusterZBias))
   );
 

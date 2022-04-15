@@ -136,7 +136,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       rasterizer: RasterizerInfo {
         fill_mode: FillMode::Fill,
         cull_mode: CullMode::Back,
-        front_face: FrontFace::CounterClockwise,
+        front_face: FrontFace::Clockwise,
         sample_count: SampleCount::Samples1
       },
       depth_stencil: DepthStencilInfo {
@@ -279,6 +279,14 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       zero_texture_view
     };
 
+    /*let clusters = barriers.access_buffer(
+      cmd_buffer,
+      ClusteringPass::<B>::CLUSTERS_BUFFER_NAME,
+      BarrierSync::FRAGMENT_SHADER,
+      BarrierAccess::STORAGE_READ,
+      HistoryResourceEntry::Current
+    ).clone();*/
+
     cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
@@ -365,7 +373,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         extent: Vec2UI::new(9999, 9999),
       }]);
 
-      //command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 7, clusters);
+      // command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 9, &clusters, 0, WHOLE_BUFFER);
       command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer, 0, WHOLE_BUFFER);
       command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, &light_bitmask_buffer, 0, WHOLE_BUFFER);

@@ -123,7 +123,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       rasterizer: RasterizerInfo {
         fill_mode: FillMode::Fill,
         cull_mode: CullMode::Back,
-        front_face: FrontFace::CounterClockwise,
+        front_face: FrontFace::Clockwise,
         sample_count: SampleCount::Samples1
       },
       depth_stencil: DepthStencilInfo {

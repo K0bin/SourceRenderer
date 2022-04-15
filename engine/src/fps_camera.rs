@@ -55,8 +55,8 @@ pub fn fps_camera_rotation(input: &InputState, fps_camera: &mut FPSCamera) -> Qu
   } else {
     Vec2::new(0f32, 0f32)
   };
-  fps_camera.pitch -= mouse_delta.y as f32 / 20_000f32 * fps_camera.sensitivity;
-  fps_camera.yaw -= mouse_delta.x as f32 / 20_000f32 * fps_camera.sensitivity;
+  fps_camera.pitch += mouse_delta.y as f32 / 20_000f32 * fps_camera.sensitivity;
+  fps_camera.yaw += mouse_delta.x as f32 / 20_000f32 * fps_camera.sensitivity;
   fps_camera.pitch -= touch_delta.y / 20_000f32 * fps_camera.sensitivity;
   fps_camera.yaw -= touch_delta.x / 20_000f32 * fps_camera.sensitivity;
 
@@ -78,10 +78,10 @@ fn retrieve_fps_camera_rotation<P: Platform>(#[resource] input: &InputState, tra
 fn fps_camera_movement<P: Platform>(#[resource] input: &InputState, transform: &mut Transform, #[resource] tick_rate: &TickRate) {
   let mut movement_vector = Vec3::new(0f32, 0f32, 0f32);
   if input.is_key_down(Key::W) {
-    movement_vector.z -= 1f32;
+    movement_vector.z += 1f32;
   }
   if input.is_key_down(Key::S) {
-    movement_vector.z += 1f32;
+    movement_vector.z -= 1f32;
   }
   if input.is_key_down(Key::A) {
     movement_vector.x -= 1f32;

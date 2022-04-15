@@ -125,7 +125,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       let mut sample = Vec4::new(
         (random::<f32>() - BIAS) * 2.0f32 - (1.0f32 - BIAS),
         (random::<f32>() - BIAS) * 2.0f32 - (1.0f32 - BIAS),
-        random::<f32>(),
+        -random::<f32>(),
         0.0f32
       );
       sample.normalize_mut();

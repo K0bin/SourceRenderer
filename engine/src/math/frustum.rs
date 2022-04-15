@@ -22,8 +22,8 @@ impl Frustum {
     Self {
       near_half_width,
       near_half_height,
-      z_near: -z_near,
-      z_far: -z_far
+      z_near: z_near,
+      z_far: z_far
     }
   }
 
@@ -63,8 +63,8 @@ impl Frustum {
       }
       let obb_min = mo_c - radius;
       let obb_max = mo_c + radius;
-      let tau_0  = self.z_far;
-      let tau_1  = self.z_near;
+      let tau_0  = self.z_near;
+      let tau_1  = self.z_far;
 
       if obb_min > tau_1 || obb_max < tau_0 {
         return false;

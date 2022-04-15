@@ -43,15 +43,14 @@ void main() {
 
   float depth = textureLod(depthMap, texCoord, 0).x;
   vec3 fragPos = viewSpacePosition(texCoord, depth, camera.invProj);
-  vec3 worldNormal = reconstructNormalCS(depthMap, texCoord, camera.invViewProj);
-  vec3 normal = worldSpaceNormalToViewSpace(worldNormal, camera.view);
+  vec3 normal = reconstructViewSpaceNormalCS(depthMap, texCoord, camera.invProj);
 
   vec2 noiseScale = textureSize(depthMap, 0) / textureSize(noise, 0);
   vec2 noiseXY = texture(noise, texCoord * noiseScale).xy * 2.0 - 1.0;
-  vec3 randomVec = vec3(noiseXY, 0.0);
+  vec3 randomVec = normalize(vec3(noiseXY, 0.0));
 
   vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
-  vec3 bitangent = cross(tangent, normal);
+  vec3 bitangent = cross(normal, tangent);
   mat3 TBN = mat3(tangent, bitangent, normal);
 
   float bias = 0.025;
@@ -71,10 +70,10 @@ void main() {
     offset.xy = offset.xy * 0.5 + 0.5;
 
     float sampleDepth = textureLod(depthMap, offset.xy, 0).x;
-    float sampleZ = -linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
+    float sampleZ = linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
 
     float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleZ));
-    occlusion += (sampleZ >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
+    occlusion += (sampleZ <= samplePos.z - bias ? 1.0 : 0.0) * rangeCheck;
   }
   occlusion = 1.0 - (occlusion / kernelSize);
   ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
