@@ -60,7 +60,7 @@ impl<P: Platform> RendererInternal<P> {
     let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
       Box::new(WebRenderer::new::<P>(device, swapchain))
     } else {
-      if device.supports_indirect() && false {
+      if device.supports_indirect() {
         Box::new(ModernRenderer::new::<P>(device, swapchain))
       } else {
         Box::new(ConservativeRenderer::new::<P>(device, swapchain))
