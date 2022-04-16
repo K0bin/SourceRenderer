@@ -256,39 +256,49 @@ impl Adapter<VkBackend> for VkAdapter {
         extension_names.push(SHADER_NON_SEMANTIC_INFO_EXT_NAME);
       }
 
-      let mut supports_descriptor_indexing = false;
-      if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
-        extension_names.push(DESCRIPTOR_INDEXING_EXT_NAME);
-        supports_descriptor_indexing = supported_descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
-          && supported_descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind == vk::TRUE
-          && supported_descriptor_indexing_features.descriptor_binding_variable_descriptor_count == vk::TRUE
-          && supported_descriptor_indexing_features.runtime_descriptor_array == vk::TRUE
-          && supported_descriptor_indexing_features.descriptor_binding_partially_bound == vk::TRUE
-          && supported_descriptor_indexing_features.descriptor_binding_update_unused_while_pending == vk::TRUE
-          && descriptor_indexing_properties.shader_sampled_image_array_non_uniform_indexing_native == vk::TRUE
-          && descriptor_indexing_properties.max_descriptor_set_update_after_bind_sampled_images > BINDLESS_TEXTURE_COUNT;
+      let supports_descriptor_indexing = self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING)
+        && supported_descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing == vk::TRUE
+        && supported_descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind == vk::TRUE
+        && supported_descriptor_indexing_features.descriptor_binding_variable_descriptor_count == vk::TRUE
+        && supported_descriptor_indexing_features.runtime_descriptor_array == vk::TRUE
+        && supported_descriptor_indexing_features.descriptor_binding_partially_bound == vk::TRUE
+        && supported_descriptor_indexing_features.descriptor_binding_update_unused_while_pending == vk::TRUE
+        && descriptor_indexing_properties.shader_sampled_image_array_non_uniform_indexing_native == vk::TRUE
+        && descriptor_indexing_properties.max_descriptor_set_update_after_bind_sampled_images > BINDLESS_TEXTURE_COUNT;
 
-        if supports_descriptor_indexing {
-          println!("Bindless supported.");
-          descriptor_indexing_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void);
-          descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
-          descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
-          descriptor_indexing_features.descriptor_binding_variable_descriptor_count = vk::TRUE;
-          descriptor_indexing_features.runtime_descriptor_array = vk::TRUE;
-          descriptor_indexing_features.descriptor_binding_partially_bound = vk::TRUE;
-          descriptor_indexing_features.descriptor_binding_update_unused_while_pending = vk::TRUE;
-          features |= VkFeatures::DESCRIPTOR_INDEXING;
-        }
-      }
+      let supports_bda = self.extensions.contains(VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS)
+        && supported_bda_features.buffer_device_address == vk::TRUE;
 
-      if supports_descriptor_indexing && self.extensions.contains(
+      let supports_indirect = self.extensions.contains(VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT)
+        && supported_features.features.draw_indirect_first_instance == vk::TRUE
+        && supported_features.features.multi_draw_indirect == vk::TRUE && supports_bda;
+
+      let supports_rt = supports_descriptor_indexing
+        && self.extensions.contains(
           VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
-          | VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS
           | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
           | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS
           | VkAdapterExtensionSupport::SPIRV_1_4
-          | VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS) {
-        extension_names.push(BUFFER_DEVICE_ADDRESS_EXT_NAME);
+          | VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS)
+        && supported_acceleration_structure_features.acceleration_structure == vk::TRUE
+        && supported_rt_pipeline_features.ray_tracing_pipeline == vk::TRUE
+        && supports_bda;
+
+      if supports_descriptor_indexing {
+        println!("Bindless supported.");
+        extension_names.push(DESCRIPTOR_INDEXING_EXT_NAME);
+        descriptor_indexing_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void);
+        descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
+        descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
+        descriptor_indexing_features.descriptor_binding_variable_descriptor_count = vk::TRUE;
+        descriptor_indexing_features.runtime_descriptor_array = vk::TRUE;
+        descriptor_indexing_features.descriptor_binding_partially_bound = vk::TRUE;
+        descriptor_indexing_features.descriptor_binding_update_unused_while_pending = vk::TRUE;
+        features |= VkFeatures::DESCRIPTOR_INDEXING;
+      }
+
+      if supports_rt {
+        println!("Ray tracing supported.");
         extension_names.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
         extension_names.push(ACCELERATION_STRUCTURE_EXT_NAME);
         extension_names.push(RAY_TRACING_PIPELINE_EXT_NAME);
@@ -296,26 +306,25 @@ impl Adapter<VkBackend> for VkAdapter {
         extension_names.push(SPIRV_1_4_EXT_NAME);
         extension_names.push(SHADER_FLOAT_CONTROLS_EXT_NAME);
 
-        let supported = supported_acceleration_structure_features.acceleration_structure == vk::TRUE
-            && supported_rt_pipeline_features.ray_tracing_pipeline == vk::TRUE
-            && supported_bda_features.buffer_device_address == vk::TRUE;
-        if supported {
-          println!("Ray tracing supported.");
-          features |= VkFeatures::RAY_TRACING;
-          acceleration_structure_features.acceleration_structure = vk::TRUE;
-          rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
-          bda_features.buffer_device_address = vk::TRUE;
-          acceleration_structure_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void);
-          rt_pipeline_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void);
-          bda_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
-        }
+        features |= VkFeatures::RAY_TRACING;
+        acceleration_structure_features.acceleration_structure = vk::TRUE;
+        rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
+        acceleration_structure_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void);
+        rt_pipeline_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void);
       }
 
-      if self.extensions.contains(VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT) && supported_features.features.draw_indirect_first_instance == vk::TRUE && supported_features.features.multi_draw_indirect == vk::TRUE {
+      if supports_indirect {
+        println!("GPU driven rendering supported.");
         extension_names.push(DRAW_INDIRECT_COUNT_EXT_NAME);
         features |= VkFeatures::ADVANCED_INDIRECT;
         enabled_features.draw_indirect_first_instance = vk::TRUE;
         enabled_features.multi_draw_indirect = vk::TRUE;
+      }
+
+      if supports_bda && (supports_indirect || supports_rt) {
+        extension_names.push(BUFFER_DEVICE_ADDRESS_EXT_NAME);
+        bda_features.buffer_device_address = vk::TRUE;
+        bda_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
       }
 
       let extension_names_c: Vec<CString> = extension_names
