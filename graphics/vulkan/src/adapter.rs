@@ -216,22 +216,17 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut supported_rt_pipeline_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
       let mut supported_bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
       if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
-        supported_descriptor_indexing_features.p_next = supported_features.p_next;
-        supported_features.p_next = &mut supported_descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void;
-        descriptor_indexing_properties.p_next = properties.p_next;
-        properties.p_next = &mut descriptor_indexing_properties as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT as *mut c_void;
+        supported_descriptor_indexing_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void);
+        descriptor_indexing_properties.p_next = std::mem::replace(&mut properties.p_next, &mut descriptor_indexing_properties as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT as *mut c_void);
       }
       if self.extensions.intersects(VkAdapterExtensionSupport::ACCELERATION_STRUCTURE) {
-        supported_acceleration_structure_features.p_next = supported_features.p_next;
-        supported_features.p_next = &mut supported_acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void;
+        supported_acceleration_structure_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void);
       }
       if self.extensions.intersects(VkAdapterExtensionSupport::RAY_TRACING_PIPELINE) {
-        supported_rt_pipeline_features.p_next = supported_features.p_next;
-        supported_features.p_next = &mut supported_rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void;
+        supported_rt_pipeline_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void);
       }
       if self.extensions.intersects(VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS) {
-        supported_bda_features.p_next = supported_features.p_next;
-        supported_features.p_next = &mut supported_bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void;
+        supported_bda_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
       }
 
 
@@ -275,8 +270,7 @@ impl Adapter<VkBackend> for VkAdapter {
 
         if supports_descriptor_indexing {
           println!("Bindless supported.");
-          descriptor_indexing_features.p_next = device_creation_pnext;
-          device_creation_pnext = &mut descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void;
+          descriptor_indexing_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void);
           descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
           descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
           descriptor_indexing_features.descriptor_binding_variable_descriptor_count = vk::TRUE;
@@ -311,12 +305,9 @@ impl Adapter<VkBackend> for VkAdapter {
           acceleration_structure_features.acceleration_structure = vk::TRUE;
           rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
           bda_features.buffer_device_address = vk::TRUE;
-          acceleration_structure_features.p_next = device_creation_pnext;
-          device_creation_pnext = &mut acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void;
-          rt_pipeline_features.p_next = device_creation_pnext;
-          device_creation_pnext = &mut rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void;
-          bda_features.p_next = device_creation_pnext;
-          device_creation_pnext = &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void;
+          acceleration_structure_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut acceleration_structure_features as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut c_void);
+          rt_pipeline_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut rt_pipeline_features as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut c_void);
+          bda_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
         }
       }
 
