@@ -22,7 +22,7 @@ layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std430) readonly rest
 layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 1, std430) readonly restrict buffer visibleBuffer {
   uint visibleBitmasks[];
 };
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std430) writeonly restrict buffer drawBuffer {
+layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std430) restrict buffer drawBuffer {
   uint drawCount;
   VkDrawIndexedIndirectCommand draws[];
 };
@@ -33,17 +33,18 @@ void main() {
   drawCount = 0;
   barrier();
 
-  uint partIndex = gl_GlobalInvocationID.x;
-  if (partIndex < scene.partCount) {
-    GPUDrawableRange part = scene.parts[partIndex];
-    uint drawableIndex = part.drawableIndex;
-    if ((visibleBitmasks[drawableIndex / 32] & (1 << (part.drawableIndex % 32))) != 0) {
-      uint drawIndex = atomicAdd(drawCount, 1);
-      draws[drawIndex].firstIndex = part.meshFirstIndex;
-      draws[drawIndex].indexCount = part.meshIndexCount;
-      draws[drawIndex].vertexOffset = part.meshVertexOffset;
-      draws[drawIndex].instanceCount = 1;
-      draws[drawIndex].firstInstance = partIndex;
+  uint drawIndex = gl_GlobalInvocationID.x;
+  if (drawIndex < scene.drawCount) {
+    GPUDraw draw = scene.draws[drawIndex];
+    GPUMeshPart part = scene.parts[draw.partIndex];
+    uint drawableIndex = draw.drawableIndex;
+    if ((visibleBitmasks[drawableIndex / 32] & (1 << (drawableIndex % 32))) != 0) {
+      uint outDrawIndex = atomicAdd(drawCount, 1);
+      draws[outDrawIndex].firstIndex = part.meshFirstIndex;
+      draws[outDrawIndex].indexCount = part.meshIndexCount;
+      draws[outDrawIndex].vertexOffset = part.meshVertexOffset;
+      draws[outDrawIndex].instanceCount = 1;
+      draws[outDrawIndex].firstInstance = drawIndex;
     }
   }
 }

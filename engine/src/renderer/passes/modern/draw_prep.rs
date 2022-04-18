@@ -2,15 +2,12 @@ use std::{sync::Arc, path::Path, io::Read};
 
 use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding}, Platform, platform::io::IO};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::modern::gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}};
 
 pub struct DrawPrepPass<B: Backend> {
   culling_pipeline: Arc<B::ComputePipeline>,
   prep_pipeline: Arc<B::ComputePipeline>
 }
-
-pub const DRAWABLE_CAPACITY: u32 = 16384;
-pub const PART_CAPACITY: u32 = DRAWABLE_CAPACITY * 32;
 
 impl<B: Backend> DrawPrepPass<B> {
   pub const VISIBLE_DRAWABLES_BITFIELD_BUFFER: &'static str = "VisibleDrawables";

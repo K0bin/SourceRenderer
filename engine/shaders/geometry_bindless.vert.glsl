@@ -44,10 +44,11 @@ invariant gl_Position;
 void main(void) {
   vec4 pos = vec4(in_pos, 1);
 
-  uint partIndex = gl_InstanceIndex;
-  GPUDrawableRange part = scene.parts[partIndex];
+  uint drawIndex = gl_InstanceIndex;
+  GPUDraw draw = scene.draws[drawIndex];
+  GPUMeshPart part = scene.parts[draw.partIndex];
   uint materialIndex = part.materialIndex;
-  uint drawableIndex = part.drawableIndex;
+  uint drawableIndex = draw.drawableIndex;
   GPUDrawable drawable = scene.drawables[drawableIndex];
   mat4 model = drawable.transform;
 

@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureSamplingViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDepthStencilViewInfo, WHOLE_BUFFER}};
+use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureSamplingViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDepthStencilViewInfo, WHOLE_BUFFER}};
 use std::{sync::Arc, cell::Ref};
 use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, prepass::Prepass, rt_shadows::RTShadowPass}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -9,9 +9,8 @@ use std::path::Path;
 use std::io::Read;
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::platform::io::IO;
-use rayon::prelude::*;
 
-use super::draw_prep::{DrawPrepPass, PART_CAPACITY};
+use super::{draw_prep::DrawPrepPass, gpu_scene::DRAW_CAPACITY};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -212,7 +211,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     view: &View,
     gpu_scene: &Arc<B::Buffer>,
     zero_texture_view: &Arc<B::TextureSamplingView>,
-    zero_texture_view_black: &Arc<B::TextureSamplingView>,
+    _zero_texture_view_black: &Arc<B::TextureSamplingView>,
     lightmap: &Arc<RendererTexture<B>>,
     swapchain_transform: Matrix4,
     frame: u64,
@@ -229,7 +228,6 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       BarrierAccess::INDIRECT_READ,
       HistoryResourceEntry::Current
     );
-    let static_drawables = scene.static_drawables();
 
     let rtv_ref = barriers.access_rtv(
       cmd_buffer,
@@ -246,9 +244,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       cmd_buffer,
       Prepass::<B>::DEPTH_TEXTURE_NAME,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
-      BarrierAccess::DEPTH_STENCIL_WRITE | BarrierAccess::DEPTH_STENCIL_READ,
-      TextureLayout::DepthStencilReadWrite,
-      true,
+      BarrierAccess::DEPTH_STENCIL_READ,
+      TextureLayout::DepthStencilRead,
+      false,
       &TextureDepthStencilViewInfo::default(),
       HistoryResourceEntry::Current
     );
@@ -301,8 +299,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         },
         RenderPassAttachment {
           view: RenderPassAttachmentView::DepthStencil(&prepass_depth),
-          load_op: LoadOp::Clear,
-          store_op: StoreOp::Store
+          load_op: LoadOp::Load,
+          store_op: StoreOp::DontCare
         }
       ],
       subpasses: &[
@@ -316,7 +314,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           ],
           depth_stencil_attachment: Some(DepthStencilAttachmentRef {
             index: 1,
-            read_only: false,
+            read_only: true,
           }),
         }
       ]
@@ -387,7 +385,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);
 
     cmd_buffer.finish_binding();
-    cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, PART_CAPACITY, 20);
+    cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);
 
     cmd_buffer.end_render_pass();
     cmd_buffer.end_label();
