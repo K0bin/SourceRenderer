@@ -56,10 +56,8 @@ impl VkTexture {
       samples: samples_to_vk(info.samples),
       ..Default::default()
     };
-    let alloc_info = vk_mem::AllocationCreateInfo {
-      usage: MemoryUsage::GpuOnly,
-      ..Default::default()
-    };
+    let mut alloc_info = vk_mem::AllocationCreateInfo::new();
+    alloc_info = alloc_info.usage(MemoryUsage::GpuOnly);
     let (image, allocation, _allocation_info) = unsafe { device.allocator.create_image(&create_info, &alloc_info).unwrap() };
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {

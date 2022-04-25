@@ -47,11 +47,9 @@ impl VkBuffer {
       queue_family_index_count: queue_families.len() as u32,
       ..Default::default()
     };
-    let allocation_info = vk_mem::AllocationCreateInfo {
-      usage: memory_usage_to_vma(memory_usage),
-      ..Default::default()
-    };
-    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).unwrap_or_else(|e| panic!("Failed to create buffer: {:?}. vk info: {:?}, allocation info: {:?}", e, &buffer_info, &allocation_info)) };
+    let mut allocation_info = vk_mem::AllocationCreateInfo::new();
+    allocation_info = allocation_info.usage(memory_usage_to_vma(memory_usage));
+    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).unwrap_or_else(|e| panic!("Failed to create buffer: {:?}. vk info: {:?}, VMA memory usage: {:?}", e, &buffer_info, memory_usage_to_vma(memory_usage))) };
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
         let name_cstring = CString::new(name).unwrap();

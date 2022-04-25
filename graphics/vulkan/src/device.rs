@@ -53,18 +53,11 @@ impl VkDevice {
       vma_flags |= vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS;
     }
 
-    let allocator_info = vk_mem::AllocatorCreateInfo {
-      physical_device,
-      device: device.clone(),
-      instance: instance.instance.clone(),
-      flags: vma_flags,
-      preferred_large_heap_block_size: 0,
-      frame_in_use_count: 3,
-      heap_size_limits: None,
-      allocation_callbacks: None,
-      vulkan_api_version: vk::API_VERSION_1_1
-    };
-    let allocator = unsafe { vk_mem::Allocator::new(&allocator_info).expect("Failed to create memory allocator.") };
+    let mut allocator_info = vk_mem::AllocatorCreateInfo::new(&instance.instance, &device, &physical_device);
+    allocator_info = allocator_info.flags(vma_flags);
+    allocator_info = allocator_info.preferred_large_heap_block_size(0);
+    allocator_info = allocator_info.vulkan_api_version(vk::API_VERSION_1_1);
+    let allocator = unsafe { vk_mem::Allocator::new(allocator_info).expect("Failed to create memory allocator.") };
 
     let raw_graphics_queue = unsafe { device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
     let raw_compute_queue = compute_queue_info.map(|info| unsafe { device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) });
