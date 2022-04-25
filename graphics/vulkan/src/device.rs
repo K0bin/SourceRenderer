@@ -134,7 +134,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<VkBufferSlice> where T: 'static + Send + Sync + Sized + Clone {
-    assert_ne!(memory_usage, MemoryUsage::GpuOnly);
+    assert_ne!(memory_usage, MemoryUsage::VRAM);
     let slice = self.context.shared().buffer_allocator().get_slice(&BufferInfo {
       size: std::mem::size_of_val(data),
       usage
@@ -297,11 +297,30 @@ impl Drop for VkDevice {
   }
 }
 
-pub fn memory_usage_to_vma(memory_usage: MemoryUsage) -> vk_mem::MemoryUsage {
+#[derive(Debug)]
+pub(crate) struct VulkanMemoryFlags {
+  pub(crate) preferred: vk::MemoryPropertyFlags,
+  pub(crate) required: vk::MemoryPropertyFlags
+}
+
+pub(crate) fn memory_usage_to_vma(memory_usage: MemoryUsage) -> VulkanMemoryFlags {
+  use vk::MemoryPropertyFlags as VkMem;
   match memory_usage {
-    MemoryUsage::CpuOnly => vk_mem::MemoryUsage::CpuOnly,
-    MemoryUsage::GpuOnly => vk_mem::MemoryUsage::GpuOnly,
-    MemoryUsage::CpuToGpu => vk_mem::MemoryUsage::CpuToGpu,
-    MemoryUsage::GpuToCpu => vk_mem::MemoryUsage::GpuToCpu,
+    MemoryUsage::CachedRAM => VulkanMemoryFlags {
+      preferred: VkMem::HOST_COHERENT,
+      required: VkMem::HOST_VISIBLE | VkMem::HOST_CACHED
+    },
+    MemoryUsage::VRAM => VulkanMemoryFlags {
+      preferred: VkMem::HOST_COHERENT,
+      required: VkMem::DEVICE_LOCAL
+    },
+    MemoryUsage::UncachedRAM => VulkanMemoryFlags {
+      preferred: VkMem::HOST_COHERENT,
+      required: VkMem::HOST_VISIBLE
+    },
+    MemoryUsage::MappableVRAM => VulkanMemoryFlags {
+      preferred: VkMem::DEVICE_LOCAL | VkMem::HOST_COHERENT, // Fall back to uncached RAM
+      required: VkMem::HOST_VISIBLE
+    }
   }
 }

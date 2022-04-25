@@ -31,11 +31,11 @@ impl<B: Backend> DrawPrepPass<B> {
     resources.create_buffer(Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER, &BufferInfo {
       size: (DRAWABLE_CAPACITY as usize + std::mem::size_of::<u32>() - 1) / std::mem::size_of::<u32>(),
       usage: BufferUsage::STORAGE
-    }, MemoryUsage::GpuOnly, false);
+    }, MemoryUsage::VRAM, false);
     resources.create_buffer(Self::INDIRECT_DRAW_BUFFER, &BufferInfo {
       size: 4 + 20 * PART_CAPACITY as usize,
       usage: BufferUsage::STORAGE | BufferUsage::INDIRECT
-    }, MemoryUsage::GpuOnly, false);
+    }, MemoryUsage::VRAM, false);
     Self {
       culling_pipeline,
       prep_pipeline

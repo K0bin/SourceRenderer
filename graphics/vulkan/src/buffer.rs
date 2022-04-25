@@ -48,8 +48,10 @@ impl VkBuffer {
       ..Default::default()
     };
     let mut allocation_info = vk_mem::AllocationCreateInfo::new();
-    allocation_info = allocation_info.usage(memory_usage_to_vma(memory_usage));
-    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).unwrap_or_else(|e| panic!("Failed to create buffer: {:?}. vk info: {:?}, VMA memory usage: {:?}", e, &buffer_info, memory_usage_to_vma(memory_usage))) };
+    let vk_mem_flags = memory_usage_to_vma(memory_usage);
+    allocation_info = allocation_info.preferred_flags(vk_mem_flags.preferred);
+    allocation_info = allocation_info.required_flags(vk_mem_flags.required);
+    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).unwrap_or_else(|e| panic!("Failed to create buffer: {:?}. vk info: {:?}, memory usage: {:?}, vulkan memory flags: {:?}", e, &buffer_info, memory_usage, vk_mem_flags)) };
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
         let name_cstring = CString::new(name).unwrap();
@@ -65,7 +67,7 @@ impl VkBuffer {
     }
 
     let map_ptr: Option<*mut u8> = unsafe {
-      if memory_usage != MemoryUsage::GpuOnly {
+      if memory_usage != MemoryUsage::VRAM {
         Some(allocator.map_memory(allocation).unwrap())
       } else {
         None
@@ -87,7 +89,7 @@ impl VkBuffer {
       None
     };
 
-    let is_coherent = if memory_usage != MemoryUsage::GpuOnly {
+    let is_coherent = if memory_usage != MemoryUsage::VRAM {
       let memory_type = allocation_info.get_memory_type();
       let memory_properties = unsafe { allocator.get_memory_type_properties(memory_type).unwrap() };
       memory_properties.intersects(vk::MemoryPropertyFlags::HOST_COHERENT)
@@ -155,9 +157,9 @@ impl Buffer for VkBufferSlice {
 
   unsafe fn map_unsafe(&self, invalidate: bool) -> Option<*mut u8> {
     if invalidate && !self.buffer.is_coherent &&
-      (self.buffer.memory_usage == MemoryUsage::CpuToGpu
-        || self.buffer.memory_usage == MemoryUsage::CpuOnly
-        || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
+      (self.buffer.memory_usage == MemoryUsage::UncachedRAM
+        || self.buffer.memory_usage == MemoryUsage::CachedRAM
+        || self.buffer.memory_usage == MemoryUsage::MappableVRAM) {
       let allocator = &self.buffer.device.allocator;
       allocator.invalidate_allocation(self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }
@@ -166,9 +168,9 @@ impl Buffer for VkBufferSlice {
 
   unsafe fn unmap_unsafe(&self, flush: bool) {
     if flush && !self.buffer.is_coherent &&
-      (self.buffer.memory_usage == MemoryUsage::CpuToGpu
-        || self.buffer.memory_usage == MemoryUsage::CpuOnly
-        || self.buffer.memory_usage == MemoryUsage::GpuToCpu) {
+      (self.buffer.memory_usage == MemoryUsage::UncachedRAM
+        || self.buffer.memory_usage == MemoryUsage::CachedRAM
+        || self.buffer.memory_usage == MemoryUsage::MappableVRAM) {
       let allocator = &self.buffer.device.allocator;
       allocator.flush_allocation(self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
     }

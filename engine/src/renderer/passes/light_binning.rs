@@ -45,7 +45,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     barriers.create_buffer(Self::LIGHT_BINNING_BUFFER_NAME, &BufferInfo {
       size: std::mem::size_of::<u32>() * 16 * 9 * 24,
       usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
-    }, MemoryUsage::GpuOnly, false);
+    }, MemoryUsage::VRAM, false);
 
     Self {
       light_binning_pipeline: pipeline

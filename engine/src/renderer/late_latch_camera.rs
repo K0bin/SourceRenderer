@@ -92,7 +92,7 @@ impl<B: Backend> LateLatchCamera<B> {
     device.create_buffer(&BufferInfo {
       size: std::mem::size_of::<LateLatchCamerabuffer>(),
       usage: BufferUsage::STORAGE | BufferUsage::CONSTANT
-    }, MemoryUsage::CpuToGpu, None)
+    }, MemoryUsage::UncachedRAM, None)
   }
 
   pub fn z_near(&self) -> f32 {

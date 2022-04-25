@@ -20,11 +20,11 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
     let scratch_buffer = init_cmd_buffer.create_temporary_buffer(&BufferInfo {
       size: sizes.build_scratch_size as usize,
       usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-    }, MemoryUsage::GpuOnly);
+    }, MemoryUsage::VRAM);
     let buffer = device.create_buffer(&BufferInfo {
       size: sizes.size as usize,
       usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-    }, MemoryUsage::GpuOnly, Some("AccelerationStructure"));
+    }, MemoryUsage::VRAM, Some("AccelerationStructure"));
     let acceleration_structure = init_cmd_buffer.create_top_level_acceleration_structure(&info, sizes.size as usize, &buffer, &scratch_buffer);
 
     Self {
@@ -77,11 +77,11 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
             let scratch_buffer = cmd_buffer.create_temporary_buffer(&BufferInfo {
               size: sizes.build_scratch_size as usize,
               usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-            }, MemoryUsage::GpuOnly);
+            }, MemoryUsage::VRAM);
             let buffer = self.device.create_buffer(&BufferInfo {
               size: sizes.size as usize,
               usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-            }, MemoryUsage::GpuOnly, Some("AccelerationStructure"));
+            }, MemoryUsage::VRAM, Some("AccelerationStructure"));
           cmd_buffer.create_bottom_level_acceleration_structure(&info, sizes.size as usize, &buffer, &scratch_buffer)
         };
         drawable.model.set_acceleration_structure(&blas);
@@ -122,11 +122,11 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
     let scratch_buffer = cmd_buffer.create_temporary_buffer(&BufferInfo {
       size: sizes.build_scratch_size as usize,
       usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-    }, MemoryUsage::GpuOnly);
+    }, MemoryUsage::VRAM);
     let buffer = self.device.create_buffer(&BufferInfo {
       size: sizes.size as usize,
       usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-    }, MemoryUsage::GpuOnly, Some("AccelerationStructure"));
+    }, MemoryUsage::VRAM, Some("AccelerationStructure"));
 
     self.acceleration_structure = cmd_buffer.create_top_level_acceleration_structure(&tl_info, sizes.size as usize, &buffer, &scratch_buffer);
 

@@ -32,7 +32,7 @@ impl WebGLCommandBuffer {
     let inline_buffer = Arc::new(WebGLBuffer::new(handle_allocator.new_buffer_handle(), &BufferInfo {
       size: 256,
       usage: BufferUsage::CONSTANT,
-    }, MemoryUsage::CpuToGpu, sender));
+    }, MemoryUsage::UncachedRAM, sender));
     WebGLCommandBuffer {
       pipeline: None,
       commands: VecDeque::new(),
@@ -155,7 +155,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Arc<WebGLBuffer>
   where T: 'static + Send + Sync + Sized + Clone {
     let buffer_handle = self.handles.new_buffer_handle();
-    let buffer = Arc::new(WebGLBuffer::new(buffer_handle, &BufferInfo { size: std::mem::size_of_val(data), usage }, MemoryUsage::CpuToGpu, &self.sender));
+    let buffer = Arc::new(WebGLBuffer::new(buffer_handle, &BufferInfo { size: std::mem::size_of_val(data), usage }, MemoryUsage::UncachedRAM, &self.sender));
     unsafe {
       let mapped = buffer.map_unsafe(false).unwrap();
       std::ptr::copy(data.as_ptr() as *const u8, mapped, std::mem::size_of_val(data));

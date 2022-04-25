@@ -500,7 +500,7 @@ impl VkCommandBuffer {
     let slice = self.buffer_allocator.get_slice(&BufferInfo {
       size: std::mem::size_of_val(data),
       usage
-    }, MemoryUsage::CpuToGpu,  None);
+    }, MemoryUsage::UncachedRAM,  None);
     unsafe {
       let ptr = slice.map_unsafe(false).expect("Failed to map buffer");
       std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());

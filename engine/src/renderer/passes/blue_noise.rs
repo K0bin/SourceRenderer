@@ -59,7 +59,7 @@ impl<B: Backend> BlueNoise<B> {
       samples: SampleCount::Samples1,
       usage: TextureUsage::COPY_DST | TextureUsage::SAMPLED | TextureUsage::STORAGE,
     }, Some(&format!("STBlueNoise{}", index)));
-    let buffer = device.upload_data(&rgba_data[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let buffer = device.upload_data(&rgba_data[..], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     device.init_texture(&texture, &buffer, 0, 0, 0);
 
     device.create_sampling_view(&texture, &TextureSamplingViewInfo {

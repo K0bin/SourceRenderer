@@ -224,7 +224,7 @@ pub(super) struct RendererAssets<P: Platform> {
 impl<P: Platform> RendererAssets<P> {
   pub(super) fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
     let zero_data = [255u8; 16];
-    let zero_buffer = device.upload_data(&zero_data, MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
+    let zero_buffer = device.upload_data(&zero_data, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
     let zero_texture = device.create_texture(&TextureInfo {
       format: Format::RGBA8,
       width: 2,
@@ -248,7 +248,7 @@ impl<P: Platform> RendererAssets<P> {
     });
 
     let zero_data_black = [0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8];
-    let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::CpuOnly, BufferUsage::COPY_SRC);
+    let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
     let zero_texture_black = device.create_texture(&TextureInfo {
       format: Format::RGBA8,
       width: 2,
@@ -334,12 +334,12 @@ impl<P: Platform> RendererAssets<P> {
     assert_ne!(mesh.vertex_count, 0);
 
     let vertex_buffer = self.vertex_buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]), 44); // FIXME: hardcoded vertex size
-    let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     self.device.init_buffer(&temp_vertex_buffer, vertex_buffer.buffer(), 0, vertex_buffer.offset() as usize, vertex_buffer.size() as usize);
 
     let index_buffer = mesh.indices.map(|indices| {
       let buffer = self.index_buffer.get_slice(std::mem::size_of_val(&indices[..]), std::mem::size_of::<u32>());
-      let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+      let temp_buffer = self.device.upload_data(&indices[..], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
       self.device.init_buffer(&temp_buffer, buffer.buffer(), 0, buffer.offset() as usize, buffer.size() as usize);
       buffer
     });
@@ -362,7 +362,7 @@ impl<P: Platform> RendererAssets<P> {
       let mip_level = subresource % texture.info.mip_levels;
       let array_index = subresource / texture.info.mip_levels;
       let init_buffer = self.device.upload_data(
-        &texture.data[subresource as usize][..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+        &texture.data[subresource as usize][..], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
       if do_async {
         fence = self.device.init_texture_async(&gpu_texture, &init_buffer, mip_level, array_index, 0);
       } else {

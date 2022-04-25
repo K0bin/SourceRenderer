@@ -36,7 +36,7 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     barriers.create_buffer(Self::CLUSTERS_BUFFER_NAME, &BufferInfo {
       size: std::mem::size_of::<Vec4>() * 2 * 16 * 9 * 24,
       usage: BufferUsage::STORAGE,
-  }, MemoryUsage::GpuOnly, false);
+  }, MemoryUsage::VRAM, false);
 
     Self {
       pipeline: clustering_pipeline,

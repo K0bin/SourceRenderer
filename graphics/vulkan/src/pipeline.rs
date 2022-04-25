@@ -994,7 +994,7 @@ impl VkPipeline {
     let sbt = shared.buffer_allocator().get_slice(&BufferInfo {
       size: align_up_32(handle_stride, group_alignment as u32) as usize * groups.len(),
       usage: BufferUsage::SHADER_BINDING_TABLE,
-    }, MemoryUsage::CpuToGpu, None);
+    }, MemoryUsage::UncachedRAM, None);
     let map = unsafe { sbt.map_unsafe(false).unwrap() };
 
     let mut src_offset = 0u64;

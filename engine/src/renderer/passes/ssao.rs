@@ -139,9 +139,9 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     let buffer = device.create_buffer(&BufferInfo {
       size: std::mem::size_of_val(&ssao_kernel[..]),
       usage: BufferUsage::COPY_DST | BufferUsage::CONSTANT,
-    }, MemoryUsage::GpuOnly, Some("SSAOKernel"));
+    }, MemoryUsage::VRAM, Some("SSAOKernel"));
 
-    let temp_buffer = device.upload_data(&ssao_kernel[..], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    let temp_buffer = device.upload_data(&ssao_kernel[..], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     device.init_buffer(&temp_buffer, &buffer, 0, 0, WHOLE_BUFFER);
     buffer
   }

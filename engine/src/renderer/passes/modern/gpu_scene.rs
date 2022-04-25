@@ -223,7 +223,7 @@ pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &Rend
   let buffer = cmd_buffer.create_temporary_buffer(&BufferInfo {
     size: buffer_size,
     usage: BufferUsage::STORAGE,
-  }, MemoryUsage::CpuToGpu);
+  }, MemoryUsage::MappableVRAM);
   unsafe {
     profiling::scope!("Copying scene data to VRAM");
     let dst_base = buffer.map_unsafe(false).unwrap();

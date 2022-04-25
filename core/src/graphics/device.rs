@@ -15,10 +15,10 @@ pub enum AdapterType {
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemoryUsage {
-  GpuOnly,
-  CpuOnly,
-  CpuToGpu,
-  GpuToCpu
+  VRAM,
+  MappableVRAM,
+  UncachedRAM,
+  CachedRAM
 }
 
 pub trait Adapter<B: Backend> {

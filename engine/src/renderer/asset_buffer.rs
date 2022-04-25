@@ -34,7 +34,7 @@ impl<B: Backend> AssetBuffer<B> {
     let buffer = device.create_buffer(&BufferInfo {
       size: size as usize,
       usage: usage,
-    }, MemoryUsage::GpuOnly, Some("AssetBuffer"));
+    }, MemoryUsage::VRAM, Some("AssetBuffer"));
     let free_range = BufferRange {
       offset: 0,
       aligned_offset: 0,

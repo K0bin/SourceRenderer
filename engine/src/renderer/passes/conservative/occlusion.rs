@@ -33,7 +33,7 @@ impl<B: Backend> OcclusionPass<B> {
     let mut occlusion_query_maps = Vec::with_capacity(ring_size);
     for i in 0..ring_size {
       let name = format!("QueryBuffer{}", i);
-      let buffer = device.create_buffer(&buffer_info, MemoryUsage::GpuToCpu, Some(&name));
+      let buffer = device.create_buffer(&buffer_info, MemoryUsage::CachedRAM, Some(&name));
       {
         let mut map = buffer.map_mut::<[u32; QUERY_COUNT]>().unwrap();
         *map = [!0u32; 16384];
@@ -45,12 +45,12 @@ impl<B: Backend> OcclusionPass<B> {
     let occluder_vb = device.create_buffer(&BufferInfo {
       size: std::mem::size_of::<Vec4>() * 8,
       usage: BufferUsage::COPY_DST | BufferUsage::VERTEX,
-    }, MemoryUsage::GpuOnly, Some("OccluderVB"));
+    }, MemoryUsage::VRAM, Some("OccluderVB"));
 
     let occluder_ib = device.create_buffer(&BufferInfo {
       size: std::mem::size_of::<u32>() * 36,
       usage: BufferUsage::COPY_DST | BufferUsage::INDEX,
-    }, MemoryUsage::GpuOnly, Some("OccluderIB"));
+    }, MemoryUsage::VRAM, Some("OccluderIB"));
 
     let occluder_vb_data = device.upload_data(&[
       Vec3::new(-0.5f32, -0.5f32, 0.5f32),
@@ -61,7 +61,7 @@ impl<B: Backend> OcclusionPass<B> {
       Vec3::new(0.5f32, -0.5f32, -0.5f32),
       Vec3::new(0.5f32, 0.5f32, -0.5f32),
       Vec3::new(-0.5f32, 0.5f32, -0.5f32),
-    ], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    ], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     let occluder_ib_data = device.upload_data(&[
       1u32, 2u32, 3u32, 3u32, 0u32, 1u32,
       5u32, 6u32, 2u32, 2u32, 1u32, 5u32,
@@ -69,7 +69,7 @@ impl<B: Backend> OcclusionPass<B> {
       4u32, 5u32, 1u32, 1u32, 0u32, 4u32,
       7u32, 4u32, 0u32, 0u32, 3u32, 7u32,
       5u32, 4u32, 7u32, 7u32, 6u32, 5u32
-    ], MemoryUsage::CpuToGpu, BufferUsage::COPY_SRC);
+    ], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
 
     device.init_buffer(&occluder_vb_data, &occluder_vb, 0, 0, WHOLE_BUFFER);
     device.init_buffer(&occluder_ib_data, &occluder_ib, 0, 0, WHOLE_BUFFER);
