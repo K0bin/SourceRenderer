@@ -48,6 +48,9 @@ struct GPUScene {
   uint drawableCount;
   uint meshCount;
   uint drawCount;
+  uint _padding;
+  uint _padding1;
+  uint _padding2;
   GPUDraw draws[DRAW_CAPACITY]; // needs 4 byte alignment
   GPUMeshPart parts[PART_CAPACITY]; // needs 4 byte alignment
   GPUMaterial materials[MATERIAL_CAPACITY]; // needs 16 byte alignment

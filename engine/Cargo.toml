@@ -23,7 +23,7 @@ regex = "1.4.2"
 bitvec = "0.22.3"
 rayon = "1.5"
 smallvec = "1.6.1"
-gltf = { version = "0.16.0", features = ["KHR_lights_punctual"] }
+gltf = { version = "1.0.0", features = ["KHR_lights_punctual"] }
 rand = "0.8.4"
 bitset-core = "0.1.1"
 instant = "0.1"
@@ -32,6 +32,7 @@ rapier3d = { version = "*", features = [ "enhanced-determinism", "f32" ] }
 half = "1.8.2"
 nalgebra-glm = "0.15.0"
 profiling = "1.0.5"
+field-offset = "0.3.4"
 
 [features]
 default = ["threading", "late-latching"]
