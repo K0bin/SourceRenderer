@@ -389,7 +389,8 @@ impl BufferAllocator {
   }
 
   pub fn get_slice(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
-    if info.size > BIG_BUFFER_SLAB_SIZE {
+    if info.size > BIG_BUFFER_SLAB_SIZE && self.reuse_automatically {
+      // Don't do one-off buffers for command lists
       let buffer = VkBuffer::new(&self.device, memory_usage, info, &self.device.allocator, name);
       return Arc::new(VkBufferSlice {
         buffer: buffer.clone(),
@@ -459,18 +460,24 @@ impl BufferAllocator {
       }
     }
 
-    let mut slice_size = max(info.size, alignment);
+    let mut slice_size = align_up(info.size, alignment);
     slice_size = if slice_size <= TINY_BUFFER_SLAB_SIZE {
       TINY_BUFFER_SLAB_SIZE
     } else if info.size <= SMALL_BUFFER_SLAB_SIZE {
       SMALL_BUFFER_SLAB_SIZE
     } else if info.size <= BUFFER_SLAB_SIZE {
       BUFFER_SLAB_SIZE
-    } else {
+    } else if info.size <= BIG_BUFFER_SLAB_SIZE {
       BIG_BUFFER_SLAB_SIZE
+    } else {
+      info.size
     };
-    let slices = SLICED_BUFFER_SIZE / slice_size;
-    info.size = SLICED_BUFFER_SIZE;
+    let slices = if slice_size <= BIG_BUFFER_SLAB_SIZE {
+      info.size = SLICED_BUFFER_SIZE;
+      SLICED_BUFFER_SIZE / slice_size
+    } else {
+      1
+    };
 
     let buffer = VkBuffer::new(&self.device, memory_usage, &info, &self.device.allocator, None);
     for i in 0 .. (slices - 1) {
