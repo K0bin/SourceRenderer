@@ -33,23 +33,8 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 6) uniform sampler2D noise;
 
 layout(location = 0) rayPayloadEXT float hitValue;
 
+#define CS
 #include "util.inc.glsl"
-
-uint seed;
-uint hash(uint s) {
-  s ^= 2747636419u;
-  s *= 2654435769u;
-  s ^= s >> 16;
-  s *= 2654435769u;
-  s ^= s >> 16;
-  s *= 2654435769u;
-  return s;
-}
-float random() {
-  uint s = seed;
-  seed++;
-  return float(hash(seed)) / 4294967295.0; // 2^32-1
-}
 
 mat4 rotationMatrix(vec3 axis, float angle) {
   axis = normalize(axis);
@@ -75,15 +60,14 @@ vec3 randomRotateDirection(vec3 dir, float randomDegrees) {
 }
 
 void main() {
-  seed = (gl_LaunchIDEXT.z * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y
-  + gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x
-  + gl_LaunchIDEXT.x) * frame;
-
 	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
   const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
-  vec3 origin = worldSpacePosition(inUV, texture(depthMap, inUV).r, camera.invView * camera.invProj);
+  mat4 invViewProj = camera.invView * camera.invProj;
+  vec3 normal = reconstructNormalCS(depthMap, inUV, invViewProj);
+  vec3 origin = worldSpacePosition(inUV, texture(depthMap, inUV).r, invViewProj);
+  origin += 0.1 * normal;
 
   uint rayFlags = gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT;
   uint cullMask = 0xff;
@@ -91,9 +75,6 @@ void main() {
   float tmax = 10000.0;
 
   vec3 lightDir = normalize(vec3(-0.1, -0.9, -0.5));
-  origin += 0.1 * -lightDir;
-
-  // TODO: make this not ridiculously slow for no reason
 
   vec3 rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
   traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 0);
