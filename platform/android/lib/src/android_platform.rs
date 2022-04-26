@@ -81,7 +81,7 @@ impl Window<AndroidPlatform> for AndroidWindow {
   fn create_surface(&self, graphics_instance: Arc<VkInstance>) -> Arc<VkSurface> {
     // thankfully, VkSurfaceKHR keeps a reference to the NativeWindow internally so I dont have to deal with that
 
-    let instance_raw = graphics_instance.get_raw();
+    let instance_raw = graphics_instance.raw();
     let android_surface_loader = AndroidSurface::new(&instance_raw.entry, &instance_raw.instance);
     let surface = unsafe { android_surface_loader.create_android_surface(&vk::AndroidSurfaceCreateInfoKHR {
       flags: vk::AndroidSurfaceCreateFlagsKHR::empty(),
@@ -93,7 +93,7 @@ impl Window<AndroidPlatform> for AndroidWindow {
   }
 
   fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> Arc<VkSwapchain> {
-    let device_inner = device.get_inner();
+    let device_inner = device.inner();
     return VkSwapchain::new(vsync, self.native_window.width() as u32, self.native_window.height() as u32, device_inner, surface).unwrap();
   }
 
