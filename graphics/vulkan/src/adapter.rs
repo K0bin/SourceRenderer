@@ -321,7 +321,7 @@ impl Adapter<VkBackend> for VkAdapter {
         enabled_features.multi_draw_indirect = vk::TRUE;
       }
 
-      if supports_bda && (supports_indirect || supports_rt) {
+      if supports_bda && supports_rt {
         extension_names.push(BUFFER_DEVICE_ADDRESS_EXT_NAME);
         bda_features.buffer_device_address = vk::TRUE;
         bda_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
