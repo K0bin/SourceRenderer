@@ -21,4 +21,4 @@ app/src/main/jniLibs/**/libVkLayer_object_tracker.so
 app/src/main/jniLibs/**/libVkLayer_parameter_validation.so
 app/src/main/jniLibs/**/libVkLayer_threading.so
 app/src/main/jniLibs/**/libVkLayer_unique_objects.so
-
+app/src/main/assets/

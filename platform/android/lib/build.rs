@@ -27,30 +27,40 @@ fn main() {
   let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
   // Copy shaders over
-  let mut shader_dest_dir = manifest_dir.clone();
-  shader_dest_dir.pop();
-  shader_dest_dir.push("app");
-  shader_dest_dir.push("app");
-  shader_dest_dir.push("src");
-  shader_dest_dir.push("main");
-  shader_dest_dir.push("assets");
-  if !shader_dest_dir.exists() {
-    std::fs::create_dir(&shader_dest_dir).expect("Failed to create shader target directory.");
+  let mut android_asset_dir = manifest_dir.clone();
+  android_asset_dir.pop();
+  android_asset_dir.push("app");
+  android_asset_dir.push("app");
+  android_asset_dir.push("src");
+  android_asset_dir.push("main");
+  android_asset_dir.push("assets");
+  if !android_asset_dir.exists() {
+    std::fs::create_dir(&android_asset_dir).expect("Failed to create shader target directory.");
   }
 
+  let mut engine_dir = manifest_dir.clone();
+  engine_dir.pop();
+  engine_dir.pop();
+  engine_dir.pop();
+  engine_dir.push("engine");
+
+  let mut shader_dir = engine_dir.clone();
+  shader_dir.push("shaders");
+  let mut shader_dest_dir = android_asset_dir.clone();
   shader_dest_dir.push("shaders");
   if !shader_dest_dir.exists() {
     std::fs::create_dir(&shader_dest_dir).expect("Failed to create shader target directory.");
   }
-
-  let mut shader_dir = manifest_dir.clone();
-  shader_dir.pop();
-  shader_dir.pop();
-  shader_dir.pop();
-  shader_dir.push("engine");
-  shader_dir.push("shaders");
-
   compile_shaders(&shader_dir, &shader_dest_dir, |_| true);
+
+  let mut assets_dir = engine_dir.clone();
+  assets_dir.push("assets");
+  let mut asset_dest_dir = android_asset_dir.clone();
+  asset_dest_dir.push("assets");
+  if !asset_dest_dir.exists() {
+    std::fs::create_dir(&asset_dest_dir).expect("Failed to create shader target directory.");
+  }
+  copy_directory_rec(&assets_dir, &asset_dest_dir, &(|_| true));
 
   // Copy libc++_shared over
   let ndk_path = find_ndk().expect("Can't find Android NDK, try setting the environment variable ANDROID_NDK_HOME.");
