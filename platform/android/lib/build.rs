@@ -115,10 +115,6 @@ fn main() {
     validation_layer_src.push("build-android");
     validation_layer_src.push("jniLibs");
     validation_layer_src.push(target_mapping.get(target.as_str()).expect("Failed to map LLVM target triple to Android jniLibs directory."));
-    validation_layer_src.push("libVkLayer_khronos_validation.so");
-
-    let mut validation_layer_dst = lib_path.clone();
-    validation_layer_dst.push("libVkLayer_khronos_validation.so");
-    std::fs::copy(validation_layer_src, validation_layer_dst).expect("Failed to copy file over.");
+    copy_directory_rec(&validation_layer_src, &lib_path, &(|p| p.extension().map(|ext| ext == "so").unwrap_or(false)));
   }
 }
