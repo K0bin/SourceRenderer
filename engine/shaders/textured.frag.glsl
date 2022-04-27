@@ -26,7 +26,6 @@ layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 3) uniform Material {
 } material;
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 7) uniform sampler albedoSampler;
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 8) uniform sampler2D shadows;
-layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
 
 struct Cluster {
   vec4 minPoint;
@@ -129,8 +128,7 @@ void main(void) {
 
   float roughness = material.roughness_factor * texture(roughness_map, uv).r;
   float metalness = material.metalness_factor * texture(metalness_map, uv).r;
-  //vec3 albedo = material.albedo_color.rgb * texture(albedo, uv).rgb;
-  vec3 albedo = material.albedo_color.rgb * texture(sampler2D(albedo_global[material.albedoTextureIndex], albedoSampler), albedoUV).rgb;
+  vec3 albedo = material.albedo_color.rgb * texture(albedo, uv).rgb;
 
   vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
   vec3 f0 = vec3(0.04);
