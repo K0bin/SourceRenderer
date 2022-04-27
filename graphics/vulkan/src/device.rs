@@ -311,7 +311,7 @@ pub(crate) fn memory_usage_to_vma(memory_usage: MemoryUsage) -> VulkanMemoryFlag
       required: VkMem::HOST_VISIBLE | VkMem::HOST_CACHED
     },
     MemoryUsage::VRAM => VulkanMemoryFlags {
-      preferred: VkMem::HOST_COHERENT,
+      preferred: VkMem::empty(),
       required: VkMem::DEVICE_LOCAL
     },
     MemoryUsage::UncachedRAM => VulkanMemoryFlags {
