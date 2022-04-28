@@ -244,6 +244,8 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut acceleration_structure_features = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
       let mut rt_pipeline_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
       let mut bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
+      let mut timeline_semaphore_features = vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
+      let mut sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
       let mut extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
       let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
@@ -338,6 +340,10 @@ impl Adapter<VkBackend> for VkAdapter {
       }
       extension_names.push(TIMELINE_SEMAPHORE_EXT_NAME);
       extension_names.push(SYNCHRONIZATION2_EXT_NAME);
+      timeline_semaphore_features.timeline_semaphore = vk::TRUE;
+      sync2_features.synchronization2 = vk::TRUE;
+      timeline_semaphore_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut timeline_semaphore_features as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures as *mut c_void);
+      sync2_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut sync2_features as *mut vk::PhysicalDeviceSynchronization2Features as *mut c_void);
 
       let extension_names_c: Vec<CString> = extension_names
         .iter()

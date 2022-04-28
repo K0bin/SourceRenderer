@@ -8,7 +8,7 @@ use thread_local::ThreadLocal;
 
 use sourcerenderer_core::graphics::{Resettable, Fence};
 
-use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice, query::VkQueryAllocator};
+use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice, query::VkQueryAllocator, sync::VkTimelineSemaphore};
 use crate::VkCommandPool;
 use crate::{VkSemaphore, VkFence};
 use crate::buffer::BufferAllocator;
@@ -23,7 +23,7 @@ pub struct VkThreadManager {
   shared: Arc<VkShared>,
   max_prepared_frames: u32,
   frame_counter: AtomicU64,
-  prepared_frames: Mutex<VecDeque<VkFrame>>
+  timeline_semaphore: Arc<VkTimelineSemaphore>,
 }
 
 /*
@@ -75,25 +75,16 @@ impl VkThreadManager {
       transfer_queue: transfer_queue.cloned(),
       shared: shared.clone(),
       max_prepared_frames,
-      frame_counter: AtomicU64::new(0),
-      prepared_frames: Mutex::new(VecDeque::new())
+      frame_counter: AtomicU64::new(1),
+      timeline_semaphore: Arc::new(VkTimelineSemaphore::new(device))
     }
   }
 
   pub fn begin_frame(&self) {
     let new_frame = self.frame_counter.load(Ordering::SeqCst);
-    let mut guard = self.prepared_frames.lock().unwrap();
 
-    let mut frame_diff = guard.len() as u32;
-    if let Some(last_frame) = guard.front().as_ref() {
-      frame_diff = frame_diff.max((new_frame - last_frame.counter) as u32)
-    }
-
-    if frame_diff >= self.max_prepared_frames {
-      if let Some(frame) = guard.pop_front() {
-        frame.fence.await_signal();
-        frame.fence.reset();
-      }
+    if new_frame > self.max_prepared_frames as u64 {
+      self.timeline_semaphore.await_value(new_frame - self.max_prepared_frames as u64);
     }
   }
 
@@ -109,14 +100,6 @@ impl VkThreadManager {
     self.frame_counter.fetch_add(1, Ordering::SeqCst)
   }
 
-  pub fn add_frame_fence(&self, frame: u64, fence: &Arc<VkFence>) {
-    let mut guard = self.prepared_frames.lock().unwrap();
-    guard.push_back(VkFrame {
-      counter: frame,
-      fence: fence.clone()
-    });
-  }
-
   #[inline]
   pub fn shared(&self) -> &Arc<VkShared> {
     &self.shared
@@ -124,6 +107,14 @@ impl VkThreadManager {
 
   pub fn prerendered_frames(&self) -> u32 {
     self.max_prepared_frames
+  }
+
+  pub fn frame(&self) -> u64 {
+    self.frame_counter.load(Ordering::SeqCst)
+  }
+
+  pub fn timeline_semaphore(&self) -> &Arc<VkTimelineSemaphore> {
+    &self.timeline_semaphore
   }
 }
 

@@ -36,6 +36,8 @@ pub struct RawVkDevice {
   pub rt: Option<RawVkRTEntries>,
   pub indirect_count: Option<ash::extensions::khr::DrawIndirectCount>,
   pub supports_d24: bool,
+  pub timeline_semaphores: ash::extensions::khr::TimelineSemaphore,
+  pub synchronization2: ash::extensions::khr::Synchronization2,
 }
 
 pub struct RawVkRTEntries {
@@ -92,6 +94,9 @@ impl RawVkDevice {
       ash::extensions::khr::DrawIndirectCount::new(&instance, &device)
     });
 
+    let timeline_semaphores = ash::extensions::khr::TimelineSemaphore::new(&instance, &device);
+    let synchronization2 = ash::extensions::khr::Synchronization2::new(&instance, &device);
+
     Self {
       device,
       allocator,
@@ -108,6 +113,8 @@ impl RawVkDevice {
       rt,
       indirect_count,
       supports_d24: supports_d24,
+      timeline_semaphores,
+      synchronization2,
     }
   }
 

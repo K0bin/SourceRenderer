@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use std::sync::{Arc, MutexGuard};
 use std::future::Future;
 use std::pin::Pin;
@@ -254,3 +255,58 @@ impl Drop for VkEvent {
   }
 }
 
+pub struct VkTimelineSemaphore {
+  device: Arc<RawVkDevice>,
+  semaphore: vk::Semaphore
+}
+
+impl VkTimelineSemaphore {
+  pub fn new(device: &Arc<RawVkDevice>) -> Self {
+    let semaphore = unsafe {
+      let semaphore_type = vk::SemaphoreTypeCreateInfo {
+        semaphore_type: vk::SemaphoreType::TIMELINE_KHR,
+        initial_value: 0,
+        ..Default::default()
+      };
+      device.create_semaphore(&vk::SemaphoreCreateInfo {
+        p_next: &semaphore_type as *const vk::SemaphoreTypeCreateInfo as *const c_void,
+        flags: vk::SemaphoreCreateFlags::empty(),
+        ..Default::default()
+      }, None).unwrap()
+    };
+    Self {
+      device: device.clone(),
+      semaphore
+    }
+  }
+
+  pub fn handle(&self) -> &vk::Semaphore {
+    &self.semaphore
+  }
+
+  pub fn await_value(&self, value: u64) {
+    unsafe {
+      self.device.timeline_semaphores.wait_semaphores(&vk::SemaphoreWaitInfo {
+        flags: vk::SemaphoreWaitFlags::empty(),
+        semaphore_count: 1,
+        p_semaphores: self.handle() as *const vk::Semaphore,
+        p_values: &[value] as *const u64,
+        ..Default::default()
+      }, std::u64::MAX).unwrap();
+    }
+  }
+
+  pub fn value(&self) -> u64 {
+    unsafe {
+      self.device.timeline_semaphores.get_semaphore_counter_value(self.semaphore).unwrap()
+    }
+  }
+}
+
+impl Drop for VkTimelineSemaphore {
+  fn drop(&mut self) {
+      unsafe {
+        self.device.destroy_semaphore(self.semaphore, None);
+      }
+  }
+}
