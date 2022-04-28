@@ -46,7 +46,7 @@ layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 1, std430) readonly buf
   PointLight pointLights[];
 };
 
-layout (std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 2) buffer lightBitmasksBuffer {
+layout (std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 2) readonly buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
