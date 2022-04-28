@@ -198,7 +198,7 @@ impl VkRenderPass {
       let metadata = attachment_metadata.get(&(index as u32)).unwrap();
       vk::AttachmentDescription {
         flags: vk::AttachmentDescriptionFlags::empty(),
-        format: format_to_vk(a.format),
+        format: format_to_vk(a.format, device.supports_d24),
         samples: samples_to_vk(a.samples),
         load_op: load_op_to_vk(a.load_op),
         store_op: store_op_to_vk(a.store_op),

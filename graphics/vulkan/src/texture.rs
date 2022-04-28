@@ -50,12 +50,25 @@ impl VkTexture {
         height: max(1, info.height),
         depth: max(1, info.depth)
       },
-      format: format_to_vk(info.format),
+      format: format_to_vk(info.format, device.supports_d24),
       mip_levels: info.mip_levels,
       array_layers: info.array_length,
       samples: samples_to_vk(info.samples),
       ..Default::default()
     };
+
+    let mut props: vk::ImageFormatProperties2 = Default::default();
+    unsafe {
+      device.instance.get_physical_device_image_format_properties2(device.physical_device, &vk::PhysicalDeviceImageFormatInfo2 {
+        format: create_info.format,
+        ty: create_info.image_type,
+        tiling: create_info.tiling,
+        usage: create_info.usage,
+        flags: create_info.flags,
+        ..Default::default()
+      }, &mut props).unwrap()
+    };
+
     let mut alloc_info = vk_mem::AllocationCreateInfo::new();
     alloc_info = alloc_info.usage(MemoryUsage::GpuOnly);
     let (image, allocation, _allocation_info) = unsafe { device.allocator.create_image(&create_info, &alloc_info).unwrap() };
@@ -211,7 +224,7 @@ impl VkTextureView {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.handle(),
       view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
-      format: format_to_vk(texture.info.format),
+      format: format_to_vk(texture.info.format, device.supports_d24),
       components: vk::ComponentMapping {
         r: vk::ComponentSwizzle::IDENTITY,
         g: vk::ComponentSwizzle::IDENTITY,

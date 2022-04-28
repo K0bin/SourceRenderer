@@ -173,7 +173,7 @@ impl VkAccelerationStructure {
     let rt = device.rt.as_ref().unwrap();
 
     let geometry_data = vk::AccelerationStructureGeometryTrianglesDataKHR {
-      vertex_format: format_to_vk(info.vertex_format),
+      vertex_format: format_to_vk(info.vertex_format, false),
       vertex_data: vk::DeviceOrHostAddressConstKHR {
         device_address: info.vertex_buffer.va().unwrap() + info.vertex_position_offset as vk::DeviceSize
       },
@@ -265,7 +265,7 @@ impl VkAccelerationStructure {
     };
 
     let geometry_data = vk::AccelerationStructureGeometryTrianglesDataKHR {
-      vertex_format: format_to_vk(info.vertex_format),
+      vertex_format: format_to_vk(info.vertex_format, false),
       vertex_data: vk::DeviceOrHostAddressConstKHR {
         device_address: info.vertex_buffer.va_offset(info.vertex_buffer_offset).unwrap() + info.vertex_position_offset as vk::DeviceSize
       },

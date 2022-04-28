@@ -197,7 +197,7 @@ pub(crate) fn format_to_type(_format: Format) -> u32 {
 
 pub(crate) fn format_to_internal_gl(format: Format) -> u32 {
   match format {
-    Format::D24S8 => WebGl2RenderingContext::DEPTH24_STENCIL8,
+    Format::D24 => WebGl2RenderingContext::DEPTH24_STENCIL8,
     Format::D32S8 => WebGl2RenderingContext::DEPTH32F_STENCIL8,
     Format::D32 => WebGl2RenderingContext::DEPTH_COMPONENT32F,
     Format::RGBA8 => WebGl2RenderingContext::RGBA8,
@@ -211,7 +211,7 @@ pub(crate) fn format_to_internal_gl(format: Format) -> u32 {
 
 pub(crate) fn format_to_gl(format: Format) -> u32 {
   match format {
-    Format::D24S8 => WebGl2RenderingContext::DEPTH_STENCIL,
+    Format::D24 => WebGl2RenderingContext::DEPTH_STENCIL,
     Format::D32S8 => WebGl2RenderingContext::DEPTH_STENCIL,
     Format::D32 => WebGl2RenderingContext::DEPTH_COMPONENT,
     Format::RGBA8 => WebGl2RenderingContext::RGBA,

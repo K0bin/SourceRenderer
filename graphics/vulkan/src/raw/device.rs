@@ -34,7 +34,8 @@ pub struct RawVkDevice {
   pub compute_queue: Option<ReentrantMutex<vk::Queue>>,
   pub transfer_queue: Option<ReentrantMutex<vk::Queue>>,
   pub rt: Option<RawVkRTEntries>,
-  pub indirect_count: Option<ash::extensions::khr::DrawIndirectCount>
+  pub indirect_count: Option<ash::extensions::khr::DrawIndirectCount>,
+  pub supports_d24: bool,
 }
 
 pub struct RawVkRTEntries {
@@ -62,15 +63,14 @@ impl RawVkDevice {
     compute_queue: Option<vk::Queue>,
     transfer_queue: Option<vk::Queue>
   ) -> Self {
+    let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+    let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
+    if features.contains(VkFeatures::RAY_TRACING) {
+      rt_pipeline_properties.p_next = std::mem::replace(&mut properties.p_next, &mut rt_pipeline_properties as *mut vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut c_void);
+    }
+    unsafe { instance.get_physical_device_properties2(physical_device, &mut properties) };
+
     let rt = if features.contains(VkFeatures::RAY_TRACING) {
-      let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-      let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
-
-      rt_pipeline_properties.p_next = properties.p_next;
-      properties.p_next = &mut rt_pipeline_properties as *mut vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut c_void;
-
-      unsafe { instance.get_physical_device_properties2(physical_device, &mut properties) };
-
       Some(RawVkRTEntries {
         acceleration_structure: khr::AccelerationStructure::new(&instance, &device),
         rt_pipelines: khr::RayTracingPipeline::new(&instance, &device),
@@ -81,6 +81,12 @@ impl RawVkDevice {
     } else {
       None
     };
+
+    let mut d24_props = vk::FormatProperties2::default();
+    unsafe {
+      instance.get_physical_device_format_properties2(physical_device, vk::Format::D24_UNORM_S8_UINT, &mut d24_props);
+    }
+    let supports_d24 = d24_props.format_properties.optimal_tiling_features.contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT);
 
     let indirect_count = features.contains(VkFeatures::ADVANCED_INDIRECT).then(|| {
       ash::extensions::khr::DrawIndirectCount::new(&instance, &device)
@@ -100,7 +106,8 @@ impl RawVkDevice {
       transfer_queue: transfer_queue.map(|queue| ReentrantMutex::new(queue)),
       is_alive: AtomicBool::new(true),
       rt,
-      indirect_count
+      indirect_count,
+      supports_d24: supports_d24,
     }
   }
 

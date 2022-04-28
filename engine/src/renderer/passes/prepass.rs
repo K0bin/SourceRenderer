@@ -40,7 +40,7 @@ impl<B: GraphicsBackend> Prepass<B> {
 
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
     let depth_info = TextureInfo {
-      format: Format::D24S8,
+      format: Format::D24,
       width: swapchain.width(),
       height: swapchain.height(),
       depth: 1,
@@ -166,7 +166,7 @@ impl<B: GraphicsBackend> Prepass<B> {
           stencil_store_op: StoreOp::DontCare
         },
         AttachmentInfo {
-          format: Format::D24S8,
+          format: Format::D24,
           samples: SampleCount::Samples1,
           load_op: LoadOp::Clear,
           store_op: StoreOp::Store,

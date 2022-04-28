@@ -132,7 +132,7 @@ impl<B: Backend> OcclusionPass<B> {
       }
     }, &RenderPassInfo {
       attachments: vec![AttachmentInfo {
-        format: Format::D24S8,
+        format: Format::D24,
         samples: SampleCount::Samples1,
         load_op: LoadOp::Load,
         store_op: StoreOp::Store,

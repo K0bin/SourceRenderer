@@ -170,7 +170,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           stencil_store_op: StoreOp::DontCare,
         },
         AttachmentInfo {
-          format: Format::D24S8,
+          format: Format::D24,
           samples: SampleCount::Samples1,
           load_op: LoadOp::DontCare,
           store_op: StoreOp::DontCare,

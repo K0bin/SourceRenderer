@@ -483,7 +483,7 @@ impl VkPipeline {
       attribute_descriptions.push(vk::VertexInputAttributeDescription {
         location: element.location_vk_mtl,
         binding: element.input_assembler_binding,
-        format: format_to_vk(element.format),
+        format: format_to_vk(element.format, false),
         offset: element.offset as u32
       });
     }
