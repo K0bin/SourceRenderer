@@ -6,7 +6,7 @@ use std::usize;
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Format, LoadOp, RenderPassInfo, RenderPassPipelineStage, StoreOp, AttachmentRef, OutputAttachmentRef, DepthStencilAttachmentRef, SampleCount};
+use sourcerenderer_core::graphics::{Format, LoadOp, RenderPassPipelineStage, StoreOp, AttachmentRef, OutputAttachmentRef, DepthStencilAttachmentRef, SampleCount};
 
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
@@ -126,7 +126,7 @@ impl VkRenderPass {
             dependencies.push(dependency);
           }
         }
-        if depth_stencil_attachment.read_only { 
+        if depth_stencil_attachment.read_only {
           depth_stencil_metadata.final_layout = Some(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL);
           depth_stencil_metadata.last_used_in_subpass = max(depth_stencil_metadata.last_used_in_subpass, subpass_index as u32);
         } else {
@@ -211,11 +211,12 @@ impl VkRenderPass {
         p_input_attachments,
         color_attachment_count: subpass.output_color_attachments.len() as u32,
         p_color_attachments,
-        p_resolve_attachments,
+        p_resolve_attachments: if subpass.output_color_attachments.len() == 0 { std::ptr::null() } else { p_resolve_attachments }, // QCOM bug workaround
         p_depth_stencil_attachment,
         preserve_attachment_count: (preserve_attachments.len() - preserve_attachments_offset) as u32,
         p_preserve_attachments,
       });
+      // QCOM driver bug: https://developer.qualcomm.com/forum/qdn-forums/software/adreno-gpu-sdk/68949
     }
 
     let attachments: Vec<vk::AttachmentDescription> = info.attachments.iter().enumerate().map(|(index, a)| {
