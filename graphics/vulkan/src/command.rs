@@ -8,7 +8,7 @@ use ash::vk;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{AttachmentInfo, Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, RenderPassInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance, WHOLE_BUFFER};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -135,12 +135,9 @@ pub struct VkCommandBuffer {
   queue_family_index: u32,
   descriptor_manager: VkBindingManager,
   buffer_allocator: Arc<BufferAllocator>,
-  pending_image_barriers: Vec<vk::ImageMemoryBarrier>,
-  pending_buffer_barriers: Vec<vk::BufferMemoryBarrier>,
-  pending_src_stage_flags: vk::PipelineStageFlags,
-  pending_dst_stage_flags: vk::PipelineStageFlags,
-  pending_src_access_flags: vk::AccessFlags,
-  pending_dst_access_flags: vk::AccessFlags,
+  pending_memory_barrier: vk::MemoryBarrier2,
+  pending_image_barriers: Vec<vk::ImageMemoryBarrier2>,
+  pending_buffer_barriers: Vec<vk::BufferMemoryBarrier2>,
   frame: u64,
   inheritance: Option<VkInnerCommandBufferInfo>,
   query_allocator: Arc<VkQueryAllocator>
@@ -171,10 +168,7 @@ impl VkCommandBuffer {
       buffer_allocator: buffer_allocator.clone(),
       pending_buffer_barriers: Vec::with_capacity(4),
       pending_image_barriers: Vec::with_capacity(4),
-      pending_src_stage_flags: vk::PipelineStageFlags::empty(),
-      pending_dst_stage_flags: vk::PipelineStageFlags::empty(),
-      pending_src_access_flags: vk::AccessFlags::empty(),
-      pending_dst_access_flags: vk::AccessFlags::empty(),
+      pending_memory_barrier: vk::MemoryBarrier2::default(),
       frame: 0,
       inheritance: None,
       query_allocator: query_allocator.clone(),
@@ -347,11 +341,15 @@ impl VkCommandBuffer {
     }
   }
 
+  fn has_pending_barrier(&self) -> bool {
+    !self.pending_image_barriers.is_empty() || !self.pending_buffer_barriers.is_empty() || !self.pending_memory_barrier.src_stage_mask.is_empty() || !self.pending_memory_barrier.dst_stage_mask.is_empty()
+  }
+
   pub(crate) fn draw(&mut self, vertices: u32, offset: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(!self.has_pending_barrier());
     debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     unsafe {
       self.device.cmd_draw(self.buffer, vertices, 1, offset, 0);
@@ -362,7 +360,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(!self.has_pending_barrier());
     debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     unsafe {
       self.device.cmd_draw_indexed(self.buffer, indices, instances, first_index, vertex_offset, first_instance);
@@ -586,7 +584,7 @@ impl VkCommandBuffer {
     debug_assert!(self.render_pass.is_none());
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Compute);
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(!self.has_pending_barrier());
     unsafe {
       self.device.cmd_dispatch(self.buffer, group_count_x, group_count_y, group_count_z);
     }
@@ -596,7 +594,7 @@ impl VkCommandBuffer {
   pub(crate) fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.render_pass.is_none());
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(!self.has_pending_barrier());
     let src_info = src_texture.info();
     let dst_info = dst_texture.info();
     let mut src_aspect = vk::ImageAspectFlags::empty();
@@ -679,7 +677,11 @@ impl VkCommandBuffer {
             aspect_mask |= vk::ImageAspectFlags::COLOR;
           }
 
-          self.pending_image_barriers.push(vk::ImageMemoryBarrier {
+          let dst_stages = barrier_sync_to_stage(*new_sync);
+          let src_stages = barrier_sync_to_stage(*old_sync);
+          self.pending_image_barriers.push(vk::ImageMemoryBarrier2 {
+            src_stage_mask: if src_stages.is_empty() { vk::PipelineStageFlags2::BOTTOM_OF_PIPE } else { src_stages },
+            dst_stage_mask: if dst_stages.is_empty() { vk::PipelineStageFlags2::TOP_OF_PIPE } else { dst_stages },
             src_access_mask: barrier_access_to_access(*old_access),
             dst_access_mask: barrier_access_to_access(*new_access),
             old_layout: texture_layout_to_image_layout(*old_layout),
@@ -696,15 +698,14 @@ impl VkCommandBuffer {
             },
             ..Default::default()
           });
-
-          let dst_stages = barrier_sync_to_stage(*new_sync);
-          let src_stages = barrier_sync_to_stage(*old_sync);
-          self.pending_dst_stage_flags |= if dst_stages.is_empty() { vk::PipelineStageFlags::TOP_OF_PIPE } else { dst_stages };
-          self.pending_src_stage_flags |= if src_stages.is_empty() { vk::PipelineStageFlags::BOTTOM_OF_PIPE } else { src_stages };
           self.trackers.track_texture(texture);
         },
         Barrier::BufferBarrier { old_sync, new_sync, old_access, new_access, buffer } => {
-          self.pending_buffer_barriers.push(vk::BufferMemoryBarrier {
+          let dst_stages = barrier_sync_to_stage(*new_sync);
+          let src_stages = barrier_sync_to_stage(*old_sync);
+          self.pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
+            src_stage_mask: if src_stages.is_empty() { vk::PipelineStageFlags2::BOTTOM_OF_PIPE } else { src_stages },
+            dst_stage_mask: if dst_stages.is_empty() { vk::PipelineStageFlags2::TOP_OF_PIPE } else { dst_stages },
             src_access_mask: barrier_access_to_access(*old_access),
             dst_access_mask: barrier_access_to_access(*new_access),
             src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
@@ -714,19 +715,15 @@ impl VkCommandBuffer {
             size: buffer.length() as u64,
             ..Default::default()
           });
-          let dst_stages = barrier_sync_to_stage(*new_sync);
-          let src_stages = barrier_sync_to_stage(*old_sync);
-          self.pending_dst_stage_flags |= if dst_stages.is_empty() { vk::PipelineStageFlags::TOP_OF_PIPE } else { dst_stages };
-          self.pending_src_stage_flags |= if src_stages.is_empty() { vk::PipelineStageFlags::BOTTOM_OF_PIPE } else { src_stages };
           self.trackers.track_buffer(buffer);
         },
         Barrier::GlobalBarrier { old_sync, new_sync, old_access, new_access } => {
           let dst_stages = barrier_sync_to_stage(*new_sync);
           let src_stages = barrier_sync_to_stage(*old_sync);
-          self.pending_dst_stage_flags |= if dst_stages.is_empty() { vk::PipelineStageFlags::TOP_OF_PIPE } else { dst_stages };
-          self.pending_src_stage_flags |= if src_stages.is_empty() { vk::PipelineStageFlags::BOTTOM_OF_PIPE } else { src_stages };
-          self.pending_src_access_flags |= barrier_access_to_access(*old_access);
-          self.pending_dst_access_flags |= barrier_access_to_access(*new_access);
+          self.pending_memory_barrier.dst_stage_mask |= if dst_stages.is_empty() { vk::PipelineStageFlags2::TOP_OF_PIPE } else { dst_stages };
+          self.pending_memory_barrier.src_stage_mask |= if src_stages.is_empty() { vk::PipelineStageFlags2::BOTTOM_OF_PIPE } else { src_stages };
+          self.pending_memory_barrier.src_access_mask |= barrier_access_to_access(*old_access);
+          self.pending_memory_barrier.dst_access_mask |= barrier_access_to_access(*new_access);
         },
       }
     }
@@ -735,64 +732,57 @@ impl VkCommandBuffer {
   pub(crate) fn flush_barriers(&mut self) {
     const FULL_BARRIER: bool = false; // IN CASE OF EMERGENCY, SET TO TRUE
     if FULL_BARRIER {
-      let full_memory_barrier = vk::MemoryBarrier {
-        src_access_mask: vk::AccessFlags::MEMORY_WRITE,
-        dst_access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+      let full_memory_barrier = vk::MemoryBarrier2 {
+        src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+        dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+        src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
+        dst_access_mask: vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE,
+        ..Default::default()
+      };
+      let dependency_info = vk::DependencyInfo {
+        image_memory_barrier_count: 0,
+        p_image_memory_barriers: std::ptr::null(),
+        buffer_memory_barrier_count: 0,
+        p_buffer_memory_barriers: std::ptr::null(),
+        memory_barrier_count: 1,
+        p_memory_barriers: &full_memory_barrier as *const vk::MemoryBarrier2,
         ..Default::default()
       };
       unsafe {
-        self.device.cmd_pipeline_barrier(
-          self.buffer,
-          vk::PipelineStageFlags::ALL_COMMANDS,
-          vk::PipelineStageFlags::ALL_COMMANDS,
-          vk::DependencyFlags::empty(),
-          &[full_memory_barrier],
-          &self.pending_buffer_barriers[..],
-          &self.pending_image_barriers[..]);
+        self.device.synchronization2.cmd_pipeline_barrier2(self.buffer, &dependency_info);
       }
-      self.pending_src_stage_flags = vk::PipelineStageFlags::empty();
-      self.pending_dst_stage_flags = vk::PipelineStageFlags::empty();
+      self.pending_memory_barrier.src_stage_mask = vk::PipelineStageFlags2::empty();
+      self.pending_memory_barrier.dst_stage_mask = vk::PipelineStageFlags2::empty();
+      self.pending_memory_barrier.src_access_mask = vk::AccessFlags2::empty();
+      self.pending_memory_barrier.dst_access_mask = vk::AccessFlags2::empty();
       self.pending_image_barriers.clear();
       self.pending_buffer_barriers.clear();
       return;
     }
 
-    if self.pending_src_stage_flags.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() {
+    if !self.has_pending_barrier() {
       return;
     }
-    if self.pending_dst_stage_flags.is_empty() {
-      self.pending_dst_stage_flags = vk::PipelineStageFlags::BOTTOM_OF_PIPE;
-    }
-    if self.pending_src_stage_flags.is_empty() {
-      self.pending_src_stage_flags = vk::PipelineStageFlags::TOP_OF_PIPE;
-    }
 
-    let memory_barrier = [vk::MemoryBarrier {
-      src_access_mask: self.pending_src_access_flags,
-      dst_access_mask: self.pending_dst_access_flags,
+    let dependency_info = vk::DependencyInfo {
+      image_memory_barrier_count: self.pending_image_barriers.len() as u32,
+      p_image_memory_barriers: self.pending_image_barriers.as_ptr(),
+      buffer_memory_barrier_count: self.pending_buffer_barriers.len() as u32,
+      p_buffer_memory_barriers: self.pending_buffer_barriers.as_ptr(),
+      memory_barrier_count: if self.pending_memory_barrier.src_stage_mask.is_empty() && self.pending_memory_barrier.dst_stage_mask.is_empty() { 1 } else { 0 },
+      p_memory_barriers: &self.pending_memory_barrier as *const vk::MemoryBarrier2,
       ..Default::default()
-    }; 1];
+    };
 
     unsafe {
-      self.device.cmd_pipeline_barrier(
-        self.buffer,
-        self.pending_src_stage_flags,
-        self.pending_dst_stage_flags,
-        vk::DependencyFlags::empty(),
-        if self.pending_src_access_flags.is_empty() && self.pending_dst_access_flags.is_empty() {
-          &[]
-        } else {
-          &memory_barrier
-        },
-        &self.pending_buffer_barriers[..],
-        &self.pending_image_barriers[..]);
+      self.device.synchronization2.cmd_pipeline_barrier2(self.buffer, &dependency_info);
     }
-    self.pending_src_stage_flags = vk::PipelineStageFlags::empty();
-    self.pending_dst_stage_flags = vk::PipelineStageFlags::empty();
+    self.pending_memory_barrier.src_stage_mask = vk::PipelineStageFlags2::empty();
+    self.pending_memory_barrier.dst_stage_mask = vk::PipelineStageFlags2::empty();
+    self.pending_memory_barrier.src_access_mask = vk::AccessFlags2::empty();
+    self.pending_memory_barrier.dst_access_mask = vk::AccessFlags2::empty();
     self.pending_image_barriers.clear();
     self.pending_buffer_barriers.clear();
-    self.pending_src_access_flags = vk::AccessFlags::empty();
-    self.pending_dst_access_flags = vk::AccessFlags::empty();
   }
 
   pub(crate) fn begin_render_pass(&mut self, renderpass_begin_info: &RenderPassBeginInfo<VkBackend>, recording_mode: RenderpassRecordingMode) {
@@ -1009,7 +999,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(!self.has_pending_barrier());
     debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     self.trackers.track_buffer(draw_buffer);
     self.trackers.track_buffer(count_buffer);
@@ -1030,7 +1020,7 @@ impl VkCommandBuffer {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.pipeline.is_some());
     debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-    debug_assert!(self.pending_image_barriers.is_empty() && self.pending_buffer_barriers.is_empty() && self.pending_dst_stage_flags.is_empty() && self.pending_src_stage_flags.is_empty());
+    debug_assert!(!self.has_pending_barrier());
     debug_assert!(self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary);
     self.trackers.track_buffer(draw_buffer);
     self.trackers.track_buffer(count_buffer);
@@ -1374,124 +1364,124 @@ impl Drop for VkCommandBufferSubmission {
   }
 }
 
-fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags {
-  let mut stages = vk::PipelineStageFlags::empty();
+fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags2 {
+  let mut stages = vk::PipelineStageFlags2::empty();
   if sync.contains(BarrierSync::COMPUTE_SHADER) {
-    stages |= vk::PipelineStageFlags::COMPUTE_SHADER;
+    stages |= vk::PipelineStageFlags2::COMPUTE_SHADER;
   }
   if sync.contains(BarrierSync::COPY) {
-    stages |= vk::PipelineStageFlags::TRANSFER;
+    stages |= vk::PipelineStageFlags2::TRANSFER;
   }
   if sync.contains(BarrierSync::EARLY_DEPTH) {
-    stages |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS;
+    stages |= vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS;
   }
   if sync.contains(BarrierSync::FRAGMENT_SHADER) {
-    stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+    stages |= vk::PipelineStageFlags2::FRAGMENT_SHADER;
   }
   if sync.contains(BarrierSync::INDIRECT) {
-    stages |= vk::PipelineStageFlags::DRAW_INDIRECT;
+    stages |= vk::PipelineStageFlags2::DRAW_INDIRECT;
   }
   if sync.contains(BarrierSync::LATE_DEPTH) {
-    stages |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
+    stages |= vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS;
   }
   if sync.contains(BarrierSync::RENDER_TARGET) {
-    stages |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+    stages |= vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT;
   }
   if sync.contains(BarrierSync::RESOLVE) {
-    stages |= vk::PipelineStageFlags::TRANSFER; // TODO: synchronization2
+    stages |= vk::PipelineStageFlags2::RESOLVE;
   }
   if sync.contains(BarrierSync::VERTEX_INPUT) {
-    stages |= vk::PipelineStageFlags::VERTEX_INPUT;
-    // VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT_KHR with sync2
+    stages |= vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT;
   }
   if sync.contains(BarrierSync::INDEX_INPUT) {
-    stages |= vk::PipelineStageFlags::VERTEX_INPUT;
-    // VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT_KHR with sync2
+    stages |= vk::PipelineStageFlags2::INDEX_INPUT;
   }
   if sync.contains(BarrierSync::VERTEX_SHADER) {
-    stages |= vk::PipelineStageFlags::VERTEX_SHADER;
+    stages |= vk::PipelineStageFlags2::VERTEX_SHADER;
   }
   if sync.contains(BarrierSync::HOST) {
-    stages |= vk::PipelineStageFlags::HOST;
+    stages |= vk::PipelineStageFlags2::HOST;
   }
   if sync.contains(BarrierSync::ACCELERATION_STRUCTURE_BUILD) {
-    stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
+    stages |= vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR;
   }
   if sync.contains(BarrierSync::RAY_TRACING) {
-    stages |= vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR;
+    stages |= vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR;
   }
   stages
 }
 
-fn barrier_access_to_access(access: BarrierAccess) -> vk::AccessFlags {
-  let mut vk_access = vk::AccessFlags::empty();
+fn barrier_access_to_access(access: BarrierAccess) -> vk::AccessFlags2 {
+  let mut vk_access = vk::AccessFlags2::empty();
   if access.contains(BarrierAccess::INDEX_READ) {
-    vk_access |= vk::AccessFlags::INDEX_READ;
+    vk_access |= vk::AccessFlags2::INDEX_READ;
   }
   if access.contains(BarrierAccess::INDIRECT_READ) {
-    vk_access |= vk::AccessFlags::INDIRECT_COMMAND_READ;
+    vk_access |= vk::AccessFlags2::INDIRECT_COMMAND_READ;
   }
   if access.contains(BarrierAccess::VERTEX_INPUT_READ) {
-    vk_access |= vk::AccessFlags::VERTEX_ATTRIBUTE_READ;
+    vk_access |= vk::AccessFlags2::VERTEX_ATTRIBUTE_READ;
   }
   if access.contains(BarrierAccess::CONSTANT_READ) {
-    vk_access |= vk::AccessFlags::UNIFORM_READ;
+    vk_access |= vk::AccessFlags2::UNIFORM_READ;
   }
-  if access.intersects(BarrierAccess::STORAGE_READ | BarrierAccess::SHADER_RESOURCE_READ) {
-    vk_access |= vk::AccessFlags::SHADER_READ;
+  if access.intersects(BarrierAccess::SHADER_RESOURCE_READ) {
+    vk_access |= vk::AccessFlags2::SHADER_SAMPLED_READ;
+  }
+  if access.intersects(BarrierAccess::STORAGE_READ) {
+    vk_access |= vk::AccessFlags2::SHADER_STORAGE_READ;
   }
   if access.contains(BarrierAccess::STORAGE_WRITE) {
-    vk_access |= vk::AccessFlags::SHADER_WRITE;
+    vk_access |= vk::AccessFlags2::SHADER_STORAGE_WRITE;
   }
   if access.contains(BarrierAccess::COPY_READ) {
-    vk_access |= vk::AccessFlags::TRANSFER_READ;
+    vk_access |= vk::AccessFlags2::TRANSFER_READ;
   }
   if access.contains(BarrierAccess::COPY_WRITE) {
-    vk_access |= vk::AccessFlags::TRANSFER_WRITE;
+    vk_access |= vk::AccessFlags2::TRANSFER_WRITE;
   }
   if access.contains(BarrierAccess::RESOLVE_READ) {
-    vk_access |= vk::AccessFlags::TRANSFER_READ;
+    vk_access |= vk::AccessFlags2::TRANSFER_READ;
     // TODO: sync2
   }
   if access.contains(BarrierAccess::RESOLVE_WRITE) {
-    vk_access |= vk::AccessFlags::TRANSFER_WRITE;
-    // TODO: sync2
+    vk_access |= vk::AccessFlags2::TRANSFER_WRITE;
   }
   if access.contains(BarrierAccess::DEPTH_STENCIL_READ) {
-    vk_access |= vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
+    vk_access |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ;
   }
   if access.contains(BarrierAccess::DEPTH_STENCIL_WRITE) {
-    vk_access |= vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
+    vk_access |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE;
   }
   if access.contains(BarrierAccess::RENDER_TARGET_READ) {
-    vk_access |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+    vk_access |= vk::AccessFlags2::COLOR_ATTACHMENT_READ;
   }
   if access.contains(BarrierAccess::RENDER_TARGET_WRITE) {
-    vk_access |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
+    vk_access |= vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
   }
   if access.contains(BarrierAccess::SHADER_READ) {
-    vk_access |= vk::AccessFlags::SHADER_READ;
+    vk_access |= vk::AccessFlags2::SHADER_READ;
   }
   if access.contains(BarrierAccess::SHADER_WRITE) {
-    vk_access |= vk::AccessFlags::SHADER_WRITE;
+    vk_access |= vk::AccessFlags2::SHADER_WRITE;
   }
   if access.contains(BarrierAccess::MEMORY_READ) {
-    vk_access |= vk::AccessFlags::MEMORY_READ;
+    vk_access |= vk::AccessFlags2::MEMORY_READ;
   }
   if access.contains(BarrierAccess::MEMORY_WRITE) {
-    vk_access |= vk::AccessFlags::MEMORY_WRITE;
+    vk_access |= vk::AccessFlags2::MEMORY_WRITE;
   }
   if access.contains(BarrierAccess::HOST_READ) {
-    vk_access |= vk::AccessFlags::HOST_READ;
+    vk_access |= vk::AccessFlags2::HOST_READ;
   }
   if access.contains(BarrierAccess::HOST_WRITE) {
-    vk_access |= vk::AccessFlags::HOST_WRITE;
+    vk_access |= vk::AccessFlags2::HOST_WRITE;
   }
   if access.contains(BarrierAccess::ACCELERATION_STRUCTURE_READ) {
-    vk_access |= vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR;
+    vk_access |= vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR;
   }
   if access.contains(BarrierAccess::ACCELERATION_STRUCTURE_WRITE) {
-    vk_access |= vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR;
+    vk_access |= vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR;
   }
   vk_access
 }
@@ -1520,4 +1510,4 @@ pub(crate) fn index_format_to_vk(format: IndexFormat) -> vk::IndexType {
   }
 }
 
-const WRITE_ACCESS_MASK: vk::AccessFlags = vk::AccessFlags::from_raw(vk::AccessFlags::HOST_WRITE.as_raw() | vk::AccessFlags::MEMORY_WRITE.as_raw() | vk::AccessFlags::SHADER_WRITE.as_raw() | vk::AccessFlags::TRANSFER_WRITE.as_raw() | vk::AccessFlags::COLOR_ATTACHMENT_WRITE.as_raw() | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw());
+const WRITE_ACCESS_MASK: vk::AccessFlags2 = vk::AccessFlags2::from_raw(vk::AccessFlags2::HOST_WRITE.as_raw() | vk::AccessFlags2::MEMORY_WRITE.as_raw() | vk::AccessFlags2::SHADER_WRITE.as_raw() | vk::AccessFlags2::TRANSFER_WRITE.as_raw() | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE.as_raw() | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw());
