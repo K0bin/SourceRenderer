@@ -700,6 +700,7 @@ impl VkCommandBuffer {
           let src_stages = barrier_sync_to_stage(*old_sync);
           self.pending_dst_stage_flags |= if dst_stages.is_empty() { vk::PipelineStageFlags::TOP_OF_PIPE } else { dst_stages };
           self.pending_src_stage_flags |= if src_stages.is_empty() { vk::PipelineStageFlags::BOTTOM_OF_PIPE } else { src_stages };
+          self.trackers.track_texture(texture);
         },
         Barrier::BufferBarrier { old_sync, new_sync, old_access, new_access, buffer } => {
           self.pending_buffer_barriers.push(vk::BufferMemoryBarrier {
@@ -716,6 +717,7 @@ impl VkCommandBuffer {
           let src_stages = barrier_sync_to_stage(*old_sync);
           self.pending_dst_stage_flags |= if dst_stages.is_empty() { vk::PipelineStageFlags::TOP_OF_PIPE } else { dst_stages };
           self.pending_src_stage_flags |= if src_stages.is_empty() { vk::PipelineStageFlags::BOTTOM_OF_PIPE } else { src_stages };
+          self.trackers.track_buffer(buffer);
         },
         Barrier::GlobalBarrier { old_sync, new_sync, old_access, new_access } => {
           let dst_stages = barrier_sync_to_stage(*new_sync);
