@@ -607,7 +607,7 @@ impl VkPipeline {
 
     if uses_bindless_texture_set {
       if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
-        panic!("Pipeline is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.");
+        panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", name);
       }
 
       descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] = VkDescriptorSetLayoutKey {
