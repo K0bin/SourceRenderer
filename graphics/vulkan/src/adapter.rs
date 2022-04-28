@@ -37,6 +37,8 @@ const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
 const SPIRV_1_4_EXT_NAME: &str = "VK_KHR_spirv_1_4";
 const SHADER_FLOAT_CONTROLS_EXT_NAME: &str = "VK_KHR_shader_float_controls";
 const DRAW_INDIRECT_COUNT_EXT_NAME: &str = "VK_KHR_draw_indirect_count";
+const TIMELINE_SEMAPHORE_EXT_NAME: &str = "VK_KHR_timeline_semaphore";
+const SYNCHRONIZATION2_EXT_NAME: &str = "VK_KHR_synchronization2";
 
 
 bitflags! {
@@ -57,6 +59,8 @@ bitflags! {
     const SPIRV_1_4                  = 0b1000000000000;
     const SHADER_FLOAT_CONTROLS      = 0b10000000000000;
     const DRAW_INDIRECT_COUNT        = 0b100000000000000;
+    const TIMELINE_SEMAPHORE         = 0b1000000000000000;
+    const SYNCHRONIZATION2           = 0b10000000000000000;
   }
 }
 
@@ -95,6 +99,8 @@ impl VkAdapter {
         SPIRV_1_4_EXT_NAME => { VkAdapterExtensionSupport::SPIRV_1_4 },
         SHADER_FLOAT_CONTROLS_EXT_NAME => { VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS },
         DRAW_INDIRECT_COUNT_EXT_NAME => { VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT },
+        TIMELINE_SEMAPHORE_EXT_NAME => { VkAdapterExtensionSupport::TIMELINE_SEMAPHORE },
+        SYNCHRONIZATION2_EXT_NAME => { VkAdapterExtensionSupport::SYNCHRONIZATION2 },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -326,6 +332,12 @@ impl Adapter<VkBackend> for VkAdapter {
         bda_features.buffer_device_address = vk::TRUE;
         bda_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
       }
+
+      if !self.extensions.contains(VkAdapterExtensionSupport::TIMELINE_SEMAPHORE) || !self.extensions.contains(VkAdapterExtensionSupport::SYNCHRONIZATION2) {
+        panic!("Timeline semaphores or sync2 unsupported. Update your driver!");
+      }
+      extension_names.push(TIMELINE_SEMAPHORE_EXT_NAME);
+      extension_names.push(SYNCHRONIZATION2_EXT_NAME);
 
       let extension_names_c: Vec<CString> = extension_names
         .iter()
