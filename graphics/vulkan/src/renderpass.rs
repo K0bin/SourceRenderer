@@ -6,11 +6,35 @@ use std::usize;
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Format, LoadOp, RenderPassInfo, RenderPassPipelineStage, StoreOp};
+use sourcerenderer_core::graphics::{Format, LoadOp, RenderPassInfo, RenderPassPipelineStage, StoreOp, AttachmentRef, OutputAttachmentRef, DepthStencilAttachmentRef, SampleCount};
 
 use crate::format::format_to_vk;
 use crate::pipeline::samples_to_vk;
 use crate::{raw::RawVkDevice, texture::VkTextureView};
+
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub(crate) struct VkAttachmentInfo {
+  pub(crate) format: Format,
+  pub(crate) samples: SampleCount,
+  pub(crate) load_op: LoadOp,
+  pub(crate) store_op: StoreOp,
+  pub(crate) stencil_load_op: LoadOp,
+  pub(crate) stencil_store_op: StoreOp
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub(crate) struct VkSubpassInfo {
+  pub(crate) input_attachments: SmallVec<[AttachmentRef; 16]>,
+  pub(crate) output_color_attachments: SmallVec<[OutputAttachmentRef; 16]>,
+  pub(crate) depth_stencil_attachment: Option<DepthStencilAttachmentRef>
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub(crate) struct VkRenderPassInfo {
+  pub(crate) attachments: SmallVec<[VkAttachmentInfo; 16]>,
+  pub(crate) subpasses: SmallVec<[VkSubpassInfo; 16]>
+}
 
 #[derive(Default)]
 struct VkRenderPassAttachmentMetadata {
@@ -26,7 +50,7 @@ pub struct VkRenderPass {
 }
 
 impl VkRenderPass {
-  pub fn new(device: &Arc<RawVkDevice>, info: &RenderPassInfo) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, info: &VkRenderPassInfo) -> Self {
     let mut attachment_references = Vec::<vk::AttachmentReference>::new();
     let mut subpass_infos = Vec::<vk::SubpassDescription>::with_capacity(info.subpasses.len());
     let mut dependencies = Vec::<vk::SubpassDependency>::new();
@@ -48,7 +72,7 @@ impl VkRenderPass {
     let mut attachment_metadata = HashMap::<u32, VkRenderPassAttachmentMetadata>::new();
     let mut subpass_attachment_bitmasks = Vec::<u64>::new();
     subpass_attachment_bitmasks.resize(info.subpasses.len(), 0);
-    let subpass_dependencies_start = dependencies.len(); 
+    let subpass_dependencies_start = dependencies.len();
     for (subpass_index, subpass) in info.subpasses.iter().enumerate() {
       let subpass_attachment_bitmask: &mut u64 = subpass_attachment_bitmasks.get_mut(subpass_index).unwrap();
 

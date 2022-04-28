@@ -83,14 +83,14 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       tes: None,
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
-        input_assembler: vec![
+        input_assembler: &[
           InputAssemblerElement {
             binding: 0,
             stride: 44,
             input_rate: InputRate::PerVertex
           }
         ],
-        shader_inputs: vec![
+        shader_inputs: &[
           ShaderInputElement {
             input_assembler_binding: 0,
             location_vk_mtl: 0,
@@ -154,34 +154,26 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         logic_op_enabled: false,
         logic_op: LogicOp::And,
         constants: [0f32, 0f32, 0f32, 0f32],
-        attachments: vec![
+        attachments: &[
           AttachmentBlendInfo::default()
         ]
       }
     };
     let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
-      attachments: vec![
+      attachments: &[
         AttachmentInfo {
           format: texture_info.format,
           samples: texture_info.samples,
-          load_op: LoadOp::DontCare,
-          store_op: StoreOp::DontCare,
-          stencil_load_op: LoadOp::DontCare,
-          stencil_store_op: StoreOp::DontCare,
         },
         AttachmentInfo {
           format: Format::D24,
           samples: SampleCount::Samples1,
-          load_op: LoadOp::DontCare,
-          store_op: StoreOp::DontCare,
-          stencil_load_op: LoadOp::DontCare,
-          stencil_store_op: StoreOp::DontCare,
         }
       ],
-      subpasses: vec![
+      subpasses: &[
         SubpassInfo {
-          input_attachments: vec![],
-          output_color_attachments: vec![
+          input_attachments: &[],
+          output_color_attachments: &[
             OutputAttachmentRef {
               index: 0,
               resolve_attachment_index: None
@@ -303,8 +295,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       ],
       subpasses: &[
         SubpassInfo {
-          input_attachments: vec![],
-          output_color_attachments: vec![
+          input_attachments: &[],
+          output_color_attachments: &[
             OutputAttachmentRef {
               index: 0,
               resolve_attachment_index: None

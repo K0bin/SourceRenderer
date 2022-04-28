@@ -401,7 +401,7 @@ pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorCom
 
 #[derive(Hash, Eq, PartialEq)]
 pub struct VkGraphicsPipelineInfo<'a> {
-  pub info: &'a GraphicsPipelineInfo<VkBackend>,
+  pub info: &'a GraphicsPipelineInfo<'a, VkBackend>,
   pub render_pass: &'a Arc<VkRenderPass>,
   pub sub_pass: u32
 }
@@ -479,7 +479,7 @@ impl VkPipeline {
 
     let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
     let mut binding_descriptions: Vec<vk::VertexInputBindingDescription> = Vec::new();
-    for element in &info.info.vertex_layout.shader_inputs {
+    for element in info.info.vertex_layout.shader_inputs {
       attribute_descriptions.push(vk::VertexInputAttributeDescription {
         location: element.location_vk_mtl,
         binding: element.input_assembler_binding,
@@ -488,7 +488,7 @@ impl VkPipeline {
       });
     }
 
-    for element in &info.info.vertex_layout.input_assembler {
+    for element in info.info.vertex_layout.input_assembler {
       binding_descriptions.push(vk::VertexInputBindingDescription {
         binding: element.binding,
         stride: element.stride as u32,
@@ -577,7 +577,7 @@ impl VkPipeline {
     };
 
     let mut blend_attachments: Vec<vk::PipelineColorBlendAttachmentState> = Vec::new();
-    for blend in &info.info.blend.attachments {
+    for blend in info.info.blend.attachments {
       blend_attachments.push(vk::PipelineColorBlendAttachmentState {
         blend_enable: blend.blend_enabled as u32,
         src_color_blend_factor: blend_factor_to_vk(blend.src_color_blend_factor),

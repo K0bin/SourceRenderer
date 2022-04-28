@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use crate::raw::{RawVkDevice, VkFeatures};
 use crate::VkFence;
 use crate::sync::{VkEvent, VkFenceState, VkSemaphoreInner};
-use crate::renderpass::VkFrameBuffer;
+use crate::renderpass::{VkFrameBuffer, VkRenderPassInfo};
 
 use ash::vk;
 
@@ -26,7 +26,7 @@ pub struct VkShared {
   buffers: BufferAllocator, // consider per thread
   descriptor_set_layouts: RwLock<HashMap<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>>,
   pipeline_layouts: RwLock<HashMap<VkPipelineLayoutKey, Arc<VkPipelineLayout>>>,
-  render_passes: RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>>,
+  render_passes: RwLock<HashMap<VkRenderPassInfo, Arc<VkRenderPass>>>,
   frame_buffers: RwLock<HashMap<SmallVec<[u64; 8]>, Arc<VkFrameBuffer>>>,
   bindless_texture_descriptor_set: Option<Arc<VkBindlessDescriptorSet>>,
 }
@@ -139,21 +139,16 @@ impl VkShared {
     pipeline_layout
   }
 
-  #[inline]
-  pub(crate) fn render_passes(&self) -> &RwLock<HashMap<RenderPassInfo, Arc<VkRenderPass>>> {
-    &self.render_passes
-  }
-
-  pub(crate) fn get_render_pass(&self, info: &RenderPassInfo) -> Arc<VkRenderPass> {
+  pub(crate) fn get_render_pass(&self, info: VkRenderPassInfo) -> Arc<VkRenderPass> {
     {
       let cache = self.render_passes.read().unwrap();
-      if let Some(renderpass) = cache.get(info) {
+      if let Some(renderpass) = cache.get(&info) {
         return renderpass.clone();
       }
     }
-    let renderpass = Arc::new(VkRenderPass::new(&self.device, info));
+    let renderpass = Arc::new(VkRenderPass::new(&self.device, &info));
     let mut cache = self.render_passes.write().unwrap();
-    cache.insert(info.clone(), renderpass.clone());
+    cache.insert(info, renderpass.clone());
     renderpass
   }
 

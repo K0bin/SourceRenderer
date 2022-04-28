@@ -53,9 +53,9 @@ impl Default for InputAssemblerElement {
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
-pub struct VertexLayoutInfo {
-  pub shader_inputs: Vec<ShaderInputElement>,
-  pub input_assembler: Vec<InputAssemblerElement>
+pub struct VertexLayoutInfo<'a> {
+  pub shader_inputs: &'a [ShaderInputElement],
+  pub input_assembler: &'a [InputAssemblerElement]
 }
 
 // ignore input assembler for now and always use triangle lists
@@ -224,15 +224,15 @@ pub enum BlendOp {
 }
 
 #[derive(Clone)]
-pub struct BlendInfo {
+pub struct BlendInfo<'a> {
   pub alpha_to_coverage_enabled: bool,
   pub logic_op_enabled: bool,
   pub logic_op: LogicOp,
-  pub attachments: Vec<AttachmentBlendInfo>,
+  pub attachments: &'a [AttachmentBlendInfo],
   pub constants: [f32; 4]
 }
 
-impl Hash for BlendInfo {
+impl Hash for BlendInfo<'_> {
   fn hash<H: Hasher>(&self, state: &mut H) {
     self.alpha_to_coverage_enabled.hash(state);
     self.logic_op_enabled.hash(state);
@@ -243,7 +243,7 @@ impl Hash for BlendInfo {
   }
 }
 
-impl PartialEq for BlendInfo {
+impl PartialEq for BlendInfo<'_> {
   fn eq(&self, other: &Self) -> bool {
     self.alpha_to_coverage_enabled == other.alpha_to_coverage_enabled
     && self.logic_op_enabled == other.logic_op_enabled
@@ -256,15 +256,15 @@ impl PartialEq for BlendInfo {
   }
 }
 
-impl Eq for BlendInfo {}
+impl Eq for BlendInfo<'_> {}
 
-impl Default for BlendInfo {
+impl Default for BlendInfo<'_> {
   fn default() -> Self {
     BlendInfo {
       alpha_to_coverage_enabled: false,
       logic_op_enabled: false,
       logic_op: LogicOp::And,
-      attachments: Vec::new(),
+      attachments: &[],
       constants: [0f32, 0f32, 0f32, 0f32]
     }
   }
@@ -334,20 +334,20 @@ pub trait Shader {
 }
 
 #[derive(Hash, Eq, PartialEq)]
-pub struct GraphicsPipelineInfo<B: Backend> {
+pub struct GraphicsPipelineInfo<'a, B: Backend> {
   pub vs: Arc<B::Shader>,
   pub fs: Option<Arc<B::Shader>>,
   pub gs: Option<Arc<B::Shader>>,
   pub tcs: Option<Arc<B::Shader>>,
   pub tes: Option<Arc<B::Shader>>,
-  pub vertex_layout: VertexLayoutInfo,
+  pub vertex_layout: VertexLayoutInfo<'a>,
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
-  pub blend: BlendInfo,
+  pub blend: BlendInfo<'a>,
   pub primitive_type: PrimitiveType
 }
 
-impl<B: Backend> Clone for GraphicsPipelineInfo<B> {
+impl<B: Backend> Clone for GraphicsPipelineInfo<'_, B> {
   fn clone(&self) -> Self {
     Self {
       vs: self.vs.clone(),

@@ -37,16 +37,12 @@ pub enum RenderpassRecordingMode {
 pub struct AttachmentInfo {
   pub format: Format,
   pub samples: SampleCount,
-  pub load_op: LoadOp,
-  pub store_op: StoreOp,
-  pub stencil_load_op: LoadOp,
-  pub stencil_store_op: StoreOp
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct SubpassInfo {
-  pub input_attachments: Vec<AttachmentRef>,
-  pub output_color_attachments: Vec<OutputAttachmentRef>,
+pub struct SubpassInfo<'a> {
+  pub input_attachments: &'a [AttachmentRef],
+  pub output_color_attachments: &'a [OutputAttachmentRef],
   pub depth_stencil_attachment: Option<DepthStencilAttachmentRef>
 }
 
@@ -79,7 +75,7 @@ pub struct AttachmentRef {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct RenderPassInfo {
-  pub attachments: Vec<AttachmentInfo>,
-  pub subpasses: Vec<SubpassInfo>
+pub struct RenderPassInfo<'a> {
+  pub attachments: &'a [AttachmentInfo],
+  pub subpasses: &'a [SubpassInfo<'a>]
 }

@@ -5,6 +5,7 @@ use ash::vk;
 
 use sourcerenderer_core::graphics::*;
 use crate::bindless::VkBindlessDescriptorSet;
+use crate::renderpass::{VkRenderPassInfo, VkAttachmentInfo, VkSubpassInfo};
 use crate::rt::VkAccelerationStructure;
 use crate::{queue::VkQueue, texture::VkSampler};
 use crate::queue::{VkQueueInfo, VkQueueType};
@@ -204,17 +205,22 @@ impl Device<VkBackend> for VkDevice {
 
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<VkBackend>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<<VkBackend as Backend>::GraphicsPipeline> {
     let shared = self.context.shared();
-    let mut rp_opt = {
-      let render_passes = shared.render_passes().read().unwrap();
-      render_passes.get(renderpass_info).cloned()
+    let rp_info = VkRenderPassInfo {
+      attachments: renderpass_info.attachments.iter().map(|a| VkAttachmentInfo {
+          format: a.format,
+          samples: a.samples,
+          load_op: LoadOp::DontCare,
+          store_op: StoreOp::DontCare,
+          stencil_load_op: LoadOp::DontCare,
+          stencil_store_op: StoreOp::DontCare,
+      }).collect(),
+      subpasses: renderpass_info.subpasses.iter().map(|sp| VkSubpassInfo {
+        input_attachments: sp.input_attachments.iter().cloned().collect(),
+        output_color_attachments: sp.output_color_attachments.iter().cloned().collect(),
+        depth_stencil_attachment: sp.depth_stencil_attachment.clone(),
+      }).collect(),
     };
-    if rp_opt.is_none() {
-      let rp = Arc::new(VkRenderPass::new(&self.device, renderpass_info));
-      let mut render_passes = shared.render_passes().write().unwrap();
-      render_passes.insert(renderpass_info.clone(), rp.clone());
-      rp_opt = Some(rp);
-    }
-    let rp = rp_opt.unwrap();
+    let rp = shared.get_render_pass(rp_info);
     let vk_info = VkGraphicsPipelineInfo {
       info,
       render_pass: &rp,

@@ -124,7 +124,7 @@ pub struct RenderPassAttachment<'a, B: Backend> {
 
 pub struct RenderPassBeginInfo<'a, B: Backend> {
   pub attachments: &'a [RenderPassAttachment<'a, B>],
-  pub subpasses: &'a [SubpassInfo]
+  pub subpasses: &'a [SubpassInfo<'a>]
 }
 
 bitflags! {

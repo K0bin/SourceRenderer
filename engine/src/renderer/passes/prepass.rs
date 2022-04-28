@@ -94,14 +94,14 @@ impl<B: GraphicsBackend> Prepass<B> {
       tes: None,
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
-        input_assembler: vec![
+        input_assembler: &[
           InputAssemblerElement {
             binding: 0,
             stride: 44,
             input_rate: InputRate::PerVertex
           }
         ],
-        shader_inputs: vec![
+        shader_inputs: &[
           ShaderInputElement {
             input_assembler_binding: 0,
             location_vk_mtl: 0,
@@ -141,43 +141,31 @@ impl<B: GraphicsBackend> Prepass<B> {
         logic_op_enabled: false,
         logic_op: LogicOp::And,
         constants: [0f32, 0f32, 0f32, 0f32],
-        attachments: vec![
+        attachments: &[
           AttachmentBlendInfo::default(),
           AttachmentBlendInfo::default()
         ]
       }
     };
     let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
-      attachments: vec![
+      attachments: &[
         AttachmentInfo {
           format: Format::RG32Float,
           samples: SampleCount::Samples1,
-          load_op: LoadOp::Clear,
-          store_op: StoreOp::Store,
-          stencil_load_op: LoadOp::DontCare,
-          stencil_store_op: StoreOp::DontCare
         },
         AttachmentInfo {
           format: Format::RGBA32Float,
           samples: SampleCount::Samples1,
-          load_op: LoadOp::Clear,
-          store_op: StoreOp::Store,
-          stencil_load_op: LoadOp::DontCare,
-          stencil_store_op: StoreOp::DontCare
         },
         AttachmentInfo {
           format: Format::D24,
           samples: SampleCount::Samples1,
-          load_op: LoadOp::Clear,
-          store_op: StoreOp::Store,
-          stencil_load_op: LoadOp::DontCare,
-          stencil_store_op: StoreOp::DontCare
         }
       ],
-      subpasses: vec![
+      subpasses: &[
         SubpassInfo {
-          input_attachments: vec![],
-          output_color_attachments: vec![
+          input_attachments: &[],
+          output_color_attachments: &[
             OutputAttachmentRef {
               index: 1,
               resolve_attachment_index: None
@@ -269,8 +257,8 @@ impl<B: GraphicsBackend> Prepass<B> {
       ],
       subpasses: &[
         SubpassInfo {
-          input_attachments: vec![],
-          output_color_attachments: vec![
+          input_attachments: &[],
+          output_color_attachments: &[
             OutputAttachmentRef {
               index: 1,
               resolve_attachment_index: None

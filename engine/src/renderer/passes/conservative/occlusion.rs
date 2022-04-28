@@ -87,14 +87,14 @@ impl<B: Backend> OcclusionPass<B> {
       tcs: None,
       tes: None,primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
-        input_assembler: vec![
+        input_assembler: &[
           InputAssemblerElement {
             binding: 0,
             stride: 12,
             input_rate: InputRate::PerVertex
           }
         ],
-        shader_inputs: vec![
+        shader_inputs: &[
           ShaderInputElement {
             input_assembler_binding: 0,
             location_vk_mtl: 0,
@@ -126,23 +126,19 @@ impl<B: Backend> OcclusionPass<B> {
         logic_op_enabled: false,
         logic_op: LogicOp::And,
         constants: [0f32, 0f32, 0f32, 0f32],
-        attachments: vec![
+        attachments: &[
           AttachmentBlendInfo::default()
         ]
       }
     }, &RenderPassInfo {
-      attachments: vec![AttachmentInfo {
+      attachments: &[AttachmentInfo {
         format: Format::D24,
         samples: SampleCount::Samples1,
-        load_op: LoadOp::Load,
-        store_op: StoreOp::Store,
-        stencil_load_op: LoadOp::DontCare,
-        stencil_store_op: StoreOp::DontCare,
       }],
-      subpasses: vec![
+      subpasses: &[
         SubpassInfo {
-          input_attachments: vec![],
-          output_color_attachments: vec![],
+          input_attachments: &[],
+          output_color_attachments: &[],
           depth_stencil_attachment: Some(
             DepthStencilAttachmentRef {
               index: 0,
@@ -221,8 +217,8 @@ impl<B: Backend> OcclusionPass<B> {
         store_op: StoreOp::Store,
       }],
       subpasses: &[SubpassInfo {
-        input_attachments: vec![],
-        output_color_attachments: vec![],
+        input_attachments: &[],
+        output_color_attachments: &[],
         depth_stencil_attachment: Some(DepthStencilAttachmentRef {
           index: 0,
           read_only: true

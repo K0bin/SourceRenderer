@@ -19,6 +19,7 @@ use sourcerenderer_core::graphics::Resettable;
 use crate::bindless::BINDLESS_TEXTURE_SET_INDEX;
 use crate::pipeline::{shader_type_to_vk, VkPipelineType};
 use crate::query::{VkQueryAllocator, VkQueryRange};
+use crate::renderpass::{VkRenderPassInfo, VkAttachmentInfo, VkSubpassInfo};
 use crate::rt::VkAccelerationStructure;
 use crate::{raw::RawVkDevice, texture::VkSampler};
 use crate::VkRenderPass;
@@ -800,7 +801,7 @@ impl VkCommandBuffer {
 
     self.flush_barriers();
 
-    let mut attachment_infos = Vec::with_capacity(renderpass_begin_info.attachments.len());
+    let mut attachment_infos = SmallVec::<[VkAttachmentInfo; 16]>::with_capacity(renderpass_begin_info.attachments.len());
     let mut width = 0u32;
     let mut height = 0u32;
     let mut attachment_views = SmallVec::<[&Arc<VkTextureView>; 8]>::with_capacity(renderpass_begin_info.attachments.len());
@@ -813,7 +814,7 @@ impl VkCommandBuffer {
       };
 
       let info = view.texture().info();
-      attachment_infos.push(AttachmentInfo {
+      attachment_infos.push(VkAttachmentInfo {
         format: info.format,
         samples: info.samples,
         load_op: attachment.load_op,
@@ -841,12 +842,16 @@ impl VkCommandBuffer {
       });
     }
 
-    let renderpass_info = RenderPassInfo {
+    let renderpass_info = VkRenderPassInfo {
       attachments: attachment_infos,
-      subpasses: renderpass_begin_info.subpasses.to_vec(),
+      subpasses: renderpass_begin_info.subpasses.iter().map(|sp| VkSubpassInfo {
+        input_attachments: sp.input_attachments.iter().cloned().collect(),
+        output_color_attachments: sp.output_color_attachments.iter().cloned().collect(),
+        depth_stencil_attachment: sp.depth_stencil_attachment.clone(),
+      }).collect(),
     };
 
-    let renderpass = self.shared.get_render_pass(&renderpass_info);
+    let renderpass = self.shared.get_render_pass(renderpass_info);
     let framebuffer = self.shared.get_framebuffer(&renderpass, &attachment_views);
 
     // TODO: begin info fields
