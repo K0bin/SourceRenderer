@@ -221,6 +221,8 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut supported_acceleration_structure_features = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
       let mut supported_rt_pipeline_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
       let mut supported_bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
+      let mut supported_timeline_semaphore_features = vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
+      let mut supported_sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
       if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
         supported_descriptor_indexing_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void);
         descriptor_indexing_properties.p_next = std::mem::replace(&mut properties.p_next, &mut descriptor_indexing_properties as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT as *mut c_void);
@@ -234,6 +236,9 @@ impl Adapter<VkBackend> for VkAdapter {
       if self.extensions.intersects(VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS) {
         supported_bda_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
       }
+
+      supported_timeline_semaphore_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_timeline_semaphore_features as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures as *mut c_void);
+      supported_sync2_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_sync2_features as *mut vk::PhysicalDeviceSynchronization2Features as *mut c_void);
 
 
       self.instance.get_physical_device_features2(self.physical_device, &mut supported_features);
@@ -335,7 +340,8 @@ impl Adapter<VkBackend> for VkAdapter {
         bda_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
       }
 
-      if !self.extensions.contains(VkAdapterExtensionSupport::TIMELINE_SEMAPHORE) || !self.extensions.contains(VkAdapterExtensionSupport::SYNCHRONIZATION2) {
+      if !self.extensions.contains(VkAdapterExtensionSupport::TIMELINE_SEMAPHORE) || !self.extensions.contains(VkAdapterExtensionSupport::SYNCHRONIZATION2)
+        || supported_sync2_features.synchronization2 != vk::TRUE || supported_timeline_semaphore_features.timeline_semaphore != vk::TRUE {
         panic!("Timeline semaphores or sync2 unsupported. Update your driver!");
       }
       extension_names.push(TIMELINE_SEMAPHORE_EXT_NAME);
