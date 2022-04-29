@@ -63,6 +63,12 @@ fn setup_log() {
   println!("Logging set up.");
 }
 
+fn enable_backtrace() {
+  use std::env;
+  const KEY: &'static str = "RUST_BACKTRACE";
+  env::set_var(KEY, "1");
+}
+
 fn engine_from_long<'a>(engine_ptr: jlong) -> RefMut<'a, EngineWrapper> {
   assert_ne!(engine_ptr, 0);
   unsafe {
@@ -85,6 +91,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_App_initNative(
   _class: JClass,
   asset_manager: JObject
 ) {
+  enable_backtrace();
   setup_log();
   io::initialize_globals(env, asset_manager);
   Engine::<AndroidPlatform>::initialize_global();
