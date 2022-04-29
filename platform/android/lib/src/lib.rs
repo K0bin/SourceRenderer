@@ -14,7 +14,7 @@ use std::ffi::CString;
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject};
 use jni::sys::{jlong, jint, jfloat};
-use ndk_sys::{android_LogPriority_ANDROID_LOG_DEBUG, __android_log_print};
+use ndk_sys::{android_LogPriority_ANDROID_LOG_INFO, android_LogPriority_ANDROID_LOG_ERROR, __android_log_print, android_LogPriority};
 use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::platform::Window;
 use crate::android_platform::{AndroidPlatform, AndroidWindow};
@@ -35,12 +35,11 @@ lazy_static! {
   };
 }
 
-fn setup_log() {
+fn setup_log(fd: libc::c_int, severity: android_LogPriority) {
   let mut pipe: [RawFd; 2] = Default::default();
   unsafe {
     libc::pipe(pipe.as_mut_ptr());
-    libc::dup2(pipe[1], libc::STDOUT_FILENO);
-    libc::dup2(pipe[1], libc::STDERR_FILENO);
+    libc::dup2(pipe[1], fd);
   }
 
   std::thread::spawn(move || {
@@ -54,7 +53,7 @@ fn setup_log() {
           break;
         } else if let Ok(msg) = CString::new(buffer.clone()) {
           unsafe {
-            __android_log_print(android_LogPriority_ANDROID_LOG_DEBUG as i32, TAG.as_ptr(), msg.as_ptr());
+            __android_log_print(severity as i32, TAG.as_ptr(), msg.as_ptr());
           }
         }
       }
@@ -92,7 +91,8 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_App_initNative(
   asset_manager: JObject
 ) {
   enable_backtrace();
-  setup_log();
+  setup_log(libc::STDOUT_FILENO, android_LogPriority_ANDROID_LOG_INFO);
+  setup_log(libc::STDERR_FILENO, android_LogPriority_ANDROID_LOG_ERROR);
   io::initialize_globals(env, asset_manager);
   Engine::<AndroidPlatform>::initialize_global();
 
