@@ -43,7 +43,7 @@ vec3 reconstructNormalCS(sampler2D depth, vec2 uv, mat4 invViewProj) {
   vec2 uv2 = uv + vec2(0.0, 1.0) * depthTexelSize;
   float depth0 = textureLod(depth, uv0, 0).x;
   float depth1 = textureLod(depth, uv1, 0).x;
-  float depth2 = textureLod(depth, uv1, 0).x;
+  float depth2 = textureLod(depth, uv2, 0).x;
 
   vec3 pos0 = worldSpacePosition(uv0, depth0, invViewProj);
   vec3 pos1 = worldSpacePosition(uv1, depth1, invViewProj);
