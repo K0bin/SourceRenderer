@@ -150,7 +150,7 @@ impl<B: Backend> RendererResources<B> {
           texture: &texture_mut.texture,
         }
       ]);
-      if access.is_write() || texture_mut.layout != layout {
+      if access.is_write() || texture_mut.access.is_write() || texture_mut.layout != layout {
         texture_mut.access = access;
       } else {
         texture_mut.access |= access;
@@ -374,7 +374,7 @@ impl<B: Backend> RendererResources<B> {
             buffer: &buffer_mut.buffer,
           }
         ]);
-        if access.is_write() {
+        if access.is_write() || buffer_mut.access.is_write() {
           buffer_mut.access = access;
         } else {
           buffer_mut.access |= access;
@@ -393,7 +393,7 @@ impl<B: Backend> RendererResources<B> {
             new_access: access
           }
         ]);
-        if access.is_write() {
+        if access.is_write() || global_mut.access.is_write() {
           global_mut.access = access;
         } else {
           global_mut.access |= access;
