@@ -4,17 +4,13 @@
  #extension GL_EXT_debug_printf : enable
 
 #include "descriptor_sets.inc.glsl"
+#include "camera.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 1, rgba8) uniform image2D image;
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 2) uniform Camera {
-    mat4 viewProj;
-    mat4 invProj;
-    mat4 view;
-    mat4 proj;
-    mat4 invView;
-    vec4 position;
-} camera;
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 2) uniform CameraUBO {
+  Camera camera;
+};
 
 layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
   uint frame;

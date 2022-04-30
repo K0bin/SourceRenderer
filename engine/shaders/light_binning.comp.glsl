@@ -6,13 +6,11 @@
 layout(local_size_x = 64) in;
 
 #include "descriptor_sets.inc.glsl"
+#include "camera.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform Camera {
-  mat4 viewProj;
-  mat4 invProj;
-  mat4 view;
-  mat4 proj;
-} camera;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform CameraUBO {
+  Camera camera;
+};
 
 struct Cluster {
   vec4 minPoint;

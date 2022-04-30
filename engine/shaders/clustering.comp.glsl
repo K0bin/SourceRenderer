@@ -9,6 +9,7 @@ layout(local_size_x = 8, local_size_y = 1, local_size_z = 8) in;
 
 #include "descriptor_sets.inc.glsl"
 #include "util.inc.glsl"
+#include "camera.inc.glsl"
 
 struct VolumeTileAABB{
   vec4 minPoint;
@@ -24,12 +25,9 @@ layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1, std430) buffer setupBuffer {
   float zFar;
 };
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std140) uniform Camera {
-  mat4 viewProj;
-  mat4 invProj;
-  mat4 view;
-  mat4 proj;
-} camera;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std140) uniform CameraUBO {
+  Camera camera;
+};
 
 // Function prototypes
 vec3 lineIntersectionToZPlane(vec3 A, vec3 B, float zDistance);

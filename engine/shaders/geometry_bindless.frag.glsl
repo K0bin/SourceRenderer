@@ -6,6 +6,7 @@
 
 #include "descriptor_sets.inc.glsl"
 #include "gpu_scene.inc.glsl"
+#include "camera.inc.glsl"
 
 const float PI = 3.14159265359;
 
@@ -29,14 +30,9 @@ struct Cluster {
   vec4 maxPoint;
 };
 
-layout(std140, set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUbo {
-  mat4 viewProj;
-  mat4 invProj;
-  mat4 view;
-  mat4 proj;
-  mat4 invView;
-  vec4 position;
-} camera;
+layout(std140, set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUBO {
+  Camera camera;
+};
 
 struct PointLight {
   vec3 position;

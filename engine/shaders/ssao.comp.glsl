@@ -7,23 +7,16 @@ layout(local_size_x = 8,
        local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
+#include "camera.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform kernel {
   vec4 samples[16];
 };
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D noise;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform sampler2D depthMap;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3, std140) uniform Camera {
-  mat4 viewProj;
-  mat4 invProj;
-  mat4 view;
-  mat4 proj;
-  mat4 invView;
-  vec4 position;
-  mat4 invViewProj;
-  float zNear;
-  float zFar;
-} camera;
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3, std140) uniform CameraUBO {
+  Camera camera;
+};
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4, r16f) uniform writeonly image2D outputTexture;
 
 #define CS

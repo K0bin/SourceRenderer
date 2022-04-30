@@ -3,15 +3,13 @@
 #extension GL_GOOGLE_include_directive : enable
 
 #include "descriptor_sets.inc.glsl"
+#include "camera.inc.glsl"
 
 layout(location = 0) in vec3 in_pos;
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUbo {
-  mat4 viewProj;
-  mat4 invProj;
-  mat4 view;
-  mat4 proj;
-} camera;
+layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUBO {
+  Camera camera;
+};
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
