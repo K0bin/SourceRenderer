@@ -154,7 +154,7 @@ bitflags! {
     const CONSTANT_READ                = 0b1000;
     const STORAGE_READ                 = 0b10000;
     const STORAGE_WRITE                = 0b100000;
-    const SHADER_RESOURCE_READ         = 0b1000000;
+    const SAMPLING_READ                = 0b1000000;
     const COPY_READ                    = 0b10000000;
     const COPY_WRITE                   = 0b100000000;
     const RESOLVE_READ                 = 0b1000000000;

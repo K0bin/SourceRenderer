@@ -826,7 +826,7 @@ impl VkCommandBuffer {
       } else {
         vk::ClearValue {
           color: vk::ClearColorValue {
-            float32: [0f32; 4]
+            float32: [1f32; 4]
           }
         }
       });
@@ -1425,7 +1425,7 @@ fn barrier_access_to_access(access: BarrierAccess) -> vk::AccessFlags2 {
   if access.contains(BarrierAccess::CONSTANT_READ) {
     vk_access |= vk::AccessFlags2::UNIFORM_READ;
   }
-  if access.intersects(BarrierAccess::SHADER_RESOURCE_READ) {
+  if access.intersects(BarrierAccess::SAMPLING_READ) {
     vk_access |= vk::AccessFlags2::SHADER_SAMPLED_READ;
   }
   if access.intersects(BarrierAccess::STORAGE_READ) {

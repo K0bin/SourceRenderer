@@ -173,7 +173,7 @@ impl<B: Backend> RendererResources<B> {
 
   pub fn access_srv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureSamplingViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureSamplingView>> {
     debug_assert_eq!(layout, TextureLayout::Sampled);
-    debug_assert_eq!(access & !(BarrierAccess::SHADER_RESOURCE_READ | BarrierAccess::SHADER_READ), BarrierAccess::empty());
+    debug_assert_eq!(access & !(BarrierAccess::SAMPLING_READ | BarrierAccess::SHADER_READ), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
     self.access_texture_internal(cmd_buffer, name, stages, access, layout, discard, history);
 

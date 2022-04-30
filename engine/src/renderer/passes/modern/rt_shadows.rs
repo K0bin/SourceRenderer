@@ -87,7 +87,7 @@ impl<B: Backend> RTShadowPass<B> {
       cmd_buffer,
       Prepass::<B>::DEPTH_TEXTURE_NAME,
       BarrierSync::RAY_TRACING | BarrierSync::COMPUTE_SHADER,
-      BarrierAccess::SHADER_RESOURCE_READ,
+      BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
       false,
       &TextureSamplingViewInfo::default(),
