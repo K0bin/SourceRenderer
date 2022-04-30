@@ -14,11 +14,4 @@
 .cxx
 local.properties
 app/src/main/jniLibs/**/libsourcerenderer.so
-app/src/main/jniLibs/**/libc++_shared.so
-app/src/main/jniLibs/**/libVkLayer_khronos_validation.so
-app/src/main/jniLibs/**/libVkLayer_core_validation.so
-app/src/main/jniLibs/**/libVkLayer_object_tracker.so
-app/src/main/jniLibs/**/libVkLayer_parameter_validation.so
-app/src/main/jniLibs/**/libVkLayer_threading.so
-app/src/main/jniLibs/**/libVkLayer_unique_objects.so
 app/src/main/assets/
