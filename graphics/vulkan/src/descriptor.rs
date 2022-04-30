@@ -96,7 +96,7 @@ impl VkDescriptorSetLayout {
     };
 
     let info = vk::DescriptorSetLayoutCreateInfo {
-      p_next: &binding_flags_struct as *const vk::DescriptorSetLayoutBindingFlagsCreateInfo as *const c_void,
+      p_next: if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) { &binding_flags_struct as *const vk::DescriptorSetLayoutBindingFlagsCreateInfo as *const c_void } else { std::ptr::null() },
       p_bindings: vk_bindings.as_ptr(),
       binding_count: vk_bindings.len() as u32,
       flags,
