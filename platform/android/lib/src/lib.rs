@@ -51,9 +51,29 @@ fn setup_log(fd: libc::c_int, severity: android_LogPriority) {
       if let Ok(len) = reader.read_line(&mut buffer) {
         if len == 0 {
           break;
-        } else if let Ok(msg) = CString::new(buffer.clone()) {
-          unsafe {
-            __android_log_print(severity as i32, TAG.as_ptr(), msg.as_ptr());
+        } else {
+          const MAX_LOGCAT_LENGTH: usize = 512;
+          let mut start_index = 0usize;
+          let mut remaining_buffer = &buffer[start_index..];
+          while !remaining_buffer.is_empty() {
+            let logcat_slice = if remaining_buffer.len() > MAX_LOGCAT_LENGTH {
+              let maxlength_slice = &remaining_buffer[..MAX_LOGCAT_LENGTH];
+              let last_whitespace_index = maxlength_slice.rfind(char::is_whitespace);
+              if let Some(last_whitespace_index) = last_whitespace_index {
+                &maxlength_slice[..last_whitespace_index]
+              } else {
+                maxlength_slice
+              }
+            } else {
+              remaining_buffer
+            };
+            if let Ok(msg) = CString::new(if start_index > 0 { "... ".to_string() } else { "".to_string() } + logcat_slice.trim()) {
+              unsafe {
+                __android_log_print(severity as i32, TAG.as_ptr(), msg.as_ptr());
+              }
+            }
+            start_index += logcat_slice.len();
+            remaining_buffer = &buffer[start_index..];
           }
         }
       }
