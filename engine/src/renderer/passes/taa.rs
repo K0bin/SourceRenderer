@@ -70,9 +70,9 @@ impl<B: GraphicsBackend> TAAPass<B> {
     });
 
     let nearest_sampler = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
+      mag_filter: Filter::Nearest,
+      min_filter: Filter::Nearest,
+      mip_filter: Filter::Nearest,
       address_mode_u: AddressMode::Repeat,
       address_mode_v: AddressMode::Repeat,
       address_mode_w: AddressMode::Repeat,
