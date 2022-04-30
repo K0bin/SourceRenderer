@@ -826,7 +826,7 @@ impl VkCommandBuffer {
       } else {
         vk::ClearValue {
           color: vk::ClearColorValue {
-            float32: [1f32; 4]
+            float32: [0f32; 4]
           }
         }
       });
