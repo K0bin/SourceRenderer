@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::{Vec4, graphics::{Backend, BufferInfo, Device, Fence, TextureUsage, WHOLE_BUFFER}};
+use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureSamplingViewInfo, BufferUsage };

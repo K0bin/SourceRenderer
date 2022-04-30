@@ -193,7 +193,7 @@ impl<B: Backend> GeometryPass<B> {
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    device: &Arc<B::Device>,
+    _device: &Arc<B::Device>,
     scene: &RendererScene<B>,
     view: &View,
     camera_buffer: &Arc<B::Buffer>,

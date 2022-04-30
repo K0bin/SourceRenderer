@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, collections::{HashMap, HashSet}, hash::Hash};
+use std::{sync::{Arc, Mutex}, collections::HashMap, hash::Hash};
 
 use ash::vk;
 

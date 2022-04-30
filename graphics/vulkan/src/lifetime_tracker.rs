@@ -1,4 +1,3 @@
-use crate::command::VkCommandBuffer;
 use crate::rt::VkAccelerationStructure;
 use crate::{VkFence, VkSemaphore, texture::VkSampler};
 use std::sync::Arc;

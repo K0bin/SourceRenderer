@@ -9,7 +9,6 @@ use crate::buffer::VkBufferSlice;
 use std::hash::{Hash, Hasher};
 use crate::pipeline::VkPipelineLayout;
 use std::ffi::c_void;
-use crate::VkAdapterExtensionSupport;
 use smallvec::SmallVec;
 
 // TODO: clean up descriptor management

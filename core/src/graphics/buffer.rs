@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
-use super::MemoryUsage;
-
 bitflags! {
   pub struct BufferUsage: u32 {
     const VERTEX                             = 0b1;

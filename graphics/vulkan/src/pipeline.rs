@@ -23,7 +23,7 @@ use sourcerenderer_core::graphics::ColorComponents;
 use sourcerenderer_core::graphics::PrimitiveType;
 
 use crate::bindless::{BINDLESS_TEXTURE_COUNT, BINDLESS_TEXTURE_SET_INDEX};
-use crate::buffer::{align_up_32, VkBufferSlice, align_up_64, align_down_32};
+use crate::buffer::{align_up_32, VkBufferSlice, align_up_64};
 use crate::raw::{RawVkDevice, VkFeatures};
 use crate::format::format_to_vk;
 use crate::VkBackend;
@@ -1136,9 +1136,8 @@ impl VkPipelineLayout {
       .collect();
 
     let ranges: Vec<vk::PushConstantRange> = push_constant_ranges.iter()
-      .enumerate()
-      .filter(|(_index, r)| r.is_some())
-      .map(|(index, r)| {
+      .filter(|r| r.is_some())
+      .map(|r| {
         let r = r.as_ref().unwrap();
         vk::PushConstantRange {
           stage_flags: r.shader_stage,

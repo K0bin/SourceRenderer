@@ -4,7 +4,7 @@ use crate::Vec2;
 use crate::Vec2I;
 use crate::Vec2UI;
 
-use crate::graphics::{Backend, BufferUsage, TextureUsage};
+use crate::graphics::{Backend, BufferUsage};
 
 use super::AccelerationStructureInstance;
 use super::BottomLevelAccelerationStructureInfo;

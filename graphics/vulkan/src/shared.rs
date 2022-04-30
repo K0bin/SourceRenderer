@@ -1,6 +1,6 @@
 use ash::vk::Handle;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{RenderPassInfo, Texture};
+use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::pool::{Pool, Recyclable};
 use crate::bindless::{VkBindlessDescriptorSet, BINDLESS_TEXTURE_SET_INDEX};
 use crate::texture::VkTextureView;

@@ -94,8 +94,8 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
     frame: u64,
-    vertex_buffer: &Arc<B::Buffer>,
-    index_buffer: &Arc<B::Buffer>
+    _vertex_buffer: &Arc<B::Buffer>,
+    _index_buffer: &Arc<B::Buffer>
   ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();

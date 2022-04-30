@@ -7,7 +7,7 @@ use crate::buffer::VkBufferSlice;
 use crate::VkFence;
 
 use sourcerenderer_core::graphics::{Texture, Queue, WHOLE_BUFFER};
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::ffi::CString;
 use crate::{VkShared, VkLifetimeTrackers};
 use ash::vk::Handle;

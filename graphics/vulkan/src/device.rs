@@ -1,16 +1,14 @@
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc};
 
 use ash::vk;
 
 use sourcerenderer_core::graphics::*;
-use crate::bindless::VkBindlessDescriptorSet;
 use crate::renderpass::{VkRenderPassInfo, VkAttachmentInfo, VkSubpassInfo};
 use crate::rt::VkAccelerationStructure;
 use crate::{queue::VkQueue, texture::VkSampler};
 use crate::queue::{VkQueueInfo, VkQueueType};
-use crate::{VkBackend, VkRenderPass, VkSemaphore};
-use crate::VkAdapterExtensionSupport;
+use crate::{VkBackend, VkSemaphore};
 use crate::pipeline::VkPipeline;
 use crate::pipeline::VkShader;
 use crate::texture::VkTexture;
@@ -58,7 +56,7 @@ impl VkDevice {
     allocator_info = allocator_info.flags(vma_flags);
     allocator_info = allocator_info.preferred_large_heap_block_size(0);
     allocator_info = allocator_info.vulkan_api_version(vk::API_VERSION_1_1);
-    let allocator = unsafe { vk_mem::Allocator::new(allocator_info).expect("Failed to create memory allocator.") };
+    let allocator = vk_mem::Allocator::new(allocator_info).expect("Failed to create memory allocator.");
 
     let raw_graphics_queue = unsafe { device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
     let raw_compute_queue = compute_queue_info.map(|info| unsafe { device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) });

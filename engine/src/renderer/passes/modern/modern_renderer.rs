@@ -74,7 +74,7 @@ impl<B: Backend> ModernRenderer<B> {
 }
 
 impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
-  fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>) {
+  fn write_occlusion_culling_results(&self, _frame: u64, bitset: &mut Vec<u32>) {
     bitset.fill(!0u32);
   }
 

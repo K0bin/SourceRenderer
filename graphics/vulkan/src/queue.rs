@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::iter::*;
-use std::sync::MutexGuard;
 use std::sync::atomic::Ordering;
 
 use ash::vk;

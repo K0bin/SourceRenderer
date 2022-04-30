@@ -1,12 +1,11 @@
-use std::{collections::{VecDeque}};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 
 use thread_local::ThreadLocal;
 
-use sourcerenderer_core::graphics::{Resettable, Fence};
+use sourcerenderer_core::graphics::Resettable;
 
 use crate::{command::VkInnerCommandBufferInfo, queue::VkQueueInfo, raw::RawVkDevice, query::VkQueryAllocator, sync::VkTimelineSemaphore};
 use crate::VkCommandPool;
