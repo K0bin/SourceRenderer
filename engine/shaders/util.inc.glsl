@@ -48,7 +48,7 @@ vec3 reconstructNormalCS(sampler2D depth, vec2 uv, mat4 invViewProj) {
   vec3 pos0 = worldSpacePosition(uv0, depth0, invViewProj);
   vec3 pos1 = worldSpacePosition(uv1, depth1, invViewProj);
   vec3 pos2 = worldSpacePosition(uv2, depth2, invViewProj);
-  return normalize(cross(pos1 - pos0, pos2 - pos0));
+  return normalize(cross(pos2 - pos0, pos1 - pos0));
 }
 
 vec3 reconstructViewSpaceNormalCS(sampler2D depth, vec2 uv, mat4 invProj) {
