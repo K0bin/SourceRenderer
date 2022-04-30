@@ -44,7 +44,8 @@ struct GlobalMemoryBarrier {
 }
 
 const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = false;
-const USE_COARSE_BARRIERS: bool = false;
+const USE_COARSE_BARRIERS_FOR_TEXTURES: bool = false;
+const USE_COARSE_BARRIERS_FOR_BUFFERS: bool = false;
 
 pub struct RendererResources<B: Backend> {
   device: Arc<B::Device>,
@@ -119,14 +120,14 @@ impl<B: Backend> RendererResources<B> {
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
 
-    if USE_COARSE_BARRIERS && !access.is_write() {
+    if USE_COARSE_BARRIERS_FOR_TEXTURES && !access.is_write() {
       // we're doing a read access
       // use broad scope of stages & access flags to avoid further unnecessary reading barriers
-      let all_graphics: BarrierSync = BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::RENDER_TARGET | BarrierSync::INDIRECT;
-      if stages.intersects(all_graphics) {
-        stages |= all_graphics;
+      let all_graphics_shaders: BarrierSync = BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER ;
+      if stages.intersects(all_graphics_shaders) {
+        stages |= all_graphics_shaders;
       }
-      access = BarrierAccess::MEMORY_READ;
+      access = BarrierAccess::SHADER_READ;
     }
 
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
@@ -140,7 +141,7 @@ impl<B: Backend> RendererResources<B> {
     if needs_barrier {
       cmd_buffer.barrier(&[
         Barrier::TextureBarrier {
-          old_sync: if texture_mut.access.is_write() || access.is_write() { texture_mut.stages } else { BarrierSync::empty() },
+          old_sync: texture_mut.stages,
           new_sync: stages,
           old_layout: if !discard { texture_mut.layout } else { TextureLayout::Undefined },
           new_layout: layout,
@@ -149,12 +150,13 @@ impl<B: Backend> RendererResources<B> {
           texture: &texture_mut.texture,
         }
       ]);
-      texture_mut.access = access;
+      if access.is_write() || texture_mut.layout != layout {
+        texture_mut.access = access;
+      } else {
+        texture_mut.access |= access;
+      }
       texture_mut.stages = stages;
       texture_mut.layout = layout;
-    } else {
-      texture_mut.access |= access;
-      texture_mut.stages |= stages;
     }
   }
 
@@ -340,7 +342,7 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(stages & !(BarrierSync::COPY | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER
       | BarrierSync::COMPUTE_SHADER | BarrierSync::INDEX_INPUT | BarrierSync::INDIRECT | BarrierSync::ACCELERATION_STRUCTURE_BUILD | BarrierSync::RAY_TRACING), BarrierSync::empty());
 
-    if USE_COARSE_BARRIERS && !access.is_write() {
+    if USE_COARSE_BARRIERS_FOR_BUFFERS && !access.is_write() {
       // we're doing a read access
       // use broad scope of stages & access flags to avoid further unnecessary reading barriers
       let all_graphics: BarrierSync = BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH | BarrierSync::VERTEX_INPUT | BarrierSync::VERTEX_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::RENDER_TARGET | BarrierSync::INDIRECT;
@@ -365,18 +367,19 @@ impl<B: Backend> RendererResources<B> {
       if needs_barrier {
         cmd_buffer.barrier(&[
           Barrier::BufferBarrier {
-            old_sync: if buffer_mut.access.is_write() || access.is_write() { buffer_mut.stages } else { BarrierSync::empty() },
+            old_sync: buffer_mut.stages,
             new_sync: stages,
             old_access: buffer_mut.access & BarrierAccess::write_mask(),
             new_access: access,
             buffer: &buffer_mut.buffer,
           }
         ]);
-        buffer_mut.access = access;
+        if access.is_write() {
+          buffer_mut.access = access;
+        } else {
+          buffer_mut.access |= access;
+        }
         buffer_mut.stages = stages;
-      } else {
-        buffer_mut.access |= access;
-        buffer_mut.stages |= stages;
       }
     } else {
       let mut global_mut = self.global.borrow_mut();
@@ -384,17 +387,18 @@ impl<B: Backend> RendererResources<B> {
       if needs_barrier {
         cmd_buffer.barrier(&[
           Barrier::GlobalBarrier {
-            old_sync: if global_mut.access.is_write() || access.is_write() { global_mut.stages } else { BarrierSync::empty() },
+            old_sync: global_mut.stages,
             new_sync: stages,
             old_access: global_mut.access & BarrierAccess::write_mask(),
             new_access: access
           }
         ]);
-        global_mut.access = access;
+        if access.is_write() {
+          global_mut.access = access;
+        } else {
+          global_mut.access |= access;
+        }
         global_mut.stages = stages;
-      } else {
-        global_mut.access |= access;
-        global_mut.stages |= stages;
       }
     }
 
