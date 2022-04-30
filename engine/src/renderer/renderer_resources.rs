@@ -46,6 +46,7 @@ struct GlobalMemoryBarrier {
 const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = false;
 const USE_COARSE_BARRIERS_FOR_TEXTURES: bool = false;
 const USE_COARSE_BARRIERS_FOR_BUFFERS: bool = false;
+const WARN_ABOUT_READ_TO_READ_BARRIERS: bool = false;
 
 pub struct RendererResources<B: Backend> {
   device: Arc<B::Device>,
@@ -139,6 +140,10 @@ impl<B: Backend> RendererResources<B> {
     };
     let needs_barrier = access.is_write() || texture_mut.access.is_write() || texture_mut.layout != layout || !texture_mut.access.contains(access) || !texture_mut.stages.contains(stages);
     if needs_barrier {
+      if WARN_ABOUT_READ_TO_READ_BARRIERS && !access.is_write() && !texture_mut.access.is_write() && texture_mut.layout == layout {
+        println!("READ TO READ BARRIER: Texture: \"{}\", stage: {:?}, access: {:?}", name, stages, access);
+      }
+
       cmd_buffer.barrier(&[
         Barrier::TextureBarrier {
           old_sync: texture_mut.stages,
@@ -365,6 +370,10 @@ impl<B: Backend> RendererResources<B> {
 
       let needs_barrier = access.is_write() || buffer_mut.access.is_write() || !buffer_mut.access.contains(access) || !buffer_mut.stages.contains(stages);
       if needs_barrier {
+        if WARN_ABOUT_READ_TO_READ_BARRIERS && !access.is_write() && !buffer_mut.access.is_write() {
+          println!("READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}", name, stages, access);
+        }
+
         cmd_buffer.barrier(&[
           Barrier::BufferBarrier {
             old_sync: buffer_mut.stages,
@@ -385,6 +394,10 @@ impl<B: Backend> RendererResources<B> {
       let mut global_mut = self.global.borrow_mut();
       let needs_barrier = access.is_write() || global_mut.access.is_write() || !global_mut.access.contains(access) || !global_mut.stages.contains(stages);
       if needs_barrier {
+        if WARN_ABOUT_READ_TO_READ_BARRIERS && !access.is_write() && !global_mut.access.is_write() {
+          println!("READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}", name, stages, access);
+        }
+
         cmd_buffer.barrier(&[
           Barrier::GlobalBarrier {
             old_sync: global_mut.stages,
