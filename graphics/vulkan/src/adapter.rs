@@ -360,27 +360,6 @@ impl Adapter<VkBackend> for VkAdapter {
         .map(|ext_c| ext_c.as_ptr())
         .collect();
 
-      let mut layers = Vec::<CString>::new();
-      if cfg!(target_os = "android")
-      {
-        let timeline_semaphore_layer_name: CString = CString::new("VK_LAYER_KHRONOS_timeline_semaphore").unwrap();
-        let sync2_layer_name: CString = CString::new("VK_LAYER_KHRONOS_synchronization2").unwrap();
-        let device_layers = self.instance.enumerate_device_layer_properties(self.physical_device).unwrap();
-        for device_layer in device_layers {
-          let layer_name = CStr::from_ptr(&device_layer.layer_name as *const c_char);
-          if layer_name == timeline_semaphore_layer_name.as_c_str() {
-            layers.push(timeline_semaphore_layer_name.clone());
-          } else if layer_name == sync2_layer_name.as_c_str() {
-            layers.push(sync2_layer_name.clone());
-          }
-        }
-      }
-
-      let layers_ptr: Vec<*const c_char> = layers
-        .iter()
-        .map(|layer| layer.as_ptr())
-        .collect();
-
       let device_create_info = vk::DeviceCreateInfo {
         p_queue_create_infos: queue_create_descs.as_ptr(),
         queue_create_info_count: queue_create_descs.len() as u32,
@@ -388,8 +367,8 @@ impl Adapter<VkBackend> for VkAdapter {
         pp_enabled_extension_names: extension_names_ptr.as_ptr(),
         enabled_extension_count: extension_names_c.len() as u32,
         p_next: device_creation_pnext,
-        pp_enabled_layer_names: layers_ptr.as_ptr(),
-        enabled_layer_count: layers.len() as u32,
+        pp_enabled_layer_names: std::ptr::null(),
+        enabled_layer_count: 0,
         ..Default::default()
       };
       let vk_device = self.instance.instance.create_device(self.physical_device, &device_create_info, None).unwrap();
