@@ -680,8 +680,8 @@ impl VkCommandBuffer {
           let dst_stages = barrier_sync_to_stage(*new_sync);
           let src_stages = barrier_sync_to_stage(*old_sync);
           self.pending_image_barriers.push(vk::ImageMemoryBarrier2 {
-            src_stage_mask: if src_stages.is_empty() { vk::PipelineStageFlags2::BOTTOM_OF_PIPE } else { src_stages },
-            dst_stage_mask: if dst_stages.is_empty() { vk::PipelineStageFlags2::TOP_OF_PIPE } else { dst_stages },
+            src_stage_mask: src_stages,
+            dst_stage_mask: dst_stages,
             src_access_mask: barrier_access_to_access(*old_access),
             dst_access_mask: barrier_access_to_access(*new_access),
             old_layout: texture_layout_to_image_layout(*old_layout),
@@ -704,8 +704,8 @@ impl VkCommandBuffer {
           let dst_stages = barrier_sync_to_stage(*new_sync);
           let src_stages = barrier_sync_to_stage(*old_sync);
           self.pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
-            src_stage_mask: if src_stages.is_empty() { vk::PipelineStageFlags2::BOTTOM_OF_PIPE } else { src_stages },
-            dst_stage_mask: if dst_stages.is_empty() { vk::PipelineStageFlags2::TOP_OF_PIPE } else { dst_stages },
+            src_stage_mask: src_stages,
+            dst_stage_mask: dst_stages,
             src_access_mask: barrier_access_to_access(*old_access),
             dst_access_mask: barrier_access_to_access(*new_access),
             src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
@@ -720,8 +720,8 @@ impl VkCommandBuffer {
         Barrier::GlobalBarrier { old_sync, new_sync, old_access, new_access } => {
           let dst_stages = barrier_sync_to_stage(*new_sync);
           let src_stages = barrier_sync_to_stage(*old_sync);
-          self.pending_memory_barrier.dst_stage_mask |= if dst_stages.is_empty() { vk::PipelineStageFlags2::TOP_OF_PIPE } else { dst_stages };
-          self.pending_memory_barrier.src_stage_mask |= if src_stages.is_empty() { vk::PipelineStageFlags2::BOTTOM_OF_PIPE } else { src_stages };
+          self.pending_memory_barrier.dst_stage_mask |= dst_stages;
+          self.pending_memory_barrier.src_stage_mask |= src_stages;
           self.pending_memory_barrier.src_access_mask |= barrier_access_to_access(*old_access);
           self.pending_memory_barrier.dst_access_mask |= barrier_access_to_access(*new_access);
         },
@@ -1365,7 +1365,7 @@ impl Drop for VkCommandBufferSubmission {
 }
 
 fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags2 {
-  let mut stages = vk::PipelineStageFlags2::empty();
+  let mut stages = vk::PipelineStageFlags2::NONE;
   if sync.contains(BarrierSync::COMPUTE_SHADER) {
     stages |= vk::PipelineStageFlags2::COMPUTE_SHADER;
   }
