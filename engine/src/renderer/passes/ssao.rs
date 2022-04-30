@@ -188,8 +188,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     );
 
     cmd_buffer.begin_label("SSAO pass");
-    cmd_buffer.flush_barriers();
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    cmd_buffer.flush_barriers();
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &self.kernel, 0, WHOLE_BUFFER);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, blue_noise_view, blue_noise_sampler);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 2, &*depth_srv, &self.linear_sampler);
@@ -233,8 +233,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Past
     );
 
-    cmd_buffer.flush_barriers();
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.blur_pipeline));
+    cmd_buffer.flush_barriers();
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &*blurred_uav);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*ssao_srv, &self.blur_sampler);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 2, &*blurred_srv_b, &self.blur_sampler);
