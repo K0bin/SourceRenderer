@@ -211,7 +211,7 @@ impl VkRenderPass {
         p_input_attachments,
         color_attachment_count: subpass.output_color_attachments.len() as u32,
         p_color_attachments,
-        p_resolve_attachments: if subpass.output_color_attachments.len() == 0 { std::ptr::null() } else { p_resolve_attachments }, // QCOM bug workaround
+        p_resolve_attachments: if subpass.output_color_attachments.is_empty() { std::ptr::null() } else { p_resolve_attachments }, // QCOM bug workaround
         p_depth_stencil_attachment,
         preserve_attachment_count: (preserve_attachments.len() - preserve_attachments_offset) as u32,
         p_preserve_attachments,

@@ -161,7 +161,7 @@ impl VkAccelerationStructure {
     Self {
       buffer: target_buffer.clone(),
       device: device.clone(),
-      acceleration_structure: acceleration_structure,
+      acceleration_structure,
       va,
       bottom_level_structures,
       vertex_buffer: None,
@@ -323,7 +323,7 @@ impl VkAccelerationStructure {
     Self {
       buffer: target_buffer.clone(),
       device: device.clone(),
-      acceleration_structure: acceleration_structure,
+      acceleration_structure,
       bottom_level_structures: Vec::new(),
       va,
       vertex_buffer: Some(info.vertex_buffer.clone()),

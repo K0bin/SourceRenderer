@@ -157,7 +157,7 @@ impl VkQueue {
 
     let frame = self.threads.end_frame();
     let submission = VkVirtualSubmission::Present {
-      wait_semaphores: wait_semaphores,
+      wait_semaphores,
       image_index,
       swapchain: swapchain.clone(),
       frame
@@ -401,7 +401,7 @@ impl Queue<VkBackend> for VkQueue {
             p_swapchains: &*swapchain_handle,
             swapchain_count: 1,
             p_image_indices: &image_index as *const u32,
-            p_wait_semaphores: p_wait_semaphores,
+            p_wait_semaphores,
             wait_semaphore_count: wait_semaphores.len() as u32,
             ..Default::default()
           };

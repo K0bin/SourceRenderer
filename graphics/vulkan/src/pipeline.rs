@@ -627,7 +627,7 @@ impl VkPipeline {
     let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
     if let Some(range) = &push_constants_ranges[0] {
       remapped_push_constant_ranges[0] = Some(VkConstantRange {
-        offset: offset,
+        offset,
         size: range.size,
         shader_stage: vk::ShaderStageFlags::VERTEX,
       });
@@ -635,14 +635,14 @@ impl VkPipeline {
     }
     if let Some(range) = &push_constants_ranges[1] {
       remapped_push_constant_ranges[1] = Some(VkConstantRange {
-        offset: offset,
+        offset,
         size: range.size,
         shader_stage: vk::ShaderStageFlags::FRAGMENT,
       });
     }
 
     let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-      descriptor_set_layouts: descriptor_set_layouts,
+      descriptor_set_layouts,
       push_constant_ranges: remapped_push_constant_ranges,
     });
 
@@ -766,7 +766,7 @@ impl VkPipeline {
     }
 
     let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-      descriptor_set_layouts: descriptor_set_layouts,
+      descriptor_set_layouts,
       push_constant_ranges: push_constants_ranges,
     });
 
@@ -945,7 +945,7 @@ impl VkPipeline {
     let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
     if let Some(range) = &push_constants_ranges[0] {
       remapped_push_constant_ranges[0] = Some(VkConstantRange {
-        offset: offset,
+        offset,
         size: range.size,
         shader_stage: vk::ShaderStageFlags::VERTEX,
       });
@@ -953,14 +953,14 @@ impl VkPipeline {
     }
     if let Some(range) = &push_constants_ranges[1] {
       remapped_push_constant_ranges[1] = Some(VkConstantRange {
-        offset: offset,
+        offset,
         size: range.size,
         shader_stage: vk::ShaderStageFlags::FRAGMENT,
       });
     }
 
     let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-      descriptor_set_layouts: descriptor_set_layouts,
+      descriptor_set_layouts,
       push_constant_ranges: remapped_push_constant_ranges,
     });
 
@@ -1056,7 +1056,7 @@ impl VkPipeline {
 
 
     Self {
-      pipeline: pipeline,
+      pipeline,
       layout,
       device: device.clone(),
       pipeline_type: VkPipelineType::RayTracing,

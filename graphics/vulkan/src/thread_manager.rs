@@ -171,7 +171,7 @@ impl VkFrameLocal {
         life_time_trackers: VkLifetimeTrackers::new(),
         frame: 0
       }),
-      query_allocator: query_allocator,
+      query_allocator,
       disable_sync: PhantomData
     }
   }

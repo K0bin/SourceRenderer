@@ -75,16 +75,14 @@ impl VkBuffer {
     };
 
     let va = if buffer_info.usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
-      if let Some(rt) = device.rt.as_ref() {
+      device.rt.as_ref().map(|rt| {
         unsafe {
-          Some(rt.bda.get_buffer_device_address(&BufferDeviceAddressInfo {
+          rt.bda.get_buffer_device_address(&BufferDeviceAddressInfo {
             buffer,
             ..Default::default()
-          }))
+          })
         }
-      } else {
-        None
-      }
+      })
     } else {
       None
     };
@@ -393,7 +391,7 @@ impl BufferAllocator {
       // Don't do one-off buffers for command lists
       let buffer = VkBuffer::new(&self.device, memory_usage, info, &self.device.allocator, name);
       return Arc::new(VkBufferSlice {
-        buffer: buffer.clone(),
+        buffer,
         offset: 0,
         length: info.size
       });
@@ -489,7 +487,7 @@ impl BufferAllocator {
       matching_buffers.free_slices.push(slice);
     }
     let slice = Arc::new(VkBufferSlice {
-      buffer: buffer.clone(),
+      buffer,
       offset: (slices - 1) * slice_size,
       length: slice_size
     });

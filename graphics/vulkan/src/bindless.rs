@@ -65,7 +65,7 @@ impl VkBindlessDescriptorSet {
 
     let descriptor_set = unsafe {
       device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo {
-        descriptor_pool: descriptor_pool,
+        descriptor_pool,
         descriptor_set_count: 1,
         p_set_layouts: layout.handle(),
         ..Default::default()
@@ -138,7 +138,7 @@ impl VkBindlessDescriptorSet {
         }
       ], &[]);
     }
-    return index;
+    index
   }
 
   pub fn free_slot(&self, slot: u32) {
