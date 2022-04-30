@@ -646,6 +646,7 @@ impl VkBindingManager {
                         // https://github.com/rust-lang/rust/issues/53667
                         if let (VkBoundResource::UniformBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResource::UniformBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
                           buffer.buffer() == entry_buffer.buffer()
+                            && *length == *entry_length
                         } else if let (VkBoundResource::StorageBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResource::StorageBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
                           buffer.buffer() == entry_buffer.buffer()
                           && *length == *entry_length
