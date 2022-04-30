@@ -36,14 +36,15 @@ impl GameInternal {
     let mut resources = Resources::default();
     let tick_duration = Duration::new(0, 1_000_000_000 / tick_rate);
 
-    //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
+    let mut level = World::new(legion::WorldOptions::default());
+
+    //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
-    asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+    //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
-    let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+    //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
     //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
-    //let mut level = World::new(legion::WorldOptions::default());
 
     #[cfg(target_os = "linux")]
     let csgo_path = "/home/robin/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive";
@@ -113,8 +114,8 @@ impl GameInternal {
 
     // run fixed step systems first
     let mut tick_delta = now.duration_since(self.last_tick_time);
-    if renderer.is_saturated() && tick_delta <= self.tick_duration {
-      std::thread::yield_now();
+    if renderer.is_saturated() && tick_delta < self.tick_duration {
+      renderer.wait_until_available(self.tick_duration - tick_delta);
       return;
     }
 
