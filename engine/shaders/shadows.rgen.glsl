@@ -71,8 +71,8 @@ void main() {
 
   uint rayFlags = gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT;
   uint cullMask = 0xff;
-  float tmin = 0.001;
-  float tmax = 10000.0;
+  float tmin = 0.01;
+  float tmax = 100.0;
 
   vec3 lightDir = normalize(vec3(-0.1, -0.9, -0.5));
 
