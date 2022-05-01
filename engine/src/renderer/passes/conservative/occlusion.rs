@@ -81,11 +81,9 @@ impl<B: Backend> OcclusionPass<B> {
       device.create_shader(ShaderType::VertexShader, &bytes, Some("occlusion.vert.spv"))
     };
     let pipeline = device.create_graphics_pipeline(&GraphicsPipelineInfo {
-      vs: vertex_shader,
+      vs: &vertex_shader,
       fs: None,
-      gs: None,
-      tcs: None,
-      tes: None,primitive_type: PrimitiveType::Triangles,
+      primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
         input_assembler: &[
           InputAssemblerElement {

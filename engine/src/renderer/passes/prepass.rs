@@ -87,11 +87,8 @@ impl<B: GraphicsBackend> Prepass<B> {
       device.create_shader(ShaderType::FragmentShader, &bytes, Some("prepass.frag.spv"))
     };
     let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
-      vs: vertex_shader,
-      fs: Some(fragment_shader),
-      gs: None,
-      tcs: None,
-      tes: None,
+      vs: &vertex_shader,
+      fs: Some(&fragment_shader),
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
         input_assembler: &[

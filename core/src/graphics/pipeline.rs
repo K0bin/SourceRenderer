@@ -335,11 +335,8 @@ pub trait Shader {
 
 #[derive(Hash, Eq, PartialEq)]
 pub struct GraphicsPipelineInfo<'a, B: Backend> {
-  pub vs: Arc<B::Shader>,
-  pub fs: Option<Arc<B::Shader>>,
-  pub gs: Option<Arc<B::Shader>>,
-  pub tcs: Option<Arc<B::Shader>>,
-  pub tes: Option<Arc<B::Shader>>,
+  pub vs: &'a Arc<B::Shader>,
+  pub fs: Option<&'a Arc<B::Shader>>,
   pub vertex_layout: VertexLayoutInfo<'a>,
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
@@ -350,11 +347,8 @@ pub struct GraphicsPipelineInfo<'a, B: Backend> {
 impl<B: Backend> Clone for GraphicsPipelineInfo<'_, B> {
   fn clone(&self) -> Self {
     Self {
-      vs: self.vs.clone(),
-      fs: self.fs.clone(),
-      gs: self.gs.clone(),
-      tcs: self.tcs.clone(),
-      tes: self.tes.clone(),
+      vs: self.vs,
+      fs: self.fs,
       vertex_layout: self.vertex_layout.clone(),
       rasterizer: self.rasterizer.clone(),
       depth_stencil: self.depth_stencil.clone(),
