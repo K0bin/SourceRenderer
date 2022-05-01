@@ -1,11 +1,11 @@
 use std::{cell::RefCell, collections::{HashMap, VecDeque}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
 
 use log::warn;
-use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo};
+use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
 
-use crate::{WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl, spinlock::{SpinLock, SpinLockGuard}, WebGLWork};
+use crate::{WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl, spinlock::{SpinLock, SpinLockGuard}, WebGLWork, WebGLShader};
 
 pub struct WebGLThreadQueue {
   write_queue: SpinLock<VecDeque<WebGLWork>>,
@@ -207,13 +207,61 @@ pub struct WebGLBlockInfo {
   pub size: u32
 }
 
+#[derive(Hash, Eq, PartialEq, Clone)]
+pub struct WebGLVertexLayoutInfo {
+  pub shader_inputs: Vec<ShaderInputElement>,
+  pub input_assembler: Vec<InputAssemblerElement>
+}
+
+#[derive(Clone)]
+pub struct WebGLBlendInfo {
+  pub alpha_to_coverage_enabled: bool,
+  pub logic_op_enabled: bool,
+  pub logic_op: LogicOp,
+  pub attachments: Vec<AttachmentBlendInfo>,
+  pub constants: [f32; 4]
+}
+
+pub struct WebGLPipelineInfo {
+  pub vs: Arc<WebGLShader>,
+  pub fs: Option<Arc<WebGLShader>>,
+  pub vertex_layout: WebGLVertexLayoutInfo,
+  pub rasterizer: RasterizerInfo,
+  pub depth_stencil: DepthStencilInfo,
+  pub blend: WebGLBlendInfo,
+  pub primitive_type: PrimitiveType
+}
+
+impl From<&GraphicsPipelineInfo<'_, WebGLBackend>> for WebGLPipelineInfo {
+  fn from(info: &GraphicsPipelineInfo<WebGLBackend>) -> Self {
+    Self {
+      vs: info.vs.clone(),
+      fs: info.fs.cloned(),
+      vertex_layout: WebGLVertexLayoutInfo {
+        shader_inputs: info.vertex_layout.shader_inputs.iter().cloned().collect(),
+        input_assembler: info.vertex_layout.input_assembler.iter().cloned().collect(),
+      },
+      rasterizer: info.rasterizer.clone(),
+      depth_stencil: info.depth_stencil.clone(),
+      blend: WebGLBlendInfo {
+        alpha_to_coverage_enabled: info.blend.alpha_to_coverage_enabled,
+        logic_op_enabled: info.blend.logic_op_enabled,
+        logic_op: info.blend.logic_op,
+        attachments: info.blend.attachments.iter().cloned().collect(),
+        constants: info.blend.constants.clone()
+      },
+      primitive_type: info.primitive_type,
+    }
+  }
+}
+
 pub struct WebGLThreadPipeline {
   context: Rc<RawWebGLContext>,
   program: WebGlProgram,
   ubo_infos: HashMap<(BindingFrequency, u32), WebGLBlockInfo>,
   push_constants_info: Option<WebGLBlockInfo>,
   vao_cache: RefCell<HashMap<[Option<BufferHandle>; 4], WebGlVertexArrayObject>>,
-  info: GraphicsPipelineInfo<WebGLBackend>,
+  info: WebGLPipelineInfo,
   attribs: HashMap<u32, u32>,
 
   // graphics state
@@ -371,7 +419,7 @@ impl WebGLThreadDevice {
     self.shaders.remove(&id).expect("Shader does not exist");
   }
 
-  pub fn create_pipeline(&mut self, id: PipelineHandle, info: &GraphicsPipelineInfo<WebGLBackend>) {
+  pub fn create_pipeline(&mut self, id: PipelineHandle, info: WebGLPipelineInfo) {
     let vs = self.shader(info.vs.handle()).clone();
     let fs = info.fs.as_ref().map(|fs| self.shader(fs.handle()).clone());
 
@@ -457,7 +505,7 @@ impl WebGLThreadDevice {
       ubo_infos,
       push_constants_info,
       vao_cache: RefCell::new(HashMap::new()),
-      info: info.clone(),
+      info,
       attribs: attrib_map,
       gl_cull_face,
       gl_front_face

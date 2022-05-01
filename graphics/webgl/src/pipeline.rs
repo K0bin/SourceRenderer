@@ -2,7 +2,7 @@ use std::{hash::{Hash, Hasher}};
 
 use sourcerenderer_core::graphics::{GraphicsPipelineInfo, PrimitiveType, Shader, ShaderType};
 
-use crate::{GLThreadSender, WebGLBackend, thread::{PipelineHandle, ShaderHandle}};
+use crate::{GLThreadSender, WebGLBackend, thread::{PipelineHandle, ShaderHandle, WebGLPipelineInfo}};
 
 pub struct WebGLShader {
   handle: ShaderHandle,
@@ -65,9 +65,9 @@ pub struct WebGLGraphicsPipeline {
 
 impl WebGLGraphicsPipeline {
   pub fn new(handle: PipelineHandle, info: &GraphicsPipelineInfo<WebGLBackend>, sender: &GLThreadSender) -> Self {
-    let info = info.clone();
+    let info: WebGLPipelineInfo = info.into();
     sender.send(Box::new(move |device| {
-      device.create_pipeline(handle, &info);
+      device.create_pipeline(handle, info);
     }));
     Self {
       handle,
