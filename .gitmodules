@@ -4,3 +4,6 @@
 [submodule "vendor/spirv_cross"]
 	path = vendor/spirv_cross
 	url = git@github.com:K0bin/spirv_cross.git
+[submodule "vendor/Vulkan-ExtensionLayer"]
+	path = vendor/Vulkan-ExtensionLayer
+	url = git@github.com:K0bin/Vulkan-ExtensionLayer.git
