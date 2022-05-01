@@ -6,7 +6,6 @@ plugins {
 Properties properties = new Properties()
 properties.load(project.rootProject.file('local.properties').newDataInputStream())
 def ndkDir = properties.getProperty('ndk.dir')
-def rustReleaseBuild = false
 
 android {
     compileSdkVersion 31
@@ -24,7 +23,6 @@ android {
 
     buildTypes {
         release {
-            rustReleaseBuild = true
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -41,7 +39,7 @@ android {
 
 task buildRust(type: Exec) {
     def commands = [ "cargo", "ndk", "-t", "arm64-v8a", "-t", "x86_64", "-o", "../app/app/src/main/jniLibs", "build" ]
-    if (rustReleaseBuild) {
+    if (!gradle.startParameter.taskNames.any { it.contains("assembleDebug") }) {
         commands.add("--release")
     }
 
