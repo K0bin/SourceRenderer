@@ -41,7 +41,7 @@ impl<B: Backend> BlueNoise<B> {
   }
 
   fn load_frame<P: Platform>(device: &Arc<B::Device>, index: u32) -> Arc<B::TextureSamplingView> {
-    let path = Path::new("assets").join(Path::new("stbn")).join(Path::new(&format!("stbn_vec3_2Dx1D_128x128x64_{}.png", index)));
+    let path = Path::new("assets").join(Path::new("bn")).join(Path::new(&format!("LDR_RGB1_{}.png", index)));
     let mut file = P::IO::open_asset(&path).unwrap_or_else(|e| panic!("Failed to open {:?}: {:?}", &path, e));
     let mut buffer = Vec::<u8>::new();
     file.read_to_end(&mut buffer).unwrap();
