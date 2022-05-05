@@ -10,5 +10,6 @@ use super::ssao;
 mod modern_renderer;
 mod geometry;
 mod draw_prep;
+mod hi_z;
 
 pub use modern_renderer::ModernRenderer;
