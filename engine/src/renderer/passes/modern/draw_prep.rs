@@ -2,7 +2,7 @@ use std::{sync::Arc, path::Path, io::Read};
 
 use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding}, Platform, platform::io::IO};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::modern::gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}};
+use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::modern::gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, drawable::View}, math::Frustum};
 
 pub struct DrawPrepPass<B: Backend> {
   culling_pipeline: Arc<B::ComputePipeline>,
@@ -47,7 +47,9 @@ impl<B: Backend> DrawPrepPass<B> {
     cmd_buffer: &mut B::CommandBuffer,
     resources: &RendererResources<B>,
     scene: &RendererScene<B>,
-    scene_buffer: &Arc<B::Buffer>
+    view: &View,
+    scene_buffer: &Arc<B::Buffer>,
+    camera_buffer: &Arc<B::Buffer>,
   ) {
     {
       let buffer = resources.access_buffer(
@@ -57,8 +59,12 @@ impl<B: Backend> DrawPrepPass<B> {
         BarrierAccess::STORAGE_WRITE,
         HistoryResourceEntry::Current
       );
+
       cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, scene_buffer, 0, WHOLE_BUFFER);
       cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &*buffer, 0, WHOLE_BUFFER);
+      cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer, 0, WHOLE_BUFFER);
+      let frustum_buffer = cmd_buffer.upload_dynamic_data(&[Frustum::new(view.near_plane, view.far_plane, view.camera_fov, view.aspect_ratio)], BufferUsage::CONSTANT);
+      cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, &frustum_buffer, 0, WHOLE_BUFFER);
       cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.culling_pipeline));
       cmd_buffer.flush_barriers();
       cmd_buffer.finish_binding();

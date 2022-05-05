@@ -118,7 +118,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
-    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &gpu_scene_buffer);
+    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref, &gpu_scene_buffer, &late_latching_buffer);
     self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, &gpu_scene_buffer, zero_texture_view, zero_texture_view_black, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer, vertex_buffer, index_buffer);
     self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
