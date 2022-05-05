@@ -1,7 +1,7 @@
 
 use std::{collections::HashMap, sync::Arc, cell::{RefCell, Ref}};
 
-use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureDepthStencilViewInfo, TextureSamplingViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage};
+use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureDepthStencilViewInfo, TextureSamplingViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage, Texture, Buffer};
 
 struct AB<T> {
   a: T,
@@ -115,6 +115,18 @@ impl<B: Backend> RendererResources<B> {
         buffer: self.device.create_buffer(info, memory_usage, Some(&(name.to_string() + "_b")))
       }))
     });
+  }
+
+  pub fn texture_info(&self, name:&str) -> Ref<TextureInfo> {
+    let entry = self.textures.get(name);
+    let texture_ref = entry.unwrap().a.borrow();
+    Ref::map(texture_ref, |texture| texture.texture.info())
+  }
+
+  pub fn buffer_info(&self, name:&str) -> Ref<BufferInfo> {
+    let entry = self.buffers.get(name);
+    let buffer_ref = entry.unwrap().a.borrow();
+    Ref::map(buffer_ref, |buffer| buffer.buffer.info())
   }
 
   fn access_texture_internal(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, mut stages: BarrierSync, mut access: BarrierAccess, layout: TextureLayout, discard: bool, history: HistoryResourceEntry) {
