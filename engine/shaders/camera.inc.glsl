@@ -11,6 +11,8 @@ struct Camera {
   mat4 invViewProj;
   float zNear;
   float zFar;
+  float aspectRatio;
+  float fov;
 };
 
 #endif
