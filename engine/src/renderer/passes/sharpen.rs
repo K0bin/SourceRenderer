@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureStorageViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -56,7 +56,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       BarrierAccess::STORAGE_READ,
       TextureLayout::Storage,
       false,
-      &TextureStorageViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -67,7 +67,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
       true,
-      &TextureStorageViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
 

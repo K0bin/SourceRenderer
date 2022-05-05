@@ -1,10 +1,10 @@
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureDepthStencilViewInfo, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureSamplingView, TextureSamplingViewInfo, TextureStorageView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureSamplingView, TextureStorageView};
 
-use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebGlTexture as WebGLTextureHandle, WebglCompressedTextureS3tc};
+use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebglCompressedTextureS3tc};
 
-use crate::{GLThreadSender, RawWebGLContext, WebGLBackend, thread::TextureHandle};
+use crate::{GLThreadSender, WebGLBackend, thread::TextureHandle};
 
 pub struct WebGLTexture {
   handle: crate::thread::TextureHandle,
@@ -59,11 +59,11 @@ impl Eq for WebGLTexture {}
 
 pub struct WebGLTextureSamplingView {
   texture: Arc<WebGLTexture>,
-  info: TextureSamplingViewInfo
+  info: TextureViewInfo
 }
 
 impl WebGLTextureSamplingView {
-  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureSamplingViewInfo) -> Self {
+  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
     Self {
       texture: texture.clone(),
       info: info.clone()
@@ -74,7 +74,7 @@ impl WebGLTextureSamplingView {
     &self.texture
   }
 
-  pub fn info(&self) -> &TextureSamplingViewInfo {
+  pub fn info(&self) -> &TextureViewInfo {
     &self.info
   }
 }
@@ -95,11 +95,11 @@ impl Eq for WebGLTextureSamplingView {}
 
 pub struct WebGLRenderTargetView {
   texture: Arc<WebGLTexture>,
-  info: TextureRenderTargetViewInfo
+  info: TextureViewInfo
 }
 
 impl WebGLRenderTargetView {
-  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureRenderTargetViewInfo) -> Self {
+  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
     Self {
       texture: texture.clone(),
       info: info.clone()
@@ -110,7 +110,7 @@ impl WebGLRenderTargetView {
     &self.texture
   }
 
-  pub fn info(&self) -> &TextureRenderTargetViewInfo {
+  pub fn info(&self) -> &TextureViewInfo {
     &self.info
   }
 }
@@ -131,11 +131,11 @@ impl Eq for WebGLRenderTargetView {}
 
 pub struct WebGLDepthStencilView {
   texture: Arc<WebGLTexture>,
-  info: TextureDepthStencilViewInfo
+  info: TextureViewInfo
 }
 
 impl WebGLDepthStencilView {
-  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureDepthStencilViewInfo) -> Self {
+  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
     Self {
       texture: texture.clone(),
       info: info.clone()
@@ -146,7 +146,7 @@ impl WebGLDepthStencilView {
     &self.texture
   }
 
-  pub fn info(&self) -> &TextureDepthStencilViewInfo {
+  pub fn info(&self) -> &TextureViewInfo {
     &self.info
   }
 }

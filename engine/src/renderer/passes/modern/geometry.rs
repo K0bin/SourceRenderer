@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureRenderTargetViewInfo, TextureSamplingViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDepthStencilViewInfo, WHOLE_BUFFER}};
+use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER}};
 use std::{sync::Arc, cell::Ref};
 use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, prepass::Prepass, rt_shadows::RTShadowPass}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -224,7 +224,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       BarrierSync::RENDER_TARGET,
       BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
       TextureLayout::RenderTarget, true,
-      &TextureRenderTargetViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
     let rtv = &*rtv_ref;
@@ -236,7 +236,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       BarrierAccess::DEPTH_STENCIL_READ,
       TextureLayout::DepthStencilRead,
       false,
-      &TextureDepthStencilViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
     let prepass_depth = &*prepass_depth_ref;
@@ -248,7 +248,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
       false,
-      &TextureSamplingViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
     let ssao = &*ssao_ref;
@@ -271,7 +271,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,
         false,
-        &TextureSamplingViewInfo::default(),
+        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       );
       &*rt_shadows

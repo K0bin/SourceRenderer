@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
-use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureSamplingViewInfo, BufferUsage };
+use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureViewInfo, BufferUsage };
 
 use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
 
@@ -236,7 +236,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0, 0);
-    let zero_view = device.create_sampling_view(&zero_texture, &TextureSamplingViewInfo::default(), Some("AssetManagerZeroTextureView"));
+    let zero_view = device.create_sampling_view(&zero_texture, &TextureViewInfo::default(), Some("AssetManagerZeroTextureView"));
     let zero_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view))
     } else {
@@ -260,7 +260,7 @@ impl<P: Platform> RendererAssets<P> {
       usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
     }, Some("AssetManagerZeroTextureBlack"));
     device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0, 0);
-    let zero_view_black = device.create_sampling_view(&zero_texture_black, &TextureSamplingViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
+    let zero_view_black = device.create_sampling_view(&zero_texture_black, &TextureViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
     let zero_black_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view_black))
     } else {
@@ -370,7 +370,7 @@ impl<P: Platform> RendererAssets<P> {
       }
     }
     let view = self.device.create_sampling_view(
-      &gpu_texture, &TextureSamplingViewInfo {
+      &gpu_texture, &TextureViewInfo {
         base_mip_level: 0,
         mip_level_length: texture.info.mip_levels,
         base_array_level: 0,

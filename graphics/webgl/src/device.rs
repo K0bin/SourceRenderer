@@ -1,6 +1,6 @@
 use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}};
 use log::warn;
-use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureViewInfo, WHOLE_BUFFER};
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
 use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue}};
 
@@ -96,7 +96,7 @@ impl Device<WebGLBackend> for WebGLDevice {
     Arc::new(WebGLTexture::new(id, info, &self.thread_queue))
   }
 
-  fn create_sampling_view(&self, texture: &Arc<WebGLTexture>, info: &sourcerenderer_core::graphics::TextureSamplingViewInfo, _name: Option<&str>) -> Arc<WebGLTextureSamplingView> {
+  fn create_sampling_view(&self, texture: &Arc<WebGLTexture>, info: &sourcerenderer_core::graphics::TextureViewInfo, _name: Option<&str>) -> Arc<WebGLTextureSamplingView> {
     Arc::new(WebGLTextureSamplingView::new(texture, info))
   }
 
@@ -187,15 +187,15 @@ impl Device<WebGLBackend> for WebGLDevice {
     // nop
   }
 
-  fn create_render_target_view(&self, texture: &Arc<WebGLTexture>, info: &TextureRenderTargetViewInfo, _name: Option<&str>) -> Arc<WebGLRenderTargetView> {
+  fn create_render_target_view(&self, texture: &Arc<WebGLTexture>, info: &TextureViewInfo, _name: Option<&str>) -> Arc<WebGLRenderTargetView> {
     Arc::new(WebGLRenderTargetView::new(texture, info))
   }
 
-  fn create_storage_view(&self, _texture: &Arc<WebGLTexture>, _info: &TextureStorageViewInfo, _name: Option<&str>) -> Arc<WebGLUnorderedAccessView> {
+  fn create_storage_view(&self, _texture: &Arc<WebGLTexture>, _info: &TextureViewInfo, _name: Option<&str>) -> Arc<WebGLUnorderedAccessView> {
     panic!("WebGL does not support storage textures")
   }
 
-  fn create_depth_stencil_view(&self, texture: &Arc<WebGLTexture>, info: &TextureDepthStencilViewInfo, _name: Option<&str>) -> Arc<WebGLDepthStencilView> {
+  fn create_depth_stencil_view(&self, texture: &Arc<WebGLTexture>, info: &TextureViewInfo, _name: Option<&str>) -> Arc<WebGLDepthStencilView> {
     Arc::new(WebGLDepthStencilView::new(texture, info))
   }
 

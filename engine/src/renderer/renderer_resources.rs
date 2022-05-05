@@ -1,7 +1,7 @@
 
 use std::{collections::HashMap, sync::Arc, cell::{RefCell, Ref}};
 
-use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureDepthStencilViewInfo, TextureSamplingViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage, Texture, Buffer, SamplerInfo, Filter, AddressMode};
+use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage, Texture, Buffer, SamplerInfo, Filter, AddressMode};
 
 struct AB<T> {
   a: T,
@@ -13,10 +13,10 @@ struct TrackedTexture<B: Backend> {
   access: BarrierAccess,
   layout: TextureLayout,
   texture: Arc<B::Texture>,
-  srvs: HashMap<TextureSamplingViewInfo, Arc<B::TextureSamplingView>>,
-  dsvs: HashMap<TextureDepthStencilViewInfo, Arc<B::TextureDepthStencilView>>,
-  rtvs: HashMap<TextureRenderTargetViewInfo, Arc<B::TextureRenderTargetView>>,
-  uavs: HashMap<TextureStorageViewInfo, Arc<B::TextureStorageView>>,
+  srvs: HashMap<TextureViewInfo, Arc<B::TextureSamplingView>>,
+  dsvs: HashMap<TextureViewInfo, Arc<B::TextureDepthStencilView>>,
+  rtvs: HashMap<TextureViewInfo, Arc<B::TextureRenderTargetView>>,
+  uavs: HashMap<TextureViewInfo, Arc<B::TextureStorageView>>,
 }
 
 struct TrackedBuffer<B: Backend> {
@@ -229,7 +229,7 @@ impl<B: Backend> RendererResources<B> {
     Ref::map(texture_ref, |r| &r.texture)
   }
 
-  pub fn access_srv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureSamplingViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureSamplingView>> {
+  pub fn access_srv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureSamplingView>> {
     debug_assert_eq!(layout, TextureLayout::Sampled);
     debug_assert_eq!(access & !(BarrierAccess::SAMPLING_READ | BarrierAccess::SHADER_READ), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
@@ -269,7 +269,7 @@ impl<B: Backend> RendererResources<B> {
     }
   }
 
-  pub fn access_uav(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureStorageViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureStorageView>> {
+  pub fn access_uav(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureStorageView>> {
     debug_assert_eq!(layout, TextureLayout::Storage);
     debug_assert_eq!(access & !(BarrierAccess::SHADER_READ | BarrierAccess::SHADER_WRITE | BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
@@ -309,7 +309,7 @@ impl<B: Backend> RendererResources<B> {
     }
   }
 
-  pub fn access_rtv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureRenderTargetViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureRenderTargetView>> {
+  pub fn access_rtv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureRenderTargetView>> {
     debug_assert_eq!(layout, TextureLayout::RenderTarget);
     debug_assert_eq!(access & !(BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::RENDER_TARGET), BarrierSync::empty());
@@ -349,7 +349,7 @@ impl<B: Backend> RendererResources<B> {
     }
   }
 
-  pub fn access_dsv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureDepthStencilViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureDepthStencilView>> {
+  pub fn access_dsv(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureDepthStencilView>> {
     debug_assert!(layout == TextureLayout::DepthStencilRead || layout == TextureLayout::DepthStencilReadWrite);
     debug_assert_eq!(access & !(BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH), BarrierSync::empty());

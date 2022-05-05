@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::graphics::{TextureInfo, TextureSamplingViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend};
+use crate::graphics::{TextureInfo, TextureViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend};
 
-use super::{RenderPassInfo, TextureRenderTargetViewInfo, buffer::BufferInfo, texture::{SamplerInfo, TextureDepthStencilViewInfo, TextureStorageViewInfo}, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, rt::RayTracingPipelineInfo};
+use super::{RenderPassInfo, buffer::BufferInfo, texture::SamplerInfo, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, rt::RayTracingPipelineInfo};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
@@ -33,10 +33,10 @@ pub trait Device<B: Backend> {
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<B::Shader>;
   fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;
-  fn create_sampling_view(&self, texture: &Arc<B::Texture>, info: &TextureSamplingViewInfo, name: Option<&str>) -> Arc<B::TextureSamplingView>;
-  fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureRenderTargetViewInfo, name: Option<&str>) -> Arc<B::TextureRenderTargetView>;
-  fn create_storage_view(&self, texture: &Arc<B::Texture>, info: &TextureStorageViewInfo, name: Option<&str>) -> Arc<B::TextureStorageView>;
-  fn create_depth_stencil_view(&self, texture: &Arc<B::Texture>, info: &TextureDepthStencilViewInfo, name: Option<&str>) -> Arc<B::TextureDepthStencilView>;
+  fn create_sampling_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureSamplingView>;
+  fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureRenderTargetView>;
+  fn create_storage_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureStorageView>;
+  fn create_depth_stencil_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureDepthStencilView>;
   fn create_compute_pipeline(&self, shader: &Arc<B::Shader>, name: Option<&str>) -> Arc<B::ComputePipeline>;
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<B::GraphicsPipeline>;

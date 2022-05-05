@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
-use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureRenderTargetViewInfo, TextureSamplingView, TextureUsage};
+use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureViewInfo, TextureUsage};
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
@@ -82,7 +82,7 @@ impl WebGLSwapchain {
       usage: TextureUsage::RENDER_TARGET,
     }, sender));
 
-    let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureRenderTargetViewInfo {
+    let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_level: 0,

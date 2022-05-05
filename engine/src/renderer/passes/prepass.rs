@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureDepthStencilViewInfo, TextureRenderTargetViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture, WHOLE_BUFFER};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::passes::taa::scaled_halton_point;
@@ -208,7 +208,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
       TextureLayout::DepthStencilReadWrite,
       true,
-      &TextureDepthStencilViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -219,7 +219,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       BarrierAccess::RENDER_TARGET_WRITE,
       TextureLayout::RenderTarget,
       true,
-      &TextureRenderTargetViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
 
@@ -230,7 +230,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       BarrierAccess::RENDER_TARGET_WRITE,
       TextureLayout::RenderTarget,
       true,
-      &TextureRenderTargetViewInfo::default(),
+      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
 

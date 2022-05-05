@@ -7,7 +7,7 @@ use ash::vk;
 use sourcerenderer_core::graphics::TextureDepthStencilView;
 use sourcerenderer_core::graphics::TextureRenderTargetView;
 use sourcerenderer_core::graphics::TextureUsage;
-use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureSamplingView, TextureSamplingViewInfo, TextureStorageView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureSamplingView, TextureViewInfo, TextureStorageView};
 
 use crate::bindless::VkBindlessDescriptorSet;
 use crate::{VkBackend, raw::RawVkDevice};
@@ -220,7 +220,7 @@ pub struct VkTextureView {
 }
 
 impl VkTextureView {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureSamplingViewInfo, name: Option<&str>) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Self {
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.handle(),
       view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
