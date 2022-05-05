@@ -1,17 +1,28 @@
 
 use std::{collections::HashMap, sync::Arc, cell::{RefCell, Ref}};
 
-use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage, Texture, Buffer, SamplerInfo, Filter, AddressMode};
+use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage, Texture, Buffer, SamplerInfo, Filter, AddressMode, BarrierTextureRange};
 
 struct AB<T> {
   a: T,
   b: Option<T>
 }
 
-struct TrackedTexture<B: Backend> {
+#[derive(Debug, Clone)]
+struct TrackedTextureSubresource {
   stages: BarrierSync,
   access: BarrierAccess,
   layout: TextureLayout,
+}
+
+impl Default for TrackedTextureSubresource {
+  fn default() -> Self {
+    Self { stages: BarrierSync::empty(), access: BarrierAccess::empty(), layout: TextureLayout::default() }
+  }
+}
+
+struct TrackedTexture<B: Backend> {
+  subresources: Vec<TrackedTextureSubresource>,
   texture: Arc<B::Texture>,
   srvs: HashMap<TextureViewInfo, Arc<B::TextureSamplingView>>,
   dsvs: HashMap<TextureViewInfo, Arc<B::TextureDepthStencilView>>,
@@ -47,6 +58,14 @@ const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = false;
 const USE_COARSE_BARRIERS_FOR_TEXTURES: bool = false;
 const USE_COARSE_BARRIERS_FOR_BUFFERS: bool = false;
 const WARN_ABOUT_READ_TO_READ_BARRIERS: bool = false;
+
+fn calculate_subresources(mip_length: u32, array_length: u32) -> u32 {
+  array_length * mip_length
+}
+
+fn calculate_subresource(mip_level: u32, mip_length: u32, array_layer: u32) -> u32 {
+  array_layer * mip_length + mip_level
+}
 
 pub struct RendererResources<B: Backend> {
   device: Arc<B::Device>,
@@ -117,11 +136,12 @@ impl<B: Backend> RendererResources<B> {
   }
 
   pub fn create_texture(&mut self, name: &str, info: &TextureInfo, has_history: bool) {
+    let mut subresources: Vec<TrackedTextureSubresource> = Vec::new();
+    subresources.resize(calculate_subresources(info.mip_levels, info.array_length) as usize, TrackedTextureSubresource::default());
+
     self.textures.insert(name.to_string(), AB {
       a: RefCell::new(TrackedTexture {
-        stages: BarrierSync::empty(),
-        access: BarrierAccess::empty(),
-        layout: TextureLayout::Undefined,
+        subresources: subresources.clone(),
         texture: self.device.create_texture(info, Some(name)),
         srvs: HashMap::new(),
         uavs: HashMap::new(),
@@ -129,9 +149,7 @@ impl<B: Backend> RendererResources<B> {
         rtvs: HashMap::new()
       }),
       b: has_history.then(|| RefCell::new(TrackedTexture {
-        stages: BarrierSync::empty(),
-        access: BarrierAccess::empty(),
-        layout: TextureLayout::Undefined,
+        subresources,
         texture: self.device.create_texture(info, Some(&(name.to_string() + "_b"))),
         srvs: HashMap::new(),
         uavs: HashMap::new(),
@@ -168,7 +186,7 @@ impl<B: Backend> RendererResources<B> {
     Ref::map(buffer_ref, |buffer| buffer.buffer.info())
   }
 
-  fn access_texture_internal(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, mut stages: BarrierSync, mut access: BarrierAccess, layout: TextureLayout, discard: bool, history: HistoryResourceEntry) {
+  fn access_texture_internal(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, mut stages: BarrierSync, range: &BarrierTextureRange, mut access: BarrierAccess, layout: TextureLayout, discard: bool, history: HistoryResourceEntry) {
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
 
@@ -189,35 +207,55 @@ impl<B: Backend> RendererResources<B> {
     } else {
       texture_ab.b.as_ref().unwrap().borrow_mut()
     };
-    let needs_barrier = access.is_write() || texture_mut.access.is_write() || texture_mut.layout != layout || !texture_mut.access.contains(access) || !texture_mut.stages.contains(stages);
-    if needs_barrier {
-      if WARN_ABOUT_READ_TO_READ_BARRIERS && !access.is_write() && !texture_mut.access.is_write() && texture_mut.layout == layout {
-        println!("READ TO READ BARRIER: Texture: \"{}\", stage: {:?}, access: {:?}", name, stages, access);
-      }
 
-      cmd_buffer.barrier(&[
-        Barrier::TextureBarrier {
-          old_sync: texture_mut.stages,
-          new_sync: stages,
-          old_layout: if !discard { texture_mut.layout } else { TextureLayout::Undefined },
-          new_layout: layout,
-          old_access: if !discard { texture_mut.access & BarrierAccess::write_mask() } else { BarrierAccess::empty() },
-          new_access: access,
-          texture: &texture_mut.texture,
+    let total_mip_level_count = texture_mut.texture.info().mip_levels;
+    for array_index in range.base_array_layer .. range.base_array_layer + range.array_layer_length {
+      for mip_index in range.base_mip_level .. range.base_mip_level + range.mip_level_length {
+        let subresource_index = calculate_subresource(mip_index, total_mip_level_count, array_index);
+
+        let subresource_mut = texture_mut.subresources.get_mut(subresource_index as usize).unwrap();
+
+        let needs_barrier = access.is_write() || subresource_mut.access.is_write() || subresource_mut.layout != layout || !subresource_mut.access.contains(access) || !subresource_mut.stages.contains(stages);
+        if needs_barrier {
+          let mut subresource_clone = subresource_mut.clone();
+          std::mem::forget(subresource_mut);
+
+          if WARN_ABOUT_READ_TO_READ_BARRIERS && !access.is_write() && !subresource_clone.access.is_write() && subresource_clone.layout == layout {
+            println!("READ TO READ BARRIER: Texture: \"{}\", stage: {:?}, access: {:?}", name, stages, access);
+          }
+
+          cmd_buffer.barrier(&[
+            Barrier::TextureBarrier {
+              old_sync: subresource_clone.stages,
+              new_sync: stages,
+              old_layout: if !discard { subresource_clone.layout } else { TextureLayout::Undefined },
+              new_layout: layout,
+              old_access: if !discard { subresource_clone.access & BarrierAccess::write_mask() } else { BarrierAccess::empty() },
+              new_access: access,
+              texture: &texture_mut.texture,
+              range: BarrierTextureRange {
+                base_array_layer: array_index,
+                array_layer_length: 1,
+                base_mip_level: mip_index,
+                mip_level_length: 1,
+              },
+            }
+          ]);
+          if access.is_write() || subresource_clone.access.is_write() || subresource_clone.layout != layout {
+            subresource_clone.access = access;
+          } else {
+            subresource_clone.access |= access;
+          }
+          subresource_clone.stages = stages;
+          subresource_clone.layout = layout;
+          texture_mut.subresources[subresource_index as usize] = subresource_clone;
         }
-      ]);
-      if access.is_write() || texture_mut.access.is_write() || texture_mut.layout != layout {
-        texture_mut.access = access;
-      } else {
-        texture_mut.access |= access;
       }
-      texture_mut.stages = stages;
-      texture_mut.layout = layout;
     }
   }
 
-  pub fn access_texture(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, history: HistoryResourceEntry) -> Ref<Arc<B::Texture>> {
-    self.access_texture_internal(cmd_buffer, name, stages, access, layout, discard, history);
+  pub fn access_texture(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, range: &BarrierTextureRange, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, history: HistoryResourceEntry) -> Ref<Arc<B::Texture>> {
+    self.access_texture_internal(cmd_buffer, name, stages, range, access, layout, discard, history);
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
@@ -233,7 +271,7 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(layout, TextureLayout::Sampled);
     debug_assert_eq!(access & !(BarrierAccess::SAMPLING_READ | BarrierAccess::SHADER_READ), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
-    self.access_texture_internal(cmd_buffer, name, stages, access, layout, discard, history);
+    self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
 
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
@@ -273,7 +311,7 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(layout, TextureLayout::Storage);
     debug_assert_eq!(access & !(BarrierAccess::SHADER_READ | BarrierAccess::SHADER_WRITE | BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
-    self.access_texture_internal(cmd_buffer, name, stages, access, layout, discard, history);
+    self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
 
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
@@ -313,7 +351,7 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(layout, TextureLayout::RenderTarget);
     debug_assert_eq!(access & !(BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::RENDER_TARGET), BarrierSync::empty());
-    self.access_texture_internal(cmd_buffer, name, stages, access, layout, discard, history);
+    self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
 
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
@@ -353,7 +391,7 @@ impl<B: Backend> RendererResources<B> {
     debug_assert!(layout == TextureLayout::DepthStencilRead || layout == TextureLayout::DepthStencilReadWrite);
     debug_assert_eq!(access & !(BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH), BarrierSync::empty());
-    self.access_texture_internal(cmd_buffer, name, stages, access, layout, discard, history);
+    self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
 
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());

@@ -33,6 +33,7 @@ pub use self::command::RenderPassAttachmentView;
 pub use self::command::BarrierSync;
 pub use self::command::BarrierAccess;
 pub use self::command::IndexFormat;
+pub use self::command::BarrierTextureRange;
 pub use self::texture::{
   TextureSamplingView, TextureViewInfo, Filter, AddressMode,
   SamplerInfo, TextureRenderTargetView, TextureStorageView,

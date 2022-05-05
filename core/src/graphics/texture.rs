@@ -32,6 +32,12 @@ pub enum TextureLayout {
   ResolveDst
 }
 
+impl Default for TextureLayout {
+  fn default() -> Self {
+    Self::Undefined
+  }
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct TextureInfo {
   pub format: Format,
@@ -66,8 +72,8 @@ pub enum AddressMode {
 pub struct TextureViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
-  pub base_array_level: u32,
-  pub array_level_length: u32,
+  pub base_array_layer: u32,
+  pub array_layer_length: u32,
 }
 
 impl Default for TextureViewInfo {
@@ -75,8 +81,8 @@ impl Default for TextureViewInfo {
     Self {
       base_mip_level: 0,
       mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1
+      base_array_layer: 0,
+      array_layer_length: 1
     }
   }
 }

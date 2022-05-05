@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout}};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange}};
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::blue_noise::BlueNoise}};
 
@@ -123,6 +123,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     let sharpened_texture = self.barriers.access_texture(
       &mut cmd_buf,
       SharpenPass::<B>::SHAPENED_TEXTURE_NAME,
+      &BarrierTextureRange::default(),
       BarrierSync::COPY,
       BarrierAccess::COPY_READ,
       TextureLayout::CopySrc,
@@ -148,6 +149,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
           old_layout: TextureLayout::Undefined,
           new_layout: TextureLayout::CopyDst,
           texture: back_buffer.texture(),
+          range: BarrierTextureRange::default(),
         }
     ]);
     cmd_buf.flush_barriers();
@@ -161,6 +163,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
           old_layout: TextureLayout::CopyDst,
           new_layout: TextureLayout::Present,
           texture: back_buffer.texture(),
+          range: BarrierTextureRange::default(),
         }
     ]);
     std::mem::drop(sharpened_texture);

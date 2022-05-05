@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange}, platform::io::IO};
 
 use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, renderer_scene::RendererScene}};
 
@@ -177,6 +177,7 @@ impl<B: Backend> GeometryPass<B> {
       old_layout: TextureLayout::Undefined,
       new_layout: TextureLayout::DepthStencilReadWrite,
       texture: &ds,
+      range: BarrierTextureRange::default(),
     }]);
 
     Self {
@@ -204,6 +205,7 @@ impl<B: Backend> GeometryPass<B> {
       old_layout: TextureLayout::Undefined,
       new_layout: TextureLayout::RenderTarget,
       texture: backbuffer.texture(),
+      range: BarrierTextureRange::default(),
     }]);
 
     cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
@@ -289,6 +291,7 @@ impl<B: Backend> GeometryPass<B> {
       old_layout: TextureLayout::RenderTarget,
       new_layout: TextureLayout::Present,
       texture: backbuffer.texture(),
+      range: BarrierTextureRange::default(),
     }]);
   }
 }

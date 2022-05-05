@@ -65,8 +65,8 @@ impl<B: Backend> BlueNoise<B> {
     device.create_sampling_view(&texture, &TextureViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
-      base_array_level: 0,
-      array_level_length: 1,
+      base_array_layer: 0,
+      array_layer_length: 1,
     }, Some(&format!("STBlueNoiseUAV{}", index)))
   }
 

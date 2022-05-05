@@ -162,8 +162,8 @@ impl Device<VkBackend> for VkDevice {
     let srv_info = TextureViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
-      base_array_level: info.base_array_level,
-      array_level_length: info.array_level_length,
+      base_array_layer: info.base_array_layer,
+      array_layer_length: info.array_layer_length,
     };
     Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
   }
@@ -172,8 +172,8 @@ impl Device<VkBackend> for VkDevice {
     let srv_info = TextureViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
-      base_array_level: info.base_array_level,
-      array_level_length: info.array_level_length,
+      base_array_layer: info.base_array_layer,
+      array_layer_length: info.array_layer_length,
     };
     Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
   }
@@ -183,8 +183,8 @@ impl Device<VkBackend> for VkDevice {
     let srv_info = TextureViewInfo {
       base_mip_level: info.base_mip_level,
       mip_level_length: info.mip_level_length,
-      base_array_level: info.base_array_level,
-      array_level_length: info.array_level_length,
+      base_array_layer: info.base_array_layer,
+      array_layer_length: info.array_layer_length,
     };
     Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
   }

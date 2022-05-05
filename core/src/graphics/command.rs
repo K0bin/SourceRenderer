@@ -15,6 +15,7 @@ use super::RenderpassRecordingMode;
 use super::ShaderType;
 use super::StoreOp;
 use super::SubpassInfo;
+use super::TextureViewInfo;
 use super::TopLevelAccelerationStructureInfo;
 use super::texture::TextureLayout;
 
@@ -188,6 +189,36 @@ impl BarrierAccess {
   }
 }
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct BarrierTextureRange {
+  pub base_mip_level: u32,
+  pub mip_level_length: u32,
+  pub base_array_layer: u32,
+  pub array_layer_length: u32,
+}
+
+impl Default for BarrierTextureRange {
+  fn default() -> Self {
+    Self {
+      base_mip_level: 0,
+      mip_level_length: 1,
+      base_array_layer: 0,
+      array_layer_length: 1
+    }
+  }
+}
+
+impl From<&TextureViewInfo> for BarrierTextureRange {
+  fn from(view_info: &TextureViewInfo) -> Self {
+    Self {
+      base_array_layer: view_info.base_array_layer,
+      base_mip_level: view_info.base_mip_level,
+      array_layer_length: view_info.array_layer_length,
+      mip_level_length: view_info.mip_level_length,
+    }
+  }
+}
+
 pub enum Barrier<'a, B: Backend> {
   TextureBarrier {
     old_sync: BarrierSync,
@@ -196,7 +227,8 @@ pub enum Barrier<'a, B: Backend> {
     new_layout: TextureLayout,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    texture: &'a Arc<B::Texture>
+    texture: &'a Arc<B::Texture>,
+    range: BarrierTextureRange,
   },
   BufferBarrier {
     old_sync: BarrierSync,

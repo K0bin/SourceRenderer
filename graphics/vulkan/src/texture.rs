@@ -239,8 +239,8 @@ impl VkTextureView {
         },
         base_mip_level: info.base_mip_level,
         level_count: info.mip_level_length,
-        base_array_layer: info.base_array_level,
-        layer_count: info.array_level_length
+        base_array_layer: info.base_array_layer,
+        layer_count: info.array_layer_length
       },
       ..Default::default()
     };

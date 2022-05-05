@@ -664,7 +664,7 @@ impl VkCommandBuffer {
   ) {
     for barrier in barriers {
       match barrier {
-        Barrier::TextureBarrier { old_sync, new_sync, old_layout, new_layout, old_access, new_access, texture } => {
+        Barrier::TextureBarrier { old_sync, new_sync, old_layout, new_layout, old_access, new_access, texture, range } => {
           let info = texture.info();
           let mut aspect_mask = vk::ImageAspectFlags::empty();
           if info.format.is_depth() {
@@ -691,10 +691,10 @@ impl VkCommandBuffer {
             image: *texture.handle(),
             subresource_range: vk::ImageSubresourceRange {
               aspect_mask,
-              base_array_layer: 0,
-              base_mip_level: 0,
-              level_count: info.mip_levels,
-              layer_count: info.array_length
+              base_array_layer: range.base_array_layer,
+              base_mip_level: range.base_mip_level,
+              level_count: range.mip_level_length,
+              layer_count: range.array_layer_length
             },
             ..Default::default()
           });
