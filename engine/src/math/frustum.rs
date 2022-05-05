@@ -8,6 +8,8 @@ struct OrientedBoundingBox {
   axes: [Vec3; 3]
 }
 
+#[repr(C)]
+#[derive(Debug, Clone)]
 pub struct Frustum {
   near_half_width: f32,
   near_half_height: f32,
@@ -22,18 +24,23 @@ impl Frustum {
     Self {
       near_half_width,
       near_half_height,
-      z_near: z_near,
-      z_far: z_far
+      z_near: -z_near,
+      z_far: -z_far
     }
   }
 
   pub fn intersects(&self, bounding_box: &BoundingBox, model_view: &Matrix4) -> bool {
-    let corners = [
+    let mut corners = [
       (model_view * Vec4::new(bounding_box.min.x, bounding_box.min.y, bounding_box.min.z, 1f32)).xyz(),
       (model_view * Vec4::new(bounding_box.max.x, bounding_box.min.y, bounding_box.min.z, 1f32)).xyz(),
       (model_view * Vec4::new(bounding_box.min.x, bounding_box.max.y, bounding_box.min.z, 1f32)).xyz(),
       (model_view * Vec4::new(bounding_box.min.x, bounding_box.min.y, bounding_box.max.z, 1f32)).xyz()
     ];
+
+    // The algorithm assumes a right hand frustum, so just invert z in view space
+    for corner in &mut corners {
+      corner.z = -corner.z;
+    }
 
     let axes = [
       corners[1] - corners[0],
@@ -63,8 +70,8 @@ impl Frustum {
       }
       let obb_min = mo_c - radius;
       let obb_max = mo_c + radius;
-      let tau_0  = self.z_near;
-      let tau_1  = self.z_far;
+      let tau_0 = self.z_far;
+      let tau_1 = self.z_near;
 
       if obb_min > tau_1 || obb_max < tau_0 {
         return false;
@@ -168,68 +175,36 @@ impl Frustum {
           return false;
         }
       }
+    }
 
-      // U x A_i
-      {
-        for i in 0..obb.extents.len() {
-          let m = Vec3::new(obb.axes[i].z, 0f32, -obb.axes[i].y);
-          let mo_x = m.x.abs();
-          let mo_y = 0f32;
-          let mo_z = m.z;
-          let mo_c = m.x * obb.center.x + m.z * obb.center.z;
-          let mut obb_radius = 0f32;
-          for i in 0..3 {
-            obb_radius += (m.dot(&obb.axes[i])).abs() * obb.extents[i];
-          }
-          let obb_min = mo_c - obb_radius;
-          let obb_max = mo_c + obb_radius;
-          let p = self.near_half_width * mo_x + self.near_half_height * mo_y;
-
-          let mut tau_0 = self.z_near * mo_z - p;
-          let mut tau_1 = self.z_near * mo_z + p;
-
-          if tau_0 < 0f32 {
-            tau_0 *= self.z_far / self.z_near;
-          }
-          if tau_1 > 0f32 {
-            tau_1 *= self.z_far / self.z_near;
-          }
-
-          if obb_min > tau_1 || obb_max < tau_0 {
-            return false;
-          }
+    // U x A_i
+    {
+      for i in 0..obb.extents.len() {
+        let m = Vec3::new(obb.axes[i].z, 0f32, -obb.axes[i].y);
+        let mo_x = m.x.abs();
+        let mo_y = 0f32;
+        let mo_z = m.z;
+        let mo_c = m.x * obb.center.x + m.z * obb.center.z;
+        let mut obb_radius = 0f32;
+        for i in 0..3 {
+          obb_radius += (m.dot(&obb.axes[i])).abs() * obb.extents[i];
         }
-      }
+        let obb_min = mo_c - obb_radius;
+        let obb_max = mo_c + obb_radius;
+        let p = self.near_half_width * mo_x + self.near_half_height * mo_y;
 
-      // U x A_i
-      {
-        for i in 0..obb.extents.len() {
-          let m = Vec3::new(obb.axes[i].z, 0f32, -obb.axes[i].y);
-          let mo_x = m.x.abs();
-          let mo_y = 0f32;
-          let mo_z = m.z;
-          let mo_c = m.x * obb.center.x + m.z * obb.center.z;
-          let mut obb_radius = 0f32;
-          for i in 0..3 {
-            obb_radius += (m.dot(&obb.axes[i])).abs() * obb.extents[i];
-          }
-          let obb_min = mo_c - obb_radius;
-          let obb_max = mo_c + obb_radius;
-          let p = self.near_half_width * mo_x + self.near_half_height * mo_y;
+        let mut tau_0 = self.z_near * mo_z - p;
+        let mut tau_1 = self.z_near * mo_z + p;
 
-          let mut tau_0 = self.z_near * mo_z - p;
-          let mut tau_1 = self.z_near * mo_z + p;
+        if tau_0 < 0f32 {
+          tau_0 *= self.z_far / self.z_near;
+        }
+        if tau_1 > 0f32 {
+          tau_1 *= self.z_far / self.z_near;
+        }
 
-          if tau_0 < 0f32 {
-            tau_0 *= self.z_far / self.z_near;
-          }
-          if tau_1 > 0f32 {
-            tau_1 *= self.z_far / self.z_near;
-          }
-
-          if obb_min > tau_1 || obb_max < tau_0 {
-            return false;
-          }
+        if obb_min > tau_1 || obb_max < tau_0 {
+          return false;
         }
       }
     }
