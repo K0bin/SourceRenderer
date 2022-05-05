@@ -39,8 +39,6 @@ pub(crate) fn halton_sequence(mut index: u32, base: u32) -> f32 {
 
 pub struct TAAPass<B: GraphicsBackend> {
   pipeline: Arc<B::ComputePipeline>,
-  nearest_sampler: Arc<B::Sampler>,
-  linear_sampler: Arc<B::Sampler>
 }
 
 impl<B: GraphicsBackend> TAAPass<B> {
@@ -54,34 +52,6 @@ impl<B: GraphicsBackend> TAAPass<B> {
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("taa.comp.spv"))
     };
     let pipeline = device.create_compute_pipeline(&taa_compute_shader, Some("TAA"));
-
-    let linear_sampler = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::Repeat,
-      address_mode_v: AddressMode::Repeat,
-      address_mode_w: AddressMode::Repeat,
-      mip_bias: 0.0,
-      max_anisotropy: 0.0,
-      compare_op: None,
-      min_lod: 0.0,
-      max_lod: None,
-    });
-
-    let nearest_sampler = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Nearest,
-      min_filter: Filter::Nearest,
-      mip_filter: Filter::Nearest,
-      address_mode_u: AddressMode::Repeat,
-      address_mode_v: AddressMode::Repeat,
-      address_mode_w: AddressMode::Repeat,
-      mip_bias: 0.0,
-      max_anisotropy: 0.0,
-      compare_op: None,
-      min_lod: 0.0,
-      max_lod: None,
-    });
 
     let texture_info = TextureInfo {
       format: Format::RGBA8,
@@ -99,8 +69,6 @@ impl<B: GraphicsBackend> TAAPass<B> {
 
     Self {
       pipeline,
-      linear_sampler,
-      nearest_sampler
     }
   }
 
@@ -157,10 +125,10 @@ impl<B: GraphicsBackend> TAAPass<B> {
     );
 
     cmd_buf.set_pipeline(PipelineBinding::Compute(&self.pipeline));
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &*output_srv, &self.linear_sampler);
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*taa_history_srv, &self.linear_sampler);
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &*output_srv, resources.linear_sampler());
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*taa_history_srv, resources.linear_sampler());
     cmd_buf.bind_storage_texture(BindingFrequency::PerDraw, 2, &*taa_uav);
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*motion_srv, &self.nearest_sampler);
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*motion_srv, resources.nearest_sampler());
     cmd_buf.finish_binding();
 
     let info = taa_uav.texture().info();

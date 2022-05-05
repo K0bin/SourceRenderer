@@ -6,7 +6,6 @@ use crate::renderer::{passes::prepass::Prepass, renderer_resources::{HistoryReso
 
 pub struct RTShadowPass<B: Backend> {
   pipeline: Arc<B::RayTracingPipeline>,
-  sampler: Arc<B::Sampler>
 }
 
 impl<B: Backend> RTShadowPass<B> {
@@ -23,20 +22,6 @@ impl<B: Backend> RTShadowPass<B> {
       samples: SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
     }, false);
-
-    let sampler = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::ClampToEdge,
-      address_mode_v: AddressMode::ClampToEdge,
-      address_mode_w: AddressMode::ClampToEdge,
-      mip_bias: 0.0f32,
-      max_anisotropy: 0.0f32,
-      compare_op: None,
-      min_lod: 0.0f32,
-      max_lod: None,
-    });
 
     let ray_gen_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shadows.rgen.spv"))).unwrap();
@@ -67,7 +52,6 @@ impl<B: Backend> RTShadowPass<B> {
 
     Self {
       pipeline,
-      sampler
     }
   }
 
@@ -98,7 +82,7 @@ impl<B: Backend> RTShadowPass<B> {
     cmd_buffer.bind_acceleration_structure(BindingFrequency::PerFrame, 0, acceleration_structure);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerFrame, 1, &*texture_uav);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, camera_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 5, &*depth, &self.sampler);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 5, &*depth, resources.linear_sampler());
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 6, blue_noise, blue_noise_sampler);
     let info = texture_uav.texture().info();
 

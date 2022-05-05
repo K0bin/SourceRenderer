@@ -1,7 +1,7 @@
 
 use std::{collections::HashMap, sync::Arc, cell::{RefCell, Ref}};
 
-use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureDepthStencilViewInfo, TextureSamplingViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage, Texture, Buffer};
+use sourcerenderer_core::graphics::{Backend, BarrierSync, BarrierAccess, TextureLayout, CommandBuffer, Barrier, TextureDepthStencilViewInfo, TextureSamplingViewInfo, TextureRenderTargetViewInfo, TextureStorageViewInfo, Device, TextureInfo, BufferInfo, MemoryUsage, Texture, Buffer, SamplerInfo, Filter, AddressMode};
 
 struct AB<T> {
   a: T,
@@ -52,16 +52,47 @@ pub struct RendererResources<B: Backend> {
   device: Arc<B::Device>,
   textures: HashMap<String, AB<RefCell<TrackedTexture<B>>>>,
   buffers: HashMap<String, AB<RefCell<TrackedBuffer<B>>>>,
+  nearest_sampler: Arc<B::Sampler>,
+  linear_sampler: Arc<B::Sampler>,
   current_pass: ABEntry,
   global: RefCell<GlobalMemoryBarrier>
 }
 
 impl<B: Backend> RendererResources<B> {
   pub fn new(device: &Arc<B::Device>) -> Self {
+    let nearest_sampler= device.create_sampler(&SamplerInfo {
+      mag_filter: Filter::Nearest,
+      min_filter: Filter::Nearest,
+      mip_filter: Filter::Nearest,
+      address_mode_u: AddressMode::ClampToEdge,
+      address_mode_v: AddressMode::ClampToEdge,
+      address_mode_w: AddressMode::ClampToEdge,
+      mip_bias: 0f32,
+      max_anisotropy: 0f32,
+      compare_op: None,
+      min_lod: 0f32,
+      max_lod: None,
+    });
+    let linear_sampler= device.create_sampler(&SamplerInfo {
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
+      address_mode_u: AddressMode::ClampToEdge,
+      address_mode_v: AddressMode::ClampToEdge,
+      address_mode_w: AddressMode::ClampToEdge,
+      mip_bias: 0f32,
+      max_anisotropy: 0f32,
+      compare_op: None,
+      min_lod: 0f32,
+      max_lod: None,
+    });
+
     Self {
       device: device.clone(),
       textures: HashMap::new(),
       buffers: HashMap::new(),
+      linear_sampler,
+      nearest_sampler,
       current_pass: ABEntry::A,
       global: RefCell::new(GlobalMemoryBarrier {
         stages: BarrierSync::empty(),
@@ -75,6 +106,14 @@ impl<B: Backend> RendererResources<B> {
       ABEntry::A => ABEntry::B,
       ABEntry::B => ABEntry::A
     };
+  }
+
+  pub fn nearest_sampler(&self) -> &Arc<B::Sampler> {
+    &self.nearest_sampler
+  }
+
+  pub fn linear_sampler(&self) -> &Arc<B::Sampler> {
+    &self.linear_sampler
   }
 
   pub fn create_texture(&mut self, name: &str, info: &TextureInfo, has_history: bool) {

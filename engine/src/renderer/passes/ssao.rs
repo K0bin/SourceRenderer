@@ -11,10 +11,7 @@ use super::prepass::Prepass;
 pub struct SsaoPass<B: GraphicsBackend> {
   pipeline: Arc<B::ComputePipeline>,
   kernel: Arc<B::Buffer>,
-  nearest_sampler: Arc<B::Sampler>,
   blur_pipeline: Arc<B::ComputePipeline>,
-  blur_sampler: Arc<B::Sampler>,
-  linear_sampler: Arc<B::Sampler>
 }
 
 fn lerp(a: f32, b: f32, f: f32) -> f32 {
@@ -68,53 +65,10 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     };
     let blur_pipeline = device.create_compute_pipeline(&blur_shader, Some("SSAOBlur"));
 
-    let nearest_sampler = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Nearest,
-      min_filter: Filter::Nearest,
-      mip_filter: Filter::Nearest,
-      address_mode_u: AddressMode::ClampToEdge,
-      address_mode_v: AddressMode::ClampToEdge,
-      address_mode_w: AddressMode::ClampToEdge,
-      mip_bias: 0.0f32,
-      max_anisotropy: 0.0f32,
-      compare_op: None,
-      min_lod: 0.0f32,
-      max_lod: None,
-    });
-    let linear = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::ClampToEdge,
-      address_mode_v: AddressMode::ClampToEdge,
-      address_mode_w: AddressMode::ClampToEdge,
-      mip_bias: 0.0f32,
-      max_anisotropy: 0.0f32,
-      compare_op: None,
-      min_lod: 0.0f32,
-      max_lod: None,
-    });
-    let blur_sampler = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::ClampToEdge,
-      address_mode_v: AddressMode::ClampToEdge,
-      address_mode_w: AddressMode::ClampToEdge,
-      mip_bias: 0.0f32,
-      max_anisotropy: 0.0f32,
-      compare_op: None,
-      min_lod: 0.0f32,
-      max_lod: None,
-    });
-
     Self {
       pipeline,
       kernel,
-      nearest_sampler,
       blur_pipeline,
-      blur_sampler,
-      linear_sampler: linear
     }
   }
 
@@ -192,7 +146,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.flush_barriers();
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &self.kernel, 0, WHOLE_BUFFER);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, blue_noise_view, blue_noise_sampler);
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 2, &*depth_srv, &self.linear_sampler);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 2, &*depth_srv, resources.linear_sampler());
     cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, camera, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 4, &*ssao_uav);
     cmd_buffer.finish_binding();
@@ -236,9 +190,9 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.blur_pipeline));
     cmd_buffer.flush_barriers();
     cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &*blurred_uav);
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*ssao_srv, &self.blur_sampler);
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 2, &*blurred_srv_b, &self.blur_sampler);
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*motion_srv, &self.nearest_sampler);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*ssao_srv, resources.linear_sampler());
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 2, &*blurred_srv_b, resources.linear_sampler());
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*motion_srv, resources.nearest_sampler());
     cmd_buffer.finish_binding();
     let blur_info = blurred_uav.texture().info();
     cmd_buffer.dispatch((blur_info.width + 7) / 8, (blur_info.height + 7) / 8, blur_info.depth);
