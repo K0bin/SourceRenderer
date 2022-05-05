@@ -208,7 +208,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     cmd_buffer.begin_label("Geometry pass");
     let static_drawables = scene.static_drawables();
 
-    let rtv_ref = barriers.access_rtv(
+    let rtv_ref = barriers.access_render_target_view(
       cmd_buffer,
       Self::GEOMETRY_PASS_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,
@@ -219,7 +219,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     );
     let rtv = &*rtv_ref;
 
-    let prepass_depth_ref = barriers.access_dsv(
+    let prepass_depth_ref = barriers.access_depth_stencil_view(
       cmd_buffer,
       Prepass::<B>::DEPTH_TEXTURE_NAME,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -231,7 +231,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     );
     let prepass_depth = &*prepass_depth_ref;
 
-    let ssao_ref = barriers.access_srv(
+    let ssao_ref = barriers.access_sampling_view(
       cmd_buffer,
       SsaoPass::<B>::SSAO_TEXTURE_NAME,
       BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
@@ -254,7 +254,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     let rt_shadows: Ref<Arc<B::TextureSamplingView>>;
     let shadows = if device.supports_ray_tracing() {
-      rt_shadows = barriers.access_srv(
+      rt_shadows = barriers.access_sampling_view(
         cmd_buffer,
         RTShadowPass::<B>::SHADOWS_TEXTURE_NAME,
         BarrierSync::FRAGMENT_SHADER,

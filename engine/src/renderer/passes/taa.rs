@@ -80,7 +80,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
   ) {
     cmd_buf.begin_label("TAA pass");
 
-    let output_srv = resources.access_srv(
+    let output_srv = resources.access_sampling_view(
       cmd_buf,
       input_name,
       BarrierSync::COMPUTE_SHADER,
@@ -91,7 +91,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let taa_uav = resources.access_uav(
+    let taa_uav = resources.access_storage_view(
       cmd_buf,
       Self::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -102,7 +102,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let taa_history_srv = resources.access_srv(
+    let taa_history_srv = resources.access_sampling_view(
       cmd_buf,
       Self::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -113,7 +113,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       HistoryResourceEntry::Past
     );
 
-    let motion_srv = resources.access_srv(
+    let motion_srv = resources.access_sampling_view(
       cmd_buf,
       Prepass::<B>::MOTION_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,

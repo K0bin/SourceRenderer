@@ -201,7 +201,7 @@ impl<B: GraphicsBackend> Prepass<B> {
     cmd_buffer.begin_label("Depth prepass");
     let static_drawables = scene.static_drawables();
 
-    let depth_buffer = resources.access_dsv(
+    let depth_buffer = resources.access_depth_stencil_view(
       cmd_buffer,
       Self::DEPTH_TEXTURE_NAME,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -212,7 +212,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       HistoryResourceEntry::Current
     );
 
-    let motion = resources.access_rtv(
+    let motion = resources.access_render_target_view(
       cmd_buffer,
       Self::MOTION_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,
@@ -223,7 +223,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       HistoryResourceEntry::Current
     );
 
-    let normals = resources.access_rtv(
+    let normals = resources.access_render_target_view(
       cmd_buffer,
       Self::NORMALS_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,

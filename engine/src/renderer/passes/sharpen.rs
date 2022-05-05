@@ -49,7 +49,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
   }
 
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>) {
-    let input_image_uav = resources.access_uav(
+    let input_image_uav = resources.access_storage_view(
       cmd_buffer,
       TAAPass::<B>::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -60,7 +60,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let sharpen_uav = resources.access_uav(
+    let sharpen_uav = resources.access_storage_view(
       cmd_buffer,
       Self::SHAPENED_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,

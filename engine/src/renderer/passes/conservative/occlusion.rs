@@ -170,7 +170,7 @@ impl<B: Backend> OcclusionPass<B> {
     scene: &RendererScene<B>,
     view: &View
   ) {
-    let history_depth_buffer_ref = resources.access_dsv(
+    let history_depth_buffer_ref = resources.access_depth_stencil_view(
       command_buffer,
       Prepass::<B>::DEPTH_TEXTURE_NAME,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,

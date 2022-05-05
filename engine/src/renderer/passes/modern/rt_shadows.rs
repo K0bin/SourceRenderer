@@ -56,7 +56,7 @@ impl<B: Backend> RTShadowPass<B> {
   }
 
   pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, frame: u64, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, resources: &RendererResources<B>, blue_noise: &Arc<B::TextureSamplingView>, blue_noise_sampler: &Arc<B::Sampler>) {
-    let texture_uav = resources.access_uav(
+    let texture_uav = resources.access_storage_view(
       cmd_buffer,
       Self::SHADOWS_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER | BarrierSync::RAY_TRACING,
@@ -67,7 +67,7 @@ impl<B: Backend> RTShadowPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let depth = resources.access_srv(
+    let depth = resources.access_sampling_view(
       cmd_buffer,
       Prepass::<B>::DEPTH_TEXTURE_NAME,
       BarrierSync::RAY_TRACING | BarrierSync::COMPUTE_SHADER,

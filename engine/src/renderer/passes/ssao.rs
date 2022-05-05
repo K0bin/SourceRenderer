@@ -108,7 +108,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     blue_noise_sampler: &Arc<B::Sampler>,
     resources: &RendererResources<B>
   ){
-    let ssao_uav = resources.access_uav(
+    let ssao_uav = resources.access_storage_view(
       cmd_buffer,
       Self::SSAO_INTERNAL_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -119,7 +119,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let depth_srv = resources.access_srv(
+    let depth_srv = resources.access_sampling_view(
       cmd_buffer,
       Prepass::<B>::DEPTH_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -130,7 +130,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let motion_srv = resources.access_srv(
+    let motion_srv = resources.access_sampling_view(
       cmd_buffer,
       Prepass::<B>::MOTION_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -154,7 +154,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     cmd_buffer.dispatch((ssao_info.width + 7) / 8, (ssao_info.height + 7) / 8, ssao_info.depth);
 
     std::mem::drop(ssao_uav);
-    let ssao_srv = resources.access_srv(
+    let ssao_srv = resources.access_sampling_view(
       cmd_buffer,
       Self::SSAO_INTERNAL_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -165,7 +165,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let blurred_uav = resources.access_uav(
+    let blurred_uav = resources.access_storage_view(
       cmd_buffer,
       Self::SSAO_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -176,7 +176,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let blurred_srv_b = resources.access_srv(
+    let blurred_srv_b = resources.access_sampling_view(
       cmd_buffer,
       Self::SSAO_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
