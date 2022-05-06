@@ -1,8 +1,8 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding}, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, BarrierTextureRange, TextureLayout, TextureViewInfo}, Platform, platform::io::IO};
 
-use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::modern::gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, drawable::View}, math::Frustum};
+use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}, prepass::Prepass}, drawable::View}, math::Frustum};
 
 pub struct DrawPrepPass<B: Backend> {
   culling_pipeline: Arc<B::ComputePipeline>,
@@ -60,11 +60,32 @@ impl<B: Backend> DrawPrepPass<B> {
         HistoryResourceEntry::Current
       );
 
+      let hi_z_mips = {
+        let hi_z_info = resources.texture_info(HierarchicalZPass::<B>::HI_Z_BUFFER_NAME);
+        hi_z_info.mip_levels
+      };
+      let hi_z = resources.access_sampling_view(
+        cmd_buffer,
+        HierarchicalZPass::<B>::HI_Z_BUFFER_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::SAMPLING_READ,
+        TextureLayout::Sampled,
+        false,
+        &TextureViewInfo {
+          base_mip_level: 0,
+          mip_level_length: hi_z_mips,
+          base_array_layer: 0,
+          array_layer_length: 1,
+        },
+        HistoryResourceEntry::Current
+      );
+
       cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, scene_buffer, 0, WHOLE_BUFFER);
       cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &*buffer, 0, WHOLE_BUFFER);
       cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer, 0, WHOLE_BUFFER);
       let frustum_buffer = cmd_buffer.upload_dynamic_data(&[Frustum::new(view.near_plane, view.far_plane, view.camera_fov, view.aspect_ratio)], BufferUsage::CONSTANT);
       cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, &frustum_buffer, 0, WHOLE_BUFFER);
+      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 4, &*hi_z, resources.nearest_sampler());
       cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.culling_pipeline));
       cmd_buffer.flush_barriers();
       cmd_buffer.finish_binding();

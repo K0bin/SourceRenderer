@@ -1,6 +1,5 @@
 #version 450
 #extension GL_GOOGLE_include_directive : enable
-#extension GL_KHR_shader_subgroup_basic : enable
 // #extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -18,7 +17,7 @@ struct Frustum {
 };
 
 bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera camera, mat4 modelTransform);
-bool checkOcclusion(GPUBoundingBox aabb);
+bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform);
 
 layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0) readonly restrict buffer sceneBuffer {
   GPUScene scene;
@@ -32,11 +31,12 @@ layout(std140, set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform cameraUBO {
 layout(std140, set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform frustumUBO {
   Frustum frustum;
 };
+layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4) uniform sampler2D hiZ;
 
 shared uint[2] visible;
 
 void main() {
-  if (subgroupElect()) {
+  if (gl_LocalInvocationIndex == 0) {
     visible[0] = 0;
     visible[1] = 0;
   }
@@ -50,21 +50,71 @@ void main() {
     GPUBoundingBox aabb = mesh.aabb;
 
     isVisible = checkVisibilityAgainstFrustum(frustum, aabb, camera, drawable.transform);
-    isVisible = isVisible && checkOcclusion(aabb);
+    bool passedFrustumCheck = isVisible;
+    isVisible = isVisible && checkOcclusion(aabb, drawable.transform);
+    /* if (!isVisible && passedFrustumCheck) {
+      debugPrintfEXT("Drawable passed frustum check but failed occlusion culling: %u", drawableIndex);
+    } */
   }
   if (isVisible) {
     atomicOr(visible[gl_LocalInvocationIndex / 32], 1 << (drawableIndex % 32));
   }
   barrier();
-  if (subgroupElect()) {
+  if (gl_LocalInvocationIndex == 0) {
     visibleBitmasks[gl_WorkGroupID.x * 2] = visible[0];
     visibleBitmasks[gl_WorkGroupID.x * 2 + 1] = visible[1];
   }
 }
 
-bool checkOcclusion(GPUBoundingBox aabb) {
-  // TODO: implement Hi-Z occlusion culling
-  return true;
+bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform) {
+  mat4 projViewModel = camera.viewProj * modelTransform;
+  vec4 corners[8] = {
+    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmin.z, 1)),
+    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmin.y, aabb.bbmin.z, 1)),
+    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmax.y, aabb.bbmin.z, 1)),
+    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmax.y, aabb.bbmax.z, 1)),
+    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmin.y, aabb.bbmax.z, 1)),
+    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmax.y, aabb.bbmin.z, 1)),
+    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmax.y, aabb.bbmax.z, 1)),
+    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmax.z, 1)),
+  };
+
+  corners[0].xyz /= corners[0].w;
+  vec2 minCorner = corners[0].xy;
+  vec3 maxCorner = corners[0].xyz;
+  for (uint i = 1; i < 8; i++) {
+    corners[i].xyz /= corners[i].w;
+    minCorner = vec2(
+      min(minCorner.x, corners[i].x),
+      min(minCorner.y, corners[i].y)
+    );
+    maxCorner = vec3(
+      max(maxCorner.x, corners[i].x),
+      max(maxCorner.y, corners[i].y),
+      max(maxCorner.z, corners[i].z)
+    );
+  }
+
+  if (maxCorner.z >= 1)
+    return true;
+
+  vec2 mip0texSize = vec2(textureSize(hiZ, 0));
+  vec2 dist = (maxCorner.xy - minCorner.xy) * mip0texSize;
+  float maxDist = max(dist.x, dist.y);
+  float mip = ceil(log2(maxDist / 2));
+
+  vec2 texSize = vec2(textureSize(hiZ, int(mip)));
+  vec2 mipTexelSize = vec2(1 / texSize.x, 1 / texSize.y);
+  vec2 center = round(minCorner.xy + (maxCorner.xy - minCorner.xy) * 0.5) / texSize;
+  vec4 depths[4] = {
+    textureLod(hiZ, center + vec2(-0.5, -0.5) * mipTexelSize, mip),
+    textureLod(hiZ, center + vec2(-0.5, 0.5) * mipTexelSize, mip),
+    textureLod(hiZ, center + vec2(0.5, 0.5) * mipTexelSize, mip),
+    textureLod(hiZ, center + vec2(0.5, -0.5) * mipTexelSize, mip)
+  };
+
+  float maxDepth = max(max(depths[0].x, depths[1].x), max(depths[2].x, depths[3].x));
+  return maxCorner.z <= maxDepth;
 }
 
 struct OrientedBoundingBox {
@@ -297,3 +347,7 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
 
   return true;
 }
+
+// References:
+// https://arm-software.github.io/opengl-es-sdk-for-android/occlusion_culling.html
+// https://www.rastergrid.com/blog/2010/10/hierarchical-z-map-based-occlusion-culling/
