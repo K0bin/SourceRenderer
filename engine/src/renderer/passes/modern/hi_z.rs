@@ -9,7 +9,7 @@ pub struct HierarchicalZPass<B: Backend> {
 }
 
 impl<B: Backend> HierarchicalZPass<B> {
-  const HI_Z_BUFFER_NAME: &'static str = "Hierarchical Z Buffer";
+  pub const HI_Z_BUFFER_NAME: &'static str = "Hierarchical Z Buffer";
   pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>) -> Self {
     let mut texture_info = resources.texture_info(Prepass::<B>::DEPTH_TEXTURE_NAME).clone();
     let size = texture_info.width.max(texture_info.height) as f32;

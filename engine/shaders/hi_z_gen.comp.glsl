@@ -26,17 +26,19 @@ void main() {
   vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
 
   vec4 texels = textureGather(inputTexture, texCoord);
-  float minValue = min(min(texels.x, texels.y), min(texels.z, texels.w));
+  float maxValue = max(max(texels.x, texels.y), max(texels.z, texels.w));
 
   uint previousMipWidth = (baseWidth << (mipLevel - 1));
   if ((previousMipWidth & 1) == 1) {
-    minValue = min(minValue, texture(inputTexture, texCoord + vec2(1.0 / float(texSize.x), 0)).x);
+    maxValue = max(maxValue, textureLodOffset(inputTexture, texCoord, 0, ivec2(2, 0)).x);
+    maxValue = max(maxValue, textureLodOffset(inputTexture, texCoord, 0, ivec2(2, 1)).x);
   }
   uint previousMipHeight = (baseHeight << (mipLevel - 1));
   if ((previousMipHeight & 1) == 1) {
-    minValue = min(minValue, texture(inputTexture, texCoord + vec2(0, 1 / float(texSize.x))).x);
+    maxValue = max(maxValue, textureLodOffset(inputTexture, texCoord, 0, ivec2(0, 2)).x);
+    maxValue = max(maxValue, textureLodOffset(inputTexture, texCoord, 0, ivec2(1, 2)).x);
   }
 
   ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
-  imageStore(outputTexture, storageTexCoord, vec4(minValue, 0.0, 0.0, 0.0));
+  imageStore(outputTexture, storageTexCoord, vec4(maxValue, 0.0, 0.0, 0.0));
 }
