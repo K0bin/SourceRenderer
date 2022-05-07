@@ -246,7 +246,7 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
       float moC = m.y * obb.center.y + m.z * obb.center.z;
       float obbRadius = 0;
       for (uint j = 0; j < 3; j++) {
-        obbRadius += abs(dot(m, obb.axes[i])) * obb.extents[i];
+        obbRadius += abs(dot(m, obb.axes[j])) * obb.extents[j];
       }
       float obbMin = moC - obbRadius;
       float obbMax = moC + obbRadius;
@@ -278,7 +278,7 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
       float moC = m.x * obb.center.x + m.z * obb.center.z;
       float obbRadius = 0;
       for (uint j = 0; j < 3; j++) {
-        obbRadius += abs(dot(m, obb.axes[i])) * obb.extents[i];
+        obbRadius += abs(dot(m, obb.axes[j])) * obb.extents[j];
       }
       float obbMin = moC - obbRadius;
       float obbMax = moC + obbRadius;
