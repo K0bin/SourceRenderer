@@ -124,6 +124,8 @@ struct OrientedBoundingBox {
 };
 
 bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera camera, mat4 modelTransform) {
+  // TODO check bounding sphere instead? that would be much cheaper.
+
   mat4 viewModel = camera.view * modelTransform;
   vec3 corners[4] = {
     (viewModel * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmin.z, 1)).xyz,
