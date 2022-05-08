@@ -156,7 +156,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
               let strip_group_next = vtx_file.seek(SeekFrom::Current(0)).map_err(|_e| ())?;
               vtx_file.seek(SeekFrom::Start(strip_group_start + strip_group.indices_offset as u64)).map_err(|_e| ())?;
               strip_group_indices.clear();
-              for _ in 0..strip_group.indices_count {
+              for _ in (0..strip_group.indices_count).rev() {
                 strip_group_indices.push(vtx_file.read_u16().map_err(|_e| ())? as u32);
               }
 
@@ -165,8 +165,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
               for _ in 0..strip_group.strips_count {
                 let strip = StripHeader::read(&mut vtx_file).map_err(|_e| ())?;
                 for i in 0..strip.indices_count {
-                  let reversed_i = strip.indices_count - 1 - i;
-                  indices.push(base_index as u32 + strip_group_indices[(strip.index_offset + reversed_i) as usize]);
+                  indices.push(base_index as u32 + strip_group_indices[(strip.index_offset + i) as usize]);
                 }
               }
 
@@ -278,9 +277,9 @@ fn load_geometry<R: Read + Seek>(file: &mut R) -> IOResult<Box<[Vertex]>> {
 }
 
 fn fixup_position(position: &Vector3<f32>) -> Vector3<f32> {
-  Vector3::<f32>::new(position.x, position.z, -position.y) * SCALING_FACTOR
+  Vector3::<f32>::new(position.x, position.z, position.y) * SCALING_FACTOR
 }
 
 fn fixup_normal(normal: &Vector3<f32>) -> Vector3<f32> {
-  Vector3::<f32>::new(normal.x, normal.z, -normal.y)
+  Vector3::<f32>::new(normal.x, normal.z, normal.y)
 }

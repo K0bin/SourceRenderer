@@ -111,9 +111,9 @@ impl BspLevelLoader {
       if surf_edge_index < face.first_edge + 2 {
         continue;
       }
-      material_brush_indices.push(root_vertex);
-      material_brush_indices.push(brush_vertices.len() as u32 - 1);
       material_brush_indices.push(brush_vertices.len() as u32 - 2);
+      material_brush_indices.push(brush_vertices.len() as u32 - 1);
+      material_brush_indices.push(root_vertex);
     }
   }
 
@@ -190,9 +190,9 @@ impl BspLevelLoader {
         });
 
         if brush_vertices.len() - old_len as usize >= 3 {
-          material_brush_indices.push(brush_vertices.len() as u32 - 3);
-          material_brush_indices.push(brush_vertices.len() as u32 - 1);
           material_brush_indices.push(brush_vertices.len() as u32 - 2);
+          material_brush_indices.push(brush_vertices.len() as u32 - 1);
+          material_brush_indices.push(brush_vertices.len() as u32 - 3);
         }
 
         let position = Self::calculate_disp_vert(disp_info.disp_vert_start, x, y + 1, size, &corners, first_corner, &temp.disp_verts);
@@ -211,9 +211,9 @@ impl BspLevelLoader {
         });
 
         if brush_vertices.len() - old_len as usize >= 3 {
-          material_brush_indices.push(brush_vertices.len() as u32 - 3);
-          material_brush_indices.push(brush_vertices.len() as u32 - 2);
           material_brush_indices.push(brush_vertices.len() as u32 - 1);
+          material_brush_indices.push(brush_vertices.len() as u32 - 2);
+          material_brush_indices.push(brush_vertices.len() as u32 - 3);
         }
       }
     }
@@ -245,11 +245,11 @@ impl BspLevelLoader {
   }
 
   fn fixup_position(position: &Vec3) -> Vec3 {
-    Vec3::new(position.x, position.z, -position.y) * SCALING_FACTOR
+    Vec3::new(position.x, position.z, position.y) * SCALING_FACTOR
   }
 
   fn fixup_normal(normal: &Vec3) -> Vec3 {
-    Vec3::new(normal.x, normal.z, -normal.y)
+    Vec3::new(normal.x, normal.z, normal.y)
   }
 
   fn fixup_rotation(rotation: &Vec3) -> Quaternion {
@@ -257,8 +257,8 @@ impl BspLevelLoader {
     // Source rotations are in the following order: Pitch Yaw Roll (Y Z X)
     // We need them in the following order: Pitch Yaw Roll (X Y Z)
     let rotation =
-        Rotation3::from_euler_angles(0f32, rotation.y * DEG_TO_RAD, 0f32)
-      * Rotation3::from_euler_angles(0f32, 0f32, -rotation.x * DEG_TO_RAD)
+        Rotation3::from_euler_angles(0f32, -rotation.y * DEG_TO_RAD, 0f32)
+      * Rotation3::from_euler_angles(0f32, 0f32, rotation.x * DEG_TO_RAD)
       * Rotation3::from_euler_angles(rotation.z * DEG_TO_RAD, 0f32, 0f32);
 
     Quaternion::from_rotation_matrix(&rotation)
