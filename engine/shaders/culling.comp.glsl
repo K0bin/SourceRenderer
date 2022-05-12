@@ -12,11 +12,13 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 struct Frustum {
   float nearHalfWidth;
   float nearHalfHeight;
-  float zNear;
-  float zFar;
+  uint _padding;
+  uint _padding1;
+  vec4 planes;
 };
 
 bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera camera, mat4 modelTransform);
+bool checkSphereVisibilityAgainstFrustum(Frustum frustum, GPUBoundingSphere sphere, Camera camera, mat4 modelTransform);
 bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform, uint drawableIndex);
 
 layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0) readonly restrict buffer sceneBuffer {
@@ -49,8 +51,8 @@ void main() {
     GPUMesh mesh = scene.meshes[drawable.meshIndex];
     GPUBoundingBox aabb = mesh.aabb;
 
-    isVisible = checkVisibilityAgainstFrustum(frustum, aabb, camera, drawable.transform);
-    isVisible = isVisible && checkOcclusion(aabb, drawable.transform, drawableIndex);
+    isVisible = checkSphereVisibilityAgainstFrustum(frustum, mesh.sphere, camera, drawable.transform);
+    isVisible = isVisible && checkOcclusion(aabb, camera, drawable.transform);
   }
   if (isVisible) {
     atomicOr(visible[gl_LocalInvocationIndex / 32], 1 << (drawableIndex % 32));
@@ -62,7 +64,7 @@ void main() {
   }
 }
 
-bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform, uint drawableIndex) {
+bool checkOcclusion(GPUBoundingBox aabb, Camera camera, mat4 modelTransform) {
   mat4 mvp = camera.viewProj * modelTransform;
   vec4 corners[8] = {
     mvp * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmin.z, 1),
@@ -141,6 +143,21 @@ bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform, uint drawableIndex
   return minCorner.z <= maxDepth;
 }
 
+
+bool checkSphereVisibilityAgainstFrustum(Frustum frustum, GPUBoundingSphere sphere, Camera camera, mat4 modelTransform) {
+  mat4 viewModel = camera.view * modelTransform;
+  vec3 center = (viewModel * vec4(sphere.center, 1)).xyz;
+
+  vec3 scale = vec3(length(modelTransform[0].xyz), length(modelTransform[1].xyz), length(modelTransform[2].xyz)); // suboptimal but no idea how to do this otherwise.
+  float radius = sphere.radius * max(max(scale.x, scale.y), scale.z);
+
+  bool isVisible = center.z + radius >= camera.zNear || center.z - radius <= camera.zFar;
+  isVisible = isVisible && center.z * frustum.planes.y - abs(center.x) * frustum.planes.x > -radius;
+  isVisible = isVisible && center.z * frustum.planes.w - abs(center.y) * frustum.planes.z > -radius;
+
+  return isVisible;
+}
+
 struct OrientedBoundingBox {
   vec3 center;
   vec3 extents;
@@ -149,6 +166,8 @@ struct OrientedBoundingBox {
 
 bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera camera, mat4 modelTransform) {
   // TODO check bounding sphere instead? that would be much cheaper.
+  float zNear = -camera.zNear;
+  float zFar = -camera.zFar;
 
   mat4 viewModel = camera.view * modelTransform;
   vec3 corners[4] = {
@@ -186,8 +205,8 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
     }
     float obbMin = moC - radius;
     float obbMax = moC + radius;
-    float tau0 = frustum.zFar;
-    float tau1 = frustum.zNear;
+    float tau0 = zFar;
+    float tau1 = zNear;
 
     if (obbMin > tau1 || obbMax < tau0) {
       return false;
@@ -197,10 +216,10 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
   // remaining frustum planes
   {
     vec3 frustumPlanes[4] = {
-      vec3(0, -frustum.zNear, frustum.nearHalfHeight),
-      vec3(0, frustum.zNear, frustum.nearHalfHeight),
-      vec3(-frustum.zNear, 0, frustum.nearHalfWidth),
-      vec3(frustum.zNear, 0, frustum.nearHalfWidth),
+      vec3(0, -zNear, frustum.nearHalfHeight),
+      vec3(0, zNear, frustum.nearHalfHeight),
+      vec3(-zNear, 0, frustum.nearHalfWidth),
+      vec3(zNear, 0, frustum.nearHalfWidth),
     };
     for (uint i = 0; i < 4; i++) {
       vec3 m = frustumPlanes[i];
@@ -215,15 +234,15 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
       float obbMin = moC - obbRadius;
       float obbMax = moC + obbRadius;
       float p = frustum.nearHalfWidth * moX + frustum.nearHalfHeight * moY;
-      float tau0 = frustum.zNear * moZ - p;
-      float tau1 = frustum.zNear * moZ + p;
+      float tau0 = zNear * moZ - p;
+      float tau1 = zNear * moZ + p;
 
       if (tau0 < 0) {
-        tau0 *= frustum.zFar / frustum.zNear;
+        tau0 *= zFar / zNear;
       }
 
       if (tau1 > 0) {
-        tau1 *= frustum.zFar / frustum.zNear;
+        tau1 *= zFar / zNear;
       }
 
       if (obbMin > tau1 || obbMax < tau0) {
@@ -245,14 +264,14 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
       float obbMax = moC + obbRadius;
       float p = frustum.nearHalfWidth * moX + frustum.nearHalfHeight * moY;
 
-      float tau0 = frustum.zNear * moZ - p;
-      float tau1 = frustum.zNear * moZ + p;
+      float tau0 = zNear * moZ - p;
+      float tau1 = zNear * moZ + p;
 
       if (tau0 < 0) {
-        tau0 *= frustum.zFar / frustum.zNear;
+        tau0 *= zFar / zNear;
       }
       if (tau1 > 0) {
-        tau1 *= frustum.zFar / frustum.zNear;
+        tau1 *= zFar / zNear;
       }
 
       if (obbMin > tau1 || obbMax < tau0) {
@@ -278,14 +297,14 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
       float obbMax = moC + obbRadius;
       float p = frustum.nearHalfWidth * moX + frustum.nearHalfHeight * moY;
 
-      float tau0 = frustum.zNear * moZ - p;
-      float tau1 = frustum.zNear * moZ + p;
+      float tau0 = zNear * moZ - p;
+      float tau1 = zNear * moZ + p;
 
       if (tau0 < 0) {
-        tau0 *= frustum.zFar / frustum.zNear;
+        tau0 *= zFar / zNear;
       }
       if (tau1 > 0) {
-        tau1 *= frustum.zFar / frustum.zNear;
+        tau1 *= zFar / zNear;
       }
 
       if (obbMin > tau1 || obbMax < tau0) {
@@ -310,14 +329,14 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
       float obbMax = moC + obbRadius;
       float p = frustum.nearHalfWidth * moX + frustum.nearHalfHeight * moY;
 
-      float tau0 = frustum.zNear * moZ - p;
-      float tau1 = frustum.zNear * moZ + p;
+      float tau0 = zNear * moZ - p;
+      float tau1 = zNear * moZ + p;
 
       if (tau0 < 0) {
-        tau0 *= frustum.zFar / frustum.zNear;
+        tau0 *= zFar / zNear;
       }
       if (tau1 > 0) {
-        tau1 *= frustum.zFar / frustum.zNear;
+        tau1 *= zFar / zNear;
       }
 
       if (obbMin > tau1 || obbMax < tau0) {
@@ -331,10 +350,10 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
     for (uint i = 0; i < 3; i++) {
       vec3 axis = obb.axes[i];
       vec3 ms[4] = {
-        cross(vec3(-frustum.nearHalfWidth, 0, frustum.zNear), axis),
-        cross(vec3(frustum.nearHalfWidth, 0, frustum.zNear), axis),
-        cross(vec3(0, frustum.nearHalfHeight, frustum.zNear), axis),
-        cross(vec3(0, -frustum.nearHalfHeight, frustum.zNear), axis),
+        cross(vec3(-frustum.nearHalfWidth, 0, zNear), axis),
+        cross(vec3(frustum.nearHalfWidth, 0, zNear), axis),
+        cross(vec3(0, frustum.nearHalfHeight, zNear), axis),
+        cross(vec3(0, -frustum.nearHalfHeight, zNear), axis),
       };
       for (uint j = 0; j < 4; j++) {
         vec3 m = ms[j];
@@ -354,14 +373,14 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
         float obbMax = moC + obbRadius;
         float p = frustum.nearHalfWidth * moX + frustum.nearHalfHeight * moY;
 
-        float tau0 = frustum.zNear * moZ - p;
-        float tau1 = frustum.zNear * moZ + p;
+        float tau0 = zNear * moZ - p;
+        float tau1 = zNear * moZ + p;
 
         if (tau0 < 0) {
-          tau0 *= frustum.zFar / frustum.zNear;
+          tau0 *= zFar / zNear;
         }
         if (tau1 > 0) {
-          tau1 *= frustum.zFar / frustum.zNear;
+          tau1 *= zFar / zNear;
         }
 
         if (obbMin > tau1 || obbMax < tau0) {
@@ -378,3 +397,4 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
 // https://arm-software.github.io/opengl-es-sdk-for-android/occlusion_culling.html
 // https://www.rastergrid.com/blog/2010/10/hierarchical-z-map-based-occlusion-culling/
 // https://interplayoflight.wordpress.com/2017/11/15/experiments-in-gpu-based-occlusion-culling/
+// https://github.com/zeux/niagara/blob/master/src/niagara.cpp

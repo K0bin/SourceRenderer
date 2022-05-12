@@ -32,8 +32,14 @@ struct GPUBoundingBox {
   vec4 bbmax; // vec3 has vec4 alignment, so just use vec4
 };
 
+struct GPUBoundingSphere {
+  vec3 center;
+  float radius;
+};
+
 struct GPUMesh {
   GPUBoundingBox aabb;
+  GPUBoundingSphere sphere;
 };
 
 #define DRAWABLE_CAPACITY 4096

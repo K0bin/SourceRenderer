@@ -1,5 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read};
 
+use nalgebra_glm::Vec4;
 use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, BarrierTextureRange, TextureLayout, TextureViewInfo}, Platform, platform::io::IO};
 
 use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}, prepass::Prepass}, drawable::View}, math::Frustum};
@@ -81,10 +82,33 @@ impl<B: Backend> DrawPrepPass<B> {
         HistoryResourceEntry::Current
       );
 
+      #[repr(packed(16))]
+      #[derive(Clone, Debug)]
+      struct GPUFrustum {
+        pub near_half_width: f32,
+        pub near_half_height: f32,
+        _padding: u32,
+        _padding1: u32,
+        pub planes: Vec4,
+      }
+      let frustum = Frustum::new(view.near_plane, view.far_plane, view.camera_fov, view.aspect_ratio);
+      let (frustum_x, frustum_y) = Frustum::extract_planes(&view.proj_matrix);
+
       cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, scene_buffer, 0, WHOLE_BUFFER);
       cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &*buffer, 0, WHOLE_BUFFER);
       cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer, 0, WHOLE_BUFFER);
-      let frustum_buffer = cmd_buffer.upload_dynamic_data(&[Frustum::new(view.near_plane, view.far_plane, view.camera_fov, view.aspect_ratio)], BufferUsage::CONSTANT);
+      let frustum_buffer = cmd_buffer.upload_dynamic_data(&[GPUFrustum {
+        near_half_width: frustum.near_half_width,
+        near_half_height: frustum.near_half_height,
+        _padding: 0,
+        _padding1: 0,
+        planes: Vec4::new(
+          frustum_x.x,
+          frustum_x.z,
+          frustum_y.y,
+          frustum_y.z,
+        ),
+      }], BufferUsage::CONSTANT);
       cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, &frustum_buffer, 0, WHOLE_BUFFER);
       cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 4, &*hi_z, resources.nearest_sampler());
       cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.culling_pipeline));
@@ -122,4 +146,8 @@ impl<B: Backend> DrawPrepPass<B> {
     cmd_buffer.dispatch((part_count + 63) / 64, 1, 1);
     cmd_buffer.end_label();
   }
+}
+
+fn normalize_plane(p: Vec4) -> Vec4 {
+  p / p.xyz().magnitude()
 }

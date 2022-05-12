@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc, mem::MaybeUninit};
 
 use field_offset::offset_of;
-use sourcerenderer_core::{Vec4, Matrix4, graphics::{Backend, CommandBuffer, BufferInfo, BufferUsage, MemoryUsage, Buffer}};
+use sourcerenderer_core::{Vec4, Matrix4, graphics::{Backend, CommandBuffer, BufferInfo, BufferUsage, MemoryUsage, Buffer}, Vec3};
 
 use crate::renderer::{renderer_scene::RendererScene, renderer_assets::{RendererMaterial, RendererMaterialValue, RendererModel}};
 
@@ -75,8 +75,16 @@ struct GPUBoundingBox {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
+struct GPUBoundingSphere {
+  center: Vec3,
+  radius: f32
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
 struct GPUMesh {
   aabb: GPUBoundingBox,
+  sphere: GPUBoundingSphere,
 }
 
 #[profiling::function]
@@ -180,13 +188,25 @@ pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &Rend
 
         let mesh_index = local.mesh_count;
         debug_assert!(local.mesh_count < local.meshes.len() as u32);
-        let mesh = mesh.bounding_box.as_ref().map(|bb| GPUMesh { aabb: GPUBoundingBox {
-          min: Vec4::new(bb.min.x, bb.min.y, bb.min.z, 1f32),
-          max: Vec4::new(bb.max.x, bb.max.y, bb.max.z, 1f32)
-        }}).unwrap_or_else(|| GPUMesh { aabb: GPUBoundingBox {
-          min: Vec4::new(f32::MIN, f32::MIN, f32::MIN, 1f32),
-          max: Vec4::new(f32::MAX, f32::MAX, f32::MAX, 1f32)
-        }});
+        let mesh = mesh.bounding_box.as_ref().map(|bb| GPUMesh {
+          aabb: GPUBoundingBox {
+            min: Vec4::new(bb.min.x, bb.min.y, bb.min.z, 1f32),
+            max: Vec4::new(bb.max.x, bb.max.y, bb.max.z, 1f32),
+          },
+          sphere: GPUBoundingSphere {
+            center: bb.min + (bb.max - bb.min) * 0.5f32,
+            radius: (bb.max - (bb.min + (bb.max - bb.min) * 0.5f32)).magnitude()
+          }
+        }).unwrap_or_else(|| GPUMesh {
+          aabb: GPUBoundingBox {
+            min: Vec4::new(f32::MIN, f32::MIN, f32::MIN, 1f32),
+            max: Vec4::new(f32::MAX, f32::MAX, f32::MAX, 1f32)
+          },
+          sphere: GPUBoundingSphere {
+            center: Vec3::new(0f32, 0f32, 0f32),
+            radius: f32::MAX,
+          }
+        });
         debug_assert!(mesh_index < local.meshes.len() as u32);
         local.meshes[mesh_index as usize] = mesh;
         model_map.insert(model_ptr, ModelEntry {

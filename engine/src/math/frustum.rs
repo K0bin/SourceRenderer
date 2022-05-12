@@ -11,8 +11,8 @@ struct OrientedBoundingBox {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct Frustum {
-  near_half_width: f32,
-  near_half_height: f32,
+  pub near_half_width: f32,
+  pub near_half_height: f32,
   z_near: f32,
   z_far: f32
 }
@@ -254,6 +254,18 @@ impl Frustum {
 
     true
   }
+
+  pub fn extract_planes(proj: &Matrix4) -> (Vec4, Vec4) {
+    // http://www.cs.otago.ac.nz/postgrads/alexis/planeExtraction.pdf
+    let transposed_proj = proj.transpose();
+    let frustum_x = normalize_plane(transposed_proj.column(3) + transposed_proj.column(0)); // x + w < 0
+    let frustum_y = normalize_plane(transposed_proj.column(3) + transposed_proj.column(1)); // y + w < 0
+    (frustum_x, frustum_y)
+  }
+}
+
+fn normalize_plane(p: Vec4) -> Vec4 {
+  p / p.xyz().magnitude()
 }
 
 // REF:
