@@ -38,6 +38,8 @@ impl<B: GraphicsBackend> Prepass<B> {
   pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
   pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
 
+  const DRAWABLE_LABELS: bool = false;
+
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
     let depth_info = TextureInfo {
       format: Format::D24,
@@ -306,6 +308,9 @@ impl<B: GraphicsBackend> Prepass<B> {
       for part in chunk.iter() {
         let drawable = &static_drawables[part.drawable_index];
         let model = &drawable.model;
+        if Self::DRAWABLE_LABELS {
+          command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
+        }
 
         command_buffer.upload_dynamic_data_inline(&[PrepassModelCB {
           model: drawable.transform,
@@ -325,6 +330,9 @@ impl<B: GraphicsBackend> Prepass<B> {
           command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
         } else {
           command_buffer.draw(range.count, range.start);
+        }
+        if Self::DRAWABLE_LABELS {
+          command_buffer.end_label();
         }
       }
       command_buffer.finish()

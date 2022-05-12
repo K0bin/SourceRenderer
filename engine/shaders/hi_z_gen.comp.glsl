@@ -7,7 +7,6 @@ layout(local_size_x = 8,
        local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
-#include "camera.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0) uniform sampler2D inputTexture;
 layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1, r32f) uniform writeonly image2D outputTexture;
@@ -25,6 +24,7 @@ void main() {
   }
   vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
 
+  // TODO: use VK_EXT_sampler_filter_minmax
   vec4 texels = textureGather(inputTexture, texCoord);
   float maxValue = max(max(texels.x, texels.y), max(texels.z, texels.w));
 

@@ -52,6 +52,7 @@ impl<B: Backend> DrawPrepPass<B> {
     camera_buffer: &Arc<B::Buffer>,
   ) {
     {
+      cmd_buffer.begin_label("Culling");
       let buffer = resources.access_buffer(
         cmd_buffer,
         Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,
@@ -90,8 +91,10 @@ impl<B: Backend> DrawPrepPass<B> {
       cmd_buffer.flush_barriers();
       cmd_buffer.finish_binding();
       cmd_buffer.dispatch((scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
+      cmd_buffer.end_label();
     }
 
+    cmd_buffer.begin_label("Preparing indirect draws");
     assert!(scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
     let part_count = scene.static_drawables().iter().map(|d| d.model.mesh().parts.len()).fold(0, |a, b| a + b) as u32;
     assert!(part_count <= PART_CAPACITY);
@@ -117,5 +120,6 @@ impl<B: Backend> DrawPrepPass<B> {
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();
     cmd_buffer.dispatch((part_count + 63) / 64, 1, 1);
+    cmd_buffer.end_label();
   }
 }

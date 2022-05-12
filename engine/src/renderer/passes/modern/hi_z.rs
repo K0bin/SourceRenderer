@@ -6,6 +6,7 @@ use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEnt
 
 pub struct HierarchicalZPass<B: Backend> {
   pipeline: Arc<B::ComputePipeline>,
+  copy_pipeline: Arc<B::ComputePipeline>,
 }
 
 impl<B: Backend> HierarchicalZPass<B> {
@@ -27,8 +28,17 @@ impl<B: Backend> HierarchicalZPass<B> {
     };
     let pipeline = device.create_compute_pipeline(&shader, Some("Hi-Z Gen"));
 
+    let copy_shader = {
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("hi_z_copy.comp.spv"))).unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.create_shader(ShaderType::ComputeShader, &bytes, Some("hi_z_copy.comp.spv"))
+    };
+    let copy_pipeline = device.create_compute_pipeline(&copy_shader, Some("Hi-Z Gen Copy"));
+
     Self {
-      pipeline
+      pipeline,
+      copy_pipeline
     }
   }
 
@@ -39,46 +49,67 @@ impl<B: Backend> HierarchicalZPass<B> {
     };
 
     cmd_buffer.begin_label("Hierarchical Z");
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    {
+      cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.copy_pipeline));
+      let src_texture = resources.access_sampling_view(
+        cmd_buffer,
+        Prepass::<B>::DEPTH_TEXTURE_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::SAMPLING_READ,
+        TextureLayout::Sampled,
+        false,
+        &TextureViewInfo::default(),
+        HistoryResourceEntry::Current
+      );
 
-    for mip in 0..mips {
-      let mip_width = width >> mip;
-      let mip_height = height >> mip;
-
-      let src_texture = if mip == 0 {
-        resources.access_sampling_view(
-          cmd_buffer,
-          Prepass::<B>::DEPTH_TEXTURE_NAME,
-          BarrierSync::COMPUTE_SHADER,
-          BarrierAccess::SAMPLING_READ,
-          TextureLayout::Sampled,
-          false,
-          &TextureViewInfo::default(),
-          HistoryResourceEntry::Current
-        )
-      } else {
-        resources.access_sampling_view(
-          cmd_buffer,
-          Self::HI_Z_BUFFER_NAME,
-          BarrierSync::COMPUTE_SHADER,
-          BarrierAccess::SAMPLING_READ,
-          TextureLayout::Sampled,
-          false,
-          &TextureViewInfo {
-            base_array_layer: 0,
-            array_layer_length: 1,
-            base_mip_level: mip - 1,
-            mip_level_length: 1
-          },
-          HistoryResourceEntry::Current
-        )
-      }.clone();
       let dst_texture = resources.access_storage_view(
         cmd_buffer,
         Self::HI_Z_BUFFER_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_WRITE,
-        TextureLayout::General,
+        TextureLayout::Storage,
+        true,
+        &TextureViewInfo {
+          base_mip_level: 0,
+          mip_level_length: 1,
+          base_array_layer: 0,
+          array_layer_length: 1,
+        }, HistoryResourceEntry::Current
+      );
+
+      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &src_texture, resources.nearest_sampler());
+      cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &dst_texture);
+      cmd_buffer.flush_barriers();
+      cmd_buffer.finish_binding();
+      cmd_buffer.dispatch((width + 7) / 8, (height + 7) / 8, 1);
+    }
+
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    for mip in 1..mips {
+      let mip_width = width >> mip;
+      let mip_height = height >> mip;
+
+      let src_texture = resources.access_sampling_view(
+        cmd_buffer,
+        Self::HI_Z_BUFFER_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::SAMPLING_READ,
+        TextureLayout::Sampled,
+        false,
+        &TextureViewInfo {
+          base_array_layer: 0,
+          array_layer_length: 1,
+          base_mip_level: mip - 1,
+          mip_level_length: 1
+        },
+        HistoryResourceEntry::Current
+      ).clone();
+      let dst_texture = resources.access_storage_view(
+        cmd_buffer,
+        Self::HI_Z_BUFFER_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::STORAGE_WRITE,
+        TextureLayout::Storage,
         true,
         &TextureViewInfo {
           base_mip_level: mip,
@@ -102,7 +133,7 @@ impl<B: Backend> HierarchicalZPass<B> {
         base_width: width,
         base_height: height,
         mip_level: mip,
-    }], ShaderType::ComputeShader);
+      }], ShaderType::ComputeShader);
       cmd_buffer.flush_barriers();
       cmd_buffer.finish_binding();
       cmd_buffer.dispatch((mip_width + 7) / 8, (mip_height + 7) / 8, 1);

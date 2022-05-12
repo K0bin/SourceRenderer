@@ -34,6 +34,8 @@ pub struct GeometryPass<B: GraphicsBackend> {
 impl<B: GraphicsBackend> GeometryPass<B> {
   pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
 
+  const DRAWABLE_LABELS: bool = false;
+
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, barriers: &mut RendererResources<B>) -> Self {
     let texture_info = TextureInfo {
       format: Format::RGBA8,
@@ -382,6 +384,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
       for part in chunk.iter() {
         let drawable = &static_drawables[part.drawable_index];
+        if Self::DRAWABLE_LABELS {
+          command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
+        }
 
         /*let model_constant_buffer = command_buffer.upload_dynamic_data(&[drawable.transform], BufferUsage::CONSTANT);
         command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);*/
@@ -467,6 +472,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
         } else {
           command_buffer.draw(range.count, range.start);
+        }
+        if Self::DRAWABLE_LABELS {
+          command_buffer.end_label();
         }
       }
       command_buffer.finish()

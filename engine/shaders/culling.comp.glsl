@@ -17,7 +17,7 @@ struct Frustum {
 };
 
 bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera camera, mat4 modelTransform);
-bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform);
+bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform, uint drawableIndex);
 
 layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0) readonly restrict buffer sceneBuffer {
   GPUScene scene;
@@ -50,11 +50,7 @@ void main() {
     GPUBoundingBox aabb = mesh.aabb;
 
     isVisible = checkVisibilityAgainstFrustum(frustum, aabb, camera, drawable.transform);
-    bool passedFrustumCheck = isVisible;
-    isVisible = isVisible && checkOcclusion(aabb, drawable.transform);
-    /* if (!isVisible && passedFrustumCheck) {
-      debugPrintfEXT("Drawable passed frustum check but failed occlusion culling: %u", drawableIndex);
-    } */
+    isVisible = isVisible && checkOcclusion(aabb, drawable.transform, drawableIndex);
   }
   if (isVisible) {
     atomicOr(visible[gl_LocalInvocationIndex / 32], 1 << (drawableIndex % 32));
@@ -66,55 +62,83 @@ void main() {
   }
 }
 
-bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform) {
-  mat4 projViewModel = camera.viewProj * modelTransform;
+bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform, uint drawableIndex) {
+  mat4 mvp = camera.viewProj * modelTransform;
   vec4 corners[8] = {
-    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmin.z, 1)),
-    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmin.y, aabb.bbmin.z, 1)),
-    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmax.y, aabb.bbmin.z, 1)),
-    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmax.y, aabb.bbmax.z, 1)),
-    (projViewModel * vec4(aabb.bbmax.x, aabb.bbmin.y, aabb.bbmax.z, 1)),
-    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmax.y, aabb.bbmin.z, 1)),
-    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmax.y, aabb.bbmax.z, 1)),
-    (projViewModel * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmax.z, 1)),
+    mvp * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmin.z, 1),
+    mvp * vec4(aabb.bbmax.x, aabb.bbmin.y, aabb.bbmin.z, 1),
+    mvp * vec4(aabb.bbmax.x, aabb.bbmax.y, aabb.bbmin.z, 1),
+    mvp * vec4(aabb.bbmax.x, aabb.bbmax.y, aabb.bbmax.z, 1),
+    mvp * vec4(aabb.bbmax.x, aabb.bbmin.y, aabb.bbmax.z, 1),
+    mvp * vec4(aabb.bbmin.x, aabb.bbmax.y, aabb.bbmin.z, 1),
+    mvp * vec4(aabb.bbmin.x, aabb.bbmax.y, aabb.bbmax.z, 1),
+    mvp * vec4(aabb.bbmin.x, aabb.bbmin.y, aabb.bbmax.z, 1),
   };
 
-  corners[0].xyz /= corners[0].w;
-  vec2 minCorner = corners[0].xy;
-  vec3 maxCorner = corners[0].xyz;
-  for (uint i = 1; i < 8; i++) {
+  uint invalidCount[6] = { 0, 0, 0, 0, 0, 0 };
+  vec3 minCorner = vec3(1);
+  vec2 maxCorner = vec2(0);
+  for (uint i = 0; i < 8; i++) {
+    invalidCount[0] += (corners[i].x > corners[i].w) ? 1 : 0;
+    invalidCount[1] += (corners[i].x < -corners[i].w) ? 1 : 0;
+    invalidCount[2] += (corners[i].y > corners[i].w) ? 1 : 0;
+    invalidCount[3] += (corners[i].y < -corners[i].w) ? 1 : 0;
+    invalidCount[4] += (corners[i].z > corners[i].w) ? 1 : 0;
+    invalidCount[5] += (corners[i].z < -corners[i].w) ? 1 : 0;
+
+    corners[i].z = max(corners[i].z, 0);
     corners[i].xyz /= corners[i].w;
-    minCorner = vec2(
+    minCorner = vec3(
       min(minCorner.x, corners[i].x),
-      min(minCorner.y, corners[i].y)
+      min(minCorner.y, corners[i].y),
+      min(minCorner.z, corners[i].z)
     );
-    maxCorner = vec3(
+    maxCorner = vec2(
       max(maxCorner.x, corners[i].x),
-      max(maxCorner.y, corners[i].y),
-      max(maxCorner.z, corners[i].z)
+      max(maxCorner.y, corners[i].y)
     );
   }
 
-  if (maxCorner.z >= 1)
-    return true;
+  for (uint i = 0; i < 6; i++) {
+    if (invalidCount[i] == 8) {
+      // Object is not in the frustum
+      // debugPrintfEXT("Drawable failed frustum check in occlusion cullung: %u", drawableIndex);
+      return false;
+    }
+  }
+
+  minCorner.xy = clamp(minCorner.xy, vec2(-1), vec2(1));
+  minCorner.z = clamp(minCorner.z, 0, 1);
+  minCorner.xy = minCorner.xy * 0.5 + 0.5;
+  minCorner.y = 1 - minCorner.y;
+
+  maxCorner.xy = clamp(maxCorner.xy, vec2(-1), vec2(1));
+  maxCorner.xy = maxCorner.xy * 0.5 + 0.5;
+  maxCorner.y = 1 - maxCorner.y;
 
   vec2 mip0texSize = vec2(textureSize(hiZ, 0));
   vec2 dist = (maxCorner.xy - minCorner.xy) * mip0texSize;
   float maxDist = max(dist.x, dist.y);
-  float mip = ceil(log2(maxDist / 2));
+  float mip = ceil(log2(maxDist));
+  mip = max(mip - 1, 0);
 
-  vec2 texSize = vec2(textureSize(hiZ, int(mip)));
-  vec2 mipTexelSize = vec2(1 / texSize.x, 1 / texSize.y);
-  vec2 center = round(minCorner.xy + (maxCorner.xy - minCorner.xy) * 0.5) / texSize;
-  vec4 depths[4] = {
-    textureLod(hiZ, center + vec2(-0.5, -0.5) * mipTexelSize, mip),
-    textureLod(hiZ, center + vec2(-0.5, 0.5) * mipTexelSize, mip),
-    textureLod(hiZ, center + vec2(0.5, 0.5) * mipTexelSize, mip),
-    textureLod(hiZ, center + vec2(0.5, -0.5) * mipTexelSize, mip)
-  };
+  float levelLower = max(mip - 1, 0);
+  float scale = exp2(-levelLower);
+  vec2 a = floor(minCorner.xy * scale);
+  vec2 b = ceil(maxCorner.xy * scale);
+  vec2 dims = b - a;
+  if (dims.x <= 2 && dims.y <= 2)
+    mip = levelLower;
 
-  float maxDepth = max(max(depths[0].x, depths[1].x), max(depths[2].x, depths[3].x));
-  return maxCorner.z <= maxDepth;
+  vec4 depths = vec4(
+    textureLod(hiZ, vec2(minCorner.x, minCorner.y), mip).x,
+    textureLod(hiZ, vec2(maxCorner.x, minCorner.y), mip).x,
+    textureLod(hiZ, vec2(maxCorner.x, maxCorner.y), mip).x,
+    textureLod(hiZ, vec2(minCorner.x, maxCorner.y), mip).x
+  );
+
+  float maxDepth = max(max(depths.x, depths.y), max(depths.z, depths.w));
+  return minCorner.z <= maxDepth;
 }
 
 struct OrientedBoundingBox {
@@ -353,3 +377,4 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
 // References:
 // https://arm-software.github.io/opengl-es-sdk-for-android/occlusion_culling.html
 // https://www.rastergrid.com/blog/2010/10/hierarchical-z-map-based-occlusion-culling/
+// https://interplayoflight.wordpress.com/2017/11/15/experiments-in-gpu-based-occlusion-culling/
