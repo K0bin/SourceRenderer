@@ -19,7 +19,7 @@ struct Frustum {
 
 bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera camera, mat4 modelTransform);
 bool checkSphereVisibilityAgainstFrustum(Frustum frustum, GPUBoundingSphere sphere, Camera camera, mat4 modelTransform);
-bool checkOcclusion(GPUBoundingBox aabb, mat4 modelTransform, uint drawableIndex);
+bool checkOcclusion(GPUBoundingBox aabb, Camera camera, mat4 modelTransform);
 
 layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0) readonly restrict buffer sceneBuffer {
   GPUScene scene;
