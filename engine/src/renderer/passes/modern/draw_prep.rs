@@ -1,7 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use nalgebra_glm::Vec4;
-use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, BarrierTextureRange, TextureLayout, TextureViewInfo}, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, BarrierTextureRange, TextureLayout, TextureViewInfo}, Platform, platform::io::IO, Vec4};
 
 use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}, prepass::Prepass}, drawable::View}, math::Frustum};
 

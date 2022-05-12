@@ -17,6 +17,7 @@ bitflags! {
     const DESCRIPTOR_TEMPLATE        = 0b100;
     const RAY_TRACING                = 0b1000;
     const ADVANCED_INDIRECT          = 0b10000;
+    const MIN_MAX_FILTER             = 0b100000;
   }
 }
 

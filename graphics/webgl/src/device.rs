@@ -247,4 +247,8 @@ impl Device<WebGLBackend> for WebGLDevice {
   fn supports_indirect(&self) -> bool {
     false
   }
+
+  fn supports_min_max_filter(&self) -> bool {
+    false
+  }
 }

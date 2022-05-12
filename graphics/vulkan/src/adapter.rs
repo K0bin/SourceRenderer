@@ -39,6 +39,7 @@ const SHADER_FLOAT_CONTROLS_EXT_NAME: &str = "VK_KHR_shader_float_controls";
 const DRAW_INDIRECT_COUNT_EXT_NAME: &str = "VK_KHR_draw_indirect_count";
 const TIMELINE_SEMAPHORE_EXT_NAME: &str = "VK_KHR_timeline_semaphore";
 const SYNCHRONIZATION2_EXT_NAME: &str = "VK_KHR_synchronization2";
+const SAMPLER_FILTER_MINMAX_EXT_NAME: &str = "VK_EXT_sampler_filter_minmax";
 
 
 bitflags! {
@@ -61,6 +62,7 @@ bitflags! {
     const DRAW_INDIRECT_COUNT        = 0b100000000000000;
     const TIMELINE_SEMAPHORE         = 0b1000000000000000;
     const SYNCHRONIZATION2           = 0b10000000000000000;
+    const SAMPLER_FILTER_MINMAX      = 0b100000000000000000;
   }
 }
 
@@ -101,6 +103,7 @@ impl VkAdapter {
         DRAW_INDIRECT_COUNT_EXT_NAME => { VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT },
         TIMELINE_SEMAPHORE_EXT_NAME => { VkAdapterExtensionSupport::TIMELINE_SEMAPHORE },
         SYNCHRONIZATION2_EXT_NAME => { VkAdapterExtensionSupport::SYNCHRONIZATION2 },
+        SAMPLER_FILTER_MINMAX_EXT_NAME => { VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -223,6 +226,7 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut supported_bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
       let mut supported_timeline_semaphore_features = vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
       let mut supported_sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
+      let mut filter_min_max_properties = vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
       if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
         supported_descriptor_indexing_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void);
         descriptor_indexing_properties.p_next = std::mem::replace(&mut properties.p_next, &mut descriptor_indexing_properties as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT as *mut c_void);
@@ -235,6 +239,10 @@ impl Adapter<VkBackend> for VkAdapter {
       }
       if self.extensions.intersects(VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS) {
         supported_bda_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
+      }
+
+      if self.extensions.intersects(VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX) {
+        filter_min_max_properties.p_next = std::mem::replace(&mut properties.p_next, &mut filter_min_max_properties as *mut vk::PhysicalDeviceSamplerFilterMinmaxProperties as *mut c_void);
       }
 
       supported_timeline_semaphore_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_timeline_semaphore_features as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures as *mut c_void);
@@ -338,6 +346,12 @@ impl Adapter<VkBackend> for VkAdapter {
         extension_names.push(BUFFER_DEVICE_ADDRESS_EXT_NAME);
         bda_features.buffer_device_address = vk::TRUE;
         bda_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR as *mut c_void);
+      }
+
+      let supports_filter_min_max = self.extensions.contains(VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX) && filter_min_max_properties.filter_minmax_single_component_formats == vk::TRUE;
+      if supports_filter_min_max {
+        extension_names.push(SAMPLER_FILTER_MINMAX_EXT_NAME);
+        features |= VkFeatures::MIN_MAX_FILTER;
       }
 
       if !self.extensions.contains(VkAdapterExtensionSupport::TIMELINE_SEMAPHORE) || !self.extensions.contains(VkAdapterExtensionSupport::SYNCHRONIZATION2)

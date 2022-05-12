@@ -1,12 +1,13 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use sourcerenderer_core::{graphics::{Backend, TextureUsage, Format, Device, ShaderType, CommandBuffer, PipelineBinding, BarrierSync, BarrierAccess, TextureLayout, TextureViewInfo, BindingFrequency}, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, TextureUsage, Format, Device, ShaderType, CommandBuffer, PipelineBinding, BarrierSync, BarrierAccess, TextureLayout, TextureViewInfo, BindingFrequency, SamplerInfo, Filter, AddressMode}, Platform, platform::io::IO};
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::prepass::Prepass};
 
 pub struct HierarchicalZPass<B: Backend> {
   pipeline: Arc<B::ComputePipeline>,
   copy_pipeline: Arc<B::ComputePipeline>,
+  sampler: Arc<B::Sampler>,
 }
 
 impl<B: Backend> HierarchicalZPass<B> {
@@ -20,8 +21,13 @@ impl<B: Backend> HierarchicalZPass<B> {
 
     resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
+    let shader_name = if device.supports_min_max_filter() {
+      "hi_z_gen_filter.comp.spv"
+    } else {
+      "hi_z_gen.comp.spv"
+    };
     let shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("hi_z_gen.comp.spv"))).unwrap();
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(shader_name))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("hi_z_gen.comp.spv"))
@@ -36,9 +42,28 @@ impl<B: Backend> HierarchicalZPass<B> {
     };
     let copy_pipeline = device.create_compute_pipeline(&copy_shader, Some("Hi-Z Gen Copy"));
 
+    let sampler = if device.supports_min_max_filter() {
+      device.create_sampler(&SamplerInfo {
+        mag_filter: Filter::Linear,
+        min_filter: Filter::Max,
+        mip_filter: Filter::Linear,
+        address_mode_u: AddressMode::ClampToEdge,
+        address_mode_v: AddressMode::ClampToEdge,
+        address_mode_w: AddressMode::ClampToEdge,
+        mip_bias: 0f32,
+        max_anisotropy: 0f32,
+        compare_op: None,
+        min_lod: 0f32,
+        max_lod: None,
+    })
+    } else {
+      resources.nearest_sampler().clone()
+    };
+
     Self {
       pipeline,
-      copy_pipeline
+      copy_pipeline,
+      sampler,
     }
   }
 
@@ -127,7 +152,7 @@ impl<B: Backend> HierarchicalZPass<B> {
         mip_level: u32
       }
 
-      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &src_texture, resources.nearest_sampler());
+      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &src_texture, &self.sampler);
       cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &dst_texture);
       cmd_buffer.upload_dynamic_data_inline(&[PushConstantData {
         base_width: width,

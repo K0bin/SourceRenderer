@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
@@ -10,6 +11,7 @@ use sourcerenderer_core::graphics::TextureUsage;
 use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureSamplingView, TextureViewInfo, TextureStorageView};
 
 use crate::bindless::VkBindlessDescriptorSet;
+use crate::raw::VkFeatures;
 use crate::{VkBackend, raw::RawVkDevice};
 use crate::format::format_to_vk;
 
@@ -194,13 +196,24 @@ impl Eq for VkTexture {}
 fn filter_to_vk(filter: Filter) -> vk::Filter {
   match filter {
     Filter::Linear => vk::Filter::LINEAR,
-    Filter::Nearest => vk::Filter::NEAREST
+    Filter::Nearest => vk::Filter::NEAREST,
+    Filter::Max => vk::Filter::LINEAR,
+    Filter::Min => vk::Filter::LINEAR,
   }
 }
 fn filter_to_vk_mip(filter: Filter) -> vk::SamplerMipmapMode {
   match filter {
     Filter::Linear => vk::SamplerMipmapMode::LINEAR,
-    Filter::Nearest => vk::SamplerMipmapMode::NEAREST
+    Filter::Nearest => vk::SamplerMipmapMode::NEAREST,
+    Filter::Max => panic!("Can't use max as mipmap filter."),
+    Filter::Min => panic!("Can't use min as mipmap filter."),
+  }
+}
+fn filter_to_reduction_mode(filter: Filter) -> vk::SamplerReductionMode {
+  match filter {
+    Filter::Max => vk::SamplerReductionMode::MAX,
+    Filter::Min => vk::SamplerReductionMode::MIN,
+    _ => unreachable!()
   }
 }
 
@@ -334,7 +347,7 @@ pub struct VkSampler {
 
 impl VkSampler {
   pub fn new(device: &Arc<RawVkDevice>, info: &SamplerInfo) -> Self {
-    let sampler_create_info = vk::SamplerCreateInfo {
+    let mut sampler_create_info = vk::SamplerCreateInfo {
       mag_filter: filter_to_vk(info.mag_filter),
       min_filter: filter_to_vk(info.mag_filter),
       mipmap_mode: filter_to_vk_mip(info.mip_filter),
@@ -352,6 +365,19 @@ impl VkSampler {
       unnormalized_coordinates: 0,
       ..Default::default()
     };
+
+    let mut sampler_minmax_info = vk::SamplerReductionModeCreateInfo::default();
+    if info.min_filter == Filter::Min || info.min_filter == Filter::Max {
+      assert!(device.features.contains(VkFeatures::MIN_MAX_FILTER));
+
+      sampler_minmax_info.reduction_mode = filter_to_reduction_mode(info.min_filter);
+      sampler_create_info.p_next = &sampler_minmax_info as *const vk::SamplerReductionModeCreateInfo as *const c_void;
+    }
+    debug_assert_ne!(info.mag_filter, Filter::Min);
+    debug_assert_ne!(info.mag_filter, Filter::Max);
+    debug_assert_ne!(info.min_filter, Filter::Min);
+    debug_assert_ne!(info.min_filter, Filter::Max);
+
     let sampler = unsafe {
       device.create_sampler(&sampler_create_info, None)
     }.unwrap();

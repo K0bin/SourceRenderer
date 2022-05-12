@@ -54,10 +54,12 @@ pub trait Texture {
   fn info(&self) -> &TextureInfo;
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Filter {
   Linear,
-  Nearest
+  Nearest,
+  Min,
+  Max,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
