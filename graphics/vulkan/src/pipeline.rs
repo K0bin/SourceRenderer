@@ -753,7 +753,6 @@ impl VkPipeline {
   }
 
   pub fn new_compute(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, shared: &VkShared, name: Option<&str>) -> Self {
-    println!("new compute!");
     let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -859,7 +858,6 @@ impl VkPipeline {
   }
 
   pub fn new_compute_meta(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, name: Option<&str>) -> Self {
-    println!("new compute meta!");
     let mut descriptor_set_layout_keys: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -1353,7 +1351,6 @@ impl VkPipelineLayout {
   }
 
     let layout = unsafe {
-      println!("new layout!");
       device.create_pipeline_layout(&info, None)
     }.unwrap();
     Self {

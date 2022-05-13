@@ -491,6 +491,34 @@ impl VkDescriptorSet {
   pub(crate) fn is_transient(&self) -> bool {
     self.is_transient
   }
+
+  pub(crate) fn is_compatible(&self, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResourceRef; 16]) -> bool {
+    if &self.layout != layout {
+      return false;
+    }
+
+    self.bindings.iter().enumerate().all(|(index, binding)| {
+      let binding_info = self.layout.binding_infos[index].as_ref();
+      if binding == &VkBoundResource::None && binding_info.is_none() {
+        true
+      } else if binding_info.is_none() {
+        false
+      } else if binding_info.unwrap().descriptor_type != vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC && binding_info.unwrap().descriptor_type != vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+        binding == &bindings[index]
+      } else {
+        // https://github.com/rust-lang/rust/issues/53667
+        if let (VkBoundResource::UniformBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResourceRef::UniformBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
+          buffer.buffer() == entry_buffer.buffer()
+            && *length == *entry_length
+        } else if let (VkBoundResource::StorageBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResourceRef::StorageBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
+          buffer.buffer() == entry_buffer.buffer()
+          && *length == *entry_length
+        } else {
+          false
+        }
+      }
+    })
+  }
 }
 
 impl Drop for VkDescriptorSet {
@@ -631,7 +659,7 @@ pub(crate) struct VkBindingManager {
   transient_pools: RefCell<Vec<Arc<VkDescriptorPool>>>,
   permanent_pools: RefCell<Vec<Arc<VkDescriptorPool>>>,
   device: Arc<RawVkDevice>,
-  current_sets: [Option<VkDescriptorSet>; 4],
+  current_sets: [Option<Arc<VkDescriptorSet>>; 4],
   dirty: DirtyDescriptorSets,
   bindings: [[VkBoundResource; 16]; 4],
   transient_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
@@ -660,6 +688,7 @@ impl VkBindingManager {
   pub(crate) fn reset(&mut self) {
     self.dirty = DirtyDescriptorSets::empty();
     self.bindings = Default::default();
+    self.current_sets = Default::default();
     let mut transient_cache_mut = self.transient_cache.borrow_mut();
     transient_cache_mut.clear();
     let mut transient_pools_mut = self.transient_pools.borrow_mut();
@@ -685,37 +714,15 @@ impl VkBindingManager {
   }
 
   fn find_compatible_set(&self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResourceRef; 16], use_permanent_cache: bool) -> Option<Arc<VkDescriptorSet>> {
-    // TODO: use a hashmap with the layout as the key
     let mut cache = if use_permanent_cache { self.permanent_cache.borrow_mut() } else { self.transient_cache.borrow_mut() };
 
     let mut entry_opt = cache
         .get_mut(layout)
-        .and_then(|sets| {
+        .and_then(|sets|
           sets
             .iter_mut()
-            .find(|entry|
-              &entry.set.layout == layout // We cache descriptor set entries, so this should be fine.
-              && entry.set.bindings.iter().enumerate().all(|(index, binding)| {
-                let binding_info = entry.set.layout.binding_infos[index].as_ref();
-                if binding_info.is_none() {
-                  false
-                } else if binding_info.unwrap().descriptor_type != vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC && binding_info.unwrap().descriptor_type != vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
-                  binding == &bindings[index]
-                } else {
-                  // https://github.com/rust-lang/rust/issues/53667
-                  if let (VkBoundResource::UniformBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResourceRef::UniformBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
-                    buffer.buffer() == entry_buffer.buffer()
-                      && *length == *entry_length
-                  } else if let (VkBoundResource::StorageBuffer{ buffer: entry_buffer, offset: _, length: entry_length }, VkBoundResourceRef::StorageBuffer { buffer, offset: _, length }) = (binding, &bindings[index]) {
-                    buffer.buffer() == entry_buffer.buffer()
-                    && *length == *entry_length
-                  } else {
-                    false
-                  }
-                }
-              })
-            )
-        });
+            .find(|entry| entry.set.is_compatible(layout, bindings))
+        );
     if let Some(entry) = &mut entry_opt {
       entry.last_used_frame = frame;
     }
@@ -727,25 +734,64 @@ impl VkBindingManager {
     if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
       return None;
     }
+    let layout = layout_option.unwrap();
 
     let mut binding_refs = <[VkBoundResourceRef<'a>; 16]>::default();
     for (index, binding) in self.bindings[frequency as usize].iter().enumerate() {
       binding_refs[index] = binding.into();
     }
-    self.get_or_create_set(frame, layout_option.unwrap(), &binding_refs)
+
+    let mut set: Option<Arc<VkDescriptorSet>> = None;
+    if let Some(current_set) = &self.current_sets[frequency as usize] {
+      // This should cover the hottest case.
+      if current_set.is_compatible(layout, &binding_refs) {
+        set = Some(current_set.clone());
+      }
+    }
+
+    set = set.or_else(|| self.get_or_create_set(frame, layout, &binding_refs));
+    self.current_sets[frequency as usize] = set.clone();
+    set.map(|set| self.get_descriptor_set_binding_info(set, &binding_refs))
   }
 
-  pub fn get_or_create_set(&self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResourceRef; 16]) -> Option<VkDescriptorSetBinding> {
+  pub fn get_descriptor_set_binding_info(&self, set: Arc<VkDescriptorSet>, bindings: &[VkBoundResourceRef; 16]) -> VkDescriptorSetBinding {
+    let mut set_binding = VkDescriptorSetBinding {
+      set: set.clone(),
+      dynamic_offsets: Default::default(),
+      dynamic_offset_count: 0
+    };
+    bindings.iter().enumerate().for_each(|(index, binding)| {
+      if let Some(binding_info) = set.layout.binding_infos[index].as_ref() {
+        if binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC || binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+          match binding {
+            VkBoundResourceRef::UniformBuffer { buffer, offset, length: _ } => {
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.offset() + offset) as u64;
+              set_binding.dynamic_offset_count += 1;
+            }
+            VkBoundResourceRef::StorageBuffer { buffer, offset, length: _ } => {
+              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.offset() + offset) as u64;
+              set_binding.dynamic_offset_count += 1;
+            },
+            _ => {}
+          }
+        }
+      }
+    });
+
+    set_binding
+  }
+
+  pub fn get_or_create_set(&self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResourceRef; 16]) -> Option<Arc<VkDescriptorSet>> {
     if layout.binding_count() == 0 {
       return None;
     }
 
-    let cached_set = self.find_compatible_set(frame, layout, &bindings, false);
+    let transient = true;
 
+    let cached_set = self.find_compatible_set(frame, layout, &bindings, !transient);
     let set = if let Some(cached_set) = cached_set {
       cached_set
     } else {
-      let transient = true;
       let mut pools = if !transient { self.permanent_pools.borrow_mut() } else { self.transient_pools.borrow_mut() };
       let mut new_set = Option::<VkDescriptorSet>::None;
       'pools_iter: for pool in pools.iter() {
@@ -773,29 +819,7 @@ impl VkBindingManager {
       });
       new_set
     };
-    let mut set_binding = VkDescriptorSetBinding {
-      set,
-      dynamic_offsets: Default::default(),
-      dynamic_offset_count: 0
-    };
-    bindings.iter().enumerate().for_each(|(index, binding)| {
-      if let Some(binding_info) = layout.binding_infos[index].as_ref() {
-        if binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC || binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
-          match binding {
-            VkBoundResourceRef::UniformBuffer { buffer, offset, length: _ } => {
-              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.offset() + offset) as u64;
-              set_binding.dynamic_offset_count += 1;
-            }
-            VkBoundResourceRef::StorageBuffer { buffer, offset, length: _ } => {
-              set_binding.dynamic_offsets[set_binding.dynamic_offset_count as usize] = (buffer.offset() + offset) as u64;
-              set_binding.dynamic_offset_count += 1;
-            },
-            _ => {}
-          }
-        }
-      }
-    });
-    Some(set_binding)
+    Some(set)
   }
 
   pub fn mark_all_dirty(&mut self) {

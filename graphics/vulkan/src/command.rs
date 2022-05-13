@@ -1093,7 +1093,6 @@ impl VkCommandBuffer {
     debug_assert!(!self.has_pending_barrier());
     debug_assert!(self.render_pass.is_none());
 
-
     let actual_length = if length_in_u32s == WHOLE_BUFFER { buffer.length() - offset } else { length_in_u32s };
     #[repr(packed)]
     struct MetaClearShaderData {
@@ -1104,7 +1103,6 @@ impl VkCommandBuffer {
       length: actual_length as u32,
       value: value,
     };
-
 
     let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
     let mut bindings = <[VkBoundResourceRef; 16]>::default();
@@ -1126,7 +1124,7 @@ impl VkCommandBuffer {
         self.buffer,
         vk::PipelineBindPoint::COMPUTE,
         *meta_pipeline.layout().handle(),
-        0, &[*descriptor_set.set.handle()],
+        0, &[*descriptor_set.handle()],
         if is_dynamic_binding { &binding_offsets } else { &[] }
       );
       self.device.cmd_dispatch(self.buffer, (actual_length as u32 + 3) / 4, 1, 1);
