@@ -10,7 +10,9 @@ What's working:
   * SSAO
   * clustered shading (currently only supports point lights)
   * Frustum culling & occlusion culling (based on GPU queries)
-  * Vulkan ray tracing (there aren't any fancy shaders making use of the feature yet.)
+  * GPU driven rendering with bindless textures
+  * Vulkan ray tracing
+    * Soft shadows (denoising is still TODO)
 * loading BSP levels
   * basic brush geometry
   * displacements (at least to some degree)
