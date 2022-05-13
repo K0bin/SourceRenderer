@@ -6,7 +6,7 @@ use ash::vk;
 use smallvec::SmallVec;
 use spirv_cross::{spirv, glsl};
 
-use sourcerenderer_core::graphics::{BindingFrequency, InputRate, RayTracingPipelineInfo, BufferInfo, MemoryUsage, BufferUsage, Buffer};
+use sourcerenderer_core::graphics::{InputRate, RayTracingPipelineInfo, BufferInfo, MemoryUsage, BufferUsage, Buffer};
 use sourcerenderer_core::graphics::GraphicsPipelineInfo;
 use sourcerenderer_core::graphics::ShaderType;
 use sourcerenderer_core::graphics::Shader;
