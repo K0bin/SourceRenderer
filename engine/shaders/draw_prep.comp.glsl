@@ -33,14 +33,12 @@ layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std430) restrict buff
 shared uint[2] visible;
 
 void main() {
+  #ifdef DEBUG
   if (gl_LocalInvocationIndex == 0) {
-    #ifndef DEBUG
-    drawCount = 0; // TODO: this is broken
-    #else
     drawCount = scene.drawCount;
-    #endif
   }
   barrier();
+  #endif
 
   uint drawIndex = gl_GlobalInvocationID.x;
   if (drawIndex < scene.drawCount) {
