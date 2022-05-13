@@ -186,7 +186,7 @@ impl VkCommandBuffer {
   pub(crate) fn reset(&mut self) {
     self.state = VkCommandBufferState::Ready;
     self.trackers.reset();
-    self.descriptor_manager.reset();
+    self.descriptor_manager.reset(self.frame);
   }
 
   pub(crate) fn begin(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) {

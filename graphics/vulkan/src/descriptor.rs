@@ -180,7 +180,6 @@ impl Eq for VkDescriptorSetLayout {}
 pub(crate) struct VkDescriptorPool {
   descriptor_pool: Mutex<vk::DescriptorPool>,
   device: Arc<RawVkDevice>,
-  is_transient: bool
 }
 
 impl VkDescriptorPool {
@@ -215,7 +214,6 @@ impl VkDescriptorPool {
     Self {
       descriptor_pool,
       device: device.clone(),
-      is_transient
     }
   }
 
@@ -225,9 +223,6 @@ impl VkDescriptorPool {
   }
 
   fn reset(&self) {
-    if !self.is_transient {
-      return;
-    }
     let guard = self.handle();
     unsafe {
       self.device.reset_descriptor_pool(*guard, vk::DescriptorPoolResetFlags::empty()).unwrap();
@@ -685,18 +680,15 @@ impl VkBindingManager {
     }
   }
 
-  pub(crate) fn reset(&mut self) {
+  pub(crate) fn reset(&mut self, frame: u64) {
     self.dirty = DirtyDescriptorSets::empty();
     self.bindings = Default::default();
     self.current_sets = Default::default();
+    self.clean(frame);
     let mut transient_cache_mut = self.transient_cache.borrow_mut();
     transient_cache_mut.clear();
     let mut transient_pools_mut = self.transient_pools.borrow_mut();
     for pool in transient_pools_mut.iter_mut() {
-      pool.reset();
-    }
-    let mut permanent_pools_mut = self.permanent_pools.borrow_mut();
-    for pool in permanent_pools_mut.iter_mut() {
       pool.reset();
     }
   }
@@ -837,7 +829,6 @@ impl VkBindingManager {
     if self.dirty.is_empty() {
       return Default::default();
     }
-    self.clean(frame);
 
     let mut set_bindings: [Option<VkDescriptorSetBinding>; 3] = Default::default();
     set_bindings[BindingFrequency::PerDraw as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerDraw);
@@ -848,17 +839,17 @@ impl VkBindingManager {
     set_bindings
   }
 
-  const FRAMES_BETWEEN_CLEANUP: u64 = 5;
+  const FRAMES_BETWEEN_CLEANUP: u64 = 1;
   const MAX_FRAMES_SET_UNUSED: u64 = 5;
   fn clean(&mut self, frame: u64) {
-    if frame - self.last_cleanup_frame <= Self::FRAMES_BETWEEN_CLEANUP {
+    if frame - self.last_cleanup_frame < Self::FRAMES_BETWEEN_CLEANUP {
       return;
     }
 
     let mut cache_mut = self.permanent_cache.borrow_mut();
     for entries in cache_mut.values_mut() {
       entries.retain(|entry| {
-        frame - entry.last_used_frame >= Self::MAX_FRAMES_SET_UNUSED
+        (frame - entry.last_used_frame) < Self::MAX_FRAMES_SET_UNUSED
       });
     }
     self.last_cleanup_frame = frame;

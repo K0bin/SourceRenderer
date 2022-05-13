@@ -434,18 +434,15 @@ impl BufferAllocator {
     if self.reuse_automatically && !matching_buffers.used_slices.is_empty() {
       // This is awful. Completely rewrite this with drain_filter once that's stabilized.
       // Right now cleaner alternatives would likely need to do more copying and allocations.
-      let mut i: isize = (matching_buffers.used_slices.len() - 1) as isize;
-      while i >= 0 {
-        let index = i as usize;
+      let length = matching_buffers.used_slices.len();
+      for i in (0..length).rev() {
         let refcount = {
-          let slice = &matching_buffers.used_slices[index];
+          let slice = &matching_buffers.used_slices[i];
           Arc::strong_count(slice)
         };
         if refcount == 1 {
-          matching_buffers.free_slices.push(matching_buffers.used_slices.remove(index));
-          i -= 1;
+          matching_buffers.free_slices.push(matching_buffers.used_slices.remove(i));
         }
-        i -= 1;
       }
       let slice_index = matching_buffers.free_slices.iter()
         .enumerate()
