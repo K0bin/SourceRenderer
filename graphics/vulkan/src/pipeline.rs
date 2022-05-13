@@ -172,7 +172,7 @@ impl VkShader {
       let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
-        descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC } else { vk::DescriptorType::UNIFORM_BUFFER },
+        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
         writable: false,
@@ -184,7 +184,7 @@ impl VkShader {
       let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
-        descriptor_type: if set_index == BindingFrequency::PerDraw as u32 { vk::DescriptorType::STORAGE_BUFFER_DYNAMIC } else { vk::DescriptorType::STORAGE_BUFFER },
+        descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
         writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true),
@@ -417,6 +417,8 @@ impl VkPipeline {
     let mut uses_bindless_texture_set = false;
 
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
+    let mut dynamic_storage_buffers = [0; 4];
+    let mut dynamic_uniform_buffers = [0; 4];
 
     {
       let shader = info.info.vs.clone();
@@ -432,10 +434,25 @@ impl VkPipeline {
         for binding in shader_set {
           let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+            } else if existing_binding.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+            } else {
+              assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            }
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.bindings.push(binding.clone());
+            let mut binding_clone = binding.clone();
+            if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER && dynamic_storage_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_storage_buffers_dynamic {
+              dynamic_storage_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+            }
+            if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER && dynamic_uniform_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_uniform_buffers_dynamic {
+              dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+            }
+            set.bindings.push(binding_clone);
           }
         }
       }
@@ -462,10 +479,25 @@ impl VkPipeline {
         for binding in shader_set {
           let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+            } else if existing_binding.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+            } else {
+              assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            }
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.bindings.push(binding.clone());
+            let mut binding_clone = binding.clone();
+            if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER && dynamic_storage_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_storage_buffers_dynamic {
+              dynamic_storage_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+            }
+            if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER && dynamic_uniform_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_uniform_buffers_dynamic {
+              dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+            }
+            set.bindings.push(binding_clone);
           }
         }
       }
@@ -732,15 +764,32 @@ impl VkPipeline {
       ..Default::default()
     };
 
+    let mut dynamic_storage_buffers = [0; 4];
+    let mut dynamic_uniform_buffers = [0; 4];
     for (index, shader_set) in &shader.descriptor_set_bindings {
       let set = &mut descriptor_set_layouts[*index as usize];
       for binding in shader_set {
         let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
         if let Some(existing_binding) = existing_binding_option {
-          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+            assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+          } else if existing_binding.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+            assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+          } else {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          }
           existing_binding.shader_stage |= binding.shader_stage;
         } else {
-          set.bindings.push(binding.clone());
+          let mut binding_clone = binding.clone();
+          if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER && dynamic_storage_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_storage_buffers_dynamic {
+            dynamic_storage_buffers[*index as usize] += binding_clone.count;
+            binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+          }
+          if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER && dynamic_uniform_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_uniform_buffers_dynamic {
+            dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+            binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+          }
+          set.bindings.push(binding_clone);
         }
       }
     }
@@ -821,15 +870,32 @@ impl VkPipeline {
       ..Default::default()
     };
 
+    let mut dynamic_storage_buffers = [0; 4];
+    let mut dynamic_uniform_buffers = [0; 4];
     for (index, shader_set) in &shader.descriptor_set_bindings {
       let set = &mut descriptor_set_layout_keys[*index as usize];
       for binding in shader_set {
         let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
         if let Some(existing_binding) = existing_binding_option {
-          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+            assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+          } else if existing_binding.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+            assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+          } else {
+            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          }
           existing_binding.shader_stage |= binding.shader_stage;
         } else {
-          set.bindings.push(binding.clone());
+          let mut binding_clone = binding.clone();
+          if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER && dynamic_storage_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_storage_buffers_dynamic {
+            dynamic_storage_buffers[*index as usize] += binding_clone.count;
+            binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+          }
+          if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER && dynamic_uniform_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_uniform_buffers_dynamic {
+            dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+            binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+          }
+          set.bindings.push(binding_clone);
         }
       }
     }
@@ -896,6 +962,8 @@ impl VkPipeline {
     let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
 
     let mut uses_bindless_texture_set = false;
+    let mut dynamic_storage_buffers = [0; 4];
+    let mut dynamic_uniform_buffers = [0; 4];
 
     {
       let shader = info.ray_gen_shader;
@@ -922,10 +990,25 @@ impl VkPipeline {
         for binding in shader_set {
           let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+            } else if existing_binding.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+            } else {
+              assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            }
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.bindings.push(binding.clone());
+            let mut binding_clone = binding.clone();
+            if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER && dynamic_storage_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_storage_buffers_dynamic {
+              dynamic_storage_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+            }
+            if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER && dynamic_uniform_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_uniform_buffers_dynamic {
+              dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+            }
+            set.bindings.push(binding_clone);
           }
         }
       }
@@ -963,10 +1046,25 @@ impl VkPipeline {
         for binding in shader_set {
           let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+            } else if existing_binding.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+            } else {
+              assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            }
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.bindings.push(binding.clone());
+            let mut binding_clone = binding.clone();
+            if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER && dynamic_storage_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_storage_buffers_dynamic {
+              dynamic_storage_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+            }
+            if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER && dynamic_uniform_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_uniform_buffers_dynamic {
+              dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+            }
+            set.bindings.push(binding_clone);
           }
         }
       }
@@ -1004,10 +1102,25 @@ impl VkPipeline {
         for binding in shader_set {
           let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
           if let Some(existing_binding) = existing_binding_option {
-            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+            } else if existing_binding.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC {
+              assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+            } else {
+              assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+            }
             existing_binding.shader_stage |= binding.shader_stage;
           } else {
-            set.bindings.push(binding.clone());
+            let mut binding_clone = binding.clone();
+            if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER && dynamic_storage_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_storage_buffers_dynamic {
+              dynamic_storage_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+            }
+            if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER && dynamic_uniform_buffers[*index as usize] + binding_clone.count < device.properties.limits.max_descriptor_set_uniform_buffers_dynamic {
+              dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+              binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+            }
+            set.bindings.push(binding_clone);
           }
         }
       }

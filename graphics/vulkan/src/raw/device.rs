@@ -39,6 +39,7 @@ pub struct RawVkDevice {
   pub supports_d24: bool,
   pub timeline_semaphores: ash::extensions::khr::TimelineSemaphore,
   pub synchronization2: ash::extensions::khr::Synchronization2,
+  pub properties: vk::PhysicalDeviceProperties,
 }
 
 pub struct RawVkRTEntries {
@@ -116,6 +117,7 @@ impl RawVkDevice {
       supports_d24,
       timeline_semaphores,
       synchronization2,
+      properties: properties.properties,
     }
   }
 

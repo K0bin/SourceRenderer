@@ -1109,7 +1109,9 @@ impl VkCommandBuffer {
     let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
     let mut bindings = <[VkBoundResourceRef; 16]>::default();
     bindings[0] = VkBoundResourceRef::StorageBuffer { buffer, offset, length: actual_length };
-    let descriptor_set = self.descriptor_manager.get_or_create_set(self.frame, meta_pipeline.layout().descriptor_set_layout(0).as_ref().unwrap(), &bindings, true).unwrap();
+    let binding_offsets = [ (buffer.offset() + offset) as u32 ];
+    let is_dynamic_binding = meta_pipeline.layout().descriptor_set_layout(0).unwrap().is_dynamic_binding(0);
+    let descriptor_set = self.descriptor_manager.get_or_create_set(self.frame, meta_pipeline.layout().descriptor_set_layout(0).as_ref().unwrap(), &bindings).unwrap();
     unsafe {
       self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::COMPUTE, *meta_pipeline.handle());
 
@@ -1120,7 +1122,13 @@ impl VkCommandBuffer {
         0,
         std::slice::from_raw_parts(std::mem::transmute(&push_data as *const MetaClearShaderData), std::mem::size_of::<MetaClearShaderData>())
       );
-      self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::COMPUTE, *meta_pipeline.layout().handle(), 0, &[*descriptor_set.set.handle()], &[(buffer.offset() + offset) as u32]);
+      self.device.cmd_bind_descriptor_sets(
+        self.buffer,
+        vk::PipelineBindPoint::COMPUTE,
+        *meta_pipeline.layout().handle(),
+        0, &[*descriptor_set.set.handle()],
+        if is_dynamic_binding { &binding_offsets } else { &[] }
+      );
       self.device.cmd_dispatch(self.buffer, (actual_length as u32 + 3) / 4, 1, 1);
     }
     self.descriptor_manager.mark_all_dirty();
