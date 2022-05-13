@@ -1,15 +1,15 @@
 use ash::vk::Handle;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::Texture;
+use sourcerenderer_core::graphics::{Texture, ShaderType};
 use sourcerenderer_core::pool::{Pool, Recyclable};
 use crate::bindless::{VkBindlessDescriptorSet, BINDLESS_TEXTURE_SET_INDEX};
 use crate::texture::VkTextureView;
-use crate::{VkFenceInner, VkRenderPass, VkSemaphore};
+use crate::{VkFenceInner, VkRenderPass, VkSemaphore, VkPipeline};
 use crate::buffer::BufferAllocator;
 use std::hash::Hash;
 use std::sync::{RwLock, Arc};
 use crate::descriptor::{VkDescriptorSetLayout, VkDescriptorSetEntryInfo, VkConstantRange};
-use crate::pipeline::VkPipelineLayout;
+use crate::pipeline::{VkPipelineLayout, VkShader};
 use std::collections::HashMap;
 use crate::raw::{RawVkDevice, VkFeatures};
 use crate::VkFence;
@@ -29,6 +29,7 @@ pub struct VkShared {
   render_passes: RwLock<HashMap<VkRenderPassInfo, Arc<VkRenderPass>>>,
   frame_buffers: RwLock<HashMap<SmallVec<[u64; 8]>, Arc<VkFrameBuffer>>>,
   bindless_texture_descriptor_set: Option<Arc<VkBindlessDescriptorSet>>,
+  clear_buffer_meta_pipeline: Arc<VkPipeline>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
@@ -59,6 +60,10 @@ impl VkShared {
       None
     };
 
+    let shader_bytes = include_bytes!("../meta_shaders/clear_buffer.comp.spv");
+    let shader = Arc::new(VkShader::new(device, ShaderType::ComputeShader, &shader_bytes[..], Some("ClearBufferMeta")));
+    let clear_buffer_meta_pipeline = Arc::new(VkPipeline::new_compute_meta(device, &shader, Some("ClearBufferPipeline")));
+
     Self {
       device: device.clone(),
       semaphores: Pool::new(Box::new(move ||
@@ -76,7 +81,13 @@ impl VkShared {
       render_passes: RwLock::new(HashMap::new()),
       frame_buffers: RwLock::new(HashMap::new()),
       bindless_texture_descriptor_set,
+      clear_buffer_meta_pipeline,
     }
+  }
+
+  #[inline]
+  pub(crate) fn get_clear_buffer_meta_pipeline(&self) -> &Arc<VkPipeline> {
+    &self.clear_buffer_meta_pipeline
   }
 
   #[inline]

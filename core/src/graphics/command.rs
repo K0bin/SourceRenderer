@@ -82,6 +82,9 @@ pub trait CommandBuffer<B: Backend> {
   fn blit(&mut self, src_texture: &Arc<B::Texture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<B::Texture>, dst_array_layer: u32, dst_mip_level: u32);
   fn finish(self) -> B::CommandBufferSubmission;
 
+  fn clear_storage_view(&mut self, view: &Arc<B::TextureStorageView>, values: [u32; 4]);
+  fn clear_storage_buffer(&mut self, buffer: &Arc<B::Buffer>, offset: usize, length_in_u32s: usize, value: u32);
+
   fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode);
   fn advance_subpass(&mut self);
   fn end_render_pass(&mut self);

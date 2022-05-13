@@ -1,4 +1,3 @@
-
 use std::ffi::{CStr, CString, c_void};
 
 use std::sync::Arc;
@@ -245,6 +244,10 @@ impl Adapter<VkBackend> for VkAdapter {
         filter_min_max_properties.p_next = std::mem::replace(&mut properties.p_next, &mut filter_min_max_properties as *mut vk::PhysicalDeviceSamplerFilterMinmaxProperties as *mut c_void);
       }
 
+      if !supported_features.features.shader_storage_image_write_without_format == vk::TRUE {
+        panic!("Your Vulkan driver is not capable of running this application. ShaderStorageImageWriteWithoutFormat is a required feature!");
+      }
+
       supported_timeline_semaphore_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_timeline_semaphore_features as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures as *mut c_void);
       supported_sync2_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_sync2_features as *mut vk::PhysicalDeviceSynchronization2Features as *mut c_void);
 
@@ -261,6 +264,8 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
       let mut extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
       let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
+
+      enabled_features.shader_storage_image_write_without_format = vk::TRUE;
 
       if self.extensions.intersects(VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2) && self.extensions.intersects(VkAdapterExtensionSupport::DEDICATED_ALLOCATION) {
         extension_names.push(GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME);

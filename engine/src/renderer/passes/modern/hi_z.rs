@@ -8,6 +8,7 @@ pub struct HierarchicalZPass<B: Backend> {
   pipeline: Arc<B::ComputePipeline>,
   copy_pipeline: Arc<B::ComputePipeline>,
   sampler: Arc<B::Sampler>,
+  device: Arc<B::Device>,
 }
 
 impl<B: Backend> HierarchicalZPass<B> {
@@ -64,6 +65,7 @@ impl<B: Backend> HierarchicalZPass<B> {
       pipeline,
       copy_pipeline,
       sampler,
+      device: device.clone(),
     }
   }
 
@@ -154,11 +156,13 @@ impl<B: Backend> HierarchicalZPass<B> {
 
       cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &src_texture, &self.sampler);
       cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &dst_texture);
-      cmd_buffer.upload_dynamic_data_inline(&[PushConstantData {
-        base_width: width,
-        base_height: height,
-        mip_level: mip,
-      }], ShaderType::ComputeShader);
+      if !self.device.supports_min_max_filter() {
+        cmd_buffer.upload_dynamic_data_inline(&[PushConstantData {
+          base_width: width,
+          base_height: height,
+          mip_level: mip,
+        }], ShaderType::ComputeShader);
+      }
       cmd_buffer.flush_barriers();
       cmd_buffer.finish_binding();
       cmd_buffer.dispatch((mip_width + 7) / 8, (mip_height + 7) / 8, 1);

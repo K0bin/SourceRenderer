@@ -87,31 +87,33 @@ impl VkShader {
     let mut sets: HashMap<u32, Vec<VkDescriptorSetEntryInfo>> = HashMap::new();
 
     let push_constant_resource = resources.push_constant_buffers.first();
-    let push_constants_range = push_constant_resource.map(|resource| {
-      let buffer_ranges = ast.get_active_buffer_ranges(resource.id).unwrap();
-      let mut push_constant_range = vk::PushConstantRange {
-        stage_flags: match shader_type {
-          ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
-          ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
-          ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
-          ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
-          ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
-          ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-          _ => unimplemented!()
-        },
-        offset: 0u32,
-        size: 0,
-      };
-      for range in buffer_ranges {
-        push_constant_range.size += range.range as u32;
-      }
+    let push_constants_range = push_constant_resource
+      .map(|resource| ast.get_active_buffer_ranges(resource.id).unwrap())
+      .filter(|buffer_ranges| !buffer_ranges.is_empty())
+      .map(|buffer_ranges| {
+        let mut push_constant_range = vk::PushConstantRange {
+          stage_flags: match shader_type {
+            ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
+            ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
+            ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+            ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+            ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
+            ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+            _ => unimplemented!()
+          },
+          offset: 0u32,
+          size: 0,
+        };
+        for range in buffer_ranges {
+          push_constant_range.size += range.range as u32;
+        }
 
-      if push_constant_range.size > 128 {
-        panic!("Shader push constants exceed the size limit of 128 bytes");
-      }
+        if push_constant_range.size > 128 {
+          panic!("Shader push constants exceed the size limit of 128 bytes");
+        }
 
-      push_constant_range
-    });
+        push_constant_range
+      });
 
     for resource in resources.separate_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
@@ -719,6 +721,7 @@ impl VkPipeline {
   }
 
   pub fn new_compute(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, shared: &VkShared, name: Option<&str>) -> Self {
+    println!("new compute!");
     let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
     let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
@@ -769,6 +772,83 @@ impl VkPipeline {
       descriptor_set_layouts,
       push_constant_ranges: push_constants_ranges,
     });
+
+    let pipeline_create_info = vk::ComputePipelineCreateInfo {
+      flags: vk::PipelineCreateFlags::empty(),
+      stage: shader_stage,
+      layout: *layout.handle(),
+      base_pipeline_handle: vk::Pipeline::null(),
+      base_pipeline_index: 0,
+      ..Default::default()
+    };
+    let pipeline = unsafe {
+      device.create_compute_pipelines(vk::PipelineCache::null(), &[ pipeline_create_info ], None).unwrap()[0]
+    };
+
+    if let Some(name) = name {
+      if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        let name_cstring = CString::new(name).unwrap();
+        unsafe {
+          debug_utils.debug_utils_loader.debug_utils_set_object_name(device.handle(), &vk::DebugUtilsObjectNameInfoEXT {
+            object_type: vk::ObjectType::PIPELINE,
+            object_handle: pipeline.as_raw(),
+            p_object_name: name_cstring.as_ptr(),
+            ..Default::default()
+          }).unwrap();
+        }
+      }
+    }
+
+    VkPipeline {
+      pipeline,
+      device: device.clone(),
+      layout,
+      pipeline_type: VkPipelineType::Compute,
+      uses_bindless_texture_set: shader.uses_bindless_texture_set,
+      sbt: None,
+    }
+  }
+
+  pub fn new_compute_meta(device: &Arc<RawVkDevice>, shader: &Arc<VkShader>, name: Option<&str>) -> Self {
+    println!("new compute meta!");
+    let mut descriptor_set_layout_keys: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
+    let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
+
+    let shader_stage = vk::PipelineShaderStageCreateInfo {
+      module: shader.shader_module(),
+      p_name: entry_point.as_ptr() as *const c_char,
+      stage: shader_type_to_vk(shader.shader_type()),
+      ..Default::default()
+    };
+
+    for (index, shader_set) in &shader.descriptor_set_bindings {
+      let set = &mut descriptor_set_layout_keys[*index as usize];
+      for binding in shader_set {
+        let existing_binding_option = set.bindings.iter_mut().find(|existing_binding| existing_binding.index == binding.index);
+        if let Some(existing_binding) = existing_binding_option {
+          assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+          existing_binding.shader_stage |= binding.shader_stage;
+        } else {
+          set.bindings.push(binding.clone());
+        }
+      }
+    }
+
+    let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
+    if let Some(push_constants_range) = &shader.push_constants_range {
+      push_constants_ranges[0] = Some(VkConstantRange {
+        offset: push_constants_range.offset,
+        size: push_constants_range.size,
+        shader_stage: vk::ShaderStageFlags::COMPUTE
+      });
+    }
+
+    let mut descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 5] = Default::default();
+    for (i, set_key) in descriptor_set_layout_keys.iter().enumerate() {
+      descriptor_set_layouts[i] = Some(Arc::new(VkDescriptorSetLayout::new(&set_key.bindings, set_key.flags, device)));
+    }
+
+    let layout = Arc::new(VkPipelineLayout::new(&descriptor_set_layouts, &push_constants_ranges, device));
 
     let pipeline_create_info = vk::ComputePipelineCreateInfo {
       flags: vk::PipelineCreateFlags::empty(),
@@ -1153,7 +1233,14 @@ impl VkPipelineLayout {
       ..Default::default()
     };
 
+    unsafe {
+    if info.push_constant_range_count != 0 && (*(info.p_push_constant_ranges)).size == 0 {
+      panic!("aaaa");
+    }
+  }
+
     let layout = unsafe {
+      println!("new layout!");
       device.create_pipeline_layout(&info, None)
     }.unwrap();
     Self {

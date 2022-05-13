@@ -8,7 +8,7 @@ use ash::vk;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance, WHOLE_BUFFER, TextureStorageView};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -1036,6 +1036,95 @@ impl VkCommandBuffer {
       );
     }
   }
+
+  fn clear_storage_view(&mut self, view: &Arc<VkTextureView>, values: [u32; 4]) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(!self.has_pending_barrier());
+    debug_assert!(self.render_pass.is_none());
+
+    let format = view.texture().info().format;
+    let mut aspect_mask = vk::ImageAspectFlags::empty();
+    if format.is_depth() {
+      aspect_mask |= vk::ImageAspectFlags::DEPTH;
+    }
+    if format.is_stencil() {
+      aspect_mask |= vk::ImageAspectFlags::STENCIL;
+    }
+    if aspect_mask.is_empty() {
+      aspect_mask = vk::ImageAspectFlags::COLOR;
+    }
+
+    let range = vk::ImageSubresourceRange {
+      aspect_mask: aspect_mask,
+      base_mip_level: view.info().base_mip_level,
+      level_count: view.info().mip_level_length,
+      base_array_layer: view.info().base_array_layer,
+      layer_count: view.info().array_layer_length,
+    };
+
+    unsafe {
+      if aspect_mask.intersects(vk::ImageAspectFlags::DEPTH) || aspect_mask.intersects(vk::ImageAspectFlags::STENCIL) {
+        self.device.cmd_clear_depth_stencil_image(
+          self.buffer,
+          *view.texture().handle(),
+          vk::ImageLayout::GENERAL,
+          &vk::ClearDepthStencilValue {
+            depth: values[0] as f32,
+            stencil: values[1],
+          },
+          &[range]
+        );
+      } else {
+        self.device.cmd_clear_color_image(
+          self.buffer,
+          *view.texture().handle(),
+          vk::ImageLayout::GENERAL,
+          &vk::ClearColorValue {
+            uint32: values
+          },
+          &[range]
+        );
+      }
+    }
+  }
+
+  fn clear_storage_buffer(&mut self, buffer: &Arc<VkBufferSlice>, offset: usize, length_in_u32s: usize, value: u32) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    debug_assert!(!self.has_pending_barrier());
+    debug_assert!(self.render_pass.is_none());
+
+
+    let actual_length = if length_in_u32s == WHOLE_BUFFER { buffer.length() - offset } else { length_in_u32s };
+    #[repr(packed)]
+    struct MetaClearShaderData {
+      length: u32,
+      value: u32,
+    }
+    let push_data = MetaClearShaderData {
+      length: actual_length as u32,
+      value: value,
+    };
+
+
+    let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
+    let mut bindings = <[VkBoundResourceRef; 16]>::default();
+    bindings[0] = VkBoundResourceRef::StorageBuffer { buffer, offset, length: actual_length };
+    let descriptor_set = self.descriptor_manager.get_or_create_set(self.frame, meta_pipeline.layout().descriptor_set_layout(0).as_ref().unwrap(), &bindings, true).unwrap();
+    unsafe {
+      self.device.cmd_bind_pipeline(self.buffer, vk::PipelineBindPoint::COMPUTE, *meta_pipeline.handle());
+
+      self.device.cmd_push_constants(
+        self.buffer,
+        *meta_pipeline.layout().handle(),
+        vk::ShaderStageFlags::COMPUTE,
+        0,
+        std::slice::from_raw_parts(std::mem::transmute(&push_data as *const MetaClearShaderData), std::mem::size_of::<MetaClearShaderData>())
+      );
+      self.device.cmd_bind_descriptor_sets(self.buffer, vk::PipelineBindPoint::COMPUTE, *meta_pipeline.layout().handle(), 0, &[*descriptor_set.set.handle()], &[(buffer.offset() + offset) as u32]);
+      self.device.cmd_dispatch(self.buffer, (actual_length as u32 + 3) / 4, 1, 1);
+    }
+    self.descriptor_manager.mark_all_dirty();
+  }
 }
 
 impl Drop for VkCommandBuffer {
@@ -1320,6 +1409,14 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   #[inline(always)]
   fn draw_indirect(&mut self, draw_buffer: &Arc<VkBufferSlice>, draw_buffer_offset: u32, count_buffer: &Arc<VkBufferSlice>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
     self.item.as_mut().unwrap().draw_indexed_indirect(draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
+  }
+
+  fn clear_storage_view(&mut self, view: &Arc<VkTextureView>, values: [u32; 4]) {
+    self.item.as_mut().unwrap().clear_storage_view(view, values);
+  }
+
+  fn clear_storage_buffer(&mut self, buffer: &Arc<VkBufferSlice>, offset: usize, length_in_u32s: usize, value: u32) {
+    self.item.as_mut().unwrap().clear_storage_buffer(buffer, offset, length_in_u32s, value);
   }
 }
 

@@ -117,6 +117,18 @@ impl<B: Backend> DrawPrepPass<B> {
       cmd_buffer.end_label();
     }
 
+    {
+      let draw_buffer = resources.access_buffer(
+        cmd_buffer,
+        Self::INDIRECT_DRAW_BUFFER,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::STORAGE_WRITE,
+        HistoryResourceEntry::Current
+      );
+      cmd_buffer.flush_barriers();
+      cmd_buffer.clear_storage_buffer(&draw_buffer, 0, 4, 0);
+    }
+
     cmd_buffer.begin_label("Preparing indirect draws");
     assert!(scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
     let part_count = scene.static_drawables().iter().map(|d| d.model.mesh().parts.len()).fold(0, |a, b| a + b) as u32;

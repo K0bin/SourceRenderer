@@ -106,17 +106,21 @@ pub struct SamplerInfo {
 
 pub trait TextureSamplingView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
+  fn info(&self) -> &TextureViewInfo;
 }
 
 pub trait TextureStorageView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
+  fn info(&self) -> &TextureViewInfo;
 }
 
 pub trait TextureRenderTargetView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
+  fn info(&self) -> &TextureViewInfo;
 }
 
 pub trait TextureDepthStencilView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
+  fn info(&self) -> &TextureViewInfo;
 }
 

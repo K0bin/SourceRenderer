@@ -229,7 +229,8 @@ fn address_mode_to_vk(address_mode: AddressMode) -> vk::SamplerAddressMode {
 pub struct VkTextureView {
   view: vk::ImageView,
   texture: Arc<VkTexture>,
-  device: Arc<RawVkDevice>
+  device: Arc<RawVkDevice>,
+  info: TextureViewInfo,
 }
 
 impl VkTextureView {
@@ -278,7 +279,8 @@ impl VkTextureView {
     Self {
       view,
       texture: texture.clone(),
-      device: device.clone()
+      device: device.clone(),
+      info: info.clone(),
     }
   }
 
@@ -304,11 +306,19 @@ impl TextureSamplingView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
   }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
+  }
 }
 
 impl TextureStorageView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
+  }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
   }
 }
 
@@ -316,11 +326,19 @@ impl TextureRenderTargetView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
   }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
+  }
 }
 
 impl TextureDepthStencilView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
+  }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
   }
 }
 
@@ -375,8 +393,8 @@ impl VkSampler {
     }
     debug_assert_ne!(info.mag_filter, Filter::Min);
     debug_assert_ne!(info.mag_filter, Filter::Max);
-    debug_assert_ne!(info.min_filter, Filter::Min);
-    debug_assert_ne!(info.min_filter, Filter::Max);
+    debug_assert_ne!(info.mip_filter, Filter::Min);
+    debug_assert_ne!(info.mip_filter, Filter::Max);
 
     let sampler = unsafe {
       device.create_sampler(&sampler_create_info, None)
