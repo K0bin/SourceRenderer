@@ -685,6 +685,7 @@ impl VkBindingManager {
   }
 
   fn find_compatible_set(&self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResourceRef; 16], use_permanent_cache: bool) -> Option<Arc<VkDescriptorSet>> {
+    // TODO: use a hashmap with the layout as the key
     let mut cache = if use_permanent_cache { self.permanent_cache.borrow_mut() } else { self.transient_cache.borrow_mut() };
 
     let mut entry_opt = cache
