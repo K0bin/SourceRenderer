@@ -152,6 +152,12 @@ impl<P: Platform> Renderer<P> {
         return;
       }
 
+      {
+        let mut queued_frames = self.queued_frames_counter.lock().unwrap();
+        *queued_frames = 0;
+      }
+      self.cond_var.notify_all();
+
       let renderer_impl = std::mem::replace(&mut *renderer_impl, RendererImpl::Uninitialized);
 
       match renderer_impl {
