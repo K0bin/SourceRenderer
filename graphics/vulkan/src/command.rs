@@ -991,6 +991,15 @@ impl VkCommandBuffer {
     self.trackers.track_acceleration_structure(acceleration_structure);
   }
 
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<VkTextureView>, &Arc<VkSampler>)]) {
+    debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::SampledTextureAndSamplerArray(textures_and_samplers));
+    for (texture, samplers) in textures_and_samplers {
+      self.trackers.track_texture_view(*texture);
+      self.trackers.track_sampler(*samplers);
+    }
+  }
+
   fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
     self.trackers.track_texture_view(texture_view);
   }
@@ -1423,6 +1432,10 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
 
   fn clear_storage_buffer(&mut self, buffer: &Arc<VkBufferSlice>, offset: usize, length_in_u32s: usize, value: u32) {
     self.item.as_mut().unwrap().clear_storage_buffer(buffer, offset, length_in_u32s, value);
+  }
+
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<VkTextureView>, &Arc<VkSampler>)]) {
+    self.item.as_mut().unwrap().bind_sampling_view_and_sampler_array(frequency, binding, textures_and_samplers)
   }
 }
 

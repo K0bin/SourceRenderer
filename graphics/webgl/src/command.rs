@@ -412,6 +412,18 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn draw_indirect(&mut self, _draw_buffer: &Arc<WebGLBuffer>, _draw_buffer_offset: u32, _count_buffer: &Arc<WebGLBuffer>, _count_buffer_offset: u32, _max_draw_count: u32, _stride: u32) {
     panic!("WebGL does not support indirect rendering.");
   }
+
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::TextureSamplingView>, &Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::Sampler>)]) {
+    panic!("No plans to support texture and sampler arrays on WebGL")
+  }
+
+  fn clear_storage_view(&mut self, view: &Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::TextureStorageView>, values: [u32; 4]) {
+    todo!()
+  }
+
+  fn clear_storage_buffer(&mut self, buffer: &Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::Buffer>, offset: usize, length_in_u32s: usize, value: u32) {
+    todo!()
+  }
 }
 
 pub struct WebGLCommandSubmission {
