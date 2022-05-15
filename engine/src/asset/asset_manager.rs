@@ -418,7 +418,7 @@ impl<P: Platform> AssetManager<P> {
     let level = assets.level;
     progress.finished.fetch_add(1, Ordering::SeqCst);
     let level = level?;
-    while !progress.is_done() {}
+    while self.is_running.load(Ordering::SeqCst) && !progress.is_done() {}
     Some(level)
   }
 
