@@ -122,11 +122,24 @@ impl VkShader {
         uses_bindless_texture_set = true;
         continue;
       }
+      let resource_type = ast.get_type(resource.type_id).unwrap();
+      let array_size = if let spirv_cross::spirv::Type::Image { array, array_size_literal, image: _ } = resource_type {
+        assert!(array.len() == 1 || array.len() == 0);
+        assert_eq!(array.len(), array_size_literal.len());
+        if !array.is_empty() {
+          assert_eq!(array_size_literal[0], true);
+          array[0]
+        } else {
+          1
+        }
+      } else {
+        panic!("Unexpected spirv type")
+      };
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
         shader_stage: shader_type_to_vk(shader_type),
-        count: 1,
+        count: array_size,
         writable: false,
         flags: vk::DescriptorBindingFlags::empty()
       });
@@ -134,11 +147,25 @@ impl VkShader {
     for resource in resources.separate_samplers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let set = sets.entry(set_index).or_insert_with(Vec::new);
+      let resource_type = ast.get_type(resource.type_id).unwrap();
+      let array_size = if let spirv_cross::spirv::Type::Sampler { array, array_size_literal } = resource_type {
+        assert!(array.len() == 1 || array.len() == 0);
+        assert_eq!(array.len(), array_size_literal.len());
+        if !array.is_empty() {
+          assert_eq!(array_size_literal[0], true);
+          array[0]
+        } else {
+          1
+        }
+      } else {
+        panic!("Unexpected spirv type")
+      };
+      assert_eq!(array_size, 1);
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
-        count: 1,
+        count: array_size,
         writable: false,
         flags: vk::DescriptorBindingFlags::empty()
       });
@@ -146,11 +173,24 @@ impl VkShader {
     for resource in resources.sampled_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let set = sets.entry(set_index).or_insert_with(Vec::new);
+      let resource_type = ast.get_type(resource.type_id).unwrap();
+      let array_size = if let spirv_cross::spirv::Type::SampledImage { array, array_size_literal, image: _ } = resource_type {
+        assert!(array.len() == 1 || array.len() == 0);
+        assert_eq!(array.len(), array_size_literal.len());
+        if !array.is_empty() {
+          assert_eq!(array_size_literal[0], true);
+          array[0]
+        } else {
+          1
+        }
+      } else {
+        panic!("Unexpected spirv type")
+      };
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
-        count: 1,
+        count: array_size,
         writable: false,
         flags: vk::DescriptorBindingFlags::empty()
       });
@@ -160,7 +200,7 @@ impl VkShader {
       let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
-        descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+        descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
         shader_stage: shader_type_to_vk(shader_type),
         count: 1,
         writable: false,
@@ -170,11 +210,24 @@ impl VkShader {
     for resource in resources.uniform_buffers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let set = sets.entry(set_index).or_insert_with(Vec::new);
+      let resource_type = ast.get_type(resource.type_id).unwrap();
+      let array_size = if let spirv_cross::spirv::Type::Struct { array, array_size_literal, member_types: _ } = resource_type {
+        assert!(array.len() == 1 || array.len() == 0);
+        assert_eq!(array.len(), array_size_literal.len());
+        if !array.is_empty() {
+          assert_eq!(array_size_literal[0], true);
+          array[0]
+        } else {
+          1
+        }
+      } else {
+        panic!("Unexpected spirv type")
+      };
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
         shader_stage: shader_type_to_vk(shader_type),
-        count: 1,
+        count: array_size,
         writable: false,
         flags: vk::DescriptorBindingFlags::empty()
       });
@@ -182,11 +235,24 @@ impl VkShader {
     for resource in resources.storage_buffers {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let set = sets.entry(set_index).or_insert_with(Vec::new);
+      let resource_type = ast.get_type(resource.type_id).unwrap();
+      let array_size = if let spirv_cross::spirv::Type::Struct { array, array_size_literal, member_types: _ } = resource_type {
+        assert!(array.len() == 1 || array.len() == 0);
+        assert_eq!(array.len(), array_size_literal.len());
+        if !array.is_empty() {
+          assert_eq!(array_size_literal[0], true);
+          array[0]
+        } else {
+          1
+        }
+      } else {
+        panic!("Unexpected spirv type")
+      };
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
         shader_stage: shader_type_to_vk(shader_type),
-        count: 1,
+        count: array_size,
         writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true),
         flags: vk::DescriptorBindingFlags::empty()
       });
@@ -194,11 +260,24 @@ impl VkShader {
     for resource in resources.storage_images {
       let set_index = ast.get_decoration(resource.id, Decoration::DescriptorSet).unwrap();
       let set = sets.entry(set_index).or_insert_with(Vec::new);
+      let resource_type = ast.get_type(resource.type_id).unwrap();
+      let array_size = if let spirv_cross::spirv::Type::Image { array, array_size_literal, image: _ } = resource_type {
+        assert!(array.len() == 1 || array.len() == 0);
+        assert_eq!(array.len(), array_size_literal.len());
+        if !array.is_empty() {
+          assert_eq!(array_size_literal[0], true);
+          array[0]
+        } else {
+          1
+        }
+      } else {
+        panic!("Unexpected spirv type")
+      };
       set.push(VkDescriptorSetEntryInfo {
         index: ast.get_decoration(resource.id, Decoration::Binding).unwrap(),
         descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
         shader_stage: shader_type_to_vk(shader_type),
-        count: 1,
+        count: array_size,
         writable: ast.get_decoration(resource.id, Decoration::NonWritable).map(|i| i == 0).unwrap_or(true),
         flags: vk::DescriptorBindingFlags::empty()
       });

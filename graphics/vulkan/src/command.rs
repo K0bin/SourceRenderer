@@ -30,7 +30,7 @@ use crate::raw::*;
 use crate::VkShared;
 use crate::buffer::{VkBufferSlice, BufferAllocator};
 use crate::VkTexture;
-use crate::descriptor::{VkBindingManager, VkBoundResourceRef};
+use crate::descriptor::{VkBindingManager, VkBoundResourceRef, VkBufferBindingInfoRef};
 use crate::texture::VkTextureView;
 use crate::lifetime_tracker::VkLifetimeTrackers;
 
@@ -383,14 +383,14 @@ impl VkCommandBuffer {
   pub(crate) fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert_ne!(length, 0);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::UniformBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.length() } else { length } });
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::UniformBuffer(VkBufferBindingInfoRef { buffer, offset, length: if length == WHOLE_BUFFER { buffer.length() } else { length } }));
     self.trackers.track_buffer(buffer);
   }
 
   pub(crate) fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<VkBufferSlice>, offset: usize, length: usize) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert_ne!(length, 0);
-    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageBuffer { buffer, offset, length: if length == WHOLE_BUFFER { buffer.length() } else { length } });
+    self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef { buffer, offset, length: if length == WHOLE_BUFFER { buffer.length() } else { length } }));
     self.trackers.track_buffer(buffer);
   }
 
@@ -1106,7 +1106,7 @@ impl VkCommandBuffer {
 
     let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
     let mut bindings = <[VkBoundResourceRef; 16]>::default();
-    bindings[0] = VkBoundResourceRef::StorageBuffer { buffer, offset, length: actual_length };
+    bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef { buffer, offset, length: actual_length });
     let binding_offsets = [ (buffer.offset() + offset) as u32 ];
     let is_dynamic_binding = meta_pipeline.layout().descriptor_set_layout(0).unwrap().is_dynamic_binding(0);
     let descriptor_set = self.descriptor_manager.get_or_create_set(self.frame, meta_pipeline.layout().descriptor_set_layout(0).as_ref().unwrap(), &bindings).unwrap();
