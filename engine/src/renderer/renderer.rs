@@ -133,6 +133,10 @@ impl<P: Platform> Renderer<P> {
     &self.instance
   }
 
+  pub(crate) fn unblock_game_thread(&self) {
+    self.cond_var.notify_all();
+  }
+
   pub fn stop(&self) {
     trace!("Stopping renderer");
     if cfg!(feature = "threading") {
@@ -152,12 +156,7 @@ impl<P: Platform> Renderer<P> {
         return;
       }
 
-      {
-        let mut queued_frames = self.queued_frames_counter.lock().unwrap();
-        *queued_frames = 0;
-      }
-      self.cond_var.notify_all();
-
+      self.unblock_game_thread();
       let renderer_impl = std::mem::replace(&mut *renderer_impl, RendererImpl::Uninitialized);
 
       match renderer_impl {
@@ -289,7 +288,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
   fn wait_until_available(&self, timeout: Duration) {
     let queued_guard = self.queued_frames_counter.lock().unwrap();
     #[cfg(not(target_arch = "wasm32"))]
-    let _ = self.cond_var.wait_timeout_while(queued_guard, timeout, |queued| *queued > 1).unwrap();
+    let _ = self.cond_var.wait_timeout_while(queued_guard, timeout, |queued| *queued > 1 || !self.is_running()).unwrap();
     #[cfg(target_arch = "wasm32")]
     let _ = self.cond_var.wait_while(queued_guard, |queued| *queued > 1).unwrap();
   }
