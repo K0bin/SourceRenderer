@@ -413,15 +413,19 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support indirect rendering.");
   }
 
-  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::TextureSamplingView>, &Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::Sampler>)]) {
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<WebGLTextureSamplingView>, &Arc<WebGLSampler>)]) {
     panic!("No plans to support texture and sampler arrays on WebGL")
   }
 
-  fn clear_storage_view(&mut self, view: &Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::TextureStorageView>, values: [u32; 4]) {
+  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<WebGLUnorderedAccessView>]) {
+    panic!("WebGL doesnt support storage textures")
+  }
+
+  fn clear_storage_view(&mut self, view: &Arc<WebGLUnorderedAccessView>, values: [u32; 4]) {
     todo!()
   }
 
-  fn clear_storage_buffer(&mut self, buffer: &Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::Buffer>, offset: usize, length_in_u32s: usize, value: u32) {
+  fn clear_storage_buffer(&mut self, buffer: &Arc<WebGLBuffer>, offset: usize, length_in_u32s: usize, value: u32) {
     todo!()
   }
 }

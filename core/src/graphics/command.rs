@@ -70,6 +70,7 @@ pub trait CommandBuffer<B: Backend> {
   fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>);
   fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>, sampler: &Arc<B::Sampler>);
   fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<B::TextureSamplingView>, &Arc<B::Sampler>)]);
+  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<B::TextureStorageView>]);
   fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);
   fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureStorageView>);
