@@ -16,4 +16,5 @@ Cargo.lock
 **/.vs/
 
 **.spv
+!/graphics/vulkan/meta_shaders/*.spv
 **.code-workspace
