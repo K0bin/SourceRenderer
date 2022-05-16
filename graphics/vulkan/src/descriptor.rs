@@ -655,34 +655,6 @@ impl VkDescriptorSet {
       binding.binding_eq(&bindings[index], binding_info)
     })
   }
-
-  pub(crate) fn is_compatible_ref(&self, layout: &Arc<VkDescriptorSetLayout>, bindings: &[VkBoundResourceRef; 16]) -> bool {
-    if &self.layout != layout {
-      return false;
-    }
-
-    self.bindings.iter().enumerate().all(|(index, binding)| {
-      let binding_info = self.layout.binding_infos[index].as_ref();
-      if binding == &VkBoundResource::None && binding_info.is_none() {
-        true
-      } else if binding_info.is_none() {
-        false
-      } else if binding_info.unwrap().descriptor_type != vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC && binding_info.unwrap().descriptor_type != vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
-        binding == &bindings[index]
-      } else {
-        // https://github.com/rust-lang/rust/issues/53667
-        if let (VkBoundResource::UniformBuffer(VkBufferBindingInfo { buffer: entry_buffer, offset: _, length: entry_length }), VkBoundResourceRef::UniformBuffer(VkBufferBindingInfoRef { buffer, offset: _, length })) = (binding, &bindings[index]) {
-          buffer.buffer() == entry_buffer.buffer()
-            && *length == *entry_length
-        } else if let (VkBoundResource::StorageBuffer(VkBufferBindingInfo { buffer: entry_buffer, offset: _, length: entry_length }), VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef { buffer, offset: _, length })) = (binding, &bindings[index]) {
-          buffer.buffer() == entry_buffer.buffer()
-          && *length == *entry_length
-        } else {
-          false
-        }
-      }
-    })
-  }
 }
 
 impl Drop for VkDescriptorSet {
