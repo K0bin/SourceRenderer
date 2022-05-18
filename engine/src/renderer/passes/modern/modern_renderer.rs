@@ -49,7 +49,7 @@ impl<B: Backend> ModernRenderer<B> {
       shadows: RTShadowPass::<B>::new::<P>(device, resolution, &mut barriers)
     });
     let draw_prep = DrawPrepPass::<B>::new::<P>(device, &mut barriers);
-    let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers);
+    let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer);
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
 
