@@ -127,9 +127,6 @@ bool checkOcclusion(GPUBoundingBox aabb, Camera camera, mat4 modelTransform) {
   maxCorner.xy = maxCorner.xy * 0.5 + 0.5;
   maxCorner.y = 1 - maxCorner.y;
 
-  minCorner.xy = floor(minCorner.xy) + vec2(0.5, 0.5);
-  maxCorner.xy = floor(maxCorner.xy) + vec2(0.5, 0.5);
-
   vec2 mip0texSize = vec2(textureSize(hiZ, 0));
   vec2 dist = (maxCorner.xy - minCorner.xy) * mip0texSize;
   float maxDist = max(dist.x, dist.y);
