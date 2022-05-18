@@ -890,7 +890,15 @@ struct VkDescriptorSetCacheEntry {
   last_used_frame: u64
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
+enum CacheMode {
+  None,
+  PerFrame,
+  Everything,
+}
+
 pub(crate) struct VkBindingManager {
+  cache_mode: CacheMode,
   transient_pools: RefCell<Vec<Arc<VkDescriptorPool>>>,
   permanent_pools: RefCell<Vec<Arc<VkDescriptorPool>>>,
   device: Arc<RawVkDevice>,
@@ -907,7 +915,11 @@ impl VkBindingManager {
     let transient_pool = Arc::new(VkDescriptorPool::new(device, true));
     let permanent_pool = Arc::new(VkDescriptorPool::new(device, false));
 
+    let cache_mode = CacheMode::None;
+    // TODO: determine based on driver, might be beneficial for mobile
+
     Self {
+      cache_mode,
       transient_pools: RefCell::new(vec![transient_pool]),
       permanent_pools: RefCell::new(vec![permanent_pool]),
       device: device.clone(),
@@ -924,9 +936,11 @@ impl VkBindingManager {
     self.dirty = DirtyDescriptorSets::empty();
     self.bindings = Default::default();
     self.current_sets = Default::default();
-    self.clean(frame);
-    let mut transient_cache_mut = self.transient_cache.borrow_mut();
-    transient_cache_mut.clear();
+    self.clean_permanent_cache(frame);
+    if self.cache_mode != CacheMode::None {
+      let mut transient_cache_mut = self.transient_cache.borrow_mut();
+      transient_cache_mut.clear();
+    }
     let mut transient_pools_mut = self.transient_pools.borrow_mut();
     for pool in transient_pools_mut.iter_mut() {
       pool.reset();
@@ -1028,9 +1042,13 @@ impl VkBindingManager {
       return None;
     }
 
-    let transient = true;
+    let transient = self.cache_mode != CacheMode::Everything;
 
-    let cached_set = self.find_compatible_set(frame, layout, &bindings, !transient);
+    let cached_set = if self.cache_mode != CacheMode::None {
+      None
+    } else {
+      self.find_compatible_set(frame, layout, &bindings, !transient)
+    };
     let set = if let Some(cached_set) = cached_set {
       cached_set
     } else {
@@ -1091,8 +1109,8 @@ impl VkBindingManager {
 
   const FRAMES_BETWEEN_CLEANUP: u64 = 1;
   const MAX_FRAMES_SET_UNUSED: u64 = 5;
-  fn clean(&mut self, frame: u64) {
-    if frame - self.last_cleanup_frame < Self::FRAMES_BETWEEN_CLEANUP {
+  fn clean_permanent_cache(&mut self, frame: u64) {
+    if self.cache_mode != CacheMode::Everything || frame - self.last_cleanup_frame < Self::FRAMES_BETWEEN_CLEANUP {
       return;
     }
 
