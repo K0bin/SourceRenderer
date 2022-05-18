@@ -389,7 +389,7 @@ impl<P: Platform> RendererInternal<P> {
     let static_meshes = scene.static_drawables();
 
     let mut view_mut = self.view.borrow_mut();
-    view_mut.drawable_parts.sort_by(|a, b| {
+    view_mut.drawable_parts.par_sort_unstable_by(|a, b| {
       // if the drawable index is greater than the amount of static meshes, it is a skinned mesh
       let b_is_skinned = a.drawable_index > static_meshes.len();
       let a_is_skinned = a.drawable_index > static_meshes.len();
