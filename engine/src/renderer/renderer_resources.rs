@@ -308,7 +308,7 @@ impl<B: Backend> RendererResources<B> {
   }
 
   pub fn access_storage_view(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureStorageView>> {
-    debug_assert_eq!(layout, TextureLayout::Storage);
+    debug_assert!(layout == TextureLayout::Storage || layout == TextureLayout::General);
     debug_assert_eq!(access & !(BarrierAccess::SHADER_READ | BarrierAccess::SHADER_WRITE | BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
     self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
