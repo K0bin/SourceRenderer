@@ -31,6 +31,13 @@ vec3 reconstructNormalFS(vec2 uv, float depth, mat4 invViewProj) {
   vec3 position = worldSpacePosition(uv, depth, invViewProj);
   return normalize(cross(dFdx(position), dFdy(position)));
 }
+
+vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx) {
+  return uv - vec2(
+    -dFdxFine(uv.x) * jitterPx.x,
+    dFdyFine(uv.y) * jitterPx.y
+  );
+}
 #endif
 
 #ifdef CS
