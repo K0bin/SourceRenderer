@@ -1044,7 +1044,7 @@ impl VkBindingManager {
 
     let transient = self.cache_mode != CacheMode::Everything;
 
-    let cached_set = if self.cache_mode != CacheMode::None {
+    let cached_set = if self.cache_mode == CacheMode::None {
       None
     } else {
       self.find_compatible_set(frame, layout, &bindings, !transient)
@@ -1072,11 +1072,13 @@ impl VkBindingManager {
       }
       let new_set = Arc::new(new_set.unwrap());
 
-      let mut cache = if transient { self.transient_cache.borrow_mut() } else { self.permanent_cache.borrow_mut() };
-      cache.entry(layout.clone()).or_default().push(VkDescriptorSetCacheEntry {
-        set: new_set.clone(),
-        last_used_frame: frame
-      });
+      if self.cache_mode != CacheMode::None {
+        let mut cache = if transient { self.transient_cache.borrow_mut() } else { self.permanent_cache.borrow_mut() };
+        cache.entry(layout.clone()).or_default().push(VkDescriptorSetCacheEntry {
+          set: new_set.clone(),
+          last_used_frame: frame
+        });
+      }
       new_set
     };
     Some(set)
