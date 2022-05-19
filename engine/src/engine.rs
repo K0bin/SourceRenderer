@@ -90,6 +90,7 @@ impl<P: Platform> Engine<P> {
   pub fn stop(&self) {
     trace!("Stopping engine");
     self.asset_manager.stop();
+    self.renderer.unblock_game_thread();
     self.game.stop();
     self.renderer.stop();
   }
