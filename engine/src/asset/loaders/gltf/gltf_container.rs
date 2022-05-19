@@ -8,7 +8,10 @@ pub struct GltfContainer<P: Platform> {
   json_offset: u64,
   data_offset: u64,
   reader: Mutex<BufReader<<P::IO as IO>::File>>,
-  base_path: String
+  base_path: String,
+  scene_base_path: String,
+  buffer_base_path: String,
+  texture_base_path: String,
 }
 
 impl<P: Platform> GltfContainer<P> {
@@ -32,11 +35,18 @@ impl<P: Platform> GltfContainer<P> {
     let file_name = Path::new(path).file_name().expect("Failed to read file name");
     let base_path = file_name.to_str().unwrap().to_string() + "/";
 
+    let scene_base_path = base_path.clone() + "scene/";
+    let buffer_base_path = base_path.clone() + "buffer/";
+    let texture_base_path = base_path.clone() + "texture/";
+
     Ok(Self {
       reader: Mutex::new(file),
       json_offset,
       data_offset,
-      base_path
+      base_path,
+      scene_base_path,
+      texture_base_path,
+      buffer_base_path
     })
   }
 }
@@ -44,8 +54,7 @@ impl<P: Platform> GltfContainer<P> {
 impl<P: Platform> AssetContainer<P> for GltfContainer<P> {
   fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile<P>> {
     let mut reader = self.reader.lock().unwrap();
-    let scene_base_path = self.base_path.clone() + "scene/";
-    if path.starts_with(&scene_base_path) {
+    if path.starts_with(&self.scene_base_path) {
       let length = (self.data_offset - self.json_offset - glb::GlbChunkHeader::size()) as usize;
       let mut buffer = Vec::with_capacity(length);
       unsafe {
@@ -58,11 +67,17 @@ impl<P: Platform> AssetContainer<P> for GltfContainer<P> {
         data: AssetFileData::Memory(Cursor::new(buffer.into_boxed_slice()))
       });
     }
-    let buffer_base_path = self.base_path.clone() + "buffer/";
-    if path.starts_with(&buffer_base_path) {
-      let parts: Vec<&str> = path[buffer_base_path.len()..].split('-').collect();
+    let is_texture = path.starts_with(&self.texture_base_path);
+    let is_buffer = path.starts_with(&self.buffer_base_path);
+    if is_buffer || is_texture {
+      let base_path = if is_buffer { &self.buffer_base_path } else { &self.texture_base_path };
+      let parts: Vec<&str> = path[base_path.len()..].split('-').collect();
       let offset: u64 = parts[0].parse().unwrap();
-      let length: u64 = parts[1].parse().unwrap();
+      let mut end = parts[1];
+      if let Some(pos) = end.find('.') {
+        end = &end[..pos];
+      }
+      let length: u64 = end.parse().unwrap();
 
       let mut buffer = Vec::with_capacity(length as usize);
       unsafe {

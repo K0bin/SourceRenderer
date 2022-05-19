@@ -7,7 +7,7 @@ use log::trace;
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3};
 
-use crate::asset::loaders::{GltfLoader, CSGODirectoryContainer};
+use crate::asset::loaders::{GltfLoader, CSGODirectoryContainer, ImageLoader};
 use crate::{DeltaTime, Tick, TickDelta, TickDuration, TickRate, Transform, asset::loaders::GltfContainer, game::FilterAll, renderer::*};
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
@@ -40,9 +40,10 @@ impl GameInternal {
 
     //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
-    //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+    asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
-    //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+    asset_manager.add_loader(Box::new(ImageLoader::new()));
+    let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
     //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
 

@@ -5,7 +5,7 @@ use legion::{Entity, World, WorldOptions};
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec2, Vec3, Vec4};
 
-use crate::{Parent, Transform, asset::{Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex}, math::BoundingBox, renderer::{PointLightComponent, DirectionalLightComponent, StaticRenderableComponent}};
+use crate::{Parent, Transform, asset::{Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex, AssetType}, math::BoundingBox, renderer::{PointLightComponent, DirectionalLightComponent, StaticRenderableComponent}};
 
 pub struct GltfLoader {}
 
@@ -56,7 +56,7 @@ impl GltfLoader {
       for primitive in mesh.primitives() {
         let part_start = indices.len();
         GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name);
-        GltfLoader::load_material(&primitive.material(), asset_mgr, &material_path);
+        GltfLoader::load_material(&primitive.material(), asset_mgr, &material_path, gltf_file_name);
         let primitive_bounding_box = primitive.bounding_box();
         if let Some(bounding_box) = &mut bounding_box {
           bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]);
@@ -288,21 +288,30 @@ impl GltfLoader {
     }
   }
 
-  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, material_name: &str) {
+  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, material_name: &str, gltf_file_name: &str) {
     let pbr = material.pbr_metallic_roughness();
-    let color = pbr.base_color_factor();
-    asset_mgr.add_material_color(material_name, Vec4::new(color[0], color[1], color[2], color[3]), pbr.roughness_factor(), pbr.metallic_factor());
 
-    /*let albedo = material.pbr_metallic_roughness().base_color_texture().unwrap();
-    let albedo_source = albedo.texture().source().source();
-    match albedo_source {
-      gltf::image::Source::View { view, .. } => {
-        let buffer = view.buffer();
+    let albedo_info = pbr.base_color_texture();
+    let albedo_path = albedo_info.map(|albedo| {
+      let albedo_source = albedo.texture().source().source();
+      match albedo_source {
+        gltf::image::Source::View { view, mime_type } => {
+          let buffer = view.buffer();
+          let mime_parts: Vec<&str> = mime_type.split('/').collect();
+          let file_type = mime_parts[1].to_lowercase();
+          format!("{}/texture/{}-{}.{}", gltf_file_name, view.offset(), view.length(), &file_type)
+        },
+        gltf::image::Source::Uri { uri: _uri, mime_type: _mime_type } => unimplemented!(),
+      }
+    });
 
-      },
-      gltf::image::Source::Uri { uri, .. } => {
-      },
-    }*/
+    if let Some(albedo_path) = albedo_path {
+      asset_mgr.request_asset(&albedo_path, AssetType::Material, AssetLoadPriority::Low);
+      asset_mgr.add_material(material_name, &albedo_path, pbr.roughness_factor(), pbr.metallic_factor());
+    } else {
+      let color = pbr.base_color_factor();
+      asset_mgr.add_material_color(material_name, Vec4::new(color[0], color[1], color[2], color[3]), pbr.roughness_factor(), pbr.metallic_factor());
+    }
   }
 }
 
