@@ -1,70 +1,79 @@
-use std::{io::{Cursor, Error as IOError, ErrorKind, Result as IOResult}, path::Path, usize};
-use gltf::{Glb, Gltf, buffer::Data as GltfBufferData, image::Data as GltfImageData, import};
-use log::trace;
+use std::{io::{Cursor, Error as IOError, ErrorKind, Result as IOResult, Read, Seek, BufReader, SeekFrom}, path::Path, usize, sync::Mutex};
+use log::warn;
 use sourcerenderer_core::{Platform, platform::io::IO};
 
-use crate::asset::asset_manager::{AssetContainer, AssetFile, AssetFileData};
+use crate::asset::{asset_manager::{AssetContainer, AssetFile, AssetFileData}, loaders::gltf::glb};
 
-pub struct GltfContainer {
-  gltf: Gltf,
-  json_data: Box<[u8]>,
-  buffers: Vec<GltfBufferData>,
-  images: Vec<GltfImageData>,
+pub struct GltfContainer<P: Platform> {
+  json_offset: u64,
+  data_offset: u64,
+  reader: Mutex<BufReader<<P::IO as IO>::File>>,
   base_path: String
 }
 
-impl GltfContainer {
-  pub fn load<P: Platform>(path: &str) -> IOResult<Self> {
-    let json_data = {
-      let file = P::IO::open_external_asset(path)?;
-      let glb = Glb::from_reader(file).map_err(|e| IOError::new(ErrorKind::Other, format!("Failed to read Glb: {:?}", e)))?;
-      glb.json.into_owned().into_boxed_slice()
-    };
+impl<P: Platform> GltfContainer<P> {
+  pub fn load(path: &str) -> IOResult<Self> {
 
-    let (document, buffers, images) = import(path).unwrap();
-    let gltf = Gltf {
-      document,
-      blob: None
-    };
+    let mut file = BufReader::new(P::IO::open_external_asset(path)?);
+    let header = glb::GlbHeader::read(&mut file)?;
 
-    trace!("GLTF: Found {} buffers & {} images", buffers.len(), images.len());
+    let json_chunk_header = glb::GlbChunkHeader::read(&mut file)?;
+    let json_offset = file.seek(SeekFrom::Current(0))?;
+    file.seek_relative(json_chunk_header.length as i64)?;
+
+    let data_chunk_header = glb::GlbChunkHeader::read(&mut file)?;
+    let data_offset = file.seek(SeekFrom::Current(0))?;
+
+    if data_offset + data_chunk_header.length as u64 != header.length as u64 {
+      warn!("GLB file contains more than 3 chunks. This is currently unsupported.");
+      return Err(IOError::new(ErrorKind::Other, "GLB file contains more than 3 chunks. This is currently unsupported."));
+    }
 
     let file_name = Path::new(path).file_name().expect("Failed to read file name");
     let base_path = file_name.to_str().unwrap().to_string() + "/";
 
-    gltf.scenes().for_each(|s| trace!("{:?}", s.name()));
-
     Ok(Self {
-      gltf,
-      json_data,
-      buffers,
-      images,
+      reader: Mutex::new(file),
+      json_offset,
+      data_offset,
       base_path
     })
   }
 }
 
-impl<P: Platform> AssetContainer<P> for GltfContainer {
+impl<P: Platform> AssetContainer<P> for GltfContainer<P> {
   fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile<P>> {
+    let mut reader = self.reader.lock().unwrap();
     let scene_base_path = self.base_path.clone() + "scene/";
     if path.starts_with(&scene_base_path) {
-      let scene_name = &path[scene_base_path.len()..];
-      for scene in self.gltf.scenes() {
-        if scene.name().map_or_else(|| scene.index().to_string(), |name| name.to_string()) == scene_name {
-          // We just need the JSON data to load the scene
-          return Some(AssetFile {
-            path: path.to_string(),
-            data: AssetFileData::Memory(Cursor::new(self.json_data.clone()))
-          });
-        }
+      let length = (self.data_offset - self.json_offset - glb::GlbChunkHeader::size()) as usize;
+      let mut buffer = Vec::with_capacity(length);
+      unsafe {
+        buffer.set_len(length);
       }
+      reader.seek(SeekFrom::Start(self.json_offset)).ok()?;
+      reader.read_exact(&mut buffer).ok()?;
+      return Some(AssetFile {
+        path: path.to_string(),
+        data: AssetFileData::Memory(Cursor::new(buffer.into_boxed_slice()))
+      });
     }
     let buffer_base_path = self.base_path.clone() + "buffer/";
     if path.starts_with(&buffer_base_path) {
-      let buffer_index: usize = Path::new(path).file_name().unwrap().to_str().unwrap().parse().unwrap();
+      let parts: Vec<&str> = path[buffer_base_path.len()..].split('-').collect();
+      let offset: u64 = parts[0].parse().unwrap();
+      let length: u64 = parts[1].parse().unwrap();
+
+      let mut buffer = Vec::with_capacity(length as usize);
+      unsafe {
+        buffer.set_len(length as usize);
+      }
+      reader.seek(SeekFrom::Start(self.data_offset + offset)).ok()?;
+      reader.read_exact(&mut buffer).ok()?;
+
       return Some(AssetFile {
         path: path.to_string(),
-        data: AssetFileData::Memory(Cursor::new(self.buffers[buffer_index].0.clone().into_boxed_slice()))
+        data: AssetFileData::Memory(Cursor::new(buffer.into_boxed_slice()))
       });
     }
 
