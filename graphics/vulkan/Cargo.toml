@@ -11,8 +11,8 @@ vk-mem = { path = "../../vendor/vk-mem-rs" }
 bitflags = "1.2.1"
 thread_local = "1.0"
 crossbeam-channel = "0.5.0"
-spirv_cross = { path = "../../vendor/spirv_cross/spirv_cross", features = [ "glsl" ] }
 smallvec = { version = "1.8.0", features = [ "union", "const_generics", "const_new" ] }
 rayon = "1.5.0"
 crossbeam-utils = "0.8.0"
 parking_lot = "0.12.0"
+spirv_cross_sys = { path = "../../vendor/spirv-cross-sys" }

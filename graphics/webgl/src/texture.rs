@@ -83,6 +83,10 @@ impl TextureSamplingView<WebGLBackend> for WebGLTextureSamplingView {
   fn texture(&self) -> &Arc<WebGLTexture> {
     &self.texture
   }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
+  }
 }
 
 impl PartialEq for WebGLTextureSamplingView {
@@ -109,15 +113,15 @@ impl WebGLRenderTargetView {
   pub fn texture(&self) -> &Arc<WebGLTexture> {
     &self.texture
   }
-
-  pub fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
 }
 
 impl TextureRenderTargetView<WebGLBackend> for WebGLRenderTargetView {
   fn texture(&self) -> &Arc<WebGLTexture> {
     &self.texture
+  }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
   }
 }
 
@@ -155,6 +159,10 @@ impl TextureDepthStencilView<WebGLBackend> for WebGLDepthStencilView {
   fn texture(&self) -> &Arc<WebGLTexture> {
     &self.texture
   }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
+  }
 }
 
 impl PartialEq for WebGLDepthStencilView {
@@ -165,11 +173,27 @@ impl PartialEq for WebGLDepthStencilView {
 
 impl Eq for WebGLDepthStencilView {}
 
-pub struct WebGLUnorderedAccessView {}
+pub struct WebGLUnorderedAccessView {
+  texture: Arc<WebGLTexture>,
+  info: TextureViewInfo
+}
+
+impl WebGLUnorderedAccessView {
+  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
+    Self {
+      texture: texture.clone(),
+      info: info.clone()
+    }
+  }
+}
 
 impl TextureStorageView<WebGLBackend> for WebGLUnorderedAccessView {
   fn texture(&self) -> &Arc<WebGLTexture> {
-    panic!("WebGL does not support storage textures")
+    &self.texture
+  }
+
+  fn info(&self) -> &TextureViewInfo {
+    &self.info
   }
 }
 
@@ -236,6 +260,7 @@ pub(crate) fn max_filter_to_gl(filter: Filter) -> u32 {
   match filter {
     Filter::Linear => WebGlRenderingContext::LINEAR,
     Filter::Nearest => WebGlRenderingContext::NEAREST,
+    _ => panic!("Unsupported filters: {:?}", filter)
   }
 }
 
@@ -245,5 +270,6 @@ pub(crate) fn min_filter_to_gl(filter: Filter, mip_filter: Filter) -> u32 {
     (Filter::Linear, Filter::Nearest) => WebGlRenderingContext::LINEAR_MIPMAP_NEAREST,
     (Filter::Nearest, Filter::Linear) => WebGlRenderingContext::NEAREST_MIPMAP_LINEAR,
     (Filter::Nearest, Filter::Nearest) => WebGlRenderingContext::NEAREST_MIPMAP_NEAREST,
+    _ => panic!("Unsupported filters: {:?}, {:?}", filter, mip_filter)
   }
 }

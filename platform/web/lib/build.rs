@@ -1,10 +1,12 @@
 use std::env;
+use std::ffi::{c_char, c_schar, CStr, CString};
 use std::fs::*;
 use std::io::Write;
+use std::os::raw::c_char;
 use std::path::*;
 use std::io::Read;
-use spirv_cross::spirv::*;
 use build_util::*;
+use spirv_cross_sys;
 
 fn main() {
   let pkg_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -39,62 +41,154 @@ fn main() {
       assert_eq!(buffer.len() % std::mem::size_of::<u32>(), 0);
       let words_len = buffer.len() / std::mem::size_of::<u32>();
       let words = unsafe { std::slice::from_raw_parts(buffer.as_ptr() as *const u32, words_len) };
-      let module = Module::from_words(words);
-      let mut ast = Ast::<spirv_cross::glsl::Target>::parse(&module).unwrap_or_else(|_e| panic!("Failed to parse shader: {:?}", file.path()));
-      let mut options = spirv_cross::glsl::CompilerOptions::default();
-      options.version = spirv_cross::glsl::Version::V3_00Es;
-      options.emit_push_constant_as_uniform_buffer = true;
-      ast.set_compiler_options(&options).unwrap_or_else(|_e| panic!("Failed to set compiler options for shader: {:?}", file.path()));
-      let resources = ast.get_shader_resources().expect("Failed to get shader resources");
+
+      let mut context: spirv_cross_sys::spvc_context = std::ptr::null_mut();
+      let mut ir: spirv_cross_sys::spvc_parsed_ir = std::ptr::null_mut();
+      let mut compiler: spirv_cross_sys::spvc_compiler = std::ptr::null_mut();
+      let mut resources: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
+      let mut options: spirv_cross_sys::spvc_compiler_options = std::ptr::null_mut();
+      unsafe {
+        assert_eq!(spirv_cross_sys::spvc_context_create(&mut context), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        assert_eq!(spirv_cross_sys::spvc_context_parse_spirv(context, words.as_ptr() as *const u32, words_len as u64, &mut ir), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        assert_eq!(spirv_cross_sys::spvc_context_create_compiler(context, spirv_cross_sys::spvc_backend_SPVC_BACKEND_GLSL, ir, spirv_cross_sys::spvc_capture_mode_SPVC_CAPTURE_MODE_COPY, &mut compiler), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+
+        assert_eq!(spirv_cross_sys::spvc_compiler_create_shader_resources(compiler, &mut resources), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+
+        assert_eq!(spirv_cross_sys::spvc_compiler_create_compiler_options(compiler, &mut options), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        assert_eq!(spirv_cross_sys::spvc_compiler_options_set_uint(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_GLSL_VERSION, 300), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        assert_eq!(spirv_cross_sys::spvc_compiler_options_set_bool(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_GLSL_ES, 1), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        assert_eq!(spirv_cross_sys::spvc_compiler_options_set_bool(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_GLSL_EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER, 1), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        assert_eq!(spirv_cross_sys::spvc_compiler_install_compiler_options(compiler, options), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+      }
+
+
       let input_prefix = if is_ps {
         "io"
       } else {
         "vs_input"
       };
-      for input in &resources.stage_inputs {
-        let location = ast.get_decoration(input.id, Decoration::Location).unwrap();
-        ast.rename_interface_variable(&resources.stage_inputs, location, &format!("{}_{}", input_prefix, location)).unwrap();
-        ast.unset_decoration(input.id, Decoration::Location).unwrap();
+      let stage_inputs = unsafe {
+        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource = std::ptr::null();
+        let mut resources_count: u64 = 0;
+        assert_eq!(spirv_cross_sys::spvc_resources_get_resource_list_for_type(resources, spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STAGE_INPUT, &mut resources_list, &mut resources_count), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        std::slice::from_raw_parts(resources_list, resources_count as usize)
+      };
+      for resource in stage_inputs {
+        let location = unsafe {
+          spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationLocation)
+        };
+        unsafe {
+          let new_name = format!("{}_{}", input_prefix, location);
+          let c_name = CString::new(new_name.as_str()).unwrap();
+          spirv_cross_sys::spvc_compiler_set_name(compiler, resource.id, c_name.as_ptr());
+          spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationLocation);
+        }
       }
+
+
       let output_prefix = if is_ps {
         "ps_output"
       } else {
         "io"
       };
-      for output in &resources.stage_outputs {
-        let location = ast.get_decoration(output.id, Decoration::Location).unwrap();
-        ast.rename_interface_variable(&resources.stage_outputs, location, &format!("{}_{}", output_prefix, location)).unwrap();
-        ast.unset_decoration(output.id, Decoration::Location).unwrap();
-      }
-      for uniform in &resources.uniform_buffers {
-        let set = ast.get_decoration(uniform.id, Decoration::DescriptorSet).unwrap();
-        let location = ast.get_decoration(uniform.id, Decoration::Location).unwrap();
-        ast.set_name(uniform.id, &format!("res_{}_{}", set, location)).unwrap();
-        ast.set_name(uniform.base_type_id, &format!("res_{}_{}_t", set, location)).unwrap();
-        ast.unset_decoration(uniform.id, Decoration::Location).unwrap();
-        ast.unset_decoration(uniform.id, Decoration::DescriptorSet).unwrap();
-      }
-      for texture in &resources.sampled_images {
-        let set = ast.get_decoration(texture.id, Decoration::DescriptorSet).unwrap();
-        let location = ast.get_decoration(texture.id, Decoration::Location).unwrap();
-        ast.set_name(texture.id, &format!("res_{}_{}", set, location)).unwrap();
-        ast.unset_decoration(texture.id, Decoration::Location).unwrap();
-        ast.unset_decoration(texture.id, Decoration::DescriptorSet).unwrap();
+      let stage_outputs = unsafe {
+        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource = std::ptr::null();
+        let mut resources_count: u64 = 0;
+        assert_eq!(spirv_cross_sys::spvc_resources_get_resource_list_for_type(resources, spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STAGE_OUTPUT, &mut resources_list, &mut resources_count), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        std::slice::from_raw_parts(resources_list, resources_count as usize)
+      };
+      for resource in stage_outputs {
+        let location = unsafe {
+          spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationLocation)
+        };
+        unsafe {
+          let new_name = format!("{}_{}", output_prefix, location);
+          let c_name = CString::new(new_name.as_str()).unwrap();
+          spirv_cross_sys::spvc_compiler_set_name(compiler, resource.id, c_name.as_ptr());
+          spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationLocation);
+        }
       }
 
-      if let Some(push_constants) = resources.push_constant_buffers.first() {
-        ast.set_name(push_constants.id, "push_constants").unwrap();
-        ast.set_name(push_constants.base_type_id, "push_constants_t").unwrap();
+
+      let uniform_buffers = unsafe {
+        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource = std::ptr::null();
+        let mut resources_count: u64 = 0;
+        assert_eq!(spirv_cross_sys::spvc_resources_get_resource_list_for_type(resources, spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, &mut resources_list, &mut resources_count), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        std::slice::from_raw_parts(resources_list, resources_count as usize)
+      };
+      for resource in uniform_buffers {
+        let set = unsafe {
+          spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet)
+        };
+        let binding = unsafe {
+          spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
+        };
+        let new_name = format!("res_{}_{}", set, binding);
+        let c_name = CString::new(new_name.as_str()).unwrap();
+        unsafe {
+          spirv_cross_sys::spvc_compiler_set_name(compiler, resource.id, c_name.as_ptr());
+          spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet);
+          spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding);
+        }
       }
 
-      let code_res = ast.compile();
-      if code_res.is_err() {
-        return;
+
+      let sampled_images = unsafe {
+        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource = std::ptr::null();
+        let mut resources_count: u64 = 0;
+        assert_eq!(spirv_cross_sys::spvc_resources_get_resource_list_for_type(resources, spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, &mut resources_list, &mut resources_count), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        std::slice::from_raw_parts(resources_list, resources_count as usize)
+      };
+      for resource in sampled_images {
+        let set = unsafe {
+          spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet)
+        };
+        let binding = unsafe {
+          spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
+        };
+        let new_name = format!("res_{}_{}", set, binding);
+        let c_name = CString::new(new_name.as_str()).unwrap();
+        unsafe {
+          spirv_cross_sys::spvc_compiler_set_name(compiler, resource.id, c_name.as_ptr());
+          spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet);
+          spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding);
+        }
       }
-      let code = code_res.unwrap();
+
+
+      let push_constants = unsafe {
+        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource = std::ptr::null();
+        let mut resources_count: u64 = 0;
+        assert_eq!(spirv_cross_sys::spvc_resources_get_resource_list_for_type(resources, spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_PUSH_CONSTANT, &mut resources_list, &mut resources_count), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        std::slice::from_raw_parts(resources_list, resources_count as usize)
+      };
+      if let Some(push_constants) = push_constants.first() {
+        unsafe {
+          let push_constants_name = CString::new("push_constants").unwrap();
+          let push_constants_type_name = CString::new("push_constants_t").unwrap();
+          spirv_cross_sys::spvc_compiler_set_name(compiler, push_constants.id, push_constants_name.as_ptr());
+          spirv_cross_sys::spvc_compiler_set_name(compiler, push_constants.base_type_id, push_constants_type_name.as_ptr());
+        }
+      }
+
+
+      let mut code: *const std::os::raw::c_char = std::ptr::null();
+      unsafe {
+        let result = spirv_cross_sys::spvc_compiler_compile(compiler, &mut code);
+        if result != spirv_cross_sys::spvc_result_SPVC_SUCCESS {
+          unsafe {
+            spirv_cross_sys::spvc_context_destroy(context);
+          }
+          return;
+        }
+      }
       let compiled_file_path = compiled_file_folder.join([file.path().file_stem().unwrap().to_str().unwrap(), ".glsl"].concat());
       let mut out_file = File::create(compiled_file_path).unwrap();
-      write!(out_file, "{}", code).unwrap();
+      write!(out_file, "{}", CStr::from_ptr(code).to_str().unwrap()).unwrap();
+
+      unsafe {
+        spirv_cross_sys::spvc_context_destroy(context);
+      }
     }
   );
 }

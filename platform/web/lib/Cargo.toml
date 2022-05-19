@@ -57,7 +57,7 @@ features = [
 wasm-bindgen-test = "0.3.28"
 
 [build-dependencies]
-spirv_cross = { version = "0.23.1", features = [ 'glsl' ] }
+spirv_cross_sys = { path = "../../../vendor/spirv-cross-sys" }
 build-util = { path = "../../../build_util" }
 
 [profile.release]
