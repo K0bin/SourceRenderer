@@ -26,8 +26,7 @@ fn main() {
     }
 
     build
-        .flag("-DSPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS")
-        .flag("-DSPIRV_CROSS_WRAPPER_NO_EXCEPTIONS");
+        .flag("-DSPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS");
 
     build
     	.file("SPIRV-Cross/spirv_cross_c.cpp")
@@ -41,26 +40,26 @@ fn main() {
     // currently inherit from it. So it's necessary to unconditionally include it here.
     build
         .file("SPIRV-Cross/spirv_glsl.cpp")
-        .flag("-DSPIRV_CROSS_WRAPPER_GLSL");
+        .flag("-DSPIRV_CROSS_C_API_GLSL");
 
     #[cfg(feature = "hlsl")]
     build
         .file("SPIRV-Cross/spirv_hlsl.cpp")
-        .flag("-DSPIRV_CROSS_WRAPPER_HLSL");
+        .flag("-DSPIRV_CROSS_C_API_HLSL");
 
     #[cfg(feature = "msl")]
     build
         .file("SPIRV-Cross/spirv_msl.cpp")
-        .flag("-DSPIRV_CROSS_WRAPPER_MSL");
+        .flag("-DSPIRV_CROSS_C_API_MSL");
 
     build.compile("spirv-cross");
-    
+
     let bindings = bindgen::Builder::default()
     	.header("SPIRV-Cross/spirv_cross_c.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Unable to generate bindings");
-        
+
     let out_path = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))

@@ -1,8 +1,8 @@
 use std::env;
-use std::ffi::{c_char, c_schar, CStr, CString};
+use std::ffi::{CStr, CString};
 use std::fs::*;
 use std::io::Write;
-use std::os::raw::c_char;
+use std::os::raw::{c_void, c_char};
 use std::path::*;
 use std::io::Read;
 use build_util::*;
@@ -49,6 +49,7 @@ fn main() {
       let mut options: spirv_cross_sys::spvc_compiler_options = std::ptr::null_mut();
       unsafe {
         assert_eq!(spirv_cross_sys::spvc_context_create(&mut context), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        spirv_cross_sys::spvc_context_set_error_callback(context, Some(spvc_callback), std::ptr::null_mut());
         assert_eq!(spirv_cross_sys::spvc_context_parse_spirv(context, words.as_ptr() as *const u32, words_len as u64, &mut ir), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
         assert_eq!(spirv_cross_sys::spvc_context_create_compiler(context, spirv_cross_sys::spvc_backend_SPVC_BACKEND_GLSL, ir, spirv_cross_sys::spvc_capture_mode_SPVC_CAPTURE_MODE_COPY, &mut compiler), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
 
@@ -176,19 +177,23 @@ fn main() {
       unsafe {
         let result = spirv_cross_sys::spvc_compiler_compile(compiler, &mut code);
         if result != spirv_cross_sys::spvc_result_SPVC_SUCCESS {
-          unsafe {
-            spirv_cross_sys::spvc_context_destroy(context);
-          }
+          spirv_cross_sys::spvc_context_destroy(context);
           return;
         }
       }
       let compiled_file_path = compiled_file_folder.join([file.path().file_stem().unwrap().to_str().unwrap(), ".glsl"].concat());
       let mut out_file = File::create(compiled_file_path).unwrap();
-      write!(out_file, "{}", CStr::from_ptr(code).to_str().unwrap()).unwrap();
+      unsafe {
+        write!(out_file, "{}", CStr::from_ptr(code).to_str().unwrap()).unwrap();
+      }
 
       unsafe {
         spirv_cross_sys::spvc_context_destroy(context);
       }
     }
   );
+}
+
+unsafe extern "C" fn spvc_callback(user_data: *mut c_void, error: *const c_char) {
+  panic!("SPIR-V-Cross Error: {}", CStr::from_ptr(error).to_str().unwrap());
 }
