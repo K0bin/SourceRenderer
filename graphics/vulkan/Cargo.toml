@@ -5,9 +5,9 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-ash = "0.37.0+1.3.209"
+ash = "0.37.0"
 sourcerenderer_core = { path = "../../core" }
-vk-mem = { path = "../../vendor/vk-mem-rs" }
+vma_sys = { path = "../../vendor/vma-sys" }
 bitflags = "1.2.1"
 thread_local = "1.0"
 crossbeam-channel = "0.5.0"

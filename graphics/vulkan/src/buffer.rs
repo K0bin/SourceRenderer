@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Formatter, sync::{Arc, Mutex}};
+use std::{collections::HashMap, fmt::Formatter, sync::{Arc, Mutex}, mem::MaybeUninit};
 use std::cmp::max;
 use std::hash::{Hash, Hasher};
 use std::fmt::Debug;
@@ -6,16 +6,15 @@ use std::ffi::CString;
 
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
-use ash::vk::{self, BufferDeviceAddressInfo};
-use ash::vk::Handle;
+use ash::vk::{self, BufferDeviceAddressInfo, Handle};
 
 use crate::raw::*;
 use crate::device::memory_usage_to_vma;
 use smallvec::SmallVec;
 pub struct VkBuffer {
   buffer: vk::Buffer,
-  allocation: vk_mem::Allocation,
-  allocation_info: vk_mem::AllocationInfo,
+  allocation: vma_sys::VmaAllocation,
+  allocation_info: vma_sys::VmaAllocationInfo,
   device: Arc<RawVkDevice>,
   map_ptr: Option<*mut u8>,
   is_coherent: bool,
@@ -28,7 +27,7 @@ unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, memory_usage: MemoryUsage, info: &BufferInfo, allocator: &vk_mem::Allocator, name: Option<&str>) -> Arc<Self> {
+  pub fn new(device: &Arc<RawVkDevice>, memory_usage: MemoryUsage, info: &BufferInfo, allocator: &vma_sys::VmaAllocator, name: Option<&str>) -> Arc<Self> {
     let mut queue_families = SmallVec::<[u32; 2]>::new();
     let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
     if info.usage.contains(BufferUsage::COPY_SRC) {
@@ -47,11 +46,26 @@ impl VkBuffer {
       queue_family_index_count: queue_families.len() as u32,
       ..Default::default()
     };
-    let mut allocation_info = vk_mem::AllocationCreateInfo::new();
     let vk_mem_flags = memory_usage_to_vma(memory_usage);
-    allocation_info = allocation_info.preferred_flags(vk_mem_flags.preferred);
-    allocation_info = allocation_info.required_flags(vk_mem_flags.required);
-    let (buffer, allocation, allocation_info) = unsafe { allocator.create_buffer(&buffer_info, &allocation_info).unwrap_or_else(|e| panic!("Failed to create buffer: {:?}. vk info: {:?}, memory usage: {:?}, vulkan memory flags: {:?}", e, &buffer_info, memory_usage, vk_mem_flags)) };
+    let allocation_create_info = vma_sys::VmaAllocationCreateInfo {
+      flags: vma_sys::VmaAllocationCreateFlagBits_VMA_ALLOCATION_CREATE_MAPPED_BIT,
+      usage: vma_sys::VmaMemoryUsage_VMA_MEMORY_USAGE_UNKNOWN,
+      preferredFlags: vk_mem_flags.preferred,
+      requiredFlags: vk_mem_flags.required,
+      memoryTypeBits: 0,
+      pool: std::ptr::null_mut(),
+      pUserData: std::ptr::null_mut(),
+      priority: 0f32
+    };
+    let mut buffer: vk::Buffer = vk::Buffer::null();
+    let mut allocation: vma_sys::VmaAllocation = std::ptr::null_mut();
+    let mut allocation_info_uninit: MaybeUninit<vma_sys::VmaAllocationInfo> = MaybeUninit::uninit();
+    let allocation_info: vma_sys::VmaAllocationInfo;
+    unsafe {
+      assert_eq!(vma_sys::vmaCreateBuffer(*allocator, &buffer_info, &allocation_create_info, &mut buffer, &mut allocation, allocation_info_uninit.as_mut_ptr()), vk::Result::SUCCESS);
+      allocation_info = allocation_info_uninit.assume_init();
+    };
+
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
         let name_cstring = CString::new(name).unwrap();
@@ -67,8 +81,8 @@ impl VkBuffer {
     }
 
     let map_ptr: Option<*mut u8> = unsafe {
-      if memory_usage != MemoryUsage::VRAM {
-        Some(allocator.map_memory(allocation).unwrap())
+      if memory_usage != MemoryUsage::VRAM && allocation_info.pMappedData != std::ptr::null_mut() {
+        Some(std::mem::transmute(allocation_info.pMappedData))
       } else {
         None
       }
@@ -88,8 +102,9 @@ impl VkBuffer {
     };
 
     let is_coherent = if memory_usage != MemoryUsage::VRAM {
-      let memory_type = allocation_info.get_memory_type();
-      let memory_properties = unsafe { allocator.get_memory_type_properties(memory_type).unwrap() };
+      let memory_type = allocation_info.memoryType;
+      let mut memory_properties = vk::MemoryPropertyFlags::empty();
+      unsafe { vma_sys::vmaGetMemoryTypeProperties(*allocator, memory_type, &mut memory_properties) };
       memory_properties.intersects(vk::MemoryPropertyFlags::HOST_COHERENT)
     } else {
       false
@@ -120,10 +135,8 @@ impl VkBuffer {
 impl Drop for VkBuffer {
   fn drop(&mut self) {
     unsafe {
-      if self.map_ptr.is_some() {
-        self.device.allocator.unmap_memory(self.allocation);
-      }
-      self.device.allocator.destroy_buffer(self.buffer, self.allocation);
+      // VMA_ALLOCATION_CREATE_MAPPED_BIT will get automatically unmapped
+      vma_sys::vmaDestroyBuffer(self.device.allocator, self.buffer, self.allocation);
     }
   }
 }
@@ -158,8 +171,8 @@ impl Buffer for VkBufferSlice {
       (self.buffer.memory_usage == MemoryUsage::UncachedRAM
         || self.buffer.memory_usage == MemoryUsage::CachedRAM
         || self.buffer.memory_usage == MemoryUsage::MappableVRAM) {
-      let allocator = &self.buffer.device.allocator;
-      allocator.invalidate_allocation(self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+      let allocator = self.buffer.device.allocator;
+      assert_eq!(vma_sys::vmaInvalidateAllocation(allocator, self.buffer.allocation, self.buffer.allocation_info.offset + self.offset as u64, self.length as u64), vk::Result::SUCCESS);
     }
     self.buffer.map_ptr.map(|ptr| ptr.add(self.offset()))
   }
@@ -169,8 +182,8 @@ impl Buffer for VkBufferSlice {
       (self.buffer.memory_usage == MemoryUsage::UncachedRAM
         || self.buffer.memory_usage == MemoryUsage::CachedRAM
         || self.buffer.memory_usage == MemoryUsage::MappableVRAM) {
-      let allocator = &self.buffer.device.allocator;
-      allocator.flush_allocation(self.buffer.allocation, self.buffer.allocation_info.get_offset() + self.offset, self.length).unwrap();
+      let allocator = self.buffer.device.allocator;
+      assert_eq!(vma_sys::vmaFlushAllocation(allocator, self.buffer.allocation, self.buffer.allocation_info.offset + self.offset as u64, self.length as u64), vk::Result::SUCCESS);
     }
   }
 

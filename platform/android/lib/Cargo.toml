@@ -10,7 +10,7 @@ name = "sourcerenderer"
 crate-type = ["cdylib"]
 
 [dependencies]
-ash = "0.37.0+1.3.209"
+ash = "0.37.0"
 sourcerenderer_engine = { path = "../../../engine" }
 sourcerenderer_core = { path = "../../../core" }
 sourcerenderer_vulkan = { path = "../../../graphics/vulkan" }
@@ -23,3 +23,6 @@ lazy_static = "1.4.0"
 
 [build-dependencies]
 build-util = { path = "../../../build_util" }
+
+[profile.release]
+debug = true

@@ -44,19 +44,92 @@ impl VkDevice {
     features: VkFeatures,
     max_surface_image_count: u32) -> Self {
 
-    let mut vma_flags = vk_mem::AllocatorCreateFlags::NONE;
+    let mut vma_flags = vma_sys::VmaAllocatorCreateFlags::default();
     if features.intersects(VkFeatures::DEDICATED_ALLOCATION) {
-      vma_flags |= vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION;
+      vma_flags |= vma_sys::VmaAllocatorCreateFlagBits_VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT;
     }
     if features.intersects(VkFeatures::RAY_TRACING) {
-      vma_flags |= vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS;
+      vma_flags |= vma_sys::VmaAllocatorCreateFlagBits_VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     }
 
-    let mut allocator_info = vk_mem::AllocatorCreateInfo::new(&instance.instance, &device, &physical_device);
-    allocator_info = allocator_info.flags(vma_flags);
-    allocator_info = allocator_info.preferred_large_heap_block_size(0);
-    allocator_info = allocator_info.vulkan_api_version(vk::API_VERSION_1_1);
-    let allocator = vk_mem::Allocator::new(allocator_info).expect("Failed to create memory allocator.");
+    let allocator = unsafe {
+      unsafe extern "system" fn get_instance_proc_addr_stub(
+          _instance: ash::vk::Instance,
+          _p_name: *const ::std::os::raw::c_char,
+      ) -> ash::vk::PFN_vkVoidFunction {
+          panic!("VMA_DYNAMIC_VULKAN_FUNCTIONS is unsupported")
+      }
+
+      unsafe extern "system" fn get_get_device_proc_stub(
+          _device: ash::vk::Device,
+          _p_name: *const ::std::os::raw::c_char,
+      ) -> ash::vk::PFN_vkVoidFunction {
+          panic!("VMA_DYNAMIC_VULKAN_FUNCTIONS is unsupported")
+      }
+
+      let routed_functions = vma_sys::VmaVulkanFunctions {
+        vkGetInstanceProcAddr: get_instance_proc_addr_stub,
+        vkGetDeviceProcAddr: get_get_device_proc_stub,
+        vkGetPhysicalDeviceProperties: instance
+            .fp_v1_0()
+            .get_physical_device_properties,
+        vkGetPhysicalDeviceMemoryProperties: instance
+            .fp_v1_0()
+            .get_physical_device_memory_properties,
+        vkAllocateMemory: device.fp_v1_0().allocate_memory,
+        vkFreeMemory: device.fp_v1_0().free_memory,
+        vkMapMemory: device.fp_v1_0().map_memory,
+        vkUnmapMemory: device.fp_v1_0().unmap_memory,
+        vkFlushMappedMemoryRanges: device.fp_v1_0().flush_mapped_memory_ranges,
+        vkInvalidateMappedMemoryRanges: device
+            .fp_v1_0()
+            .invalidate_mapped_memory_ranges,
+        vkBindBufferMemory: device.fp_v1_0().bind_buffer_memory,
+        vkBindImageMemory: device.fp_v1_0().bind_image_memory,
+        vkGetBufferMemoryRequirements: device
+            .fp_v1_0()
+            .get_buffer_memory_requirements,
+        vkGetImageMemoryRequirements: device
+            .fp_v1_0()
+            .get_image_memory_requirements,
+        vkCreateBuffer: device.fp_v1_0().create_buffer,
+        vkDestroyBuffer: device.fp_v1_0().destroy_buffer,
+        vkCreateImage: device.fp_v1_0().create_image,
+        vkDestroyImage: device.fp_v1_0().destroy_image,
+        vkCmdCopyBuffer: device.fp_v1_0().cmd_copy_buffer,
+        vkGetBufferMemoryRequirements2KHR: device
+            .fp_v1_1()
+            .get_buffer_memory_requirements2,
+        vkGetImageMemoryRequirements2KHR: device
+            .fp_v1_1()
+            .get_image_memory_requirements2,
+        vkBindBufferMemory2KHR: device.fp_v1_1().bind_buffer_memory2,
+        vkBindImageMemory2KHR: device.fp_v1_1().bind_image_memory2,
+        vkGetPhysicalDeviceMemoryProperties2KHR: instance
+            .fp_v1_1()
+            .get_physical_device_memory_properties2,
+        vkGetDeviceBufferMemoryRequirements: device.fp_v1_3().get_device_buffer_memory_requirements,
+        vkGetDeviceImageMemoryRequirements: device.fp_v1_3().get_device_image_memory_requirements,
+      };
+
+      let vma_create_info = vma_sys::VmaAllocatorCreateInfo {
+        flags: vma_flags,
+        physicalDevice: physical_device,
+        device: device.handle(),
+        preferredLargeHeapBlockSize: 0,
+        pAllocationCallbacks: std::ptr::null(),
+        pDeviceMemoryCallbacks: std::ptr::null(),
+        pHeapSizeLimit: std::ptr::null(),
+        pVulkanFunctions: &routed_functions,
+        instance: instance.handle(),
+        vulkanApiVersion: vk::API_VERSION_1_1,
+        pTypeExternalMemoryHandleTypes: std::ptr::null()
+      };
+
+      let mut allocator: vma_sys::VmaAllocator = std::ptr::null_mut();
+      assert_eq!(vma_sys::vmaCreateAllocator(&vma_create_info, &mut allocator), vk::Result::SUCCESS);
+      allocator
+    };
 
     let raw_graphics_queue = unsafe { device.get_device_queue(graphics_queue_info.queue_family_index as u32, graphics_queue_info.queue_index as u32) };
     let raw_compute_queue = compute_queue_info.map(|info| unsafe { device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32) });

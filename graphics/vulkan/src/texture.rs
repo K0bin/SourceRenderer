@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
@@ -16,7 +17,6 @@ use crate::{VkBackend, raw::RawVkDevice};
 use crate::format::format_to_vk;
 
 use crate::pipeline::{samples_to_vk, compare_func_to_vk};
-use vk_mem::MemoryUsage;
 use std::cmp::max;
 use std::hash::{Hash, Hasher};
 use std::ffi::CString;
@@ -24,7 +24,7 @@ use ash::vk::Handle;
 
 pub struct VkTexture {
   image: vk::Image,
-  allocation: Option<vk_mem::Allocation>,
+  allocation: Option<vma_sys::VmaAllocation>,
   device: Arc<RawVkDevice>,
   info: TextureInfo,
   bindless_slot: Mutex<Option<VkTextureBindlessSlot>>
@@ -71,9 +71,24 @@ impl VkTexture {
       }, &mut props).unwrap()
     };
 
-    let mut alloc_info = vk_mem::AllocationCreateInfo::new();
-    alloc_info = alloc_info.usage(MemoryUsage::GpuOnly);
-    let (image, allocation, _allocation_info) = unsafe { device.allocator.create_image(&create_info, &alloc_info).unwrap() };
+
+    let allocation_create_info = vma_sys::VmaAllocationCreateInfo {
+      flags: vma_sys::VmaAllocationCreateFlags::default(),
+      usage: vma_sys::VmaMemoryUsage_VMA_MEMORY_USAGE_UNKNOWN,
+      preferredFlags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+      requiredFlags: vk::MemoryPropertyFlags::empty(),
+      memoryTypeBits: 0,
+      pool: std::ptr::null_mut(),
+      pUserData: std::ptr::null_mut(),
+      priority: if info.usage.intersects(TextureUsage::STORAGE | TextureUsage::DEPTH_STENCIL | TextureUsage::RENDER_TARGET) { 1f32 } else { 0f32 }
+    };
+    let mut image: vk::Image = vk::Image::null();
+    let mut allocation: vma_sys::VmaAllocation = std::ptr::null_mut();
+    let mut allocation_info_uninit: MaybeUninit<vma_sys::VmaAllocationInfo> = MaybeUninit::uninit();
+    unsafe {
+      assert_eq!(vma_sys::vmaCreateImage(device.allocator, &create_info, &allocation_create_info, &mut image, &mut allocation, allocation_info_uninit.as_mut_ptr()), vk::Result::SUCCESS);
+    };
+
     if let Some(name) = name {
       if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
         let name_cstring = CString::new(name).unwrap();
@@ -167,7 +182,7 @@ impl Drop for VkTexture {
 
     if let Some(alloc) = self.allocation {
       unsafe {
-        self.device.allocator.destroy_image(self.image, alloc);
+        vma_sys::vmaDestroyImage(self.device.allocator, self.image, alloc);
       }
     }
   }

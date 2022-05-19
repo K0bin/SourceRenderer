@@ -4,7 +4,6 @@ extern crate sourcerenderer_core;
 
 extern crate ash;
 
-extern crate vk_mem;
 #[macro_use]
 extern crate bitflags;
 extern crate thread_local;
