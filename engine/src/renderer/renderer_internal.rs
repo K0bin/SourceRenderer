@@ -406,7 +406,7 @@ impl<P: Platform> RendererInternal<P> {
         let materials_b = static_mesh_b.model.materials();
         let material_a = &materials_a[a.part_index];
         let material_b = &materials_b[b.part_index];
-        material_a.cmp(material_b)
+        (material_a.as_ref() as *const RendererMaterial<P::GraphicsBackend>).cmp(&(material_b.as_ref() as *const RendererMaterial<P::GraphicsBackend>))
       }
     });
   }
