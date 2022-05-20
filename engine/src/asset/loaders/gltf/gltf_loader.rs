@@ -2,6 +2,7 @@ use std::{collections::HashMap, io::{Cursor, Read, Seek, SeekFrom}, slice, sync:
 
 use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::Source};
 use legion::{Entity, World, WorldOptions};
+use log::warn;
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec2, Vec3, Vec4};
 
@@ -134,7 +135,6 @@ impl GltfLoader {
           });
         },
         gltf::khr_lights_punctual::Kind::Point => {
-          println!("Found point light");
           entry.add_component(PointLightComponent {
             intensity: light.intensity() / 100f32,
           });
@@ -174,7 +174,11 @@ impl GltfLoader {
       let mut positions_data = vec![0u8; positions_view.length()];
       buffer_file.read_exact(&mut positions_data).unwrap();
       let mut positions_buffer_cursor = Cursor::new(&positions_data[..]);
-      positions_buffer_cursor.seek(SeekFrom::Start(positions.offset() as u64)).unwrap();
+      let positions_stride = if let Some(stride) = positions_view.stride() {
+        stride
+      } else {
+        positions.size()
+      };
 
       let normals = primitive.get(&Semantic::Normals).unwrap();
       assert!(normals.sparse().is_none());
@@ -185,8 +189,8 @@ impl GltfLoader {
         (Source::Uri(uri1), Source::Uri(uri2)) => uri1 == uri2,
         _ => false
       };
-      let mut normals_data = Vec::<u8>::new();
-      let mut normals_buffer_cursor = if same_buffer && normals_view.offset() == positions_view.offset() && normals_view.length() == positions_view.length() {
+      let mut normals_data: Vec<u8>;
+      let mut normals_buffer_cursor = if same_buffer && normals_view.offset() == positions_view.offset() && normals_view.length() == positions_view.length() && normals_view.stride() == positions_view.stride() {
         Cursor::new(&positions_data[..])
       } else {
         match normals_buffer.source() {
@@ -199,47 +203,81 @@ impl GltfLoader {
         buffer_file.read_exact(&mut normals_data).unwrap();
         Cursor::new(&normals_data[..])
       };
+      let normals_stride = if let Some(stride) = normals_view.stride() {
+        stride
+      } else {
+        normals.size()
+      };
+
+
+      let texcoords = primitive.get(&Semantic::TexCoords(0)).unwrap();
+      assert!(texcoords.sparse().is_none());
+      let texcoords_view = texcoords.view().unwrap();
+      let texcoords_buffer = texcoords_view.buffer();
+      let same_buffer = match (positions_buffer.source(), texcoords_buffer.source()) {
+        (Source::Bin, Source::Bin) => true,
+        (Source::Uri(uri1), Source::Uri(uri2)) => uri1 == uri2,
+        _ => false
+      };
+      let mut texcoords_data: Vec<u8>;
+      let mut texcoords_buffer_cursor = if same_buffer && texcoords_view.offset() == positions_view.offset() && texcoords_view.length() == positions_view.length() && texcoords_view.stride() == positions_view.stride() {
+        Cursor::new(&positions_data[..])
+      } else {
+        match texcoords_buffer.source() {
+          Source::Bin => {},
+          Source::Uri(_) => unimplemented!(),
+        }
+        let url = format!("{}/buffer/{}-{}", gltf_file_name, texcoords_view.offset(), texcoords_view.length());
+        let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+        texcoords_data = vec![0u8; texcoords_view.length()];
+        buffer_file.read_exact(&mut texcoords_data).unwrap();
+        Cursor::new(&texcoords_data[..])
+      };
+      let texcoords_stride = if let Some(stride) = texcoords_view.stride() {
+        stride
+      } else {
+        texcoords.size()
+      };
+
+      positions_buffer_cursor.seek(SeekFrom::Start(positions.offset() as u64)).unwrap();
       normals_buffer_cursor.seek(SeekFrom::Start(normals.offset() as u64)).unwrap();
+      texcoords_buffer_cursor.seek(SeekFrom::Start(texcoords.offset() as u64)).unwrap();
 
       assert_eq!(positions.count(), normals.count());
-      for _ in 0..positions.count() {
-        let positions_start = positions_buffer_cursor.seek(SeekFrom::Current(0)).unwrap();
-        let normals_start = normals_buffer_cursor.seek(SeekFrom::Current(0)).unwrap();
-
+      for i in 0..positions.count() {
+        positions_buffer_cursor.seek(SeekFrom::Start(positions.offset() as u64 + (i * positions_stride) as u64)).unwrap();
         let mut position_data = vec![0; positions.size()];
         positions_buffer_cursor.read_exact(&mut position_data).unwrap();
         assert_eq!(position_data.len(), std::mem::size_of::<Vec3>());
 
+        normals_buffer_cursor.seek(SeekFrom::Start(normals.offset() as u64 + (i * normals_stride) as u64)).unwrap();
         let mut normal_data = vec![0; normals.size()];
         normals_buffer_cursor.read_exact(&mut normal_data).unwrap();
         assert_eq!(normal_data.len(), std::mem::size_of::<Vec3>());
 
+        texcoords_buffer_cursor.seek(SeekFrom::Start(texcoords.offset() as u64 + (i * texcoords_stride) as u64)).unwrap();
+        let mut texcoords_data = vec![0; texcoords.size()];
+        texcoords_buffer_cursor.read_exact(&mut texcoords_data).unwrap();
+        assert_eq!(texcoords_data.len(), std::mem::size_of::<Vec2>());
+
         unsafe {
           let position_vec_ptr: *const Vec3 = std::mem::transmute(position_data.as_ptr());
           let normal_vec_ptr: *const Vec3 = std::mem::transmute(normal_data.as_ptr());
+          let texcoord_vec_ptr: *const Vec2 = std::mem::transmute(texcoords_data.as_ptr());
           let mut normal = *normal_vec_ptr;
           normal.normalize_mut();
           vertices.push(Vertex {
             position: *position_vec_ptr,
             normal,
-            uv: Vec2::new(0f32, 0f32),
+            uv: *texcoord_vec_ptr,
             lightmap_uv: Vec2::new(0f32, 0f32),
             alpha: 1.0f32
           });
         }
 
-        if let Some(stride) = positions_view.stride() {
-          assert!(stride >= positions.size());
-          positions_buffer_cursor.seek(SeekFrom::Start(positions_start + stride as u64)).unwrap();
-        }
-
-        if let Some(stride) = normals_view.stride() {
-          assert!(stride >= normals.size());
-          normals_buffer_cursor.seek(SeekFrom::Start(normals_start + stride as u64)).unwrap();
-        }
-
-        assert!(positions_buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (positions_view.offset() + positions_view.length()) as u64);
-        assert!(normals_buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (normals_view.offset() + normals_view.length()) as u64);
+        debug_assert!(positions_buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (positions_view.offset() + positions_view.length()) as u64);
+        debug_assert!(normals_buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (normals_view.offset() + normals_view.length()) as u64);
+        debug_assert!(texcoords_buffer_cursor.seek(SeekFrom::Current(0)).unwrap() <= (texcoords_view.offset() + texcoords_view.length()) as u64);
       }
     }
 
@@ -292,11 +330,15 @@ impl GltfLoader {
     let pbr = material.pbr_metallic_roughness();
 
     let albedo_info = pbr.base_color_texture();
-    let albedo_path = albedo_info.map(|albedo| {
+    let albedo_path = albedo_info.and_then(|albedo| if albedo.tex_coord() == 0 {
+      Some(albedo)
+    } else {
+      warn!("Found non zero texcoord for texture: {}", material_name);
+      None
+    }).map(|albedo| {
       let albedo_source = albedo.texture().source().source();
       match albedo_source {
         gltf::image::Source::View { view, mime_type } => {
-          let buffer = view.buffer();
           let mime_parts: Vec<&str> = mime_type.split('/').collect();
           let file_type = mime_parts[1].to_lowercase();
           format!("{}/texture/{}-{}.{}", gltf_file_name, view.offset(), view.length(), &file_type)
