@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 fn main() {
     let mut build = cc::Build::new();
 
+    build.include("Vulkan-Headers/include");
     build.include("VulkanMemoryAllocator/include");
     build.file("vma.cpp");
 

@@ -48,7 +48,7 @@ impl VkBuffer {
     };
     let vk_mem_flags = memory_usage_to_vma(memory_usage);
     let allocation_create_info = vma_sys::VmaAllocationCreateInfo {
-      flags: vma_sys::VmaAllocationCreateFlagBits_VMA_ALLOCATION_CREATE_MAPPED_BIT,
+      flags: vma_sys::VmaAllocationCreateFlagBits_VMA_ALLOCATION_CREATE_MAPPED_BIT as u32,
       usage: vma_sys::VmaMemoryUsage_VMA_MEMORY_USAGE_UNKNOWN,
       preferredFlags: vk_mem_flags.preferred,
       requiredFlags: vk_mem_flags.required,
