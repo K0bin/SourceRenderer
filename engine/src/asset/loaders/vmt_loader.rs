@@ -1,6 +1,7 @@
 use crate::asset::{AssetLoader, Asset, AssetType, AssetManager};
 use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, AssetLoaderProgress, AssetLoadPriority};
-use sourcerenderer_core::Platform;
+use log::warn;
+use sourcerenderer_core::{Platform, Vec4};
 use sourcerenderer_vmt::VMTMaterial;
 use std::io::{BufReader, Seek, SeekFrom};
 use crate::asset::Material;
@@ -66,15 +67,21 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     }
 
     let albedo_opt = vmt_material.get_base_texture_name();
-    if albedo_opt.is_none() {
-      return Err(());
-    }
-    let albedo = albedo_opt.unwrap();
-    let albedo_path = "materials/".to_string() + albedo.to_lowercase().replace('\\', "/").as_str().trim_matches('/').trim_end_matches(".vtf") + ".vtf";
-    let material = Material::new_pbr(&albedo_path, 0f32, 0f32);
+    if let Some(albedo) = albedo_opt {
+      let albedo_path = "materials/".to_string() + albedo.to_lowercase().replace('\\', "/").as_str().trim_matches('/').trim_end_matches(".vtf") + ".vtf";
+      let material = Material::new_pbr(&albedo_path, 0f32, 0f32);
 
-    manager.request_asset_with_progress(&albedo_path, AssetType::Texture, priority, Some(progress));
-    manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress), priority);
+      manager.request_asset_with_progress(&albedo_path, AssetType::Texture, priority, Some(progress));
+      manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress), priority);
+    } else {
+      if vmt_material.get_shader() != sourcerenderer_vmt::SHADER_WATER {
+        warn!("Unsupported material shader: {}", vmt_material.get_shader());
+        return Err(());
+      }
+
+      let material = Material::new_pbr_color(Vec4::new(0f32, 0f32, 0f32, 1f32), 0f32, 1f32);
+      manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress), priority);
+    }
 
     Ok(AssetLoaderResult {
       level: None
