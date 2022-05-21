@@ -2,7 +2,7 @@ use std::{sync::Arc, io::BufReader};
 
 use sourcerenderer_core::{Platform, graphics::{SampleCount, TextureUsage, TextureInfo}};
 
-use crate::asset::{AssetLoader, asset_manager::{AssetFile, AssetLoaderResult}, AssetManager, AssetLoadPriority, AssetLoaderProgress, Texture};
+use crate::asset::{AssetLoader, asset_manager::{AssetFile, AssetLoaderResult}, AssetManager, AssetLoadPriority, AssetLoaderProgress, Texture, Asset};
 
 use image::{io::Reader as ImageReader, ImageFormat, GenericImageView};
 
@@ -34,16 +34,20 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
       _ => (sourcerenderer_core::graphics::Format::RGBA8, img.into_rgba8().as_raw().clone()),
     };
 
-    manager.add_texture(&path, &TextureInfo {
-      format,
-      width,
-      height,
-      depth: 1,
-      mip_levels: 1,
-      array_length: 1,
-      samples: SampleCount::Samples1,
-      usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
-    }, data.into_boxed_slice());
+    manager.add_asset_with_progress(&path, Asset::Texture(Texture {
+      info: TextureInfo {
+        format,
+        width,
+        height,
+        depth: 1,
+        mip_levels: 1,
+        array_length: 1,
+        samples: SampleCount::Samples1,
+        usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
+      },
+      data: vec![data.into_boxed_slice()].into_boxed_slice(),
+    }), Some(progress), priority);
+
     Ok(AssetLoaderResult {
       level: None
     })
