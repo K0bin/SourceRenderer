@@ -71,6 +71,7 @@ vec2 chooseTexCoordClosestToCamera(sampler2D depthMap, vec2 texCoord) {
   return minTexCoord;
 }
 
+#define CATMULL_ROM_IGNORE_CORNERS
 // https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1
 vec3 catmullRom(sampler2D tex, vec2 texCoord) {
   // We're going to sample a a 4x4 grid of texels surrounding the target UV coordinate. We'll do this by rounding
@@ -107,17 +108,23 @@ vec3 catmullRom(sampler2D tex, vec2 texCoord) {
   texPos12 /= texSize;
 
   vec3 result = vec3(0.0);
-  result += textureLod(tex, vec2(texPos0.x, texPos0.y), 0.0).xyz * w0.x * w0.y;
   result += textureLod(tex, vec2(texPos12.x, texPos0.y), 0.0).xyz * w12.x * w0.y;
-  result += textureLod(tex, vec2(texPos3.x, texPos0.y), 0.0).xyz * w3.x * w0.y;
 
   result += textureLod(tex, vec2(texPos0.x, texPos12.y), 0.0).xyz * w0.x * w12.y;
   result += textureLod(tex, vec2(texPos12.x, texPos12.y), 0.0).xyz * w12.x * w12.y;
   result += textureLod(tex, vec2(texPos3.x, texPos12.y), 0.0).xyz * w3.x * w12.y;
 
-  result += textureLod(tex, vec2(texPos0.x, texPos3.y), 0.0).xyz * w0.x * w3.y;
   result += textureLod(tex, vec2(texPos12.x, texPos3.y), 0.0).xyz * w12.x * w3.y;
+
+  #ifndef CATMULL_ROM_IGNORE_CORNERS
+  result += textureLod(tex, vec2(texPos0.x, texPos0.y), 0.0).xyz * w0.x * w0.y;
+  result += textureLod(tex, vec2(texPos3.x, texPos0.y), 0.0).xyz * w3.x * w0.y;
+  result += textureLod(tex, vec2(texPos0.x, texPos3.y), 0.0).xyz * w0.x * w3.y;
   result += textureLod(tex, vec2(texPos3.x, texPos3.y), 0.0).xyz * w3.x * w3.y;
+  #endif
+
+  // Ignore the corner samples. (Filmic SMAA: Sharp Morphological and Temporal Antialiasing, Jorge Jimenez)
+
   return result;
 }
 
