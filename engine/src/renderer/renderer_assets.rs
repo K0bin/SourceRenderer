@@ -413,6 +413,15 @@ impl<P: Platform> RendererAssets<P> {
       shader_name: material.shader_name.clone(),
       properties
     });
+
+    if let Some(usages) = self.material_usages.get(material_path) {
+      for (model_name, index) in usages.iter() {
+        let model = self.models.get(model_name).unwrap();
+        let mut inner = model.inner.borrow_mut();
+        inner.materials[*index] = renderer_material.clone();
+      }
+    }
+
     self.materials.insert(material_path.to_owned(), renderer_material.clone());
     renderer_material
   }
