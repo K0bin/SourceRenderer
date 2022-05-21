@@ -317,7 +317,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
     let per_frame = FrameData {
       swapchain_transform,
-      halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32),
+      halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32 + 1),
       z_near: near,
       z_far: far,
       rt_size: Vector2::<u32>::new(rtv_info.width, rtv_info.height),

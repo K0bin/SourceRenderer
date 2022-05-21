@@ -10,8 +10,8 @@ use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntr
 use super::prepass::Prepass;
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
-  let width_frac = 1.0f32 / width as f32;
-  let height_frac = 1.0f32 / height as f32;
+  let width_frac = 1.0f32 / (width as f32 * 0.5f32);
+  let height_frac = 1.0f32 / (height as f32 * 0.5f32);
   let mut halton_point = halton_point(index);
   halton_point.x *= width_frac;
   halton_point.y *= height_frac;
@@ -124,11 +124,23 @@ impl<B: GraphicsBackend> TAAPass<B> {
       HistoryResourceEntry::Current
     );
 
+    let depth_srv = resources.access_sampling_view(
+      cmd_buf,
+      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      BarrierSync::COMPUTE_SHADER,
+      BarrierAccess::SAMPLING_READ,
+      TextureLayout::Sampled,
+      false,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
     cmd_buf.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &*output_srv, resources.linear_sampler());
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*taa_history_srv, resources.linear_sampler());
     cmd_buf.bind_storage_texture(BindingFrequency::PerDraw, 2, &*taa_uav);
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*motion_srv, resources.nearest_sampler());
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 4, &*depth_srv, resources.linear_sampler());
     cmd_buf.finish_binding();
 
     let info = taa_uav.texture().info();

@@ -278,7 +278,7 @@ impl<B: GraphicsBackend> Prepass<B> {
     let info = motion.texture().info();
     let per_frame = FrameData {
       swapchain_transform,
-      halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32)
+      halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32 + 1)
     };
     let transform_constant_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
 

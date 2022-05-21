@@ -65,3 +65,7 @@ vec3 reconstructViewSpaceNormalCS(sampler2D depth, vec2 uv, mat4 invProj) {
 #endif
 
 #endif
+
+float luminance(vec3 rgb) {
+  return 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+}
