@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange}};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::blue_noise::BlueNoise}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass}}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass};
 
@@ -21,6 +21,7 @@ pub struct ModernRenderer<B: Backend> {
   rt_passes: Option<RTPasses<B>>,
   blue_noise: BlueNoise<B>,
   hi_z_pass: HierarchicalZPass<B>,
+  ssr_pass: SsrPass<B>,
 }
 
 pub struct RTPasses<B: Backend> {
@@ -50,6 +51,7 @@ impl<B: Backend> ModernRenderer<B> {
     });
     let draw_prep = DrawPrepPass::<B>::new::<P>(device, &mut barriers);
     let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer);
+    let ssr_pass = SsrPass::<B>::new::<P>(device, resolution, &mut barriers);
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
 
@@ -72,6 +74,7 @@ impl<B: Backend> ModernRenderer<B> {
       rt_passes,
       blue_noise,
       hi_z_pass,
+      ssr_pass,
     }
   }
 }
@@ -124,6 +127,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     self.hi_z_pass.execute(&mut cmd_buf, &self.barriers);
     self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref, &gpu_scene_buffer, &late_latching_buffer);
     self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, &gpu_scene_buffer, zero_texture_view, zero_texture_view_black, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer, vertex_buffer, index_buffer);
+    self.ssr_pass.execute(&mut cmd_buf, &late_latching_buffer, &self.barriers);
     self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
 

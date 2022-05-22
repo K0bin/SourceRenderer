@@ -32,6 +32,11 @@ vec3 reconstructNormalFS(vec2 uv, float depth, mat4 invViewProj) {
   return normalize(cross(dFdx(position), dFdy(position)));
 }
 
+vec3 reconstructViewSpaceNormalFS(vec2 uv, float depth, mat4 invProj) {
+  vec3 position = viewSpacePosition(uv, depth, invProj);
+  return normalize(cross(dFdx(position), dFdy(position)));
+}
+
 vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx) {
   return uv - vec2(
     -dFdxFine(uv.x) * jitterPx.x,
@@ -64,8 +69,8 @@ vec3 reconstructViewSpaceNormalCS(sampler2D depth, vec2 uv, mat4 invProj) {
 }
 #endif
 
-#endif
-
 float luminance(vec3 rgb) {
   return 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
 }
+
+#endif

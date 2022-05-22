@@ -8,5 +8,6 @@ pub(crate) mod taa;
 pub(crate) mod light_binning;
 pub(crate) mod clustering;
 pub(crate) mod prepass;
+pub(crate) mod ssr;
 use modern::acceleration_structure_update;
 use modern::rt_shadows;
