@@ -111,3 +111,5 @@ float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRCo
 
 // References:
 // https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.html
+// https://sugulee.wordpress.com/2021/01/16/performance-optimizations-for-screen-space-reflections-technique-part-1-linear-tracing-method/
+// https://sugulee.wordpress.com/2021/01/19/screen-space-reflections-implementation-and-optimization-part-2-hi-z-tracing-method/
