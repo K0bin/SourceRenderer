@@ -17,7 +17,7 @@ fn main() {
     std::fs::create_dir(&shader_dir_temp).expect("Failed to create shader temp directory.");
   }
 
-  compile_shaders(&shader_dir, &shader_dir_temp, |f| f.extension().and_then(|os_str| os_str.to_str()).unwrap_or("") == "glsl" && f.file_stem().and_then(|ext| ext.to_str()).map(|s| s.contains(".web.")).unwrap_or(false));
+  compile_shaders(&shader_dir, &shader_dir_temp, true, |f| f.extension().and_then(|os_str| os_str.to_str()).unwrap_or("") == "glsl" && f.file_stem().and_then(|ext| ext.to_str()).map(|s| s.contains(".web.")).unwrap_or(false));
 
   let compiled_file_folder = Path::new(&pkg_dir).join("..").join("www").join("dist").join("shaders");
   if !compiled_file_folder.exists() {

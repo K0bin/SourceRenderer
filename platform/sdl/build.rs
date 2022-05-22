@@ -19,7 +19,7 @@ fn main() {
     shader_dir.push("engine");
     shader_dir.push("shaders");
 
-    compile_shaders(&shader_dir, &shader_dest_dir, |_| true);
+    compile_shaders(&shader_dir, &shader_dest_dir, true, |_| true);
 
     let mut assets_dest_dir = manifest_dir.clone();
     assets_dest_dir.push("assets");
