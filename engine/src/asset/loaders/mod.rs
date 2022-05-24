@@ -7,6 +7,7 @@ mod pakfile_container;
 mod mdl_loader;
 mod gltf;
 mod image_loader;
+mod fs_container;
 
 pub use self::csgo_loader::CSGODirectoryContainer;
 pub use self::bsp::BspLevelLoader;
@@ -20,3 +21,4 @@ pub use self::mdl_loader::MDLModelLoader;
 pub use self::gltf::GltfContainer;
 pub use self::gltf::GltfLoader;
 pub use self::image_loader::ImageLoader;
+pub use self::fs_container::FSContainer;

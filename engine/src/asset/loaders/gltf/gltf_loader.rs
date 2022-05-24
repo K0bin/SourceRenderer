@@ -159,18 +159,29 @@ impl GltfLoader {
 
   fn load_primitive<P: Platform>(primitive: &Primitive, asset_mgr: &AssetManager<P>, vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>, gltf_file_name: &str) {
     let index_base = vertices.len() as u32;
+    let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
+      &gltf_file_name[..last_slash + 1]
+    } else {
+      gltf_file_name
+    };
 
     {
       let positions = primitive.get(&Semantic::Positions).unwrap();
       assert!(positions.sparse().is_none());
       let positions_view = positions.view().unwrap();
       let positions_buffer = positions_view.buffer();
-      match positions_buffer.source() {
-        Source::Bin => {},
-        Source::Uri(_) => unimplemented!(),
-      }
-      let url = format!("{}/buffer/{}-{}", gltf_file_name, positions_view.offset(), positions_view.length());
-      let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+      let mut buffer_file = match positions_buffer.source() {
+        Source::Bin => {
+          let url = format!("{}/buffer/{}-{}", gltf_file_name, positions_view.offset(), positions_view.length());
+          asset_mgr.load_file(&url).expect("Failed to load buffer")
+        },
+        Source::Uri(uri) => {
+          let url = gltf_path.to_string() + uri;
+          let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+          file.seek(SeekFrom::Current(positions_view.offset() as i64)).unwrap();
+          file
+        },
+      };
       let mut positions_data = vec![0u8; positions_view.length()];
       buffer_file.read_exact(&mut positions_data).unwrap();
       let mut positions_buffer_cursor = Cursor::new(&positions_data[..]);
@@ -193,12 +204,18 @@ impl GltfLoader {
       let mut normals_buffer_cursor = if same_buffer && normals_view.offset() == positions_view.offset() && normals_view.length() == positions_view.length() && normals_view.stride() == positions_view.stride() {
         Cursor::new(&positions_data[..])
       } else {
-        match normals_buffer.source() {
-          Source::Bin => {},
-          Source::Uri(_) => unimplemented!(),
-        }
-        let url = format!("{}/buffer/{}-{}", gltf_file_name, normals_view.offset(), normals_view.length());
-        let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+        let mut buffer_file = match normals_buffer.source() {
+          Source::Bin => {
+            let url = format!("{}/buffer/{}-{}", gltf_file_name, normals_view.offset(), normals_view.length());
+            asset_mgr.load_file(&url).expect("Failed to load buffer")
+          },
+          Source::Uri(uri) => {
+            let url = gltf_path.to_string() + uri;
+            let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+            file.seek(SeekFrom::Current(normals_view.offset() as i64)).unwrap();
+            file
+          },
+        };
         normals_data = vec![0u8; normals_view.length()];
         buffer_file.read_exact(&mut normals_data).unwrap();
         Cursor::new(&normals_data[..])
@@ -223,12 +240,18 @@ impl GltfLoader {
       let mut texcoords_buffer_cursor = if same_buffer && texcoords_view.offset() == positions_view.offset() && texcoords_view.length() == positions_view.length() && texcoords_view.stride() == positions_view.stride() {
         Cursor::new(&positions_data[..])
       } else {
-        match texcoords_buffer.source() {
-          Source::Bin => {},
-          Source::Uri(_) => unimplemented!(),
-        }
-        let url = format!("{}/buffer/{}-{}", gltf_file_name, texcoords_view.offset(), texcoords_view.length());
-        let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+        let mut buffer_file = match texcoords_buffer.source() {
+          Source::Bin => {
+            let url = format!("{}/buffer/{}-{}", gltf_file_name, texcoords_view.offset(), texcoords_view.length());
+            asset_mgr.load_file(&url).expect("Failed to load buffer")
+          },
+          Source::Uri(uri) => {
+            let url = gltf_path.to_string() + uri;
+            let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+            file.seek(SeekFrom::Current(texcoords_view.offset() as i64)).unwrap();
+            file
+          },
+        };
         texcoords_data = vec![0u8; texcoords_view.length()];
         buffer_file.read_exact(&mut texcoords_data).unwrap();
         Cursor::new(&texcoords_data[..])
@@ -286,12 +309,18 @@ impl GltfLoader {
       assert!(indices_accessor.sparse().is_none());
       let view = indices_accessor.view().unwrap();
       let buffer = view.buffer();
-      match buffer.source() {
-        Source::Bin => {},
-        Source::Uri(_) => unimplemented!(),
-      }
-      let url = format!("{}/buffer/{}-{}", gltf_file_name, view.offset(), view.length());
-      let mut buffer_file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+      let mut buffer_file = match buffer.source() {
+        Source::Bin => {
+          let url = format!("{}/buffer/{}-{}", gltf_file_name, view.offset(), view.length());
+          asset_mgr.load_file(&url).expect("Failed to load buffer")
+        },
+        Source::Uri(uri) => {
+          let url = gltf_path.to_string() + uri;
+          let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+          file.seek(SeekFrom::Current(view.offset() as i64)).unwrap();
+          file
+        },
+      };
       let mut data = vec![0u8; view.length()];
       buffer_file.read_exact(&mut data).unwrap();
       let mut buffer_cursor = Cursor::new(data);
@@ -327,6 +356,11 @@ impl GltfLoader {
   }
 
   fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, material_name: &str, gltf_file_name: &str) {
+    let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
+      &gltf_file_name[..last_slash + 1]
+    } else {
+      gltf_file_name
+    };
     let pbr = material.pbr_metallic_roughness();
 
     let albedo_info = pbr.base_color_texture();
@@ -343,7 +377,9 @@ impl GltfLoader {
           let file_type = mime_parts[1].to_lowercase();
           format!("{}/texture/{}-{}.{}", gltf_file_name, view.offset(), view.length(), &file_type)
         },
-        gltf::image::Source::Uri { uri: _uri, mime_type: _mime_type } => unimplemented!(),
+        gltf::image::Source::Uri { uri, mime_type: _mime_type } => {
+          gltf_path.to_string() + uri
+        },
       }
     });
 
