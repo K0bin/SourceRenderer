@@ -255,6 +255,7 @@ impl<B: Backend> GeometryPass<B> {
 
     let drawables = scene.static_drawables();
     let parts = &view.drawable_parts;
+    log::debug!("drawablen len: {}, parts: {}", drawables.len(), parts.len());
     for part in parts {
       let drawable = &drawables[part.drawable_index];
       cmd_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);

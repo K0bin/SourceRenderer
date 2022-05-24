@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::{Cursor, Read, Seek, SeekFrom}, slice, sync::Arc, usize};
 
-use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::Source};
+use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::{Source, View}};
 use legion::{Entity, World, WorldOptions};
 use log::warn;
 use nalgebra::UnitQuaternion;
@@ -15,7 +15,7 @@ impl GltfLoader {
     Self {}
   }
 
-  fn visit_node<P: Platform>(node: &Node, world: &mut World, asset_mgr: &AssetManager<P>, parent_entity: Option<Entity>, gltf_file_name: &str) {
+  fn visit_node<P: Platform>(node: &Node, world: &mut World, asset_mgr: &AssetManager<P>, parent_entity: Option<Entity>, gltf_file_name: &str, buffer_cache: &mut HashMap<String, Vec<u8>>) {
     let (translation, _rotation, scale) = match node.transform() {
       gltf::scene::Transform::Matrix { matrix: _columns_data } => {
         unimplemented!()
@@ -56,7 +56,7 @@ impl GltfLoader {
       let mut bounding_box = Option::<BoundingBox>::None;
       for primitive in mesh.primitives() {
         let part_start = indices.len();
-        GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name);
+        GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name, buffer_cache);
         GltfLoader::load_material(&primitive.material(), asset_mgr, &material_path, gltf_file_name);
         let primitive_bounding_box = primitive.bounding_box();
         if let Some(bounding_box) = &mut bounding_box {
@@ -144,20 +144,45 @@ impl GltfLoader {
     }
 
     for child in node.children() {
-      GltfLoader::visit_node(&child, world, asset_mgr, Some(entity), gltf_file_name);
+      GltfLoader::visit_node(&child, world, asset_mgr, Some(entity), gltf_file_name, buffer_cache);
     }
   }
 
   fn load_scene<P: Platform>(scene: &Scene, asset_mgr: &AssetManager<P>, gltf_file_name: &str) -> World {
     let mut world = World::new(WorldOptions::default());
+    let mut buffer_cache = HashMap::<String, Vec<u8>>::new();
     let nodes = scene.nodes();
     for node in nodes {
-      GltfLoader::visit_node(&node, &mut world, asset_mgr, None, gltf_file_name);
+      GltfLoader::visit_node(&node, &mut world, asset_mgr, None, gltf_file_name, &mut buffer_cache);
     }
     world
   }
 
-  fn load_primitive<P: Platform>(primitive: &Primitive, asset_mgr: &AssetManager<P>, vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>, gltf_file_name: &str) {
+  fn load_primitive<P: Platform>(primitive: &Primitive, asset_mgr: &AssetManager<P>, vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>, gltf_file_name: &str, buffer_cache: &mut HashMap<String, Vec<u8>>) {
+    fn load_buffer<'a, P: Platform>(gltf_file_name: &str, gltf_path: &str, asset_mgr: &AssetManager<P>, buffer_cache: &'a mut HashMap<String, Vec<u8>>, view: &View<'_>) -> Vec<u8> {
+      let mut data = vec![0u8; view.length()];
+      match view.buffer().source() {
+        Source::Bin => {
+          let url = format!("{}/buffer/{}-{}", gltf_file_name, view.offset(), view.length());
+          let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+          let _ = file.read_exact(&mut data).unwrap();
+        },
+        Source::Uri(uri) => {
+          let url = gltf_path.to_string() + uri;
+          let cached_data = buffer_cache.entry(url.clone()).or_insert_with(|| {
+            let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+            let start = file.seek(SeekFrom::Current(0)).unwrap();
+            let mut file_data = vec![0u8; (file.seek(SeekFrom::End(0)).unwrap() - start) as usize];
+            let _ = file.seek(SeekFrom::Start(start)).unwrap();
+            let _ = file.read_exact(&mut file_data).unwrap();
+            file_data
+          });
+          data.copy_from_slice(&cached_data[view.offset()..(view.offset() + view.length())]);
+        },
+      };
+      data
+    }
+
     let index_base = vertices.len() as u32;
     let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
       &gltf_file_name[..last_slash + 1]
@@ -169,21 +194,7 @@ impl GltfLoader {
       let positions = primitive.get(&Semantic::Positions).unwrap();
       assert!(positions.sparse().is_none());
       let positions_view = positions.view().unwrap();
-      let positions_buffer = positions_view.buffer();
-      let mut buffer_file = match positions_buffer.source() {
-        Source::Bin => {
-          let url = format!("{}/buffer/{}-{}", gltf_file_name, positions_view.offset(), positions_view.length());
-          asset_mgr.load_file(&url).expect("Failed to load buffer")
-        },
-        Source::Uri(uri) => {
-          let url = gltf_path.to_string() + uri;
-          let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
-          file.seek(SeekFrom::Current(positions_view.offset() as i64)).unwrap();
-          file
-        },
-      };
-      let mut positions_data = vec![0u8; positions_view.length()];
-      buffer_file.read_exact(&mut positions_data).unwrap();
+      let positions_data = load_buffer(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &positions_view);
       let mut positions_buffer_cursor = Cursor::new(&positions_data[..]);
       let positions_stride = if let Some(stride) = positions_view.stride() {
         stride
@@ -194,30 +205,16 @@ impl GltfLoader {
       let normals = primitive.get(&Semantic::Normals).unwrap();
       assert!(normals.sparse().is_none());
       let normals_view = normals.view().unwrap();
-      let normals_buffer = normals_view.buffer();
-      let same_buffer = match (positions_buffer.source(), normals_buffer.source()) {
+      let same_buffer = match (positions_view.buffer().source(), normals_view.buffer().source()) {
         (Source::Bin, Source::Bin) => true,
         (Source::Uri(uri1), Source::Uri(uri2)) => uri1 == uri2,
         _ => false
       };
-      let mut normals_data: Vec<u8>;
+      let normals_data: Vec<u8>;
       let mut normals_buffer_cursor = if same_buffer && normals_view.offset() == positions_view.offset() && normals_view.length() == positions_view.length() && normals_view.stride() == positions_view.stride() {
         Cursor::new(&positions_data[..])
       } else {
-        let mut buffer_file = match normals_buffer.source() {
-          Source::Bin => {
-            let url = format!("{}/buffer/{}-{}", gltf_file_name, normals_view.offset(), normals_view.length());
-            asset_mgr.load_file(&url).expect("Failed to load buffer")
-          },
-          Source::Uri(uri) => {
-            let url = gltf_path.to_string() + uri;
-            let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
-            file.seek(SeekFrom::Current(normals_view.offset() as i64)).unwrap();
-            file
-          },
-        };
-        normals_data = vec![0u8; normals_view.length()];
-        buffer_file.read_exact(&mut normals_data).unwrap();
+        normals_data = load_buffer(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &normals_view);
         Cursor::new(&normals_data[..])
       };
       let normals_stride = if let Some(stride) = normals_view.stride() {
@@ -230,30 +227,16 @@ impl GltfLoader {
       let texcoords = primitive.get(&Semantic::TexCoords(0)).unwrap();
       assert!(texcoords.sparse().is_none());
       let texcoords_view = texcoords.view().unwrap();
-      let texcoords_buffer = texcoords_view.buffer();
-      let same_buffer = match (positions_buffer.source(), texcoords_buffer.source()) {
+      let same_buffer = match (positions_view.buffer().source(), texcoords_view.buffer().source()) {
         (Source::Bin, Source::Bin) => true,
         (Source::Uri(uri1), Source::Uri(uri2)) => uri1 == uri2,
         _ => false
       };
-      let mut texcoords_data: Vec<u8>;
+      let texcoords_data: Vec<u8>;
       let mut texcoords_buffer_cursor = if same_buffer && texcoords_view.offset() == positions_view.offset() && texcoords_view.length() == positions_view.length() && texcoords_view.stride() == positions_view.stride() {
         Cursor::new(&positions_data[..])
       } else {
-        let mut buffer_file = match texcoords_buffer.source() {
-          Source::Bin => {
-            let url = format!("{}/buffer/{}-{}", gltf_file_name, texcoords_view.offset(), texcoords_view.length());
-            asset_mgr.load_file(&url).expect("Failed to load buffer")
-          },
-          Source::Uri(uri) => {
-            let url = gltf_path.to_string() + uri;
-            let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
-            file.seek(SeekFrom::Current(texcoords_view.offset() as i64)).unwrap();
-            file
-          },
-        };
-        texcoords_data = vec![0u8; texcoords_view.length()];
-        buffer_file.read_exact(&mut texcoords_data).unwrap();
+        texcoords_data = load_buffer(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &texcoords_view);
         Cursor::new(&texcoords_data[..])
       };
       let texcoords_stride = if let Some(stride) = texcoords_view.stride() {
