@@ -126,8 +126,11 @@ fn main() {
         };
         let new_name = format!("res_{}_{}", set, binding);
         let c_name = CString::new(new_name.as_str()).unwrap();
+        let new_type_name = format!("res_{}_{}_t", set, binding);
+        let c_type_name = CString::new(new_type_name.as_str()).unwrap();
         unsafe {
           spirv_cross_sys::spvc_compiler_set_name(compiler, resource.id, c_name.as_ptr());
+          spirv_cross_sys::spvc_compiler_set_name(compiler, resource.base_type_id, c_type_name.as_ptr());
           spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet);
           spirv_cross_sys::spvc_compiler_unset_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding);
         }
