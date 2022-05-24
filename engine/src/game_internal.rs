@@ -7,7 +7,7 @@ use log::trace;
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3};
 
-use crate::asset::loaders::{GltfLoader, CSGODirectoryContainer, ImageLoader};
+use crate::asset::loaders::{GltfLoader, CSGODirectoryContainer, ImageLoader, FSContainer};
 use crate::{DeltaTime, Tick, TickDelta, TickDuration, TickRate, Transform, asset::loaders::GltfContainer, game::FilterAll, renderer::*};
 use crate::transform;
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
@@ -38,12 +38,24 @@ impl GameInternal {
 
     let mut level = World::new(legion::WorldOptions::default());
 
+
+    #[cfg(target_os = "android")]
+    let asset_path = "";
+    #[cfg(target_os = "linux")]
+    let asset_path = "../../assets/";
+    #[cfg(target_os = "windows")]
+    let asset_path = "..\\..\\assets\\";
+    #[cfg(target_arch = "wasm32")]
+    let asset_path = "assets/";
+
+    asset_manager.add_container(Box::new(FSContainer::new(asset_path)));
+
     //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
-    asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+    //asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
     asset_manager.add_loader(Box::new(ImageLoader::new()));
-    let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+    //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
     //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
 
@@ -68,6 +80,7 @@ impl GameInternal {
       asset_manager.load_level("de_overpass.bsp").unwrap()
     };*/
     trace!("Done loading level");
+    let mut level = asset_manager.load_level("FlightHelmet/FlightHelmet.gltf/scene/0").unwrap();
 
     PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule, tick_duration);
     crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, asset_manager);
