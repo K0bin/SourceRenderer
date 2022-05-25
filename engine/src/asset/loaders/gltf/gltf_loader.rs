@@ -291,22 +291,8 @@ impl GltfLoader {
     if let Some(indices_accessor) = indices_accessor {
       assert!(indices_accessor.sparse().is_none());
       let view = indices_accessor.view().unwrap();
-      let buffer = view.buffer();
-      let mut buffer_file = match buffer.source() {
-        Source::Bin => {
-          let url = format!("{}/buffer/{}-{}", gltf_file_name, view.offset(), view.length());
-          asset_mgr.load_file(&url).expect("Failed to load buffer")
-        },
-        Source::Uri(uri) => {
-          let url = gltf_path.to_string() + uri;
-          let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
-          file.seek(SeekFrom::Current(view.offset() as i64)).unwrap();
-          file
-        },
-      };
-      let mut data = vec![0u8; view.length()];
-      buffer_file.read_exact(&mut data).unwrap();
-      let mut buffer_cursor = Cursor::new(data);
+      let data = load_buffer(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &view);
+      let mut buffer_cursor = Cursor::new(&data);
       buffer_cursor.seek(SeekFrom::Start(indices_accessor.offset() as u64)).unwrap();
 
       for _ in 0..indices_accessor.count() {
