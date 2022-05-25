@@ -78,6 +78,10 @@ impl GltfLoader {
         };
         parts.push(range);
       }
+      indices.reverse();
+      for part in &mut parts {
+        part.start = indices.len() as u32 - part.start - part.count;
+      }
 
       let vertices_count = vertices.len();
       let vertices_box = vertices.into_boxed_slice();
