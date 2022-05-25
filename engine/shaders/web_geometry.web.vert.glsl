@@ -28,7 +28,7 @@ void main(void) {
 
   mat4 mvp = camera.viewProj * model;
 
-  out_worldPosition = (model * pos).xyz;
+  out_worldPosition = (mvp * pos).xyz;
   out_uv = in_uv;
   out_lightmap_uv = in_lightmap_uv;
   out_normal = normalize((model * vec4(in_normal, 0)).xyz);
