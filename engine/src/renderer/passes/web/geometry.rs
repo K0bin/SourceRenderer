@@ -1,19 +1,18 @@
 use std::{io::Read, path::Path, sync::Arc};
 
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange, BufferUsage}, platform::io::IO, Vec3};
 
-use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, renderer_scene::RendererScene}};
+use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}}};
 
 pub struct GeometryPass<B: Backend> {
-  depth_buffer: Arc<B::TextureDepthStencilView>,
   pipeline: Arc<B::GraphicsPipeline>,
-  sampler: Arc<B::Sampler>
 }
 
 impl<B: Backend> GeometryPass<B> {
+  pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
 
-  pub(super) fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
-    let ds = device.create_texture(&TextureInfo {
+  pub(super) fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, _init_cmd_buffer: &mut B::CommandBuffer, resources: &mut RendererResources<B>) -> Self {
+    resources.create_texture(Self::DEPTH_TEXTURE_NAME, &TextureInfo {
       format: Format::D32,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -21,10 +20,8 @@ impl<B: Backend> GeometryPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::DEPTH_STENCIL,
-    }, None);
-
-    let dsv = device.create_depth_stencil_view(&ds, &TextureViewInfo::default(), None);
+      usage: TextureUsage::DEPTH_STENCIL | TextureUsage::SAMPLED,
+    }, false);
 
     let shader_file_extension = if cfg!(target_family = "wasm") {
       "glsl"
@@ -110,7 +107,7 @@ impl<B: Backend> GeometryPass<B> {
       depth_stencil: DepthStencilInfo {
         depth_test_enabled: true,
         depth_write_enabled: true,
-        depth_func: CompareFunc::LessEqual,
+        depth_func: CompareFunc::Always,
         stencil_enable: false,
         stencil_read_mask: 0u8,
         stencil_write_mask: 0u8,
@@ -134,7 +131,7 @@ impl<B: Backend> GeometryPass<B> {
           samples: swapchain.sample_count(),
         },
         AttachmentInfo {
-          format: ds.info().format,
+          format: Format::D32,
           samples: SampleCount::Samples1,
         }
       ],
@@ -155,35 +152,8 @@ impl<B: Backend> GeometryPass<B> {
       ]
     }, 0, Some("WebGeometry"));
 
-    let sampler = device.create_sampler(&SamplerInfo {
-      mag_filter: Filter::Linear,
-      min_filter: Filter::Linear,
-      mip_filter: Filter::Linear,
-      address_mode_u: AddressMode::ClampToEdge,
-      address_mode_v: AddressMode::ClampToEdge,
-      address_mode_w: AddressMode::ClampToEdge,
-      mip_bias: 0.0f32,
-      max_anisotropy: 0.0f32,
-      compare_op: None,
-      min_lod: 0.0f32,
-      max_lod: None,
-    });
-
-    init_cmd_buffer.barrier(&[Barrier::TextureBarrier {
-      old_sync: BarrierSync::empty(),
-      new_sync: BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
-      old_access: BarrierAccess::empty(),
-      new_access: BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
-      old_layout: TextureLayout::Undefined,
-      new_layout: TextureLayout::DepthStencilReadWrite,
-      texture: &ds,
-      range: BarrierTextureRange::default(),
-    }]);
-
     Self {
-      depth_buffer: dsv,
       pipeline,
-      sampler
     }
   }
 
@@ -191,10 +161,10 @@ impl<B: Backend> GeometryPass<B> {
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    _device: &Arc<B::Device>,
     scene: &RendererScene<B>,
     view: &View,
     camera_buffer: &Arc<B::Buffer>,
+    resources: &RendererResources<B>,
     backbuffer: &Arc<B::TextureRenderTargetView>) {
 
     cmd_buffer.barrier(&[Barrier::TextureBarrier {
@@ -208,6 +178,18 @@ impl<B: Backend> GeometryPass<B> {
       range: BarrierTextureRange::default(),
     }]);
 
+    let dsv = resources.access_depth_stencil_view(
+      cmd_buffer,
+      Self::DEPTH_TEXTURE_NAME,
+      BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
+      BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+      TextureLayout::DepthStencilReadWrite,
+      true,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    cmd_buffer.flush_barriers();
     cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
       attachments: &[
         RenderPassAttachment {
@@ -216,7 +198,7 @@ impl<B: Backend> GeometryPass<B> {
           store_op: StoreOp::Store
         },
         RenderPassAttachment {
-          view: RenderPassAttachmentView::DepthStencil(&self.depth_buffer),
+          view: RenderPassAttachmentView::DepthStencil(&dsv),
           load_op: LoadOp::Clear,
           store_op: StoreOp::Store
         }
@@ -267,7 +249,7 @@ impl<B: Backend> GeometryPass<B> {
       match albedo_value {
         RendererMaterialValue::Texture(texture) => {
           let albedo_view = &texture.view;
-          cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
+          cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 0, albedo_view, resources.linear_sampler());
         },
         _ => unimplemented!()
       }

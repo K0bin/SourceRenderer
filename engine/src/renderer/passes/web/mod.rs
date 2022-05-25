@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain}};
 
-use crate::{input::Input, renderer::{LateLatching, render_path::RenderPath}};
+use crate::{input::Input, renderer::{LateLatching, render_path::RenderPath, renderer_resources::RendererResources}};
 
 mod geometry;
 
@@ -11,19 +11,22 @@ use self::geometry::GeometryPass;
 pub struct WebRenderer<B: Backend> {
   device: Arc<B::Device>,
   swapchain: Arc<B::Swapchain>,
-  geometry: GeometryPass<B>
+  geometry: GeometryPass<B>,
+  resources: RendererResources<B>,
 }
 
 impl<B: Backend> WebRenderer<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
+    let mut resources = RendererResources::<B>::new(device);
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
-    let geometry_pass = GeometryPass::new::<P>(device, swapchain, &mut init_cmd_buffer);
+    let geometry_pass = GeometryPass::new::<P>(device, swapchain, &mut init_cmd_buffer, &mut resources);
     let init_submission = init_cmd_buffer.finish();
     device.graphics_queue().submit(init_submission, None, &[], &[], false);
     Self {
       device: device.clone(),
       swapchain: swapchain.clone(),
-      geometry: geometry_pass
+      geometry: geometry_pass,
+      resources,
     }
   }
 }
@@ -60,7 +63,7 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     let scene_ref = scene.borrow();
     let view_ref = view.borrow();
     let late_latching_buffer = late_latching.unwrap().buffer();
-    self.geometry.execute(&mut cmd_buffer, &self.device, &scene_ref, &view_ref, &late_latching_buffer, &backbuffer);
+    self.geometry.execute(&mut cmd_buffer, &scene_ref, &view_ref, &late_latching_buffer, &self.resources, &backbuffer);
 
     if let Some(late_latching) = late_latching {
       let input_state = input.poll();
