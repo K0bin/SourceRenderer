@@ -30,5 +30,6 @@ features = [
   'WebglCompressedTextureS3tc',
   'WebGlActiveInfo',
   'WebGlFramebuffer',
-  'WebGlVertexArrayObject'
+  'WebGlVertexArrayObject',
+  'WebGlUniformLocation'
 ]

@@ -1,6 +1,6 @@
 use std::{hash::{Hash, Hasher}};
 
-use sourcerenderer_core::graphics::{GraphicsPipelineInfo, PrimitiveType, Shader, ShaderType};
+use sourcerenderer_core::graphics::{GraphicsPipelineInfo, Shader, ShaderType};
 
 use crate::{GLThreadSender, WebGLBackend, thread::{PipelineHandle, ShaderHandle, WebGLPipelineInfo}};
 
@@ -12,7 +12,7 @@ pub struct WebGLShader {
 
 impl Hash for WebGLShader {
   fn hash<H: Hasher>(&self, state: &mut H) {
-    //state.hash(self.handle);
+    self.handle.hash(state);
   }
 }
 

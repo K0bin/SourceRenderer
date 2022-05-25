@@ -27,7 +27,7 @@ pub enum ImageLayout {
   Present
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RenderpassRecordingMode {
   Commands,
   CommandBuffers

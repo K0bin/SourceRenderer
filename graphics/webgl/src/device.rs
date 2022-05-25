@@ -114,7 +114,6 @@ impl Device<WebGLBackend> for WebGLDevice {
   }
 
   fn init_texture(&self, texture: &Arc<WebGLTexture>, buffer: &Arc<WebGLBuffer>, mip_level: u32, array_layer: u32, src_buffer_offset: usize) {
-    return;
     let buffer_id = buffer.handle();
     let texture_id = texture.handle();
     self.thread_queue.send(Box::new(move |device| {
@@ -126,25 +125,26 @@ impl Device<WebGLBackend> for WebGLDevice {
       device.bind_buffer(WebGl2RenderingContext::PIXEL_UNPACK_BUFFER, Some(buffer.gl_buffer()));
       device.bind_texture(target, Some(texture.gl_handle()));
       if !info.format.is_compressed() {
-        device.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_i32(
+        device.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_i32(
           if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
           mip_level as i32,
-          format_to_internal_gl(info.format) as i32,
+          0,
+          0,
           info.width as i32,
           info.height as i32,
-          0,
           format_to_gl(info.format),
           format_to_type(info.format),
           src_buffer_offset as i32
         ).unwrap();
       } else {
-        device.compressed_tex_image_2d_with_i32_and_i32(
+        device.compressed_tex_sub_image_2d_with_i32_and_i32(
           if texture.is_cubemap() { WebGlRenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + array_layer } else { target },
           mip_level as i32,
-          format_to_internal_gl(info.format),
+          0,
+          0,
           info.width as i32,
           info.height as i32,
-          0,
+          format_to_gl(info.format),
           buffer.info().size as i32,
           src_buffer_offset as i32
         );

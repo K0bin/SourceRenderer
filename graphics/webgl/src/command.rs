@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, buffer, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer}, rt::WebGLAccelerationStructureStub, WebGLWork};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding}, rt::WebGLAccelerationStructureStub, WebGLWork};
 
 use bitflags::bitflags;
 
@@ -13,17 +13,19 @@ bitflags! {
   }
 }
 
+pub struct WebGLVBBinding {
+  buffer: Arc<WebGLBuffer>,
+  offset: u64,
+}
+
 pub struct WebGLCommandBuffer {
   sender: GLThreadSender,
   pipeline: Option<Arc<WebGLGraphicsPipeline>>,
   commands: VecDeque<WebGLWork>,
   inline_buffer: Arc<WebGLBuffer>,
   handles: Arc<WebGLHandleAllocator>,
-  used_buffers: Vec<Arc<WebGLBuffer>>,
-  used_textures: Vec<Arc<WebGLTexture>>,
-  used_pipelines: Vec<Arc<WebGLGraphicsPipeline>>,
   dirty: WebGLCommandBufferDirty,
-  vertex_buffer: Option<Arc<WebGLBuffer>>,
+  vertex_buffer: Option<WebGLVBBinding>,
   index_buffer_offset: usize
 }
 
@@ -39,9 +41,6 @@ impl WebGLCommandBuffer {
       sender: sender.clone(),
       handles: handle_allocator.clone(),
       inline_buffer,
-      used_buffers: Vec::new(),
-      used_textures: Vec::new(),
-      used_pipelines: Vec::new(),
       dirty: WebGLCommandBufferDirty::empty(),
       vertex_buffer: None,
       index_buffer_offset: 0,
@@ -59,14 +58,18 @@ impl WebGLCommandBuffer {
     let pipeline = self.pipeline.as_ref().unwrap();
     let pipeline_handle = pipeline.handle();
     let vbo = self.vertex_buffer.as_ref().unwrap();
-    let vbo_handle = vbo.handle();
+    let vbo_handle = vbo.buffer.handle();
+    let vbo_offset = vbo.offset;
     self.commands.push_back(Box::new(move |device| {
       let pipeline = device.pipeline(pipeline_handle);
       let vbo = device.buffer(vbo_handle);
       if dirty.contains(WebGLCommandBufferDirty::VAO) {
         let index_buffer: WebGlBuffer = device.get_parameter(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER_BINDING).unwrap().into();
-        let mut vbs: [Option<Rc<WebGLThreadBuffer>>; 4] = Default::default();
-        vbs[0] = Some(vbo.clone());
+        let mut vbs: [Option<WebGLVBThreadBinding>; 4] = Default::default();
+        vbs[0] = Some(WebGLVBThreadBinding {
+          buffer: vbo.clone(),
+          offset: vbo_offset,
+        });
         let vao = pipeline.get_vao(&vbs);
         device.bind_vertex_array(Some(&vao));
         device.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
@@ -81,7 +84,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     match pipeline {
       PipelineBinding::Graphics(pipeline) => {
         self.pipeline = Some(pipeline.clone());
-        self.used_pipelines.push(pipeline.clone());
         let handle = pipeline.handle();
         self.dirty |= WebGLCommandBufferDirty::VAO;
         self.commands.push_back(Box::new(move |device| {
@@ -104,7 +106,10 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   }
 
   fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<WebGLBuffer>, offset: usize) {
-    self.vertex_buffer = Some(vertex_buffer.clone());
+    self.vertex_buffer = Some(WebGLVBBinding {
+      buffer: vertex_buffer.clone(),
+      offset: offset as u64
+    });
     self.dirty |= WebGLCommandBufferDirty::VAO;
   }
 
@@ -218,40 +223,34 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }));
   }
 
-  fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>) {
-    unimplemented!()
+  fn bind_sampling_view(&mut self, _frequency: BindingFrequency, _binding: u32, _texture: &Arc<WebGLTextureSamplingView>) {
+    panic!("WebGL only supports combined images and samplers")
   }
 
-  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, sampler: &Arc<WebGLSampler>) {
-    /*assert_eq!(frequency, BindingFrequency::High);
-    let gl_texture = texture.texture().handle();
-    let view_info = texture.info();
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, _sampler: &Arc<WebGLSampler>) {
+    let handle = texture.texture().handle();
     let info = texture.texture().info();
     let is_cubemap = info.array_length == 6;
-    let target = if is_cubemap { WebGlRenderingContext::TEXTURE_BINDING_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_BINDING_2D };
-    let bind_texture = self.context.get_parameter(target).unwrap();
-    self.context.active_texture(WebGlRenderingContext::TEXTURE0 + binding);
-    self.context.bind_texture(target, Some(gl_texture));
-    {
-      // TODO: optimize state changes
-      /*self.context.tex_parameteri(target, WebGlRenderingContext::TEXTURE_WRAP_S, address_mode_to_gl(view_info.address_mode_u) as i32);
-      self.context.tex_parameteri(target, WebGlRenderingContext::TEXTURE_WRAP_T, address_mode_to_gl(view_info.address_mode_v) as i32);
-      self.context.tex_parameteri(target, WebGlRenderingContext::TEXTURE_MIN_FILTER, min_filter_to_gl(view_info.min_filter, view_info.mip_filter) as i32);
-      self.context.tex_parameteri(target, WebGlRenderingContext::TEXTURE_MAG_FILTER, max_filter_to_gl(view_info.mag_filter) as i32);*/
-    }
-    self.context.active_texture(WebGlRenderingContext::TEXTURE0 + binding);
-    //self.context.uniform1i(LOCATION, 0);
+    let target = if is_cubemap { WebGlRenderingContext::TEXTURE_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_2D };
+    let pipeline = self.pipeline.as_ref().expect("Can't bind texture without active pipeline.");
+    let pipeline_handle = pipeline.handle();
 
-    if !bind_texture.is_null() {
-      let bind_texture = bind_texture.unchecked_into::<WebGlTexture>();
-      self.context.bind_texture(target, Some(&bind_texture));
-    }*/
+    self.commands.push_back(Box::new(move |device| {
+      let pipeline = device.pipeline(pipeline_handle);
+      let tex_uniform_info = pipeline.uniform_location(frequency, binding);
+      if tex_uniform_info.is_none() {
+        return;
+      }
+      let tex_uniform_info = tex_uniform_info.unwrap();
+      let texture = device.texture(handle);
+      device.active_texture(WebGlRenderingContext::TEXTURE0 + tex_uniform_info.texture_unit);
+      device.bind_texture(target, Some(texture.gl_handle()));
+      device.uniform1i(Some(&tex_uniform_info.uniform_location), tex_uniform_info.texture_unit as i32);
+    }));
   }
 
   fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<WebGLBuffer>, offset: usize, length: usize) {
     assert!(self.pipeline.is_some());
-
-    self.used_buffers.push(buffer.clone());
     let pipeline = self.pipeline.as_ref().unwrap();
     let pipeline_handle = pipeline.handle();
     let buffer_handle = buffer.handle();
@@ -302,7 +301,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support storage textures")
   }
 
-  fn begin_render_pass(&mut self, renderpass_info: &sourcerenderer_core::graphics::RenderPassBeginInfo<WebGLBackend>, recording_mode: sourcerenderer_core::graphics::RenderpassRecordingMode) {
+  fn begin_render_pass(&mut self, renderpass_info: &sourcerenderer_core::graphics::RenderPassBeginInfo<WebGLBackend>, recording_mode: RenderpassRecordingMode) {
+    debug_assert_eq!(recording_mode, RenderpassRecordingMode::Commands);
     let mut clear_mask: u32 = 0;
     let mut color_attachments: [Option<TextureHandle>; 8] = Default::default();
     let mut depth_attachment = Option::<TextureHandle>::None;
@@ -413,19 +413,19 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support indirect rendering.");
   }
 
-  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<WebGLTextureSamplingView>, &Arc<WebGLSampler>)]) {
+  fn bind_sampling_view_and_sampler_array(&mut self, _frequency: BindingFrequency, _binding: u32, _textures_and_samplers: &[(&Arc<WebGLTextureSamplingView>, &Arc<WebGLSampler>)]) {
     panic!("No plans to support texture and sampler arrays on WebGL")
   }
 
-  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<WebGLUnorderedAccessView>]) {
+  fn bind_storage_view_array(&mut self, _frequency: BindingFrequency, _binding: u32, _textures: &[&Arc<WebGLUnorderedAccessView>]) {
     panic!("WebGL doesnt support storage textures")
   }
 
-  fn clear_storage_view(&mut self, view: &Arc<WebGLUnorderedAccessView>, values: [u32; 4]) {
+  fn clear_storage_view(&mut self, _view: &Arc<WebGLUnorderedAccessView>, _values: [u32; 4]) {
     todo!()
   }
 
-  fn clear_storage_buffer(&mut self, buffer: &Arc<WebGLBuffer>, offset: usize, length_in_u32s: usize, value: u32) {
+  fn clear_storage_buffer(&mut self, _buffer: &Arc<WebGLBuffer>, _offset: usize, _length_in_u32s: usize, _value: u32) {
     todo!()
   }
 }

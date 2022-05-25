@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::{HashMap, VecDeque}, hash::Hash, ops::Dere
 use log::warn;
 use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo};
 
-use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject};
+use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject, WebGlUniformLocation};
 
 use crate::{WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl, spinlock::{SpinLock, SpinLockGuard}, WebGLWork, WebGLShader};
 
@@ -222,6 +222,22 @@ pub struct WebGLBlendInfo {
   pub constants: [f32; 4]
 }
 
+pub struct WebGLTextureUniformInfo {
+  pub uniform_location: WebGlUniformLocation,
+  pub texture_unit: u32,
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct WebGLVBHandleBinding {
+  pub buffer: u64,
+  pub offset: u64,
+}
+
+pub struct WebGLVBThreadBinding {
+  pub buffer: Rc<WebGLThreadBuffer>,
+  pub offset: u64,
+}
+
 pub struct WebGLPipelineInfo {
   pub vs: Arc<WebGLShader>,
   pub fs: Option<Arc<WebGLShader>>,
@@ -260,9 +276,10 @@ pub struct WebGLThreadPipeline {
   program: WebGlProgram,
   ubo_infos: HashMap<(BindingFrequency, u32), WebGLBlockInfo>,
   push_constants_info: Option<WebGLBlockInfo>,
-  vao_cache: RefCell<HashMap<[Option<BufferHandle>; 4], WebGlVertexArrayObject>>,
+  vao_cache: RefCell<HashMap<[Option<WebGLVBHandleBinding>; 4], WebGlVertexArrayObject>>,
   info: WebGLPipelineInfo,
   attribs: HashMap<u32, u32>,
+  texture_uniform_map: HashMap<(BindingFrequency, u32), WebGLTextureUniformInfo>,
 
   // graphics state
   gl_draw_mode: u32,
@@ -287,10 +304,13 @@ impl WebGLThreadPipeline {
     &self.program
   }
 
-  pub fn get_vao(&self, vertex_buffers: &[Option<Rc<WebGLThreadBuffer>>; 4]) -> WebGlVertexArrayObject {
-    let mut key: [Option<BufferHandle>; 4] = Default::default();
+  pub fn get_vao(&self, vertex_buffers: &[Option<WebGLVBThreadBinding>; 4]) -> WebGlVertexArrayObject {
+    let mut key: [Option<WebGLVBHandleBinding>; 4] = Default::default();
     for i in 0..vertex_buffers.len() {
-      key[i] = vertex_buffers[i].as_ref().map(|b| b.handle());
+      key[i] = vertex_buffers[i].as_ref().map(|b| WebGLVBHandleBinding {
+        buffer: b.buffer.handle(),
+        offset: b.offset,
+      });
     }
     {
       let cache = self.vao_cache.borrow();
@@ -319,10 +339,10 @@ impl WebGLThreadPipeline {
       }
       let buffer = buffer.unwrap();
 
-      self.context.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(buffer.gl_buffer()));
+      self.context.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(buffer.buffer.gl_buffer()));
       self.context.enable_vertex_attrib_array(gl_attrib_index);
       self.context.vertex_attrib_divisor(gl_attrib_index,  if ia_element.input_rate == InputRate::PerVertex { 0 } else { 1 });
-      self.context.vertex_attrib_pointer_with_i32(gl_attrib_index, input.format.element_size() as i32 / std::mem::size_of::<f32>() as i32, WebGl2RenderingContext::FLOAT, false, ia_element.stride as i32, input.offset as i32);
+      self.context.vertex_attrib_pointer_with_i32(gl_attrib_index, input.format.element_size() as i32 / std::mem::size_of::<f32>() as i32, WebGl2RenderingContext::FLOAT, false, ia_element.stride as i32, input.offset as i32 + buffer.offset as i32);
     }
     cache_mut.insert(key, vao.clone());
     vao
@@ -334,6 +354,10 @@ impl WebGLThreadPipeline {
 
   pub fn ubo_info(&self, frequency: BindingFrequency, binding: u32) -> Option<&WebGLBlockInfo> {
     self.ubo_infos.get(&(frequency, binding))
+  }
+
+  pub fn uniform_location(&self, frequency: BindingFrequency, binding: u32) -> Option<&WebGLTextureUniformInfo> {
+    self.texture_uniform_map.get(&(frequency, binding))
   }
 }
 
@@ -479,6 +503,32 @@ impl WebGLThreadDevice {
       });
     }
 
+    let mut uniform_map = HashMap::<(BindingFrequency, u32), WebGLTextureUniformInfo>::new();
+    let uniform_count = self.context.get_program_parameter(&program, WebGl2RenderingContext::ACTIVE_UNIFORMS).as_f64().unwrap() as u32;
+    for i in 0..uniform_count {
+      let uniform = self.context.get_active_uniform(&program, i).unwrap();
+      let uniform_name = uniform.name();
+      let location_opt = self.context.get_uniform_location(&program, uniform_name.as_str());
+      if location_opt.is_none() {
+        continue;
+      }
+
+      let mut uniform_name_parts = uniform_name.split("_"); // name should be like this: "res_X_X"
+      uniform_name_parts.next();
+      let set = uniform_name_parts.next().unwrap();
+      let descriptor_set_binding = uniform_name_parts.next().unwrap();
+      let frequency = match set.parse::<u32>().unwrap() {
+        0 => BindingFrequency::PerDraw,
+        1 => BindingFrequency::PerMaterial,
+        2 => BindingFrequency::PerFrame,
+        _ => panic!("Invalid binding frequency")
+      };
+      uniform_map.insert((frequency, descriptor_set_binding.parse::<u32>().unwrap()), WebGLTextureUniformInfo {
+        uniform_location: location_opt.unwrap(),
+        texture_unit: uniform_map.len() as u32
+      });
+    }
+
     let gl_draw_mode = match &info.primitive_type {
         PrimitiveType::Triangles => WebGl2RenderingContext::TRIANGLES,
         PrimitiveType::TriangleStrip => WebGl2RenderingContext::TRIANGLE_STRIP,
@@ -508,7 +558,8 @@ impl WebGLThreadDevice {
       info,
       attribs: attrib_map,
       gl_cull_face,
-      gl_front_face
+      gl_front_face,
+      texture_uniform_map: uniform_map,
     })).is_none());
   }
 
