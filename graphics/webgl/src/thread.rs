@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::{HashMap, VecDeque}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
 
 use log::warn;
-use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo, SamplerInfo};
+use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo, SamplerInfo, Format};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject, WebGlUniformLocation, WebGlSampler};
 
@@ -83,10 +83,9 @@ impl WebGLThreadTexture {
     let target = if is_cubemap { WebGlRenderingContext::TEXTURE_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_2D };
     let texture = context.create_texture().unwrap();
     context.bind_texture(target, Some(&texture));
-    context.bind_buffer(WebGl2RenderingContext::PIXEL_UNPACK_BUFFER, None);
     context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MAX_LEVEL, info.mip_levels as i32);
-    context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MAG_FILTER, WebGl2RenderingContext::LINEAR as i32);
-    context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MIN_FILTER, WebGl2RenderingContext::LINEAR_MIPMAP_LINEAR as i32);
+    context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MAG_FILTER, WebGl2RenderingContext::NEAREST as i32);
+    context.tex_parameteri(target, WebGl2RenderingContext::TEXTURE_MIN_FILTER, WebGl2RenderingContext::NEAREST_MIPMAP_NEAREST as i32);
     context.tex_storage_2d(target, info.mip_levels as i32, format_to_internal_gl(info.format), info.width as i32, info.height as i32);
     Self {
       texture,
@@ -463,7 +462,7 @@ impl WebGLThreadDevice {
     }
   }
 
-  pub fn create_buffer(&mut self, id: BufferHandle, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) {
+  pub fn create_buffer(&mut self, id: BufferHandle, info: &BufferInfo, memory_usage: MemoryUsage, _name: Option<&str>) {
     let buffer = WebGLThreadBuffer::new(&self.context, info, id, memory_usage);
     assert!(self.buffers.insert(id, Rc::new(buffer)).is_none());
   }
@@ -673,7 +672,7 @@ impl WebGLThreadDevice {
     }
   }
 
-  pub fn get_framebuffer(&mut self, rts: &[Option<WebGLTextureHandleView>; 8], ds: Option<WebGLTextureHandleView>) -> Option<WebGlFramebuffer> {
+  pub fn get_framebuffer(&mut self, rts: &[Option<WebGLTextureHandleView>; 8], ds: Option<WebGLTextureHandleView>, ds_format: Format) -> WebGlFramebuffer {
     let key = FboKey {
       rts: rts.clone(),
       ds: ds.clone()
@@ -681,7 +680,7 @@ impl WebGLThreadDevice {
 
     let fbo = self.fbo_cache.get(&key);
     if let Some(fbo) = fbo {
-      return Some(fbo.clone());
+      return fbo.clone();
     }
 
     let fbo = self.context.create_framebuffer().unwrap();
@@ -701,13 +700,20 @@ impl WebGLThreadDevice {
       assert_eq!(ds.mip, 0); // Stupid WebGL restriction.
       let ds_texture = self.texture(ds.texture);
       let target = if ds.array_layer == 0 { WebGl2RenderingContext::TEXTURE_2D } else { WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + ds.array_layer };
-      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::DEPTH_STENCIL_ATTACHMENT, target, Some(&ds_texture.texture), ds.mip as i32);
+      let attachment = if ds_format.is_depth() && ds_format.is_stencil() {
+        WebGl2RenderingContext::DEPTH_STENCIL_ATTACHMENT
+      } else if ds_format.is_depth() {
+        WebGl2RenderingContext::DEPTH_ATTACHMENT
+      } else {
+        WebGl2RenderingContext::STENCIL_ATTACHMENT
+      };
+      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, attachment, target, Some(&ds_texture.texture), ds.mip as i32);
     }
 
     assert!(self.context.is_framebuffer(Some(&fbo)));
     assert_eq!(self.context.check_framebuffer_status(WebGl2RenderingContext::DRAW_FRAMEBUFFER), WebGl2RenderingContext::FRAMEBUFFER_COMPLETE);
     self.fbo_cache.insert(key, fbo.clone());
-    Some(fbo)
+    fbo
   }
 }
 

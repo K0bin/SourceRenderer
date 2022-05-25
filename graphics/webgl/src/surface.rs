@@ -4,7 +4,7 @@ use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Tex
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLTexture, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::WebGLRenderTargetView, thread::{TextureHandle, WebGLTextureHandleView}};
+use crate::{GLThreadSender, WebGLBackend, WebGLTexture, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::WebGLRenderTargetView, thread::WebGLTextureHandleView};
 
 pub struct WebGLSurface {
   //canvas_element: HtmlCanvasElement
@@ -126,9 +126,9 @@ impl WebGLSwapchain {
         array_layer: 0,
         mip: 0,
       });
-      let read_fb = device.get_framebuffer(&rts, None);
+      let read_fb = device.get_framebuffer(&rts, None, Format::Unknown);
       device.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, None);
-      device.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, read_fb.as_ref());
+      device.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&read_fb));
       device.blit_framebuffer(0, 0, width, height, 0, 0, width, height, WebGl2RenderingContext::COLOR_BUFFER_BIT, WebGl2RenderingContext::LINEAR);
 
       c_sync.processed_frame.fetch_add(1, Ordering::SeqCst);

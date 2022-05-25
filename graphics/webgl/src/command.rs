@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureRenderTargetView};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureRenderTargetView, Format};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
 use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView, compare_func_to_gl}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding, WebGLTextureHandleView}, rt::WebGLAccelerationStructureStub, WebGLWork};
@@ -26,7 +26,11 @@ pub struct WebGLCommandBuffer {
   handles: Arc<WebGLHandleAllocator>,
   dirty: WebGLCommandBufferDirty,
   vertex_buffer: Option<WebGLVBBinding>,
-  index_buffer_offset: usize
+  index_buffer_offset: usize,
+  used_pipelines: Vec<Arc<WebGLGraphicsPipeline>>,
+  used_textures: Vec<Arc<WebGLTexture>>,
+  used_samplers: Vec<Arc<WebGLSampler>>,
+  used_buffers: Vec<Arc<WebGLBuffer>>,
 }
 
 impl WebGLCommandBuffer {
@@ -44,6 +48,10 @@ impl WebGLCommandBuffer {
       dirty: WebGLCommandBufferDirty::empty(),
       vertex_buffer: None,
       index_buffer_offset: 0,
+      used_pipelines: Vec::new(),
+      used_textures: Vec::new(),
+      used_samplers: Vec::new(),
+      used_buffers: Vec::new(),
     }
   }
 
@@ -83,6 +91,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn set_pipeline(&mut self, pipeline: PipelineBinding<WebGLBackend>) {
     match pipeline {
       PipelineBinding::Graphics(pipeline) => {
+        self.used_pipelines.push(pipeline.clone());
         self.pipeline = Some(pipeline.clone());
         let handle = pipeline.handle();
         self.dirty |= WebGLCommandBufferDirty::VAO;
@@ -113,6 +122,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   }
 
   fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<WebGLBuffer>, offset: usize) {
+    self.used_buffers.push(vertex_buffer.clone());
     self.vertex_buffer = Some(WebGLVBBinding {
       buffer: vertex_buffer.clone(),
       offset: offset as u64
@@ -126,6 +136,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     if index_format != IndexFormat::U32 {
       unimplemented!("16 bit indices are not implemented");
     }
+    self.used_buffers.push(index_buffer.clone());
 
     self.index_buffer_offset = offset;
 
@@ -173,6 +184,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
       std::ptr::copy(data.as_ptr() as *const u8, mapped, std::mem::size_of_val(data));
       buffer.unmap_unsafe(true);
     }
+    self.used_buffers.push(buffer.clone());
     buffer
   }
 
@@ -242,6 +254,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     let pipeline = self.pipeline.as_ref().expect("Can't bind texture without active pipeline.");
     let pipeline_handle = pipeline.handle();
     let sampler_handle = sampler.handle();
+    self.used_samplers.push(sampler.clone());
+    self.used_textures.push(texture.texture().clone());
 
     self.commands.push_back(Box::new(move |device| {
       let pipeline = device.pipeline(pipeline_handle);
@@ -264,6 +278,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     let pipeline = self.pipeline.as_ref().unwrap();
     let pipeline_handle = pipeline.handle();
     let buffer_handle = buffer.handle();
+    self.used_buffers.push(buffer.clone());
     self.commands.push_back(Box::new(move |device| {
       let buffer = device.buffer(buffer_handle);
       let pipeline = device.pipeline(pipeline_handle);
@@ -316,6 +331,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     let mut clear_mask: u32 = 0;
     let mut color_attachments: [Option<WebGLTextureHandleView>; 8] = Default::default();
     let mut depth_attachment = Option::<WebGLTextureHandleView>::None;
+    let mut ds_format = Format::Unknown;
     let subpass = &renderpass_info.subpasses[0];
     for (index, attachment_ref) in subpass.output_color_attachments.iter().enumerate() {
       let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
@@ -330,26 +346,38 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
             array_layer: info.base_array_layer,
             mip: info.base_mip_level
           });
+          self.used_textures.push(rt.texture().clone());
         },
+        _ => panic!("Found depth stencil attachment being used as a color target.")
+      }
+    }
+    if let Some(attachment_ref) = subpass.depth_stencil_attachment.as_ref() {
+      let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
+      match &attachment.view {
         sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(ds) => {
           if attachment.load_op == LoadOp::Clear {
             clear_mask |= WebGl2RenderingContext::DEPTH_BUFFER_BIT;
           }
+          ds_format = ds.texture().info().format;
           let info = ds.info();
           depth_attachment = Some(WebGLTextureHandleView {
             texture: ds.texture().handle(),
             array_layer: info.base_array_layer,
             mip: info.base_mip_level
           });
+          self.used_textures.push(ds.texture().clone());
         },
+        _ => panic!("Found color attachment being used as a depth stencil.")
       }
     }
 
     self.commands.push_back(Box::new(move |context| {
-      let fbo = context.get_framebuffer(&color_attachments, depth_attachment);
-      context.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, fbo.as_ref());
+      let fbo = context.get_framebuffer(&color_attachments, depth_attachment, ds_format);
+      context.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&fbo));
       context.clear_color(0f32, 0f32, 0f32, 1f32);
-      context.clear(clear_mask);
+      if clear_mask != 0 {
+        context.clear(clear_mask);
+      }
     }));
   }
 
@@ -456,7 +484,7 @@ pub struct WebGLCommandSubmission {
 
 pub struct WebGLQueue {
   sender: GLThreadSender,
-  handle_allocator: Arc<WebGLHandleAllocator>
+  handle_allocator: Arc<WebGLHandleAllocator>,
 }
 
 impl WebGLQueue {
