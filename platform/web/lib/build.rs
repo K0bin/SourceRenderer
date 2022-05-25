@@ -59,6 +59,7 @@ fn main() {
         assert_eq!(spirv_cross_sys::spvc_compiler_options_set_uint(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_GLSL_VERSION, 300), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
         assert_eq!(spirv_cross_sys::spvc_compiler_options_set_bool(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_GLSL_ES, 1), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
         assert_eq!(spirv_cross_sys::spvc_compiler_options_set_bool(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_GLSL_EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER, 1), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+        assert_eq!(spirv_cross_sys::spvc_compiler_options_set_bool(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_FIXUP_DEPTH_CONVENTION, 1), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
         assert_eq!(spirv_cross_sys::spvc_compiler_install_compiler_options(compiler, options), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
       }
 
