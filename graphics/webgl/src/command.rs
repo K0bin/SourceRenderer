@@ -485,10 +485,6 @@ impl Queue<WebGLBackend> for WebGLQueue {
 
   fn present(&self, swapchain: &Arc<WebGLSwapchain>, _wait_semaphores: &[&Arc<WebGLSemaphore>], _delay: bool) {
     swapchain.present();
-    let c_swapchain = swapchain.clone();
-    self.sender.send(Box::new(move |_context| {
-      c_swapchain.bump_processed_frame();
-    }));
   }
 
   fn process_submissions(&self) {

@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}, Mutex, Condvar};
 
 use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureViewInfo, TextureUsage};
 use wasm_bindgen::JsCast;
@@ -57,15 +57,21 @@ impl WebGLSurface {
   }
 }
 
-pub struct WebGLSwapchain {
+pub struct GLThreadSync {
+  empty_mutex: Mutex<()>, // Use empty mutex + atomics so we never accidently call wait on the main thread if there's contention
   prepared_frame: AtomicU64,
   processed_frame: AtomicU64,
+  condvar: Condvar,
+}
+
+pub struct WebGLSwapchain {
+  sync: Arc<GLThreadSync>,
   surface: Arc<WebGLSurface>,
   width: u32,
   height: u32,
   backbuffer_view: Arc<WebGLRenderTargetView>,
   sender: GLThreadSender,
-  allocator: Arc<WebGLHandleAllocator>
+  allocator: Arc<WebGLHandleAllocator>,
 }
 
 impl WebGLSwapchain {
@@ -90,25 +96,25 @@ impl WebGLSwapchain {
     }));
 
     Self {
-      prepared_frame: AtomicU64::new(0),
-      processed_frame: AtomicU64::new(0),
+      sync: Arc::new(GLThreadSync {
+        empty_mutex: Mutex::new(()),
+        condvar: Condvar::new(),
+        prepared_frame: AtomicU64::new(0),
+        processed_frame: AtomicU64::new(0),
+      }),
       surface: surface.clone(),
       width: surface.width,
       height: surface.height,
       backbuffer_view: view,
       sender: sender.clone(),
-      allocator: allocator.clone()
+      allocator: allocator.clone(),
     }
   }
 
-  pub(crate) fn bump_processed_frame(self: &Arc<Self>) {
-    // Has to be called on the GL thread
-    self.processed_frame.fetch_add(1, Ordering::SeqCst);
-  }
-
   pub(crate) fn present(&self) {
-    self.prepared_frame.fetch_add(1, Ordering::SeqCst);
+    self.sync.prepared_frame.fetch_add(1, Ordering::SeqCst);
 
+    let c_sync = self.sync.clone();
     let backbuffer_handle = self.backbuffer_view.texture().handle();
     let info = self.backbuffer_view.texture().info();
     let width = info.width as i32;
@@ -124,6 +130,9 @@ impl WebGLSwapchain {
       device.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, None);
       device.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, read_fb.as_ref());
       device.blit_framebuffer(0, 0, width, height, 0, 0, width, height, WebGl2RenderingContext::COLOR_BUFFER_BIT, WebGl2RenderingContext::LINEAR);
+
+      c_sync.processed_frame.fetch_add(1, Ordering::SeqCst);
+      c_sync.condvar.notify_all();
     }));
   }
 }
@@ -154,9 +163,9 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
   }
 
   fn prepare_back_buffer(&self, _semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
-    while self.processed_frame.load(Ordering::SeqCst) + 1 < self.prepared_frame.load(Ordering::SeqCst) {
-      // Block so we dont run too far ahead of the GL thread
-    }
+    let guard = self.sync.empty_mutex.lock().unwrap();
+    let _ = self.sync.condvar.wait_while(guard, |_| self.sync.processed_frame.load(Ordering::SeqCst) + 1 < self.sync.prepared_frame.load(Ordering::SeqCst)).unwrap();
+
     Some(self.backbuffer_view.clone())
   }
 
