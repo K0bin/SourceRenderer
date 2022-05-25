@@ -1,14 +1,14 @@
 use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}};
-use log::warn;
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureViewInfo, WHOLE_BUFFER};
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue}};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, format_to_internal_gl, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue, SamplerHandle}};
 
 pub struct WebGLHandleAllocator {
   next_buffer_id: AtomicU64,
   next_texture_id: AtomicU64,
   next_shader_id: AtomicU64,
   next_pipeline_id: AtomicU64,
+  next_sampler_id: AtomicU64,
 }
 
 impl WebGLHandleAllocator {
@@ -26,6 +26,10 @@ impl WebGLHandleAllocator {
 
   pub fn new_pipeline_handle(&self) -> PipelineHandle {
     self.next_pipeline_id.fetch_add(1, Ordering::SeqCst) + 1
+  }
+
+  pub fn new_sampler_handle(&self) -> SamplerHandle {
+    self.next_sampler_id.fetch_add(1, Ordering::SeqCst) + 1
   }
 }
 
@@ -45,6 +49,7 @@ impl WebGLDevice {
         next_texture_id: AtomicU64::new(0),
         next_shader_id: AtomicU64::new(0),
         next_pipeline_id: AtomicU64::new(0),
+        next_sampler_id: AtomicU64::new(0),
       }
     );
     Self {
@@ -199,9 +204,9 @@ impl Device<WebGLBackend> for WebGLDevice {
     Arc::new(WebGLDepthStencilView::new(texture, info))
   }
 
-  fn create_sampler(&self, _info: &SamplerInfo) -> Arc<WebGLSampler> {
-    warn!("Samplers are unimplemented");
-    Arc::new(WebGLSampler {})
+  fn create_sampler(&self, info: &SamplerInfo) -> Arc<WebGLSampler> {
+    let id = self.handles.new_sampler_handle();
+    Arc::new(WebGLSampler::new(id, info, &self.thread_queue))
   }
 
   fn create_fence(&self) -> Arc<WebGLFence> {

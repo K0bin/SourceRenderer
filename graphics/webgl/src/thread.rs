@@ -1,11 +1,11 @@
 use std::{cell::RefCell, collections::{HashMap, VecDeque}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
 
 use log::warn;
-use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo};
+use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo, SamplerInfo};
 
-use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject, WebGlUniformLocation};
+use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject, WebGlUniformLocation, WebGlSampler};
 
-use crate::{WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::format_to_internal_gl, spinlock::{SpinLock, SpinLockGuard}, WebGLWork, WebGLShader};
+use crate::{WebGLBackend, WebGLSurface, raw_context::RawWebGLContext, texture::{format_to_internal_gl, compare_func_to_gl, mag_filter_to_gl, min_filter_to_gl, address_mode_to_gl}, spinlock::{SpinLock, SpinLockGuard}, WebGLWork, WebGLShader};
 
 pub struct WebGLThreadQueue {
   write_queue: SpinLock<VecDeque<WebGLWork>>,
@@ -112,6 +112,52 @@ impl Drop for WebGLThreadTexture {
     self.context.delete_texture(Some(&self.texture));
   }
 }
+
+pub struct WebGLThreadSampler {
+  context: Rc<RawWebGLContext>,
+  sampler: WebGlSampler,
+}
+
+impl WebGLThreadSampler {
+  pub fn new(
+    context: &Rc<RawWebGLContext>,
+    info: &SamplerInfo
+  ) -> Self {
+    let sampler = context.create_sampler().unwrap();
+    if let Some(max_lod) = info.max_lod {
+      context.sampler_parameterf(&sampler, WebGl2RenderingContext::TEXTURE_MAX_LOD, max_lod);
+    }
+    context.sampler_parameterf(&sampler, WebGl2RenderingContext::TEXTURE_MIN_LOD, info.min_lod);
+    if let Some(compare_op) = info.compare_op {
+      context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_COMPARE_MODE, WebGl2RenderingContext::COMPARE_REF_TO_TEXTURE as i32);
+      context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_COMPARE_FUNC, compare_func_to_gl(compare_op) as i32);
+    } else {
+      context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_COMPARE_MODE, WebGl2RenderingContext::NONE as i32);
+    }
+    context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_MAG_FILTER, mag_filter_to_gl(info.mag_filter) as i32);
+    context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_MIN_FILTER, min_filter_to_gl(info.min_filter, info.mip_filter) as i32);
+    context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_WRAP_R, address_mode_to_gl(info.address_mode_u) as i32);
+    context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_WRAP_S, address_mode_to_gl(info.address_mode_v) as i32);
+    context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_WRAP_T, address_mode_to_gl(info.address_mode_w) as i32);
+    context.sampler_parameterf(&sampler, web_sys::ExtTextureFilterAnisotropic::TEXTURE_MAX_ANISOTROPY_EXT, info.max_anisotropy);
+
+    Self {
+      context: context.clone(),
+      sampler,
+    }
+  }
+
+  pub fn gl_handle(&self) -> &WebGlSampler {
+    &self.sampler
+  }
+}
+
+impl Drop for WebGLThreadSampler {
+  fn drop(&mut self) {
+    self.context.delete_sampler(Some(&self.sampler));
+  }
+}
+
 
 pub struct WebGLThreadBuffer {
   context: Rc<RawWebGLContext>,
@@ -378,6 +424,7 @@ pub struct WebGLThreadDevice {
   shaders: HashMap<ShaderHandle, Rc<WebGLThreadShader>>,
   pipelines: HashMap<PipelineHandle, Rc<WebGLThreadPipeline>>,
   buffers: HashMap<BufferHandle, Rc<WebGLThreadBuffer>>,
+  samplers: HashMap<TextureHandle, Rc<WebGLThreadSampler>>,
   thread_queue: Arc<WebGLThreadQueue>,
   fbo_cache: HashMap<FboKey, WebGlFramebuffer>
 }
@@ -386,6 +433,7 @@ pub type BufferHandle = u64;
 pub type TextureHandle = u64;
 pub type ShaderHandle = u64;
 pub type PipelineHandle = u64;
+pub type SamplerHandle = u64;
 
 impl WebGLThreadDevice {
   pub fn new(thread_queue: &Arc<WebGLThreadQueue>, surface: &WebGLSurface, document: &Document) -> Self {
@@ -395,6 +443,7 @@ impl WebGLThreadDevice {
       shaders: HashMap::new(),
       pipelines: HashMap::new(),
       buffers: HashMap::new(),
+      samplers: HashMap::new(),
       thread_queue: thread_queue.clone(),
       fbo_cache: HashMap::new()
     }
@@ -582,6 +631,19 @@ impl WebGLThreadDevice {
 
   pub fn remove_texture(&mut self, id: TextureHandle) {
     self.textures.remove(&id).expect("Texture does not exist");
+  }
+
+  pub fn create_sampler(&mut self, id: SamplerHandle, info: &SamplerInfo) {
+    let sampler = WebGLThreadSampler::new(&self.context, info);
+    assert!(self.samplers.insert(id, Rc::new(sampler)).is_none());
+  }
+
+  pub fn sampler(&self, id: SamplerHandle) -> &WebGLThreadSampler {
+    self.samplers.get(&id).expect("Sampler does not exist")
+  }
+
+  pub fn remove_sampler(&mut self, id: SamplerHandle) {
+    self.samplers.remove(&id).expect("Texture does not exist");
   }
 
   pub fn process(&mut self) {

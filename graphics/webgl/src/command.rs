@@ -227,13 +227,14 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL only supports combined images and samplers")
   }
 
-  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, _sampler: &Arc<WebGLSampler>) {
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, sampler: &Arc<WebGLSampler>) {
     let handle = texture.texture().handle();
     let info = texture.texture().info();
     let is_cubemap = info.array_length == 6;
     let target = if is_cubemap { WebGlRenderingContext::TEXTURE_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_2D };
     let pipeline = self.pipeline.as_ref().expect("Can't bind texture without active pipeline.");
     let pipeline_handle = pipeline.handle();
+    let sampler_handle = sampler.handle();
 
     self.commands.push_back(Box::new(move |device| {
       let pipeline = device.pipeline(pipeline_handle);
@@ -243,9 +244,11 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
       }
       let tex_uniform_info = tex_uniform_info.unwrap();
       let texture = device.texture(handle);
+      let sampler = device.sampler(sampler_handle);
       device.active_texture(WebGlRenderingContext::TEXTURE0 + tex_uniform_info.texture_unit);
       device.bind_texture(target, Some(texture.gl_handle()));
       device.uniform1i(Some(&tex_uniform_info.uniform_location), tex_uniform_info.texture_unit as i32);
+      device.bind_sampler(tex_uniform_info.texture_unit, Some(sampler.gl_handle()));
     }));
   }
 

@@ -31,5 +31,7 @@ features = [
   'WebGlActiveInfo',
   'WebGlFramebuffer',
   'WebGlVertexArrayObject',
-  'WebGlUniformLocation'
+  'WebGlUniformLocation',
+  'WebGlSampler',
+  'ExtTextureFilterAnisotropic',
 ]

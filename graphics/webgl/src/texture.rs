@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureSamplingView, TextureStorageView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureSamplingView, TextureStorageView, CompareFunc};
 
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebglCompressedTextureS3tc};
 
-use crate::{GLThreadSender, WebGLBackend, thread::TextureHandle};
+use crate::{GLThreadSender, WebGLBackend, thread::{TextureHandle, SamplerHandle}};
 
 pub struct WebGLTexture {
   handle: crate::thread::TextureHandle,
@@ -206,12 +206,36 @@ impl PartialEq for WebGLUnorderedAccessView {
 impl Eq for WebGLUnorderedAccessView {}
 
 pub struct WebGLSampler {
-
+  handle: crate::thread::SamplerHandle,
+  sender: GLThreadSender,
+  info: SamplerInfo,
 }
 
 impl WebGLSampler {
-  pub fn new(_info: &SamplerInfo) -> Self {
-    Self {}
+  pub fn new(id: SamplerHandle, info: &SamplerInfo, sender: &GLThreadSender) -> Self {
+    let c_info = info.clone();
+    sender.send(Box::new(move |device| {
+      device.create_sampler(id, &c_info);
+    }));
+
+    Self {
+      handle: id,
+      sender: sender.clone(),
+      info: info.clone()
+    }
+  }
+
+  pub fn handle(&self) -> TextureHandle {
+    self.handle
+  }
+}
+
+impl Drop for WebGLSampler {
+  fn drop(&mut self) {
+    let handle = self.handle;
+    self.sender.send(Box::new(move |device| {
+      device.remove_sampler(handle);
+    }))
   }
 }
 
@@ -256,7 +280,7 @@ pub(crate) fn address_mode_to_gl(address_mode: AddressMode) -> u32 {
   }
 }
 
-pub(crate) fn max_filter_to_gl(filter: Filter) -> u32 {
+pub(crate) fn mag_filter_to_gl(filter: Filter) -> u32 {
   match filter {
     Filter::Linear => WebGlRenderingContext::LINEAR,
     Filter::Nearest => WebGlRenderingContext::NEAREST,
@@ -271,5 +295,18 @@ pub(crate) fn min_filter_to_gl(filter: Filter, mip_filter: Filter) -> u32 {
     (Filter::Nearest, Filter::Linear) => WebGlRenderingContext::NEAREST_MIPMAP_LINEAR,
     (Filter::Nearest, Filter::Nearest) => WebGlRenderingContext::NEAREST_MIPMAP_NEAREST,
     _ => panic!("Unsupported filters: {:?}, {:?}", filter, mip_filter)
+  }
+}
+
+pub(crate) fn compare_func_to_gl(compare_func: CompareFunc) -> u32 {
+  match compare_func {
+    CompareFunc::Never => WebGl2RenderingContext::NEVER,
+    CompareFunc::Less => WebGl2RenderingContext::LESS,
+    CompareFunc::LessEqual => WebGl2RenderingContext::LEQUAL,
+    CompareFunc::Equal => WebGl2RenderingContext::EQUAL,
+    CompareFunc::NotEqual => WebGl2RenderingContext::NOTEQUAL,
+    CompareFunc::GreaterEqual => WebGl2RenderingContext::GEQUAL,
+    CompareFunc::Greater => WebGl2RenderingContext::GREATER,
+    CompareFunc::Always => WebGl2RenderingContext::ALWAYS,
   }
 }
