@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureRenderTargetView};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView, compare_func_to_gl}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding}, rt::WebGLAccelerationStructureStub, WebGLWork};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView, compare_func_to_gl}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding, WebGLTextureHandleView}, rt::WebGLAccelerationStructureStub, WebGLWork};
 
 use bitflags::bitflags;
 
@@ -314,8 +314,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn begin_render_pass(&mut self, renderpass_info: &sourcerenderer_core::graphics::RenderPassBeginInfo<WebGLBackend>, recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(recording_mode, RenderpassRecordingMode::Commands);
     let mut clear_mask: u32 = 0;
-    let mut color_attachments: [Option<TextureHandle>; 8] = Default::default();
-    let mut depth_attachment = Option::<TextureHandle>::None;
+    let mut color_attachments: [Option<WebGLTextureHandleView>; 8] = Default::default();
+    let mut depth_attachment = Option::<WebGLTextureHandleView>::None;
     let subpass = &renderpass_info.subpasses[0];
     for (index, attachment_ref) in subpass.output_color_attachments.iter().enumerate() {
       let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
@@ -324,13 +324,23 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
           if attachment.load_op == LoadOp::Clear {
             clear_mask |= WebGl2RenderingContext::COLOR_BUFFER_BIT;
           }
-          color_attachments[index] = Some(rt.texture().handle());
+          let info = rt.info();
+          color_attachments[index] = Some(WebGLTextureHandleView {
+            texture: rt.texture().handle(),
+            array_layer: info.base_array_layer,
+            mip: info.base_mip_level
+          });
         },
         sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(ds) => {
           if attachment.load_op == LoadOp::Clear {
             clear_mask |= WebGl2RenderingContext::DEPTH_BUFFER_BIT;
           }
-          depth_attachment = Some(ds.texture().handle());
+          let info = ds.info();
+          depth_attachment = Some(WebGLTextureHandleView {
+            texture: ds.texture().handle(),
+            array_layer: info.base_array_layer,
+            mip: info.base_mip_level
+          });
         },
       }
     }

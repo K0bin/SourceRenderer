@@ -49,10 +49,17 @@ impl<'a> Iterator for WebGLThreadIterator<'a> {
   }
 }
 
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
+pub struct WebGLTextureHandleView {
+  pub texture: TextureHandle,
+  pub array_layer: u32,
+  pub mip: u32,
+}
+
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct FboKey {
-  rts: [Option<TextureHandle>; 8],
-  ds: Option<TextureHandle>
+  rts: [Option<WebGLTextureHandleView>; 8],
+  ds: Option<WebGLTextureHandleView>
 }
 
 pub struct WebGLThreadTexture {
@@ -663,7 +670,7 @@ impl WebGLThreadDevice {
     }
   }
 
-  pub fn get_framebuffer(&mut self, rts: &[Option<TextureHandle>; 8], ds: Option<TextureHandle>) -> Option<WebGlFramebuffer> {
+  pub fn get_framebuffer(&mut self, rts: &[Option<WebGLTextureHandleView>; 8], ds: Option<WebGLTextureHandleView>) -> Option<WebGlFramebuffer> {
     let key = FboKey {
       rts: rts.clone(),
       ds: ds.clone()
@@ -680,14 +687,16 @@ impl WebGLThreadDevice {
       if rt.is_none() {
         continue;
       }
-      let rt = rt.unwrap();
-      let rt_texture = self.texture(rt);
-      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::COLOR_ATTACHMENT0 + index as u32, WebGl2RenderingContext::TEXTURE_2D, Some(&rt_texture.texture), 0);
+      let rt = rt.as_ref().unwrap();
+      let rt_texture = self.texture(rt.texture);
+      let target = if rt.array_layer == 0 { WebGl2RenderingContext::TEXTURE_2D } else { WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + rt.array_layer };
+      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::COLOR_ATTACHMENT0 + index as u32, target, Some(&rt_texture.texture), rt.mip as i32);
     }
 
     if let Some(ds) = ds {
-      let ds_texture = self.texture(ds);
-      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::DEPTH_STENCIL_ATTACHMENT, WebGl2RenderingContext::TEXTURE_2D, Some(&ds_texture.texture), 0);
+      let ds_texture = self.texture(ds.texture);
+      let target = if ds.array_layer == 0 { WebGl2RenderingContext::TEXTURE_2D } else { WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + ds.array_layer };
+      self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::DEPTH_STENCIL_ATTACHMENT, target, Some(&ds_texture.texture), ds.mip as i32);
     }
 
     assert!(self.context.is_framebuffer(Some(&fbo)));
