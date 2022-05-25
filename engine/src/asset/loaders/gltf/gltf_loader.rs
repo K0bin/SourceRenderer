@@ -270,10 +270,11 @@ impl GltfLoader {
           let position_vec_ptr: *const Vec3 = std::mem::transmute(position_data.as_ptr());
           let normal_vec_ptr: *const Vec3 = std::mem::transmute(normal_data.as_ptr());
           let texcoord_vec_ptr: *const Vec2 = std::mem::transmute(texcoords_data.as_ptr());
-          let mut normal = *normal_vec_ptr;
+          let position = fixup_vec(&*position_vec_ptr);
+          let mut normal = fixup_vec(&*normal_vec_ptr);
           normal.normalize_mut();
           vertices.push(Vertex {
-            position: *position_vec_ptr,
+            position,
             normal,
             uv: *texcoord_vec_ptr,
             lightmap_uv: Vec2::new(0f32, 0f32),
@@ -391,3 +392,10 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
   }
 }
 
+// glTF uses a right-handed coordinate system. glTF defines +Y as up, +Z as forward, and -X as right; the front of a glTF asset faces +Z.
+// We use a left-handed coordinate system with +Y as up, +Z as forward and +X as right. => flip X
+fn fixup_vec(vec: &Vec3) -> Vec3 {
+  let mut new_vec = vec.clone();
+  new_vec.x = -new_vec.x;
+  return new_vec;
+}
