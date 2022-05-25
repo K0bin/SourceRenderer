@@ -688,12 +688,14 @@ impl WebGLThreadDevice {
         continue;
       }
       let rt = rt.as_ref().unwrap();
+      assert_eq!(rt.mip, 0); // Stupid WebGL restriction.
       let rt_texture = self.texture(rt.texture);
       let target = if rt.array_layer == 0 { WebGl2RenderingContext::TEXTURE_2D } else { WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + rt.array_layer };
       self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::COLOR_ATTACHMENT0 + index as u32, target, Some(&rt_texture.texture), rt.mip as i32);
     }
 
     if let Some(ds) = ds {
+      assert_eq!(ds.mip, 0); // Stupid WebGL restriction.
       let ds_texture = self.texture(ds.texture);
       let target = if ds.array_layer == 0 { WebGl2RenderingContext::TEXTURE_2D } else { WebGl2RenderingContext::TEXTURE_CUBE_MAP_POSITIVE_X + ds.array_layer };
       self.context.framebuffer_texture_2d(WebGl2RenderingContext::DRAW_FRAMEBUFFER, WebGl2RenderingContext::DEPTH_STENCIL_ATTACHMENT, target, Some(&ds_texture.texture), ds.mip as i32);
