@@ -2,7 +2,7 @@ use std::{ops::Deref, panic};
 
 use wasm_bindgen::{JsCast, JsValue};
 
-use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext, WebglCompressedTextureS3tc};
+use web_sys::{Document, WebGl2RenderingContext};
 
 use crate::WebGLSurface;
 
@@ -20,7 +20,8 @@ impl PartialEq for RawWebGLContext {
 impl Eq for RawWebGLContext {}
 
 pub struct WebGLExtensions {
-  pub compressed_textures: Option<WebglCompressedTextureS3tc>
+  pub compressed_textures: bool,
+  pub anisotropic_filter: bool,
 }
 
 impl RawWebGLContext {
@@ -32,11 +33,15 @@ impl RawWebGLContext {
     match context_obj {
       Some(context_obj) => {
         let webgl2_context = context_obj.dyn_into::<WebGl2RenderingContext>().unwrap();
+
+        let enabled_extensions = WebGLExtensions {
+          compressed_textures: webgl2_context.get_extension("WEBGL_compressed_texture_s3tc").map(|opt| opt.is_some()).unwrap_or_default(),
+          anisotropic_filter: webgl2_context.get_extension("EXT_texture_filter_anisotropic").map(|opt| opt.is_some()).unwrap_or_default(),
+        };
+
         Self {
           context: webgl2_context,
-          extensions: WebGLExtensions {
-            compressed_textures: None
-          }
+          extensions: enabled_extensions,
         }
       }
       None => panic!("SourceRenderer Web needs WebGL2")

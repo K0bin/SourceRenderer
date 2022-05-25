@@ -146,7 +146,10 @@ impl WebGLThreadSampler {
     context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_WRAP_R, address_mode_to_gl(info.address_mode_u) as i32);
     context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_WRAP_S, address_mode_to_gl(info.address_mode_v) as i32);
     context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_WRAP_T, address_mode_to_gl(info.address_mode_w) as i32);
-    context.sampler_parameterf(&sampler, web_sys::ExtTextureFilterAnisotropic::TEXTURE_MAX_ANISOTROPY_EXT, info.max_anisotropy);
+
+    if context.extensions().anisotropic_filter {
+      context.sampler_parameterf(&sampler, web_sys::ExtTextureFilterAnisotropic::TEXTURE_MAX_ANISOTROPY_EXT, info.max_anisotropy);
+    }
 
     Self {
       context: context.clone(),
