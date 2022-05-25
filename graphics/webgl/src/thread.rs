@@ -378,7 +378,7 @@ impl WebGLThreadDevice {
 
   pub fn create_buffer(&mut self, id: BufferHandle, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) {
     let buffer = WebGLThreadBuffer::new(&self.context, info, id, memory_usage);
-    self.buffers.insert(id, Rc::new(buffer));
+    assert!(self.buffers.insert(id, Rc::new(buffer)).is_none());
   }
 
   pub fn remove_buffer(&mut self, id: BufferHandle) {
@@ -405,10 +405,10 @@ impl WebGLThreadDevice {
         warn!("Shader info: {}", info);
       }
     }
-    self.shaders.insert(id, Rc::new(WebGLThreadShader {
+    assert!(self.shaders.insert(id, Rc::new(WebGLThreadShader {
       context: self.context.clone(),
       shader: shader,
-    }));
+    })).is_none());
   }
 
   pub fn shader(&self, id: ShaderHandle) -> &Rc<WebGLThreadShader> {
@@ -498,7 +498,7 @@ impl WebGLThreadDevice {
       sourcerenderer_core::graphics::CullMode::Back => WebGl2RenderingContext::BACK,
     };
 
-    self.pipelines.insert(id, Rc::new(WebGLThreadPipeline {
+    assert!(self.pipelines.insert(id, Rc::new(WebGLThreadPipeline {
       program,
       context: self.context.clone(),
       gl_draw_mode,
@@ -509,7 +509,7 @@ impl WebGLThreadDevice {
       attribs: attrib_map,
       gl_cull_face,
       gl_front_face
-    }));
+    })).is_none());
   }
 
   pub fn pipeline(&self, id: PipelineHandle) -> &Rc<WebGLThreadPipeline> {
@@ -522,7 +522,7 @@ impl WebGLThreadDevice {
 
   pub fn create_texture(&mut self, id: TextureHandle, info: &TextureInfo) {
     let texture = WebGLThreadTexture::new(&self.context, info);
-    self.textures.insert(id, Rc::new(texture));
+    assert!(self.textures.insert(id, Rc::new(texture)).is_none());
   }
 
   pub fn texture(&self, id: TextureHandle) -> &WebGLThreadTexture {
@@ -538,7 +538,7 @@ impl WebGLThreadDevice {
     queue.swap_buffers();
     let mut read_queue = queue.read_queue();
     if read_queue.is_empty() {
-      log::warn!("No WebGL calls to process on the main thread. The render thread is too slow.");
+      // log::warn!("No WebGL calls to process on the main thread. The render thread is too slow.");
     } else {
       for cmd in read_queue.drain(..) {
         cmd(self);

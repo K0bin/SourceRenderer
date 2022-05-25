@@ -170,7 +170,7 @@ impl Device<WebGLBackend> for WebGLDevice {
         device.bind_buffer(WebGl2RenderingContext::COPY_READ_BUFFER, Some(src_buffer.gl_buffer()));
         device.get_buffer_sub_data_with_i32_and_u8_array(WebGl2RenderingContext::COPY_READ_BUFFER, src_buffer_offset as i32, &mut read_data[..dst_buffer.info().size.min(length)]);
         device.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(dst_buffer.gl_buffer()));
-        device.buffer_data_with_u8_array(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, &read_data, dst_buffer.gl_usage());
+        device.buffer_sub_data_with_i32_and_u8_array(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, dst_buffer_offset as i32, &read_data);
       } else {
         device.bind_buffer(WebGl2RenderingContext::COPY_READ_BUFFER, Some(src_buffer.gl_buffer()));
         device.bind_buffer(WebGl2RenderingContext::COPY_WRITE_BUFFER, Some(dst_buffer.gl_buffer()));
