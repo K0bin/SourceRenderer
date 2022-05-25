@@ -9,16 +9,19 @@ class RequestHandler(SimpleHTTPRequestHandler):
           '.html': 'text/html',
           '.png': 'image/png',
           '.jpg': 'image/jpg',
-          '.svg':	'image/svg+xml',
-          '.css':	'text/css',
-          '.js':	'application/x-javascript',
+          '.svg': 'image/svg+xml',
+          '.css': 'text/css',
+          '.js': 'application/x-javascript',
+          '.gltf': 'text/json',
           '': 'application/octet-stream', # Default
         }
         super().__init__(*args, directory='dist', **kwargs)
 
-    def do_GET(self):
-        # self.path = 'dist/' + self.path
-        SimpleHTTPRequestHandler.do_GET(self)
+    def translate_path(self, path: str) -> str:
+        if path.__contains__("/assets/"):
+           return "../../.." + path
+        else:
+            return super().translate_path(path)
 
     def end_headers(self):
         self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
