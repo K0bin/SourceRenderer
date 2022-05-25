@@ -106,7 +106,7 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
         AccelerationStructureInstance::<B> {
           acceleration_structure: bl,
           transform: drawable.transform,
-          front_face: FrontFace::CounterClockwise
+          front_face: FrontFace::Clockwise
         }
       );
     }
