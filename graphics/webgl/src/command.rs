@@ -3,7 +3,7 @@ use std::{collections::VecDeque, rc::Rc, sync::Arc};
 use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding}, rt::WebGLAccelerationStructureStub, WebGLWork};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView, compare_func_to_gl}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding}, rt::WebGLAccelerationStructureStub, WebGLWork};
 
 use bitflags::bitflags;
 
@@ -89,7 +89,14 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
         self.commands.push_back(Box::new(move |device| {
           let pipeline = device.pipeline(handle).clone();
           device.use_program(Some(pipeline.gl_program()));
-          device.enable(WebGl2RenderingContext::DEPTH_TEST);
+          let info = pipeline.info();
+          if info.depth_stencil.depth_test_enabled {
+            device.enable(WebGl2RenderingContext::DEPTH_TEST);
+          } else {
+            device.disable(WebGl2RenderingContext::DEPTH_TEST);
+          }
+          device.depth_mask(info.depth_stencil.depth_write_enabled);
+          device.depth_func(compare_func_to_gl(info.depth_stencil.depth_func));
           device.front_face(pipeline.gl_front_face());
           let cull_face = pipeline.gl_cull_face();
           if cull_face == 0 {

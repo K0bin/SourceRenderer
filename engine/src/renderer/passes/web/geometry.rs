@@ -109,7 +109,7 @@ impl<B: Backend> GeometryPass<B> {
       },
       depth_stencil: DepthStencilInfo {
         depth_test_enabled: true,
-        depth_write_enabled: false,
+        depth_write_enabled: true,
         depth_func: CompareFunc::LessEqual,
         stencil_enable: false,
         stencil_read_mask: 0u8,

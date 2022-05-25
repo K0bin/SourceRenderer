@@ -350,6 +350,10 @@ impl WebGLThreadPipeline {
     &self.program
   }
 
+  pub fn info(&self) -> &WebGLPipelineInfo {
+    &self.info
+  }
+
   pub fn get_vao(&self, vertex_buffers: &[Option<WebGLVBThreadBinding>; 4]) -> WebGlVertexArrayObject {
     let mut key: [Option<WebGLVBHandleBinding>; 4] = Default::default();
     for i in 0..vertex_buffers.len() {
