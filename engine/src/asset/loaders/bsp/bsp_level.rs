@@ -257,7 +257,7 @@ impl BspLevelLoader {
     // Source rotations are in the following order: Pitch Yaw Roll (Y Z X)
     // We need them in the following order: Pitch Yaw Roll (X Y Z)
     let rotation =
-        Rotation3::from_euler_angles(0f32, -rotation.y * DEG_TO_RAD, 0f32)
+        Rotation3::from_euler_angles(0f32, rotation.y * DEG_TO_RAD, 0f32)
       * Rotation3::from_euler_angles(0f32, 0f32, rotation.x * DEG_TO_RAD)
       * Rotation3::from_euler_angles(rotation.z * DEG_TO_RAD, 0f32, 0f32);
 
