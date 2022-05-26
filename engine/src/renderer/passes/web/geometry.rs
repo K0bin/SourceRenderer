@@ -20,7 +20,7 @@ impl<B: Backend> GeometryPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::DEPTH_STENCIL | TextureUsage::SAMPLED,
+      usage: TextureUsage::DEPTH_STENCIL,
     }, false);
 
     let shader_file_extension = if cfg!(target_family = "wasm") {
@@ -107,7 +107,7 @@ impl<B: Backend> GeometryPass<B> {
       depth_stencil: DepthStencilInfo {
         depth_test_enabled: true,
         depth_write_enabled: true,
-        depth_func: CompareFunc::Always,
+        depth_func: CompareFunc::Less,
         stencil_enable: false,
         stencil_read_mask: 0u8,
         stencil_write_mask: 0u8,

@@ -1,6 +1,5 @@
-use std::{collections::VecDeque, rc::Rc, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 
-use js_sys::Uint32Array;
 use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureRenderTargetView, Format};
 use wasm_bindgen::JsValue;
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
@@ -373,10 +372,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     self.commands.push_back(Box::new(move |context| {
       let fbo = context.get_framebuffer(&color_attachments, depth_attachment, ds_format);
       context.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&fbo));
-      context.clear_color(0f32, 0f32, 0f32, 1f32);
-      let mut clear_mask = 0u32;
-      let mut attachment_count = 0;
-      let mut clear_colors = Vec::<[u32; 4]>::new();
       let invalidate_color_attachments = js_sys::Array::new();
       for (index, load_op_opt) in color_attachment_load_ops.iter().enumerate() {
         if load_op_opt.is_none() {
@@ -385,33 +380,12 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
         let load_op = load_op_opt.unwrap();
 
         if load_op == LoadOp::Clear {
-          let clear_color = [0u32, 0u32, 0u32, 1u32];
-          if attachment_count == 0 {
-            clear_mask |= WebGl2RenderingContext::COLOR_BUFFER_BIT;
-          } else if &clear_color != clear_colors.last().unwrap() {
-            // The clear colors aren't the same, clear per attachment
-            clear_mask &= !WebGl2RenderingContext::COLOR_BUFFER_BIT;
-          }
-          clear_colors.push(clear_color);
+          let clear_color = [0f32, 0f32, 0f32, 1f32];
+          context.clear_bufferfv_with_f32_array(WebGl2RenderingContext::COLOR, index as i32, &clear_color);
         } else {
           if load_op == LoadOp::DontCare {
             invalidate_color_attachments.push(&JsValue::from_f64((WebGl2RenderingContext::COLOR_ATTACHMENT0 + index as u32) as f64));
           }
-          // There are non-cleared color attachments in the FBO, we can't clear them all at once.
-          clear_mask &= !WebGl2RenderingContext::COLOR_BUFFER_BIT;
-        }
-        attachment_count += 1;
-      }
-
-      if (clear_mask & WebGl2RenderingContext::COLOR_BUFFER_BIT) == 0 {
-        // Clear per color attachment
-        attachment_count = 0;
-        for (index, load_op_opt) in color_attachment_load_ops.iter().enumerate() {
-          if load_op_opt.is_none() || load_op_opt.unwrap() != LoadOp::Clear {
-            continue;
-          }
-          context.clear_bufferuiv_with_u32_array(WebGl2RenderingContext::COLOR, index as i32, &clear_colors[attachment_count as usize]);
-          attachment_count += 1;
         }
       }
 
@@ -421,8 +395,14 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
 
       if ds_format != Format::Unknown {
         if ds_load_op == LoadOp::Clear {
-          clear_mask |= WebGl2RenderingContext::DEPTH_BUFFER_BIT;
-        } else if (ds_load_op == LoadOp::DontCare) {
+          if ds_format.is_depth() && ds_format.is_stencil() {
+            context.clear_bufferfi(WebGl2RenderingContext::DEPTH_STENCIL, 0 as i32, 1.0f32, 0i32);
+          } else if ds_format.is_depth() {
+            context.clear_bufferfv_with_f32_array(WebGl2RenderingContext::DEPTH, 0 as i32, &[1f32]);
+          } else {
+            context.clear_bufferiv_with_i32_array(WebGl2RenderingContext::STENCIL, 0 as i32, &[0i32]);
+          }
+        } else if ds_load_op == LoadOp::DontCare {
           let invalidate_depth_attachments = js_sys::Array::new();
           if ds_format.is_depth() && ds_format.is_stencil() {
             invalidate_depth_attachments.push(&JsValue::from_f64((WebGl2RenderingContext::DEPTH_STENCIL_ATTACHMENT) as f64));
@@ -433,13 +413,6 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
           }
           let _ = context.invalidate_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, &invalidate_depth_attachments).unwrap();
         }
-      }
-      if clear_mask != 0 {
-        if !clear_colors.is_empty() {
-          let clear_color = clear_colors.first().unwrap();
-          context.clear_color(clear_color[0] as f32, clear_color[1] as f32, clear_color[2] as f32, clear_color[3] as f32);
-        }
-        context.clear(clear_mask);
       }
     }));
   }
