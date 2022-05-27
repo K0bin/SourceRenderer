@@ -61,11 +61,7 @@ impl GltfLoader {
         let part_start = indices.len();
         GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name, buffer_cache);
         let material_path = GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
-        if let Some(material_path) = material_path {
-          materials.push(material_path);
-        } else {
-          continue;
-        }
+        materials.push(material_path);
         let primitive_bounding_box = primitive.bounding_box();
         if let Some(bounding_box) = &mut bounding_box {
           bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]);
@@ -342,7 +338,7 @@ impl GltfLoader {
     }
   }
 
-  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, gltf_file_name: &str) -> Option<String> {
+  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, gltf_file_name: &str) -> String {
     let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
       &gltf_file_name[..last_slash + 1]
     } else {
@@ -352,11 +348,10 @@ impl GltfLoader {
 
     let pbr = material.pbr_metallic_roughness();
     if material.double_sided() {
-      warn!("Double sided materials are not supported.");
+      warn!("Double sided materials are not supported, material path: {}", material_path);
     }
     if material.alpha_mode() != AlphaMode::Opaque {
-      warn!("Unsupported alpha mode.");
-      return None;
+      warn!("Unsupported alpha mode, alpha mode: {:?}, material path: {}", material.alpha_mode(), material_path);
     }
 
     let albedo_info = pbr.base_color_texture();
@@ -390,7 +385,7 @@ impl GltfLoader {
       let color = pbr.base_color_factor();
       asset_mgr.add_material_color(&material_path, Vec4::new(color[0], color[1], color[2], color[3]), pbr.roughness_factor(), pbr.metallic_factor());
     }
-    Some(material_path)
+    material_path
   }
 }
 
