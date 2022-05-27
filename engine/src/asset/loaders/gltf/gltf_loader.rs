@@ -1,10 +1,9 @@
 use std::{collections::HashMap, io::{Cursor, Read, Seek, SeekFrom}, slice, sync::Arc, usize};
 
-use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::{Source, View}};
+use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic, buffer::{Source, View}, texture::WrappingMode, material::AlphaMode};
 use legion::{Entity, World, WorldOptions};
 use log::warn;
-use nalgebra::UnitQuaternion;
-use sourcerenderer_core::{Platform, Vec2, Vec3, Vec4};
+use sourcerenderer_core::{Platform, Vec2, Vec3, Vec4, Quaternion};
 
 use crate::{Parent, Transform, asset::{Asset, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, Mesh, MeshRange, Model, asset_manager::{AssetFile, AssetLoaderResult}, loaders::BspVertex as Vertex, AssetType}, math::BoundingBox, renderer::{PointLightComponent, DirectionalLightComponent, StaticRenderableComponent}};
 
@@ -16,7 +15,7 @@ impl GltfLoader {
   }
 
   fn visit_node<P: Platform>(node: &Node, world: &mut World, asset_mgr: &AssetManager<P>, parent_entity: Option<Entity>, gltf_file_name: &str, buffer_cache: &mut HashMap<String, Vec<u8>>) {
-    let (translation, _rotation, scale) = match node.transform() {
+    let (translation, rotation, scale) = match node.transform() {
       gltf::scene::Transform::Matrix { matrix: _columns_data } => {
         unimplemented!()
 
@@ -32,10 +31,14 @@ impl GltfLoader {
         Vec4::new(rotation[0], rotation[1], rotation[2], rotation[3]),
         Vec3::new(scale[0], scale[1], scale[2])),
     };
+
+    let fixed_position = fixup_vec(&translation);
+    let fixed_rotation = Vec4::new(rotation.x, -rotation.y, -rotation.z, rotation.w);
+    let rot_quat = Quaternion::new_normalize(nalgebra::Quaternion { coords: fixed_rotation });
     let entity = world.push((Transform {
-      position: translation,
+      position: fixed_position,
       scale,
-      rotation: UnitQuaternion::identity(),
+      rotation: rot_quat,
     },));
 
     {
@@ -48,16 +51,21 @@ impl GltfLoader {
     if let Some(mesh) = node.mesh() {
       let model_name = node.name().map_or_else(|| node.index().to_string(), |name| name.to_string());
       let mesh_path = gltf_file_name.to_string() + "/mesh/" + &model_name;
-      let material_path = gltf_file_name.to_string() + "/material/" + &model_name;
 
       let mut indices = Vec::<u32>::new();
       let mut vertices = Vec::<Vertex>::new();
       let mut parts = Vec::<MeshRange>::with_capacity(mesh.primitives().len());
       let mut bounding_box = Option::<BoundingBox>::None;
+      let mut materials = Vec::<String>::new();
       for primitive in mesh.primitives() {
         let part_start = indices.len();
         GltfLoader::load_primitive(&primitive, asset_mgr, &mut vertices, &mut indices, gltf_file_name, buffer_cache);
-        GltfLoader::load_material(&primitive.material(), asset_mgr, &material_path, gltf_file_name);
+        let material_path = GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
+        if let Some(material_path) = material_path {
+          materials.push(material_path);
+        } else {
+          continue;
+        }
         let primitive_bounding_box = primitive.bounding_box();
         if let Some(bounding_box) = &mut bounding_box {
           bounding_box.min.x = f32::min(bounding_box.min.x, primitive_bounding_box.min[0]);
@@ -95,7 +103,12 @@ impl GltfLoader {
       let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, indices_count * std::mem::size_of::<u32>()) as *mut [u8] };
       let indices_data = unsafe { Box::from_raw(data_ptr) };
 
-      let parts_len = parts.len();
+      if let Some(bounding_box) = bounding_box.as_mut() {
+        // Right hand -> left hand coordinate system conversion
+        let bb_min_x = bounding_box.min.x;
+        bounding_box.min.x = -bounding_box.max.x;
+        bounding_box.max.x = -bb_min_x;
+      }
 
       asset_mgr.add_asset(&mesh_path, Asset::Mesh(Mesh {
         indices: (indices_count > 0).then(|| indices_data),
@@ -108,7 +121,7 @@ impl GltfLoader {
       let model_path = gltf_file_name.to_string() + "/model/" + &model_name;
       asset_mgr.add_asset(&model_path, Asset::Model(Model {
         mesh_path: mesh_path.clone(),
-        material_paths: vec![material_path; parts_len],
+        material_paths: materials,
       }), AssetLoadPriority::Normal);
 
       let mut entry = world.entry(entity).unwrap();
@@ -329,21 +342,33 @@ impl GltfLoader {
     }
   }
 
-  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, material_name: &str, gltf_file_name: &str) {
+  fn load_material<P: Platform>(material: &Material, asset_mgr: &AssetManager<P>, gltf_file_name: &str) -> Option<String> {
     let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
       &gltf_file_name[..last_slash + 1]
     } else {
       gltf_file_name
     };
+    let material_path = format!("{}/material/{}", gltf_file_name.to_string(), material.index().map_or_else(|| "default".to_string(), |index| index.to_string()));
+
     let pbr = material.pbr_metallic_roughness();
+    if material.double_sided() {
+      warn!("Double sided materials are not supported.");
+    }
+    if material.alpha_mode() != AlphaMode::Opaque {
+      warn!("Unsupported alpha mode.");
+      return None;
+    }
 
     let albedo_info = pbr.base_color_texture();
     let albedo_path = albedo_info.and_then(|albedo| if albedo.tex_coord() == 0 {
       Some(albedo)
     } else {
-      warn!("Found non zero texcoord for texture: {}", material_name);
+      warn!("Found non zero texcoord for texture: {}", &material_path);
       None
     }).map(|albedo| {
+      if albedo.texture().sampler().wrap_s() != WrappingMode::Repeat || albedo.texture().sampler().wrap_t() != WrappingMode::Repeat {
+        warn!("Texture uses non-repeat wrap mode: s: {:?}, t: {:?}", albedo.texture().sampler().wrap_s(), albedo.texture().sampler().wrap_t());
+      }
       let albedo_source = albedo.texture().source().source();
       match albedo_source {
         gltf::image::Source::View { view, mime_type } => {
@@ -359,11 +384,13 @@ impl GltfLoader {
 
     if let Some(albedo_path) = albedo_path {
       asset_mgr.request_asset(&albedo_path, AssetType::Material, AssetLoadPriority::Low);
-      asset_mgr.add_material(material_name, &albedo_path, pbr.roughness_factor(), pbr.metallic_factor());
+      println!("Loading material: {}", &material_path);
+      asset_mgr.add_material(&material_path, &albedo_path, pbr.roughness_factor(), pbr.metallic_factor());
     } else {
       let color = pbr.base_color_factor();
-      asset_mgr.add_material_color(material_name, Vec4::new(color[0], color[1], color[2], color[3]), pbr.roughness_factor(), pbr.metallic_factor());
+      asset_mgr.add_material_color(&material_path, Vec4::new(color[0], color[1], color[2], color[3]), pbr.roughness_factor(), pbr.metallic_factor());
     }
+    Some(material_path)
   }
 }
 
@@ -375,6 +402,17 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
   fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = file.path.clone();
     let gltf = Gltf::from_reader(file).unwrap();
+    const PUNCTUAL_LIGHT_EXTENSION: &'static str = "KHR_lights_punctual";
+    for extension in gltf.extensions_required() {
+      if extension != PUNCTUAL_LIGHT_EXTENSION {
+        log::warn!("GLTF file requires unsupported extension: {}", extension)
+      }
+    }
+    for extension in gltf.extensions_used() {
+      if extension != PUNCTUAL_LIGHT_EXTENSION {
+        log::warn!("GLTF file uses unsupported extension: {}", extension)
+      }
+    }
 
     let scene_prefix = "/scene/";
     let scene_name_start = path.find(scene_prefix);
