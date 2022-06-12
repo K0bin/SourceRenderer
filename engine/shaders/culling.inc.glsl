@@ -1,5 +1,8 @@
 #extension GL_GOOGLE_include_directive : enable
-// #extension GL_EXT_debug_printf : enable
+
+#ifdef DEBUG
+#extension GL_EXT_debug_printf : enable
+#endif
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -55,12 +58,28 @@ void main() {
 
     #ifdef SPHERE_FRUSTUM_CULLING
     isVisible = isVisible && checkSphereVisibilityAgainstFrustum(frustum, mesh.sphere, camera, drawable.transform);
+    #ifdef DEBUG
+    if (!isVisible) {
+      debugPrintfEXT("Drawable failed spehere frustum check: %u", drawableIndex);
+    }
+    #endif
     #else
     isVisible = isVisible && checkVisibilityAgainstFrustum(frustum, mesh.sphere, camera, drawable.transform);
+    #ifdef DEBUG
+    if (!isVisible) {
+      debugPrintfEXT("Drawable failed AABB frustum check: %u", drawableIndex);
+    }
+    #endif
     #endif
 
     #ifdef OCCLUSION_CULLING
+    bool wasVisible = isVisible;
     isVisible = isVisible && checkOcclusion(aabb, camera, drawable.transform);
+    #ifdef DEBUG
+    if (wasVisible && !isVisible) {
+      debugPrintfEXT("Drawable failed occlusion check: %u", drawableIndex);
+    }
+    #endif
     #endif
   }
   if (isVisible) {
@@ -113,7 +132,6 @@ bool checkOcclusion(GPUBoundingBox aabb, Camera camera, mat4 modelTransform) {
   for (uint i = 0; i < 6; i++) {
     if (invalidCount[i] == 8) {
       // Object is not in the frustum
-      // debugPrintfEXT("Drawable failed frustum check in occlusion cullung: %u", drawableIndex);
       return false;
     }
   }
