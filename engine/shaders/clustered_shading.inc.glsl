@@ -1,4 +1,5 @@
 #ifndef CLUSTERED_SHADING_H
+#define CLUSTERED_SHADING_H
 
 uint getClusterIndex(vec2 fragCoord, float zNear, float zFar, uvec3 clusterCount, uvec2 viewportSize, float clusterZScale, float clusterZBias) {
   vec2 tileSize = vec2(viewportSize) / vec2(clusterCount.xy);

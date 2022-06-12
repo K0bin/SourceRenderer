@@ -1,4 +1,5 @@
-#ifndef CONSTS_H
+#ifndef PBR_H
+#define PBR_H
 
 #include "consts.inc.glsl"
 

@@ -1,3 +1,6 @@
+#ifndef GPU_SCENE_H
+#define GPU_SCENE_H
+
 struct GPUDraw {
   uint drawableIndex;
   uint partIndex;
@@ -63,3 +66,5 @@ struct GPUScene {
   GPUDrawable drawables[DRAWABLE_CAPACITY]; // needs 16 byte alignment
   GPUMesh meshes[MESH_CAPACITY]; // needs 16 byte alignment
 };
+
+#endif

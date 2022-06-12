@@ -39,6 +39,7 @@ const DRAW_INDIRECT_COUNT_EXT_NAME: &str = "VK_KHR_draw_indirect_count";
 const TIMELINE_SEMAPHORE_EXT_NAME: &str = "VK_KHR_timeline_semaphore";
 const SYNCHRONIZATION2_EXT_NAME: &str = "VK_KHR_synchronization2";
 const SAMPLER_FILTER_MINMAX_EXT_NAME: &str = "VK_EXT_sampler_filter_minmax";
+const BARYCENTRICS_EXT_NAME: &str = "VK_NV_fragment_shader_barycentric"; // TODO: Use VK_KHR_fragment_shader_barycentric
 
 
 bitflags! {
@@ -62,6 +63,21 @@ bitflags! {
     const TIMELINE_SEMAPHORE         = 0b1000000000000000;
     const SYNCHRONIZATION2           = 0b10000000000000000;
     const SAMPLER_FILTER_MINMAX      = 0b100000000000000000;
+    const BARYCENTRICS               = 0b1000000000000000000;
+  }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV {
+  s_type: vk::StructureType,
+  p_next: *mut c_void,
+  fragment_shader_barycentric: vk::Bool32
+}
+
+impl Default for VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV {
+  fn default() -> Self {
+    Self { s_type: vk::StructureType::PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_NV, p_next: std::ptr::null_mut(), fragment_shader_barycentric: vk::FALSE }
   }
 }
 
@@ -103,6 +119,7 @@ impl VkAdapter {
         TIMELINE_SEMAPHORE_EXT_NAME => { VkAdapterExtensionSupport::TIMELINE_SEMAPHORE },
         SYNCHRONIZATION2_EXT_NAME => { VkAdapterExtensionSupport::SYNCHRONIZATION2 },
         SAMPLER_FILTER_MINMAX_EXT_NAME => { VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX },
+        BARYCENTRICS_EXT_NAME => { VkAdapterExtensionSupport::BARYCENTRICS },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -226,6 +243,7 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut supported_timeline_semaphore_features = vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
       let mut supported_sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
       let mut filter_min_max_properties = vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
+      let mut supported_barycentrics_features = VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
       if self.extensions.intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING) {
         supported_descriptor_indexing_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_descriptor_indexing_features as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT as *mut c_void);
         descriptor_indexing_properties.p_next = std::mem::replace(&mut properties.p_next, &mut descriptor_indexing_properties as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT as *mut c_void);
@@ -248,6 +266,10 @@ impl Adapter<VkBackend> for VkAdapter {
         panic!("Your Vulkan driver is not capable of running this application. ShaderStorageImageWriteWithoutFormat is a required feature!");
       }
 
+      if self.extensions.intersects(VkAdapterExtensionSupport::BARYCENTRICS) {
+        supported_barycentrics_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_barycentrics_features as *mut VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV as *mut c_void);
+      }
+
       supported_timeline_semaphore_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_timeline_semaphore_features as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures as *mut c_void);
       supported_sync2_features.p_next = std::mem::replace(&mut supported_features.p_next, &mut supported_sync2_features as *mut vk::PhysicalDeviceSynchronization2Features as *mut c_void);
 
@@ -262,6 +284,7 @@ impl Adapter<VkBackend> for VkAdapter {
       let mut bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
       let mut timeline_semaphore_features = vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
       let mut sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
+      let mut barycentrics_features = VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
       let mut extension_names: Vec<&str> = vec!(SWAPCHAIN_EXT_NAME);
       let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
@@ -369,6 +392,14 @@ impl Adapter<VkBackend> for VkAdapter {
       sync2_features.synchronization2 = vk::TRUE;
       timeline_semaphore_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut timeline_semaphore_features as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures as *mut c_void);
       sync2_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut sync2_features as *mut vk::PhysicalDeviceSynchronization2Features as *mut c_void);
+
+      if supported_barycentrics_features.fragment_shader_barycentric == vk::TRUE {
+        println!("Barycentrics supported.");
+        barycentrics_features.fragment_shader_barycentric = vk::TRUE;
+        barycentrics_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut barycentrics_features as *mut VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV as *mut c_void);
+        extension_names.push(BARYCENTRICS_EXT_NAME);
+        features |= VkFeatures::BARYCENTRICS;
+      }
 
       let extension_names_c: Vec<CString> = extension_names
         .iter()

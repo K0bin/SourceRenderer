@@ -53,7 +53,8 @@ pub trait Device<B: Backend> {
   fn supports_bindless(&self) -> bool;
   fn supports_ray_tracing(&self) -> bool;
   fn supports_indirect(&self) -> bool;
-  fn supports_min_max_filter(&self) -> bool; // TODO turn into flags
+  fn supports_min_max_filter(&self) -> bool;
+  fn supports_barycentrics(&self) -> bool; // TODO turn into flags
   fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureSamplingView>) -> u32;
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;

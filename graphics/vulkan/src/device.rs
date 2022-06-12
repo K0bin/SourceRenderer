@@ -370,6 +370,10 @@ impl Device<VkBackend> for VkDevice {
   fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<VkBackend>) -> Arc<VkPipeline> {
     Arc::new(VkPipeline::new_ray_tracing(&self.device, info, &self.shared))
   }
+
+  fn supports_barycentrics(&self) -> bool {
+    self.device.features.contains(VkFeatures::BARYCENTRICS)
+  }
 }
 
 impl Drop for VkDevice {

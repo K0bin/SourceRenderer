@@ -256,4 +256,8 @@ impl Device<WebGLBackend> for WebGLDevice {
   fn supports_min_max_filter(&self) -> bool {
     false
   }
+
+  fn supports_barycentrics(&self) -> bool {
+    false
+  }
 }
