@@ -30,7 +30,7 @@ use crate::raw::*;
 use crate::VkShared;
 use crate::buffer::{VkBufferSlice, BufferAllocator};
 use crate::VkTexture;
-use crate::descriptor::{VkBindingManager, VkBoundResourceRef, VkBufferBindingInfoRef};
+use crate::descriptor::{VkBindingManager, VkBoundResourceRef, VkBufferBindingInfoRef, PER_SET_BINDINGS};
 use crate::texture::VkTextureView;
 use crate::lifetime_tracker::VkLifetimeTrackers;
 
@@ -412,7 +412,7 @@ impl VkCommandBuffer {
 
     self.flush_barriers();
 
-    let mut offsets = SmallVec::<[u32; 16]>::new();
+    let mut offsets = SmallVec::<[u32; PER_SET_BINDINGS]>::new();
     let mut descriptor_sets = SmallVec::<[vk::DescriptorSet; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize]>::new();
     let mut base_index = 0;
 
@@ -1122,7 +1122,7 @@ impl VkCommandBuffer {
     };
 
     let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
-    let mut bindings = <[VkBoundResourceRef; 16]>::default();
+    let mut bindings = <[VkBoundResourceRef; PER_SET_BINDINGS]>::default();
     bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef { buffer, offset, length: actual_length });
     let binding_offsets = [ (buffer.offset() + offset) as u32 ];
     let is_dynamic_binding = meta_pipeline.layout().descriptor_set_layout(0).unwrap().is_dynamic_binding(0);
