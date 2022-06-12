@@ -16,6 +16,8 @@ pub enum Format {
   RG32Float,
   RGB32Float,
   RGBA32Float,
+  RG16UNorm,
+  R32Uint,
 
   D16,
   D16S8,

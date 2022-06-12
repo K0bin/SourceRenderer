@@ -1,0 +1,316 @@
+use nalgebra::Vector2;
+use sourcerenderer_core::{Matrix4, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER}};
+use std::sync::Arc;
+use crate::renderer::{drawable::View, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
+use crate::renderer::passes::taa::scaled_halton_point;
+use std::path::Path;
+use std::io::Read;
+use sourcerenderer_core::platform::io::IO;
+
+use super::{draw_prep::DrawPrepPass, gpu_scene::DRAW_CAPACITY};
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct FrameData {
+  swapchain_transform: Matrix4,
+  halton_point: Vec2,
+  z_near: f32,
+  z_far: f32,
+  rt_size: Vector2::<u32>,
+  cluster_z_bias: f32,
+  cluster_z_scale: f32,
+  cluster_count: nalgebra::Vector3::<u32>,
+  point_light_count: u32,
+  directional_light_count: u32
+}
+
+pub struct VisibilityBufferPass<B: GraphicsBackend> {
+  pipeline: Arc<B::GraphicsPipeline>
+}
+
+impl<B: GraphicsBackend> VisibilityBufferPass<B> {
+  pub const BARYCENTRICS_TEXTURE_NAME: &'static str = "barycentrics";
+  pub const PRIMITIVE_ID_TEXTURE_NAME: &'static str = "primitive";
+  pub const DEPTH_BUFFER_NAME: &'static str = "depth";
+
+  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
+    let barycentrics_texture_info = TextureInfo {
+      format: Format::RG16UNorm,
+      width: swapchain.width(),
+      height: swapchain.height(),
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+    };
+    resources.create_texture(Self::BARYCENTRICS_TEXTURE_NAME, &barycentrics_texture_info, false);
+
+    let primitive_id_texture_info = TextureInfo {
+      format: Format::R32Uint,
+      width: swapchain.width(),
+      height: swapchain.height(),
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+    };
+    resources.create_texture(Self::PRIMITIVE_ID_TEXTURE_NAME, &primitive_id_texture_info, false);
+
+    let depth_texture_info = TextureInfo {
+      format: Format::D24,
+      width: swapchain.width(),
+      height: swapchain.height(),
+      depth: 1,
+      mip_levels: 1,
+      array_length: 1,
+      samples: SampleCount::Samples1,
+      usage: TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL,
+    };
+    resources.create_texture(Self::DEPTH_BUFFER_NAME, &depth_texture_info, false);
+
+    let vertex_shader = {
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("visibility_buffer.vert.spv"))).unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.create_shader(ShaderType::VertexShader, &bytes, Some("geometry_bindless.vert.spv"))
+    };
+
+    let fragment_shader = {
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("visibility_buffer.frag.spv"))).unwrap();
+      let mut bytes: Vec<u8> = Vec::new();
+      file.read_to_end(&mut bytes).unwrap();
+      device.create_shader(ShaderType::FragmentShader, &bytes, Some("visibility_buffer.frag.spv"))
+    };
+
+    let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
+      vs: &vertex_shader,
+      fs: Some(&fragment_shader),
+      primitive_type: PrimitiveType::Triangles,
+      vertex_layout: VertexLayoutInfo {
+        input_assembler: &[
+          InputAssemblerElement {
+            binding: 0,
+            stride: 44,
+            input_rate: InputRate::PerVertex
+          }
+        ],
+        shader_inputs: &[
+          ShaderInputElement {
+            input_assembler_binding: 0,
+            location_vk_mtl: 0,
+            semantic_name_d3d: String::from(""),
+            semantic_index_d3d: 0,
+            offset: 0,
+            format: Format::RGB32Float
+          },
+        ]
+      },
+      rasterizer: RasterizerInfo {
+        fill_mode: FillMode::Fill,
+        cull_mode: CullMode::Back,
+        front_face: FrontFace::Clockwise,
+        sample_count: SampleCount::Samples1
+      },
+      depth_stencil: DepthStencilInfo {
+        depth_test_enabled: true,
+        depth_write_enabled: true,
+        depth_func: CompareFunc::LessEqual,
+        stencil_enable: false,
+        stencil_read_mask: 0u8,
+        stencil_write_mask: 0u8,
+        stencil_front: StencilInfo::default(),
+        stencil_back: StencilInfo::default()
+      },
+      blend: BlendInfo {
+        alpha_to_coverage_enabled: false,
+        logic_op_enabled: false,
+        logic_op: LogicOp::And,
+        constants: [0f32, 0f32, 0f32, 0f32],
+        attachments: &[
+          AttachmentBlendInfo::default(),
+          AttachmentBlendInfo::default()
+        ]
+      }
+    };
+    let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
+      attachments: &[
+        AttachmentInfo {
+          format: primitive_id_texture_info.format,
+          samples: primitive_id_texture_info.samples,
+        },
+        AttachmentInfo {
+          format: barycentrics_texture_info.format,
+          samples: barycentrics_texture_info.samples,
+        },
+        AttachmentInfo {
+          format: depth_texture_info.format,
+          samples: depth_texture_info.samples,
+        }
+      ],
+      subpasses: &[
+        SubpassInfo {
+          input_attachments: &[],
+          output_color_attachments: &[
+            OutputAttachmentRef {
+              index: 0,
+              resolve_attachment_index: None
+            },
+            OutputAttachmentRef {
+              index: 1,
+              resolve_attachment_index: None
+            }
+          ],
+          depth_stencil_attachment: Some(DepthStencilAttachmentRef {
+            index: 2,
+            read_only: false,
+          }),
+        }
+      ]
+    }, 0, Some("VisibilityBuffer"));
+
+    Self {
+      pipeline
+    }
+  }
+
+  #[profiling::function]
+  pub(super) fn execute(
+    &mut self,
+    cmd_buffer: &mut B::CommandBuffer,
+    scene: &RendererScene<B>,
+    view: &View,
+    gpu_scene: &Arc<B::Buffer>,
+    swapchain_transform: Matrix4,
+    frame: u64,
+    resources: &RendererResources<B>,
+    camera_buffer: &Arc<B::Buffer>,
+    vertex_buffer: &Arc<B::Buffer>,
+    index_buffer: &Arc<B::Buffer>,
+  ) {
+    cmd_buffer.begin_label("Visibility Buffer pass");
+    let draw_buffer = resources.access_buffer(
+      cmd_buffer,
+      DrawPrepPass::<B>::INDIRECT_DRAW_BUFFER,
+      BarrierSync::INDIRECT,
+      BarrierAccess::INDIRECT_READ,
+      HistoryResourceEntry::Current
+    );
+
+    let barycentrics_rtv = resources.access_render_target_view(
+      cmd_buffer,
+      Self::BARYCENTRICS_TEXTURE_NAME,
+      BarrierSync::RENDER_TARGET,
+      BarrierAccess::RENDER_TARGET_WRITE,
+      TextureLayout::RenderTarget, true,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    let primitive_id_rtv = resources.access_render_target_view(
+      cmd_buffer,
+      Self::PRIMITIVE_ID_TEXTURE_NAME,
+      BarrierSync::RENDER_TARGET,
+      BarrierAccess::RENDER_TARGET_WRITE,
+      TextureLayout::RenderTarget, true,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    let dsv = resources.access_depth_stencil_view(
+      cmd_buffer,
+      Self::DEPTH_BUFFER_NAME,
+      BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH,
+      BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+      TextureLayout::DepthStencilReadWrite, true,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
+      attachments: &[
+        RenderPassAttachment {
+          view: RenderPassAttachmentView::RenderTarget(&primitive_id_rtv),
+          load_op: LoadOp::Clear,
+          store_op: StoreOp::Store,
+        },
+        RenderPassAttachment {
+          view: RenderPassAttachmentView::RenderTarget(&barycentrics_rtv),
+          load_op: LoadOp::Clear,
+          store_op: StoreOp::Store,
+        },
+        RenderPassAttachment {
+          view: RenderPassAttachmentView::DepthStencil(&dsv),
+          load_op: LoadOp::Clear,
+          store_op: StoreOp::Store
+        }
+      ],
+      subpasses: &[
+        SubpassInfo {
+          input_attachments: &[],
+          output_color_attachments: &[
+            OutputAttachmentRef {
+              index: 0,
+              resolve_attachment_index: None
+            },
+            OutputAttachmentRef {
+              index: 1,
+              resolve_attachment_index: None
+            }
+          ],
+          depth_stencil_attachment: Some(DepthStencilAttachmentRef {
+            index: 2,
+            read_only: false,
+          }),
+        }
+      ]
+    }, RenderpassRecordingMode::Commands);
+
+    let rtv_info = barycentrics_rtv.texture().info();
+    let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
+    let near = view.near_plane;
+    let far = view.far_plane;
+    let cluster_z_scale = (cluster_count.z as f32) / (far / near).log2();
+    let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
+    let per_frame = FrameData {
+      swapchain_transform,
+      halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32 + 1),
+      z_near: near,
+      z_far: far,
+      rt_size: Vector2::<u32>::new(rtv_info.width, rtv_info.height),
+      cluster_z_bias,
+      cluster_z_scale,
+      cluster_count,
+      point_light_count: scene.point_lights().len() as u32,
+      directional_light_count: scene.directional_lights().len() as u32
+    };
+    let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
+
+    cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+    cmd_buffer.set_viewports(&[Viewport {
+      position: Vec2::new(0.0f32, 0.0f32),
+      extent: Vec2::new(rtv_info.width as f32, rtv_info.height as f32),
+      min_depth: 0.0f32,
+      max_depth: 1.0f32
+    }]);
+    cmd_buffer.set_scissors(&[Scissor {
+      position: Vec2I::new(0, 0),
+      extent: Vec2UI::new(9999, 9999),
+    }]);
+
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, &per_frame_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, gpu_scene, 0, WHOLE_BUFFER);
+
+    cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
+    cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);
+
+    cmd_buffer.finish_binding();
+    cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);
+
+    cmd_buffer.end_render_pass();
+    cmd_buffer.end_label();
+  }
+}
