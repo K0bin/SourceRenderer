@@ -182,7 +182,8 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
                   normal: fixup_normal(&vertex.vec_normal),
                   uv: vertex.vec_tex_coord,
                   lightmap_uv: Vector2::<f32>::new(0f32, 0f32),
-                  alpha: 0.0
+                  alpha: 0.0,
+                  ..Default::default()
                 };
                 vertices.push(bsp_vertex);
               }

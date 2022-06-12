@@ -85,7 +85,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         input_assembler: &[
           InputAssemblerElement {
             binding: 0,
-            stride: 44,
+            stride: 64,
             input_rate: InputRate::PerVertex
           }
         ],
@@ -103,7 +103,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             location_vk_mtl: 1,
             semantic_name_d3d: String::from(""),
             semantic_index_d3d: 0,
-            offset: 12,
+            offset: 16,
             format: Format::RGB32Float
           },
           ShaderInputElement {
@@ -111,7 +111,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             location_vk_mtl: 2,
             semantic_name_d3d: String::from(""),
             semantic_index_d3d: 0,
-            offset: 24,
+            offset: 32,
             format: Format::RG32Float
           },
           ShaderInputElement {
@@ -119,7 +119,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             location_vk_mtl: 3,
             semantic_name_d3d: String::from(""),
             semantic_index_d3d: 0,
-            offset: 32,
+            offset: 40,
             format: Format::RG32Float
           },
           ShaderInputElement {
@@ -127,7 +127,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             location_vk_mtl: 4,
             semantic_name_d3d: String::from(""),
             semantic_index_d3d: 0,
-            offset: 40,
+            offset: 48,
             format: Format::R32Float
           }
         ]

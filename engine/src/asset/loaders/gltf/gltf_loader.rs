@@ -291,7 +291,8 @@ impl GltfLoader {
             normal,
             uv: *texcoord_vec_ptr,
             lightmap_uv: Vec2::new(0f32, 0f32),
-            alpha: 1.0f32
+            alpha: 1.0f32,
+            ..Default::default()
           });
         }
 
@@ -348,10 +349,10 @@ impl GltfLoader {
 
     let pbr = material.pbr_metallic_roughness();
     if material.double_sided() {
-      warn!("Double sided materials are not supported, material path: {}", material_path);
+      //warn!("Double sided materials are not supported, material path: {}", material_path);
     }
     if material.alpha_mode() != AlphaMode::Opaque {
-      warn!("Unsupported alpha mode, alpha mode: {:?}, material path: {}", material.alpha_mode(), material_path);
+      //warn!("Unsupported alpha mode, alpha mode: {:?}, material path: {}", material.alpha_mode(), material_path);
     }
 
     let albedo_info = pbr.base_color_texture();

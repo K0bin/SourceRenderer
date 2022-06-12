@@ -399,6 +399,7 @@ impl Adapter<VkBackend> for VkAdapter {
         barycentrics_features.p_next = std::mem::replace(&mut device_creation_pnext, &mut barycentrics_features as *mut VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV as *mut c_void);
         extension_names.push(BARYCENTRICS_EXT_NAME);
         features |= VkFeatures::BARYCENTRICS;
+        enabled_features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
       }
 
       let extension_names_c: Vec<CString> = extension_names

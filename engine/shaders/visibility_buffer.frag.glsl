@@ -13,7 +13,6 @@ layout(location = 0) out uint out_primitiveId;
 layout(location = 1) out vec2 out_barycentrics;
 
 void main(void) {
-  uint localPrimitiveId = gl_PrimitiveID - in_firstIndex / 3;
-  out_primitiveId = uint(((in_drawIndex & 0xff) << 16) | (localPrimitiveId & 0xff));
+  out_primitiveId = uint(((in_drawIndex & 0xffff) << 16) | (gl_PrimitiveID & 0xffff));
   out_barycentrics = gl_BaryCoordNV.xy;
 }

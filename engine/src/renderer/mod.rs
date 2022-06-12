@@ -16,6 +16,7 @@ pub(crate) mod passes;
 mod renderer_assets;
 mod asset_buffer;
 mod late_latching;
+mod vertex;
 
 #[cfg(feature = "threading")]
 pub use self::renderer::Renderer;
@@ -32,6 +33,7 @@ pub use self::light::PointLight;
 use self::drawable::RendererStaticDrawable;
 use self::renderer_scene::RendererScene;
 pub use self::late_latching::LateLatching;
+pub use self::vertex::Vertex;
 
 #[cfg(feature = "threading")]
 use self::renderer_internal::RendererInternal;

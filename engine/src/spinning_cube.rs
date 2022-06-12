@@ -11,23 +11,13 @@ use sourcerenderer_core::{Platform, Quaternion};
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::Vec2;
 use std::sync::Arc;
-use crate::renderer::{PointLightComponent, StaticRenderableComponent};
+use crate::renderer::{PointLightComponent, StaticRenderableComponent, Vertex};
 use legion::systems::{Builder as SystemBuilder, CommandBuffer};
 
 use crate::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
 use crate::game::DeltaTime;
 use std::f32;
-
-#[derive(Clone)]
-#[repr(C)]
-struct Vertex {
-  pub position: Vec3,
-  pub normal: Vec3,
-  pub uv: Vec2,
-  pub lightmap_uv: Vec2,
-  pub alpha: f32
-}
 
 struct SpinningCube {}
 
@@ -52,28 +42,32 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
       normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
       uv: Vec2::new(0.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, -1.0f32),
       uv: Vec2::new(1.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
       normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
       uv: Vec2::new(1.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
       normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
       uv: Vec2::new(0.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     // BACK
     Vertex {
@@ -81,28 +75,32 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
       normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
       uv: Vec2::new(1.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
       normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
       uv: Vec2::new(0.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
       normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
       uv: Vec2::new(1.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     // TOP
     Vertex {
@@ -110,28 +108,32 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
       normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
       normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
       normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     // BOTTOM
     Vertex {
@@ -139,28 +141,32 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
       normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
       normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
       normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
       normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     // LEFT
     Vertex {
@@ -168,28 +174,32 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
       normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
       normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
       normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
       normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     // RIGHT
     Vertex {
@@ -197,28 +207,32 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 0.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(0.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
     Vertex {
       position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
       normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
       uv: Vec2::new(1.0f32, 1.0f32),
       lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-      alpha: 0f32
+      alpha: 0f32,
+      ..Default::default()
     },
   ];
 

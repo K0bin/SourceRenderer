@@ -271,8 +271,8 @@ impl<P: Platform> RendererAssets<P> {
       bindless_index: zero_black_index
     });
 
-    let vertex_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_BIG, BufferUsage::VERTEX | BufferUsage::COPY_DST);
-    let index_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_SMALL, BufferUsage::INDEX | BufferUsage::COPY_DST);
+    let vertex_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_BIG * 4, BufferUsage::VERTEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
+    let index_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_SMALL * 4, BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
 
     device.flush_transfers();
 
@@ -333,7 +333,7 @@ impl<P: Platform> RendererAssets<P> {
   pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: Mesh) {
     assert_ne!(mesh.vertex_count, 0);
 
-    let vertex_buffer = self.vertex_buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]), 44); // FIXME: hardcoded vertex size
+    let vertex_buffer = self.vertex_buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]), std::mem::size_of::<crate::renderer::Vertex>()); // FIXME: hardcoded vertex size
     let temp_vertex_buffer = self.device.upload_data(&mesh.vertices[..], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     self.device.init_buffer(&temp_vertex_buffer, vertex_buffer.buffer(), 0, vertex_buffer.offset() as usize, vertex_buffer.size() as usize);
 

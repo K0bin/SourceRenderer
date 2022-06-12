@@ -96,7 +96,7 @@ impl<B: GraphicsBackend> Prepass<B> {
         input_assembler: &[
           InputAssemblerElement {
             binding: 0,
-            stride: 44,
+            stride: 64,
             input_rate: InputRate::PerVertex
           }
         ],
@@ -114,7 +114,7 @@ impl<B: GraphicsBackend> Prepass<B> {
             location_vk_mtl: 1,
             semantic_name_d3d: String::from(""),
             semantic_index_d3d: 0,
-            offset: 12,
+            offset: 16,
             format: Format::RGB32Float
           }
         ]

@@ -19,7 +19,7 @@ use std::io::BufReader;
 use std::collections::HashSet;
 use crate::asset::loaders::PakFileContainer;
 use super::BspLumps;
-use crate::asset::loaders::bsp::{lightmap_packer::LightmapPacker, Vertex};
+use crate::asset::loaders::bsp::{lightmap_packer::LightmapPacker};
 use crate::math::BoundingBox;
 
 // REFERENCE
@@ -105,7 +105,8 @@ impl BspLevelLoader {
         normal: BspLevelLoader::fixup_normal(&plane.normal),
         uv,
         lightmap_uv,
-        alpha: 1f32
+        alpha: 1f32,
+        ..Default::default()
       });
 
       if surf_edge_index < face.first_edge + 2 {
@@ -186,7 +187,8 @@ impl BspLevelLoader {
             ((x as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
             ((y as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
           ),
-          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + y * size) as usize].alpha * 255f32
+          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + y * size) as usize].alpha * 255f32,
+          ..Default::default()
         });
 
         if brush_vertices.len() - old_len as usize >= 3 {
@@ -207,7 +209,8 @@ impl BspLevelLoader {
             ((x as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[0] as f32 + 0.5f32 + lightmap_offset_x as f32) / (lightmap_packer.texture_width() as f32),
             (((y + 1) as f32 / subdivisions as f32) * face.lightmap_texture_size_in_luxels[1] as f32 + 0.5f32 + lightmap_offset_y as f32) / (lightmap_packer.texture_height() as f32)
           ),
-          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + (y + 1) * size) as usize].alpha * 255f32
+          alpha: &temp.disp_verts[(disp_info.disp_vert_start + x + (y + 1) * size) as usize].alpha * 255f32,
+          ..Default::default()
         });
 
         if brush_vertices.len() - old_len as usize >= 3 {
@@ -376,7 +379,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       }
 
       let ptr = Box::into_raw(vertices_box);
-      let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, vertices_count * std::mem::size_of::<Vertex>()) as *mut [u8] };
+      let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, vertices_count * std::mem::size_of::<super::Vertex>()) as *mut [u8] };
       let vertices_data = unsafe { Box::from_raw(data_ptr) };
 
       let indices_box = brush_indices.clone().into_boxed_slice();

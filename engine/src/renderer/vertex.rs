@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Vec3, Vec2};
+use sourcerenderer_core::{Vec2, Vec3};
 
 #[repr(C)]
 #[derive(Clone, PartialEq, Debug, Default)]

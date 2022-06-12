@@ -75,7 +75,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("visibility_buffer.vert.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes, Some("geometry_bindless.vert.spv"))
+      device.create_shader(ShaderType::VertexShader, &bytes, Some("visibility_buffer.vert.spv"))
     };
 
     let fragment_shader = {
@@ -93,7 +93,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
         input_assembler: &[
           InputAssemblerElement {
             binding: 0,
-            stride: 44,
+            stride: 64,
             input_rate: InputRate::PerVertex
           }
         ],

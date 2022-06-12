@@ -177,12 +177,12 @@ pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &Rend
           let indices = mesh.indices.as_ref().expect("Non indexed drawing is not supported");
           let vertices = &mesh.vertices;
           assert_eq!(indices.offset() % (std::mem::size_of::<u32>() as u32), 0);
-          assert_eq!(vertices.offset() % 44, 0);
+          assert_eq!(vertices.offset() % (std::mem::size_of::<crate::renderer::Vertex>() as u32), 0);
           let gpu_part = &mut local.parts[part_index as usize];
           gpu_part.material_index = material_index;
           gpu_part.mesh_first_index = part.start + indices.offset() / std::mem::size_of::<u32>() as u32;
           gpu_part.mesh_index_count = part.count;
-          gpu_part.mesh_vertex_offset = vertices.offset() / 44; // TODO: hardcoded vertex size
+          gpu_part.mesh_vertex_offset = vertices.offset() / (std::mem::size_of::<crate::renderer::Vertex>() as u32); // TODO: hardcoded vertex size
           local.part_count += 1;
         }
 

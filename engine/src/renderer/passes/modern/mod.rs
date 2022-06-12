@@ -12,5 +12,6 @@ mod geometry;
 mod draw_prep;
 mod hi_z;
 mod visibility_buffer;
+mod shading_pass;
 
 pub use modern_renderer::ModernRenderer;
