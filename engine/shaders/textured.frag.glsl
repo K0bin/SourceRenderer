@@ -89,7 +89,7 @@ void main(void) {
 
   vec3 normal = reconstructNormalFS(gl_FragCoord.xy / vec2(rtSize), gl_FragCoord.z, camera.invView * camera.invProj);
 
-  uint clusterIndex = getClusterIndex(gl_FragCoord.xy, zNear, zFar, clusterCount, rtSize, clusterZScale, clusterZBias);
+  uint clusterIndex = getClusterIndexWithDepth(gl_FragCoord.xy, gl_FragCoord.z, zNear, zFar, clusterCount, rtSize, clusterZScale, clusterZBias);
   uint maxClusterCount = clusterCount.x * clusterCount.y * clusterCount.z;
 
   #ifdef DEBUG
