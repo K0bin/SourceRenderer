@@ -139,8 +139,8 @@ impl<B: GraphicsBackend> TAAPass<B> {
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &*output_srv, resources.linear_sampler());
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*taa_history_srv, resources.linear_sampler());
     cmd_buf.bind_storage_texture(BindingFrequency::PerDraw, 2, &*taa_uav);
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*motion_srv, resources.nearest_sampler());
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 4, &*depth_srv, resources.linear_sampler());
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*depth_srv, resources.linear_sampler());
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 4, &*motion_srv, resources.nearest_sampler());
     cmd_buf.finish_binding();
 
     let info = taa_uav.texture().info();
