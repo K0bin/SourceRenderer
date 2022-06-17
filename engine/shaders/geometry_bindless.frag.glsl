@@ -55,7 +55,7 @@ void main(void) {
 
   vec3 normal = reconstructNormalFS(gl_FragCoord.xy / vec2(rtSize), gl_FragCoord.z, camera.invView * camera.invProj);
 
-  uint clusterIndex = getClusterIndexWithDepth(gl_FragCoord.xy, gl_FragCoord.z, zNear, zFar, clusterCount, rtSize, clusterZScale, clusterZBias);
+  uint clusterIndex = getClusterIndexWithDepth(gl_FragCoord.xy, gl_FragCoord.z, camera.zNear, camera.zFar, clusterCount, rtSize, clusterZScale, clusterZBias);
   uint maxClusterCount = clusterCount.x * clusterCount.y * clusterCount.z;
 
   #ifdef DEBUG
@@ -85,7 +85,7 @@ void main(void) {
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
-    lighting += pbr(-light.direction, viewDir, normal, f0, albedo, vec3(light.intensity), roughness, metalness);
+    lighting += pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
   }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
@@ -105,10 +105,10 @@ void main(void) {
       bitmask &= ~singleBitMask;
       if (lightActive) {
         PointLight light = pointLights[i * 32 + bitIndex];
-        vec3 fragToLight = light.position - in_worldPosition;
+        vec3 fragToLight = light.positionAndIntensity.xyz - in_worldPosition;
         vec3 lightDir = normalize(fragToLight);
         float lightSquaredDist = dot(fragToLight, fragToLight);
-        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.intensity / lightSquaredDist), roughness, metalness);
+        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.positionAndIntensity.w / lightSquaredDist), roughness, metalness);
       }
     }
   }
