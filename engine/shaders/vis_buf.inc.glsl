@@ -67,7 +67,7 @@ Vertex getVertex(uint id, vec2 barycentrics) {
   mat4 transposedTransform = transpose(drawable.transform);
   Vertex vertex = interpolateVertex(barycentrics, vertices);
   vertex.position = (drawable.transform * vec4(vertex.position, 1)).xyz;
-  vertex.normal = (normalize(transposedTransform * vec4(vertex.normal, 1))).xyz;
+  vertex.normal = normalize((transposedTransform * vec4(vertex.normal, 0)).xyz);
   return vertex;
 }
 
