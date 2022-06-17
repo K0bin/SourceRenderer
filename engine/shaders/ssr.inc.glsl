@@ -97,7 +97,7 @@ float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRCo
     }
   }
 
-  if ((!secondPassFoundHit && config.steps != 0) || (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.x > 1)) {
+  if ((!secondPassFoundHit && config.steps != 0) || (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1)) {
     outReflectionTexCoords = vec2(0);
     return 0.0;
   }
