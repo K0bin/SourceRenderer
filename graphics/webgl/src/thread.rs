@@ -147,7 +147,7 @@ impl WebGLThreadSampler {
     context.sampler_parameteri(&sampler, WebGl2RenderingContext::TEXTURE_WRAP_T, address_mode_to_gl(info.address_mode_w) as i32);
 
     if context.extensions().anisotropic_filter {
-      context.sampler_parameterf(&sampler, web_sys::ExtTextureFilterAnisotropic::TEXTURE_MAX_ANISOTROPY_EXT, info.max_anisotropy);
+      // context.sampler_parameterf(&sampler, web_sys::ExtTextureFilterAnisotropic::TEXTURE_MAX_ANISOTROPY_EXT, info.max_anisotropy);
     }
 
     Self {
@@ -553,9 +553,9 @@ impl WebGLThreadDevice {
       let set = ubo_name_parts.next().unwrap();
       let descriptor_set_binding = ubo_name_parts.next().unwrap();
       let frequency = match set.parse::<u32>().unwrap() {
-        0 => BindingFrequency::PerDraw,
-        1 => BindingFrequency::PerMaterial,
-        2 => BindingFrequency::PerFrame,
+        0 => BindingFrequency::VeryFrequent,
+        1 => BindingFrequency::VeryFrequent,
+        2 => BindingFrequency::Frame,
         _ => panic!("Invalid binding frequency")
       };
       ubo_infos.insert((frequency, descriptor_set_binding.parse::<u32>().unwrap()), WebGLBlockInfo {
@@ -580,9 +580,9 @@ impl WebGLThreadDevice {
       let set = uniform_name_parts.next().unwrap();
       let descriptor_set_binding = uniform_name_parts.next().unwrap();
       let frequency = match set.parse::<u32>().unwrap() {
-        0 => BindingFrequency::PerDraw,
-        1 => BindingFrequency::PerMaterial,
-        2 => BindingFrequency::PerFrame,
+        0 => BindingFrequency::VeryFrequent,
+        1 => BindingFrequency::Frequent,
+        2 => BindingFrequency::Frame,
         _ => panic!("Invalid binding frequency")
       };
       uniform_map.insert((frequency, descriptor_set_binding.parse::<u32>().unwrap()), WebGLTextureUniformInfo {
