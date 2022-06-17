@@ -17,12 +17,9 @@ layout(location = 3) in flat uint in_materialIndex;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform sampler2D lightmap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 7) uniform sampler albedoSampler;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 8) uniform sampler2D shadows;
-layout(std430, set = DESCRIPTOR_SET_FREQUENT, binding = 9, std430) readonly buffer sceneBuffer {
-  GPUScene scene;
-};
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D lightmap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler albedoSampler;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D shadows;
 layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
 
 struct Cluster {
@@ -30,50 +27,20 @@ struct Cluster {
   vec4 maxPoint;
 };
 
-layout(std140, set = DESCRIPTOR_SET_FREQUENT, binding = 0, std140) uniform CameraUBO {
-  Camera camera;
-};
-
-struct PointLight {
-  vec3 position;
-  float intensity;
-};
-layout(std430, set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) readonly buffer pointLightsBuffer {
-  PointLight pointLights[];
-};
-
-layout (std430, set = DESCRIPTOR_SET_FREQUENT, binding = 2) readonly buffer lightBitmasksBuffer {
+layout (std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) readonly buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
-struct DirectionalLight {
-  vec3 direction;
-  float intensity;
-};
-layout(std430, set = DESCRIPTOR_SET_FREQUENT, binding = 5, std430) readonly buffer directionalLightsBuffer {
-  DirectionalLight directionalLights[];
-};
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform PerFrameUbo {
-  mat4 swapchainTransform;
-  vec2 jitterPoint;
-  float zNear;
-  float zFar;
-  uvec2 rtSize;
-  float clusterZBias;
-  float clusterZScale;
-  uvec3 clusterCount;
-  uint pointLightCount;
-  uint directionalLightCount;
-};
-
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform sampler2D ssao;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform sampler2D ssao;
 
 #ifdef DEBUG
-layout(std430, set = DESCRIPTOR_SET_FREQUENT, binding = 9, std430) readonly buffer clusterAABB {
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };
 #endif
+
+#include "frame_set.inc.glsl"
 
 #define FS
 #include "util.inc.glsl"
