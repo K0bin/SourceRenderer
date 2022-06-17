@@ -144,12 +144,12 @@ impl GltfLoader {
       match light.kind() {
         gltf::khr_lights_punctual::Kind::Directional => {
           entry.add_component(DirectionalLightComponent {
-            intensity: light.intensity() / 100f32,
+            intensity: light.intensity() * 685f32, // Blender exports as W/m2, we need lux
           });
         },
         gltf::khr_lights_punctual::Kind::Point => {
           entry.add_component(PointLightComponent {
-            intensity: light.intensity() / 100f32,
+            intensity: light.intensity(),
           });
         },
         gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
