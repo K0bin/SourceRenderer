@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange}};
+use nalgebra::Vector3;
+use smallvec::SmallVec;
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::{AtomicRefCell, AtomicRef}, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage, MemoryUsage, BufferInfo}, Vec2, Vec3};
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::blue_noise::BlueNoise}};
 
@@ -25,6 +27,17 @@ pub struct ConservativeRenderer<B: Backend> {
 pub struct RTPasses<B: Backend> {
   acceleration_structure_update: AccelerationStructureUpdatePass<B>,
   shadows: RTShadowPass<B>
+}
+
+pub struct FrameBindings<B: Backend> {
+  gpu_scene_buffer: Arc<B::Buffer>,
+  camera_buffer: Arc<B::Buffer>,
+  camera_history_buffer: Arc<B::Buffer>,
+  vertex_buffer: Arc<B::Buffer>,
+  index_buffer: Arc<B::Buffer>,
+  directional_lights: Arc<B::Buffer>,
+  point_lights: Arc<B::Buffer>,
+  setup_buffer: Arc<B::Buffer>,
 }
 
 impl<B: Backend> ConservativeRenderer<B> {
@@ -71,6 +84,96 @@ impl<B: Backend> ConservativeRenderer<B> {
       blue_noise,
     }
   }
+
+  fn create_frame_bindings(
+    &self,
+    cmd_buf: &mut B::CommandBuffer,
+    gpu_scene_buffer: &Arc<B::Buffer>,
+    camera_buffer: &Arc<B::Buffer>,
+    camera_history_buffer: &Arc<B::Buffer>,
+    vertex_buffer: &Arc<B::Buffer>,
+    index_buffer: &Arc<B::Buffer>,
+    scene: &AtomicRef<RendererScene<B>>,
+    view: &AtomicRef<View>,
+    _swapchain: &Arc<B::Swapchain>,
+    rendering_resolution: &Vec2UI,
+    frame: u64
+  ) -> FrameBindings<B> {
+    let cluster_count = self.clustering_pass.cluster_count();
+    let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
+    let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2() / (view.far_plane / view.near_plane).log2();
+    #[repr(C)]
+    #[derive(Debug, Clone)]
+    struct SetupBuffer {
+      point_light_count: u32,
+      directional_light_count: u32,
+      cluster_z_bias: f32,
+      cluster_z_scale: f32,
+      cluster_count: Vector3<u32>,
+      _padding: u32,
+      swapchain_transform: Matrix4,
+      halton_point: Vec2,
+      rt_size: Vec2UI,
+    }
+    let setup_buffer = cmd_buf.upload_dynamic_data(&[SetupBuffer {
+      point_light_count: scene.point_lights().len() as u32,
+      directional_light_count: scene.directional_lights().len() as u32,
+      cluster_z_bias,
+      cluster_z_scale,
+      cluster_count,
+      _padding: 0,
+      swapchain_transform: Matrix4::identity(), // swapchain.transform(),
+      halton_point: super::taa::scaled_halton_point(rendering_resolution.x, rendering_resolution.y, (frame % 8) as u32 + 1),
+      rt_size: *rendering_resolution
+    }], BufferUsage::CONSTANT);
+    #[repr(C)]
+    #[derive(Debug, Clone)]
+    struct PointLight {
+      position: Vec3,
+      intensity: f32
+    }
+    let point_lights: SmallVec<[PointLight; 16]> = scene.point_lights().iter().map(|l| PointLight {
+      position: l.position,
+      intensity: l.intensity
+    }).collect();
+    let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT);
+    #[repr(C)]
+    #[derive(Debug, Clone)]
+    struct DirectionalLight {
+      direction: Vec3,
+      intensity: f32
+    }
+    let directional_lights: SmallVec<[DirectionalLight; 16]> = scene.directional_lights().iter().map(|l| DirectionalLight {
+      direction: l.direction,
+      intensity: l.intensity
+    }).collect();
+    let directional_lights_buffer = cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT);
+
+    FrameBindings {
+      gpu_scene_buffer: gpu_scene_buffer.clone(),
+      camera_buffer: camera_buffer.clone(),
+      camera_history_buffer: camera_history_buffer.clone(),
+      vertex_buffer: vertex_buffer.clone(),
+      index_buffer: index_buffer.clone(),
+      directional_lights: directional_lights_buffer,
+      point_lights: point_lights_buffer,
+      setup_buffer,
+    }
+  }
+
+  pub fn setup_frame(
+    cmd_buf: &mut B::CommandBuffer,
+    frame_bindings: &FrameBindings<B>
+  ) {
+    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, &frame_bindings.gpu_scene_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 1, &frame_bindings.camera_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 2, &frame_bindings.camera_history_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, &frame_bindings.vertex_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, &frame_bindings.index_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 5, &frame_bindings.setup_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 6, &frame_bindings.point_lights, 0, WHOLE_BUFFER);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, &frame_bindings.directional_lights, 0, WHOLE_BUFFER);
+  }
 }
 
 impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
@@ -94,8 +197,8 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
     frame: u64,
-    _vertex_buffer: &Arc<B::Buffer>,
-    _index_buffer: &Arc<B::Buffer>
+    vertex_buffer: &Arc<B::Buffer>,
+    index_buffer: &Arc<B::Buffer>
   ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
@@ -108,6 +211,27 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer);
     }
+
+    let scene = cmd_buf.create_temporary_buffer(&BufferInfo {
+      size: 16,
+      usage: BufferUsage::STORAGE
+    }, MemoryUsage::VRAM);
+
+    let frame_bindings = self.create_frame_bindings(
+      &mut cmd_buf,
+      &scene,
+      &late_latching_buffer,
+      &late_latching_history_buffer,
+      vertex_buffer,
+      index_buffer,
+      &scene_ref,
+      &view_ref,
+      &self.swapchain,
+      &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
+      frame
+    );
+    Self::setup_frame(&mut cmd_buf, &frame_bindings);
+
     self.occlusion.execute(&self.device, &mut cmd_buf, frame, &self.barriers, &late_latching_buffer, &scene_ref, &view_ref);
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), &view_ref, &late_latching_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer, &mut self.barriers);
@@ -116,7 +240,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, zero_texture_view, zero_texture_view_black, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer);
+    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, &frame_bindings, zero_texture_view, zero_texture_view_black, lightmap, &self.barriers);
     self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers, false);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
 

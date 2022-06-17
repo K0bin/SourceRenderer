@@ -78,11 +78,9 @@ void main(void) {
   f0 = mix(f0, albedo, metalness);
 
   vec3 lighting = vec3(0);
-  lighting += 0.3;
   lighting += texture(lightmap, in_lightmap_uv).xyz;
   lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
   lighting *= texture(shadows, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
-  lighting += 0.3;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];

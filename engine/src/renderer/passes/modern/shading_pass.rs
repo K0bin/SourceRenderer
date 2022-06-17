@@ -59,12 +59,6 @@ impl<B: Backend> ShadingPass<B> {
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    device: &Arc<B::Device>,
-    scene: &RendererScene<B>,
-    view: &View,
-    gpu_scene: &Arc<B::Buffer>,
-    zero_texture_view: &Arc<B::TextureSamplingView>,
-    _zero_texture_view_black: &Arc<B::TextureSamplingView>,
     _lightmap: &Arc<RendererTexture<B>>,
     resources: &RendererResources<B>,
   ) {

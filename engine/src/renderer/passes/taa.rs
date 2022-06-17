@@ -124,7 +124,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,
-        true,
+        false,
         &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));

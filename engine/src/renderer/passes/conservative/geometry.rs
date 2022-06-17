@@ -11,6 +11,8 @@ use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::platform::io::IO;
 use rayon::prelude::*;
 
+use super::desktop_renderer::{FrameBindings, ConservativeRenderer};
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct FrameData {
@@ -199,16 +201,19 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     device: &Arc<B::Device>,
     scene: &RendererScene<B>,
     view: &View,
+    bindings: &FrameBindings<B>,
     zero_texture_view: &Arc<B::TextureSamplingView>,
     zero_texture_view_black: &Arc<B::TextureSamplingView>,
     lightmap: &Arc<RendererTexture<B>>,
-    swapchain_transform: Matrix4,
-    frame: u64,
     barriers: &RendererResources<B>,
-    camera_buffer: &Arc<B::Buffer>
   ) {
     cmd_buffer.begin_label("Geometry pass");
     let static_drawables = scene.static_drawables();
+
+    let (width, height) = {
+      let info = barriers.texture_info(Self::GEOMETRY_PASS_TEXTURE_NAME);
+      (info.width, info.height)
+    };
 
     let rtv_ref = barriers.access_render_target_view(
       cmd_buffer,
@@ -309,54 +314,16 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       ]
     }, RenderpassRecordingMode::CommandBuffers);
 
-    let rtv_info = rtv.texture().info();
-    let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
-    let near = view.near_plane;
-    let far = view.far_plane;
-    let cluster_z_scale = (cluster_count.z as f32) / (far / near).log2();
-    let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
-    let per_frame = FrameData {
-      swapchain_transform,
-      halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32 + 1),
-      z_near: near,
-      z_far: far,
-      rt_size: Vector2::<u32>::new(rtv_info.width, rtv_info.height),
-      cluster_z_bias,
-      cluster_z_scale,
-      cluster_count,
-      point_light_count: scene.point_lights().len() as u32,
-      directional_light_count: scene.directional_lights().len() as u32
-    };
-    let mut point_lights = SmallVec::<[PointLight; 16]>::new();
-    for point_light in scene.point_lights() {
-      point_lights.push(PointLight {
-        position: point_light.position,
-        intensity: point_light.intensity
-      });
-    }
-    let mut directional_lights = SmallVec::<[DirectionalLight; 16]>::new();
-    for directional_light in scene.directional_lights() {
-      directional_lights.push(DirectionalLight {
-        direction: directional_light.direction,
-        intensity: directional_light.intensity
-      });
-    }
-    let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
-    let point_light_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE);
-    let directional_light_buffer = cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE);
-
     let inheritance = cmd_buffer.inheritance();
     const CHUNK_SIZE: usize = 128;
     let chunks = view.drawable_parts.par_chunks(CHUNK_SIZE);
     let inner_cmd_buffers: Vec::<B::CommandBufferSubmission> = chunks.map(|chunk| {
       let mut command_buffer = device.graphics_queue().create_inner_command_buffer(inheritance);
 
-      command_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 3, &per_frame_buffer, 0, WHOLE_BUFFER);
-
       command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
       command_buffer.set_viewports(&[Viewport {
         position: Vec2::new(0.0f32, 0.0f32),
-        extent: Vec2::new(rtv_info.width as f32, rtv_info.height as f32),
+        extent: Vec2::new(width as f32, height as f32),
         min_depth: 0.0f32,
         max_depth: 1.0f32
       }]);
@@ -365,20 +332,15 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         extent: Vec2UI::new(9999, 9999),
       }]);
 
-      // command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 9, &clusters, 0, WHOLE_BUFFER);
-      command_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 0, camera_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 1, &point_light_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 2, &light_bitmask_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 0, &lightmap.view, &self.sampler);
+      command_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 2,  &shadows, &self.sampler);
+      command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 3, &light_bitmask_buffer, 0, WHOLE_BUFFER);
       command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 4, &ssao, &self.sampler);
-      command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, &directional_light_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 8,  &shadows, &self.sampler);
-      command_buffer.bind_sampler(BindingFrequency::Frequent, 7, &self.sampler);
+      // command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, &clusters, 0, WHOLE_BUFFER);
 
       command_buffer.track_texture_view(zero_texture_view);
       command_buffer.track_texture_view(zero_texture_view_black);
-
-      let lightmap_ref = &lightmap.view;
-      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 6, lightmap_ref, &self.sampler);
 
       let mut last_material = Option::<Arc<RendererMaterial<B>>>::None;
 
@@ -388,8 +350,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
         }
 
-        /*let model_constant_buffer = command_buffer.upload_dynamic_data(&[drawable.transform], BufferUsage::CONSTANT);
-        command_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, &model_constant_buffer);*/
+        ConservativeRenderer::<B>::setup_frame(&mut command_buffer, bindings);
+
         command_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
 
         let model = &drawable.model;

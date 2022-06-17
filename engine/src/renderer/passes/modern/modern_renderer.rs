@@ -113,6 +113,7 @@ impl<B: Backend> ModernRenderer<B> {
       _padding: u32,
       swapchain_transform: Matrix4,
       halton_point: Vec2,
+      rt_size: Vec2UI,
     }
     let setup_buffer = cmd_buf.upload_dynamic_data(&[SetupBuffer {
       point_light_count: scene.point_lights().len() as u32,
@@ -122,7 +123,8 @@ impl<B: Backend> ModernRenderer<B> {
       cluster_count,
       _padding: 0,
       swapchain_transform: Matrix4::identity(), // swapchain.transform(),
-      halton_point: super::taa::scaled_halton_point(rendering_resolution.x, rendering_resolution.y, (frame % 8) as u32 + 1)
+      halton_point: super::taa::scaled_halton_point(rendering_resolution.x, rendering_resolution.y, (frame % 8) as u32 + 1),
+      rt_size: *rendering_resolution
     }], BufferUsage::CONSTANT);
     cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 5, &setup_buffer, 0, WHOLE_BUFFER);
     #[repr(C)]
@@ -213,7 +215,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
-    self.shading_pass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, &gpu_scene_buffer, zero_texture_view, zero_texture_view_black, lightmap, &self.barriers);
+    self.shading_pass.execute(&mut cmd_buf, lightmap, &self.barriers);
     self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers);
     self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers, true);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
