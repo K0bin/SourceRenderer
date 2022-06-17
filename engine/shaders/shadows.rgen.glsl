@@ -62,7 +62,6 @@ void main() {
   float tmax = 100.0;
 
   vec3 lightDir = directionalLights[0].directionAndIntensity.xyz;
-  vec3 lightDir = normalize(vec3(-0.1, -0.9, -0.5));
 
   vec3 rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
   traceRayEXT(topLevelAS, rayFlags, cullMask, 0, 0, 0, origin, tmin, rayDir, tmax, 0);
