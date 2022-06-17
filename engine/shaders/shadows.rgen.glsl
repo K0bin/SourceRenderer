@@ -43,6 +43,10 @@ vec3 randomRotateDirection(vec3 dir, float randomDegrees) {
 }
 
 void main() {
+  if (directionalLightCount == 0) {
+    return;
+  }
+
 	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
   const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
@@ -57,6 +61,7 @@ void main() {
   float tmin = 0.01;
   float tmax = 100.0;
 
+  vec3 lightDir = directionalLights[0].directionAndIntensity.xyz;
   vec3 lightDir = normalize(vec3(-0.1, -0.9, -0.5));
 
   vec3 rayDir = randomRotateDirection(-lightDir, SUN_ANGLE);
