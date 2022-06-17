@@ -68,12 +68,16 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     debug_assert_eq!(cluster_count.y % 1, 0);
     debug_assert_eq!(cluster_count.z % 8, 0); // Ensure the cluster count fits with the work group size
     command_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
-    command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, &*clusters_buffer, 0, WHOLE_BUFFER);
-    command_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &screen_to_view_cbuffer, 0, WHOLE_BUFFER);
-    command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer, 0, WHOLE_BUFFER);
+    command_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 0, &*clusters_buffer, 0, WHOLE_BUFFER);
+    command_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 1, &screen_to_view_cbuffer, 0, WHOLE_BUFFER);
+    command_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 2, camera_buffer, 0, WHOLE_BUFFER);
     command_buffer.finish_binding();
     command_buffer.dispatch((cluster_count.x + 7) / 8, cluster_count.y, (cluster_count.z + 7) / 8);
 
     command_buffer.end_label();
+  }
+
+  pub fn cluster_count(&self) -> Vector3<u32> {
+    Vector3::<u32>::new(16, 9, 24)
   }
 }

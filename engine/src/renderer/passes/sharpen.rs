@@ -75,9 +75,9 @@ impl<B: GraphicsBackend> SharpenPass<B> {
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, &sharpen_setup_ubo, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &*input_image_uav);
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &*sharpen_uav);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 2, &sharpen_setup_ubo, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &*input_image_uav);
+    cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sharpen_uav);
     cmd_buffer.finish_binding();
 
     let info = sharpen_uav.texture().info();

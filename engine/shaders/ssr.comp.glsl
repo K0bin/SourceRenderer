@@ -8,10 +8,10 @@ layout(local_size_x = 8,
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0) writeonly uniform image2D outputTexture;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D colorTexture;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform sampler2D depthTexture;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3, std140) uniform CameraUBO {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) writeonly uniform image2D outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D colorTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D depthTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3, std140) uniform CameraUBO {
   Camera camera;
 };
 

@@ -19,13 +19,12 @@ struct VkDrawIndexedIndirectCommand {
   uint firstInstance;
 };
 
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std430) readonly restrict buffer sceneBuffer {
-  GPUScene scene;
-};
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 1, std430) readonly restrict buffer visibleBuffer {
+#include "frame_set.inc.glsl"
+
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std430) readonly restrict buffer visibleBuffer {
   uint visibleBitmasks[];
 };
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std430) restrict buffer drawBuffer {
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, std430) restrict buffer drawBuffer {
   uint drawCount;
   VkDrawIndexedIndirectCommand draws[];
 };

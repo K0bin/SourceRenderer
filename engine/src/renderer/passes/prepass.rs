@@ -299,10 +299,10 @@ impl<B: GraphicsBackend> Prepass<B> {
         position: Vec2I::new(0, 0),
         extent: Vec2UI::new(9999, 9999),
       }]);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, &transform_constant_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 2, &transform_constant_buffer, 0, WHOLE_BUFFER);
 
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, camera_history_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 0, camera_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 1, camera_history_buffer, 0, WHOLE_BUFFER);
       command_buffer.finish_binding();
 
       for part in chunk.iter() {

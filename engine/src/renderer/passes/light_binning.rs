@@ -81,11 +81,11 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     let clusters_buffer = barriers.access_buffer(cmd_buffer, ClusteringPass::<B>::CLUSTERS_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ, HistoryResourceEntry::Current);
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.light_binning_pipeline));
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, camera_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &*clusters_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 2, &light_info_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 3, &point_lights_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 4, &*light_bitmask_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, camera_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 1, &*clusters_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 2, &light_info_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 3, &point_lights_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 4, &*light_bitmask_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.finish_binding();
     cmd_buffer.dispatch((cluster_count.x * cluster_count.y * cluster_count.z + 63) / 64, 1, 1);
     cmd_buffer.end_label();

@@ -252,9 +252,9 @@ pub enum Barrier<'a, B: Backend> {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]
 pub enum BindingFrequency {
-  PerDraw = 0,
-  PerMaterial = 1,
-  PerFrame = 2,
+  VeryFrequent = 0,
+  Frequent = 1,
+  Frame = 2,
 }
 
 pub trait InnerCommandBufferProvider<B: Backend> : Send + Sync {

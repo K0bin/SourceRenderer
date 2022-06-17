@@ -18,52 +18,17 @@ layout(local_size_x = 8,
 
 layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std430) readonly restrict buffer verticesSSBO {
-  Vertex vertices[];
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1, std430) readonly restrict buffer indicesSSBO {
-  uint indices[];
-};
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, r32ui) readonly uniform uimage2D primitiveIds;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, rg16) readonly uniform image2D barycentrics;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) writeonly uniform image2D outputTexture;
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2, r32ui) readonly uniform uimage2D primitiveIds;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3, rg16) readonly uniform image2D barycentrics;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4) writeonly uniform image2D outputTexture;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 5, std140) uniform CameraUBO {
-  Camera camera;
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 6, std430) readonly restrict buffer sceneBuffer {
-  GPUScene scene;
-};
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform sampler albedoSampler;
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 7) uniform sampler albedoSampler;
-
-layout (set = DESCRIPTOR_SET_PER_DRAW, binding = 8) readonly buffer lightBitmasksBuffer {
+layout (set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) readonly buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
-struct PointLight {
-  vec3 position;
-  float intensity;
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 9, std430) readonly buffer pointLightsBuffer {
-  PointLight pointLights[];
-};
-
-struct DirectionalLight {
-  vec3 direction;
-  float intensity;
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 10, std430) readonly buffer directionalLightsBuffer {
-  DirectionalLight directionalLights[];
-};
-
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 11) uniform PerFrameUbo {
-  float clusterZBias;
-  float clusterZScale;
-  uint pointLightCount;
-  uint directionalLightCount;
-  uvec3 clusterCount;
-};
+#include "frame_set.inc.glsl"
 
 #ifdef DEBUG
 struct Cluster {
@@ -71,7 +36,7 @@ struct Cluster {
   vec4 maxPoint;
 };
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 12, std430) readonly buffer clusterAABB {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };
 #endif
@@ -120,13 +85,14 @@ void main() {
   f0 = mix(f0, albedo, metalness);
 
   vec3 lighting = vec3(0);
+  lighting += 0.6;
   //lighting += texture(lightmap, vertex.lightmapUv).xyz;
   //lighting *= texture(ssao, texCoord).rrr;
   //lighting *= texture(shadows, texCoord).rrr;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
-    lighting += pbr(-light.direction, viewDir, normal, f0, albedo, vec3(light.intensity), roughness, metalness);
+    lighting += pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
   }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
@@ -146,10 +112,10 @@ void main() {
       bitmask &= ~singleBitMask;
       if (lightActive) {
         PointLight light = pointLights[i * 32 + bitIndex];
-        vec3 fragToLight = light.position - vertex.position;
+        vec3 fragToLight = light.positionAndIntensity.xyz - vertex.position;
         vec3 lightDir = normalize(fragToLight);
         float lightSquaredDist = dot(fragToLight, fragToLight);
-        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.intensity / lightSquaredDist), roughness, metalness);
+        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.positionAndIntensity.w / lightSquaredDist), roughness, metalness);
       }
     }
   }

@@ -8,8 +8,8 @@ layout(local_size_x = 8,
 
 #include "descriptor_sets.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0) uniform sampler2D inputTexture;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1, r32f) uniform writeonly image2D outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D inputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, r32f) uniform writeonly image2D outputTexture;
 
 layout(push_constant) uniform PushConstantData {
   uint baseWidth;

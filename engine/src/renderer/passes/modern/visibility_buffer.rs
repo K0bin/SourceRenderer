@@ -1,9 +1,8 @@
 use nalgebra::Vector2;
-use sourcerenderer_core::{Matrix4, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER}};
+use sourcerenderer_core::{Matrix4, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat}};
 use std::sync::Arc;
-use crate::renderer::{drawable::View, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}};
+use crate::renderer::{drawable::View, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::prepass::Prepass};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
-use crate::renderer::passes::taa::scaled_halton_point;
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
@@ -69,7 +68,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL,
     };
-    resources.create_texture(Self::DEPTH_BUFFER_NAME, &depth_texture_info, false);
+    resources.create_texture(Prepass::<B>::DEPTH_TEXTURE_NAME, &depth_texture_info, true);
 
     let vertex_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("visibility_buffer.vert.spv"))).unwrap();
@@ -182,11 +181,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
     cmd_buffer: &mut B::CommandBuffer,
     scene: &RendererScene<B>,
     view: &View,
-    gpu_scene: &Arc<B::Buffer>,
-    swapchain_transform: Matrix4,
-    frame: u64,
     resources: &RendererResources<B>,
-    camera_buffer: &Arc<B::Buffer>,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>,
   ) {
@@ -221,7 +216,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
 
     let dsv = resources.access_depth_stencil_view(
       cmd_buffer,
-      Self::DEPTH_BUFFER_NAME,
+      Prepass::<B>::DEPTH_TEXTURE_NAME,
       BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH,
       BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
       TextureLayout::DepthStencilReadWrite, true,
@@ -269,25 +264,6 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
     }, RenderpassRecordingMode::Commands);
 
     let rtv_info = barycentrics_rtv.texture().info();
-    let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
-    let near = view.near_plane;
-    let far = view.far_plane;
-    let cluster_z_scale = (cluster_count.z as f32) / (far / near).log2();
-    let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
-    let per_frame = FrameData {
-      swapchain_transform,
-      halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32 + 1),
-      z_near: near,
-      z_far: far,
-      rt_size: Vector2::<u32>::new(rtv_info.width, rtv_info.height),
-      cluster_z_bias,
-      cluster_z_scale,
-      cluster_count,
-      point_light_count: scene.point_lights().len() as u32,
-      directional_light_count: scene.directional_lights().len() as u32
-    };
-    let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
-
     cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
     cmd_buffer.set_viewports(&[Viewport {
       position: Vec2::new(0.0f32, 0.0f32),
@@ -299,10 +275,6 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
       position: Vec2I::new(0, 0),
       extent: Vec2UI::new(9999, 9999),
     }]);
-
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 1, &per_frame_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, gpu_scene, 0, WHOLE_BUFFER);
 
     cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
     cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);

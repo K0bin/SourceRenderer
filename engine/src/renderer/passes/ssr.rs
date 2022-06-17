@@ -83,10 +83,10 @@ impl<B: GraphicsBackend> SsrPass<B> {
     cmd_buffer.begin_label("SSR pass");
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     cmd_buffer.flush_barriers();
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 0, &ssr_uav);
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*color_srv, resources.linear_sampler());
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 2, &*depth_srv, resources.linear_sampler());
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, camera, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &ssr_uav);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*color_srv, resources.linear_sampler());
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, &*depth_srv, resources.linear_sampler());
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, camera, 0, WHOLE_BUFFER);
     cmd_buffer.finish_binding();
     let ssr_info = ssr_uav.texture().info();
     cmd_buffer.dispatch((ssr_info.width + 7) / 8, (ssr_info.height + 7) / 8, ssr_info.depth);

@@ -244,7 +244,7 @@ impl<B: Backend> OcclusionPass<B> {
       }]);
       command_buffer.set_vertex_buffer(&self.occluder_vb, 0);
       command_buffer.set_index_buffer(&self.occluder_ib, 0, IndexFormat::U32);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, &camera_history_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, &camera_history_buffer, 0, WHOLE_BUFFER);
       command_buffer.finish_binding();
 
       for drawable_index in chunk {

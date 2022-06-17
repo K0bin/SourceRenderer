@@ -15,3 +15,4 @@ mod visibility_buffer;
 mod shading_pass;
 
 pub use modern_renderer::ModernRenderer;
+pub use visibility_buffer::VisibilityBufferPass;

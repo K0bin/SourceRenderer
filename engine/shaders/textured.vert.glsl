@@ -15,21 +15,7 @@ layout(location = 0) out vec3 out_worldPosition;
 layout(location = 1) out vec2 out_uv;
 layout(location = 2) out vec2 out_lightmap_uv;
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUBO {
-  Camera camera;
-};
-
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
-  mat4 swapchainTransform;
-  vec2 jitterPoint;
-  float zNear;
-  float zFar;
-  uvec2 rtSize;
-  float clusterZBias;
-  float clusterZScale;
-  vec3 clusterCount;
-  uint pointLightCount;
-};
+#include "frame_set.inc.glsl"
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;

@@ -23,21 +23,17 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
 bool checkSphereVisibilityAgainstFrustum(Frustum frustum, GPUBoundingSphere sphere, Camera camera, mat4 modelTransform);
 bool checkOcclusion(GPUBoundingBox aabb, Camera camera, mat4 modelTransform);
 
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0) readonly restrict buffer sceneBuffer {
-  GPUScene scene;
-};
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 1) writeonly restrict buffer visibleBuffer {
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) writeonly restrict buffer visibleBuffer {
   uint visibleBitmasks[];
 };
-layout(std140, set = DESCRIPTOR_SET_PER_DRAW, binding = 2) uniform cameraUBO {
-  Camera camera;
-};
-layout(std140, set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform frustumUBO {
+layout(std140, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform frustumUBO {
   Frustum frustum;
 };
 #ifdef OCCLUSION_CULLING
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4) uniform sampler2D hiZ;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D hiZ;
 #endif
+
+#include "frame_set.inc.glsl"
 
 shared uint[2] visible;
 
@@ -57,14 +53,14 @@ void main() {
     isVisible = true;
 
     #ifdef SPHERE_FRUSTUM_CULLING
-    isVisible = isVisible && checkSphereVisibilityAgainstFrustum(frustum, mesh.sphere, camera, drawable.transform);
+    isVisible = isVisible && checkSphereVisibilityAgainstFrustum(frustum, mesh.sphere, oldCamera, drawable.transform);
     #ifdef DEBUG
     if (!isVisible) {
       debugPrintfEXT("Drawable failed spehere frustum check: %u", drawableIndex);
     }
     #endif
     #else
-    isVisible = isVisible && checkVisibilityAgainstFrustum(frustum, mesh.sphere, camera, drawable.transform);
+    isVisible = isVisible && checkVisibilityAgainstFrustum(frustum, mesh.sphere, oldCamera, drawable.transform);
     #ifdef DEBUG
     if (!isVisible) {
       debugPrintfEXT("Drawable failed AABB frustum check: %u", drawableIndex);
@@ -74,7 +70,7 @@ void main() {
 
     #ifdef OCCLUSION_CULLING
     bool wasVisible = isVisible;
-    isVisible = isVisible && checkOcclusion(aabb, camera, drawable.transform);
+    isVisible = isVisible && checkOcclusion(aabb, oldCamera, drawable.transform);
     #ifdef DEBUG
     if (wasVisible && !isVisible) {
       debugPrintfEXT("Drawable failed occlusion check: %u", drawableIndex);

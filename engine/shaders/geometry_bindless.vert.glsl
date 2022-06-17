@@ -17,11 +17,11 @@ layout(location = 1) out vec2 out_uv;
 layout(location = 2) out vec2 out_lightmap_uv;
 layout(location = 3) out flat uint out_materialIndex;
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUBO {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std140) uniform CameraUBO {
   Camera camera;
 };
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform PerFrameUbo {
   mat4 swapchainTransform;
   vec2 jitterPoint;
   float zNear;
@@ -33,7 +33,7 @@ layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
   uint pointLightCount;
 };
 
-layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 9, std430) readonly buffer sceneBuffer {
+layout(std430, set = DESCRIPTOR_SET_FREQUENT, binding = 9, std430) readonly buffer sceneBuffer {
   GPUScene scene;
 };
 

@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::AtomicRefCell, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange}};
+use nalgebra::Vector3;
+use smallvec::SmallVec;
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::{AtomicRefCell, AtomicRef}, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass}}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass}, light::DirectionalLight}};
 
-use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass};
+use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass, shading_pass::ShadingPass};
 
 pub struct ModernRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
@@ -12,9 +14,7 @@ pub struct ModernRenderer<B: Backend> {
   barriers: RendererResources<B>,
   clustering_pass: ClusteringPass<B>,
   light_binning_pass: LightBinningPass<B>,
-  prepass: Prepass<B>,
   geometry_draw_prep: DrawPrepPass<B>,
-  geometry: GeometryPass<B>,
   taa: TAAPass<B>,
   sharpen: SharpenPass<B>,
   ssao: SsaoPass<B>,
@@ -23,6 +23,7 @@ pub struct ModernRenderer<B: Backend> {
   hi_z_pass: HierarchicalZPass<B>,
   ssr_pass: SsrPass<B>,
   visibility_buffer: VisibilityBufferPass<B>,
+  shading_pass: ShadingPass<B>
 }
 
 pub struct RTPasses<B: Backend> {
@@ -41,19 +42,18 @@ impl<B: Backend> ModernRenderer<B> {
 
     let clustering = ClusteringPass::<B>::new::<P>(device, &mut barriers);
     let light_binning = LightBinningPass::<B>::new::<P>(device, &mut barriers);
-    let prepass = Prepass::<B>::new::<P>(device, swapchain, &mut barriers);
-    let geometry = GeometryPass::<B>::new::<P>(device, swapchain, &mut barriers);
-    let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut barriers);
+    let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut barriers, true);
     let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut barriers);
-    let ssao = SsaoPass::<B>::new::<P>(device, resolution, &mut barriers);
+    let ssao = SsaoPass::<B>::new::<P>(device, resolution, &mut barriers, true);
     let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
       acceleration_structure_update: AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer),
       shadows: RTShadowPass::<B>::new::<P>(device, resolution, &mut barriers)
     });
+    let visibility_buffer = VisibilityBufferPass::<B>::new::<P>(device, swapchain, &mut barriers);
     let draw_prep = DrawPrepPass::<B>::new::<P>(device, &mut barriers);
     let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer);
     let ssr_pass = SsrPass::<B>::new::<P>(device, resolution, &mut barriers);
-    let visibility_buffer = VisibilityBufferPass::<B>::new::<P>(device, swapchain, &mut barriers);
+    let shading_pass = ShadingPass::<B>::new::<P>(device, swapchain, &mut barriers, &mut init_cmd_buffer);
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
 
@@ -67,8 +67,6 @@ impl<B: Backend> ModernRenderer<B> {
       barriers,
       clustering_pass: clustering,
       light_binning_pass: light_binning,
-      prepass,
-      geometry,
       geometry_draw_prep: draw_prep,
       taa,
       sharpen,
@@ -78,7 +76,79 @@ impl<B: Backend> ModernRenderer<B> {
       hi_z_pass,
       ssr_pass,
       visibility_buffer,
+      shading_pass,
     }
+  }
+
+  fn setup_frame(
+    &self,
+    cmd_buf: &mut B::CommandBuffer,
+    gpu_scene_buffer: &Arc<B::Buffer>,
+    camera_buffer: &Arc<B::Buffer>,
+    camera_history_buffer: &Arc<B::Buffer>,
+    vertex_buffer: &Arc<B::Buffer>,
+    index_buffer: &Arc<B::Buffer>,
+    scene: &AtomicRef<RendererScene<B>>,
+    view: &AtomicRef<View>,
+    _swapchain: &Arc<B::Swapchain>,
+    rendering_resolution: &Vec2UI,
+    frame: u64
+  ) {
+    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, &gpu_scene_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 1, &camera_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 2, &camera_history_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, &vertex_buffer, 0, WHOLE_BUFFER);
+    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, &index_buffer, 0, WHOLE_BUFFER);
+    let cluster_count = self.clustering_pass.cluster_count();
+    let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
+    let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2() / (view.far_plane / view.near_plane).log2();
+    #[repr(C)]
+    #[derive(Debug, Clone)]
+    struct SetupBuffer {
+      point_light_count: u32,
+      directional_light_count: u32,
+      cluster_z_bias: f32,
+      cluster_z_scale: f32,
+      cluster_count: Vector3<u32>,
+      _padding: u32,
+      swapchain_transform: Matrix4,
+      halton_point: Vec2,
+    }
+    let setup_buffer = cmd_buf.upload_dynamic_data(&[SetupBuffer {
+      point_light_count: scene.point_lights().len() as u32,
+      directional_light_count: scene.directional_lights().len() as u32,
+      cluster_z_bias,
+      cluster_z_scale,
+      cluster_count,
+      _padding: 0,
+      swapchain_transform: Matrix4::identity(), // swapchain.transform(),
+      halton_point: super::taa::scaled_halton_point(rendering_resolution.x, rendering_resolution.y, (frame % 8) as u32 + 1)
+    }], BufferUsage::CONSTANT);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 5, &setup_buffer, 0, WHOLE_BUFFER);
+    #[repr(C)]
+    #[derive(Debug, Clone)]
+    struct PointLight {
+      position: Vec3,
+      intensity: f32
+    }
+    let point_lights: SmallVec<[PointLight; 16]> = scene.point_lights().iter().map(|l| PointLight {
+      position: l.position,
+      intensity: l.intensity
+    }).collect();
+    let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 6, &point_lights_buffer, 0, WHOLE_BUFFER);
+    #[repr(C)]
+    #[derive(Debug, Clone)]
+    struct DirectionalLight {
+      direction: Vec3,
+      intensity: f32
+    }
+    let directional_lights: SmallVec<[DirectionalLight; 16]> = scene.directional_lights().iter().map(|l| DirectionalLight {
+      direction: l.direction,
+      intensity: l.intensity
+    }).collect();
+    let directional_lights_buffer = cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT);
+    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, &directional_lights_buffer, 0, WHOLE_BUFFER);
   }
 }
 
@@ -112,28 +182,41 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     let view_ref = view.borrow();
     let scene_ref = scene.borrow();
 
-    let late_latching_buffer = late_latching.unwrap().buffer();
-    let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+    let camera_buffer = late_latching.unwrap().buffer();
+    let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
 
     let gpu_scene_buffer = super::gpu_scene::upload(&mut cmd_buf, &*scene_ref, 0 /* TODO */);
 
+    self.setup_frame(
+      &mut cmd_buf,
+      &gpu_scene_buffer,
+      &camera_buffer,
+      &camera_history_buffer,
+      vertex_buffer,
+      index_buffer,
+      &scene_ref,
+      &view_ref,
+      &self.swapchain,
+      &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
+      frame
+    );
+
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer);
-    }
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), &view_ref, &late_latching_buffer, &mut self.barriers);
-    self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer, &mut self.barriers);
-    self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
-    self.ssao.execute(&mut cmd_buf, &late_latching_buffer, self.blue_noise.frame(frame), self.blue_noise.sampler(), &self.barriers);
-    if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, frame, rt_passes.acceleration_structure_update.acceleration_structure(), &late_latching_buffer, &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &camera_buffer);
     }
     self.hi_z_pass.execute(&mut cmd_buf, &self.barriers);
-    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref, &gpu_scene_buffer, &late_latching_buffer);
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, &gpu_scene_buffer, zero_texture_view, zero_texture_view_black, lightmap, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer, vertex_buffer, index_buffer);
-    self.ssr_pass.execute(&mut cmd_buf, &late_latching_buffer, &self.barriers);
-    self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers);
+    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref);
+    self.visibility_buffer.execute(&mut cmd_buf, &scene_ref, &view_ref, &self.barriers, vertex_buffer, index_buffer);
+    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), &view_ref, &camera_buffer, &mut self.barriers);
+    self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &camera_buffer, &mut self.barriers);
+    self.ssao.execute(&mut cmd_buf, &camera_buffer, self.blue_noise.frame(frame), self.blue_noise.sampler(), &self.barriers, true);
+    if let Some(rt_passes) = self.rt_passes.as_mut() {
+      rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
+    }
+    self.shading_pass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, &gpu_scene_buffer, zero_texture_view, zero_texture_view_black, lightmap, &self.barriers);
+    self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers);
+    self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers, true);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
-    self.visibility_buffer.execute(&mut cmd_buf, &scene_ref, &view_ref, &gpu_scene_buffer, Matrix4::identity(), frame, &self.barriers, &late_latching_buffer, vertex_buffer, index_buffer);
 
     let sharpened_texture = self.barriers.access_texture(
       &mut cmd_buf,

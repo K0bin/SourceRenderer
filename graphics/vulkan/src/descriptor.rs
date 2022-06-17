@@ -20,9 +20,9 @@ pub const PER_SET_BINDINGS: usize = 32;
 
 bitflags! {
     pub struct DirtyDescriptorSets: u32 {
-        const PER_DRAW = 0b0001;
-        const PER_MATERIAL = 0b0010;
-        const PER_FRAME = 0b0100;
+        const VERY_FREQUENT = 0b0001;
+        const FREQUENT = 0b0010;
+        const FRAME = 0b0100;
         const BINDLESS_TEXTURES = 0b10000;
     }
 }
@@ -30,9 +30,9 @@ bitflags! {
 impl From<BindingFrequency> for DirtyDescriptorSets {
   fn from(value: BindingFrequency) -> Self {
     match value {
-      BindingFrequency::PerDraw => DirtyDescriptorSets::PER_DRAW,
-      BindingFrequency::PerMaterial => DirtyDescriptorSets::PER_MATERIAL,
-      BindingFrequency::PerFrame => DirtyDescriptorSets::PER_FRAME,
+      BindingFrequency::VeryFrequent => DirtyDescriptorSets::VERY_FREQUENT,
+      BindingFrequency::Frequent => DirtyDescriptorSets::FREQUENT,
+      BindingFrequency::Frame => DirtyDescriptorSets::FRAME,
     }
   }
 }
@@ -1087,9 +1087,9 @@ impl VkBindingManager {
   }
 
   pub fn mark_all_dirty(&mut self) {
-    self.dirty |= DirtyDescriptorSets::PER_DRAW;
-    self.dirty |= DirtyDescriptorSets::PER_MATERIAL;
-    self.dirty |= DirtyDescriptorSets::PER_FRAME;
+    self.dirty |= DirtyDescriptorSets::VERY_FREQUENT;
+    self.dirty |= DirtyDescriptorSets::FREQUENT;
+    self.dirty |= DirtyDescriptorSets::FRAME;
     self.dirty |= DirtyDescriptorSets::BINDLESS_TEXTURES;
   }
 
@@ -1103,9 +1103,9 @@ impl VkBindingManager {
     }
 
     let mut set_bindings: [Option<VkDescriptorSetBinding>; 3] = Default::default();
-    set_bindings[BindingFrequency::PerDraw as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerDraw);
-    set_bindings[BindingFrequency::PerFrame as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerFrame);
-    set_bindings[BindingFrequency::PerMaterial as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::PerMaterial);
+    set_bindings[BindingFrequency::VeryFrequent as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::VeryFrequent);
+    set_bindings[BindingFrequency::Frame as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::Frame);
+    set_bindings[BindingFrequency::Frequent as usize] = self.finish_set(frame, pipeline_layout, BindingFrequency::Frequent);
 
     self.dirty = DirtyDescriptorSets::empty();
     set_bindings

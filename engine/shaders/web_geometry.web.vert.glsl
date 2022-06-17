@@ -15,7 +15,7 @@ layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec2 out_uv;
 layout(location = 3) out vec2 out_lightmap_uv;
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0) uniform CameraUBO {
+layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
   mat4 viewProj;
 } camera;
 

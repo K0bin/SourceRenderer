@@ -104,7 +104,7 @@ impl<B: Backend> HierarchicalZPass<B> {
       TextureLayout::Sampled,
       false,
       &TextureViewInfo::default(),
-      HistoryResourceEntry::Current
+      HistoryResourceEntry::Past
     );
     let dst_mip0 = resources.access_storage_view(
       cmd_buffer,
@@ -121,8 +121,8 @@ impl<B: Backend> HierarchicalZPass<B> {
       }, HistoryResourceEntry::Current
     ).clone();
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.copy_pipeline));
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &src_texture, resources.nearest_sampler());
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 1, &dst_mip0);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &src_texture, resources.nearest_sampler());
+    cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &dst_mip0);
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();
     cmd_buffer.dispatch((width + 7) / 8, (height + 7) / 8, 1);
@@ -160,9 +160,9 @@ impl<B: Backend> HierarchicalZPass<B> {
     }
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.ffx_pipeline));
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &src_texture, &self.sampler);
-    cmd_buffer.bind_storage_view_array(BindingFrequency::PerDraw, 1, &texture_refs);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 2, &counter_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &src_texture, &self.sampler);
+    cmd_buffer.bind_storage_view_array(BindingFrequency::VeryFrequent, 1, &texture_refs);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 2, &counter_buffer, 0, WHOLE_BUFFER);
 
     #[repr(C)]
     #[derive(Clone, Debug)]

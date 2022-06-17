@@ -47,9 +47,7 @@ impl<B: Backend> DrawPrepPass<B> {
     cmd_buffer: &mut B::CommandBuffer,
     resources: &RendererResources<B>,
     scene: &RendererScene<B>,
-    view: &View,
-    scene_buffer: &Arc<B::Buffer>,
-    camera_buffer: &Arc<B::Buffer>,
+    view: &View
   ) {
     {
       cmd_buffer.begin_label("Culling");
@@ -93,9 +91,7 @@ impl<B: Backend> DrawPrepPass<B> {
       let frustum = Frustum::new(view.near_plane, view.far_plane, view.camera_fov, view.aspect_ratio);
       let (frustum_x, frustum_y) = Frustum::extract_planes(&view.proj_matrix);
 
-      cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, scene_buffer, 0, WHOLE_BUFFER);
-      cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &*buffer, 0, WHOLE_BUFFER);
-      cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 2, camera_buffer, 0, WHOLE_BUFFER);
+      cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 0, &*buffer, 0, WHOLE_BUFFER);
       let frustum_buffer = cmd_buffer.upload_dynamic_data(&[GPUFrustum {
         near_half_width: frustum.near_half_width,
         near_half_height: frustum.near_half_height,
@@ -108,8 +104,8 @@ impl<B: Backend> DrawPrepPass<B> {
           frustum_y.z,
         ),
       }], BufferUsage::CONSTANT);
-      cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 3, &frustum_buffer, 0, WHOLE_BUFFER);
-      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 4, &*hi_z, resources.nearest_sampler());
+      cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 1, &frustum_buffer, 0, WHOLE_BUFFER);
+      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, &*hi_z, resources.nearest_sampler());
       cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.culling_pipeline));
       cmd_buffer.flush_barriers();
       cmd_buffer.finish_binding();
@@ -117,6 +113,7 @@ impl<B: Backend> DrawPrepPass<B> {
       cmd_buffer.end_label();
     }
 
+    cmd_buffer.begin_label("Preparing indirect draws");
     {
       let draw_buffer = resources.access_buffer(
         cmd_buffer,
@@ -129,7 +126,6 @@ impl<B: Backend> DrawPrepPass<B> {
       cmd_buffer.clear_storage_buffer(&draw_buffer, 0, 4, 0);
     }
 
-    cmd_buffer.begin_label("Preparing indirect draws");
     assert!(scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
     let part_count = scene.static_drawables().iter().map(|d| d.model.mesh().parts.len()).fold(0, |a, b| a + b) as u32;
     assert!(part_count <= PART_CAPACITY);
@@ -148,9 +144,8 @@ impl<B: Backend> DrawPrepPass<B> {
       BarrierAccess::STORAGE_WRITE,
       HistoryResourceEntry::Current
     );
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, scene_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, &*visibility_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 2, &*draw_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 0, &*visibility_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent,1, &*draw_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.prep_pipeline));
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();

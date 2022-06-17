@@ -7,7 +7,7 @@
 
 layout(location = 0) in vec3 in_pos;
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUBO {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform CameraUBO {
   Camera camera;
 };
 

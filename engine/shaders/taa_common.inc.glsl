@@ -4,40 +4,18 @@ layout(local_size_x = 8,
 
 #include "descriptor_sets.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0) uniform sampler2D frame;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1) uniform sampler2D history; // NEEDS LINEAR SAMPLER!
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2, rgba8) uniform writeonly image2D outputTexture;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 3) uniform sampler2D depthMap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D frame;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D history; // NEEDS LINEAR SAMPLER!
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, rgba8) uniform writeonly image2D outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler2D depthMap;
 
 #ifndef VISIBILITY_BUFFER
-
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4) uniform sampler2D motionTex;
-
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform sampler2D motionTex;
 #else
-#include "camera.inc.glsl"
-#include "vertex.inc.glsl"
-#include "gpu_scene.inc.glsl"
-
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 4, r32ui) readonly uniform uimage2D primitiveIds;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 5, rg16) readonly uniform image2D barycentrics;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 6, std140) uniform CameraUBO {
-  Camera camera;
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 7, std140) uniform OldCameraUBO {
-  Camera oldCamera;
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 8, std430) readonly restrict buffer sceneBuffer {
-  GPUScene scene;
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 9, std430) readonly restrict buffer verticesSSBO {
-  Vertex vertices[];
-};
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 10, std430) readonly restrict buffer indicesSSBO {
-  uint indices[];
-};
-
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4, r32ui) readonly uniform uimage2D primitiveIds;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5, rg16) readonly uniform image2D barycentrics;
+#include "frame_set.inc.glsl"
 #include "vis_buf.inc.glsl"
-
 #endif
 
 #define CS

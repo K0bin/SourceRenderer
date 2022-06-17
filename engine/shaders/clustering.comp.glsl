@@ -15,17 +15,17 @@ struct VolumeTileAABB{
   vec4 minPoint;
   vec4 maxPoint;
 };
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std430) writeonly buffer clusterAABB {
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std430) writeonly buffer clusterAABB {
   VolumeTileAABB cluster[];
 };
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1, std430) buffer setupBuffer {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, std430) buffer setupBuffer {
   uvec2 tileSize;
   uvec2 screenDimensions;
   float zNear;
   float zFar;
 };
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std140) uniform CameraUBO {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, std140) uniform CameraUBO {
   Camera camera;
 };
 

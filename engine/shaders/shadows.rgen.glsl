@@ -6,26 +6,13 @@
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 1, rgba8) uniform image2D image;
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 2) uniform CameraUBO {
-  Camera camera;
-};
+#include "frame_set.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
-  uint frame;
-  uint directionalLightCount;
-};
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, rgba8) uniform image2D image;
 
-/*struct DirectionalLight {
-  vec3 direction;
-  float intensity;
-};
-layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 4, std430) readonly buffer directionalLightsBuffer {
-  DirectionalLight directionalLights[];
-};*/
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 5) uniform sampler2D depthMap;
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 6) uniform sampler2D noise;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform sampler2D depthMap;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform sampler2D noise;
 
 layout(location = 0) rayPayloadEXT float hitValue;
 

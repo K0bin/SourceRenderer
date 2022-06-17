@@ -5,9 +5,9 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0) uniform sampler2D inputTexture;
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 1, r32f) uniform coherent image2D outputTexture[12];
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std430) restrict buffer counterBuffer {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D inputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, r32f) uniform coherent image2D outputTexture[12];
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, std430) restrict buffer counterBuffer {
   uint spdCounterGlobal;
 };
 

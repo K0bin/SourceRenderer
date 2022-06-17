@@ -55,7 +55,7 @@ impl<B: Backend> RTShadowPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, frame: u64, acceleration_structure: &Arc<B::AccelerationStructure>, camera_buffer: &Arc<B::Buffer>, resources: &RendererResources<B>, blue_noise: &Arc<B::TextureSamplingView>, blue_noise_sampler: &Arc<B::Sampler>) {
+  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, acceleration_structure: &Arc<B::AccelerationStructure>, resources: &RendererResources<B>, blue_noise: &Arc<B::TextureSamplingView>, blue_noise_sampler: &Arc<B::Sampler>) {
     let texture_uav = resources.access_storage_view(
       cmd_buffer,
       Self::SHADOWS_TEXTURE_NAME,
@@ -79,23 +79,11 @@ impl<B: Backend> RTShadowPass<B> {
     );
 
     cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&self.pipeline));
-    cmd_buffer.bind_acceleration_structure(BindingFrequency::PerFrame, 0, acceleration_structure);
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerFrame, 1, &*texture_uav);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 2, camera_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 5, &*depth, resources.linear_sampler());
-    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 6, blue_noise, blue_noise_sampler);
+    cmd_buffer.bind_acceleration_structure(BindingFrequency::Frequent, 0, acceleration_structure);
+    cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 1, &*texture_uav);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 2, &*depth, resources.linear_sampler());
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 3, blue_noise, blue_noise_sampler);
     let info = texture_uav.texture().info();
-
-    #[derive(Clone)]
-    struct FrameData {
-      frame: u32,
-      directional_light_count: u32,
-    }
-    let frame_data = cmd_buffer.upload_dynamic_data(&[FrameData {
-      frame: frame as u32,
-      directional_light_count: 0
-    }], BufferUsage::CONSTANT);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &frame_data, 0, WHOLE_BUFFER);
 
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();

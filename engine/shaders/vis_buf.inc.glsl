@@ -48,11 +48,11 @@ Vertex[3] getVertices(uint id) {
   uint index1 = INDICES_ARRAY_NAME[firstIndex + 1];
   uint index2 = INDICES_ARRAY_NAME[firstIndex + 2];
 
-  Vertex vertices[3];
-  vertices[0] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index0];
-  vertices[1] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index1];
-  vertices[2] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index2];
-  return vertices;
+  Vertex readVertices[3];
+  readVertices[0] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index0];
+  readVertices[1] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index1];
+  readVertices[2] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index2];
+  return readVertices;
 }
 
 Vertex getVertex(uint id, vec2 barycentrics) {

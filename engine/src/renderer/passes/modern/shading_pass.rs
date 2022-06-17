@@ -1,11 +1,8 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use nalgebra::Vector3;
-use nalgebra_glm::Vec3;
-use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, ShaderType, Device, TextureInfo, Format, Swapchain, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, BufferUsage, Filter, AddressMode, SamplerInfo}, Platform, platform::io::IO, Matrix4};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, drawable::View, renderer_scene::RendererScene, PointLight, light::DirectionalLight};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, drawable::View, renderer_scene::RendererScene, passes::conservative::geometry::GeometryPass};
 
 use super::visibility_buffer::VisibilityBufferPass;
 
@@ -16,8 +13,6 @@ pub struct ShadingPass<B: Backend> {
 }
 
 impl<B: Backend> ShadingPass<B> {
-  pub const SHADING_PASS_TEXTURE_NAME: &'static str = "shading";
-
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>, _init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shading.comp.spv"))).unwrap();
@@ -44,7 +39,7 @@ impl<B: Backend> ShadingPass<B> {
       max_lod: None,
     });
 
-    resources.create_texture(Self::SHADING_PASS_TEXTURE_NAME, &TextureInfo {
+    resources.create_texture(GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &TextureInfo {
       format: Format::RGBA32Float,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -52,7 +47,7 @@ impl<B: Backend> ShadingPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::STORAGE,
+      usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
     }, false);
 
     Self  {
@@ -70,22 +65,19 @@ impl<B: Backend> ShadingPass<B> {
     gpu_scene: &Arc<B::Buffer>,
     zero_texture_view: &Arc<B::TextureSamplingView>,
     _zero_texture_view_black: &Arc<B::TextureSamplingView>,
-    lightmap: &Arc<RendererTexture<B>>,
-    swapchain_transform: Matrix4,
-    frame: u64,
+    _lightmap: &Arc<RendererTexture<B>>,
     resources: &RendererResources<B>,
-    camera_buffer: &Arc<B::Buffer>,
-    vertex_buffer: &Arc<B::Buffer>,
-    index_buffer: &Arc<B::Buffer>,
   ) {
     let (width, height) = {
-      let info = resources.texture_info(Self::SHADING_PASS_TEXTURE_NAME);
+      let info = resources.texture_info(GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME);
       (info.width, info.height)
     };
 
+    cmd_buffer.begin_label("Shading Pass");
+
     let output = resources.access_storage_view(
       cmd_buffer,
-      Self::SHADING_PASS_TEXTURE_NAME,
+      GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
@@ -123,63 +115,17 @@ impl<B: Backend> ShadingPass<B> {
       BarrierAccess::STORAGE_READ,
       HistoryResourceEntry::Current
     );
-
-    let mut point_lights = SmallVec::<[PointLight; 16]>::new();
-    for point_light in scene.point_lights() {
-      point_lights.push(PointLight {
-        position: point_light.position,
-        intensity: point_light.intensity
-      });
-    }
-    let mut directional_lights = SmallVec::<[DirectionalLight; 16]>::new();
-    for directional_light in scene.directional_lights() {
-      directional_lights.push(DirectionalLight {
-        direction: directional_light.direction,
-        intensity: directional_light.intensity
-      });
-    }
-    let point_light_buffer = cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE);
-    let directional_light_buffer = cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE);
-
-    #[repr(C)]
-    #[derive(Clone)]
-    struct Setup {
-      cluster_z_bias: f32,
-      cluster_z_scale: f32,
-      point_light_count: u32,
-      directional_light_count: u32,
-      cluster_count: Vector3<u32>,
-    }
-    let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
-    let near = view.near_plane;
-    let far = view.far_plane;
-    let cluster_z_scale = (cluster_count.z as f32) / (far / near).log2();
-    let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
-    let setup_buffer = cmd_buffer.upload_dynamic_data(&[Setup {
-      cluster_z_bias,
-      cluster_z_scale,
-      point_light_count: point_lights.len() as u32,
-      directional_light_count: directional_lights.len() as u32,
-      cluster_count
-    }], BufferUsage::CONSTANT);
-
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 0, vertex_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 1, index_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 2, &ids);
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 3, &barycentrics);
-    cmd_buffer.bind_storage_texture(BindingFrequency::PerDraw, 4, &output);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 5, camera_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 6, gpu_scene, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_sampler(BindingFrequency::PerDraw, 7, &self.sampler);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 8, &light_bitmask_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 9, &point_light_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_storage_buffer(BindingFrequency::PerDraw, 10, &directional_light_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 11, &setup_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
+    cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);
+    cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &output);
+    cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 4, &self.sampler);
+    cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 5, &light_bitmask_buffer, 0, WHOLE_BUFFER);
 
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();
 
     cmd_buffer.dispatch((width + 7) / 8 , (height + 7) / 8, 1);
+    cmd_buffer.end_label();
   }
 }

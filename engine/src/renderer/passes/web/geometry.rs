@@ -233,7 +233,7 @@ impl<B: Backend> GeometryPass<B> {
     }]);
 
     //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_uniform_buffer(BindingFrequency::Frame, 0, camera_buffer, 0, WHOLE_BUFFER);
 
     let drawables = scene.static_drawables();
     let parts = &view.drawable_parts;
@@ -249,7 +249,7 @@ impl<B: Backend> GeometryPass<B> {
       match albedo_value {
         RendererMaterialValue::Texture(texture) => {
           let albedo_view = &texture.view;
-          cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 0, albedo_view, resources.linear_sampler());
+          cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 0, albedo_view, resources.linear_sampler());
         },
         _ => unimplemented!()
       }

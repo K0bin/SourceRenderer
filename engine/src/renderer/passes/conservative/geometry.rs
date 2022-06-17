@@ -351,7 +351,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     let inner_cmd_buffers: Vec::<B::CommandBufferSubmission> = chunks.map(|chunk| {
       let mut command_buffer = device.graphics_queue().create_inner_command_buffer(inheritance);
 
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 3, &per_frame_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 3, &per_frame_buffer, 0, WHOLE_BUFFER);
 
       command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
       command_buffer.set_viewports(&[Viewport {
@@ -365,20 +365,20 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         extent: Vec2UI::new(9999, 9999),
       }]);
 
-      // command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 9, &clusters, 0, WHOLE_BUFFER);
-      command_buffer.bind_uniform_buffer(BindingFrequency::PerFrame, 0, camera_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 1, &point_light_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 2, &light_bitmask_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 4, &ssao, &self.sampler);
-      command_buffer.bind_storage_buffer(BindingFrequency::PerFrame, 5, &directional_light_buffer, 0, WHOLE_BUFFER);
-      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 8,  &shadows, &self.sampler);
-      command_buffer.bind_sampler(BindingFrequency::PerFrame, 7, &self.sampler);
+      // command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 9, &clusters, 0, WHOLE_BUFFER);
+      command_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 0, camera_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 1, &point_light_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 2, &light_bitmask_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 4, &ssao, &self.sampler);
+      command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, &directional_light_buffer, 0, WHOLE_BUFFER);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 8,  &shadows, &self.sampler);
+      command_buffer.bind_sampler(BindingFrequency::Frequent, 7, &self.sampler);
 
       command_buffer.track_texture_view(zero_texture_view);
       command_buffer.track_texture_view(zero_texture_view_black);
 
       let lightmap_ref = &lightmap.view;
-      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerFrame, 6, lightmap_ref, &self.sampler);
+      command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 6, lightmap_ref, &self.sampler);
 
       let mut last_material = Option::<Arc<RendererMaterial<B>>>::None;
 
@@ -389,7 +389,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         }
 
         /*let model_constant_buffer = command_buffer.upload_dynamic_data(&[drawable.transform], BufferUsage::CONSTANT);
-        command_buffer.bind_uniform_buffer(BindingFrequency::PerDraw, 0, &model_constant_buffer);*/
+        command_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, &model_constant_buffer);*/
         command_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
 
         let model = &drawable.model;
@@ -420,15 +420,15 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             albedo_texture_index: 0u32
           };
 
-          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 0, zero_texture_view, &self.sampler);
-          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 1, zero_texture_view, &self.sampler);
-          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 2, zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, zero_texture_view, &self.sampler);
 
           let albedo_value = material.get("albedo").unwrap();
           match albedo_value {
             RendererMaterialValue::Texture(texture) => {
               let albedo_view = &texture.view;
-              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 0, albedo_view, &self.sampler);
+              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, albedo_view, &self.sampler);
               command_buffer.track_texture_view(albedo_view);
               material_info.albedo_texture_index = 0;
             },
@@ -441,7 +441,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           match roughness_value {
             Some(RendererMaterialValue::Texture(texture)) => {
               let roughness_view = &texture.view;
-              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 1, roughness_view, &self.sampler);
+              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, roughness_view, &self.sampler);
             }
             Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
             Some(RendererMaterialValue::Float(val)) => {
@@ -453,7 +453,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           match metalness_value {
             Some(RendererMaterialValue::Texture(texture)) => {
               let metalness_view = &texture.view;
-              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::PerMaterial, 2, metalness_view, &self.sampler);
+              command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, metalness_view, &self.sampler);
             }
             Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
             Some(RendererMaterialValue::Float(val)) => {
@@ -462,7 +462,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             None => {}
           }
           let material_info_buffer = command_buffer.upload_dynamic_data(&[material_info], BufferUsage::CONSTANT);
-          command_buffer.bind_uniform_buffer(BindingFrequency::PerMaterial, 3, &material_info_buffer, 0, WHOLE_BUFFER);
+          command_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, &material_info_buffer, 0, WHOLE_BUFFER);
           last_material = Some(material.clone());
         }
 

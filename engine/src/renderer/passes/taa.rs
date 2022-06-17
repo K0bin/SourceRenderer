@@ -1,6 +1,6 @@
 use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Swapchain, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture}};
 use sourcerenderer_core::Platform;
-use std::sync::Arc;
+use std::{sync::Arc, cell::Ref};
 use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
@@ -44,9 +44,9 @@ pub struct TAAPass<B: GraphicsBackend> {
 impl<B: GraphicsBackend> TAAPass<B> {
   pub const TAA_TEXTURE_NAME: &'static str = "TAAOuput";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
+  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>, visibility_buffer: bool) -> Self {
     let taa_compute_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("taa.comp.spv"))).unwrap();
+      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(if !visibility_buffer { "taa.comp.spv" } else { "taa_vis_buf.comp.spv" }))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
       device.create_shader(ShaderType::ComputeShader, &bytes, Some("taa.comp.spv"))
@@ -76,7 +76,8 @@ impl<B: GraphicsBackend> TAAPass<B> {
     &mut self,
     cmd_buf: &mut B::CommandBuffer,
     input_name: &str,
-    resources: &RendererResources<B>
+    resources: &RendererResources<B>,
+    visibility_buffer: bool
   ) {
     cmd_buf.begin_label("TAA pass");
 
@@ -113,16 +114,42 @@ impl<B: GraphicsBackend> TAAPass<B> {
       HistoryResourceEntry::Past
     );
 
-    let motion_srv = resources.access_sampling_view(
-      cmd_buf,
-      Prepass::<B>::MOTION_TEXTURE_NAME,
-      BarrierSync::COMPUTE_SHADER,
-      BarrierAccess::SAMPLING_READ,
-      TextureLayout::Sampled,
-      true,
-      &TextureViewInfo::default(),
-      HistoryResourceEntry::Current
-    );
+    let mut motion_srv = Option::<Ref<Arc<B::TextureSamplingView>>>::None;
+    let mut id_view = Option::<Ref<Arc<B::TextureStorageView>>>::None;
+    let mut barycentrics_view = Option::<Ref<Arc<B::TextureStorageView>>>::None;
+    if !visibility_buffer {
+      motion_srv = Some(resources.access_sampling_view(
+        cmd_buf,
+        Prepass::<B>::MOTION_TEXTURE_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::SAMPLING_READ,
+        TextureLayout::Sampled,
+        true,
+        &TextureViewInfo::default(),
+        HistoryResourceEntry::Current
+      ));
+    } else {
+      id_view = Some(resources.access_storage_view(
+        cmd_buf,
+        super::modern::VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::STORAGE_READ,
+        TextureLayout::Storage,
+        false,
+        &TextureViewInfo::default(),
+        HistoryResourceEntry::Current
+      ));
+      barycentrics_view = Some(resources.access_storage_view(
+        cmd_buf,
+        super::modern::VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::STORAGE_READ,
+        TextureLayout::Storage,
+        false,
+        &TextureViewInfo::default(),
+        HistoryResourceEntry::Current
+      ));
+    }
 
     let depth_srv = resources.access_sampling_view(
       cmd_buf,
@@ -136,11 +163,16 @@ impl<B: GraphicsBackend> TAAPass<B> {
     );
 
     cmd_buf.set_pipeline(PipelineBinding::Compute(&self.pipeline));
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 0, &*output_srv, resources.linear_sampler());
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 1, &*taa_history_srv, resources.linear_sampler());
-    cmd_buf.bind_storage_texture(BindingFrequency::PerDraw, 2, &*taa_uav);
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 3, &*depth_srv, resources.linear_sampler());
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::PerDraw, 4, &*motion_srv, resources.nearest_sampler());
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &*output_srv, resources.linear_sampler());
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*taa_history_srv, resources.linear_sampler());
+    cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &*taa_uav);
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 3, &*depth_srv, resources.linear_sampler());
+    if !visibility_buffer {
+      cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 4, &motion_srv.unwrap(), resources.nearest_sampler());
+    } else {
+      cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &id_view.unwrap());
+      cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 5, &barycentrics_view.unwrap());
+    }
     cmd_buf.finish_binding();
 
     let info = taa_uav.texture().info();

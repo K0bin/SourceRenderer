@@ -11,16 +11,16 @@ layout(location = 0) out vec4 out_position;
 layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec4 out_oldPosition;
 
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 0) uniform CurrentLowFrequencyUbo {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform CurrentLowFrequencyUbo {
     mat4 viewProj;
     mat4 invProj;
     mat4 view;
     mat4 proj;
 };
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 1) uniform PreviousLowFrequencyUbo {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform PreviousLowFrequencyUbo {
     mat4 oldViewProjection;
 };
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 2) uniform PerFrameUbo {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform PerFrameUbo {
     mat4 swapchainTransform;
     vec2 jitterPoint;
 };

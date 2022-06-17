@@ -13,7 +13,7 @@ layout(location = 3) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 0) uniform sampler2D albedo;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler2D albedo;
 
 void main(void) {
   out_color = texture(albedo, in_uv);

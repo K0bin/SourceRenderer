@@ -13,65 +13,34 @@ layout(location = 2) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 0) uniform sampler2D albedo;
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 1) uniform sampler2D roughness_map;
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 2) uniform sampler2D metalness_map;
-layout(set = DESCRIPTOR_SET_PER_MATERIAL, binding = 3) uniform MaterialBuffer {
+#include "frame_set.inc.glsl"
+
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D albedo;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D roughness_map;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D metalness_map;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform MaterialBuffer {
   vec4 albedo_color;
   float roughness_factor;
   float metalness_factor;
   uint albedoTextureIndex;
 } material;
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 6) uniform sampler2D lightmap;
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 7) uniform sampler albedoSampler;
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 8) uniform sampler2D shadows;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler2D lightmap;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform sampler albedoSampler;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform sampler2D shadows;
 
 struct Cluster {
   vec4 minPoint;
   vec4 maxPoint;
 };
 
-layout(std140, set = DESCRIPTOR_SET_PER_FRAME, binding = 0, std140) uniform CameraUBO {
-  Camera camera;
-};
-
-struct PointLight {
-  vec3 position;
-  float intensity;
-};
-layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 1, std430) readonly buffer pointLightsBuffer {
-  PointLight pointLights[];
-};
-
-layout (std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 2) readonly buffer lightBitmasksBuffer {
+layout (std430, set = DESCRIPTOR_SET_FREQUENT, binding = 3) readonly buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
-struct DirectionalLight {
-  vec3 direction;
-  float intensity;
-};
-layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 5, std430) readonly buffer directionalLightsBuffer {
-  DirectionalLight directionalLights[];
-};
-
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 3) uniform PerFrameUbo {
-  mat4 swapchainTransform;
-  vec2 jitterPoint;
-  float zNear;
-  float zFar;
-  uvec2 rtSize;
-  float clusterZBias;
-  float clusterZScale;
-  uvec3 clusterCount;
-  uint pointLightCount;
-  uint directionalLightCount;
-};
-
-layout(set = DESCRIPTOR_SET_PER_FRAME, binding = 4) uniform sampler2D ssao;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform sampler2D ssao;
 
 #ifdef DEBUG
-layout(std430, set = DESCRIPTOR_SET_PER_FRAME, binding = 9, std430) readonly buffer clusterAABB {
+layout(std430, set = DESCRIPTOR_SET_FREQUENT, binding = 5, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };
 #endif
@@ -89,7 +58,7 @@ void main(void) {
 
   vec3 normal = reconstructNormalFS(gl_FragCoord.xy / vec2(rtSize), gl_FragCoord.z, camera.invView * camera.invProj);
 
-  uint clusterIndex = getClusterIndexWithDepth(gl_FragCoord.xy, gl_FragCoord.z, zNear, zFar, clusterCount, rtSize, clusterZScale, clusterZBias);
+  uint clusterIndex = getClusterIndexWithDepth(gl_FragCoord.xy, gl_FragCoord.z, camera.zNear, camera.zFar, clusterCount, rtSize, clusterZScale, clusterZBias);
   uint maxClusterCount = clusterCount.x * clusterCount.y * clusterCount.z;
 
   #ifdef DEBUG
@@ -117,7 +86,7 @@ void main(void) {
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
-    lighting += pbr(-light.direction, viewDir, normal, f0, albedo, vec3(light.intensity), roughness, metalness);
+    lighting += pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
   }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
@@ -137,10 +106,10 @@ void main(void) {
       bitmask &= ~singleBitMask;
       if (lightActive) {
         PointLight light = pointLights[i * 32 + bitIndex];
-        vec3 fragToLight = light.position - in_worldPosition;
+        vec3 fragToLight = light.positionAndIntensity.xyz - in_worldPosition;
         vec3 lightDir = normalize(fragToLight);
         float lightSquaredDist = dot(fragToLight, fragToLight);
-        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.intensity / lightSquaredDist), roughness, metalness);
+        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.positionAndIntensity.w / lightSquaredDist), roughness, metalness);
       }
     }
   }

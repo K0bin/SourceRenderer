@@ -8,7 +8,7 @@ layout(local_size_x = 64) in;
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_PER_DRAW, binding = 0, std140) uniform CameraUBO {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform CameraUBO {
   Camera camera;
 };
 
@@ -16,11 +16,11 @@ struct Cluster {
   vec4 minPoint;
   vec4 maxPoint;
 };
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 1, std430) readonly buffer clusterAABB {
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };
 
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 2, std430) readonly buffer setupBuffer {
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, std430) readonly buffer setupBuffer {
   uint clusterCount;
   uint pointLightCount;
 };
@@ -29,11 +29,11 @@ struct PointLight {
   vec3 position;
   float radius;
 };
-layout(std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 3, std430) readonly buffer pointLightsBuffer {
+layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3, std430) readonly buffer pointLightsBuffer {
   PointLight pointLights[];
 };
 
-layout (std430, set = DESCRIPTOR_SET_PER_DRAW, binding = 4) buffer lightBitmasksBuffer {
+layout (std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
 
