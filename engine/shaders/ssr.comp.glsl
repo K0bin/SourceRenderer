@@ -30,8 +30,8 @@ void main() {
   float reflectionIntensity = reflectScreenspace(depthTexture, texCoord, camera, config, reflectionTexCoord);
   if (reflectionIntensity > 0.01) {
     vec3 reflection = textureLod(colorTexture, reflectionTexCoord, 0).xyz;
-    imageStore(outputTexture, storageTexCoord, vec4(reflection, 1.0));
+    imageStore(outputTexture, storageTexCoord, vec4(reflection, reflectionIntensity));
   } else {
-    imageStore(outputTexture, storageTexCoord, vec4(0.0, 0.0, 0.0, 1.0));
+    imageStore(outputTexture, storageTexCoord, vec4(0.0, 0.0, 0.0, 0.0));
   }
 }

@@ -40,7 +40,7 @@ impl<B: Backend> ShadingPass<B> {
     });
 
     resources.create_texture(GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &TextureInfo {
-      format: Format::RGBA32Float,
+      format: Format::RGBA16Float,
       width: swapchain.width(),
       height: swapchain.height(),
       depth: 1,

@@ -4,7 +4,7 @@ use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::{AtomicRefCell, AtomicRef}, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass}}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass, compositing::CompositingPass}}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass, shading_pass::ShadingPass};
 
@@ -23,7 +23,8 @@ pub struct ModernRenderer<B: Backend> {
   hi_z_pass: HierarchicalZPass<B>,
   ssr_pass: SsrPass<B>,
   visibility_buffer: VisibilityBufferPass<B>,
-  shading_pass: ShadingPass<B>
+  shading_pass: ShadingPass<B>,
+  compositing_pass: CompositingPass<B>,
 }
 
 pub struct RTPasses<B: Backend> {
@@ -54,6 +55,7 @@ impl<B: Backend> ModernRenderer<B> {
     let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer);
     let ssr_pass = SsrPass::<B>::new::<P>(device, resolution, &mut barriers);
     let shading_pass = ShadingPass::<B>::new::<P>(device, swapchain, &mut barriers, &mut init_cmd_buffer);
+    let compositing_pass = CompositingPass::<B>::new::<P>(device, swapchain, &mut barriers);
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
 
@@ -77,6 +79,7 @@ impl<B: Backend> ModernRenderer<B> {
       ssr_pass,
       visibility_buffer,
       shading_pass,
+      compositing_pass,
     }
   }
 
@@ -217,10 +220,11 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     }
     self.shading_pass.execute(&mut cmd_buf,  &self.device, lightmap, zero_texture_view, &self.barriers);
     self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers);
-    self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers, true);
+    self.compositing_pass.execute(&mut cmd_buf, &self.barriers);
+    self.taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
 
-    let sharpened_texture = self.barriers.access_texture(
+    let output_texture = self.barriers.access_texture(
       &mut cmd_buf,
       SharpenPass::<B>::SHAPENED_TEXTURE_NAME,
       &BarrierTextureRange::default(),
@@ -253,7 +257,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
         }
     ]);
     cmd_buf.flush_barriers();
-    cmd_buf.blit(&*sharpened_texture, 0, 0, back_buffer.texture(), 0, 0);
+    cmd_buf.blit(&*output_texture, 0, 0, back_buffer.texture(), 0, 0);
     cmd_buf.barrier(&[
         Barrier::TextureBarrier {
           old_sync: BarrierSync::COPY,
@@ -266,7 +270,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
           range: BarrierTextureRange::default(),
         }
     ]);
-    std::mem::drop(sharpened_texture);
+    std::mem::drop(output_texture);
 
     self.barriers.swap_history_resources();
 

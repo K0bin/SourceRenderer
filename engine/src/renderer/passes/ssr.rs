@@ -15,7 +15,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
 
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
     resources.create_texture(Self::SSR_TEXTURE_NAME, &TextureInfo {
-      format: Format::RGBA8,
+      format: Format::RGBA16Float,
       width: resolution.x,
       height: resolution.y,
       depth: 1,
