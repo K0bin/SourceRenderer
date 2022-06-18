@@ -169,7 +169,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     &mut self,
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
-    _zero_texture_view: &Arc<B::TextureSamplingView>,
+    zero_texture_view: &Arc<B::TextureSamplingView>,
     _zero_texture_view_black: &Arc<B::TextureSamplingView>,
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
@@ -215,7 +215,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
-    self.shading_pass.execute(&mut cmd_buf, lightmap, &self.barriers);
+    self.shading_pass.execute(&mut cmd_buf,  &self.device, lightmap, zero_texture_view, &self.barriers);
     self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers);
     self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers, true);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);

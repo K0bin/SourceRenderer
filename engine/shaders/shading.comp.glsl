@@ -28,6 +28,10 @@ layout (set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) readonly buffer lightBi
   uint lightBitmasks[];
 };
 
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform sampler2D lightmap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 7) uniform sampler2D shadows;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 8) uniform sampler2D ssao;
+
 #include "frame_set.inc.glsl"
 
 #ifdef DEBUG
@@ -85,14 +89,17 @@ void main() {
   f0 = mix(f0, albedo, metalness);
 
   vec3 lighting = vec3(0);
-  lighting += 0.6;
-  //lighting += texture(lightmap, vertex.lightmapUv).xyz;
-  //lighting *= texture(ssao, texCoord).rrr;
-  //lighting *= texture(shadows, texCoord).rrr;
+  lighting += vec3(0.3); // ambient
+  lighting += texture(lightmap, vertex.lightmapUv).xyz;
+  lighting *= texture(ssao, texCoord).rrr;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
-    lighting += pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
+    vec3 lightContribution = pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
+    if (i == 0) {
+      lightContribution *= texture(shadows, texCoord).rrr;
+    }
+    lighting += lightContribution;
   }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;
@@ -115,7 +122,7 @@ void main() {
         vec3 fragToLight = light.positionAndIntensity.xyz - vertex.position;
         vec3 lightDir = normalize(fragToLight);
         float lightSquaredDist = dot(fragToLight, fragToLight);
-        lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.positionAndIntensity.w / lightSquaredDist), roughness, metalness);
+        //lighting += pbr(lightDir, viewDir, normal, f0, albedo, vec3(light.positionAndIntensity.w / lightSquaredDist), roughness, metalness);
       }
     }
   }

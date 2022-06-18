@@ -77,14 +77,19 @@ void main(void) {
   vec3 f0 = vec3(0.04);
   f0 = mix(f0, albedo, metalness);
 
+  vec2 fullscreenTexCoord = vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y);
   vec3 lighting = vec3(0);
+  lighting += vec3(0.3); // ambient
   lighting += texture(lightmap, in_lightmap_uv).xyz;
-  lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
-  lighting *= texture(shadows, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
+  lighting *= texture(ssao, fullscreenTexCoord).rrr;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
-    lighting += pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
+    vec3 lightContribution = pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
+    if (i == 0) {
+      lightContribution *= texture(shadows, fullscreenTexCoord).rrr;
+    }
+    lighting += lightContribution;
   }
 
   uint lightBitmaskCount = (pointLightCount + 31) / 32;

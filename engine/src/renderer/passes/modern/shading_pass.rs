@@ -1,10 +1,10 @@
-use std::{sync::Arc, path::Path, io::Read};
+use std::{sync::Arc, path::Path, io::Read, cell::Ref};
 
 use sourcerenderer_core::{graphics::{Backend, ShaderType, Device, TextureInfo, Format, Swapchain, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, Filter, AddressMode, SamplerInfo}, Platform, platform::io::IO};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::conservative::geometry::GeometryPass};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::{conservative::geometry::GeometryPass, ssao::SsaoPass}};
 
-use super::visibility_buffer::VisibilityBufferPass;
+use super::{visibility_buffer::VisibilityBufferPass, rt_shadows::RTShadowPass};
 
 
 pub struct ShadingPass<B: Backend> {
@@ -59,7 +59,9 @@ impl<B: Backend> ShadingPass<B> {
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    _lightmap: &Arc<RendererTexture<B>>,
+    device: &B::Device,
+    lightmap: &Arc<RendererTexture<B>>,
+    zero_texture_view: &Arc<B::TextureSamplingView>,
     resources: &RendererResources<B>,
   ) {
     let (width, height) = {
@@ -109,12 +111,44 @@ impl<B: Backend> ShadingPass<B> {
       BarrierAccess::STORAGE_READ,
       HistoryResourceEntry::Current
     );
+
+    let ssao = resources.access_sampling_view(
+      cmd_buffer,
+      SsaoPass::<B>::SSAO_TEXTURE_NAME,
+      BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
+      BarrierAccess::SAMPLING_READ,
+      TextureLayout::Sampled,
+      false,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    );
+
+    let rt_shadows: Ref<Arc<B::TextureSamplingView>>;
+    let shadows = if device.supports_ray_tracing() {
+      rt_shadows = resources.access_sampling_view(
+        cmd_buffer,
+        RTShadowPass::<B>::SHADOWS_TEXTURE_NAME,
+        BarrierSync::FRAGMENT_SHADER,
+        BarrierAccess::SAMPLING_READ,
+        TextureLayout::Sampled,
+        false,
+        &TextureViewInfo::default(),
+        HistoryResourceEntry::Current
+      );
+      &*rt_shadows
+    } else {
+      zero_texture_view
+    };
+
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &output);
     cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 4, &self.sampler);
     cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 5, &light_bitmask_buffer, 0, WHOLE_BUFFER);
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 6, &lightmap.view, resources.linear_sampler());
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 7, shadows, resources.linear_sampler());
+    cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 8, &ssao, resources.linear_sampler());
 
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();

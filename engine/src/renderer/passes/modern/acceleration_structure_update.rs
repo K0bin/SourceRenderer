@@ -67,7 +67,7 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
               index_format: IndexFormat::U32,
               vertex_position_offset: 0,
               vertex_format: Format::RGB32Float,
-              vertex_stride: 44,
+              vertex_stride: std::mem::size_of::<crate::renderer::Vertex>() as u32,
               mesh_parts: &parts,
               opaque: true,
               max_vertex: mesh.vertex_count - 1
