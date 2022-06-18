@@ -451,7 +451,8 @@ impl VkCommandBuffer {
         }
       }
     }
-    if !descriptor_sets.is_empty() && base_index + descriptor_sets.len() as u32 != 4 {
+
+    if !descriptor_sets.is_empty() && base_index + descriptor_sets.len() as u32 != BINDLESS_TEXTURE_SET_INDEX {
       unsafe {
         self.device.cmd_bind_descriptor_sets(
           self.buffer,
