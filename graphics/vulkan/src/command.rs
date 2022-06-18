@@ -770,7 +770,7 @@ impl VkCommandBuffer {
       p_image_memory_barriers: self.pending_image_barriers.as_ptr(),
       buffer_memory_barrier_count: self.pending_buffer_barriers.len() as u32,
       p_buffer_memory_barriers: self.pending_buffer_barriers.as_ptr(),
-      memory_barrier_count: if self.pending_memory_barrier.src_stage_mask.is_empty() && self.pending_memory_barrier.dst_stage_mask.is_empty() { 1 } else { 0 },
+      memory_barrier_count: if self.pending_memory_barrier.src_stage_mask.is_empty() && self.pending_memory_barrier.dst_stage_mask.is_empty() { 0 } else { 1 },
       p_memory_barriers: &self.pending_memory_barrier as *const vk::MemoryBarrier2,
       ..Default::default()
     };
