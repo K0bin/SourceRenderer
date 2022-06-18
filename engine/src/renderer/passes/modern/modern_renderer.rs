@@ -4,9 +4,9 @@ use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::{AtomicRefCell, AtomicRef}, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass}, light::DirectionalLight}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass}}};
 
-use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass, shading_pass::ShadingPass};
+use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass, shading_pass::ShadingPass};
 
 pub struct ModernRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
@@ -169,8 +169,8 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     &mut self,
     scene: &Arc<AtomicRefCell<RendererScene<B>>>,
     view: &Arc<AtomicRefCell<View>>,
-    zero_texture_view: &Arc<B::TextureSamplingView>,
-    zero_texture_view_black: &Arc<B::TextureSamplingView>,
+    _zero_texture_view: &Arc<B::TextureSamplingView>,
+    _zero_texture_view_black: &Arc<B::TextureSamplingView>,
     lightmap: &Arc<RendererTexture<B>>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
@@ -208,7 +208,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     }
     self.hi_z_pass.execute(&mut cmd_buf, &self.barriers);
     self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref);
-    self.visibility_buffer.execute(&mut cmd_buf, &scene_ref, &view_ref, &self.barriers, vertex_buffer, index_buffer);
+    self.visibility_buffer.execute(&mut cmd_buf, &self.barriers, vertex_buffer, index_buffer);
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), &view_ref, &camera_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &camera_buffer, &mut self.barriers);
     self.ssao.execute(&mut cmd_buf, &camera_buffer, self.blue_noise.frame(frame), self.blue_noise.sampler(), &self.barriers, true);

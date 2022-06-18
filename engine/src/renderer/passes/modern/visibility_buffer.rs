@@ -1,7 +1,7 @@
 use nalgebra::Vector2;
 use sourcerenderer_core::{Matrix4, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat}};
 use std::sync::Arc;
-use crate::renderer::{drawable::View, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::prepass::Prepass};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::prepass::Prepass};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
 use std::io::Read;
@@ -179,8 +179,6 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    scene: &RendererScene<B>,
-    view: &View,
     resources: &RendererResources<B>,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>,

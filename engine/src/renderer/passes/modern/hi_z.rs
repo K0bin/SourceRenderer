@@ -1,4 +1,4 @@
-use std::{sync::Arc, path::Path, io::Read, cell::Ref};
+use std::{sync::Arc, path::Path, io::Read};
 
 use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
