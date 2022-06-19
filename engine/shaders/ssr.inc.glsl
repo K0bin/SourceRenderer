@@ -32,13 +32,12 @@ float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRCo
   vec4 endFrag = camera.proj * endView;
   endFrag.xyz /= endFrag.w;
   endFrag.xy = endFrag.xy * 0.5 + 0.5;
-  endFrag.xy = clamp(endFrag.xy, vec2(0), vec2(1));
   endFrag.y = 1.0 - endFrag.y;
   endFrag.xy *= texSize;
 
   vec2 delta = endFrag.xy - startFrag.xy;
   bool useX      = abs(delta.x) >= abs(delta.y);
-  float deltaVal = max(abs(delta.x), abs(delta.y)) * clamp(config.resolution, 0.0, 1.0);
+  float deltaVal = max(min(texSize.x, abs(delta.x)), min(texSize.y, abs(delta.y))) * clamp(config.resolution, 0.0, 1.0);
   vec2 increment = delta / max(deltaVal, 0.001);
 
   vec2 frag = startFrag.xy;
@@ -53,7 +52,7 @@ float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRCo
 
   for (uint i = 0; i < uint(deltaVal); i++) {
     frag += increment;
-    uv.xy = frag / texSize;
+    uv = frag / texSize;
     sampleDepth = textureLod(depthTex, uv, 0.0).x;
     float sampleZ = linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
 
