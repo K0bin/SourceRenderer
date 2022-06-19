@@ -64,7 +64,7 @@ Vertex getVertex(uint id, vec2 barycentrics) {
   GPUDraw draw = GPU_SCENE_NAME.draws[drawId];
   GPUDrawable drawable = GPU_SCENE_NAME.drawables[draw.drawableIndex];
 
-  mat4 transposedTransform = transpose(drawable.transform);
+  mat4 transposedTransform = transpose(inverse(drawable.transform));
   Vertex vertex = interpolateVertex(barycentrics, vertices);
   vertex.position = (drawable.transform * vec4(vertex.position, 1)).xyz;
   vertex.normal = normalize((transposedTransform * vec4(vertex.normal, 0)).xyz);
