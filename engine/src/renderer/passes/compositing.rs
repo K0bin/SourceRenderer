@@ -36,7 +36,7 @@ impl<B: GraphicsBackend> CompositingPass<B> {
       mip_levels: 1,
       array_length: 1,
       samples: sourcerenderer_core::graphics::SampleCount::Samples1,
-      usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC,
+      usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
     }, false);
 
     Self {
