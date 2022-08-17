@@ -7,7 +7,12 @@ struct SSRConfig {
   float thickness;
 };
 
-float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRConfig config, out vec2 outReflectionTexCoords) {
+float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRConfig config, float roughness, out vec2 outReflectionTexCoords) {
+  if (roughness > 0.3) {
+    outReflectionTexCoords = texCoord;
+    return 0.0;
+  }
+
   vec2 texSize = textureSize(depthTex, 0);
 
   float startDepth = textureLod(depthTex, texCoord, 0).x;
@@ -105,7 +110,8 @@ float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRCo
   outReflectionTexCoords = uv;
   return (1 - max(dot(-unitPositionFrom, pivot), 0))
     * (1 - clamp(sampleZDiff / config.thickness, 0, 1))
-    * (1 - clamp(length(positionTo - positionFrom) / config.maxDistance, 0, 1));
+    * (1 - clamp(length(positionTo - positionFrom) / config.maxDistance, 0, 1))
+    * roughness;
 }
 
 // References:
