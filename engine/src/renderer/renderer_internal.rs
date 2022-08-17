@@ -38,7 +38,7 @@ pub(super) struct RendererInternal<P: Platform> {
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   window_event_receiver: Receiver<Event<P>>,
-  last_tick: Instant,
+  last_frame: Instant,
   frame: u64,
   assets: RendererAssets<P>,
 }
@@ -77,7 +77,7 @@ impl<P: Platform> RendererInternal<P> {
       sender,
       receiver,
       window_event_receiver,
-      last_tick: Instant::now(),
+      last_frame: Instant::now(),
       assets,
       frame: 0
     }
@@ -151,7 +151,6 @@ impl<P: Platform> RendererInternal<P> {
       let message = message_opt.take().unwrap();
       match message {
         RendererCommand::EndFrame => {
-          self.last_tick = Instant::now();
           break;
         }
 
@@ -232,6 +231,10 @@ impl<P: Platform> RendererInternal<P> {
   #[profiling::function]
   pub(super) fn render(&mut self, renderer: &Renderer<P>) {
     self.receive_messages();
+
+    let delta = Instant::now().duration_since(self.last_frame);
+    self.last_frame = Instant::now();
+
     self.update_visibility();
     self.reorder();
 
@@ -239,7 +242,7 @@ impl<P: Platform> RendererInternal<P> {
       let scene = self.scene.borrow_mut();
       scene.lightmap().cloned().unwrap_or_else(|| self.assets.placeholder_black().clone())
     };
-    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, self.assets.vertex_buffer(), self.assets.index_buffer());
+    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, delta, self.assets.vertex_buffer(), self.assets.index_buffer());
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -269,7 +272,7 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, self.assets.vertex_buffer(), self.assets.index_buffer()).expect("Rendering still fails after recreating swapchain.");
+        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, delta, self.assets.vertex_buffer(), self.assets.index_buffer()).expect("Rendering still fails after recreating swapchain.");
         self.swapchain = new_swapchain;
       }
     }

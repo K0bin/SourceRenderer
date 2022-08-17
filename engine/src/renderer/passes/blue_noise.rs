@@ -51,7 +51,7 @@ impl<B: Backend> BlueNoise<B> {
 
     let texture = device.create_texture(&TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: 128,
       height: 128,
       depth: 1,

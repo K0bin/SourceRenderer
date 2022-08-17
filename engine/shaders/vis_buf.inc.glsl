@@ -93,9 +93,9 @@ vec2 getMotionVector(uint id, vec2 barycentrics, Camera camera, Camera oldCamera
   Vertex interpolatedOldVertex = interpolateVertex(barycentrics, oldVertices);
 
   vec4 projectedPosition = camera.viewProj * drawable.transform * vec4(interpolatedVertex.position, 1);
-  vec2 ndcPosition = (projectedPosition.xy / projectedPosition.w) * 0.5 + 0.5;
+  vec2 ndcPosition = (projectedPosition.xy / projectedPosition.w) * 0.5;
   vec4 projectedOldPosition = oldCamera.viewProj * drawable.oldTransform * vec4(interpolatedOldVertex.position, 1);
-  vec2 oldNdcPosition = (projectedOldPosition.xy / projectedOldPosition.w) * 0.5 + 0.5;
+  vec2 oldNdcPosition = (projectedOldPosition.xy / projectedOldPosition.w) * 0.5;
   vec2 motion = ndcPosition - oldNdcPosition;
   motion.y = -motion.y;
   return motion;

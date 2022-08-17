@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use sourcerenderer_core::{atomic_refcell::AtomicRefCell, graphics::{Backend, SwapchainError}};
 
@@ -19,6 +20,7 @@ pub(super) trait RenderPath<B: Backend> {
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
     frame: u64,
+    delta: Duration,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>
   ) -> Result<(), SwapchainError>;

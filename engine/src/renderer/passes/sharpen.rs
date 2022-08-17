@@ -34,7 +34,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
 
     resources.create_texture(Self::SHAPENED_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: swapchain.width(),
       height: swapchain.height(),
       depth: 1,

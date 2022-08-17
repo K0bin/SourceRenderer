@@ -1,10 +1,13 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::{AtomicRefCell, AtomicRef}, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass, compositing::CompositingPass}}};
+use crate::renderer::passes::fsr2::Fsr2Pass;
+use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass, shading_pass::ShadingPass};
 
@@ -17,6 +20,7 @@ pub struct ModernRenderer<B: Backend> {
   geometry_draw_prep: DrawPrepPass<B>,
   taa: TAAPass<B>,
   sharpen: SharpenPass<B>,
+  fsr: Fsr2Pass<B>,
   ssao: SsaoPass<B>,
   rt_passes: Option<RTPasses<B>>,
   blue_noise: BlueNoise<B>,
@@ -25,6 +29,7 @@ pub struct ModernRenderer<B: Backend> {
   visibility_buffer: VisibilityBufferPass<B>,
   shading_pass: ShadingPass<B>,
   compositing_pass: CompositingPass<B>,
+  motion_vector_pass: MotionVectorPass<B>,
 }
 
 pub struct RTPasses<B: Backend> {
@@ -35,7 +40,7 @@ pub struct RTPasses<B: Backend> {
 impl<B: Backend> ModernRenderer<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
-    let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
+    let resolution = Vec2UI::new(swapchain.width() / 4 * 3, swapchain.height() / 4 * 3);
 
     let mut barriers = RendererResources::<B>::new(device);
 
@@ -50,12 +55,15 @@ impl<B: Backend> ModernRenderer<B> {
       acceleration_structure_update: AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer),
       shadows: RTShadowPass::<B>::new::<P>(device, resolution, &mut barriers)
     });
-    let visibility_buffer = VisibilityBufferPass::<B>::new::<P>(device, swapchain, &mut barriers);
+    let visibility_buffer = VisibilityBufferPass::<B>::new::<P>(device, resolution, &mut barriers);
     let draw_prep = DrawPrepPass::<B>::new::<P>(device, &mut barriers);
     let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer);
     let ssr_pass = SsrPass::<B>::new::<P>(device, resolution, &mut barriers, true);
-    let shading_pass = ShadingPass::<B>::new::<P>(device, swapchain, &mut barriers, &mut init_cmd_buffer);
-    let compositing_pass = CompositingPass::<B>::new::<P>(device, swapchain, &mut barriers);
+    let shading_pass = ShadingPass::<B>::new::<P>(device, resolution, &mut barriers, &mut init_cmd_buffer);
+    let compositing_pass = CompositingPass::<B>::new::<P>(device, resolution, &mut barriers);
+    let motion_vector_pass = MotionVectorPass::<B>::new::<P>(device, &mut barriers, resolution);
+    let fsr_pass = Fsr2Pass::<B>::new::<P>(device, &mut barriers, resolution, swapchain);
+
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
 
@@ -80,6 +88,8 @@ impl<B: Backend> ModernRenderer<B> {
       visibility_buffer,
       shading_pass,
       compositing_pass,
+      fsr: fsr_pass,
+      motion_vector_pass,
     }
   }
 
@@ -178,6 +188,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
     frame: u64,
+    delta: Duration,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>
   ) -> Result<(), SwapchainError> {
@@ -206,13 +217,18 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
       frame
     );
 
+    let resolution = {
+      let info = self.barriers.texture_info(VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME);
+      Vec2UI::new(info.width, info.height)
+    };
+
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &camera_buffer);
     }
     self.hi_z_pass.execute(&mut cmd_buf, &self.barriers);
     self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref);
     self.visibility_buffer.execute(&mut cmd_buf, &self.barriers, vertex_buffer, index_buffer);
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), &view_ref, &camera_buffer, &mut self.barriers);
+    self.clustering_pass.execute(&mut cmd_buf, resolution, &view_ref, &camera_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &camera_buffer, &mut self.barriers);
     self.ssao.execute(&mut cmd_buf, &camera_buffer, self.blue_noise.frame(frame), self.blue_noise.sampler(), &self.barriers, true);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
@@ -221,12 +237,17 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     self.shading_pass.execute(&mut cmd_buf,  &self.device, lightmap, zero_texture_view, &self.barriers);
     self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers, true);
     self.compositing_pass.execute(&mut cmd_buf, &self.barriers);
-    self.taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
-    self.sharpen.execute(&mut cmd_buf, &self.barriers);
+
+    /*self.taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
+    self.sharpen.execute(&mut cmd_buf, &self.barriers);*/
+
+    self.motion_vector_pass.execute(&mut cmd_buf, &self.barriers);
+
+    self.fsr.execute(&mut cmd_buf, &self.barriers, &view_ref, delta, frame);
 
     let output_texture = self.barriers.access_texture(
       &mut cmd_buf,
-      SharpenPass::<B>::SHAPENED_TEXTURE_NAME,
+      TAAPass::<B>::TAA_TEXTURE_NAME,
       &BarrierTextureRange::default(),
       BarrierSync::COPY,
       BarrierAccess::COPY_READ,

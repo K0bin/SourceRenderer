@@ -12,6 +12,7 @@ mod draw_prep;
 mod hi_z;
 mod visibility_buffer;
 mod shading_pass;
+mod motion_vectors;
 
 pub use modern_renderer::ModernRenderer;
 pub use visibility_buffer::VisibilityBufferPass;

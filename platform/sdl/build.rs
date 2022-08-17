@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::path::{PathBuf, Path};
-use build_util::{copy_directory_rec, compile_shaders};
+use build_util::{copy_directory_rec, compile_shaders, compile_shader};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -21,6 +21,30 @@ fn main() {
     shader_dir.push("shaders");
 
     compile_shaders(&shader_dir, &shader_dest_dir, true, false, &HashMap::new(), |_| true);
+
+    let mut fsr_shader_dir = manifest_dir.clone();
+    fsr_shader_dir.pop();
+    fsr_shader_dir.pop();
+    fsr_shader_dir.push("vendor");
+    fsr_shader_dir.push("fsr2");
+    fsr_shader_dir.push("FidelityFX-FSR2");
+    fsr_shader_dir.push("src");
+    fsr_shader_dir.push("ffx-fsr2-api");
+    fsr_shader_dir.push("shaders");
+    let mut map = HashMap::new();
+    map.insert("FFX_GPU".to_string(), "1".to_string());
+    map.insert("FFX_GLSL".to_string(), "1".to_string());
+    map.insert("FFX_FSR2_OPTION_LOW_RESOLUTION_MOTION_VECTORS".to_string(), "1".to_string());
+    map.insert("FFX_FSR2_OPTION_HDR_COLOR_INPUT".to_string(), "1".to_string());
+    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, false, &map, |f|
+        f.extension().and_then(|ext| ext.to_str()).map(|ext| ext == "glsl").unwrap_or_default()
+    );
+    let mut accumulate_sharpen_path = fsr_shader_dir.clone();
+    accumulate_sharpen_path.push("ffx_fsr2_accumulate_pass.glsl");
+    let mut accumulate_sharpen_compiled_path = shader_dest_dir.clone();
+    accumulate_sharpen_compiled_path.push("ffx_fsr2_accumulate_sharpen_pass.spv");
+    map.insert("FFX_FSR2_OPTION_APPLY_SHARPENING".to_string(), "1".to_string());
+    compile_shader(&accumulate_sharpen_path, &accumulate_sharpen_compiled_path, true, &map);
 
     let mut assets_dest_dir = manifest_dir.clone();
     assets_dest_dir.push("assets");

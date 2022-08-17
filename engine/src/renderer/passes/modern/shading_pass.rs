@@ -1,6 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read, cell::Ref};
 
-use sourcerenderer_core::{graphics::{Backend, ShaderType, Device, TextureInfo, Format, Swapchain, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, Filter, AddressMode, SamplerInfo, TextureDimension}, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, ShaderType, Device, TextureInfo, Format, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, Filter, AddressMode, SamplerInfo, TextureDimension}, Platform, platform::io::IO, Vec2UI};
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::{conservative::geometry::GeometryPass, ssao::SsaoPass}};
 
@@ -13,14 +13,12 @@ pub struct ShadingPass<B: Backend> {
 }
 
 impl<B: Backend> ShadingPass<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>, _init_cmd_buffer: &mut B::CommandBuffer) -> Self {
+  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>, _init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shading.comp.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      println!("shader");
       let shader = device.create_shader(ShaderType::ComputeShader, &bytes, Some("shading.comp.spv"));
-      println!("shader done");
       shader
     };
     let pipeline = device.create_compute_pipeline(&shader, Some("Shading"));
@@ -42,8 +40,8 @@ impl<B: Backend> ShadingPass<B> {
     resources.create_texture(GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA16Float,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,

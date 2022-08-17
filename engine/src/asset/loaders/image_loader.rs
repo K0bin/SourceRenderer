@@ -29,9 +29,9 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
     let (width, height) = img.dimensions();
 
     let (format, data) = match img {
-      image::DynamicImage::ImageRgba8(data) => (sourcerenderer_core::graphics::Format::RGBA8, data.as_raw().clone()),
+      image::DynamicImage::ImageRgba8(data) => (sourcerenderer_core::graphics::Format::RGBA8UNorm, data.as_raw().clone()),
       image::DynamicImage::ImageBgra8(data) => (sourcerenderer_core::graphics::Format::BGRA8UNorm, data.as_raw().clone()),
-      _ => (sourcerenderer_core::graphics::Format::RGBA8, img.into_rgba8().as_raw().clone()),
+      _ => (sourcerenderer_core::graphics::Format::RGBA8UNorm, img.into_rgba8().as_raw().clone()),
     };
 
     manager.add_asset_with_progress(&path, Asset::Texture(Texture {

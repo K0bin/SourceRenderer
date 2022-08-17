@@ -9,21 +9,6 @@ use sourcerenderer_core::platform::io::IO;
 
 use super::{draw_prep::DrawPrepPass, gpu_scene::DRAW_CAPACITY};
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-struct FrameData {
-  swapchain_transform: Matrix4,
-  halton_point: Vec2,
-  z_near: f32,
-  z_far: f32,
-  rt_size: Vector2::<u32>,
-  cluster_z_bias: f32,
-  cluster_z_scale: f32,
-  cluster_count: nalgebra::Vector3::<u32>,
-  point_light_count: u32,
-  directional_light_count: u32
-}
-
 pub struct VisibilityBufferPass<B: GraphicsBackend> {
   pipeline: Arc<B::GraphicsPipeline>
 }
@@ -33,12 +18,12 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
   pub const PRIMITIVE_ID_TEXTURE_NAME: &'static str = "primitive";
   pub const DEPTH_BUFFER_NAME: &'static str = "depth";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
+  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
     let barycentrics_texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RG16UNorm,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -49,9 +34,9 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
 
     let primitive_id_texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::R32Uint,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      format: Format::R32UInt,
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -63,8 +48,8 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
     let depth_texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::D24,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,

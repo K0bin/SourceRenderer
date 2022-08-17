@@ -1,5 +1,5 @@
 use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec2UI};
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
@@ -19,7 +19,7 @@ pub struct CompositingPass<B: GraphicsBackend> {
 impl<B: GraphicsBackend> CompositingPass<B> {
   pub const COMPOSITION_TEXTURE_NAME: &'static str = "Composition";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
+  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
     let sharpen_compute_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("compositing.comp.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
@@ -30,9 +30,9 @@ impl<B: GraphicsBackend> CompositingPass<B> {
 
     resources.create_texture(Self::COMPOSITION_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      format: Format::RGBA8UNorm,
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,

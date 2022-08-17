@@ -380,7 +380,6 @@ impl GltfLoader {
 
     if let Some(albedo_path) = albedo_path {
       asset_mgr.request_asset(&albedo_path, AssetType::Material, AssetLoadPriority::Low);
-      println!("Loading material: {}", &material_path);
       asset_mgr.add_material(&material_path, &albedo_path, pbr.roughness_factor(), pbr.metallic_factor());
     } else {
       let color = pbr.base_color_factor();

@@ -1574,7 +1574,7 @@ impl Drop for VkPipeline {
 
 impl ComputePipeline for VkPipeline {
   fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo> {
-    self.layout.descriptor_set_layouts[set as usize].and_then(|layout|
+    self.layout.descriptor_set_layouts.get(set as usize).unwrap().as_ref().and_then(|layout|
       layout.binding(slot)
     ).map(|i| BindingInfo {
       name: i.name.as_str(),
@@ -1586,7 +1586,8 @@ impl ComputePipeline for VkPipeline {
         vk::DescriptorType::STORAGE_IMAGE => BindingType::StorageTexture,
         vk::DescriptorType::SAMPLED_IMAGE => BindingType::SampledTexture,
         vk::DescriptorType::SAMPLER => BindingType::Sampler,
-        vk::DescriptorType::COMBINED_IMAGE_SAMPLER => BindingType::TextureAndSampler
+        vk::DescriptorType::COMBINED_IMAGE_SAMPLER => BindingType::TextureAndSampler,
+        _ => unreachable!()
       }
     })
   }
