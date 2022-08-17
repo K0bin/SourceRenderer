@@ -4,10 +4,11 @@ use sourcerenderer_core::graphics::Format;
 
 pub fn format_to_vk(format: Format, supports_d24: bool) -> vk::Format {
   match format {
-    Format::RGBA8 => vk::Format::R8G8B8A8_UNORM,
-    Format::R16 => vk::Format::R16_UNORM,
+    Format::RGBA8UNorm => vk::Format::R8G8B8A8_UNORM,
+    Format::R16UNorm => vk::Format::R16_UNORM,
     Format::R16Float => vk::Format::R16_SFLOAT,
     Format::R32Float => vk::Format::R32_SFLOAT,
+    Format::R8Unorm => vk::Format::R8_UNORM,
     Format::RG32Float => vk::Format::R32G32_SFLOAT,
     Format::RGB32Float => vk::Format::R32G32B32_SFLOAT,
     Format::RGBA32Float => vk::Format::R32G32B32A32_SFLOAT,
@@ -23,8 +24,13 @@ pub fn format_to_vk(format: Format, supports_d24: bool) -> vk::Format {
     Format::DXT3 => vk::Format::BC2_UNORM_BLOCK,
     Format::DXT5 => vk::Format::BC3_UNORM_BLOCK,
     Format::RG16UNorm => vk::Format::R16G16_UNORM,
-    Format::R32Uint => vk::Format::R32_UINT,
+    Format::R32UInt => vk::Format::R32_UINT,
+    Format::RG16Float => vk::Format::R16G16_SFLOAT,
     Format::RGBA16Float => vk::Format::R16G16B16A16_SFLOAT,
+    Format::R11G11B10Float => vk::Format::B10G11R11_UFLOAT_PACK32,
+    Format::RG16UInt => vk::Format::R16G16_UINT,
+    Format::RG16UInt => vk::Format::R16G16_UINT,
+    Format::R16UInt => vk::Format::R16_UINT,
     _ => vk::Format::R8G8B8A8_UINT
   }
 }

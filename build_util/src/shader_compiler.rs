@@ -16,59 +16,65 @@ pub fn compile_shaders<F>(source_dir: &Path, out_dir: &Path, include_debug_info:
       && file_filter(&file.path())
     )
     .for_each(|file| {
-      println!("cargo:rerun-if-changed={}", (&file.path()).to_str().unwrap());
-
-      let mut is_rt = false;
-      let mut assume_compute = false;
-      let path = file.path();
-      if let Some(path) = path.to_str() {
-        is_rt = path.contains(".rchit") || path.contains(".rgen") || path.contains(".rmiss");
-        assume_compute = !is_rt && !path.contains(".comp") && !path.contains(".frag") && !path.contains(".vert");
-      }
-
-      let file_stem = path.file_stem().unwrap().to_str().unwrap();
+      let file_path = file.path();
+      let file_stem = file_path.file_stem().unwrap().to_str().unwrap();
       let generated_file_type = if !as_c_headers { ".spv" } else { ".h" };
       let compiled_file_path = Path::join(out_dir, [file_stem, generated_file_type].concat());
-      let mut command = Command::new("glslangValidator");
-      command
-        .arg("--target-env")
-        .arg(if is_rt { "spirv1.4" } else { "spirv1.3" })
-        .arg("-V");
-
-      if as_c_headers {
-        command
-          .arg("--vn")
-          .arg(&file_stem);
-      }
-
-      if include_debug_info {
-        command.arg("-g");
-      }
-      if assume_compute {
-        command.arg("-S")
-          .arg("comp");
-      }
-
-      for (key, value) in arguments {
-        if !value.is_empty() {
-          command.arg("-D".to_string() + key + "=" + value);
-        } else {
-          command.arg("-D".to_string() + key);
-        }
-      }
-
-      command
-       .arg("-o")
-       .arg(&compiled_file_path)
-       .arg(&path);
-
-      let output = command
-      .output()
-      .unwrap_or_else(|e| panic!("Failed to compile shader: {}\n{}", path.to_str().unwrap(), e.to_string()));
-
-      if !output.status.success() {
-        panic!("Failed to compile shader: {}\n{:?}\n", path.to_str().unwrap(), output);
-      }
+      compile_shader(&file_path, &compiled_file_path, include_debug_info, arguments);
     }
   );
+}
+
+pub fn compile_shader(file_path: &Path, compiled_file_path: &Path, include_debug_info: bool, arguments: &HashMap<String, String>) {
+  println!("cargo:rerun-if-changed={}", (file_path).to_str().unwrap());
+
+  let mut is_rt = false;
+  let mut assume_compute = false;
+  if let Some(path) = file_path.to_str() {
+    is_rt = path.contains(".rchit") || path.contains(".rgen") || path.contains(".rmiss");
+    assume_compute = !is_rt && !path.contains(".comp") && !path.contains(".frag") && !path.contains(".vert");
+  }
+
+  let mut command = Command::new("glslangValidator");
+  command
+      .arg("--target-env")
+      .arg(if is_rt { "spirv1.4" } else { "spirv1.3" })
+      .arg("-V");
+
+  let as_c_headers = compiled_file_path.extension().and_then(|ext| ext.to_str()).map(|ext| ext == "h").unwrap_or_default();
+  if as_c_headers {
+    let file_stem = compiled_file_path.file_stem().unwrap().to_str().unwrap();
+    command
+        .arg("--vn")
+        .arg(&file_stem);
+  }
+
+  if include_debug_info {
+    command.arg("-g");
+  }
+  if assume_compute {
+    command.arg("-S")
+        .arg("comp");
+  }
+
+  for (key, value) in arguments {
+    if !value.is_empty() {
+      command.arg("-D".to_string() + key + "=" + value);
+    } else {
+      command.arg("-D".to_string() + key);
+    }
+  }
+
+  command
+      .arg("-o")
+      .arg(&compiled_file_path)
+      .arg(&file_path);
+
+  let output = command
+      .output()
+      .unwrap_or_else(|e| panic!("Failed to compile shader: {}\n{}", file_path.to_str().unwrap(), e.to_string()));
+
+  if !output.status.success() {
+    panic!("Failed to compile shader: {}\n{:?}\n", file_path.to_str().unwrap(), output);
+  }
 }

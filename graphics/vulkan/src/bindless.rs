@@ -26,6 +26,7 @@ impl VkBindlessDescriptorSet {
   pub fn new(device: &Arc<RawVkDevice>, descriptor_type: vk::DescriptorType) -> Self {
     let key = VkDescriptorSetLayoutKey {
       bindings: vec![VkDescriptorSetEntryInfo {
+        name: "bindless_textures".to_string(),
         shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
         index: 0,
         descriptor_type,

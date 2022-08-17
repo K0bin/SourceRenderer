@@ -227,7 +227,7 @@ impl<P: Platform> RendererAssets<P> {
     let zero_buffer = device.upload_data(&zero_data, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
     let zero_texture = device.create_texture(&TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: 2,
       height: 2,
       depth: 1,
@@ -252,7 +252,7 @@ impl<P: Platform> RendererAssets<P> {
     let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
     let zero_texture_black = device.create_texture(&TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: 2,
       height: 2,
       depth: 1,

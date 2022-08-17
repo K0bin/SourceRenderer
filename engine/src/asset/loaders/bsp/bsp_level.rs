@@ -456,7 +456,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
     let lightmap_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: lightmap_packer.texture_width(),
       height: lightmap_packer.texture_height(),
       depth: 1,

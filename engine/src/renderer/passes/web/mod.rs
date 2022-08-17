@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain}};
 
@@ -49,6 +50,7 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
     _frame: u64,
+    delta: Duration,
     _vertex_buffer: &Arc<B::Buffer>,
     _index_buffer: &Arc<B::Buffer>
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {

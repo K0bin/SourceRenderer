@@ -18,9 +18,7 @@ impl<B: Backend> ShadingPass<B> {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shading.comp.spv"))).unwrap();
       let mut bytes: Vec<u8> = Vec::new();
       file.read_to_end(&mut bytes).unwrap();
-      println!("shader");
       let shader = device.create_shader(ShaderType::ComputeShader, &bytes, Some("shading.comp.spv"));
-      println!("shader done");
       shader
     };
     let pipeline = device.create_compute_pipeline(&shader, Some("Shading"));

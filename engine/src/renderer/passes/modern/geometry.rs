@@ -16,7 +16,7 @@ use super::{draw_prep::DrawPrepPass, gpu_scene::DRAW_CAPACITY};
 #[derive(Debug, Clone, Copy)]
 struct FrameData {
   swapchain_transform: Matrix4,
-  halton_point: Vec2,
+  jitter: Vec2,
   z_near: f32,
   z_far: f32,
   rt_size: Vector2::<u32>,
@@ -38,7 +38,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, barriers: &mut RendererResources<B>) -> Self {
     let texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: swapchain.width(),
       height: swapchain.height(),
       depth: 1,
@@ -318,7 +318,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     let cluster_z_bias = -(cluster_count.z as f32) * (near).log2() / (far / near).log2();
     let per_frame = FrameData {
       swapchain_transform,
-      halton_point: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32 + 1),
+      jitter: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32 + 1),
       z_near: near,
       z_far: far,
       rt_size: Vector2::<u32>::new(rtv_info.width, rtv_info.height),

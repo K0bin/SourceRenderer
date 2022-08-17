@@ -49,7 +49,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
 
     let primitive_id_texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::R32Uint,
+      format: Format::R32UInt,
       width: swapchain.width(),
       height: swapchain.height(),
       depth: 1,

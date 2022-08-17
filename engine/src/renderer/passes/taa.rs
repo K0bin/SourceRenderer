@@ -55,7 +55,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
 
     let texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: swapchain.width(),
       height: swapchain.height(),
       depth: 1,

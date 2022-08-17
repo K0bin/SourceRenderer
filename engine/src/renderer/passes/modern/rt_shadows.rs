@@ -14,7 +14,7 @@ impl<B: Backend> RTShadowPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
     resources.create_texture(Self::SHADOWS_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: resolution.x,
       height: resolution.y,
       depth: 1,

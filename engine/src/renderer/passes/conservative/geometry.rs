@@ -39,7 +39,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, barriers: &mut RendererResources<B>) -> Self {
     let texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: swapchain.width(),
       height: swapchain.height(),
       depth: 1,

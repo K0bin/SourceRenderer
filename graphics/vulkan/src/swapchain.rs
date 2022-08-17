@@ -458,7 +458,7 @@ pub(crate) enum VkSwapchainAcquireResult<'a> {
 fn surface_vk_format_to_core(format: vk::Format) -> Format {
   match format {
     vk::Format::B8G8R8A8_UNORM => Format::BGRA8UNorm,
-    vk::Format::R8G8B8A8_UNORM => Format::RGBA8,
+    vk::Format::R8G8B8A8_UNORM => Format::RGBA8UNorm,
     _ => panic!("Unsupported format: {:?}", format)
   }
 }

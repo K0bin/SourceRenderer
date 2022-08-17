@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
@@ -197,6 +198,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
     frame: u64,
+    delta: Duration,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>
   ) -> Result<(), SwapchainError> {
