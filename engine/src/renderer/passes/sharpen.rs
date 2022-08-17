@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -33,6 +33,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
     let pipeline = device.create_compute_pipeline(&sharpen_compute_shader, Some("Sharpen"));
 
     resources.create_texture(Self::SHAPENED_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: swapchain.width(),
       height: swapchain.height(),

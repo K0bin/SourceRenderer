@@ -38,8 +38,16 @@ impl Default for TextureLayout {
   }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TextureDimension {
+  Dim1D,
+  Dim2D,
+  Dim3D
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct TextureInfo {
+  pub dimension: TextureDimension,
   pub format: Format,
   pub width: u32,
   pub height: u32,

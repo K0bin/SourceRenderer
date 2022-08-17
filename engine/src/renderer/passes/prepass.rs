@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture, WHOLE_BUFFER, TextureDimension};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::passes::taa::scaled_halton_point;
@@ -42,6 +42,7 @@ impl<B: GraphicsBackend> Prepass<B> {
 
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
     let depth_info = TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::D24,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -54,6 +55,7 @@ impl<B: GraphicsBackend> Prepass<B> {
     resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_info, true);
 
     resources.create_texture(Self::MOTION_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RG32Float,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -65,6 +67,7 @@ impl<B: GraphicsBackend> Prepass<B> {
     }, true);
 
     resources.create_texture(Self::NORMALS_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA32Float,
       width: swapchain.width(),
       height: swapchain.height(),

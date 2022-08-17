@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER, TextureDimension}, platform::io::IO};
 
 use rand::random;
 
@@ -24,6 +24,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
 
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>, visibility_buffer: bool) -> Self {
     resources.create_texture(Self::SSAO_INTERNAL_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::R16Float,
       width: resolution.x / 2,
       height: resolution.y / 2,
@@ -35,6 +36,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }, false);
 
     resources.create_texture(Self::SSAO_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::R16Float,
       width: resolution.x / 2,
       height: resolution.y / 2,

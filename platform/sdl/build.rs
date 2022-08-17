@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::path::{PathBuf, Path};
 use build_util::{copy_directory_rec, compile_shaders};
@@ -19,7 +20,7 @@ fn main() {
     shader_dir.push("engine");
     shader_dir.push("shaders");
 
-    compile_shaders(&shader_dir, &shader_dest_dir, true, |_| true);
+    compile_shaders(&shader_dir, &shader_dest_dir, true, false, &HashMap::new(), |_| true);
 
     let mut assets_dest_dir = manifest_dir.clone();
     assets_dest_dir.push("assets");

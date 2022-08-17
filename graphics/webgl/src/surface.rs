@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}, Mutex, Condvar};
 
-use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureViewInfo, TextureUsage};
+use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureViewInfo, TextureUsage, TextureDimension};
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
@@ -78,6 +78,7 @@ impl WebGLSwapchain {
   pub fn new(surface: &Arc<WebGLSurface>, sender: &GLThreadSender, allocator: &Arc<WebGLHandleAllocator>) -> Self {
     let handle = allocator.new_texture_handle();
     let backbuffer = Arc::new(WebGLTexture::new(handle, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: surface.width,
       height: surface.height,

@@ -505,8 +505,8 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL doesnt support storage textures")
   }
 
-  fn clear_storage_view(&mut self, _view: &Arc<WebGLUnorderedAccessView>, _values: [u32; 4]) {
-    todo!()
+  fn clear_storage_texture(&mut self, _view: &Arc<WebGLTexture>, _array_layer: u32, _mip_leve: u32, _values: [u32; 4]) {
+    panic!("WebGL doesnt support storage textures")
   }
 
   fn clear_storage_buffer(&mut self, _buffer: &Arc<WebGLBuffer>, _offset: usize, _length_in_u32s: usize, _value: u32) {

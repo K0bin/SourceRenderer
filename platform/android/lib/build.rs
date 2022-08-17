@@ -51,7 +51,7 @@ fn main() {
   if !shader_dest_dir.exists() {
     std::fs::create_dir(&shader_dest_dir).expect("Failed to create shader target directory.");
   }
-  compile_shaders(&shader_dir, &shader_dest_dir, true, |_| true);
+  compile_shaders(&shader_dir, &shader_dest_dir, false, true, &HashMap::new(), |_| true);
 
   let mut assets_dir = engine_dir.clone();
   assets_dir.push("assets");

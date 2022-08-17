@@ -1,10 +1,10 @@
-use std::{io::Read, path::Path, sync::Arc};
+use std::{io::Read, path::Path, sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER, TextureDimension}, platform::io::IO};
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}};
 
-use super::{prepass::Prepass, conservative::geometry::GeometryPass};
+use super::{prepass::Prepass, conservative::geometry::GeometryPass, modern::VisibilityBufferPass};
 
 pub struct SsrPass<B: GraphicsBackend> {
   pipeline: Arc<B::ComputePipeline>,
@@ -13,8 +13,9 @@ pub struct SsrPass<B: GraphicsBackend> {
 impl<B: GraphicsBackend> SsrPass<B> {
   pub const SSR_TEXTURE_NAME: &'static str = "SSR";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
+  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>, _visibility_buffer: bool) -> Self {
     resources.create_texture(Self::SSR_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA16Float,
       width: resolution.x,
       height: resolution.y,
@@ -42,7 +43,8 @@ impl<B: GraphicsBackend> SsrPass<B> {
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
     camera: &Arc<B::Buffer>,
-    resources: &RendererResources<B>
+    resources: &RendererResources<B>,
+    visibility_buffer: bool
   ){
     // TODO: merge back into the original image
     // TODO: specularity map
@@ -80,13 +82,43 @@ impl<B: GraphicsBackend> SsrPass<B> {
       HistoryResourceEntry::Current
     );
 
+    let mut ids = Option::<Ref<Arc<B::TextureStorageView>>>::None;
+    let mut barycentrics = Option::<Ref<Arc<B::TextureStorageView>>>::None;
+
+    if visibility_buffer {
+      ids = Some(resources.access_storage_view(
+        cmd_buffer,
+        VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::STORAGE_READ,
+        TextureLayout::Storage,
+        false,
+        &TextureViewInfo::default(),
+        HistoryResourceEntry::Current
+      ));
+
+      barycentrics = Some(resources.access_storage_view(
+        cmd_buffer,
+        VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+        BarrierSync::COMPUTE_SHADER,
+        BarrierAccess::STORAGE_READ,
+        TextureLayout::Storage,
+        false,
+        &TextureViewInfo::default(),
+        HistoryResourceEntry::Current
+      ));
+    }
+
     cmd_buffer.begin_label("SSR pass");
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
     cmd_buffer.flush_barriers();
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &ssr_uav);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*color_srv, resources.linear_sampler());
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, &*depth_srv, resources.linear_sampler());
-    cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, camera, 0, WHOLE_BUFFER);
+    if visibility_buffer {
+      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, ids.as_ref().unwrap());
+      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, barycentrics.as_ref().unwrap());
+    }
     cmd_buffer.finish_binding();
     let ssr_info = ssr_uav.texture().info();
     cmd_buffer.dispatch((ssr_info.width + 7) / 8, (ssr_info.height + 7) / 8, ssr_info.depth);

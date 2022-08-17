@@ -1,12 +1,12 @@
 use std::sync::Arc;
-use std::ffi::{CString};
+use std::ffi::{CString, CStr};
 
 use ash::vk;
 
 use smallvec::SmallVec;
 use spirv_cross_sys;
 
-use sourcerenderer_core::graphics::{InputRate, RayTracingPipelineInfo, BufferInfo, MemoryUsage, BufferUsage, Buffer};
+use sourcerenderer_core::graphics::{InputRate, RayTracingPipelineInfo, BufferInfo, MemoryUsage, BufferUsage, Buffer, ComputePipeline, BindingFrequency, BindingInfo, BindingType};
 use sourcerenderer_core::graphics::GraphicsPipelineInfo;
 use sourcerenderer_core::graphics::ShaderType;
 use sourcerenderer_core::graphics::Shader;
@@ -147,6 +147,9 @@ impl VkShader {
       let binding_index = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
       };
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
       if set_index == BINDLESS_TEXTURE_SET_INDEX {
         uses_bindless_texture_set = true;
@@ -166,6 +169,7 @@ impl VkShader {
       };
 
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
         shader_stage: shader_type_to_vk(shader_type),
@@ -189,6 +193,9 @@ impl VkShader {
       let binding_index = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
       };
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
 
       let array_size = unsafe {
@@ -205,6 +212,7 @@ impl VkShader {
 
       assert_eq!(array_size, 1);
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
@@ -228,6 +236,9 @@ impl VkShader {
       let binding_index = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
       };
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
 
       let array_size = unsafe {
@@ -243,6 +254,7 @@ impl VkShader {
       };
 
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         shader_stage: shader_type_to_vk(shader_type),
@@ -266,8 +278,12 @@ impl VkShader {
       let binding_index = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
       };
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
         shader_stage: shader_type_to_vk(shader_type),
@@ -291,6 +307,9 @@ impl VkShader {
       let binding_index = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
       };
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
 
       let array_size = unsafe {
@@ -306,6 +325,7 @@ impl VkShader {
       };
 
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
         shader_stage: shader_type_to_vk(shader_type),
@@ -332,6 +352,9 @@ impl VkShader {
       let writable = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationNonWritable)
       } == 0;
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
 
       let array_size = unsafe {
@@ -347,6 +370,7 @@ impl VkShader {
       };
 
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
         shader_stage: shader_type_to_vk(shader_type),
@@ -373,6 +397,9 @@ impl VkShader {
       let writable = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationNonWritable)
       } == 0;
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
 
       let array_size = unsafe {
@@ -387,6 +414,7 @@ impl VkShader {
         }
       };
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
         shader_stage: shader_type_to_vk(shader_type),
@@ -410,8 +438,12 @@ impl VkShader {
       let binding_index = unsafe {
         spirv_cross_sys::spvc_compiler_get_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationBinding)
       };
+      let name = unsafe {
+        CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(compiler, resource.id)).to_str().unwrap().to_string()
+      };
       let set = sets.entry(set_index).or_insert_with(Vec::new);
       set.push(VkDescriptorSetEntryInfo {
+        name,
         index: binding_index,
         descriptor_type: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
         shader_stage: shader_type_to_vk(shader_type),
@@ -855,6 +887,7 @@ impl VkPipeline {
 
       descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] = VkDescriptorSetLayoutKey {
         bindings: vec![VkDescriptorSetEntryInfo {
+          name: "bindless_textures".to_string(),
           shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
           index: 0,
           descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
@@ -1005,6 +1038,7 @@ impl VkPipeline {
     if shader.uses_bindless_texture_set {
       descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] = VkDescriptorSetLayoutKey {
         bindings: vec![VkDescriptorSetEntryInfo {
+          name: "bindless_textures".to_string(),
           shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
           index: 0,
           descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
@@ -1359,6 +1393,25 @@ impl VkPipeline {
       });
     }
 
+    if uses_bindless_texture_set {
+      if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+        panic!("RT Pipeline is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.");
+      }
+
+      descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] = VkDescriptorSetLayoutKey {
+        bindings: vec![VkDescriptorSetEntryInfo {
+          name: "bindless_textures".to_string(),
+          shader_stage: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
+          index: 0,
+          descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+          count: BINDLESS_TEXTURE_COUNT,
+          writable: false,
+          flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT
+        }],
+        flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT
+      };
+    }
+
     let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
       descriptor_set_layouts,
       push_constant_ranges: remapped_push_constant_ranges,
@@ -1516,6 +1569,26 @@ impl Drop for VkPipeline {
       let vk_device = &self.device.device;
       vk_device.destroy_pipeline(self.pipeline, None);
     }
+  }
+}
+
+impl ComputePipeline for VkPipeline {
+  fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo> {
+    self.layout.descriptor_set_layouts[set as usize].and_then(|layout|
+      layout.binding(slot)
+    ).map(|i| BindingInfo {
+      name: i.name.as_str(),
+      binding_type: match i.descriptor_type {
+        vk::DescriptorType::STORAGE_BUFFER_DYNAMIC |
+        vk::DescriptorType::STORAGE_BUFFER => BindingType::StorageTexture,
+        vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC |
+        vk::DescriptorType::UNIFORM_BUFFER => BindingType::ConstantBuffer,
+        vk::DescriptorType::STORAGE_IMAGE => BindingType::StorageTexture,
+        vk::DescriptorType::SAMPLED_IMAGE => BindingType::SampledTexture,
+        vk::DescriptorType::SAMPLER => BindingType::Sampler,
+        vk::DescriptorType::COMBINED_IMAGE_SAMPLER => BindingType::TextureAndSampler
+      }
+    })
   }
 }
 

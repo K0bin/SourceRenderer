@@ -42,7 +42,7 @@ impl<P: Platform> Engine<P> {
     let input = Arc::new(Input::new());
     let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
-    let swapchain = Arc::new(platform.window().create_swapchain(false, &device, &surface));
+    let swapchain = Arc::new(platform.window().create_swapchain(true, &device, &surface));
     let asset_manager = AssetManager::<P>::new(platform, &device);
     let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
     let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;

@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Swapchain, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture}};
+use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Swapchain, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture, TextureDimension}};
 use sourcerenderer_core::Platform;
 use std::{sync::Arc, cell::Ref};
 use std::path::Path;
@@ -54,6 +54,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     let pipeline = device.create_compute_pipeline(&taa_compute_shader, Some("TAA"));
 
     let texture_info = TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: swapchain.width(),
       height: swapchain.height(),

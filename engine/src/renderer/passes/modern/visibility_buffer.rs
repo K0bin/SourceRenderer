@@ -1,5 +1,5 @@
 use nalgebra::Vector2;
-use sourcerenderer_core::{Matrix4, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat}};
+use sourcerenderer_core::{Matrix4, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDimension}};
 use std::sync::Arc;
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::prepass::Prepass};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -35,6 +35,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
 
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
     let barycentrics_texture_info = TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RG16UNorm,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -47,6 +48,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
     resources.create_texture(Self::BARYCENTRICS_TEXTURE_NAME, &barycentrics_texture_info, false);
 
     let primitive_id_texture_info = TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::R32Uint,
       width: swapchain.width(),
       height: swapchain.height(),
@@ -59,6 +61,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
     resources.create_texture(Self::PRIMITIVE_ID_TEXTURE_NAME, &primitive_id_texture_info, false);
 
     let depth_texture_info = TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::D24,
       width: swapchain.width(),
       height: swapchain.height(),

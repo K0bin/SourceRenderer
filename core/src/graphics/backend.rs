@@ -9,7 +9,7 @@ use crate::graphics::Buffer;
 use crate::graphics::Swapchain;
 use crate::graphics::TextureStorageView;
 use crate::graphics::TextureRenderTargetView;
-use super::{Queue, AccelerationStructure};
+use super::{Queue, AccelerationStructure, ComputePipeline};
 use super::texture::TextureDepthStencilView;
 
 use std::hash::Hash;
@@ -32,7 +32,7 @@ pub trait Backend: 'static + Sized {
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
   type GraphicsPipeline: Send + Sync;
-  type ComputePipeline: Send + Sync;
+  type ComputePipeline: ComputePipeline + Send + Sync;
   type RayTracingPipeline: Send + Sync;
   type Fence : Fence + Send + Sync;
   type Semaphore : Send + Sync;

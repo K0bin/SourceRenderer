@@ -3,7 +3,7 @@ use std::{sync::Arc, io::Cursor};
 use std::io::Read;
 use image::io::Reader as ImageReader;
 
-use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, TextureUsage, MemoryUsage, BufferUsage, TextureViewInfo, SamplerInfo, Filter, AddressMode};
+use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, TextureUsage, MemoryUsage, BufferUsage, TextureViewInfo, SamplerInfo, Filter, AddressMode, TextureDimension};
 use sourcerenderer_core::{graphics::Backend, Platform, platform::io::IO};
 
 pub struct BlueNoise<B: Backend> {
@@ -50,6 +50,7 @@ impl<B: Backend> BlueNoise<B> {
     let rgba_data = img.into_rgba8().to_vec();
 
     let texture = device.create_texture(&TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: 128,
       height: 128,

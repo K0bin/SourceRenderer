@@ -10,5 +10,6 @@ pub(crate) mod clustering;
 pub(crate) mod prepass;
 pub(crate) mod ssr;
 pub(crate) mod compositing;
+pub(crate) mod fsr2;
 use modern::acceleration_structure_update;
 use modern::rt_shadows;

@@ -6,6 +6,8 @@ use crate::graphics::Backend;
 use std::hash::Hasher;
 use std::hash::Hash;
 
+use super::BindingFrequency;
+
 #[derive(Clone, Copy, PartialEq, Hash, Eq)]
 pub enum InputRate {
   PerVertex,
@@ -356,4 +358,23 @@ impl<B: Backend> Clone for GraphicsPipelineInfo<'_, B> {
       primitive_type: self.primitive_type
     }
   }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum BindingType {
+  StorageBuffer,
+  StorageTexture,
+  SampledTexture,
+  ConstantBuffer,
+  Sampler,
+  TextureAndSampler
+}
+
+pub struct BindingInfo<'a> {
+  pub name: &'a str,
+  pub binding_type: BindingType
+}
+
+pub trait ComputePipeline {
+  fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo>;
 }

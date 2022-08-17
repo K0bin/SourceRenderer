@@ -7,7 +7,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use ash::vk;
 use ash::extensions::khr::Swapchain as SwapchainLoader;
 
-use sourcerenderer_core::graphics::{SampleCount, Swapchain, SwapchainError, TextureInfo, TextureUsage, TextureViewInfo};
+use sourcerenderer_core::graphics::{SampleCount, Swapchain, SwapchainError, TextureInfo, TextureUsage, TextureViewInfo, TextureDimension};
 use sourcerenderer_core::graphics::Texture;
 use sourcerenderer_core::graphics::Format;
 
@@ -211,6 +211,7 @@ impl VkSwapchain {
         .iter()
         .map(|image|
           Arc::new(VkTexture::from_image(device, *image, TextureInfo {
+            dimension: TextureDimension::Dim2D,
             format: surface_vk_format_to_core(format.format),
             width,
             height,

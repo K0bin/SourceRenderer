@@ -53,7 +53,7 @@ impl<B: Backend> ModernRenderer<B> {
     let visibility_buffer = VisibilityBufferPass::<B>::new::<P>(device, swapchain, &mut barriers);
     let draw_prep = DrawPrepPass::<B>::new::<P>(device, &mut barriers);
     let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer);
-    let ssr_pass = SsrPass::<B>::new::<P>(device, resolution, &mut barriers);
+    let ssr_pass = SsrPass::<B>::new::<P>(device, resolution, &mut barriers, true);
     let shading_pass = ShadingPass::<B>::new::<P>(device, swapchain, &mut barriers, &mut init_cmd_buffer);
     let compositing_pass = CompositingPass::<B>::new::<P>(device, swapchain, &mut barriers);
     init_cmd_buffer.flush_barriers();
@@ -219,7 +219,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
       rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
     }
     self.shading_pass.execute(&mut cmd_buf,  &self.device, lightmap, zero_texture_view, &self.barriers);
-    self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers);
+    self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers, true);
     self.compositing_pass.execute(&mut cmd_buf, &self.barriers);
     self.taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);

@@ -37,7 +37,7 @@ pub use self::command::BarrierTextureRange;
 pub use self::texture::{
   TextureSamplingView, TextureViewInfo, Filter, AddressMode,
   SamplerInfo, TextureRenderTargetView, TextureStorageView,
-  TextureDepthStencilView, TextureLayout
+  TextureDepthStencilView, TextureLayout, TextureDimension
 };
 pub use self::sync::Fence;
 pub use self::rt::{AccelerationStructure, AccelerationStructureSizes,

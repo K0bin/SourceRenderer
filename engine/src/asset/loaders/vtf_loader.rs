@@ -4,7 +4,7 @@ use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, AssetFileData, A
 use std::io::{Cursor, BufReader};
 use sourcerenderer_vtf::{VtfTexture, ImageFormat as VTFTextureFormat};
 use std::fs::File;
-use sourcerenderer_core::graphics::{SampleCount, TextureInfo, TextureUsage};
+use sourcerenderer_core::graphics::{SampleCount, TextureInfo, TextureUsage, TextureDimension};
 use sourcerenderer_core::graphics::Format;
 use std::sync::Arc;
 
@@ -48,6 +48,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
         let mipmap = &texture.read_mip_map(texture.header().mipmap_count as u32 - 1).unwrap();
         Texture {
           info: TextureInfo {
+            dimension: TextureDimension::Dim2D,
             format: convert_vtf_texture_format(mipmap.format),
             width: mipmap.width,
             height: mipmap.height,
@@ -71,6 +72,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
         }
         Texture {
           info: TextureInfo {
+            dimension: TextureDimension::Dim2D,
             format: convert_vtf_texture_format(mipmap.format),
             width: mipmap.width,
             height: mipmap.height,

@@ -208,7 +208,7 @@ impl<P: Platform> RendererInternal<P> {
           intensity
         } => {
           let (_, rotation, _) = deconstruct_transform(&transform);
-          let base_dir = Vec3::new(0f32, -1f32, 0f32);
+          let base_dir = Vec3::new(0f32, 1f32, 0f32);
           let dir = rotation.transform_vector(&base_dir);
           scene.add_directional_light(entity, DirectionalLight { direction: dir, intensity});
         },
@@ -276,6 +276,8 @@ impl<P: Platform> RendererInternal<P> {
     self.frame += 1;
     renderer.dec_queued_frames_counter();
     profiling::finish_frame!();
+
+    std::thread::sleep(Duration::new(0, 16_000_000));
   }
 
   #[profiling::function]

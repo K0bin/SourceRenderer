@@ -1,6 +1,6 @@
 use std::{sync::Arc, io::BufReader};
 
-use sourcerenderer_core::{Platform, graphics::{SampleCount, TextureUsage, TextureInfo}};
+use sourcerenderer_core::{Platform, graphics::{SampleCount, TextureUsage, TextureInfo, TextureDimension}};
 
 use crate::asset::{AssetLoader, asset_manager::{AssetFile, AssetLoaderResult}, AssetManager, AssetLoadPriority, AssetLoaderProgress, Texture, Asset};
 
@@ -36,6 +36,7 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
 
     manager.add_asset_with_progress(&path, Asset::Texture(Texture {
       info: TextureInfo {
+        dimension: TextureDimension::Dim2D,
         format,
         width,
         height,

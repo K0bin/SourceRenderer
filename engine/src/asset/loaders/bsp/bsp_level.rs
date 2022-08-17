@@ -1,6 +1,6 @@
 
 use nalgebra::Rotation3;
-use sourcerenderer_core::{Platform, Quaternion, Vec4, graphics::{Format, SampleCount, TextureUsage}};
+use sourcerenderer_core::{Platform, Quaternion, Vec4, graphics::{Format, SampleCount, TextureUsage, TextureDimension}};
 use crate::{asset::{AssetLoader, AssetType, Asset, Model, AssetManager, Mesh}, renderer::Lightmap};
 use core::slice;
 use std::{path::Path, u8};
@@ -455,6 +455,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
 
     let lightmap_info = TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: lightmap_packer.texture_width(),
       height: lightmap_packer.texture_height(),

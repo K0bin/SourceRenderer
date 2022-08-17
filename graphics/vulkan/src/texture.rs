@@ -7,6 +7,7 @@ use std::sync::Weak;
 use ash::vk;
 
 use sourcerenderer_core::graphics::TextureDepthStencilView;
+use sourcerenderer_core::graphics::TextureDimension;
 use sourcerenderer_core::graphics::TextureRenderTargetView;
 use sourcerenderer_core::graphics::TextureUsage;
 use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureSamplingView, TextureViewInfo, TextureStorageView};
@@ -46,7 +47,11 @@ impl VkTexture {
       initial_layout: vk::ImageLayout::UNDEFINED,
       sharing_mode: vk::SharingMode::EXCLUSIVE,
       usage: texture_usage_to_vk(info.usage),
-      image_type: vk::ImageType::TYPE_2D, // FIXME: if info.height <= 1 { vk::ImageType::TYPE_1D } else if info.depth <= 1 { vk::ImageType::TYPE_2D } else { vk::ImageType::TYPE_3D},
+      image_type: match info.dimension {
+        TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
+        TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
+        TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
+      },
       extent: vk::Extent3D {
         width: max(1, info.width),
         height: max(1, info.height),

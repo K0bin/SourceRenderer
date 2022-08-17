@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage}};
+use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage, TextureDimension}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureViewInfo, BufferUsage };
@@ -226,6 +226,7 @@ impl<P: Platform> RendererAssets<P> {
     let zero_data = [255u8; 16];
     let zero_buffer = device.upload_data(&zero_data, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
     let zero_texture = device.create_texture(&TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: 2,
       height: 2,
@@ -250,6 +251,7 @@ impl<P: Platform> RendererAssets<P> {
     let zero_data_black = [0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8];
     let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
     let zero_texture_black = device.create_texture(&TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: 2,
       height: 2,

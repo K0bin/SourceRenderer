@@ -1,7 +1,7 @@
 use std::{sync::{Arc, Mutex, MutexGuard}, cell::RefCell};
 use ash::{vk, prelude::VkResult};
 use crate::{raw::{RawVkDevice, VkFeatures}, texture::VkSampler, rt::VkAccelerationStructure};
-use sourcerenderer_core::graphics::{BindingFrequency};
+use sourcerenderer_core::graphics::BindingFrequency;
 use std::collections::HashMap;
 
 use crate::texture::VkTextureView;
@@ -39,6 +39,7 @@ impl From<BindingFrequency> for DirtyDescriptorSets {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub(crate) struct VkDescriptorSetEntryInfo {
+  pub(crate) name: String,
   pub(crate) shader_stage: vk::ShaderStageFlags,
   pub(crate) index: u32,
   pub(crate) count: u32,
@@ -58,6 +59,7 @@ pub(crate) struct VkDescriptorSetLayout {
   pub device: Arc<RawVkDevice>,
   layout: vk::DescriptorSetLayout,
   binding_infos: [Option<VkDescriptorSetEntryInfo>; PER_SET_BINDINGS],
+  is_empty: bool,
   template: Option<vk::DescriptorUpdateTemplate>
 }
 
@@ -133,7 +135,8 @@ impl VkDescriptorSetLayout {
       device: device.clone(),
       layout,
       binding_infos,
-      template
+      template,
+      is_empty: bindings.is_empty()
     }
   }
 
@@ -141,8 +144,12 @@ impl VkDescriptorSetLayout {
     &self.layout
   }
 
-  pub(crate) fn binding_count(&self) -> usize {
-    self.binding_infos.len()
+  pub(crate) fn is_empty(&self) -> bool {
+    self.is_empty
+  }
+
+  pub(crate) fn binding(&self, slot: u32) -> Option<&VkDescriptorSetEntryInfo> {
+    self.binding_infos[slot as usize].as_ref()
   }
 
   pub(crate) fn is_dynamic_binding(&self, binding_index: u32) -> bool {
@@ -1040,7 +1047,7 @@ impl VkBindingManager {
 
   pub fn get_or_create_set<'a, T>(&self, frame: u64, layout: &Arc<VkDescriptorSetLayout>, bindings: &'a [T; PER_SET_BINDINGS]) -> Option<Arc<VkDescriptorSet>>
     where VkBoundResource : BindingCompare<T>, VkBoundResource: From<&'a T> {
-    if layout.binding_count() == 0 {
+    if layout.is_empty() {
       return None;
     }
 

@@ -1,6 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read, cell::Ref};
 
-use sourcerenderer_core::{graphics::{Backend, ShaderType, Device, TextureInfo, Format, Swapchain, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, Filter, AddressMode, SamplerInfo}, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, ShaderType, Device, TextureInfo, Format, Swapchain, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, Filter, AddressMode, SamplerInfo, TextureDimension}, Platform, platform::io::IO};
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::{conservative::geometry::GeometryPass, ssao::SsaoPass}};
 
@@ -40,6 +40,7 @@ impl<B: Backend> ShadingPass<B> {
     });
 
     resources.create_texture(GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA16Float,
       width: swapchain.width(),
       height: swapchain.height(),

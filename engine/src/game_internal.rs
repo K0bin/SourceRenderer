@@ -52,10 +52,12 @@ impl GameInternal {
 
     //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
-    //asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro.glb").unwrap()));
+    asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro_sun.glb").unwrap()));
+    asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/SourceRenderer/assets/Sponza2/Sponza.glb").unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
     asset_manager.add_loader(Box::new(ImageLoader::new()));
-    //let mut level = asset_manager.load_level("bistro.glb/scene/Scene").unwrap();
+    let mut level = asset_manager.load_level("bistro_sun.glb/scene/Scene").unwrap();
+    //let mut level = asset_manager.load_level("Sponza.glb/scene/Scene").unwrap();
     //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
 
@@ -80,7 +82,7 @@ impl GameInternal {
       asset_manager.load_level("de_overpass.bsp").unwrap()
     };*/
     trace!("Done loading level");
-    let mut level = asset_manager.load_level("FlightHelmet/FlightHelmet.gltf/scene/0").unwrap();
+    //let mut level = asset_manager.load_level("FlightHelmet/FlightHelmet.gltf/scene/0").unwrap();
 
     PhysicsWorld::install(&mut world, &mut resources, &mut fixed_schedule, tick_duration);
     crate::spinning_cube::install(&mut world, &mut resources, &mut fixed_schedule, asset_manager);

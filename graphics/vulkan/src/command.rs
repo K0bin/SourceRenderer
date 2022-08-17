@@ -1055,12 +1055,12 @@ impl VkCommandBuffer {
     }
   }
 
-  fn clear_storage_view(&mut self, view: &Arc<VkTextureView>, values: [u32; 4]) {
+  fn clear_storage_texture(&mut self, texture: &Arc<VkTexture>, array_layer: u32, mip_level: u32, values: [u32; 4]) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(!self.has_pending_barrier());
     debug_assert!(self.render_pass.is_none());
 
-    let format = view.texture().info().format;
+    let format = texture.info().format;
     let mut aspect_mask = vk::ImageAspectFlags::empty();
     if format.is_depth() {
       aspect_mask |= vk::ImageAspectFlags::DEPTH;
@@ -1074,17 +1074,17 @@ impl VkCommandBuffer {
 
     let range = vk::ImageSubresourceRange {
       aspect_mask: aspect_mask,
-      base_mip_level: view.info().base_mip_level,
-      level_count: view.info().mip_level_length,
-      base_array_layer: view.info().base_array_layer,
-      layer_count: view.info().array_layer_length,
+      base_mip_level: mip_level,
+      level_count: 1,
+      base_array_layer: array_layer,
+      layer_count: 1,
     };
 
     unsafe {
       if aspect_mask.intersects(vk::ImageAspectFlags::DEPTH) || aspect_mask.intersects(vk::ImageAspectFlags::STENCIL) {
         self.device.cmd_clear_depth_stencil_image(
           self.buffer,
-          *view.texture().handle(),
+          *texture.handle(),
           vk::ImageLayout::GENERAL,
           &vk::ClearDepthStencilValue {
             depth: values[0] as f32,
@@ -1095,7 +1095,7 @@ impl VkCommandBuffer {
       } else {
         self.device.cmd_clear_color_image(
           self.buffer,
-          *view.texture().handle(),
+          *texture.handle(),
           vk::ImageLayout::GENERAL,
           &vk::ClearColorValue {
             uint32: values
@@ -1436,8 +1436,8 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn clear_storage_view(&mut self, view: &Arc<VkTextureView>, values: [u32; 4]) {
-    self.item.as_mut().unwrap().clear_storage_view(view, values);
+  fn clear_storage_texture(&mut self, texture: &Arc<VkTexture>, array_layer: u32, mip_level: u32, values: [u32; 4]) {
+    self.item.as_mut().unwrap().clear_storage_texture(texture, array_layer, mip_level, values);
   }
 
   #[inline(always)]

@@ -1,6 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess}, Vec2UI, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureDimension}, Vec2UI, Platform, platform::io::IO};
 
 use crate::renderer::{passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
 
@@ -13,6 +13,7 @@ impl<B: Backend> RTShadowPass<B> {
 
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
     resources.create_texture(Self::SHADOWS_TEXTURE_NAME, &TextureInfo {
+      dimension: TextureDimension::Dim2D,
       format: Format::RGBA8,
       width: resolution.x,
       height: resolution.y,
