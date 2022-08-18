@@ -501,12 +501,7 @@ unsafe extern "C" fn register_resource<B: Backend>(
   }
 
   let type_ = resource_desc.type_;
-  if type_ == FfxResourceType_FFX_RESOURCE_TYPE_BUFFER {
-    let buffer = Arc::<B::Buffer>::from_raw((*in_resource).resource as *mut B::Buffer);
-    context.resources.insert(resource_id, Resource::Buffer {
-      buffer, sync, access
-    });
-  } else {
+  if type_ != FfxResourceType_FFX_RESOURCE_TYPE_BUFFER {
     let texture = Arc::<B::Texture>::from_raw((*in_resource).resource as *mut B::Texture);
 
     let sampling_view = context.device.create_sampling_view(&texture, &TextureViewInfo {
@@ -526,6 +521,8 @@ unsafe extern "C" fn register_resource<B: Backend>(
     context.resources.insert(resource_id, Resource::Texture {
       texture, sync, access, layout, sampling_view, storage_view
     });
+  } else {
+    unimplemented!("FSR2 never registers buffers")
   }
 
   FFX_OK
