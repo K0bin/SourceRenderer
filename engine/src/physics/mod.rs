@@ -41,7 +41,8 @@ pub struct PhysicsWorld {
   island_manager: IslandManager,
   broad_phase: BroadPhase,
   narrow_phase: NarrowPhase,
-  joint_set: JointSet,
+  impulse_joint_set: ImpulseJointSet,
+  multibody_joint_set: MultibodyJointSet,
   ccd_solver: CCDSolver,
   integration_parameters: IntegrationParameters,
   gravity: Vector<f32>,
@@ -56,7 +57,8 @@ impl PhysicsWorld {
     let island_manager = IslandManager::new();
     let broad_phase = BroadPhase::new();
     let narrow_phase = NarrowPhase::new();
-    let joint_set = JointSet::new();
+    let impulse_joint_set = ImpulseJointSet::new();
+    let multibody_joint_set = MultibodyJointSet::new();
     let ccd_solver = CCDSolver::new();
     let gravity = vector![0f32, -9.81f32, 0f32];
     let integration_parameters = IntegrationParameters {
@@ -71,7 +73,8 @@ impl PhysicsWorld {
       island_manager,
       broad_phase,
       narrow_phase,
-      joint_set,
+      impulse_joint_set,
+      multibody_joint_set,
       ccd_solver,
       gravity,
       integration_parameters,
@@ -121,7 +124,7 @@ fn physics_tick(world: &mut SubWorld, #[resource] physics_world: &mut PhysicsWor
       let rigid_body = match rigidbody.body_type {
         RigidBodyType::Static => RigidBodyBuilder::new_static(),
         RigidBodyType::Kinematic => RigidBodyBuilder::new_kinematic_position_based(),
-        RigidBodyType::Dynamic => RigidBodyBuilder::new_dynamic(),
+        RigidBodyType::Dynamic => RigidBodyBuilder::dynamic(),
       }
       .translation(transform.position)
       .rotation(Vec3::new(euler_angles.0, euler_angles.1, euler_angles.2))
@@ -152,7 +155,7 @@ fn physics_tick(world: &mut SubWorld, #[resource] physics_world: &mut PhysicsWor
       let collider = physics_world.collider_set.get(*collider_handle).unwrap();
       collider.parent().unwrap()
     };
-    physics_world.rigid_body_set.remove(rigid_body_handle, &mut physics_world.island_manager, &mut physics_world.collider_set, &mut physics_world.joint_set);
+    physics_world.rigid_body_set.remove(rigid_body_handle, &mut physics_world.island_manager, &mut physics_world.collider_set, &mut physics_world.impulse_joint_set, &mut physics_world.multibody_joint_set, true);
     physics_world.collider_set.remove(*collider_handle, &mut physics_world.island_manager, &mut physics_world.rigid_body_set, true);
   }
 
@@ -168,7 +171,8 @@ fn physics_tick(world: &mut SubWorld, #[resource] physics_world: &mut PhysicsWor
     &mut physics_world.narrow_phase,
     &mut physics_world.rigid_body_set,
     &mut physics_world.collider_set,
-    &mut physics_world.joint_set,
+    &mut physics_world.impulse_joint_set,
+    &mut physics_world.multibody_joint_set,
     &mut physics_world.ccd_solver,
     &(),
     &()
