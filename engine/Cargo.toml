@@ -18,7 +18,6 @@ sourcerenderer_vmt = { path = "../valve_formats/vmt" }
 sourcerenderer_mdl = { path = "../valve_formats/mdl" }
 sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
-fsr2 = { path = "../vendor/fsr2" }
 legion = { version = "0.4.0", default-features = false, features=["crossbeam-events", "codegen"] }
 regex = "1.4.2"
 bitvec = "1.0.1"
@@ -35,6 +34,9 @@ nalgebra-glm = "0.17.0"
 profiling = "1.0.5"
 field-offset = "0.3.4"
 widestring = "1.0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fsr2 = { path = "../vendor/fsr2" }
 
 [features]
 default = ["threading", "late-latching"]

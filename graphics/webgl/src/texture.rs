@@ -208,7 +208,7 @@ impl Eq for WebGLUnorderedAccessView {}
 pub struct WebGLSampler {
   handle: crate::thread::SamplerHandle,
   sender: GLThreadSender,
-  info: SamplerInfo,
+  _info: SamplerInfo,
 }
 
 impl WebGLSampler {
@@ -221,7 +221,7 @@ impl WebGLSampler {
     Self {
       handle: id,
       sender: sender.clone(),
-      info: info.clone()
+      _info: info.clone()
     }
   }
 

@@ -1,6 +1,6 @@
 use std::{hash::{Hash, Hasher}};
 
-use sourcerenderer_core::graphics::{GraphicsPipelineInfo, Shader, ShaderType};
+use sourcerenderer_core::graphics::{GraphicsPipelineInfo, Shader, ShaderType, ComputePipeline, BindingFrequency, BindingInfo};
 
 use crate::{GLThreadSender, WebGLBackend, thread::{PipelineHandle, ShaderHandle, WebGLPipelineInfo}};
 
@@ -90,3 +90,9 @@ impl Drop for WebGLGraphicsPipeline {
 }
 
 pub struct WebGLComputePipeline {}
+
+impl ComputePipeline for WebGLComputePipeline {
+  fn binding_info(&self, _set: BindingFrequency, _slot: u32) -> Option<BindingInfo> {
+    unimplemented!()
+  }
+}

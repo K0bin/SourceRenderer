@@ -23,10 +23,13 @@ use instant::Instant;
 use super::PointLight;
 use super::drawable::{make_camera_proj, make_camera_view};
 use super::light::DirectionalLight;
-use super::passes::conservative::desktop_renderer::ConservativeRenderer;
-use super::passes::modern::ModernRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
+
+#[cfg(not(target_arch = "wasm32"))]
+use super::passes::modern::ModernRenderer;
+#[cfg(not(target_arch = "wasm32"))]
+use super::passes::conservative::desktop_renderer::ConservativeRenderer;
 
 pub(super) struct RendererInternal<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
@@ -57,6 +60,10 @@ impl<P: Platform> RendererInternal<P> {
     let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
     let view = Arc::new(AtomicRefCell::new(View::default()));
 
+    #[cfg(target_arch = "wasm32")]
+    let path = Box::new(WebRenderer::new::<P>(device, swapchain));
+
+    #[cfg(not(target_arch = "wasm32"))]
     let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
       Box::new(WebRenderer::new::<P>(device, swapchain))
     } else {

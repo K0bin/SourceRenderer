@@ -4,7 +4,7 @@
   "description": "Render source engine maps in the browser",
   "main": "index.js",
   "scripts": {
-    "build_rust": "cd ../lib && RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' wasm-pack build --target no-modules --dev -- -Z build-std=std,panic_abort",
+    "build_rust": "cd ../lib && RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' wasm-pack build --dev --target no-modules . -- -Z build-std=std,panic_abort",
     "build": "./build.sh",
     "start": "python3 server.py"
   },
