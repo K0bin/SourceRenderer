@@ -42,6 +42,7 @@ impl<B: GraphicsBackend> SharpenPass<B> {
       array_length: 1,
       samples: sourcerenderer_core::graphics::SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC,
+      supports_srgb: false,
     }, false);
 
     Self {

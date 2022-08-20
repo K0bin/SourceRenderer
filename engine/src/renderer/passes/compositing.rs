@@ -38,6 +38,7 @@ impl<B: GraphicsBackend> CompositingPass<B> {
       array_length: 1,
       samples: sourcerenderer_core::graphics::SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+      supports_srgb: false,
     }, false);
 
     Self {

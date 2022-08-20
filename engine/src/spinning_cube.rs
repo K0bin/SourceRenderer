@@ -253,7 +253,8 @@ pub fn install<P: Platform>(world: &mut World, resources: &mut Resources, system
     depth: 1,
     mip_levels: 1,
     array_length: 1,
-    samples: SampleCount::Samples1
+    samples: SampleCount::Samples1,
+      supports_srgb: false
   };*/
 
   let triangle_data = unsafe { std::slice::from_raw_parts(triangle.as_ptr() as *const u8, std::mem::size_of_val(&triangle[..])) }.to_vec().into_boxed_slice();

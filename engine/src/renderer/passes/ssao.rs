@@ -33,6 +33,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+      supports_srgb: false,
     }, false);
 
     resources.create_texture(Self::SSAO_TEXTURE_NAME, &TextureInfo {
@@ -45,6 +46,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+      supports_srgb: false,
     }, true);
 
     let shader = {

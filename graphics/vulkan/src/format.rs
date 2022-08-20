@@ -5,6 +5,7 @@ use sourcerenderer_core::graphics::Format;
 pub fn format_to_vk(format: Format, supports_d24: bool) -> vk::Format {
   match format {
     Format::RGBA8UNorm => vk::Format::R8G8B8A8_UNORM,
+    Format::RGBA8Srgb => vk::Format::R8G8B8A8_SRGB,
     Format::R16UNorm => vk::Format::R16_UNORM,
     Format::R16Float => vk::Format::R16_SFLOAT,
     Format::R32Float => vk::Format::R32_SFLOAT,
@@ -28,7 +29,6 @@ pub fn format_to_vk(format: Format, supports_d24: bool) -> vk::Format {
     Format::RG16Float => vk::Format::R16G16_SFLOAT,
     Format::RGBA16Float => vk::Format::R16G16B16A16_SFLOAT,
     Format::R11G11B10Float => vk::Format::B10G11R11_UFLOAT_PACK32,
-    Format::RG16UInt => vk::Format::R16G16_UINT,
     Format::RG16UInt => vk::Format::R16G16_UINT,
     Format::R16UInt => vk::Format::R16_UINT,
     Format::R16SNorm => vk::Format::R16_SNORM,

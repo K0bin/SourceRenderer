@@ -234,7 +234,8 @@ impl<P: Platform> RendererAssets<P> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
+      usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
+      supports_srgb: false,
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0, 0);
     let zero_view = device.create_sampling_view(&zero_texture, &TextureViewInfo::default(), Some("AssetManagerZeroTextureView"));
@@ -259,7 +260,8 @@ impl<P: Platform> RendererAssets<P> {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST
+      usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
+      supports_srgb: false,
     }, Some("AssetManagerZeroTextureBlack"));
     device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0, 0);
     let zero_view_black = device.create_sampling_view(&zero_texture_black, &TextureViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
@@ -377,6 +379,7 @@ impl<P: Platform> RendererAssets<P> {
         mip_level_length: texture.info.mip_levels,
         base_array_layer: 0,
         array_layer_length: 1,
+        format: None,
     }, Some(texture_path));
 
     (view, fence)

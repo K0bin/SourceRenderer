@@ -59,16 +59,12 @@ impl<B: Backend> BlueNoise<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::COPY_DST | TextureUsage::SAMPLED | TextureUsage::STORAGE,
+      supports_srgb: false,
     }, Some(&format!("STBlueNoise{}", index)));
     let buffer = device.upload_data(&rgba_data[..], MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     device.init_texture(&texture, &buffer, 0, 0, 0);
 
-    device.create_sampling_view(&texture, &TextureViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1,
-    }, Some(&format!("STBlueNoiseUAV{}", index)))
+    device.create_sampling_view(&texture, &TextureViewInfo::default(), Some(&format!("STBlueNoiseUAV{}", index)))
   }
 
   pub fn frame(&self, index: u64) -> &Arc<B::TextureSamplingView> {

@@ -56,7 +56,8 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
             mip_levels: texture.header().mipmap_count as u32,
             array_length: 1,
             samples: SampleCount::Samples1,
-            usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST
+            usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST,
+            supports_srgb: false,
           },
           data: data.into_boxed_slice(),
         }
@@ -80,7 +81,8 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
             mip_levels: texture.header().mipmap_count as u32,
             array_length: 1,
             samples: SampleCount::Samples1,
-            usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST
+            usage: TextureUsage::SAMPLED | TextureUsage::BLIT_DST,
+            supports_srgb: false,
           },
           data: data.into_boxed_slice(),
         }

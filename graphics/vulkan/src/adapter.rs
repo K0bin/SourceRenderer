@@ -40,6 +40,7 @@ const TIMELINE_SEMAPHORE_EXT_NAME: &str = "VK_KHR_timeline_semaphore";
 const SYNCHRONIZATION2_EXT_NAME: &str = "VK_KHR_synchronization2";
 const SAMPLER_FILTER_MINMAX_EXT_NAME: &str = "VK_EXT_sampler_filter_minmax";
 const BARYCENTRICS_EXT_NAME: &str = "VK_NV_fragment_shader_barycentric"; // TODO: Use VK_KHR_fragment_shader_barycentric
+const IMAGE_FORMAT_LIST_EXT_NAME: &str = "VK_KHR_image_format_list";
 
 
 bitflags! {
@@ -64,6 +65,7 @@ bitflags! {
     const SYNCHRONIZATION2           = 0b10000000000000000;
     const SAMPLER_FILTER_MINMAX      = 0b100000000000000000;
     const BARYCENTRICS               = 0b1000000000000000000;
+    const IMAGE_FORMAT_LIST          = 0b10000000000000000000;
   }
 }
 
@@ -120,6 +122,7 @@ impl VkAdapter {
         SYNCHRONIZATION2_EXT_NAME => { VkAdapterExtensionSupport::SYNCHRONIZATION2 },
         SAMPLER_FILTER_MINMAX_EXT_NAME => { VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX },
         BARYCENTRICS_EXT_NAME => { VkAdapterExtensionSupport::BARYCENTRICS },
+        IMAGE_FORMAT_LIST_EXT_NAME => { VkAdapterExtensionSupport::IMAGE_FORMAT_LIST },
         _ => VkAdapterExtensionSupport::NONE
       };
     }
@@ -400,6 +403,11 @@ impl Adapter<VkBackend> for VkAdapter {
         extension_names.push(BARYCENTRICS_EXT_NAME);
         features |= VkFeatures::BARYCENTRICS;
         enabled_features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
+      }
+
+      if self.extensions.contains(VkAdapterExtensionSupport::IMAGE_FORMAT_LIST) {
+        extension_names.push(IMAGE_FORMAT_LIST_EXT_NAME);
+        features |= VkFeatures::IMAGE_FORMAT_LIST;
       }
 
       let extension_names_c: Vec<CString> = extension_names

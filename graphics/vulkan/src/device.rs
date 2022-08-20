@@ -232,34 +232,16 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    let srv_info = TextureViewInfo {
-      base_mip_level: info.base_mip_level,
-      mip_level_length: info.mip_level_length,
-      base_array_layer: info.base_array_layer,
-      array_layer_length: info.array_layer_length,
-    };
-    Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
+    Arc::new(VkTextureView::new(&self.device, texture, info, name))
   }
 
   fn create_storage_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    let srv_info = TextureViewInfo {
-      base_mip_level: info.base_mip_level,
-      mip_level_length: info.mip_level_length,
-      base_array_layer: info.base_array_layer,
-      array_layer_length: info.array_layer_length,
-    };
-    Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
+    Arc::new(VkTextureView::new(&self.device, texture, info, name))
   }
 
   fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
     assert!(texture.info().format.is_depth() || texture.info().format.is_stencil());
-    let srv_info = TextureViewInfo {
-      base_mip_level: info.base_mip_level,
-      mip_level_length: info.mip_level_length,
-      base_array_layer: info.base_array_layer,
-      array_layer_length: info.array_layer_length,
-    };
-    Arc::new(VkTextureView::new(&self.device, texture, &srv_info, name))
+    Arc::new(VkTextureView::new(&self.device, texture, info, name))
   }
 
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<VkSampler> {

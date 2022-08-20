@@ -24,6 +24,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+      supports_srgb: false,
     }, false);
 
     let shader = {

@@ -95,6 +95,7 @@ impl VkSwapchain {
         }
       };
       let format = VkSwapchain::pick_format(&formats);
+      println!("format: {:?}", format);
 
       let (width, height) = VkSwapchain::pick_extent(&capabilities, width, height);
       let extent = vk::Extent2D {
@@ -219,7 +220,8 @@ impl VkSwapchain {
             mip_levels: 1u32,
             depth: 1u32,
             samples: SampleCount::Samples1,
-            usage: TextureUsage::RENDER_TARGET | TextureUsage::COPY_DST | TextureUsage::BLIT_DST
+            usage: TextureUsage::RENDER_TARGET | TextureUsage::COPY_DST | TextureUsage::BLIT_DST,
+            supports_srgb: false
           })))
         .collect();
 

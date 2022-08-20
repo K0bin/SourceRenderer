@@ -6,6 +6,7 @@ pub enum Format {
   R16UNorm,
   R8Unorm,
   RGBA8UNorm,
+  RGBA8Srgb,
   BGR8UNorm,
   BGRA8UNorm,
   DXT1,
@@ -66,6 +67,13 @@ impl Format {
       Format::RGB32Float => 12,
       Format::RGBA32Float => 16,
       _ => todo!()
+    }
+  }
+
+  pub fn srgb_format(&self) -> Option<Format> {
+    match self {
+      Format::RGBA8UNorm => Some(Format::RGBA8Srgb),
+      _ => None
     }
   }
 }

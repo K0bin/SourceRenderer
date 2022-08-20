@@ -51,6 +51,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::DEPTH_STENCIL | TextureUsage::SAMPLED,
+      supports_srgb: false,
     };
     resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_info, true);
 
@@ -64,6 +65,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
+      supports_srgb: false,
     }, true);
 
     resources.create_texture(Self::NORMALS_TEXTURE_NAME, &TextureInfo {
@@ -76,6 +78,7 @@ impl<B: GraphicsBackend> Prepass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
+      supports_srgb: false,
     }, false);
 
     let vertex_shader = {

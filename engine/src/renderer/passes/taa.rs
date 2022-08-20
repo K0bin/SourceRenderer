@@ -63,6 +63,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::STORAGE,
+      supports_srgb: false,
     };
     resources.create_texture(Self::TAA_TEXTURE_NAME, &texture_info, true);
 

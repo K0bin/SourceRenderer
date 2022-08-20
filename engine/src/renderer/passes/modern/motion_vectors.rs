@@ -37,7 +37,8 @@ impl<B: Backend> MotionVectorPass<B> {
           mip_levels: 1,
           array_length: 1,
           samples: SampleCount::Samples1,
-          usage: TextureUsage::SAMPLED | TextureUsage::STORAGE
+          usage: TextureUsage::SAMPLED | TextureUsage::STORAGE,
+          supports_srgb: false,
         },
         false
     );

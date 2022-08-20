@@ -22,6 +22,7 @@ impl<B: Backend> RTShadowPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+      supports_srgb: false,
     }, false);
 
     let ray_gen_shader = {

@@ -463,7 +463,8 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
       mip_levels: 1,
       array_length: 1,
       samples: SampleCount::Samples1,
-      usage: TextureUsage::COPY_DST | TextureUsage::SAMPLED
+      usage: TextureUsage::COPY_DST | TextureUsage::SAMPLED,
+      supports_srgb: false,
     };
     let samples = lightmap_packer.take_data();
     let samples_len = samples.len();

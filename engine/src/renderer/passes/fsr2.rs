@@ -61,7 +61,8 @@ impl<B: Backend> Fsr2Pass<B> {
         mip_levels: 1,
         array_length: 1,
         samples: SampleCount::Samples1,
-        usage: TextureUsage::COPY_SRC | TextureUsage::STORAGE
+        usage: TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+        supports_srgb: false,
       },
       false
     );
@@ -422,7 +423,8 @@ unsafe extern "C" fn create_resource<B: Backend>(
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: texture_usage,
-      format: ffx_to_format(resource_desc.format)
+      format: ffx_to_format(resource_desc.format),
+      supports_srgb: false,
     }, if let Some(name) = name.as_ref() { Some (name) } else { None });
 
     if desc.initData != std::ptr::null_mut() {
@@ -432,19 +434,11 @@ unsafe extern "C" fn create_resource<B: Backend>(
     }
 
     let sampling_name = name.as_ref().map(|name| name.as_str()).unwrap_or_else(|| "").to_string() + "_sampling";
-    let sampling_view = device.create_sampling_view(&texture, &TextureViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1,
-    }, if name.is_some() { Some(sampling_name.as_str()) } else { None });
+    let sampling_view = device.create_sampling_view(&texture, &TextureViewInfo::default(),
+      if name.is_some() { Some(sampling_name.as_str()) } else { None });
     let storage_name = name.as_ref().map(|name| name.as_str()).unwrap_or_else(|| "").to_string() + "_storage";
-    let storage_view = device.create_storage_view(&texture, &TextureViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1,
-    }, if name.is_some() { Some(storage_name.as_str()) } else { None });
+    let storage_view = device.create_storage_view(&texture, &TextureViewInfo::default(),
+      if name.is_some() { Some(storage_name.as_str()) } else { None });
 
     context.resources.insert(resource_id, Resource::Texture {
       texture,
@@ -504,18 +498,8 @@ unsafe extern "C" fn register_resource<B: Backend>(
   if type_ != FfxResourceType_FFX_RESOURCE_TYPE_BUFFER {
     let texture = Arc::<B::Texture>::from_raw((*in_resource).resource as *mut B::Texture);
 
-    let sampling_view = context.device.create_sampling_view(&texture, &TextureViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1,
-    }, None);
-    let storage_view = context.device.create_storage_view(&texture, &TextureViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1,
-    }, None);
+    let sampling_view = context.device.create_sampling_view(&texture, &TextureViewInfo::default(), None);
+    let storage_view = context.device.create_storage_view(&texture, &TextureViewInfo::default(), None);
     // TODO: only create views once and pass them via descriptorData
 
     context.resources.insert(resource_id, Resource::Texture {
@@ -752,7 +736,7 @@ unsafe extern "C" fn create_pipeline<P: Platform, B: Backend>(
   let context = ScratchContext::<B>::from_interface(backend_interface);
 
   let mut path: PathBuf = PathBuf::from("shaders");
-  let mut name: String;
+  let name: String;
   if pass == FfxFsr2Pass_FFX_FSR2_PASS_PREPARE_INPUT_COLOR {
     path = path.join("ffx_fsr2_prepare_input_color_pass.spv");
     name = "ffx_fsr2_prepare_input_color_pass".to_string();

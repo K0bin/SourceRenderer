@@ -47,6 +47,7 @@ impl<B: Backend> ShadingPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+      supports_srgb: true,
     }, false);
 
     Self  {

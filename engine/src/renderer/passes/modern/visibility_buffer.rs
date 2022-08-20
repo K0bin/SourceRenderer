@@ -29,6 +29,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+      supports_srgb: false,
     };
     resources.create_texture(Self::BARYCENTRICS_TEXTURE_NAME, &barycentrics_texture_info, false);
 
@@ -42,6 +43,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+      supports_srgb: false,
     };
     resources.create_texture(Self::PRIMITIVE_ID_TEXTURE_NAME, &primitive_id_texture_info, false);
 
@@ -55,6 +57,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL,
+      supports_srgb: false,
     };
     resources.create_texture(Prepass::<B>::DEPTH_TEXTURE_NAME, &depth_texture_info, true);
 

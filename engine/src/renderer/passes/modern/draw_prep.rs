@@ -75,6 +75,7 @@ impl<B: Backend> DrawPrepPass<B> {
           mip_level_length: hi_z_mips,
           base_array_layer: 0,
           array_layer_length: 1,
+          format: None,
         },
         HistoryResourceEntry::Current
       );

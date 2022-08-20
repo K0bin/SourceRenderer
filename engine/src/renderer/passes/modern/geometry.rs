@@ -46,6 +46,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+      supports_srgb: false,
     };
     barriers.create_texture(Self::GEOMETRY_PASS_TEXTURE_NAME, &texture_info, false);
 

@@ -79,7 +79,7 @@ impl WebGLSwapchain {
     let handle = allocator.new_texture_handle();
     let backbuffer = Arc::new(WebGLTexture::new(handle, &TextureInfo {
       dimension: TextureDimension::Dim2D,
-      format: Format::RGBA8,
+      format: Format::RGBA8UNorm,
       width: surface.width,
       height: surface.height,
       depth: 1,
@@ -87,14 +87,10 @@ impl WebGLSwapchain {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::RENDER_TARGET,
+      supports_srgb: false,
     }, sender));
 
-    let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureViewInfo {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1
-    }));
+    let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureViewInfo::default()));
 
     Self {
       sync: Arc::new(GLThreadSync {

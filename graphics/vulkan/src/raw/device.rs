@@ -19,6 +19,7 @@ bitflags! {
     const ADVANCED_INDIRECT          = 0b10000;
     const MIN_MAX_FILTER             = 0b100000;
     const BARYCENTRICS               = 0b1000000;
+    const IMAGE_FORMAT_LIST          = 0b10000000;
   }
 }
 

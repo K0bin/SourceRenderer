@@ -22,6 +22,7 @@ impl<B: Backend> GeometryPass<B> {
       array_length: 1,
       samples: SampleCount::Samples1,
       usage: TextureUsage::DEPTH_STENCIL,
+      supports_srgb: false,
     }, false);
 
     let shader_file_extension = if cfg!(target_family = "wasm") {

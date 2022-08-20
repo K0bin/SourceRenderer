@@ -6,6 +6,7 @@ use std::sync::Weak;
 
 use ash::vk;
 
+use smallvec::SmallVec;
 use sourcerenderer_core::graphics::TextureDepthStencilView;
 use sourcerenderer_core::graphics::TextureDimension;
 use sourcerenderer_core::graphics::TextureRenderTargetView;
@@ -41,7 +42,7 @@ struct VkTextureBindlessSlot {
 
 impl VkTexture {
   pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, name: Option<&str>) -> Self {
-    let create_info = vk::ImageCreateInfo {
+    let mut create_info = vk::ImageCreateInfo {
       flags: vk::ImageCreateFlags::empty(),
       tiling: vk::ImageTiling::OPTIMAL,
       initial_layout: vk::ImageLayout::UNDEFINED,
@@ -63,6 +64,20 @@ impl VkTexture {
       samples: samples_to_vk(info.samples),
       ..Default::default()
     };
+
+    let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
+    compatible_formats.push(create_info.format);
+    let mut format_list = vk::ImageFormatListCreateInfo {
+      view_format_count: compatible_formats.len() as u32,
+      p_view_formats: compatible_formats.as_ptr(),
+      ..Default::default()
+    };
+    if info.supports_srgb {
+      create_info.flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
+      if device.features.contains(VkFeatures::IMAGE_FORMAT_LIST) {
+        format_list.p_next = std::mem::replace(&mut create_info.p_next, &format_list as *const vk::ImageFormatListCreateInfo as *const c_void);
+      }
+    }
 
     let mut props: vk::ImageFormatProperties2 = Default::default();
     unsafe {
@@ -255,10 +270,15 @@ pub struct VkTextureView {
 
 impl VkTextureView {
   pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Self {
+    let format = info.format.unwrap_or(texture.info.format);
     let view_create_info = vk::ImageViewCreateInfo {
       image: *texture.handle(),
-      view_type: vk::ImageViewType::TYPE_2D, // FIXME: if texture.info().height <= 1 { vk::ImageViewType::TYPE_1D } else if texture.info().depth <= 1 { vk::ImageViewType::TYPE_2D } else { vk::ImageViewType::TYPE_3D},
-      format: format_to_vk(texture.info.format, device.supports_d24),
+      view_type: match texture.info.dimension {
+        TextureDimension::Dim1D => vk::ImageViewType::TYPE_1D,
+        TextureDimension::Dim2D => vk::ImageViewType::TYPE_2D,
+        TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
+      },
+      format: format_to_vk(format, device.supports_d24),
       components: vk::ComponentMapping {
         r: vk::ComponentSwizzle::IDENTITY,
         g: vk::ComponentSwizzle::IDENTITY,
@@ -266,7 +286,7 @@ impl VkTextureView {
         a: vk::ComponentSwizzle::IDENTITY,
       },
       subresource_range: vk::ImageSubresourceRange {
-        aspect_mask: if texture.info().format.is_depth() {
+        aspect_mask: if format.is_depth() {
           vk::ImageAspectFlags::DEPTH
         } else {
           vk::ImageAspectFlags::COLOR

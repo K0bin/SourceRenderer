@@ -44,6 +44,7 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
         array_length: 1,
         samples: SampleCount::Samples1,
         usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
+        supports_srgb: false,
       },
       data: vec![data.into_boxed_slice()].into_boxed_slice(),
     }), Some(progress), priority);

@@ -55,7 +55,8 @@ pub struct TextureInfo {
   pub mip_levels: u32,
   pub array_length: u32,
   pub samples: SampleCount,
-  pub usage: TextureUsage
+  pub usage: TextureUsage,
+  pub supports_srgb: bool
 }
 
 pub trait Texture {
@@ -84,6 +85,7 @@ pub struct TextureViewInfo {
   pub mip_level_length: u32,
   pub base_array_layer: u32,
   pub array_layer_length: u32,
+  pub format: Option<Format>,
 }
 
 impl Default for TextureViewInfo {
@@ -92,7 +94,8 @@ impl Default for TextureViewInfo {
       base_mip_level: 0,
       mip_level_length: 1,
       base_array_layer: 0,
-      array_layer_length: 1
+      array_layer_length: 1,
+      format: None,
     }
   }
 }
