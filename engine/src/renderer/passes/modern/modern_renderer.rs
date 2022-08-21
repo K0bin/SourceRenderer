@@ -18,9 +18,6 @@ pub struct ModernRenderer<B: Backend> {
   clustering_pass: ClusteringPass<B>,
   light_binning_pass: LightBinningPass<B>,
   geometry_draw_prep: DrawPrepPass<B>,
-  taa: TAAPass<B>,
-  sharpen: SharpenPass<B>,
-  fsr: Fsr2Pass<B>,
   ssao: SsaoPass<B>,
   rt_passes: Option<RTPasses<B>>,
   blue_noise: BlueNoise<B>,
@@ -30,6 +27,17 @@ pub struct ModernRenderer<B: Backend> {
   shading_pass: ShadingPass<B>,
   compositing_pass: CompositingPass<B>,
   motion_vector_pass: MotionVectorPass<B>,
+  anti_aliasing: AntiAliasing<B>,
+}
+
+enum AntiAliasing<B: Backend> {
+  TAA {
+    taa: TAAPass<B>,
+    sharpen: SharpenPass<B>
+  },
+  FSR2 {
+    fsr: Fsr2Pass<B>
+  }
 }
 
 pub struct RTPasses<B: Backend> {
@@ -38,6 +46,8 @@ pub struct RTPasses<B: Backend> {
 }
 
 impl<B: Backend> ModernRenderer<B> {
+  const USE_FSR2: bool = true;
+
   pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
     let resolution = Vec2UI::new(swapchain.width() / 4 * 3, swapchain.height() / 4 * 3);
@@ -48,8 +58,6 @@ impl<B: Backend> ModernRenderer<B> {
 
     let clustering = ClusteringPass::<B>::new::<P>(device, &mut barriers);
     let light_binning = LightBinningPass::<B>::new::<P>(device, &mut barriers);
-    let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut barriers, true);
-    let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut barriers);
     let ssao = SsaoPass::<B>::new::<P>(device, resolution, &mut barriers, true);
     let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
       acceleration_structure_update: AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer),
@@ -62,7 +70,15 @@ impl<B: Backend> ModernRenderer<B> {
     let shading_pass = ShadingPass::<B>::new::<P>(device, resolution, &mut barriers, &mut init_cmd_buffer);
     let compositing_pass = CompositingPass::<B>::new::<P>(device, resolution, &mut barriers);
     let motion_vector_pass = MotionVectorPass::<B>::new::<P>(device, &mut barriers, resolution);
-    let fsr_pass = Fsr2Pass::<B>::new::<P>(device, &mut barriers, resolution, swapchain);
+
+    let anti_aliasing = if Self::USE_FSR2 {
+      let fsr_pass = Fsr2Pass::<B>::new::<P>(device, &mut barriers, resolution, swapchain);
+      AntiAliasing::FSR2 { fsr: fsr_pass }
+    } else {
+      let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut barriers, true);
+      let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut barriers);
+      AntiAliasing::TAA { taa, sharpen }
+    };
 
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
@@ -78,8 +94,6 @@ impl<B: Backend> ModernRenderer<B> {
       clustering_pass: clustering,
       light_binning_pass: light_binning,
       geometry_draw_prep: draw_prep,
-      taa,
-      sharpen,
       ssao,
       rt_passes,
       blue_noise,
@@ -88,8 +102,8 @@ impl<B: Backend> ModernRenderer<B> {
       visibility_buffer,
       shading_pass,
       compositing_pass,
-      fsr: fsr_pass,
       motion_vector_pass,
+      anti_aliasing,
     }
   }
 
@@ -228,6 +242,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     self.hi_z_pass.execute(&mut cmd_buf, &self.barriers);
     self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref);
     self.visibility_buffer.execute(&mut cmd_buf, &self.barriers, vertex_buffer, index_buffer);
+    self.motion_vector_pass.execute(&mut cmd_buf, &self.barriers);
     self.clustering_pass.execute(&mut cmd_buf, resolution, &view_ref, &camera_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &camera_buffer, &mut self.barriers);
     self.ssao.execute(&mut cmd_buf, &camera_buffer, self.blue_noise.frame(frame), self.blue_noise.sampler(), &self.barriers, true);
@@ -238,12 +253,15 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers, true);
     self.compositing_pass.execute(&mut cmd_buf, &self.barriers);
 
-    /*self.taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
-    self.sharpen.execute(&mut cmd_buf, &self.barriers);*/
-
-    self.motion_vector_pass.execute(&mut cmd_buf, &self.barriers);
-
-    self.fsr.execute(&mut cmd_buf, &self.barriers, &view_ref, delta, frame);
+    match &mut self.anti_aliasing {
+      AntiAliasing::FSR2 { fsr } => {
+        fsr.execute(&mut cmd_buf, &self.barriers, &view_ref, delta, frame);
+      }
+      AntiAliasing::TAA { taa, sharpen } => {
+        taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
+        sharpen.execute(&mut cmd_buf, &self.barriers);
+      }
+    }
 
     let output_texture = self.barriers.access_texture(
       &mut cmd_buf,
