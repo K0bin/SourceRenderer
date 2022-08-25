@@ -12,3 +12,7 @@
 	path = vendor/vma-sys/Vulkan-Headers
 	url = git@github.com:KhronosGroup/Vulkan-Headers.git
 	active = true
+[submodule "vendor/fsr2/FidelityFX-FSR2"]
+	path = vendor/fsr2/FidelityFX-FSR2
+	url = git@github.com:K0bin/FidelityFX-FSR2.git
+	active = true
