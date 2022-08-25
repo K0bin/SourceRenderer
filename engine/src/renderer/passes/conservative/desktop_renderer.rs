@@ -1,11 +1,10 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::{AtomicRefCell, AtomicRef}, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage, MemoryUsage, BufferInfo}, Vec2, Vec3};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage, MemoryUsage, BufferInfo}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::blue_noise::BlueNoise}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::blue_noise::BlueNoise}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass};
 
@@ -94,8 +93,8 @@ impl<B: Backend> ConservativeRenderer<B> {
     camera_history_buffer: &Arc<B::Buffer>,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>,
-    scene: &AtomicRef<RendererScene<B>>,
-    view: &AtomicRef<View>,
+    scene: &RendererScene<B>,
+    view: &View,
     _swapchain: &Arc<B::Swapchain>,
     rendering_resolution: &Vec2UI,
     frame: u64
@@ -190,59 +189,52 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
   #[profiling::function]
   fn render(
     &mut self,
-    scene: &Arc<AtomicRefCell<RendererScene<B>>>,
-    view: &Arc<AtomicRefCell<View>>,
-    zero_texture_view: &Arc<B::TextureSamplingView>,
-    zero_texture_view_black: &Arc<B::TextureSamplingView>,
-    lightmap: &Arc<RendererTexture<B>>,
+    scene: &SceneInfo<B>,
+    zero_textures: &ZeroTextures<B>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
-    frame: u64,
-    _delta: Duration,
-    vertex_buffer: &Arc<B::Buffer>,
-    index_buffer: &Arc<B::Buffer>
+    frame_info: &FrameInfo,
   ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 
-    let view_ref = view.borrow();
-    let scene_ref = scene.borrow();
-
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer);
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene, &late_latching_buffer);
     }
 
-    let scene = cmd_buf.create_temporary_buffer(&BufferInfo {
+    let primary_view = &scene.views[scene.active_view_index];
+
+    let scene_buffer = cmd_buf.create_temporary_buffer(&BufferInfo {
       size: 16,
       usage: BufferUsage::STORAGE
     }, MemoryUsage::VRAM);
 
     let frame_bindings = self.create_frame_bindings(
       &mut cmd_buf,
-      &scene,
+      &scene_buffer,
       &late_latching_buffer,
       &late_latching_history_buffer,
-      vertex_buffer,
-      index_buffer,
-      &scene_ref,
-      &view_ref,
+      scene.vertex_buffer,
+      scene.index_buffer,
+      scene.scene,
+      primary_view,
       &self.swapchain,
       &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
-      frame
+      frame_info.frame
     );
     Self::setup_frame(&mut cmd_buf, &frame_bindings);
 
-    self.occlusion.execute(&self.device, &mut cmd_buf, frame, &self.barriers, &late_latching_buffer, &scene_ref, &view_ref);
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), &view_ref, &late_latching_buffer, &mut self.barriers);
-    self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &late_latching_buffer, &mut self.barriers);
-    self.prepass.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, Matrix4::identity(), frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
-    self.ssao.execute(&mut cmd_buf, &late_latching_buffer, self.blue_noise.frame(frame), self.blue_noise.sampler(), &self.barriers, false);
+    self.occlusion.execute(&self.device, &mut cmd_buf, frame_info.frame, &self.barriers, &late_latching_buffer, scene.scene, primary_view);
+    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), primary_view, &late_latching_buffer, &mut self.barriers);
+    self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &late_latching_buffer, &mut self.barriers);
+    self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
+    self.ssao.execute(&mut cmd_buf, &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), &self.barriers, false);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
+      rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
     }
-    self.geometry.execute(&mut cmd_buf, &self.device, &scene_ref, &view_ref, &frame_bindings, zero_texture_view, zero_texture_view_black, lightmap, &self.barriers);
+    self.geometry.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, &frame_bindings, zero_textures.zero_texture_view, zero_textures.zero_texture_view_black, scene.lightmap.unwrap(), &self.barriers);
     self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers, false);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
 
@@ -298,7 +290,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
 
     if let Some(late_latching) = late_latching {
       let input_state = input.poll();
-      late_latching.before_submit(&input_state, &view_ref);
+      late_latching.before_submit(&input_state, primary_view);
     }
     graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem], true);
     graphics_queue.present(&self.swapchain, &[&cmd_buf_sem], true);

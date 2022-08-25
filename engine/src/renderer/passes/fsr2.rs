@@ -1,10 +1,10 @@
-use std::{mem::MaybeUninit, ffi::{c_void, CStr, CString}, sync::Arc, os::raw::c_char, collections::{HashMap, VecDeque}, path::{Path, PathBuf}, io::Read};
+use std::{mem::MaybeUninit, ffi::{c_void, CString}, sync::Arc, collections::{HashMap, VecDeque}, path::PathBuf, io::Read};
 use std::time::Duration;
 
 use fsr2::*;
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, Device, MemoryUsage, BufferInfo, BufferUsage, TextureDimension, SampleCount, TextureUsage, TextureInfo, Format, Buffer, Texture, CommandBuffer, Barrier, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, ShaderType, ComputePipeline, BindingFrequency, BindingType, TextureViewInfo, WHOLE_BUFFER, PipelineBinding}, atomic_refcell::{AtomicRefCell, AtomicRefMut}, Platform, platform::io::IO, Vec2, Vec2UI};
-use sourcerenderer_core::graphics::{Swapchain, TextureDepthStencilView};
+use sourcerenderer_core::graphics::Swapchain;
 use widestring::WideCStr;
 use crate::renderer::drawable::View;
 use crate::renderer::passes::compositing::CompositingPass;
@@ -20,7 +20,7 @@ pub struct Fsr2Pass<B: Backend> {
 }
 
 impl<B: Backend> Fsr2Pass<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, resolution: Vec2UI, swapchain: &B::Swapchain) -> Self {
+  pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, _resolution: Vec2UI, swapchain: &B::Swapchain) -> Self {
     let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<B> {
       resources: HashMap::new(),
       next_resource_id: 1,

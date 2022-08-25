@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::env;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use build_util::{copy_directory_rec, compile_shaders, compile_shader};
 
 fn main() {

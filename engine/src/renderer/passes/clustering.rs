@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess, WHOLE_BUFFER, Buffer}, atomic_refcell::AtomicRef};
+use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess, WHOLE_BUFFER, Buffer}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
@@ -47,7 +47,7 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     &mut self,
     command_buffer: &mut B::CommandBuffer,
     rt_size: Vec2UI,
-    view_ref: &AtomicRef<View>,
+    view_ref: &View,
     camera_buffer: &Arc<B::Buffer>,
     barriers: &mut RendererResources<B>
   ) {

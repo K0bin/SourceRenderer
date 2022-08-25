@@ -1,9 +1,8 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain}};
 
-use crate::{input::Input, renderer::{LateLatching, render_path::RenderPath, renderer_resources::RendererResources}};
+use crate::{input::Input, renderer::{LateLatching, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::RendererResources}};
 
 mod geometry;
 
@@ -37,22 +36,16 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     bitset.fill(!0u32);
   }
 
-  fn on_swapchain_changed(&mut self, _swapchain: &std::sync::Arc<B::Swapchain>) {
+  fn on_swapchain_changed(&mut self, _swapchain: &Arc<B::Swapchain>) {
   }
 
   fn render(
     &mut self,
-    scene: &std::sync::Arc<sourcerenderer_core::atomic_refcell::AtomicRefCell<crate::renderer::RendererScene<B>>>,
-    view: &std::sync::Arc<sourcerenderer_core::atomic_refcell::AtomicRefCell<crate::renderer::View>>,
-    _zero_texture_view: &Arc<B::TextureSamplingView>,
-    _zero_texture_view_black: &Arc<B::TextureSamplingView>,
-    _lightmap: &std::sync::Arc<crate::renderer::renderer_assets::RendererTexture<B>>,
+    scene: &SceneInfo<B>,
+    _zero_textures: &ZeroTextures<B>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
-    _frame: u64,
-    _delta: Duration,
-    _vertex_buffer: &Arc<B::Buffer>,
-    _index_buffer: &Arc<B::Buffer>
+    _frame_info: &FrameInfo,
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
 
 
@@ -62,10 +55,9 @@ impl<B: Backend> RenderPath<B> for WebRenderer<B> {
     let queue = self.device.graphics_queue();
     let mut cmd_buffer = queue.create_command_buffer();
 
-    let scene_ref = scene.borrow();
-    let view_ref = view.borrow();
+    let view_ref = &scene.views[scene.active_view_index];
     let late_latching_buffer = late_latching.unwrap().buffer();
-    self.geometry.execute(&mut cmd_buffer, &scene_ref, &view_ref, &late_latching_buffer, &self.resources, &backbuffer);
+    self.geometry.execute(&mut cmd_buffer, scene.scene, &view_ref, &late_latching_buffer, &self.resources, &backbuffer);
 
     if let Some(late_latching) = late_latching {
       let input_state = input.poll();

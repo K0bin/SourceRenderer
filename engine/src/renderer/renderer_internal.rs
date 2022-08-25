@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 use crate::renderer::passes::web::WebRenderer;
+use crate::renderer::render_path::{FrameInfo, SceneInfo, ZeroTextures};
 use crate::renderer::{Renderer, RendererStaticDrawable};
 use crate::transform::interpolation::deconstruct_transform;
 use bitset_core::BitSet;
@@ -15,7 +16,6 @@ use sourcerenderer_core::platform::Event;
 use smallvec::SmallVec;
 use crate::renderer::drawable::DrawablePart;
 use crate::renderer::renderer_assets::*;
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use rayon::prelude::*;
 use crate::math::{Frustum, BoundingBox};
 use instant::Instant;
@@ -36,8 +36,8 @@ pub(super) struct RendererInternal<P: Platform> {
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
   asset_manager: Arc<AssetManager<P>>,
-  scene: AtomicRefCell<RendererScene<P::GraphicsBackend>>,
-  view: AtomicRefCell<View>,
+  scene: RendererScene<P::GraphicsBackend>,
+  views: Vec<View>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   window_event_receiver: Receiver<Event<P>>,
@@ -59,8 +59,9 @@ impl<P: Platform> RendererInternal<P> {
 
     let assets = RendererAssets::new(device);
 
-    let scene = AtomicRefCell::new(RendererScene::new());
-    let view = AtomicRefCell::new(View::default());
+    let scene = RendererScene::new();
+    let view = View::default();
+    let views = vec![view];
 
     #[cfg(target_arch = "wasm32")]
     let path = Box::new(WebRenderer::new::<P>(device, swapchain));
@@ -82,7 +83,7 @@ impl<P: Platform> RendererInternal<P> {
       swapchain: swapchain.clone(),
       scene,
       asset_manager: asset_manager.clone(),
-      view,
+      views,
       sender,
       receiver,
       window_event_receiver,
@@ -149,8 +150,7 @@ impl<P: Platform> RendererInternal<P> {
     self.receive_window_events();
     self.assets.receive_assets(&self.asset_manager);
 
-    let mut scene = self.scene.borrow_mut();
-    let mut view = self.view.borrow_mut();
+    let main_view = &mut self.views[0];
 
     if let Result::Err(err) = &message_res {
       panic!("Rendering channel closed {:?}", err);
@@ -165,25 +165,25 @@ impl<P: Platform> RendererInternal<P> {
         }
 
         RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => {
-          view.camera_transform = camera_transform_mat;
-          view.camera_fov = fov;
-          view.old_camera_matrix = view.proj_matrix * view.view_matrix;
+          main_view.camera_transform = camera_transform_mat;
+          main_view.camera_fov = fov;
+          main_view.old_camera_matrix = main_view.proj_matrix * main_view.view_matrix;
           let (position, rotation, _) = deconstruct_transform(&camera_transform_mat);
-          view.camera_position = position;
-          view.camera_rotation = rotation;
-          view.view_matrix = make_camera_view(position, rotation);
-          view.proj_matrix = make_camera_proj(view.camera_fov, view.aspect_ratio, view.near_plane, view.far_plane)
+          main_view.camera_position = position;
+          main_view.camera_rotation = rotation;
+          main_view.view_matrix = make_camera_view(position, rotation);
+          main_view.proj_matrix = make_camera_proj(main_view.camera_fov, main_view.aspect_ratio, main_view.near_plane, main_view.far_plane)
         }
 
         RendererCommand::UpdateTransform { entity, transform_mat } => {
-          scene.update_transform(&entity, transform_mat);
+          self.scene.update_transform(&entity, transform_mat);
         }
 
         RendererCommand::RegisterStatic {
           model_path, entity, transform, receive_shadows, cast_shadows, can_move
          } => {
           let model = self.assets.get_model(&model_path);
-          scene.add_static_drawable(entity, RendererStaticDrawable::<P::GraphicsBackend> {
+          self.scene.add_static_drawable(entity, RendererStaticDrawable::<P::GraphicsBackend> {
             entity,
             transform,
             old_transform: transform,
@@ -194,7 +194,7 @@ impl<P: Platform> RendererInternal<P> {
           });
         }
         RendererCommand::UnregisterStatic(entity) => {
-          scene.remove_static_drawable(&entity);
+          self.scene.remove_static_drawable(&entity);
         }
 
         RendererCommand::RegisterPointLight {
@@ -202,13 +202,13 @@ impl<P: Platform> RendererInternal<P> {
           transform,
           intensity
         } => {
-          scene.add_point_light(entity, PointLight {
+          self.scene.add_point_light(entity, PointLight {
             position: (transform * Vec4::new(0f32, 0f32, 0f32, 1f32)).xyz(),
             intensity,
           });
         },
         RendererCommand::UnregisterPointLight(entity) => {
-          scene.remove_point_light(&entity);
+          self.scene.remove_point_light(&entity);
         },
 
         RendererCommand::RegisterDirectionalLight {
@@ -219,14 +219,14 @@ impl<P: Platform> RendererInternal<P> {
           let (_, rotation, _) = deconstruct_transform(&transform);
           let base_dir = Vec3::new(0f32, 1f32, 0f32);
           let dir = rotation.transform_vector(&base_dir);
-          scene.add_directional_light(entity, DirectionalLight { direction: dir, intensity});
+          self.scene.add_directional_light(entity, DirectionalLight { direction: dir, intensity});
         },
         RendererCommand::UnregisterDirectionalLight(entity) => {
-          scene.remove_directional_light(&entity);
+          self.scene.remove_directional_light(&entity);
         },
         RendererCommand::SetLightmap(path) => {
           let texture = self.assets.get_texture(&path);
-          scene.set_lightmap(Some(&texture));
+          self.scene.set_lightmap(Some(&texture));
         },
       }
 
@@ -248,11 +248,34 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
+    // If we don't clone here, it's counted as a self borrow. IDK why this is a self borrow but all the structs below arent.
     let lightmap = {
-      let scene = self.scene.borrow_mut();
-      scene.lightmap().cloned().unwrap_or_else(|| self.assets.placeholder_black().clone())
+      self.scene.lightmap().cloned().unwrap_or_else(|| self.assets.placeholder_black().clone())
     };
-    let render_result = self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, delta, self.assets.vertex_buffer(), self.assets.index_buffer());
+
+    let render_result = {
+      let frame_info = FrameInfo {
+        frame: self.frame,
+        delta: delta
+      };
+
+      let zero_textures = ZeroTextures {
+        zero_texture_view: &self.assets.placeholder_texture().view,
+        zero_texture_view_black: &self.assets.placeholder_black().view,
+      };
+
+      let scene_info = SceneInfo {
+        scene: &self.scene,
+        views: &self.views,
+        active_view_index: 0,
+        vertex_buffer: self.assets.vertex_buffer(),
+        index_buffer: self.assets.index_buffer(),
+        lightmap: Some(&lightmap)
+      };
+
+      self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info)
+    };
+
     if let Err(swapchain_error) = render_result {
       self.device.wait_for_idle();
 
@@ -282,7 +305,29 @@ impl<P: Platform> RendererInternal<P> {
           new_swapchain_result.unwrap()
         };
         self.render_path.on_swapchain_changed(&new_swapchain);
-        self.render_path.render(&self.scene, &self.view, &self.assets.placeholder_texture().view, &self.assets.placeholder_black().view, &lightmap, renderer.late_latching(), renderer.input(), self.frame, delta, self.assets.vertex_buffer(), self.assets.index_buffer()).expect("Rendering still fails after recreating swapchain.");
+
+        {
+          let frame_info = FrameInfo {
+            frame: self.frame,
+            delta: delta
+          };
+
+          let zero_textures = ZeroTextures {
+            zero_texture_view: &self.assets.placeholder_texture().view,
+            zero_texture_view_black: &self.assets.placeholder_black().view,
+          };
+
+          let scene_info = SceneInfo {
+            scene: &self.scene,
+            views: &self.views,
+            active_view_index: 0,
+            vertex_buffer: self.assets.vertex_buffer(),
+            index_buffer: self.assets.index_buffer(),
+            lightmap: Some(&lightmap)
+          };
+
+          self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info).expect("Rendering still fails after recreating swapchain.");
+        }
         self.swapchain = new_swapchain;
       }
     }
@@ -295,10 +340,9 @@ impl<P: Platform> RendererInternal<P> {
 
   #[profiling::function]
   fn update_visibility(&mut self) {
-    let scene = self.scene.borrow();
-    let static_meshes = scene.static_drawables();
+    let static_meshes = self.scene.static_drawables();
 
-    let mut view_mut = self.view.borrow_mut();
+    let view_mut = &mut self.views[0];
 
     let mut old_visible = std::mem::take(&mut view_mut.visible_drawables_bitset);
     self.render_path.write_occlusion_culling_results(self.frame, &mut old_visible);
@@ -400,10 +444,9 @@ impl<P: Platform> RendererInternal<P> {
 
   #[profiling::function]
   fn reorder(&mut self) {
-    let scene = self.scene.borrow();
-    let static_meshes = scene.static_drawables();
+    let static_meshes = self.scene.static_drawables();
 
-    let mut view_mut = self.view.borrow_mut();
+    let view_mut = &mut self.views[0];
     view_mut.drawable_parts.par_sort_unstable_by(|a, b| {
       // if the drawable index is greater than the amount of static meshes, it is a skinned mesh
       let b_is_skinned = a.drawable_index > static_meshes.len();

@@ -1,15 +1,14 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, atomic_refcell::{AtomicRefCell, AtomicRef}, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::RenderPath, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass, compositing::CompositingPass}}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass, compositing::CompositingPass}}};
 use crate::renderer::passes::fsr2::Fsr2Pass;
 use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 
-use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass, shading_pass::ShadingPass};
+use super::{clustering::ClusteringPass, light_binning::LightBinningPass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass, draw_prep::DrawPrepPass, hi_z::HierarchicalZPass, visibility_buffer::VisibilityBufferPass, shading_pass::ShadingPass};
 
 pub struct ModernRenderer<B: Backend> {
   swapchain: Arc<B::Swapchain>,
@@ -115,8 +114,8 @@ impl<B: Backend> ModernRenderer<B> {
     camera_history_buffer: &Arc<B::Buffer>,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>,
-    scene: &AtomicRef<RendererScene<B>>,
-    view: &AtomicRef<View>,
+    scene: &RendererScene<B>,
+    view: &View,
     _swapchain: &Arc<B::Swapchain>,
     rendering_resolution: &Vec2UI,
     frame: u64
@@ -194,41 +193,34 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
   #[profiling::function]
   fn render(
     &mut self,
-    scene: &Arc<AtomicRefCell<RendererScene<B>>>,
-    view: &Arc<AtomicRefCell<View>>,
-    zero_texture_view: &Arc<B::TextureSamplingView>,
-    _zero_texture_view_black: &Arc<B::TextureSamplingView>,
-    lightmap: &Arc<RendererTexture<B>>,
+    scene: &SceneInfo<B>,
+    zero_textures: &ZeroTextures<B>,
     late_latching: Option<&dyn LateLatching<B>>,
     input: &Input,
-    frame: u64,
-    delta: Duration,
-    vertex_buffer: &Arc<B::Buffer>,
-    index_buffer: &Arc<B::Buffer>
+    frame_info: &FrameInfo,
   ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
 
-    let view_ref = view.borrow();
-    let scene_ref = scene.borrow();
+    let main_view = &scene.views[scene.active_view_index];
 
     let camera_buffer = late_latching.unwrap().buffer();
     let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
 
-    let gpu_scene_buffer = super::gpu_scene::upload(&mut cmd_buf, &*scene_ref, 0 /* TODO */);
+    let gpu_scene_buffer = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */);
 
     self.setup_frame(
       &mut cmd_buf,
       &gpu_scene_buffer,
       &camera_buffer,
       &camera_history_buffer,
-      vertex_buffer,
-      index_buffer,
-      &scene_ref,
-      &view_ref,
+      scene.vertex_buffer,
+      scene.index_buffer,
+      scene.scene,
+      main_view,
       &self.swapchain,
       &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
-      frame
+      frame_info.frame
     );
 
     let resolution = {
@@ -237,25 +229,25 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     };
 
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, &scene_ref, &camera_buffer);
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene, &camera_buffer);
     }
     self.hi_z_pass.execute(&mut cmd_buf, &self.barriers);
-    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, &scene_ref, &view_ref);
-    self.visibility_buffer.execute(&mut cmd_buf, &self.barriers, vertex_buffer, index_buffer);
+    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, scene.scene, main_view);
+    self.visibility_buffer.execute(&mut cmd_buf, &self.barriers, scene.vertex_buffer, scene.index_buffer);
     self.motion_vector_pass.execute(&mut cmd_buf, &self.barriers);
-    self.clustering_pass.execute(&mut cmd_buf, resolution, &view_ref, &camera_buffer, &mut self.barriers);
-    self.light_binning_pass.execute(&mut cmd_buf, &scene_ref, &camera_buffer, &mut self.barriers);
-    self.ssao.execute(&mut cmd_buf, &camera_buffer, self.blue_noise.frame(frame), self.blue_noise.sampler(), &self.barriers, true);
+    self.clustering_pass.execute(&mut cmd_buf, resolution, main_view, &camera_buffer, &mut self.barriers);
+    self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &camera_buffer, &mut self.barriers);
+    self.ssao.execute(&mut cmd_buf, &camera_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), &self.barriers, true);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame), &self.blue_noise.sampler());
+      rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
     }
-    self.shading_pass.execute(&mut cmd_buf,  &self.device, lightmap, zero_texture_view, &self.barriers);
+    self.shading_pass.execute(&mut cmd_buf,  &self.device, scene.lightmap.unwrap(), zero_textures.zero_texture_view, &self.barriers);
     self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers, true);
     self.compositing_pass.execute(&mut cmd_buf, &self.barriers);
 
     match &mut self.anti_aliasing {
       AntiAliasing::FSR2 { fsr } => {
-        fsr.execute(&mut cmd_buf, &self.barriers, &view_ref, delta, frame);
+        fsr.execute(&mut cmd_buf, &self.barriers, &main_view, frame_info.delta, frame_info.frame);
       }
       AntiAliasing::TAA { taa, sharpen } => {
         taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
@@ -315,7 +307,7 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
 
     if let Some(late_latching) = late_latching {
       let input_state = input.poll();
-      late_latching.before_submit(&input_state, &view_ref);
+      late_latching.before_submit(&input_state, main_view);
     }
     graphics_queue.submit(cmd_buf.finish(), None, &[&prepare_sem], &[&cmd_buf_sem], true);
     graphics_queue.present(&self.swapchain, &[&cmd_buf_sem], true);

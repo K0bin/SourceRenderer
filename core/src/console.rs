@@ -1,4 +1,4 @@
-use std::{sync::RwLock, slice::Iter, collections::HashMap};
+use std::{sync::RwLock, collections::HashMap};
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;

@@ -43,7 +43,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
   pub fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    camera: &Arc<B::Buffer>,
+    _camera: &Arc<B::Buffer>,
     resources: &RendererResources<B>,
     visibility_buffer: bool
   ){
