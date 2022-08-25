@@ -8,7 +8,7 @@ use log::trace;
 use crate::renderer::command::RendererCommand;
 use std::time::Duration;
 use crate::asset::AssetManager;
-use sourcerenderer_core::{Platform, Vec2UI, Vec3, Vec4, Matrix4};
+use sourcerenderer_core::{Platform, Vec2UI, Vec3, Vec4, Matrix4, Console};
 use sourcerenderer_core::graphics::{SwapchainError, Backend,Swapchain, Device};
 use crate::renderer::View;
 use sourcerenderer_core::platform::Event;
@@ -36,14 +36,15 @@ pub(super) struct RendererInternal<P: Platform> {
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
   render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
   asset_manager: Arc<AssetManager<P>>,
-  scene: Arc<AtomicRefCell<RendererScene<P::GraphicsBackend>>>,
-  view: Arc<AtomicRefCell<View>>,
+  scene: AtomicRefCell<RendererScene<P::GraphicsBackend>>,
+  view: AtomicRefCell<View>,
   sender: Sender<RendererCommand>,
   receiver: Receiver<RendererCommand>,
   window_event_receiver: Receiver<Event<P>>,
   last_frame: Instant,
   frame: u64,
   assets: RendererAssets<P>,
+  console: Arc<Console>,
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -53,12 +54,13 @@ impl<P: Platform> RendererInternal<P> {
     asset_manager: &Arc<AssetManager<P>>,
     sender: Sender<RendererCommand>,
     window_event_receiver: Receiver<Event<P>>,
-    receiver: Receiver<RendererCommand>) -> Self {
+    receiver: Receiver<RendererCommand>,
+    console: &Arc<Console>) -> Self {
 
     let assets = RendererAssets::new(device);
 
-    let scene = Arc::new(AtomicRefCell::new(RendererScene::new()));
-    let view = Arc::new(AtomicRefCell::new(View::default()));
+    let scene = AtomicRefCell::new(RendererScene::new());
+    let view = AtomicRefCell::new(View::default());
 
     #[cfg(target_arch = "wasm32")]
     let path = Box::new(WebRenderer::new::<P>(device, swapchain));
@@ -86,7 +88,8 @@ impl<P: Platform> RendererInternal<P> {
       window_event_receiver,
       last_frame: Instant::now(),
       assets,
-      frame: 0
+      frame: 0,
+      console: console.clone(),
     }
   }
 

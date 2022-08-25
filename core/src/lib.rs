@@ -13,6 +13,9 @@ pub mod graphics;
 pub mod platform;
 pub mod pool;
 pub mod input;
+mod console;
+
+pub use console::{Console, Command};
 
 pub mod atomic_refcell;
 

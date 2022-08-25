@@ -3,7 +3,7 @@ use crossbeam_channel::{Sender, unbounded};
 
 use instant::Duration;
 use log::trace;
-use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::{Event, Platform, ThreadHandle}};
+use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::{Event, Platform, ThreadHandle}, Console};
 use sourcerenderer_core::graphics::{Backend, Swapchain};
 use sourcerenderer_core::Matrix4;
 
@@ -74,7 +74,8 @@ impl<P: Platform> Renderer<P> {
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     asset_manager: &Arc<AssetManager<P>>,
     input: &Arc<Input>,
-    late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>) -> Arc<Renderer<P>> {
+    late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>,
+    console: &Arc<Console>) -> Arc<Renderer<P>> {
 
     let (sender, receiver) = unbounded::<RendererCommand>();
     let (window_event_sender, window_event_receiver) = unbounded();
@@ -84,12 +85,12 @@ impl<P: Platform> Renderer<P> {
     let c_renderer = renderer.clone();
     let c_swapchain = swapchain.clone();
     let c_asset_manager = asset_manager.clone();
-
+    let c_console = console.clone();
 
     if cfg!(feature = "threading") {
       let thread_handle = platform.start_thread("RenderThread", move || {
         trace!("Started renderer thread");
-        let mut internal = RendererInternal::new(&c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
+        let mut internal = RendererInternal::new(&c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver, &c_console);
         loop {
           if !c_renderer.is_running.load(Ordering::SeqCst) {
             break;
@@ -103,7 +104,7 @@ impl<P: Platform> Renderer<P> {
       let mut thread_handle_guard = renderer.renderer_impl.borrow_mut();
       *thread_handle_guard = RendererImpl::MultiThreaded(thread_handle);
     } else {
-      let internal = RendererInternal::new(&c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver);
+      let internal = RendererInternal::new(&c_device, &c_swapchain, &c_asset_manager, sender, window_event_receiver, receiver, &c_console);
       let mut thread_handle_guard = renderer.renderer_impl.borrow_mut();
       *thread_handle_guard = RendererImpl::SingleThreaded(Box::new(internal));
     }

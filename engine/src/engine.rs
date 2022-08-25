@@ -1,4 +1,5 @@
 use log::trace;
+use sourcerenderer_core::Console;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::platform::Platform;
 use std::sync::Arc;
@@ -22,7 +23,8 @@ pub struct Engine<P: Platform> {
   game: Arc<Game<P>>,
   asset_manager: Arc<AssetManager<P>>,
   input: Arc<Input>,
-  late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>
+  late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>,
+  console: Arc<Console>,
 }
 
 impl<P: Platform> Engine<P> {
@@ -39,6 +41,8 @@ impl<P: Platform> Engine<P> {
     let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
+    let console = Arc::new(Console::new());
+
     let input = Arc::new(Input::new());
     let mut adapters = instance.clone().list_adapters();
     let device = Arc::new(adapters.remove(0).create_device(&surface));
@@ -46,14 +50,15 @@ impl<P: Platform> Engine<P> {
     let asset_manager = AssetManager::<P>::new(platform, &device);
     let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
     let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
-    let renderer = Renderer::<P>::run(platform, &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj));
+    let renderer = Renderer::<P>::run(platform, &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj), &console);
     let game = Game::<P>::run(platform, &input, &renderer, &asset_manager, TICK_RATE);
     Self {
       renderer,
       game,
       asset_manager,
       input,
-      late_latching: Some(late_latching)
+      late_latching: Some(late_latching),
+      console
     }
   }
 
@@ -114,5 +119,9 @@ impl<P: Platform> Engine<P> {
   pub fn frame(&self) {
     self.game.update(&self.renderer);
     self.renderer.render();
+  }
+
+  pub fn console(&self) -> &Console {
+    self.console.as_ref()
   }
 }

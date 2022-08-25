@@ -12,8 +12,8 @@ pub(super) trait RenderPath<B: Backend> {
   fn on_swapchain_changed(&mut self, swapchain: &Arc<B::Swapchain>);
   fn render(
     &mut self,
-    scene: &Arc<AtomicRefCell<RendererScene<B>>>,
-    view: &Arc<AtomicRefCell<View>>,
+    scene: &AtomicRefCell<RendererScene<B>>,
+    view: &AtomicRefCell<View>,
     zero_texture_view: &Arc<B::TextureSamplingView>,
     zero_texture_view_black: &Arc<B::TextureSamplingView>,
     lightmap: &Arc<RendererTexture<B>>,
