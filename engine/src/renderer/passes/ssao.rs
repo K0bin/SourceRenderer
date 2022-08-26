@@ -6,8 +6,6 @@ use rand::random;
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}};
 
-use super::prepass::Prepass;
-
 pub struct SsaoPass<B: GraphicsBackend> {
   pipeline: Arc<B::ComputePipeline>,
   kernel: Arc<B::Buffer>,
@@ -107,10 +105,12 @@ impl<B: GraphicsBackend> SsaoPass<B> {
   pub fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
+    resources: &RendererResources<B>,
+    depth_name: &str,
+    motion_name: Option<&str>,
     camera: &Arc<B::Buffer>,
     blue_noise_view: &Arc<B::TextureSamplingView>,
     blue_noise_sampler: &Arc<B::Sampler>,
-    resources: &RendererResources<B>,
     visibility_buffer: bool
   ) {
     let ssao_uav = resources.access_storage_view(
@@ -126,7 +126,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
 
     let depth_srv = resources.access_sampling_view(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
@@ -141,7 +141,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     if !visibility_buffer {
       motion_srv = Some(resources.access_sampling_view(
         cmd_buffer,
-        Prepass::<B>::MOTION_TEXTURE_NAME,
+        motion_name.unwrap(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,

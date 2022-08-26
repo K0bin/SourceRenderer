@@ -36,8 +36,7 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
   pub fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    scene: &RendererScene<B>,
-    _camera_buffer: &Arc<B::Buffer>
+    scene: &RendererScene<B>
   ) {
     let static_drawables = scene.static_drawables();
 

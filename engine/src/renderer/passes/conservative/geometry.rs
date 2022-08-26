@@ -1,13 +1,14 @@
 use nalgebra::Vector2;
 use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
 use std::{sync::Arc, cell::Ref};
-use crate::renderer::{drawable::View, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, prepass::Prepass, rt_shadows::RTShadowPass}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
 use std::io::Read;
 use crate::renderer::renderer_assets::*;
 use sourcerenderer_core::platform::io::IO;
 use rayon::prelude::*;
+use crate::renderer::render_path::{SceneInfo, ZeroTextures};
 
 use super::desktop_renderer::{FrameBindings, ConservativeRenderer};
 
@@ -198,17 +199,16 @@ impl<B: GraphicsBackend> GeometryPass<B> {
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    device: &Arc<B::Device>,
-    scene: &RendererScene<B>,
-    view: &View,
-    bindings: &FrameBindings<B>,
-    zero_texture_view: &Arc<B::TextureSamplingView>,
-    zero_texture_view_black: &Arc<B::TextureSamplingView>,
-    lightmap: &Arc<RendererTexture<B>>,
     barriers: &RendererResources<B>,
+    device: &Arc<B::Device>,
+    depth_name: &str,
+    scene: &SceneInfo<B>,
+    bindings: &FrameBindings<B>,
+    zero_textures: &ZeroTextures<B>,
+    lightmap: &Arc<RendererTexture<B>>,
   ) {
     cmd_buffer.begin_label("Geometry pass");
-    let static_drawables = scene.static_drawables();
+    let static_drawables = scene.scene.static_drawables();
 
     let (width, height) = {
       let info = barriers.texture_info(Self::GEOMETRY_PASS_TEXTURE_NAME);
@@ -228,7 +228,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     let prepass_depth_ref = barriers.access_depth_stencil_view(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
       BarrierAccess::DEPTH_STENCIL_READ,
       TextureLayout::DepthStencilRead,
@@ -273,7 +273,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       );
       &*rt_shadows
     } else {
-      zero_texture_view
+      zero_textures.zero_texture_view
     };
 
     /*let clusters = barriers.access_buffer(
@@ -316,6 +316,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     let inheritance = cmd_buffer.inheritance();
     const CHUNK_SIZE: usize = 128;
+    let view = &scene.views[scene.active_view_index];
     let chunks = view.drawable_parts.par_chunks(CHUNK_SIZE);
     let inner_cmd_buffers: Vec::<B::CommandBufferSubmission> = chunks.map(|chunk| {
       let mut command_buffer = device.graphics_queue().create_inner_command_buffer(inheritance);
@@ -339,8 +340,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       command_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 4, &ssao, &self.sampler);
       // command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, &clusters, 0, WHOLE_BUFFER);
 
-      command_buffer.track_texture_view(zero_texture_view);
-      command_buffer.track_texture_view(zero_texture_view_black);
+      command_buffer.track_texture_view(zero_textures.zero_texture_view);
+      command_buffer.track_texture_view(zero_textures.zero_texture_view_black);
 
       let mut last_material = Option::<Arc<RendererMaterial<B>>>::None;
 
@@ -382,9 +383,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
             albedo_texture_index: 0u32
           };
 
-          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, zero_texture_view, &self.sampler);
-          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, zero_texture_view, &self.sampler);
-          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, zero_textures.zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, zero_textures.zero_texture_view, &self.sampler);
+          command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, zero_textures.zero_texture_view, &self.sampler);
 
           let albedo_value = material.get("albedo").unwrap();
           match albedo_value {

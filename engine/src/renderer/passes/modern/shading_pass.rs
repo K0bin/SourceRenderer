@@ -2,7 +2,7 @@ use std::{sync::Arc, path::Path, io::Read, cell::Ref};
 
 use sourcerenderer_core::{graphics::{Backend, ShaderType, Device, TextureInfo, Format, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, Filter, AddressMode, SamplerInfo, TextureDimension}, Platform, platform::io::IO, Vec2UI};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::{conservative::geometry::GeometryPass, ssao::SsaoPass}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::ssao::SsaoPass};
 
 use super::{visibility_buffer::VisibilityBufferPass, rt_shadows::RTShadowPass};
 
@@ -13,6 +13,8 @@ pub struct ShadingPass<B: Backend> {
 }
 
 impl<B: Backend> ShadingPass<B> {
+  pub const SHADING_TEXTURE_NAME: &'static str = "Shading";
+
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>, _init_cmd_buffer: &mut B::CommandBuffer) -> Self {
     let shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shading.comp.spv"))).unwrap();
@@ -37,7 +39,7 @@ impl<B: Backend> ShadingPass<B> {
       max_lod: None,
     });
 
-    resources.create_texture(GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &TextureInfo {
+    resources.create_texture(Self::SHADING_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA16Float,
       width: resolution.x,
@@ -65,7 +67,7 @@ impl<B: Backend> ShadingPass<B> {
     resources: &RendererResources<B>,
   ) {
     let (width, height) = {
-      let info = resources.texture_info(GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME);
+      let info = resources.texture_info(Self::SHADING_TEXTURE_NAME);
       (info.width, info.height)
     };
 
@@ -73,7 +75,7 @@ impl<B: Backend> ShadingPass<B> {
 
     let output = resources.access_storage_view(
       cmd_buffer,
-      GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME,
+      Self::SHADING_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,

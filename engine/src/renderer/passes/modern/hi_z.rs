@@ -4,7 +4,7 @@ use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, TextureUsage, Format, Device, ShaderType, CommandBuffer, PipelineBinding, BarrierSync, BarrierAccess, TextureLayout, TextureViewInfo, BindingFrequency, SamplerInfo, Filter, AddressMode, BufferInfo, BufferUsage, MemoryUsage, WHOLE_BUFFER}, Platform, platform::io::IO};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::prepass::Prepass};
+use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
 
 pub struct HierarchicalZPass<B: Backend> {
   ffx_pipeline: Arc<B::ComputePipeline>,
@@ -17,8 +17,8 @@ impl<B: Backend> HierarchicalZPass<B> {
   pub const HI_Z_BUFFER_NAME: &'static str = "Hierarchical Z Buffer";
   const FFX_COUNTER_BUFFER_NAME: &'static str = "FFX Downscaling Counter Buffer";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
-    let mut texture_info = resources.texture_info(Prepass::<B>::DEPTH_TEXTURE_NAME).clone();
+  pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, init_cmd_buffer: &mut B::CommandBuffer, depth_name: &str) -> Self {
+    let mut texture_info = resources.texture_info(depth_name).clone();
     let size = texture_info.width.max(texture_info.height) as f32;
     texture_info.mip_levels = (size.log(2f32).ceil() as u32).max(1);
     texture_info.usage = TextureUsage::STORAGE | TextureUsage::SAMPLED;
@@ -87,7 +87,12 @@ impl<B: Backend> HierarchicalZPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>) {
+  pub fn execute(
+    &mut self,
+    cmd_buffer: &mut B::CommandBuffer,
+    resources: &RendererResources<B>,
+    depth_name: &str
+  ) {
     let (width, height, mips) = {
       let info = resources.texture_info(Self::HI_Z_BUFFER_NAME);
       (info.width, info.height, info.mip_levels)
@@ -98,7 +103,7 @@ impl<B: Backend> HierarchicalZPass<B> {
     cmd_buffer.begin_label("Hierarchical Z");
     let src_texture = resources.access_sampling_view(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,

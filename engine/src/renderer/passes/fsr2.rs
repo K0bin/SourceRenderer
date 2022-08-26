@@ -1,5 +1,4 @@
 use std::{mem::MaybeUninit, ffi::{c_void, CString}, sync::Arc, collections::{HashMap, VecDeque}, path::PathBuf, io::Read};
-use std::time::Duration;
 
 use fsr2::*;
 use smallvec::SmallVec;
@@ -7,9 +6,8 @@ use sourcerenderer_core::{graphics::{Backend, Device, MemoryUsage, BufferInfo, B
 use sourcerenderer_core::graphics::Swapchain;
 use widestring::WideCStr;
 use crate::renderer::drawable::View;
-use crate::renderer::passes::compositing::CompositingPass;
-use crate::renderer::passes::prepass::Prepass;
-use crate::renderer::passes::taa::{halton_point, TAAPass};
+use crate::renderer::passes::taa::halton_point;
+use crate::renderer::render_path::FrameInfo;
 
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
@@ -20,6 +18,8 @@ pub struct Fsr2Pass<B: Backend> {
 }
 
 impl<B: Backend> Fsr2Pass<B> {
+  pub const UPSCALED_TEXTURE_NAME: &'static str = "FSR2Upscaled";
+
   pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, _resolution: Vec2UI, swapchain: &B::Swapchain) -> Self {
     let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<B> {
       resources: HashMap::new(),
@@ -51,7 +51,7 @@ impl<B: Backend> Fsr2Pass<B> {
     };
 
     resources.create_texture(
-      TAAPass::<B>::TAA_TEXTURE_NAME,
+      Self::UPSCALED_TEXTURE_NAME,
       &TextureInfo {
         dimension: TextureDimension::Dim2D,
         format: Format::RGBA8UNorm,
@@ -101,15 +101,17 @@ impl<B: Backend> Fsr2Pass<B> {
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
     resources: &RendererResources<B>,
+    input_name: &str,
+    depth_name: &str,
+    motion_name: &str,
     view: &View,
-    delta: Duration,
-    frame: u64
+    frame: &FrameInfo
   ) {
     cmd_buffer.begin_label("FSR2");
 
     let color_texture = resources.access_texture(
       cmd_buffer,
-      CompositingPass::<B>::COMPOSITION_TEXTURE_NAME,
+      input_name,
       &BarrierTextureRange::default(),
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
@@ -120,7 +122,7 @@ impl<B: Backend> Fsr2Pass<B> {
 
     let depth_texture = resources.access_texture(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       &BarrierTextureRange::default(),
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
@@ -131,7 +133,7 @@ impl<B: Backend> Fsr2Pass<B> {
 
     let output_texture = resources.access_texture(
       cmd_buffer,
-      TAAPass::<B>::TAA_TEXTURE_NAME,
+      Self::UPSCALED_TEXTURE_NAME,
       &BarrierTextureRange::default(),
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_WRITE,
@@ -142,7 +144,7 @@ impl<B: Backend> Fsr2Pass<B> {
 
     let motion_texture = resources.access_texture(
       cmd_buffer,
-      Prepass::<B>::MOTION_TEXTURE_NAME,
+      motion_name,
       &BarrierTextureRange::default(),
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
@@ -154,7 +156,7 @@ impl<B: Backend> Fsr2Pass<B> {
     let aspect_ratio = (output_texture.info().width as f32) / (output_texture.info().height as f32);
     let v_fov = 2f32 * ((view.camera_fov * 0.5f32).tan() * aspect_ratio).atan();
 
-    let halton_point = halton_point((frame % 8u64) as u32); // TODO: use FSR2s built in jitter
+    let halton_point = halton_point((frame.frame % 8u64) as u32); // TODO: use FSR2s built in jitter
 
     unsafe {
       let desc = FfxFsr2DispatchDescription {
@@ -175,7 +177,7 @@ impl<B: Backend> Fsr2Pass<B> {
         cameraNear: view.near_plane,
         cameraFar: view.far_plane,
         preExposure: 0.5f32,
-        frameTimeDelta: delta.as_secs_f32() * 1000f32,
+        frameTimeDelta: frame.delta.as_secs_f32() * 1000f32,
         cameraFovAngleVertical: v_fov,
         reset: false,
         jitterOffset: FfxFloatCoords2D {

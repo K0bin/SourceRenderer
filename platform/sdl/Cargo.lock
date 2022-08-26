@@ -1639,6 +1639,7 @@ dependencies = [
  "nalgebra",
  "num_cpus",
  "rayon",
+ "smallvec",
 ]
 
 [[package]]

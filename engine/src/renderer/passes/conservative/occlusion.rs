@@ -5,7 +5,8 @@ use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureViewInfo, WHOLE_BUFFER}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
-use crate::renderer::{drawable::View, renderer_scene::RendererScene, passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
+use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
+use crate::renderer::render_path::SceneInfo;
 
 const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;
@@ -162,17 +163,17 @@ impl<B: Backend> OcclusionPass<B> {
 
   pub fn execute(
     &mut self,
-    device: &B::Device,
     command_buffer: &mut B::CommandBuffer,
-    frame: u64,
     resources: &RendererResources<B>,
+    device: &B::Device,
+    frame: u64,
     camera_history_buffer: &Arc<B::Buffer>,
-    scene: &RendererScene<B>,
-    view: &View
+    scene: &SceneInfo<B>,
+    depth_name: &str
   ) {
     let history_depth_buffer_ref = resources.access_depth_stencil_view(
       command_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
       BarrierAccess::DEPTH_STENCIL_READ,
       TextureLayout::DepthStencilRead,
@@ -188,7 +189,8 @@ impl<B: Backend> OcclusionPass<B> {
     occlusion_query_map.clear();
     let occlusion_query_map_lock = Mutex::new(occlusion_query_map);
 
-    let static_meshes = scene.static_drawables();
+    let static_meshes = scene.scene.static_drawables();
+    let view = &scene.views[scene.active_view_index];
 
     let mut map = self.drawable_occluded_frames.borrow_mut();
     self.visible_drawable_indices.clear();

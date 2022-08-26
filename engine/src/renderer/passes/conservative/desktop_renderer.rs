@@ -201,7 +201,7 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene, &late_latching_buffer);
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene);
     }
 
     let primary_view = &scene.views[scene.active_view_index];
@@ -226,16 +226,16 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
     );
     Self::setup_frame(&mut cmd_buf, &frame_bindings);
 
-    self.occlusion.execute(&self.device, &mut cmd_buf, frame_info.frame, &self.barriers, &late_latching_buffer, scene.scene, primary_view);
+    self.occlusion.execute(&mut cmd_buf, &self.barriers, &self.device, frame_info.frame, &late_latching_buffer, scene, Prepass::<B>::DEPTH_TEXTURE_NAME);
     self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), primary_view, &late_latching_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &late_latching_buffer, &mut self.barriers);
     self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
-    self.ssao.execute(&mut cmd_buf, &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), &self.barriers, false);
+    self.ssao.execute(&mut cmd_buf, &self.barriers, Prepass::<B>::DEPTH_TEXTURE_NAME, Some(Prepass::<B>::MOTION_TEXTURE_NAME), &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), false);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
+      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, Prepass::<B>::DEPTH_TEXTURE_NAME, rt_passes.acceleration_structure_update.acceleration_structure(), &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
     }
-    self.geometry.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, &frame_bindings, zero_textures.zero_texture_view, zero_textures.zero_texture_view_black, scene.lightmap.unwrap(), &self.barriers);
-    self.taa.execute(&mut cmd_buf, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, &self.barriers, false);
+    self.geometry.execute(&mut cmd_buf, &self.barriers, &self.device, Prepass::<B>::DEPTH_TEXTURE_NAME, scene, &frame_bindings, zero_textures, scene.lightmap.unwrap());
+    self.taa.execute(&mut cmd_buf, &self.barriers, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, Prepass::<B>::DEPTH_TEXTURE_NAME, Some(Prepass::<B>::MOTION_TEXTURE_NAME), false);
     self.sharpen.execute(&mut cmd_buf, &self.barriers);
 
     let sharpened_texture = self.barriers.access_texture(

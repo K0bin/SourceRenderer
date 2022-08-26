@@ -9,7 +9,6 @@ use sourcerenderer_core::graphics::{Backend, BarrierAccess, BarrierSync, Binding
                                     ShaderType, SampleCount};
 use sourcerenderer_core::{Platform, Vec2UI, platform::io::IO};
 use crate::renderer::passes::modern::VisibilityBufferPass;
-use crate::renderer::passes::prepass::Prepass;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct MotionVectorPass<B: Backend> {
@@ -17,6 +16,8 @@ pub struct MotionVectorPass<B: Backend> {
 }
 
 impl<B: Backend> MotionVectorPass<B> {
+  pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
+
   pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, renderer_resolution: Vec2UI) -> Self {
     let shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("motion_vectors_vis_buf.comp.spv"))).unwrap();
@@ -27,7 +28,7 @@ impl<B: Backend> MotionVectorPass<B> {
     let pipeline = device.create_compute_pipeline(&shader, Some("Motion Vectors"));
 
     resources.create_texture(
-        Prepass::<B>::MOTION_TEXTURE_NAME,
+        Self::MOTION_TEXTURE_NAME,
         &TextureInfo {
           dimension: TextureDimension::Dim2D,
           format: Format::RG16Float,
@@ -52,7 +53,7 @@ impl<B: Backend> MotionVectorPass<B> {
 
     let output_srv = resources.access_storage_view(
       cmd_buffer,
-      Prepass::<B>::MOTION_TEXTURE_NAME,
+      Self::MOTION_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,

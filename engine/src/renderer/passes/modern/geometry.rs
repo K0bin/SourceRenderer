@@ -2,7 +2,7 @@ use nalgebra::Vector2;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
 use std::{sync::Arc, cell::Ref};
-use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, prepass::Prepass, rt_shadows::RTShadowPass}};
+use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::passes::taa::scaled_halton_point;
 use std::path::Path;
@@ -197,7 +197,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
   pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
+    barriers: &RendererResources<B>,
     device: &Arc<B::Device>,
+    depth_name: &str,
     scene: &RendererScene<B>,
     view: &View,
     gpu_scene: &Arc<B::Buffer>,
@@ -206,7 +208,6 @@ impl<B: GraphicsBackend> GeometryPass<B> {
     lightmap: &Arc<RendererTexture<B>>,
     swapchain_transform: Matrix4,
     frame: u64,
-    barriers: &RendererResources<B>,
     camera_buffer: &Arc<B::Buffer>,
     vertex_buffer: &Arc<B::Buffer>,
     index_buffer: &Arc<B::Buffer>,
@@ -233,7 +234,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     let prepass_depth_ref = barriers.access_depth_stencil_view(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
       BarrierAccess::DEPTH_STENCIL_READ,
       TextureLayout::DepthStencilRead,

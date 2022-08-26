@@ -5,7 +5,6 @@ use std::path::Path;
 use std::io::Read;
 use sourcerenderer_core::platform::io::IO;
 
-use crate::renderer::passes::conservative::geometry::GeometryPass;
 use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 use super::ssr::SsrPass;
@@ -46,10 +45,14 @@ impl<B: GraphicsBackend> CompositingPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>) {
+  pub fn execute(
+    &mut self,
+    cmd_buffer: &mut B::CommandBuffer,
+    resources: &RendererResources<B>,
+    input_name: &str) {
     let input_image = resources.access_sampling_view(
       cmd_buffer,
-      GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME,
+      input_name,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,

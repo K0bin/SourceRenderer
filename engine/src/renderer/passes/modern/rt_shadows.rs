@@ -2,7 +2,7 @@ use std::{sync::Arc, path::Path, io::Read};
 
 use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureDimension}, Vec2UI, Platform, platform::io::IO};
 
-use crate::renderer::{passes::prepass::Prepass, renderer_resources::{HistoryResourceEntry, RendererResources}};
+use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 pub struct RTShadowPass<B: Backend> {
   pipeline: Arc<B::RayTracingPipeline>,
@@ -57,7 +57,14 @@ impl<B: Backend> RTShadowPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, acceleration_structure: &Arc<B::AccelerationStructure>, resources: &RendererResources<B>, blue_noise: &Arc<B::TextureSamplingView>, blue_noise_sampler: &Arc<B::Sampler>) {
+  pub fn execute(
+    &mut self,
+    cmd_buffer: &mut B::CommandBuffer,
+    resources: &RendererResources<B>,
+    depth_name: &str,
+    acceleration_structure: &Arc<B::AccelerationStructure>,
+    blue_noise: &Arc<B::TextureSamplingView>,
+    blue_noise_sampler: &Arc<B::Sampler>) {
     let texture_uav = resources.access_storage_view(
       cmd_buffer,
       Self::SHADOWS_TEXTURE_NAME,
@@ -71,7 +78,7 @@ impl<B: Backend> RTShadowPass<B> {
 
     let depth = resources.access_sampling_view(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::RAY_TRACING | BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,

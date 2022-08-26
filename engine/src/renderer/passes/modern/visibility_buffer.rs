@@ -1,6 +1,6 @@
 use sourcerenderer_core::{graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDimension}};
 use std::sync::Arc;
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::prepass::Prepass};
+use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
 use std::io::Read;
@@ -15,7 +15,7 @@ pub struct VisibilityBufferPass<B: GraphicsBackend> {
 impl<B: GraphicsBackend> VisibilityBufferPass<B> {
   pub const BARYCENTRICS_TEXTURE_NAME: &'static str = "barycentrics";
   pub const PRIMITIVE_ID_TEXTURE_NAME: &'static str = "primitive";
-  pub const DEPTH_BUFFER_NAME: &'static str = "depth";
+  pub const DEPTH_TEXTURE_NAME: &'static str = "depth";
 
   pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
     let barycentrics_texture_info = TextureInfo {
@@ -58,7 +58,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
       usage: TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL,
       supports_srgb: false,
     };
-    resources.create_texture(Prepass::<B>::DEPTH_TEXTURE_NAME, &depth_texture_info, true);
+    resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_texture_info, true);
 
     let vertex_shader = {
       let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("visibility_buffer.vert.spv"))).unwrap();
@@ -204,7 +204,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
 
     let dsv = resources.access_depth_stencil_view(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      Self::DEPTH_TEXTURE_NAME,
       BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH,
       BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
       TextureLayout::DepthStencilReadWrite, true,

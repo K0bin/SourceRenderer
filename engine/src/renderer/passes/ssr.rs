@@ -1,10 +1,8 @@
 use std::{io::Read, path::Path, sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER, TextureDimension}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}, platform::io::IO};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}};
-
-use super::{prepass::Prepass, conservative::geometry::GeometryPass, modern::VisibilityBufferPass};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass};
 
 pub struct SsrPass<B: GraphicsBackend> {
   pipeline: Arc<B::ComputePipeline>,
@@ -43,8 +41,9 @@ impl<B: GraphicsBackend> SsrPass<B> {
   pub fn execute(
     &mut self,
     cmd_buffer: &mut B::CommandBuffer,
-    _camera: &Arc<B::Buffer>,
     resources: &RendererResources<B>,
+    input_name: &str,
+    depth_name: &str,
     visibility_buffer: bool
   ){
     // TODO: merge back into the original image
@@ -63,7 +62,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
 
     let depth_srv = resources.access_sampling_view(
       cmd_buffer,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
@@ -74,7 +73,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
 
     let color_srv = resources.access_sampling_view(
       cmd_buffer,
-      GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME,
+      input_name,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,

@@ -7,8 +7,6 @@ use sourcerenderer_core::platform::io::IO;
 
 use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
 
-use super::prepass::Prepass;
-
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
   let width_frac = 1.0f32 / (width as f32 * 0.5f32);
   let height_frac = 1.0f32 / (height as f32 * 0.5f32);
@@ -77,8 +75,10 @@ impl<B: GraphicsBackend> TAAPass<B> {
   pub fn execute(
     &mut self,
     cmd_buf: &mut B::CommandBuffer,
-    input_name: &str,
     resources: &RendererResources<B>,
+    input_name: &str,
+    depth_name: &str,
+    motion_name: Option<&str>,
     visibility_buffer: bool
   ) {
     cmd_buf.begin_label("TAA pass");
@@ -122,7 +122,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     if !visibility_buffer {
       motion_srv = Some(resources.access_sampling_view(
         cmd_buf,
-        Prepass::<B>::MOTION_TEXTURE_NAME,
+        motion_name.unwrap(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,
@@ -155,7 +155,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
 
     let depth_srv = resources.access_sampling_view(
       cmd_buf,
-      Prepass::<B>::DEPTH_TEXTURE_NAME,
+      depth_name,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,

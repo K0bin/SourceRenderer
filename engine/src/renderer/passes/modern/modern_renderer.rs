@@ -64,7 +64,7 @@ impl<B: Backend> ModernRenderer<B> {
     });
     let visibility_buffer = VisibilityBufferPass::<B>::new::<P>(device, resolution, &mut barriers);
     let draw_prep = DrawPrepPass::<B>::new::<P>(device, &mut barriers);
-    let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer);
+    let hi_z_pass = HierarchicalZPass::<B>::new::<P>(device, &mut barriers, &mut init_cmd_buffer, VisibilityBufferPass::<B>::DEPTH_TEXTURE_NAME);
     let ssr_pass = SsrPass::<B>::new::<P>(device, resolution, &mut barriers, true);
     let shading_pass = ShadingPass::<B>::new::<P>(device, resolution, &mut barriers, &mut init_cmd_buffer);
     let compositing_pass = CompositingPass::<B>::new::<P>(device, resolution, &mut barriers);
@@ -116,7 +116,6 @@ impl<B: Backend> ModernRenderer<B> {
     index_buffer: &Arc<B::Buffer>,
     scene: &RendererScene<B>,
     view: &View,
-    _swapchain: &Arc<B::Swapchain>,
     rendering_resolution: &Vec2UI,
     frame: u64
   ) {
@@ -218,7 +217,6 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
       scene.index_buffer,
       scene.scene,
       main_view,
-      &self.swapchain,
       &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
       frame_info.frame
     );
@@ -229,35 +227,55 @@ impl<B: Backend> RenderPath<B> for ModernRenderer<B> {
     };
 
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene, &camera_buffer);
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene);
     }
-    self.hi_z_pass.execute(&mut cmd_buf, &self.barriers);
+    self.hi_z_pass.execute(&mut cmd_buf, &self.barriers, VisibilityBufferPass::<B>::DEPTH_TEXTURE_NAME);
     self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, scene.scene, main_view);
     self.visibility_buffer.execute(&mut cmd_buf, &self.barriers, scene.vertex_buffer, scene.index_buffer);
     self.motion_vector_pass.execute(&mut cmd_buf, &self.barriers);
     self.clustering_pass.execute(&mut cmd_buf, resolution, main_view, &camera_buffer, &mut self.barriers);
     self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &camera_buffer, &mut self.barriers);
-    self.ssao.execute(&mut cmd_buf, &camera_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), &self.barriers, true);
+    self.ssao.execute(&mut cmd_buf, &self.barriers, VisibilityBufferPass::<B>::DEPTH_TEXTURE_NAME, None, &camera_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), true);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, rt_passes.acceleration_structure_update.acceleration_structure(),  &self.barriers, &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
+      let blue_noise = &self.blue_noise.frame(frame_info.frame);
+      let blue_noise_sampler = &self.blue_noise.sampler();
+      let acceleration_structure = rt_passes.acceleration_structure_update.acceleration_structure();
+      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, VisibilityBufferPass::<B>::DEPTH_TEXTURE_NAME, acceleration_structure, blue_noise, blue_noise_sampler);
     }
     self.shading_pass.execute(&mut cmd_buf,  &self.device, scene.lightmap.unwrap(), zero_textures.zero_texture_view, &self.barriers);
-    self.ssr_pass.execute(&mut cmd_buf, &camera_buffer, &self.barriers, true);
-    self.compositing_pass.execute(&mut cmd_buf, &self.barriers);
+    self.ssr_pass.execute(&mut cmd_buf, &self.barriers, ShadingPass::<B>::SHADING_TEXTURE_NAME, VisibilityBufferPass::<B>::DEPTH_TEXTURE_NAME, true);
+    self.compositing_pass.execute(&mut cmd_buf, &self.barriers, ShadingPass::<B>::SHADING_TEXTURE_NAME);
 
-    match &mut self.anti_aliasing {
+    let output_texture_name = match &mut self.anti_aliasing {
       AntiAliasing::FSR2 { fsr } => {
-        fsr.execute(&mut cmd_buf, &self.barriers, &main_view, frame_info.delta, frame_info.frame);
+        fsr.execute(
+          &mut cmd_buf,
+          &self.barriers,
+          CompositingPass::<B>::COMPOSITION_TEXTURE_NAME,
+          VisibilityBufferPass::<B>::DEPTH_TEXTURE_NAME,
+          MotionVectorPass::<B>::MOTION_TEXTURE_NAME,
+          main_view,
+          frame_info
+        );
+        Fsr2Pass::<B>::UPSCALED_TEXTURE_NAME
       }
       AntiAliasing::TAA { taa, sharpen } => {
-        taa.execute(&mut cmd_buf, CompositingPass::<B>::COMPOSITION_TEXTURE_NAME, &self.barriers, true);
+        taa.execute(
+          &mut cmd_buf,
+          &self.barriers,
+          CompositingPass::<B>::COMPOSITION_TEXTURE_NAME,
+          VisibilityBufferPass::<B>::DEPTH_TEXTURE_NAME,
+          None,
+          true
+        );
         sharpen.execute(&mut cmd_buf, &self.barriers);
+        SharpenPass::<B>::SHAPENED_TEXTURE_NAME
       }
-    }
+    };
 
     let output_texture = self.barriers.access_texture(
       &mut cmd_buf,
-      TAAPass::<B>::TAA_TEXTURE_NAME,
+      output_texture_name,
       &BarrierTextureRange::default(),
       BarrierSync::COPY,
       BarrierAccess::COPY_READ,
