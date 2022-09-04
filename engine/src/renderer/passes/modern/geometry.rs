@@ -1,14 +1,11 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
+use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
 use std::{sync::Arc, cell::Ref};
-use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass}};
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
+use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass}, shader_manager::{ShaderManager, PipelineHandle, GraphicsPipelineInfo}};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::Backend};
 use crate::renderer::passes::taa::scaled_halton_point;
-use std::path::Path;
-use std::io::Read;
 use crate::renderer::renderer_assets::*;
-use sourcerenderer_core::platform::io::IO;
 
 use super::{draw_prep::DrawPrepPass, gpu_scene::DRAW_CAPACITY};
 
@@ -27,15 +24,15 @@ struct FrameData {
   directional_light_count: u32
 }
 
-pub struct GeometryPass<B: GraphicsBackend> {
-  sampler: Arc<B::Sampler>,
-  pipeline: Arc<B::GraphicsPipeline>
+pub struct GeometryPass<P: Platform> {
+  sampler: Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
+  pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> GeometryPass<B> {
+impl<P: Platform> GeometryPass<P> {
   pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, barriers: &mut RendererResources<B>) -> Self {
+  pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, barriers: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
     let texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA8UNorm,
@@ -64,23 +61,9 @@ impl<B: GraphicsBackend> GeometryPass<B> {
       max_lod: None,
     });
 
-    let vertex_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("geometry_bindless.vert.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes, Some("geometry_bindless.vert.spv"))
-    };
-
-    let fragment_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("geometry_bindless.frag.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::FragmentShader, &bytes, Some("geometry_bindless.frag.spv"))
-    };
-
-    let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
-      vs: &vertex_shader,
-      fs: Some(&fragment_shader),
+    let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
+      vs: "shaders/geometry_bindless.vert.spv",
+      fs: Some("shaders/geometry_bindless.frag.spv"),
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
         input_assembler: &[
@@ -159,7 +142,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
         ]
       }
     };
-    let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
+
+    let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info, &RenderPassInfo {
       attachments: &[
         AttachmentInfo {
           format: texture_info.format,
@@ -185,7 +169,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           }),
         }
       ]
-    }, 0, Some("BindlessGeometry"));
+    }, 0);
 
     Self {
       sampler,
@@ -196,26 +180,27 @@ impl<B: GraphicsBackend> GeometryPass<B> {
   #[profiling::function]
   pub(super) fn execute(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    barriers: &RendererResources<B>,
-    device: &Arc<B::Device>,
+    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    barriers: &RendererResources<P::GraphicsBackend>,
+    device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     depth_name: &str,
-    scene: &RendererScene<B>,
+    scene: &RendererScene<P::GraphicsBackend>,
     view: &View,
-    gpu_scene: &Arc<B::Buffer>,
-    zero_texture_view: &Arc<B::TextureSamplingView>,
-    _zero_texture_view_black: &Arc<B::TextureSamplingView>,
-    lightmap: &Arc<RendererTexture<B>>,
+    gpu_scene: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>,
+    _zero_texture_view_black: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>,
+    lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
     swapchain_transform: Matrix4,
     frame: u64,
-    camera_buffer: &Arc<B::Buffer>,
-    vertex_buffer: &Arc<B::Buffer>,
-    index_buffer: &Arc<B::Buffer>,
+    camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    shader_manager: &ShaderManager<P>
   ) {
     cmd_buffer.begin_label("Geometry pass");
     let draw_buffer = barriers.access_buffer(
       cmd_buffer,
-      DrawPrepPass::<B>::INDIRECT_DRAW_BUFFER,
+      DrawPrepPass::<P::GraphicsBackend>::INDIRECT_DRAW_BUFFER,
       BarrierSync::INDIRECT,
       BarrierAccess::INDIRECT_READ,
       HistoryResourceEntry::Current
@@ -246,7 +231,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     let ssao_ref = barriers.access_sampling_view(
       cmd_buffer,
-      SsaoPass::<B>::SSAO_TEXTURE_NAME,
+      SsaoPass::<P>::SSAO_TEXTURE_NAME,
       BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
@@ -258,18 +243,18 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     let light_bitmask_buffer_ref = barriers.access_buffer(
       cmd_buffer,
-      light_binning::LightBinningPass::<B>::LIGHT_BINNING_BUFFER_NAME,
+      light_binning::LightBinningPass::<P::GraphicsBackend>::LIGHT_BINNING_BUFFER_NAME,
       BarrierSync::FRAGMENT_SHADER,
       BarrierAccess::STORAGE_READ,
       HistoryResourceEntry::Current
     );
     let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-    let rt_shadows: Ref<Arc<B::TextureSamplingView>>;
+    let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>>;
     let shadows = if device.supports_ray_tracing() {
       rt_shadows = barriers.access_sampling_view(
         cmd_buffer,
-        RTShadowPass::<B>::SHADOWS_TEXTURE_NAME,
+        RTShadowPass::<P::GraphicsBackend>::SHADOWS_TEXTURE_NAME,
         BarrierSync::FRAGMENT_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,
@@ -350,7 +335,8 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 3, &per_frame_buffer, 0, WHOLE_BUFFER);
 
-    cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+    let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
     cmd_buffer.set_viewports(&[Viewport {
       position: Vec2::new(0.0f32, 0.0f32),
       extent: Vec2::new(rtv_info.width as f32, rtv_info.height as f32),

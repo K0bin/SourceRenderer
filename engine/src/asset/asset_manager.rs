@@ -1,10 +1,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex, Condvar};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use log::{trace, warn};
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::platform::ThreadHandle;
-use sourcerenderer_core::platform::{Platform, io::IO};
+use sourcerenderer_core::platform::{Platform, IO};
 use sourcerenderer_core::{Vec4, graphics};
 use sourcerenderer_core::graphics::TextureInfo;
 use std::hash::Hash;
@@ -17,9 +15,7 @@ use crossbeam_channel::{unbounded, Sender, Receiver};
 
 use crate::math::BoundingBox;
 
-pub type AssetKey = usize;
-
-pub struct AssetLoadRequest {
+struct AssetLoadRequest {
   path: String,
   asset_type: AssetType,
   progress: Arc<AssetLoaderProgress>,
@@ -41,7 +37,8 @@ pub enum AssetType {
   Sound,
   Level,
   Chunk,
-  Container
+  Container,
+  Shader,
 }
 
 #[derive(Clone)]
@@ -194,7 +191,8 @@ pub enum Asset {
   Mesh(Mesh),
   Model(Model),
   Sound,
-  Material(Material)
+  Material(Material),
+  Shader(Box<[u8]>),
 }
 
 pub struct AssetManager<P: Platform> {
@@ -206,13 +204,12 @@ pub struct AssetManager<P: Platform> {
   renderer_receiver: Receiver<LoadedAsset>,
   cond_var: Arc<Condvar>,
   is_running: AtomicBool,
-  thread_handles: AtomicRefCell<Vec<P::ThreadHandle>>
 }
 
 struct AssetManagerInner {
   load_queue: VecDeque<AssetLoadRequest>,
-  requested_assets: HashSet<String>,
-  loaded_assets: HashSet<String>
+  requested_assets: HashMap<String, AssetType>,
+  loaded_assets: HashMap<String, AssetType>,
 }
 
 impl<P: Platform> AssetManager<P> {
@@ -225,8 +222,8 @@ impl<P: Platform> AssetManager<P> {
       device: device.clone(),
       inner: Mutex::new(AssetManagerInner {
         load_queue: VecDeque::new(),
-        loaded_assets: HashSet::new(),
-        requested_assets: HashSet::new()
+        loaded_assets: HashMap::new(),
+        requested_assets: HashMap::new(),
       }),
       loaders: RwLock::new(Vec::new()),
       containers: RwLock::new(Vec::new()),
@@ -234,19 +231,12 @@ impl<P: Platform> AssetManager<P> {
       renderer_receiver,
       cond_var,
       is_running: AtomicBool::new(true),
-      thread_handles: AtomicRefCell::new(Vec::new())
     });
 
-    {
-      let mut thread_handles = Vec::new();
-      let thread_count = 1;
-      for _ in 0..thread_count {
-        let c_manager = Arc::downgrade(&manager);
-        let thread_handle = platform.start_thread("AssetManagerThread", move || asset_manager_thread_fn(c_manager));
-        thread_handles.push(thread_handle);
-      }
-      let mut thread_handles_guard = manager.thread_handles.borrow_mut();
-      *thread_handles_guard = thread_handles;
+    let thread_count = 4;
+    for _ in 0..thread_count {
+      let c_manager = Arc::downgrade(&manager);
+      platform.start_thread("AssetManagerThread", move || asset_manager_thread_fn(c_manager));
     }
 
     manager
@@ -315,9 +305,21 @@ impl<P: Platform> AssetManager<P> {
   }
 
   pub fn add_asset_with_progress(&self, path: &str, asset: Asset, progress: Option<&Arc<AssetLoaderProgress>>, priority: AssetLoadPriority) {
+    let asset_type = match &asset {
+      Asset::Texture(_) => AssetType::Texture,
+      Asset::Material(_) => AssetType::Material,
+      Asset::Mesh(_) => AssetType::Mesh,
+      Asset::Model(_) => AssetType::Model,
+      Asset::Sound => AssetType::Sound,
+      Asset::Shader(_) => AssetType::Shader,
+    };
+
     {
       let mut inner = self.inner.lock().unwrap();
-      inner.loaded_assets.insert(path.to_string());
+      if asset_type == AssetType::Shader {
+        println!("loaded {}", path);
+      }
+      inner.loaded_assets.insert(path.to_string(), asset_type);
       inner.requested_assets.remove(path);
     }
 
@@ -354,15 +356,39 @@ impl<P: Platform> AssetManager<P> {
           priority
         }).unwrap();
       }
+      Asset::Shader(shader_bytecode) => {
+        self.renderer_sender.send(LoadedAsset {
+          asset: Asset::Shader(shader_bytecode),
+          path: path.to_owned(),
+          priority
+        }).unwrap();
+      }
       _ => unimplemented!()
     }
   }
 
-  pub fn request_asset(&self, path: &str, asset_type: AssetType, priority: AssetLoadPriority) -> Arc<AssetLoaderProgress> {
-    self.request_asset_with_progress(path, asset_type, priority, None)
+  pub fn request_asset_update(&self, path: &str) {
+    log::info!("Reloading: {}", path);
+    let asset_type = {
+      let inner = self.inner.lock().unwrap();
+      inner.loaded_assets.get(path).copied()
+    };
+    if let Some(asset_type) = asset_type {
+      self.request_asset_internal(path, asset_type, AssetLoadPriority::Low, None, true);
+    } else {
+      warn!("Cannot reload unloaded asset {}", path);
+    }
   }
 
-  pub fn request_asset_with_progress(&self, path: &str, asset_type: AssetType, priority: AssetLoadPriority, progress: Option<&Arc<AssetLoaderProgress>>) -> Arc<AssetLoaderProgress> {
+  pub fn request_asset(&self, path: &str, asset_type: AssetType, priority: AssetLoadPriority) -> Arc<AssetLoaderProgress> {
+    self.request_asset_internal(path, asset_type, priority, None, false)
+  }
+
+  pub fn request_asset_with_progress(&self, path: &str, asset_type: AssetType, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Arc<AssetLoaderProgress> {
+    self.request_asset_internal(path, asset_type, priority, Some(progress), false)
+  }
+
+  fn request_asset_internal(&self, path: &str, asset_type: AssetType, priority: AssetLoadPriority, progress: Option<&Arc<AssetLoaderProgress>>, refresh: bool) -> Arc<AssetLoaderProgress> {
     let progress = progress.map_or_else(|| Arc::new(AssetLoaderProgress {
       expected: AtomicU32::new(0),
       finished: AtomicU32::new(0)
@@ -371,11 +397,11 @@ impl<P: Platform> AssetManager<P> {
 
     {
       let mut inner = self.inner.lock().unwrap();
-      if inner.loaded_assets.contains(path) || inner.requested_assets.contains(path) {
+      if (inner.loaded_assets.contains_key(path) && !refresh) || inner.requested_assets.contains_key(path) {
         progress.finished.fetch_add(1, Ordering::SeqCst);
         return progress;
       }
-      inner.requested_assets.insert(path.to_owned());
+      inner.requested_assets.insert(path.to_owned(), asset_type);
 
       inner.load_queue.push_back(AssetLoadRequest {
         asset_type,
@@ -502,7 +528,9 @@ impl<P: Platform> AssetManager<P> {
 
   pub fn notify_loaded(&self, path: &str) {
     let mut inner = self.inner.lock().unwrap();
-    inner.loaded_assets.insert(path.to_string());
+    if let Some(asset_type) = inner.requested_assets.remove(path) {
+      inner.loaded_assets.insert(path.to_string(), asset_type);
+    }
   }
 
   pub fn notify_unloaded(&self, path: &str) {
@@ -517,12 +545,6 @@ impl<P: Platform> AssetManager<P> {
       return;
     }
     self.cond_var.notify_all();
-    let mut thread_handles_guard = self.thread_handles.borrow_mut();
-    for handle in thread_handles_guard.drain(..) {
-      if let Err(e) = handle.join() {
-        log::error!("AssetManager did not exit cleanly: {:?}", e);
-      }
-    }
   }
 }
 
@@ -575,3 +597,4 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
   }
   trace!("Stopped asset manager thread");
 }
+

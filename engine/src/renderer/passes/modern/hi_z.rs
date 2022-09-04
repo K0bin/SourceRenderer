@@ -1,23 +1,23 @@
-use std::{sync::Arc, path::Path, io::Read};
+use std::sync::Arc;
 
 use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, TextureUsage, Format, Device, ShaderType, CommandBuffer, PipelineBinding, BarrierSync, BarrierAccess, TextureLayout, TextureViewInfo, BindingFrequency, SamplerInfo, Filter, AddressMode, BufferInfo, BufferUsage, MemoryUsage, WHOLE_BUFFER}, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::{Backend, TextureUsage, Format, Device, ShaderType, CommandBuffer, PipelineBinding, BarrierSync, BarrierAccess, TextureLayout, TextureViewInfo, BindingFrequency, SamplerInfo, Filter, AddressMode, BufferInfo, BufferUsage, MemoryUsage, WHOLE_BUFFER}, Platform};
 
-use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
 
-pub struct HierarchicalZPass<B: Backend> {
-  ffx_pipeline: Arc<B::ComputePipeline>,
-  copy_pipeline: Arc<B::ComputePipeline>,
-  sampler: Arc<B::Sampler>,
-  device: Arc<B::Device>,
+pub struct HierarchicalZPass<P: Platform> {
+  ffx_pipeline: PipelineHandle,
+  copy_pipeline: PipelineHandle,
+  sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
+  device: Arc<<P::GraphicsBackend as Backend>::Device>,
 }
 
-impl<B: Backend> HierarchicalZPass<B> {
+impl<P: Platform> HierarchicalZPass<P> {
   pub const HI_Z_BUFFER_NAME: &'static str = "Hierarchical Z Buffer";
   const FFX_COUNTER_BUFFER_NAME: &'static str = "FFX Downscaling Counter Buffer";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, init_cmd_buffer: &mut B::CommandBuffer, depth_name: &str) -> Self {
+  pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>, init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer, depth_name: &str) -> Self {
     let mut texture_info = resources.texture_info(depth_name).clone();
     let size = texture_info.width.max(texture_info.height) as f32;
     texture_info.mip_levels = (size.log(2f32).ceil() as u32).max(1);
@@ -27,21 +27,9 @@ impl<B: Backend> HierarchicalZPass<B> {
     resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
     assert!(device.supports_min_max_filter()); // TODO: Implement variant that doesn't rely on min-max filter. PLS JUST ADD IT TO METAL @APPLE
-    let ffx_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("ffx_downsampler.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("ffx_downsampler.comp.spv"))
-    };
-    let ffx_pipeline = device.create_compute_pipeline(&ffx_shader, Some("FidelityFX Hi-Z Gen"));
 
-    let copy_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("hi_z_copy.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("hi_z_copy.comp.spv"))
-    };
-    let copy_pipeline = device.create_compute_pipeline(&copy_shader, Some("Hi-Z Gen Copy"));
+    let ffx_pipeline = shader_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.spv");
+    let copy_pipeline = shader_manager.request_compute_pipeline("shaders/hi_z_copy.comp.spv");
 
     let sampler = if device.supports_min_max_filter() {
       device.create_sampler(&SamplerInfo {
@@ -89,8 +77,9 @@ impl<B: Backend> HierarchicalZPass<B> {
 
   pub fn execute(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
+    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>,
     depth_name: &str
   ) {
     let (width, height, mips) = {
@@ -120,7 +109,8 @@ impl<B: Backend> HierarchicalZPass<B> {
       true,
       &TextureViewInfo::default(), HistoryResourceEntry::Current
     ).clone();
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.copy_pipeline));
+    let copy_pipeline = shader_manager.get_compute_pipeline(self.copy_pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&copy_pipeline));
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &src_texture, resources.nearest_sampler());
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &dst_mip0);
     cmd_buffer.flush_barriers();
@@ -134,7 +124,7 @@ impl<B: Backend> HierarchicalZPass<B> {
       BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE,
       HistoryResourceEntry::Current
     );
-    let mut dst_texture_views = SmallVec::<[Arc<B::TextureStorageView>; 12]>::new();
+    let mut dst_texture_views = SmallVec::<[Arc<<P::GraphicsBackend as Backend>::TextureStorageView>; 12]>::new();
     for i in 1..mips {
       dst_texture_views.push(resources.access_storage_view(
         cmd_buffer,
@@ -152,7 +142,7 @@ impl<B: Backend> HierarchicalZPass<B> {
         }, HistoryResourceEntry::Current
       ).clone());
     }
-    let mut texture_refs = SmallVec::<[&Arc<B::TextureStorageView>; 12]>::new();
+    let mut texture_refs = SmallVec::<[&Arc<<P::GraphicsBackend as Backend>::TextureStorageView>; 12]>::new();
     for i in 0 .. (mips - 1) as usize {
       texture_refs.push(&dst_texture_views[i]);
     }
@@ -160,7 +150,8 @@ impl<B: Backend> HierarchicalZPass<B> {
       texture_refs.push(&dst_texture_views[0]); // fill the rest of the array with views that never get used, so the validation layers shut up
     }
 
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.ffx_pipeline));
+    let ffx_pipeline = shader_manager.get_compute_pipeline(self.ffx_pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&ffx_pipeline));
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &src_texture, &self.sampler);
     cmd_buffer.bind_storage_view_array(BindingFrequency::VeryFrequent, 1, &texture_refs);
     cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 2, &counter_buffer, 0, WHOLE_BUFFER);

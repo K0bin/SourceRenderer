@@ -9,7 +9,7 @@ use std::os::raw::{c_void, c_int};
 use libc::{SEEK_CUR, SEEK_END, SEEK_SET, O_RDONLY};
 use std::path::Path;
 use std::ffi::CString;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 use jni::{JavaVM, JNIEnv};
 use jni::objects::{JValue, JObject, JStaticMethodID, GlobalRef};
 use std::fs::File;
@@ -18,6 +18,8 @@ use jni::signature::JavaType;
 use ndk_sys::AAssetManager_fromJava;
 use jni::signature::Primitive;
 use std::mem::MaybeUninit;
+
+use crate::android_platform::AndroidFileWatcher;
 
 static mut ASSET_MANAGER: *mut AAssetManager = std::ptr::null_mut();
 static mut JVM: MaybeUninit<JavaVM> = MaybeUninit::uninit();
@@ -41,6 +43,7 @@ pub struct AndroidIO {}
 
 impl IO for AndroidIO {
   type File = AndroidFile;
+  type FileWatcher = AndroidFileWatcher;
 
   fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
     let asset_manager = unsafe {
@@ -92,6 +95,10 @@ impl IO for AndroidIO {
 
   fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
     Self::open_external_asset(path).is_ok()
+  }
+
+  fn new_file_watcher(sender: Sender<String>) -> Self::FileWatcher {
+    AndroidFileWatcher {}
   }
 }
 

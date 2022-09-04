@@ -7,7 +7,7 @@ use crate::renderer::{RendererScene, drawable::View};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
 use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 use rayon::prelude::*;
 
 #[derive(Clone, Copy)]

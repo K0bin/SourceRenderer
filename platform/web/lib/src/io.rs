@@ -2,7 +2,7 @@ use std::io::{Read, Seek, SeekFrom, Result as IOResult, Error as IOError, ErrorK
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::path::Path;
 
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 
 use wasm_bindgen::JsCast;
 use web_sys::DedicatedWorkerGlobalScope;

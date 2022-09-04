@@ -1,23 +1,23 @@
-use sourcerenderer_core::{graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDimension}};
+use sourcerenderer_core::{graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDimension}};
 use std::sync::Arc;
-use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, GraphicsPipelineInfo, ShaderManager}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
 use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 
 use super::{draw_prep::DrawPrepPass, gpu_scene::DRAW_CAPACITY};
 
-pub struct VisibilityBufferPass<B: GraphicsBackend> {
-  pipeline: Arc<B::GraphicsPipeline>
+pub struct VisibilityBufferPass {
+  pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> VisibilityBufferPass<B> {
+impl VisibilityBufferPass {
   pub const BARYCENTRICS_TEXTURE_NAME: &'static str = "barycentrics";
   pub const PRIMITIVE_ID_TEXTURE_NAME: &'static str = "primitive";
   pub const DEPTH_TEXTURE_NAME: &'static str = "depth";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
+  pub fn new<P: Platform>(resolution: Vec2UI, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
     let barycentrics_texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RG16UNorm,
@@ -60,23 +60,9 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
     };
     resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_texture_info, true);
 
-    let vertex_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("visibility_buffer.vert.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes, Some("visibility_buffer.vert.spv"))
-    };
-
-    let fragment_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("visibility_buffer.frag.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::FragmentShader, &bytes, Some("visibility_buffer.frag.spv"))
-    };
-
-    let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
-      vs: &vertex_shader,
-      fs: Some(&fragment_shader),
+    let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
+      vs: "shaders/visibility_buffer.vert.spv",
+      fs: Some("shaders/visibility_buffer.frag.spv"),
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
         input_assembler: &[
@@ -124,7 +110,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
         ]
       }
     };
-    let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
+    let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info, &RenderPassInfo {
       attachments: &[
         AttachmentInfo {
           format: primitive_id_texture_info.format,
@@ -158,7 +144,7 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
           }),
         }
       ]
-    }, 0, Some("VisibilityBuffer"));
+    }, 0);
 
     Self {
       pipeline
@@ -166,17 +152,18 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
   }
 
   #[profiling::function]
-  pub(super) fn execute(
+  pub(super) fn execute<P: Platform>(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
-    vertex_buffer: &Arc<B::Buffer>,
-    index_buffer: &Arc<B::Buffer>,
+    cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    vertex_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    index_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    shader_manager: &ShaderManager<P>
   ) {
     cmd_buffer.begin_label("Visibility Buffer pass");
     let draw_buffer = resources.access_buffer(
       cmd_buffer,
-      DrawPrepPass::<B>::INDIRECT_DRAW_BUFFER,
+      DrawPrepPass::<P::GraphicsBackend>::INDIRECT_DRAW_BUFFER,
       BarrierSync::INDIRECT,
       BarrierAccess::INDIRECT_READ,
       HistoryResourceEntry::Current
@@ -252,7 +239,8 @@ impl<B: GraphicsBackend> VisibilityBufferPass<B> {
     }, RenderpassRecordingMode::Commands);
 
     let rtv_info = barycentrics_rtv.texture().info();
-    cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+    let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
     cmd_buffer.set_viewports(&[Viewport {
       position: Vec2::new(0.0f32, 0.0f32),
       extent: Vec2::new(rtv_info.width as f32, rtv_info.height as f32),

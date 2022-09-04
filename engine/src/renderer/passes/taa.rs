@@ -3,7 +3,7 @@ use sourcerenderer_core::Platform;
 use std::{sync::Arc, cell::Ref};
 use std::path::Path;
 use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 
 use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
 
@@ -133,7 +133,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     } else {
       id_view = Some(resources.access_storage_view(
         cmd_buf,
-        super::modern::VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+        super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -143,7 +143,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       ));
       barycentrics_view = Some(resources.access_storage_view(
         cmd_buf,
-        super::modern::VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+        super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,

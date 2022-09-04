@@ -1,31 +1,24 @@
 use std::sync::Arc;
-use std::path::Path;
-use std::io::Read;
 
 use sourcerenderer_core::graphics::{Backend, BarrierAccess, BarrierSync, BindingFrequency,
                                     CommandBuffer, Format, PipelineBinding, TextureInfo,
                                     TextureLayout, TextureStorageView, TextureUsage,
-                                    TextureViewInfo, Texture, Device, TextureDimension,
-                                    ShaderType, SampleCount};
-use sourcerenderer_core::{Platform, Vec2UI, platform::io::IO};
+                                    TextureViewInfo, Texture, TextureDimension,
+                                    SampleCount};
+use sourcerenderer_core::{Platform, Vec2UI};
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::shader_manager::{ShaderManager, PipelineHandle};
 
-pub struct MotionVectorPass<B: Backend> {
-  pipeline: Arc<B::ComputePipeline>
+pub struct MotionVectorPass {
+  pipeline: PipelineHandle
 }
 
-impl<B: Backend> MotionVectorPass<B> {
+impl MotionVectorPass {
   pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>, renderer_resolution: Vec2UI) -> Self {
-    let shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("motion_vectors_vis_buf.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("motion_vectors_vis_buf.comp.spv"))
-    };
-    let pipeline = device.create_compute_pipeline(&shader, Some("Motion Vectors"));
+  pub fn new<P: Platform>(resources: &mut RendererResources<P::GraphicsBackend>, renderer_resolution: Vec2UI, shader_manager: &mut ShaderManager<P>) -> Self {
+    let pipeline = shader_manager.request_compute_pipeline("shaders/motion_vectors_vis_buf.comp.spv");
 
     resources.create_texture(
         Self::MOTION_TEXTURE_NAME,
@@ -48,7 +41,9 @@ impl<B: Backend> MotionVectorPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>) {
+  pub fn execute<P: Platform>(&mut self, cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer, resources: &RendererResources<P::GraphicsBackend>, shader_manager: &ShaderManager<P>) {
+    let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+
     cmd_buffer.begin_label("Motion Vectors");
 
     let output_srv = resources.access_storage_view(
@@ -69,7 +64,7 @@ impl<B: Backend> MotionVectorPass<B> {
 
     let ids = resources.access_storage_view(
        cmd_buffer,
-      VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+      VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_READ,
       TextureLayout::Storage,
@@ -80,7 +75,7 @@ impl<B: Backend> MotionVectorPass<B> {
 
     let barycentrics = resources.access_storage_view(
       cmd_buffer,
-      VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+      VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_READ,
       TextureLayout::Storage,
@@ -89,7 +84,7 @@ impl<B: Backend> MotionVectorPass<B> {
       HistoryResourceEntry::Current
     );
 
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &output_srv);
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);

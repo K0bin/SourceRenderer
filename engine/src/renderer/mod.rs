@@ -17,6 +17,7 @@ mod renderer_assets;
 mod asset_buffer;
 mod late_latching;
 mod vertex;
+mod shader_manager;
 
 #[cfg(feature = "threading")]
 pub use self::renderer::Renderer;

@@ -1,6 +1,6 @@
 use std::{io::Read, path::Path, sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}, platform::IO};
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass};
 
@@ -88,7 +88,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
     if visibility_buffer {
       ids = Some(resources.access_storage_view(
         cmd_buffer,
-        VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+        VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -99,7 +99,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
 
       barycentrics = Some(resources.access_storage_view(
         cmd_buffer,
-        VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+        VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,

@@ -1,31 +1,22 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
 use sourcerenderer_core::{Platform, Vec2UI};
-use std::sync::Arc;
-use std::path::Path;
-use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
 
+use crate::renderer::shader_manager::{PipelineHandle, ShaderManager};
 use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 use super::ssr::SsrPass;
 
 const USE_CAS: bool = true;
 
-pub struct CompositingPass<B: GraphicsBackend> {
-  pipeline: Arc<B::ComputePipeline>
+pub struct CompositingPass {
+  pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> CompositingPass<B> {
+impl CompositingPass {
   pub const COMPOSITION_TEXTURE_NAME: &'static str = "Composition";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
-    let sharpen_compute_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("compositing.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("compositing.comp.spv"))
-    };
-    let pipeline = device.create_compute_pipeline(&sharpen_compute_shader, Some("Compositing"));
+  pub fn new<P: Platform>(resolution: Vec2UI, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
+    let pipeline = shader_manager.request_compute_pipeline("shaders/compositing.comp.spv");
 
     resources.create_texture(Self::COMPOSITION_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
@@ -45,11 +36,13 @@ impl<B: GraphicsBackend> CompositingPass<B> {
     }
   }
 
-  pub fn execute(
+  pub fn execute<P: Platform>(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
-    input_name: &str) {
+    cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    input_name: &str,
+    shader_manager: &ShaderManager<P>
+  ) {
     let input_image = resources.access_sampling_view(
       cmd_buffer,
       input_name,
@@ -63,7 +56,7 @@ impl<B: GraphicsBackend> CompositingPass<B> {
 
     let ssr = resources.access_sampling_view(
       cmd_buffer,
-      SsrPass::<B>::SSR_TEXTURE_NAME,
+      SsrPass::<P::GraphicsBackend>::SSR_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
@@ -85,7 +78,8 @@ impl<B: GraphicsBackend> CompositingPass<B> {
 
     cmd_buffer.begin_label("Compositing pass");
 
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
 
     #[repr(C)]
     #[derive(Debug, Clone)]

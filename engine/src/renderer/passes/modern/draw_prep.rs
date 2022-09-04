@@ -1,6 +1,6 @@
 use std::{sync::Arc, path::Path, io::Read};
 
-use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, TextureLayout, TextureViewInfo}, Platform, platform::io::IO, Vec4};
+use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, TextureLayout, TextureViewInfo}, Platform, platform::IO, Vec4};
 
 use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}}, drawable::View}, math::Frustum};
 
@@ -60,12 +60,12 @@ impl<B: Backend> DrawPrepPass<B> {
       );
 
       let hi_z_mips = {
-        let hi_z_info = resources.texture_info(HierarchicalZPass::<B>::HI_Z_BUFFER_NAME);
+        let hi_z_info = resources.texture_info(HierarchicalZPass::<P>::HI_Z_BUFFER_NAME);
         hi_z_info.mip_levels
       };
       let hi_z = resources.access_sampling_view(
         cmd_buffer,
-        HierarchicalZPass::<B>::HI_Z_BUFFER_NAME,
+        HierarchicalZPass::<P>::HI_Z_BUFFER_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,

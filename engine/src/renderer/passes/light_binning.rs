@@ -4,7 +4,7 @@ use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 
 use crate::renderer::{RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}};
 
@@ -78,7 +78,7 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     ]);
 
     let light_bitmask_buffer = barriers.access_buffer(cmd_buffer, Self::LIGHT_BINNING_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE, HistoryResourceEntry::Current);
-    let clusters_buffer = barriers.access_buffer(cmd_buffer, ClusteringPass::<B>::CLUSTERS_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ, HistoryResourceEntry::Current);
+    let clusters_buffer = barriers.access_buffer(cmd_buffer, ClusteringPass::CLUSTERS_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ, HistoryResourceEntry::Current);
 
     cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.light_binning_pipeline));
     cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, camera_buffer, 0, WHOLE_BUFFER);

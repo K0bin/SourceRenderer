@@ -8,13 +8,13 @@ use std::hash::Hash;
 
 use super::BindingFrequency;
 
-#[derive(Clone, Copy, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub enum InputRate {
   PerVertex,
   PerInstance
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct ShaderInputElement {
   pub input_assembler_binding: u32,
   pub location_vk_mtl: u32,
@@ -24,7 +24,7 @@ pub struct ShaderInputElement {
   pub format: Format
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct InputAssemblerElement {
   pub binding: u32,
   pub input_rate: InputRate,
@@ -54,27 +54,27 @@ impl Default for InputAssemblerElement {
   }
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct VertexLayoutInfo<'a> {
   pub shader_inputs: &'a [ShaderInputElement],
   pub input_assembler: &'a [InputAssemblerElement]
 }
 
 // ignore input assembler for now and always use triangle lists
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FillMode {
   Fill,
   Line
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CullMode {
   None,
   Front,
   Back
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrontFace {
   CounterClockwise,
   Clockwise
@@ -88,7 +88,7 @@ pub enum SampleCount {
   Samples8
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct RasterizerInfo {
   pub fill_mode: FillMode,
   pub cull_mode: CullMode,
@@ -107,7 +107,7 @@ impl Default for RasterizerInfo {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompareFunc {
   Never,
   Less,
@@ -119,7 +119,7 @@ pub enum CompareFunc {
   Always
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StencilOp {
   Keep,
   Zero,
@@ -131,7 +131,7 @@ pub enum StencilOp {
   Decrease
 }
 
-#[derive(Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct StencilInfo {
   pub fail_op: StencilOp,
   pub depth_fail_op: StencilOp,
@@ -150,7 +150,7 @@ impl Default for StencilInfo {
   }
 }
 
-#[derive(Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct DepthStencilInfo {
   pub depth_test_enabled: bool,
   pub depth_write_enabled: bool,
@@ -177,7 +177,7 @@ impl Default for DepthStencilInfo {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LogicOp {
   Clear,
   Set,
@@ -197,7 +197,7 @@ pub enum LogicOp {
   OrInverted
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BlendFactor {
   Zero,
   One,
@@ -216,7 +216,7 @@ pub enum BlendFactor {
   OneMinusSrc1Alpha
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BlendOp {
   Add,
   Subtract,
@@ -225,7 +225,7 @@ pub enum BlendOp {
   Max
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BlendInfo<'a> {
   pub alpha_to_coverage_enabled: bool,
   pub logic_op_enabled: bool,
@@ -281,7 +281,7 @@ bitflags! {
   }
 }
 
-#[derive(Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct AttachmentBlendInfo {
   pub blend_enabled: bool,
   pub src_color_blend_factor: BlendFactor,

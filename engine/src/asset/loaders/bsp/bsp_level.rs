@@ -431,7 +431,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
     for prop in temp.static_props.props.as_ref() {
       let name = &temp.static_props.names.as_ref()[prop.prop_type as usize];
-      manager.request_asset_with_progress(name, AssetType::Model, AssetLoadPriority::Normal, Some(progress));
+      manager.request_asset_with_progress(name, AssetType::Model, AssetLoadPriority::Normal, progress);
       world.push(
         (StaticRenderableComponent {
           model_path: name.clone(),

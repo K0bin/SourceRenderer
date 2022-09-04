@@ -1,12 +1,12 @@
 use nalgebra::Vector2;
 use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
 use std::{sync::Arc, cell::Ref};
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass, conservative::desktop_renderer::setup_frame}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use std::path::Path;
 use std::io::Read;
 use crate::renderer::renderer_assets::*;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 use rayon::prelude::*;
 use crate::renderer::render_path::{SceneInfo, ZeroTextures};
 
@@ -240,7 +240,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
 
     let ssao_ref = barriers.access_sampling_view(
       cmd_buffer,
-      SsaoPass::<B>::SSAO_TEXTURE_NAME,
+      SsaoPass::<P>::SSAO_TEXTURE_NAME,
       BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
@@ -351,7 +351,7 @@ impl<B: GraphicsBackend> GeometryPass<B> {
           command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
         }
 
-        ConservativeRenderer::<B>::setup_frame(&mut command_buffer, bindings);
+        setup_frame::<B>(&mut command_buffer, bindings);
 
         command_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
 

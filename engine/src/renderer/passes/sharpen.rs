@@ -3,7 +3,7 @@ use sourcerenderer_core::Platform;
 use std::sync::Arc;
 use std::path::Path;
 use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 
 use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
 

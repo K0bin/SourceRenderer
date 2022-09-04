@@ -4,7 +4,7 @@ use crate::asset::loaders::csgo_loader::CSGOMapLoaderError::CSGONotFound;
 use regex::Regex;
 use crate::asset::loaders::vpk_container::{CSGO_PRIMARY_PAK_NAME_PATTERN, CSGO_PAK_NAME_PATTERN};
 use sourcerenderer_core::Platform;
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 
 pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+\.bsp";
 
