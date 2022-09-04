@@ -26,14 +26,6 @@ pub struct FrameInfo {
   pub delta: Duration
 }
 
-pub struct CommonResourceNames<'a> {
-  pub motion_vectors: Option<&'a str>,
-  pub depth: Option<&'a str>,
-  pub pre_postprocessing_output: &'a str,
-  pub pre_upscaling_output: &'a str,
-  pub output: &'a str,
-}
-
 pub(super) trait RenderPath<B: Backend> {
   fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
   fn on_swapchain_changed(&mut self, swapchain: &Arc<B::Swapchain>);
