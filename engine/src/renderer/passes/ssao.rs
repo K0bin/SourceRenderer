@@ -1,26 +1,26 @@
-use std::{io::Read, path::Path, sync::Arc, cell::Ref};
+use std::{sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER, TextureDimension}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER, TextureDimension}};
 
 use rand::random;
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
 
-pub struct SsaoPass<B: GraphicsBackend> {
-  pipeline: Arc<B::ComputePipeline>,
-  kernel: Arc<B::Buffer>,
-  blur_pipeline: Arc<B::ComputePipeline>,
+pub struct SsaoPass<P: Platform> {
+  pipeline: PipelineHandle,
+  kernel: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+  blur_pipeline: PipelineHandle,
 }
 
 fn lerp(a: f32, b: f32, f: f32) -> f32 {
   a + f * (b - a)
 }
 
-impl<B: GraphicsBackend> SsaoPass<B> {
+impl<P: Platform> SsaoPass<P> {
   const SSAO_INTERNAL_TEXTURE_NAME: &'static str = "SSAO";
   pub const SSAO_TEXTURE_NAME: &'static str = "SSAOBlurred";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>, visibility_buffer: bool) -> Self {
+  pub fn new(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, resolution: Vec2UI, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>, visibility_buffer: bool) -> Self {
     resources.create_texture(Self::SSAO_INTERNAL_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::R16Float,
@@ -47,25 +47,13 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       supports_srgb: false,
     }, true);
 
-    let shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("ssao.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("ssao.comp.spv"))
-    };
-    let pipeline = device.create_compute_pipeline(&shader, Some("SSAO"));
+    let pipeline = shader_manager.request_compute_pipeline("shaders/ssao.comp.spv");
 
     // TODO: Clear history texture
 
     let kernel = Self::create_hemisphere(device, 64);
 
-    let blur_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(if !visibility_buffer { "ssao_blur.comp.spv" } else { "ssao_blur_vis_buf.comp.spv" }))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("ssao_blur.comp.spv"))
-    };
-    let blur_pipeline = device.create_compute_pipeline(&blur_shader, Some("SSAOBlur"));
+    let blur_pipeline = shader_manager.request_compute_pipeline(if !visibility_buffer { "shaders/ssao_blur.comp.spv" } else { "shaders/ssao_blur_vis_buf.comp.spv" });
 
     Self {
       pipeline,
@@ -74,7 +62,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }
   }
 
-  fn create_hemisphere(device: &Arc<B::Device>, samples: u32) -> Arc<B::Buffer> {
+  fn create_hemisphere(device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>, samples: u32) -> Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> {
     let mut ssao_kernel = Vec::<Vec4>::with_capacity(samples as usize);
     const BIAS: f32 = 0.15f32;
     for i in 0..samples {
@@ -104,13 +92,14 @@ impl<B: GraphicsBackend> SsaoPass<B> {
 
   pub fn execute(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
+    cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
     depth_name: &str,
     motion_name: Option<&str>,
-    camera: &Arc<B::Buffer>,
-    blue_noise_view: &Arc<B::TextureSamplingView>,
-    blue_noise_sampler: &Arc<B::Sampler>,
+    camera: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    blue_noise_view: &Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>,
+    blue_noise_sampler: &Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
+    shader_manager: &ShaderManager<P>,
     visibility_buffer: bool
   ) {
     let ssao_uav = resources.access_storage_view(
@@ -135,9 +124,9 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let mut motion_srv = Option::<Ref<Arc<B::TextureSamplingView>>>::None;
-    let mut id_view = Option::<Ref<Arc<B::TextureStorageView>>>::None;
-    let mut barycentrics_view = Option::<Ref<Arc<B::TextureStorageView>>>::None;
+    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>>>::None;
+    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
     if !visibility_buffer {
       motion_srv = Some(resources.access_sampling_view(
         cmd_buffer,
@@ -152,7 +141,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     } else {
       id_view = Some(resources.access_storage_view(
         cmd_buffer,
-        super::modern::VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+        super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -162,7 +151,7 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       ));
       barycentrics_view = Some(resources.access_storage_view(
         cmd_buffer,
-        super::modern::VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+        super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -173,7 +162,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
     }
 
     cmd_buffer.begin_label("SSAO pass");
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
     cmd_buffer.flush_barriers();
     cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, &self.kernel, 0, WHOLE_BUFFER);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, blue_noise_view, blue_noise_sampler);
@@ -218,7 +208,8 @@ impl<B: GraphicsBackend> SsaoPass<B> {
       HistoryResourceEntry::Past
     );
 
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.blur_pipeline));
+    let blur_pipeline = shader_manager.get_compute_pipeline(self.blur_pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&blur_pipeline));
     cmd_buffer.flush_barriers();
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &*blurred_uav);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*ssao_srv, resources.linear_sampler());

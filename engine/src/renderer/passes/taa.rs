@@ -1,11 +1,8 @@
-use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Swapchain, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture, TextureDimension}};
+use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, Swapchain, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture, TextureDimension}, Vec2UI};
 use sourcerenderer_core::Platform;
 use std::{sync::Arc, cell::Ref};
-use std::path::Path;
-use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
 
-use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
   let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -35,27 +32,26 @@ pub(crate) fn halton_sequence(mut index: u32, base: u32) -> f32 {
   r
 }
 
-pub struct TAAPass<B: GraphicsBackend> {
-  pipeline: Arc<B::ComputePipeline>,
+pub struct TAAPass {
+  pipeline: PipelineHandle,
 }
 
-impl<B: GraphicsBackend> TAAPass<B> {
+impl TAAPass {
   pub const TAA_TEXTURE_NAME: &'static str = "TAAOuput";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>, visibility_buffer: bool) -> Self {
-    let taa_compute_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(if !visibility_buffer { "taa.comp.spv" } else { "taa_vis_buf.comp.spv" }))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("taa.comp.spv"))
-    };
-    let pipeline = device.create_compute_pipeline(&taa_compute_shader, Some("TAA"));
+  pub fn new<P: Platform>(
+    resolution: Vec2UI,
+    resources: &mut RendererResources<P::GraphicsBackend>,
+    shader_manager: &mut ShaderManager<P>,
+    visibility_buffer: bool
+  ) -> Self {
+    let pipeline = shader_manager.request_compute_pipeline(if !visibility_buffer { "shaders/taa.comp.spv" } else { "shaders/taa_vis_buf.comp.spv" });
 
     let texture_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA8UNorm,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -72,10 +68,11 @@ impl<B: GraphicsBackend> TAAPass<B> {
     }
   }
 
-  pub fn execute(
+  pub fn execute<P: Platform>(
     &mut self,
-    cmd_buf: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
+    cmd_buf: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>,
     input_name: &str,
     depth_name: &str,
     motion_name: Option<&str>,
@@ -116,9 +113,9 @@ impl<B: GraphicsBackend> TAAPass<B> {
       HistoryResourceEntry::Past
     );
 
-    let mut motion_srv = Option::<Ref<Arc<B::TextureSamplingView>>>::None;
-    let mut id_view = Option::<Ref<Arc<B::TextureStorageView>>>::None;
-    let mut barycentrics_view = Option::<Ref<Arc<B::TextureStorageView>>>::None;
+    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>>>::None;
+    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
     if !visibility_buffer {
       motion_srv = Some(resources.access_sampling_view(
         cmd_buf,
@@ -133,7 +130,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
     } else {
       id_view = Some(resources.access_storage_view(
         cmd_buf,
-        super::modern::VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+        super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -143,7 +140,7 @@ impl<B: GraphicsBackend> TAAPass<B> {
       ));
       barycentrics_view = Some(resources.access_storage_view(
         cmd_buf,
-        super::modern::VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+        super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -164,7 +161,8 @@ impl<B: GraphicsBackend> TAAPass<B> {
       HistoryResourceEntry::Current
     );
 
-    cmd_buf.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+    cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &*output_srv, resources.linear_sampler());
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*taa_history_srv, resources.linear_sampler());
     cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &*taa_uav);

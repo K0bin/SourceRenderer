@@ -1,29 +1,29 @@
-use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, io::Read, path::Path, collections::HashMap};
+use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, collections::HashMap};
 
 use bitset_core::BitSet;
 use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, GraphicsPipelineInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureViewInfo, WHOLE_BUFFER}, Vec4, Platform, platform::io::IO, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
+use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureViewInfo, WHOLE_BUFFER}, Vec4, Platform, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
-use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
+use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}, shader_manager::{GraphicsPipelineInfo, ShaderManager, PipelineHandle}};
 use crate::renderer::render_path::SceneInfo;
 
 const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;
 const QUERY_PING_PONG_FRAMES: u32 = 5;
 
-pub struct OcclusionPass<B: Backend> {
-  query_buffers: Vec<Arc<B::Buffer>>,
-  occluder_vb: Arc<B::Buffer>,
-  occluder_ib: Arc<B::Buffer>,
-  pipeline: Arc<B::GraphicsPipeline>,
+pub struct OcclusionPass<P: Platform> {
+  query_buffers: Vec<Arc<<P::GraphicsBackend as Backend>::Buffer>>,
+  occluder_vb: Arc<<P::GraphicsBackend as Backend>::Buffer>,
+  occluder_ib: Arc<<P::GraphicsBackend as Backend>::Buffer>,
+  pipeline: PipelineHandle,
   drawable_occluded_frames: AtomicRefCell<HashMap<u32, u32>>,
   occlusion_query_maps: Vec<HashMap<u32, u32>>,
   visible_drawable_indices: Vec<u32>
 }
 
-impl<B: Backend> OcclusionPass<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>) -> Self {
+impl<P: Platform> OcclusionPass<P> {
+  pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, shader_manager: &mut ShaderManager<P>) -> Self {
     let buffer_info = BufferInfo {
       size: std::mem::size_of::<u32>() * QUERY_COUNT,
       usage: BufferUsage::COPY_DST,
@@ -75,14 +75,8 @@ impl<B: Backend> OcclusionPass<B> {
     device.init_buffer(&occluder_vb_data, &occluder_vb, 0, 0, WHOLE_BUFFER);
     device.init_buffer(&occluder_ib_data, &occluder_ib, 0, 0, WHOLE_BUFFER);
 
-    let vertex_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("occlusion.vert.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes, Some("occlusion.vert.spv"))
-    };
-    let pipeline = device.create_graphics_pipeline(&GraphicsPipelineInfo {
-      vs: &vertex_shader,
+    let pipeline = shader_manager.request_graphics_pipeline(&GraphicsPipelineInfo {
+      vs: "shaders/occlusion.vert.spv",
       fs: None,
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
@@ -146,7 +140,7 @@ impl<B: Backend> OcclusionPass<B> {
           )
         }
       ],
-    }, 0, Some("Occlusion"));
+    }, 0);
 
     assert_eq!(query_buffers.len(), occlusion_query_maps.len());
 
@@ -163,12 +157,13 @@ impl<B: Backend> OcclusionPass<B> {
 
   pub fn execute(
     &mut self,
-    command_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
-    device: &B::Device,
+    command_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>,
+    device: &<P::GraphicsBackend as Backend>::Device,
     frame: u64,
-    camera_history_buffer: &Arc<B::Buffer>,
-    scene: &SceneInfo<B>,
+    camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    scene: &SceneInfo<P::GraphicsBackend>,
     depth_name: &str
   ) {
     let history_depth_buffer_ref = resources.access_depth_stencil_view(
@@ -226,14 +221,15 @@ impl<B: Backend> OcclusionPass<B> {
       }],
     }, RenderpassRecordingMode::CommandBuffers);
 
+    let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
     let query_count = AtomicU32::new(0);
     const CHUNK_SIZE: usize = 256;
     let chunks = self.visible_drawable_indices.par_chunks(CHUNK_SIZE);
     let inheritance = command_buffer.inheritance();
-    let inner_cmd_buffers: Vec::<B::CommandBufferSubmission> = chunks.map(|chunk| {
+    let inner_cmd_buffers: Vec::<<P::GraphicsBackend as Backend>::CommandBufferSubmission> = chunks.map(|chunk| {
       let mut pairs: SmallVec<[(u32, u32); CHUNK_SIZE]> = SmallVec::new();
       let mut command_buffer = device.graphics_queue().create_inner_command_buffer(inheritance);
-      command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+      command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
       command_buffer.set_scissors(&[Scissor {
         position: Vec2I::new(0i32, 0i32),
         extent: Vec2UI::new(99999u32, 99999u32),

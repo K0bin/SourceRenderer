@@ -1,4 +1,5 @@
 use sourcerenderer_core::Platform;
+use sourcerenderer_core::platform::FileWatcher;
 use std::sync::Arc;
 use sourcerenderer_core::platform::{Window, ThreadHandle};
 use std::error::Error;
@@ -50,6 +51,17 @@ impl Platform for AndroidPlatform {
       .name(name.to_string())
       .spawn(callback)
       .unwrap())
+  }
+}
+
+pub struct AndroidFileWatcher {}
+impl FileWatcher for AndroidFileWatcher {
+  fn watch<P: AsRef<std::path::Path>>(&mut self, path: P) {
+    // It's probably possible to implement this, but not super useful.
+  }
+
+  fn unwatch<P: AsRef<std::path::Path>>(&mut self, path: P) {
+    // It's probably possible to implement this, but not super useful.
   }
 }
 

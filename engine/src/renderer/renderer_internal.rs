@@ -20,7 +20,7 @@ use rayon::prelude::*;
 use crate::math::{Frustum, BoundingBox};
 use instant::Instant;
 
-use super::PointLight;
+use super::{PointLight, shader_manager};
 use super::drawable::{make_camera_proj, make_camera_view};
 use super::light::DirectionalLight;
 use super::render_path::RenderPath;
@@ -30,11 +30,12 @@ use super::renderer_scene::RendererScene;
 use super::passes::modern::ModernRenderer;
 #[cfg(not(target_arch = "wasm32"))]
 use super::passes::conservative::desktop_renderer::ConservativeRenderer;
+use super::shader_manager::ShaderManager;
 
 pub(super) struct RendererInternal<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-  render_path: Box<dyn RenderPath<P::GraphicsBackend>>,
+  render_path: Box<dyn RenderPath<P>>,
   asset_manager: Arc<AssetManager<P>>,
   scene: RendererScene<P::GraphicsBackend>,
   views: Vec<View>,
@@ -45,6 +46,7 @@ pub(super) struct RendererInternal<P: Platform> {
   frame: u64,
   assets: RendererAssets<P>,
   console: Arc<Console>,
+  shader_manager: ShaderManager<P>,
 }
 
 impl<P: Platform> RendererInternal<P> {
@@ -59,6 +61,8 @@ impl<P: Platform> RendererInternal<P> {
 
     let assets = RendererAssets::new(device);
 
+    let mut shader_manager = ShaderManager::<P>::new(device, asset_manager);
+
     let scene = RendererScene::new();
     let view = View::default();
     let views = vec![view];
@@ -67,13 +71,13 @@ impl<P: Platform> RendererInternal<P> {
     let path = Box::new(WebRenderer::new::<P>(device, swapchain));
 
     #[cfg(not(target_arch = "wasm32"))]
-    let path: Box<dyn RenderPath<P::GraphicsBackend>> = if cfg!(target_family = "wasm") {
-      Box::new(WebRenderer::new::<P>(device, swapchain))
+    let path: Box<dyn RenderPath<P>> = if cfg!(target_family = "wasm") {
+      Box::new(WebRenderer::new(device, swapchain))
     } else {
       if device.supports_indirect() && device.supports_bindless() && device.supports_barycentrics() {
-        Box::new(ModernRenderer::new::<P>(device, swapchain))
+        Box::new(ModernRenderer::new(device, swapchain, &mut shader_manager))
       } else {
-        Box::new(ConservativeRenderer::new::<P>(device, swapchain))
+        Box::new(ConservativeRenderer::new(device, swapchain, &mut shader_manager))
       }
     };
 
@@ -91,6 +95,7 @@ impl<P: Platform> RendererInternal<P> {
       assets,
       frame: 0,
       console: console.clone(),
+      shader_manager
     }
   }
 
@@ -148,7 +153,7 @@ impl<P: Platform> RendererInternal<P> {
 
     // recv blocks, so do the preparation after receiving the first event
     self.receive_window_events();
-    self.assets.receive_assets(&self.asset_manager);
+    self.assets.receive_assets(&self.asset_manager, &mut self.shader_manager);
 
     let main_view = &mut self.views[0];
 
@@ -273,7 +278,7 @@ impl<P: Platform> RendererInternal<P> {
         lightmap: Some(&lightmap)
       };
 
-      self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info)
+      self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info, &self.shader_manager)
     };
 
     if let Err(swapchain_error) = render_result {
@@ -326,7 +331,7 @@ impl<P: Platform> RendererInternal<P> {
             lightmap: Some(&lightmap)
           };
 
-          self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info).expect("Rendering still fails after recreating swapchain.");
+          self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info, &self.shader_manager).expect("Rendering still fails after recreating swapchain.");
         }
         self.swapchain = new_swapchain;
       }

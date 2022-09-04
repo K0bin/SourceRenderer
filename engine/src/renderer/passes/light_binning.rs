@@ -1,12 +1,9 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess, WHOLE_BUFFER}};
+use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, BarrierSync, BarrierAccess, WHOLE_BUFFER}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
-use std::path::Path;
-use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
 
-use crate::renderer::{RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}};
+use crate::renderer::{RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
 
 use super::clustering::ClusteringPass;
 
@@ -26,21 +23,15 @@ pub struct CullingPointLight {
 
 const LIGHT_CUTOFF: f32 = 0.05f32;
 
-pub struct LightBinningPass<B: GraphicsBackend> {
-  light_binning_pipeline: Arc<B::ComputePipeline>
+pub struct LightBinningPass {
+  light_binning_pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> LightBinningPass<B> {
+impl LightBinningPass {
   pub const LIGHT_BINNING_BUFFER_NAME: &'static str = "binned_lights";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, barriers: &mut RendererResources<B>) -> Self {
-    let shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("light_binning.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("light_binning.comp.spv"))
-    };
-    let pipeline = device.create_compute_pipeline(&shader, Some("LightBinning"));
+  pub fn new<P: Platform>(barriers: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
+    let pipeline = shader_manager.request_compute_pipeline("shaders/light_binning.comp.spv");
 
     barriers.create_buffer(Self::LIGHT_BINNING_BUFFER_NAME, &BufferInfo {
       size: std::mem::size_of::<u32>() * 16 * 9 * 24,
@@ -52,7 +43,14 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B>, camera_buffer: &Arc<B::Buffer>, barriers: &mut RendererResources<B>) {
+  pub fn execute<P: Platform>(
+    &mut self,
+    cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+    scene: &RendererScene<P::GraphicsBackend>,
+    camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    barriers: &mut RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>
+  ) {
     cmd_buffer.begin_label("Light binning");
     let cluster_count = Vector3::<u32>::new(16, 9, 24);
     let setup_info = SetupInfo {
@@ -78,9 +76,10 @@ impl<B: GraphicsBackend> LightBinningPass<B> {
     ]);
 
     let light_bitmask_buffer = barriers.access_buffer(cmd_buffer, Self::LIGHT_BINNING_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE, HistoryResourceEntry::Current);
-    let clusters_buffer = barriers.access_buffer(cmd_buffer, ClusteringPass::<B>::CLUSTERS_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ, HistoryResourceEntry::Current);
+    let clusters_buffer = barriers.access_buffer(cmd_buffer, ClusteringPass::CLUSTERS_BUFFER_NAME, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_READ, HistoryResourceEntry::Current);
 
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.light_binning_pipeline));
+    let pipeline = shader_manager.get_compute_pipeline(self.light_binning_pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
     cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, camera_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 1, &*clusters_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 2, &light_info_buffer, 0, WHOLE_BUFFER);

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sourcerenderer_core::graphics::{Backend, SwapchainError};
+use sourcerenderer_core::{graphics::{Backend, SwapchainError}, Platform};
 
 use crate::input::Input;
 
-use super::{LateLatching, drawable::View, renderer_assets::RendererTexture, renderer_scene::RendererScene};
+use super::{LateLatching, drawable::View, renderer_assets::RendererTexture, renderer_scene::RendererScene, shader_manager::ShaderManager};
 
 pub struct SceneInfo<'a, B: Backend> {
   pub scene: &'a RendererScene<B>,
@@ -26,15 +26,16 @@ pub struct FrameInfo {
   pub delta: Duration
 }
 
-pub(super) trait RenderPath<B: Backend> {
+pub(super) trait RenderPath<P: Platform> {
   fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
-  fn on_swapchain_changed(&mut self, swapchain: &Arc<B::Swapchain>);
+  fn on_swapchain_changed(&mut self, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>);
   fn render(
     &mut self,
-    scene: &SceneInfo<B>,
-    zero_textures: &ZeroTextures<B>,
-    late_latching: Option<&dyn LateLatching<B>>,
+    scene: &SceneInfo<P::GraphicsBackend>,
+    zero_textures: &ZeroTextures<P::GraphicsBackend>,
+    late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
     input: &Input,
     frame_info: &FrameInfo,
+    shader_manager: &ShaderManager<P>
   ) -> Result<(), SwapchainError>;
 }

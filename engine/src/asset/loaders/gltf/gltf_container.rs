@@ -1,6 +1,6 @@
 use std::{io::{Cursor, Error as IOError, ErrorKind, Result as IOResult, Read, Seek, BufReader, SeekFrom}, path::Path, usize, sync::Mutex};
 use log::warn;
-use sourcerenderer_core::{Platform, platform::io::IO};
+use sourcerenderer_core::{Platform, platform::IO};
 
 use crate::asset::{asset_manager::{AssetContainer, AssetFile, AssetFileData}, loaders::gltf::glb};
 

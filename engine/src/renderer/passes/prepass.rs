@@ -1,13 +1,11 @@
 use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture, WHOLE_BUFFER, TextureDimension};
-use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
+use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
+use crate::renderer::shader_manager::{PipelineHandle, ShaderManager, GraphicsPipelineInfo};
 use crate::renderer::{RendererScene, drawable::View};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
-use std::path::Path;
-use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
 use rayon::prelude::*;
 
 #[derive(Clone, Copy)]
@@ -29,23 +27,27 @@ struct FrameData {
   halton_point: Vec2
 }
 
-pub struct Prepass<B: GraphicsBackend> {
-  pipeline: Arc<B::GraphicsPipeline>
+pub struct Prepass {
+  pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> Prepass<B> {
+impl Prepass {
   pub const DEPTH_TEXTURE_NAME: &'static str = "PrepassDepth";
   pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
   pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
 
   const DRAWABLE_LABELS: bool = false;
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
+  pub fn new<P: Platform>(
+    resources: &mut RendererResources<P::GraphicsBackend>,
+    shader_manager: &mut ShaderManager<P>,
+    resolution: Vec2UI
+  ) -> Self {
     let depth_info = TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::D24,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -58,8 +60,8 @@ impl<B: GraphicsBackend> Prepass<B> {
     resources.create_texture(Self::MOTION_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RG32Float,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -71,8 +73,8 @@ impl<B: GraphicsBackend> Prepass<B> {
     resources.create_texture(Self::NORMALS_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA32Float,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -81,22 +83,9 @@ impl<B: GraphicsBackend> Prepass<B> {
       supports_srgb: false,
     }, false);
 
-    let vertex_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.vert.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes, Some("prepass.vert.spv"))
-    };
-
-    let fragment_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("prepass.frag.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::FragmentShader, &bytes, Some("prepass.frag.spv"))
-    };
-    let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
-      vs: &vertex_shader,
-      fs: Some(&fragment_shader),
+    let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
+      vs: &("shaders/prepass.vert.spv"),
+      fs: Some("shaders/prepass.frag.spv"),
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
         input_assembler: &[
@@ -152,7 +141,7 @@ impl<B: GraphicsBackend> Prepass<B> {
         ]
       }
     };
-    let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
+    let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info, &RenderPassInfo {
       attachments: &[
         AttachmentInfo {
           format: Format::RG32Float,
@@ -186,7 +175,7 @@ impl<B: GraphicsBackend> Prepass<B> {
           })
         }
       ],
-    }, 0, Some("Prepass"));
+    }, 0);
 
     Self {
       pipeline
@@ -194,17 +183,18 @@ impl<B: GraphicsBackend> Prepass<B> {
   }
 
   #[profiling::function]
-  pub(super) fn execute(
+  pub(super) fn execute<P: Platform>(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    device: &Arc<B::Device>,
-    scene: &RendererScene<B>,
+    cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+    device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
+    scene: &RendererScene<P::GraphicsBackend>,
     view: &View,
     swapchain_transform: Matrix4,
     frame: u64,
-    camera_buffer: &Arc<B::Buffer>,
-    camera_history_buffer: &Arc<B::Buffer>,
-    resources: &RendererResources<B>
+    camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    camera_history_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    resources: &RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>
   ) {
     cmd_buffer.begin_label("Depth prepass");
     let static_drawables = scene.static_drawables();
@@ -291,10 +281,11 @@ impl<B: GraphicsBackend> Prepass<B> {
     let inheritance = cmd_buffer.inheritance();
     const CHUNK_SIZE: usize = 128;
     let chunks = view.drawable_parts.par_chunks(CHUNK_SIZE);
-    let inner_cmd_buffers: Vec<B::CommandBufferSubmission> = chunks.map(|chunk| {
+    let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+    let inner_cmd_buffers: Vec<<P::GraphicsBackend as GraphicsBackend>::CommandBufferSubmission> = chunks.map(|chunk| {
       let mut command_buffer = device.graphics_queue().create_inner_command_buffer(inheritance);
 
-      command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+      command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
       command_buffer.set_viewports(&[Viewport {
         position: Vec2::new(0.0f32, 0.0f32),
         extent: Vec2::new(info.width as f32, info.height as f32),

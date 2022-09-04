@@ -1,42 +1,29 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, ShaderType, Swapchain, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, Swapchain, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
+use sourcerenderer_core::{Platform, Vec2UI};
 use std::sync::Arc;
-use std::path::Path;
-use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
 
+use crate::renderer::shader_manager::{PipelineHandle, ShaderManager};
 use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 use super::taa::TAAPass;
 
 const USE_CAS: bool = true;
 
-pub struct SharpenPass<B: GraphicsBackend> {
-  pipeline: Arc<B::ComputePipeline>
+pub struct SharpenPass {
+  pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> SharpenPass<B> {
+impl SharpenPass {
   pub const SHAPENED_TEXTURE_NAME: &'static str = "Sharpened";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, resources: &mut RendererResources<B>) -> Self {
-    let sharpen_compute_shader = if !USE_CAS {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("sharpen.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("sharpen.comp.spv"))
-    } else {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("cas.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("cas.comp.spv"))
-    };
-    let pipeline = device.create_compute_pipeline(&sharpen_compute_shader, Some("Sharpen"));
+  pub fn new<P: Platform>(resolution: Vec2UI, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
+    let pipeline = shader_manager.request_compute_pipeline(if !USE_CAS { "shaders/sharpen.comp.spv" } else { "cas.comp.spv" });
 
     resources.create_texture(Self::SHAPENED_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA8UNorm,
-      width: swapchain.width(),
-      height: swapchain.height(),
+      width: resolution.x,
+      height: resolution.y,
       depth: 1,
       mip_levels: 1,
       array_length: 1,
@@ -50,10 +37,10 @@ impl<B: GraphicsBackend> SharpenPass<B> {
     }
   }
 
-  pub fn execute(&mut self, cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>) {
+  pub fn execute<P: Platform>(&mut self, cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer, resources: &RendererResources<P::GraphicsBackend>, shader_manager: &ShaderManager<P>) {
     let input_image_uav = resources.access_storage_view(
       cmd_buffer,
-      TAAPass::<B>::TAA_TEXTURE_NAME,
+      TAAPass::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_READ,
       TextureLayout::Storage,
@@ -75,7 +62,8 @@ impl<B: GraphicsBackend> SharpenPass<B> {
 
     cmd_buffer.begin_label("Sharpening pass");
 
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
     let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT);
     cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 2, &sharpen_setup_ubo, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &*input_image_uav);

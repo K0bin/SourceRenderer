@@ -4,7 +4,7 @@ use std::io::Read;
 use image::io::Reader as ImageReader;
 
 use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, TextureUsage, MemoryUsage, BufferUsage, TextureViewInfo, SamplerInfo, Filter, AddressMode, TextureDimension};
-use sourcerenderer_core::{graphics::Backend, Platform, platform::io::IO};
+use sourcerenderer_core::{graphics::Backend, Platform, platform::IO};
 
 pub struct BlueNoise<B: Backend> {
   frames: [Arc<B::TextureSamplingView>; 8],

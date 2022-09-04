@@ -8,7 +8,7 @@ use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Form
 
 use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
 
-use super::asset_buffer::{AssetBuffer, AssetBufferSlice};
+use super::{asset_buffer::{AssetBuffer, AssetBufferSlice}, shader_manager::ShaderManager};
 
 pub struct RendererTexture<B: Backend> {
   pub(super) view: Arc<B::TextureSamplingView>,
@@ -484,7 +484,7 @@ impl<P: Platform> RendererAssets<P> {
     texture
   }
 
-  pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>) {
+  pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>, shader_manager: &mut ShaderManager<P>) {
     let mut retained_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
     let mut ready_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
     for delayed_asset in self.delayed_assets.drain(..) {
@@ -523,6 +523,9 @@ impl<P: Platform> RendererAssets<P> {
           } else {
             self.integrate_texture(&asset.path, &view);
           }
+        },
+        Asset::Shader(shader) => {
+          shader_manager.add_shader(&asset.path, shader);
         }
         _ => unimplemented!()
       }

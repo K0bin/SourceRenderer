@@ -4,7 +4,9 @@ use std::sync::Arc;
 use crate::{Vec2, Vec2I, Vec2UI, graphics::{self, Backend}};
 use crate::input::Key;
 
-pub mod io;
+mod io;
+pub use io::IO;
+pub use io::FileWatcher;
 
 #[derive(PartialEq)]
 pub enum PlatformEvent {

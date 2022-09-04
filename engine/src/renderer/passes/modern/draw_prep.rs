@@ -1,33 +1,19 @@
-use std::{sync::Arc, path::Path, io::Read};
+use sourcerenderer_core::{graphics::{Backend, Device, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, TextureLayout, TextureViewInfo}, Platform, Vec4};
 
-use sourcerenderer_core::{graphics::{Backend, Device, ShaderType, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, TextureLayout, TextureViewInfo}, Platform, platform::io::IO, Vec4};
+use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}}, drawable::View, shader_manager::{PipelineHandle, ShaderManager}}, math::Frustum};
 
-use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}}, drawable::View}, math::Frustum};
-
-pub struct DrawPrepPass<B: Backend> {
-  culling_pipeline: Arc<B::ComputePipeline>,
-  prep_pipeline: Arc<B::ComputePipeline>
+pub struct DrawPrepPass {
+  culling_pipeline: PipelineHandle,
+  prep_pipeline: PipelineHandle
 }
 
-impl<B: Backend> DrawPrepPass<B> {
+impl DrawPrepPass {
   pub const VISIBLE_DRAWABLES_BITFIELD_BUFFER: &'static str = "VisibleDrawables";
   pub const INDIRECT_DRAW_BUFFER: &'static str = "IndirectDraws";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resources: &mut RendererResources<B>) -> Self {
-    let culling_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("culling.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("culling.comp.spv"))
-    };
-    let culling_pipeline = device.create_compute_pipeline(&culling_shader, Some("Culling"));
-    let prep_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("draw_prep.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("draw_prep.comp.spv"))
-    };
-    let prep_pipeline = device.create_compute_pipeline(&prep_shader, Some("DrawPrep"));
+  pub fn new<P: Platform>(resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
+    let culling_pipeline = shader_manager.request_compute_pipeline("shaders/culling.comp.spv");
+    let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.spv");
     resources.create_buffer(Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER, &BufferInfo {
       size: (DRAWABLE_CAPACITY as usize + std::mem::size_of::<u32>() - 1) / std::mem::size_of::<u32>(),
       usage: BufferUsage::STORAGE
@@ -42,12 +28,13 @@ impl<B: Backend> DrawPrepPass<B> {
     }
   }
 
-  pub fn execute(
+  pub fn execute<P: Platform>(
     &self,
-    cmd_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
-    scene: &RendererScene<B>,
-    view: &View
+    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    scene: &RendererScene<P::GraphicsBackend>,
+    view: &View,
+    shader_manager: &ShaderManager<P>
   ) {
     {
       cmd_buffer.begin_label("Culling");
@@ -60,12 +47,12 @@ impl<B: Backend> DrawPrepPass<B> {
       );
 
       let hi_z_mips = {
-        let hi_z_info = resources.texture_info(HierarchicalZPass::<B>::HI_Z_BUFFER_NAME);
+        let hi_z_info = resources.texture_info(HierarchicalZPass::<P>::HI_Z_BUFFER_NAME);
         hi_z_info.mip_levels
       };
       let hi_z = resources.access_sampling_view(
         cmd_buffer,
-        HierarchicalZPass::<B>::HI_Z_BUFFER_NAME,
+        HierarchicalZPass::<P>::HI_Z_BUFFER_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,
@@ -107,7 +94,8 @@ impl<B: Backend> DrawPrepPass<B> {
       }], BufferUsage::CONSTANT);
       cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 1, &frustum_buffer, 0, WHOLE_BUFFER);
       cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, &*hi_z, resources.nearest_sampler());
-      cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.culling_pipeline));
+      let culling_pipeline = shader_manager.get_compute_pipeline(self.culling_pipeline);
+      cmd_buffer.set_pipeline(PipelineBinding::Compute(&culling_pipeline));
       cmd_buffer.flush_barriers();
       cmd_buffer.finish_binding();
       cmd_buffer.dispatch((scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
@@ -147,7 +135,8 @@ impl<B: Backend> DrawPrepPass<B> {
     );
     cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 0, &*visibility_buffer, 0, WHOLE_BUFFER);
     cmd_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent,1, &*draw_buffer, 0, WHOLE_BUFFER);
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.prep_pipeline));
+    let prep_pipeline = shader_manager.get_compute_pipeline(self.prep_pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&prep_pipeline));
     cmd_buffer.flush_barriers();
     cmd_buffer.finish_binding();
     cmd_buffer.dispatch((part_count + 63) / 64, 1, 1);

@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use std::io::Result as IOResult;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use sourcerenderer_core::platform::io::IO;
+use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::{Vec2I, Vec2UI};
 use sourcerenderer_core::input::Key;
-use sourcerenderer_core::platform::{Event, Platform, ThreadHandle};
+use sourcerenderer_core::platform::{Event, Platform, ThreadHandle, FileWatcher};
 
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_core::platform::GraphicsApi;
@@ -26,6 +26,9 @@ use sdl2::EventPump;
 
 use ash::vk::{Handle, SurfaceKHR};
 use ash::extensions::khr::Surface as SurfaceLoader;
+
+use notify::{Watcher, recommended_watcher, RecommendedWatcher};
+use crossbeam_channel::Sender;
 
 lazy_static! {
   pub static ref SCANCODE_TO_KEY: HashMap<Scancode, Key> = {
@@ -220,6 +223,7 @@ pub struct StdIO {}
 
 impl IO for StdIO {
   type File = std::fs::File;
+  type FileWatcher = NotifyFileWatcher;
 
   fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
     std::fs::File::open(path)
@@ -236,7 +240,55 @@ impl IO for StdIO {
   fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().exists()
   }
+
+  fn new_file_watcher(sender: Sender<String>) -> Self::FileWatcher {
+    let base_path = std::env::current_dir().unwrap_or_else(|_e| PathBuf::new());
+    NotifyFileWatcher::new(sender, &base_path)
+  }
 }
+
+pub struct NotifyFileWatcher {
+  watcher: RecommendedWatcher
+}
+
+impl NotifyFileWatcher {
+  fn new<P: AsRef<Path>>(sender: Sender<String>, base_path: &P) -> Self {
+    let base_path = base_path.as_ref().to_str().unwrap().to_string();
+    println!("base path: {:?}", base_path);
+    let watcher = recommended_watcher(move |event: Result<notify::Event, notify::Error>| {
+      match event {
+        Ok(event) => {
+          for path in event.paths {
+            let path_str = path.to_str().unwrap().to_string();
+            let relative_path = if path_str.starts_with(&base_path) {
+              &path_str[base_path.len() + 1 ..]
+            } else {
+              &path_str
+            };
+
+            sender.send(relative_path.to_string()).unwrap();
+          }
+        },
+        _ => {}
+      }
+    }).unwrap();
+    Self {
+      watcher
+    }
+  }
+}
+
+impl FileWatcher for NotifyFileWatcher {
+  fn watch<P: AsRef<Path>>(&mut self, path: P) {
+    self.watcher.watch(path.as_ref(), notify::RecursiveMode::NonRecursive).unwrap();
+  }
+
+  fn unwatch<P: AsRef<Path>>(&mut self, path: P) {
+    self.watcher.unwatch(path.as_ref()).unwrap();
+  }
+}
+
+unsafe impl Send for NotifyFileWatcher {} // I'll just assume that the backends are Send even if the interface is not.
 
 pub struct StdThreadHandle(std::thread::JoinHandle<()>);
 impl ThreadHandle for StdThreadHandle {

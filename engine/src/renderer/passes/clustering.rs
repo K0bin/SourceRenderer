@@ -1,12 +1,9 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, ShaderType, BarrierSync, BarrierAccess, WHOLE_BUFFER, Buffer}};
+use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, BarrierSync, BarrierAccess, WHOLE_BUFFER, Buffer}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
-use std::path::Path;
-use std::io::Read;
-use sourcerenderer_core::platform::io::IO;
 
-use crate::renderer::{drawable::View, renderer_resources::{RendererResources, HistoryResourceEntry}};
+use crate::renderer::{drawable::View, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -17,21 +14,15 @@ struct ShaderScreenToView {
   z_far: f32
 }
 
-pub struct ClusteringPass<B: GraphicsBackend> {
-  pipeline: Arc<B::ComputePipeline>
+pub struct ClusteringPass {
+  pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> ClusteringPass<B> {
+impl ClusteringPass {
   pub const CLUSTERS_BUFFER_NAME: &'static str = "clusters";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, barriers: &mut RendererResources<B>) -> Self {
-    let clustering_shader = {
-    let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("clustering.comp.spv"))).unwrap();
-    let mut bytes: Vec<u8> = Vec::new();
-    file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("clustering.comp.spv"))
-    };
-    let clustering_pipeline = device.create_compute_pipeline(&clustering_shader, Some("Clustering"));
+  pub fn new<P: Platform>(barriers: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
+    let pipeline = shader_manager.request_compute_pipeline("shaders/clustering.comp.spv");
 
     barriers.create_buffer(Self::CLUSTERS_BUFFER_NAME, &BufferInfo {
       size: std::mem::size_of::<Vec4>() * 2 * 16 * 9 * 24,
@@ -39,17 +30,18 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
   }, MemoryUsage::VRAM, false);
 
     Self {
-      pipeline: clustering_pipeline,
+      pipeline,
     }
   }
 
-  pub fn execute(
+  pub fn execute<P: Platform>(
     &mut self,
-    command_buffer: &mut B::CommandBuffer,
+    command_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
     rt_size: Vec2UI,
     view_ref: &View,
-    camera_buffer: &Arc<B::Buffer>,
-    barriers: &mut RendererResources<B>
+    camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    barriers: &mut RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>
   ) {
     command_buffer.begin_label("Clustering pass");
 
@@ -67,7 +59,8 @@ impl<B: GraphicsBackend> ClusteringPass<B> {
     debug_assert_eq!(cluster_count.x % 8, 0);
     debug_assert_eq!(cluster_count.y % 1, 0);
     debug_assert_eq!(cluster_count.z % 8, 0); // Ensure the cluster count fits with the work group size
-    command_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+    command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
     command_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 0, &*clusters_buffer, 0, WHOLE_BUFFER);
     command_buffer.bind_storage_buffer(BindingFrequency::VeryFrequent, 1, &screen_to_view_cbuffer, 0, WHOLE_BUFFER);
     command_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 2, camera_buffer, 0, WHOLE_BUFFER);

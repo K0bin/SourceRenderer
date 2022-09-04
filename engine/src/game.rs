@@ -4,7 +4,7 @@ use std::time::Duration;
 use log::trace;
 use sourcerenderer_core::{Platform, atomic_refcell::AtomicRefCell, platform::ThreadHandle};
 
-use crate::{asset::loaders::GltfLoader, game_internal::GameInternal, input::Input, renderer::*};
+use crate::{asset::loaders::{GltfLoader, FSContainer}, game_internal::GameInternal, input::Input, renderer::*};
 use crate::asset::AssetManager;
 use crate::asset::loaders::{BspLevelLoader, VPKContainerLoader, VTFTextureLoader, VMTMaterialLoader, MDLModelLoader};
 use legion::query::{FilterResult, LayoutFilter};
@@ -72,6 +72,10 @@ impl<P: Platform> Game<P> {
     asset_manager.add_loader(Box::new(VMTMaterialLoader::new()));
     asset_manager.add_loader(Box::new(MDLModelLoader::new()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
+
+
+    asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
+    //asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
 
     let game = Arc::new(Self {
       input: input.clone(),

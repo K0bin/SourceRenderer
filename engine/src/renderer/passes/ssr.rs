@@ -1,17 +1,17 @@
-use std::{io::Read, path::Path, sync::Arc, cell::Ref};
+use std::{sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, ShaderType, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}, platform::io::IO};
+use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Device, Format, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass, shader_manager::{PipelineHandle, ShaderManager}};
 
-pub struct SsrPass<B: GraphicsBackend> {
-  pipeline: Arc<B::ComputePipeline>,
+pub struct SsrPass {
+  pipeline: PipelineHandle
 }
 
-impl<B: GraphicsBackend> SsrPass<B> {
+impl SsrPass {
   pub const SSR_TEXTURE_NAME: &'static str = "SSR";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>, _visibility_buffer: bool) -> Self {
+  pub fn new<P: Platform>(resolution: Vec2UI, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>, _visibility_buffer: bool) -> Self {
     resources.create_texture(Self::SSR_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA16Float,
@@ -25,23 +25,18 @@ impl<B: GraphicsBackend> SsrPass<B> {
       supports_srgb: false,
     }, false);
 
-    let shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("ssr.comp.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::ComputeShader, &bytes, Some("ssr.comp.spv"))
-    };
-    let pipeline = device.create_compute_pipeline(&shader, Some("SSR"));
+    let pipeline = shader_manager.request_compute_pipeline("shaders/ssr.comp.spv");
 
     Self {
       pipeline,
     }
   }
 
-  pub fn execute(
+  pub fn execute<P: Platform>(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
+    cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>,
     input_name: &str,
     depth_name: &str,
     visibility_buffer: bool
@@ -82,13 +77,13 @@ impl<B: GraphicsBackend> SsrPass<B> {
       HistoryResourceEntry::Current
     );
 
-    let mut ids = Option::<Ref<Arc<B::TextureStorageView>>>::None;
-    let mut barycentrics = Option::<Ref<Arc<B::TextureStorageView>>>::None;
+    let mut ids = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut barycentrics = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
 
     if visibility_buffer {
       ids = Some(resources.access_storage_view(
         cmd_buffer,
-        VisibilityBufferPass::<B>::PRIMITIVE_ID_TEXTURE_NAME,
+        VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -99,7 +94,7 @@ impl<B: GraphicsBackend> SsrPass<B> {
 
       barycentrics = Some(resources.access_storage_view(
         cmd_buffer,
-        VisibilityBufferPass::<B>::BARYCENTRICS_TEXTURE_NAME,
+        VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
@@ -109,8 +104,9 @@ impl<B: GraphicsBackend> SsrPass<B> {
       ));
     }
 
+    let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
     cmd_buffer.begin_label("SSR pass");
-    cmd_buffer.set_pipeline(PipelineBinding::Compute(&self.pipeline));
+    cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
     cmd_buffer.flush_barriers();
     cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &ssr_uav);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*color_srv, resources.linear_sampler());

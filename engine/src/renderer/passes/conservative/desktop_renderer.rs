@@ -4,24 +4,24 @@ use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage, MemoryUsage, BufferInfo}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::blue_noise::BlueNoise}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::blue_noise::BlueNoise, shader_manager::ShaderManager}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass};
 
-pub struct ConservativeRenderer<B: Backend> {
-  swapchain: Arc<B::Swapchain>,
-  device: Arc<B::Device>,
-  barriers: RendererResources<B>,
-  clustering_pass: ClusteringPass<B>,
-  light_binning_pass: LightBinningPass<B>,
-  prepass: Prepass<B>,
-  geometry: GeometryPass<B>,
-  taa: TAAPass<B>,
-  sharpen: SharpenPass<B>,
-  ssao: SsaoPass<B>,
-  occlusion: OcclusionPass<B>,
-  rt_passes: Option<RTPasses<B>>,
-  blue_noise: BlueNoise<B>
+pub struct ConservativeRenderer<P: Platform> {
+  swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+  device: Arc<<P::GraphicsBackend as Backend>::Device>,
+  barriers: RendererResources<P::GraphicsBackend>,
+  clustering_pass: ClusteringPass,
+  light_binning_pass: LightBinningPass,
+  prepass: Prepass,
+  geometry: GeometryPass<P>,
+  taa: TAAPass,
+  sharpen: SharpenPass,
+  ssao: SsaoPass<P>,
+  occlusion: OcclusionPass<P>,
+  rt_passes: Option<RTPasses<P::GraphicsBackend>>,
+  blue_noise: BlueNoise<P::GraphicsBackend>
 }
 
 pub struct RTPasses<B: Backend> {
@@ -40,26 +40,26 @@ pub struct FrameBindings<B: Backend> {
   setup_buffer: Arc<B::Buffer>,
 }
 
-impl<B: Backend> ConservativeRenderer<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
+impl<P: Platform> ConservativeRenderer<P> {
+  pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>, shader_manager: &mut ShaderManager<P>) -> Self {
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
     let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
-    let mut barriers = RendererResources::<B>::new(device);
+    let mut barriers = RendererResources::<P::GraphicsBackend>::new(device);
 
     let blue_noise = BlueNoise::new::<P>(device);
 
-    let clustering = ClusteringPass::<B>::new::<P>(device, &mut barriers);
-    let light_binning = LightBinningPass::<B>::new::<P>(device, &mut barriers);
-    let prepass = Prepass::<B>::new::<P>(device, swapchain, &mut barriers);
-    let geometry = GeometryPass::<B>::new::<P>(device, swapchain, &mut barriers);
-    let taa = TAAPass::<B>::new::<P>(device, swapchain, &mut barriers, false);
-    let sharpen = SharpenPass::<B>::new::<P>(device, swapchain, &mut barriers);
-    let ssao = SsaoPass::<B>::new::<P>(device, resolution, &mut barriers, false);
-    let occlusion = OcclusionPass::<B>::new::<P>(device);
+    let clustering = ClusteringPass::new::<P>(&mut barriers, shader_manager);
+    let light_binning = LightBinningPass::new::<P>(&mut barriers, shader_manager);
+    let prepass = Prepass::new::<P>(&mut barriers, shader_manager, resolution);
+    let geometry = GeometryPass::<P>::new(device, resolution, &mut barriers, shader_manager);
+    let taa = TAAPass::new::<P>(resolution, &mut barriers, shader_manager, false);
+    let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, shader_manager);
+    let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, false);
+    let occlusion = OcclusionPass::<P>::new(device, shader_manager);
     let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
-      acceleration_structure_update: AccelerationStructureUpdatePass::<B>::new(device, &mut init_cmd_buffer),
-      shadows: RTShadowPass::<B>::new::<P>(device, resolution, &mut barriers)
+      acceleration_structure_update: AccelerationStructureUpdatePass::<P::GraphicsBackend>::new(device, &mut init_cmd_buffer),
+      shadows: RTShadowPass::<P::GraphicsBackend>::new::<P>(device, resolution, &mut barriers)
     });
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
@@ -87,18 +87,18 @@ impl<B: Backend> ConservativeRenderer<B> {
 
   fn create_frame_bindings(
     &self,
-    cmd_buf: &mut B::CommandBuffer,
-    gpu_scene_buffer: &Arc<B::Buffer>,
-    camera_buffer: &Arc<B::Buffer>,
-    camera_history_buffer: &Arc<B::Buffer>,
-    vertex_buffer: &Arc<B::Buffer>,
-    index_buffer: &Arc<B::Buffer>,
-    scene: &RendererScene<B>,
+    cmd_buf: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    gpu_scene_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    scene: &RendererScene<P::GraphicsBackend>,
     view: &View,
-    _swapchain: &Arc<B::Swapchain>,
+    _swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     rendering_resolution: &Vec2UI,
     frame: u64
-  ) -> FrameBindings<B> {
+  ) -> FrameBindings<P::GraphicsBackend> {
     let cluster_count = self.clustering_pass.cluster_count();
     let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
     let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2() / (view.far_plane / view.near_plane).log2();
@@ -160,28 +160,14 @@ impl<B: Backend> ConservativeRenderer<B> {
       setup_buffer,
     }
   }
-
-  pub fn setup_frame(
-    cmd_buf: &mut B::CommandBuffer,
-    frame_bindings: &FrameBindings<B>
-  ) {
-    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, &frame_bindings.gpu_scene_buffer, 0, WHOLE_BUFFER);
-    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 1, &frame_bindings.camera_buffer, 0, WHOLE_BUFFER);
-    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 2, &frame_bindings.camera_history_buffer, 0, WHOLE_BUFFER);
-    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, &frame_bindings.vertex_buffer, 0, WHOLE_BUFFER);
-    cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, &frame_bindings.index_buffer, 0, WHOLE_BUFFER);
-    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 5, &frame_bindings.setup_buffer, 0, WHOLE_BUFFER);
-    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 6, &frame_bindings.point_lights, 0, WHOLE_BUFFER);
-    cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, &frame_bindings.directional_lights, 0, WHOLE_BUFFER);
-  }
 }
 
-impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
+impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
   fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>) {
     self.occlusion.write_occlusion_query_results(frame, bitset);
   }
 
-  fn on_swapchain_changed(&mut self, swapchain: &std::sync::Arc<B::Swapchain>) {
+  fn on_swapchain_changed(&mut self, swapchain: &std::sync::Arc<<P::GraphicsBackend as Backend>::Swapchain>) {
     // TODO: resize render targets
     self.swapchain = swapchain.clone();
   }
@@ -189,11 +175,12 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
   #[profiling::function]
   fn render(
     &mut self,
-    scene: &SceneInfo<B>,
-    zero_textures: &ZeroTextures<B>,
-    late_latching: Option<&dyn LateLatching<B>>,
+    scene: &SceneInfo<P::GraphicsBackend>,
+    zero_textures: &ZeroTextures<P::GraphicsBackend>,
+    late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
     input: &Input,
     frame_info: &FrameInfo,
+    shader_manager: &ShaderManager<P>
   ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
@@ -224,23 +211,23 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
       &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
       frame_info.frame
     );
-    Self::setup_frame(&mut cmd_buf, &frame_bindings);
+    setup_frame::<P::GraphicsBackend>(&mut cmd_buf, &frame_bindings);
 
-    self.occlusion.execute(&mut cmd_buf, &self.barriers, &self.device, frame_info.frame, &late_latching_buffer, scene, Prepass::<B>::DEPTH_TEXTURE_NAME);
-    self.clustering_pass.execute(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), primary_view, &late_latching_buffer, &mut self.barriers);
-    self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &late_latching_buffer, &mut self.barriers);
-    self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers);
-    self.ssao.execute(&mut cmd_buf, &self.barriers, Prepass::<B>::DEPTH_TEXTURE_NAME, Some(Prepass::<B>::MOTION_TEXTURE_NAME), &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), false);
+    self.occlusion.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, frame_info.frame, &late_latching_buffer, scene, Prepass::DEPTH_TEXTURE_NAME);
+    self.clustering_pass.execute::<P>(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), primary_view, &late_latching_buffer, &mut self.barriers, shader_manager);
+    self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &late_latching_buffer, &mut self.barriers, shader_manager);
+    self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers, shader_manager);
+    self.ssao.execute(&mut cmd_buf, &self.barriers, Prepass::DEPTH_TEXTURE_NAME, Some(Prepass::MOTION_TEXTURE_NAME), &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), shader_manager, false);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, Prepass::<B>::DEPTH_TEXTURE_NAME, rt_passes.acceleration_structure_update.acceleration_structure(), &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
+      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, Prepass::DEPTH_TEXTURE_NAME, rt_passes.acceleration_structure_update.acceleration_structure(), &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
     }
-    self.geometry.execute(&mut cmd_buf, &self.barriers, &self.device, Prepass::<B>::DEPTH_TEXTURE_NAME, scene, &frame_bindings, zero_textures, scene.lightmap.unwrap());
-    self.taa.execute(&mut cmd_buf, &self.barriers, GeometryPass::<B>::GEOMETRY_PASS_TEXTURE_NAME, Prepass::<B>::DEPTH_TEXTURE_NAME, Some(Prepass::<B>::MOTION_TEXTURE_NAME), false);
-    self.sharpen.execute(&mut cmd_buf, &self.barriers);
+    self.geometry.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, Prepass::DEPTH_TEXTURE_NAME, scene, &frame_bindings, zero_textures, scene.lightmap.unwrap());
+    self.taa.execute(&mut cmd_buf, &self.barriers, shader_manager, GeometryPass::<P>::GEOMETRY_PASS_TEXTURE_NAME, Prepass::DEPTH_TEXTURE_NAME, Some(Prepass::MOTION_TEXTURE_NAME), false);
+    self.sharpen.execute(&mut cmd_buf, &self.barriers, shader_manager);
 
     let sharpened_texture = self.barriers.access_texture(
       &mut cmd_buf,
-      SharpenPass::<B>::SHAPENED_TEXTURE_NAME,
+      SharpenPass::SHAPENED_TEXTURE_NAME,
       &BarrierTextureRange::default(),
       BarrierSync::COPY,
       BarrierAccess::COPY_READ,
@@ -304,4 +291,18 @@ impl<B: Backend> RenderPath<B> for ConservativeRenderer<B> {
 
     Ok(())
   }
+}
+
+pub fn setup_frame<B: Backend>(
+  cmd_buf: &mut B::CommandBuffer,
+  frame_bindings: &FrameBindings<B>
+) {
+  cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, &frame_bindings.gpu_scene_buffer, 0, WHOLE_BUFFER);
+  cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 1, &frame_bindings.camera_buffer, 0, WHOLE_BUFFER);
+  cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 2, &frame_bindings.camera_history_buffer, 0, WHOLE_BUFFER);
+  cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, &frame_bindings.vertex_buffer, 0, WHOLE_BUFFER);
+  cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, &frame_bindings.index_buffer, 0, WHOLE_BUFFER);
+  cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 5, &frame_bindings.setup_buffer, 0, WHOLE_BUFFER);
+  cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 6, &frame_bindings.point_lights, 0, WHOLE_BUFFER);
+  cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, &frame_bindings.directional_lights, 0, WHOLE_BUFFER);
 }

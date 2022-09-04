@@ -2,22 +2,22 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain}};
 
-use crate::{input::Input, renderer::{LateLatching, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::RendererResources}};
+use crate::{input::Input, renderer::{LateLatching, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::RendererResources, shader_manager::ShaderManager}};
 
 mod geometry;
 
 use self::geometry::GeometryPass;
 
-pub struct WebRenderer<B: Backend> {
-  device: Arc<B::Device>,
-  swapchain: Arc<B::Swapchain>,
-  geometry: GeometryPass<B>,
-  resources: RendererResources<B>,
+pub struct WebRenderer<P: Platform> {
+  device: Arc<<P::GraphicsBackend as Backend>::Device>,
+  swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+  geometry: GeometryPass<P::GraphicsBackend>,
+  resources: RendererResources<P::GraphicsBackend>,
 }
 
-impl<B: Backend> WebRenderer<B> {
-  pub fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>) -> Self {
-    let mut resources = RendererResources::<B>::new(device);
+impl<P: Platform> WebRenderer<P> {
+  pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>) -> Self {
+    let mut resources = RendererResources::<P::GraphicsBackend>::new(device);
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
     let geometry_pass = GeometryPass::new::<P>(device, swapchain, &mut init_cmd_buffer, &mut resources);
     let init_submission = init_cmd_buffer.finish();
@@ -31,21 +31,22 @@ impl<B: Backend> WebRenderer<B> {
   }
 }
 
-impl<B: Backend> RenderPath<B> for WebRenderer<B> {
+impl<P: Platform> RenderPath<P> for WebRenderer<P> {
   fn write_occlusion_culling_results(&self, _frame: u64, bitset: &mut Vec<u32>) {
     bitset.fill(!0u32);
   }
 
-  fn on_swapchain_changed(&mut self, _swapchain: &Arc<B::Swapchain>) {
+  fn on_swapchain_changed(&mut self, _swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>) {
   }
 
   fn render(
     &mut self,
-    scene: &SceneInfo<B>,
-    _zero_textures: &ZeroTextures<B>,
-    late_latching: Option<&dyn LateLatching<B>>,
+    scene: &SceneInfo<P::GraphicsBackend>,
+    _zero_textures: &ZeroTextures<P::GraphicsBackend>,
+    late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
     input: &Input,
     _frame_info: &FrameInfo,
+    _shader_manager: &ShaderManager<P>
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
 
 
