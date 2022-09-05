@@ -1,7 +1,7 @@
 use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
 use sourcerenderer_core::{Platform, Vec2UI};
 
-use crate::renderer::shader_manager::{PipelineHandle, ShaderManager};
+use crate::renderer::shader_manager::{ComputePipelineHandle, ShaderManager};
 use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
 
 use super::taa::TAAPass;
@@ -9,7 +9,7 @@ use super::taa::TAAPass;
 const USE_CAS: bool = true;
 
 pub struct SharpenPass {
-  pipeline: PipelineHandle
+  pipeline: ComputePipelineHandle
 }
 
 impl SharpenPass {

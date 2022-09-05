@@ -2,10 +2,10 @@ use std::{sync::Arc, cell::Ref};
 
 use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass, shader_manager::{PipelineHandle, ShaderManager}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
 pub struct SsrPass {
-  pipeline: PipelineHandle
+  pipeline: ComputePipelineHandle
 }
 
 impl SsrPass {

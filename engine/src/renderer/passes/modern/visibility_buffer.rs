@@ -1,12 +1,12 @@
 use sourcerenderer_core::{graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, StencilInfo, StoreOp, SubpassInfo, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDimension}};
 use std::sync::Arc;
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, GraphicsPipelineInfo, ShaderManager}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{GraphicsPipelineInfo, ShaderManager, GraphicsPipelineHandle}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 
 use super::{draw_prep::DrawPrepPass, gpu_scene::DRAW_CAPACITY};
 
 pub struct VisibilityBufferPass {
-  pipeline: PipelineHandle
+  pipeline: GraphicsPipelineHandle
 }
 
 impl VisibilityBufferPass {

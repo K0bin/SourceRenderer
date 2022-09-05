@@ -3,7 +3,7 @@ use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend
 use std::sync::Arc;
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
-use crate::renderer::shader_manager::{PipelineHandle, ShaderManager, GraphicsPipelineInfo};
+use crate::renderer::shader_manager::{ShaderManager, GraphicsPipelineInfo, GraphicsPipelineHandle};
 use crate::renderer::{RendererScene, drawable::View};
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI};
 use rayon::prelude::*;
@@ -28,7 +28,7 @@ struct FrameData {
 }
 
 pub struct Prepass {
-  pipeline: PipelineHandle
+  pipeline: GraphicsPipelineHandle
 }
 
 impl Prepass {

@@ -3,7 +3,7 @@ use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, 
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 
-use crate::renderer::{RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
+use crate::renderer::{RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
 use super::clustering::ClusteringPass;
 
@@ -24,7 +24,7 @@ pub struct CullingPointLight {
 const LIGHT_CUTOFF: f32 = 0.05f32;
 
 pub struct LightBinningPass {
-  light_binning_pipeline: PipelineHandle
+  light_binning_pipeline: ComputePipelineHandle
 }
 
 impl LightBinningPass {

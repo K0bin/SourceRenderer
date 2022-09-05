@@ -3,7 +3,7 @@ use sourcerenderer_core::{Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, B
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 
-use crate::renderer::{drawable::View, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
+use crate::renderer::{drawable::View, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -15,7 +15,7 @@ struct ShaderScreenToView {
 }
 
 pub struct ClusteringPass {
-  pipeline: PipelineHandle
+  pipeline: ComputePipelineHandle
 }
 
 impl ClusteringPass {

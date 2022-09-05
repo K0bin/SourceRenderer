@@ -4,12 +4,12 @@ use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as Graphics
 
 use rand::random;
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
 pub struct SsaoPass<P: Platform> {
-  pipeline: PipelineHandle,
+  pipeline: ComputePipelineHandle,
   kernel: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-  blur_pipeline: PipelineHandle,
+  blur_pipeline: ComputePipelineHandle,
 }
 
 fn lerp(a: f32, b: f32, f: f32) -> f32 {

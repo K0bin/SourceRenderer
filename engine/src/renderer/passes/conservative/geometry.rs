@@ -1,7 +1,7 @@
 use nalgebra::Vector2;
 use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, TextureInfo, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
 use std::{sync::Arc, cell::Ref};
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass, conservative::desktop_renderer::setup_frame}, shader_manager::{PipelineHandle, ShaderManager, GraphicsPipelineInfo}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass, conservative::desktop_renderer::setup_frame}, shader_manager::{ShaderManager, GraphicsPipelineInfo, GraphicsPipelineHandle}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::renderer::renderer_assets::*;
 use rayon::prelude::*;
@@ -26,7 +26,7 @@ struct FrameData {
 
 pub struct GeometryPass<P: Platform> {
   sampler: Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
-  pipeline: PipelineHandle
+  pipeline: GraphicsPipelineHandle
 }
 
 impl<P: Platform> GeometryPass<P> {

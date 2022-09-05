@@ -135,19 +135,27 @@ pub struct ShaderManager<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   asset_manager: Arc<AssetManager<P>>,
   inner: Arc<Mutex<ShaderManagerInner<P::GraphicsBackend>>>,
-  next_pipeline_handle: PipelineHandle,
+  next_pipeline_handle_index: u64,
   condvar: Arc<Condvar>
 }
 
 struct ShaderManagerInner<B: Backend> {
   shaders: HashMap<String, Arc<B::Shader>>,
-  remaining_graphics_compilations: HashMap<PipelineHandle, GraphicsCompileTask>,
-  remaining_compute_compilations: HashMap<PipelineHandle, String>,
-  graphics_pipelines: HashMap<PipelineHandle, GraphicsPipeline<B>>,
-  compute_pipelines: HashMap<PipelineHandle, ComputePipeline<B>>,
+  remaining_graphics_compilations: HashMap<GraphicsPipelineHandle, GraphicsCompileTask>,
+  remaining_compute_compilations: HashMap<ComputePipelineHandle, String>,
+  graphics_pipelines: HashMap<GraphicsPipelineHandle, GraphicsPipeline<B>>,
+  compute_pipelines: HashMap<ComputePipelineHandle, ComputePipeline<B>>,
 }
 
-pub type PipelineHandle = u64;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GraphicsPipelineHandle {
+  index: u64
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ComputePipelineHandle {
+  index: u64
+}
 
 impl<P: Platform> ShaderManager<P> {
   pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, asset_manager: &Arc<AssetManager<P>>) -> Self {
@@ -161,14 +169,14 @@ impl<P: Platform> ShaderManager<P> {
         graphics_pipelines: HashMap::new(),
         compute_pipelines: HashMap::new(),
       })),
-      next_pipeline_handle: 1u64,
+      next_pipeline_handle_index: 1u64,
       condvar: Arc::new(Condvar::new())
     }
   }
 
-  pub fn request_graphics_pipeline(&mut self, info: &GraphicsPipelineInfo, renderpass_info: &RenderPassInfo, subpass_index: u32) -> PipelineHandle {
-    let handle = self.next_pipeline_handle;
-    self.next_pipeline_handle += 1;
+  pub fn request_graphics_pipeline(&mut self, info: &GraphicsPipelineInfo, renderpass_info: &RenderPassInfo, subpass_index: u32) -> GraphicsPipelineHandle {
+    let handle = GraphicsPipelineHandle { index: self.next_pipeline_handle_index };
+    self.next_pipeline_handle_index += 1;
 
     let stored_input_layout = StoredVertexLayoutInfo {
       shader_inputs: info.vertex_layout.shader_inputs.iter().cloned().collect(),
@@ -219,9 +227,9 @@ impl<P: Platform> ShaderManager<P> {
     handle
   }
 
-  pub fn request_compute_pipeline(&mut self, path: &str) -> PipelineHandle {
-    let handle = self.next_pipeline_handle;
-    self.next_pipeline_handle += 1;
+  pub fn request_compute_pipeline(&mut self, path: &str) -> ComputePipelineHandle {
+    let handle = ComputePipelineHandle { index: self.next_pipeline_handle_index };
+    self.next_pipeline_handle_index += 1;
 
     let mut inner = self.inner.lock().unwrap();
     inner.remaining_compute_compilations.insert(handle, path.to_string());
@@ -232,9 +240,10 @@ impl<P: Platform> ShaderManager<P> {
   }
 
   pub fn add_shader(&mut self, path: &str, shader_bytecode: Box<[u8]>) {
-    let mut graphics_pipelines_using_shader = SmallVec::<[PipelineHandle; 4]>::new();
-    let mut compute_pipelines_using_shader = SmallVec::<[PipelineHandle; 4]>::new();
-    let mut ready_handles = SmallVec::<[PipelineHandle; 4]>::new();
+    let mut graphics_pipelines_using_shader = SmallVec::<[GraphicsPipelineHandle; 4]>::new();
+    let mut compute_pipelines_using_shader = SmallVec::<[ComputePipelineHandle; 4]>::new();
+    let mut ready_graphics_handles = SmallVec::<[GraphicsPipelineHandle; 4]>::new();
+    let mut ready_compute_handles = SmallVec::<[ComputePipelineHandle; 4]>::new();
     let shader_type: ShaderType;
 
     {
@@ -301,20 +310,20 @@ impl<P: Platform> ShaderManager<P> {
 
         if (inner.shaders.contains_key(&c.info.vs) || shader_type_opt.unwrap() == ShaderType::VertexShader)
           && (c.info.fs.as_ref().map(|fs| inner.shaders.contains_key(fs)).unwrap_or(true) || shader_type_opt.unwrap() == ShaderType::FragmentShader) {
-          ready_handles.push(*handle);
+          ready_graphics_handles.push(*handle);
         }
       }
       for (handle, c_path) in &inner.remaining_compute_compilations {
         if path == c_path {
           shader_type_opt = Some(ShaderType::ComputeShader);
-          ready_handles.push(*handle);
+          ready_compute_handles.push(*handle);
         }
       }
       shader_type = shader_type_opt.unwrap();
       inner.shaders.insert(path.to_string(), self.device.create_shader(shader_type, &shader_bytecode[..], Some(path)));
     }
 
-    if ready_handles.is_empty() {
+    if ready_graphics_handles.is_empty() && ready_compute_handles.is_empty() {
       return;
     }
 
@@ -322,28 +331,8 @@ impl<P: Platform> ShaderManager<P> {
     let c_inner = self.inner.clone();
     let c_condvar = self.condvar.clone();
     rayon::spawn(move || {
-      for handle in ready_handles.drain(..) {
+      for handle in ready_graphics_handles.drain(..) {
         // It's important that the actual compilation happens outside of the mutex.
-
-        if shader_type == ShaderType::ComputeShader {
-          let (path, shader) = {
-            let mut inner = c_inner.lock().unwrap();
-            let path = inner.remaining_compute_compilations.remove(&handle).unwrap();
-            let shader = inner.shaders.get(&path).cloned().unwrap();
-            (path, shader)
-          };
-          let pipeline = c_device.create_compute_pipeline(&shader, None);
-          let mut inner = c_inner.lock().unwrap();
-          if let Some(existing_pipeline) = inner.compute_pipelines.get_mut(&handle) {
-            existing_pipeline.pipeline = pipeline;
-          } else {
-            inner.compute_pipelines.insert(handle, ComputePipeline::<P::GraphicsBackend> {
-              path,
-              pipeline,
-            });
-          }
-          continue;
-        }
 
         let (task, vs, fs) = {
           let mut inner = c_inner.lock().unwrap();
@@ -414,6 +403,27 @@ impl<P: Platform> ShaderManager<P> {
         }
       }
 
+      for handle in ready_compute_handles.drain(..) {
+        // It's important that the actual compilation happens outside of the mutex.
+
+        let (path, shader) = {
+          let mut inner = c_inner.lock().unwrap();
+          let path = inner.remaining_compute_compilations.remove(&handle).unwrap();
+          let shader = inner.shaders.get(&path).cloned().unwrap();
+          (path, shader)
+        };
+        let pipeline = c_device.create_compute_pipeline(&shader, None);
+        let mut inner = c_inner.lock().unwrap();
+        if let Some(existing_pipeline) = inner.compute_pipelines.get_mut(&handle) {
+          existing_pipeline.pipeline = pipeline;
+        } else {
+          inner.compute_pipelines.insert(handle, ComputePipeline::<P::GraphicsBackend> {
+            path,
+            pipeline,
+          });
+        }
+      }
+
       {
         // Storing shader bytecode does nothing but waste memory,
         // Clear it once we're idle.
@@ -430,12 +440,12 @@ impl<P: Platform> ShaderManager<P> {
     });
   }
 
-  pub fn try_get_graphics_pipeline(&self, handle: PipelineHandle) -> Option<Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline>> {
+  pub fn try_get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Option<Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline>> {
     let inner = self.inner.lock().unwrap();
     inner.graphics_pipelines.get(&handle).map(|p| p.pipeline.clone())
   }
 
-  pub fn get_graphics_pipeline(&self, handle: PipelineHandle) -> Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline> {
+  pub fn get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline> {
     let inner = self.inner.lock().unwrap();
     let pipeline_opt = inner.graphics_pipelines.get(&handle);
     if let Some(pipeline) = pipeline_opt {
@@ -446,12 +456,12 @@ impl<P: Platform> ShaderManager<P> {
     inner.graphics_pipelines.get(&handle).unwrap().pipeline.clone()
   }
 
-  pub fn try_get_compute_pipeline(&self, handle: PipelineHandle) -> Option<Arc<<P::GraphicsBackend as Backend>::ComputePipeline>> {
+  pub fn try_get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Option<Arc<<P::GraphicsBackend as Backend>::ComputePipeline>> {
     let inner = self.inner.lock().unwrap();
     inner.compute_pipelines.get(&handle).map(|p| p.pipeline.clone())
   }
 
-  pub fn get_compute_pipeline(&self, handle: PipelineHandle) -> Arc<<P::GraphicsBackend as Backend>::ComputePipeline> {
+  pub fn get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Arc<<P::GraphicsBackend as Backend>::ComputePipeline> {
     let inner = self.inner.lock().unwrap();
     let pipeline_opt = inner.compute_pipelines.get(&handle);
     if let Some(pipeline) = pipeline_opt {

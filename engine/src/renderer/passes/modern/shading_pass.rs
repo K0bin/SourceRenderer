@@ -2,14 +2,14 @@ use std::{sync::Arc, cell::Ref};
 
 use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, BarrierAccess, TextureLayout, TextureViewInfo, BarrierSync, CommandBuffer, PipelineBinding, WHOLE_BUFFER, BindingFrequency, Filter, AddressMode, SamplerInfo, TextureDimension}, Platform, Vec2UI};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::ssao::SsaoPass, shader_manager::{PipelineHandle, ShaderManager}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_assets::RendererTexture, passes::ssao::SsaoPass, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
 use super::{visibility_buffer::VisibilityBufferPass, rt_shadows::RTShadowPass};
 
 
 pub struct ShadingPass<P: Platform> {
   sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
-  pipeline: PipelineHandle,
+  pipeline: ComputePipelineHandle,
 }
 
 impl<P: Platform> ShadingPass<P> {

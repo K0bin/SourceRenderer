@@ -5,7 +5,7 @@ use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureViewInfo, WHOLE_BUFFER}, Vec4, Platform, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
-use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}, shader_manager::{GraphicsPipelineInfo, ShaderManager, PipelineHandle}};
+use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}, shader_manager::{GraphicsPipelineInfo, ShaderManager, GraphicsPipelineHandle}};
 use crate::renderer::render_path::SceneInfo;
 
 const QUERY_COUNT: usize = 16384;
@@ -16,7 +16,7 @@ pub struct OcclusionPass<P: Platform> {
   query_buffers: Vec<Arc<<P::GraphicsBackend as Backend>::Buffer>>,
   occluder_vb: Arc<<P::GraphicsBackend as Backend>::Buffer>,
   occluder_ib: Arc<<P::GraphicsBackend as Backend>::Buffer>,
-  pipeline: PipelineHandle,
+  pipeline: GraphicsPipelineHandle,
   drawable_occluded_frames: AtomicRefCell<HashMap<u32, u32>>,
   occlusion_query_maps: Vec<HashMap<u32, u32>>,
   visible_drawable_indices: Vec<u32>

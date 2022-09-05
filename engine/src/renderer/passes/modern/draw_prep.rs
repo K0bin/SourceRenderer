@@ -1,10 +1,10 @@
 use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, TextureLayout, TextureViewInfo}, Platform, Vec4};
 
-use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}}, drawable::View, shader_manager::{PipelineHandle, ShaderManager}}, math::Frustum};
+use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}}, drawable::View, shader_manager::{ShaderManager, ComputePipelineHandle}}, math::Frustum};
 
 pub struct DrawPrepPass {
-  culling_pipeline: PipelineHandle,
-  prep_pipeline: PipelineHandle
+  culling_pipeline: ComputePipelineHandle,
+  prep_pipeline: ComputePipelineHandle
 }
 
 impl DrawPrepPass {

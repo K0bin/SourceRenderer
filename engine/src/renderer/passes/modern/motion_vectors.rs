@@ -6,10 +6,10 @@ use sourcerenderer_core::graphics::{Backend, BarrierAccess, BarrierSync, Binding
 use sourcerenderer_core::{Platform, Vec2UI};
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::renderer::shader_manager::{ShaderManager, PipelineHandle};
+use crate::renderer::shader_manager::{ShaderManager, ComputePipelineHandle};
 
 pub struct MotionVectorPass {
-  pipeline: PipelineHandle
+  pipeline: ComputePipelineHandle
 }
 
 impl MotionVectorPass {

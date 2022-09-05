@@ -2,7 +2,7 @@ use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFr
 use sourcerenderer_core::Platform;
 use std::{sync::Arc, cell::Ref};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
   let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -33,7 +33,7 @@ pub(crate) fn halton_sequence(mut index: u32, base: u32) -> f32 {
 }
 
 pub struct TAAPass {
-  pipeline: PipelineHandle,
+  pipeline: ComputePipelineHandle,
 }
 
 impl TAAPass {

@@ -4,11 +4,11 @@ use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, TextureUsage, Format, Device, ShaderType, CommandBuffer, PipelineBinding, BarrierSync, BarrierAccess, TextureLayout, TextureViewInfo, BindingFrequency, SamplerInfo, Filter, AddressMode, BufferInfo, BufferUsage, MemoryUsage, WHOLE_BUFFER}, Platform};
 
-use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{PipelineHandle, ShaderManager}};
+use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
 pub struct HierarchicalZPass<P: Platform> {
-  ffx_pipeline: PipelineHandle,
-  copy_pipeline: PipelineHandle,
+  ffx_pipeline: ComputePipelineHandle,
+  copy_pipeline: ComputePipelineHandle,
   sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
 }
