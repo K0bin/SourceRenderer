@@ -2,7 +2,7 @@ use std::{io::{Cursor, Error as IOError, ErrorKind, Result as IOResult, Read, Se
 use log::warn;
 use sourcerenderer_core::{Platform, platform::IO};
 
-use crate::asset::{asset_manager::{AssetContainer, AssetFile, AssetFileData}, loaders::gltf::glb};
+use crate::asset::{asset_manager::{AssetContainer, AssetFile}, loaders::gltf::glb};
 
 pub struct GltfContainer<P: Platform> {
   json_offset: u64,
@@ -51,8 +51,8 @@ impl<P: Platform> GltfContainer<P> {
   }
 }
 
-impl<P: Platform> AssetContainer<P> for GltfContainer<P> {
-  fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile<P>> {
+impl<P: Platform> AssetContainer for GltfContainer<P> {
+  fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
     let mut reader = self.reader.lock().unwrap();
     if path.starts_with(&self.scene_base_path) {
       let length = (self.data_offset - self.json_offset - glb::GlbChunkHeader::size()) as usize;
@@ -64,7 +64,7 @@ impl<P: Platform> AssetContainer<P> for GltfContainer<P> {
       reader.read_exact(&mut buffer).ok()?;
       return Some(AssetFile {
         path: path.to_string(),
-        data: AssetFileData::Memory(Cursor::new(buffer.into_boxed_slice()))
+        data: Cursor::new(buffer.into_boxed_slice())
       });
     }
     let is_texture = path.starts_with(&self.texture_base_path);
@@ -88,7 +88,7 @@ impl<P: Platform> AssetContainer<P> for GltfContainer<P> {
 
       return Some(AssetFile {
         path: path.to_string(),
-        data: AssetFileData::Memory(Cursor::new(buffer.into_boxed_slice()))
+        data: Cursor::new(buffer.into_boxed_slice())
       });
     }
 

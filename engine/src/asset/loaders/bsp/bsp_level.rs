@@ -8,7 +8,7 @@ use std::sync::Arc;
 use sourcerenderer_bsp::{DispInfo, DispVert, Face, Map, SurfaceFlags};
 use std::collections::HashMap;
 use sourcerenderer_core::{Vec3, Vec2};
-use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, AssetFileData, MeshRange, AssetLoaderProgress, AssetLoadPriority, Texture};
+use crate::asset::asset_manager::{AssetLoaderResult, AssetFile, MeshRange, AssetLoaderProgress, AssetLoadPriority, Texture};
 use sourcerenderer_core::graphics::TextureInfo;
 use legion::{World, WorldOptions};
 use crate::renderer::StaticRenderableComponent;
@@ -269,18 +269,15 @@ impl BspLevelLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for BspLevelLoader {
-  fn matches(&self, file: &mut AssetFile<P>) -> bool {
+  fn matches(&self, file: &mut AssetFile) -> bool {
     let file_name = Path::new(&file.path).file_name();
     file_name.and_then(|file_name| file_name.to_str()).map_or(false, |file_name| self.map_name_regex.is_match(file_name))
   }
 
-  fn load(&self, asset_file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
-    let name = Path::new(&asset_file.path).file_name().unwrap().to_str().unwrap();
-    let file = match asset_file.data {
-      AssetFileData::File(file) => file,
-      _ => unreachable!("hi")
-    };
-    let buf_reader = BufReader::new(file);
+  fn load(&self, asset_file: AssetFile, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+    let path = asset_file.path.clone();
+    let name = Path::new(&path).file_name().unwrap().to_str().unwrap();
+    let buf_reader = BufReader::new(asset_file);
     let mut map = Map::read(name, buf_reader).unwrap();
     let leafs = map.read_leafs().unwrap();
     let nodes = map.read_nodes().unwrap();

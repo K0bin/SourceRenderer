@@ -1,9 +1,9 @@
-use std::{path::{Path, PathBuf}, sync::{Weak, Mutex, Arc}};
+use std::{path::{Path, PathBuf}, sync::{Weak, Mutex, Arc}, io::{Read, Cursor}};
 
 use crossbeam_channel::{unbounded, Receiver};
 use sourcerenderer_core::{Platform, platform::{IO, FileWatcher}};
 
-use crate::asset::{asset_manager::{AssetContainer, AssetFile, AssetFileData}, AssetManager};
+use crate::asset::{asset_manager::{AssetContainer, AssetFile}, AssetManager};
 
 pub struct FSContainer<P: Platform> {
   path: PathBuf,
@@ -11,7 +11,7 @@ pub struct FSContainer<P: Platform> {
   watcher: Option<Mutex<<P::IO as IO>::FileWatcher>>
 }
 
-impl<P: Platform> AssetContainer<P> for FSContainer<P> {
+impl<P: Platform> AssetContainer for FSContainer<P> {
   // TODO: write path URI struct to handle getting the path without metadata more elegantly
   // TODO: replace / with platform specific separator
 
@@ -31,7 +31,8 @@ impl<P: Platform> AssetContainer<P> for FSContainer<P> {
       <P::IO as IO>::external_asset_exists(self.path.join(path_without_metadata))
     }
   }
-  fn load(&self, path: &str) -> Option<AssetFile<P>> {
+
+  fn load(&self, path: &str) -> Option<AssetFile> {
     let path_without_metadata = if let Some(dot_pos) = path.rfind('.') {
       if let Some(first_slash_pos) = path[dot_pos..].find('/') {
         &path[..dot_pos + first_slash_pos]
@@ -42,7 +43,7 @@ impl<P: Platform> AssetContainer<P> for FSContainer<P> {
       path
     };
     let final_path = self.path.join(path_without_metadata);
-    let file = if !self.external {
+    let mut file = if !self.external {
       <P::IO as IO>::open_asset(final_path.clone()).ok()?
     } else {
       <P::IO as IO>::open_external_asset(final_path.clone()).ok()?
@@ -51,9 +52,12 @@ impl<P: Platform> AssetContainer<P> for FSContainer<P> {
       let mut watcher_locked = watcher.lock().unwrap();
       watcher_locked.watch(final_path);
     }
-    Some(AssetFile::<P> {
+    let mut buf = Vec::<u8>::new();
+    file.read_to_end(&mut buf).ok()?;
+
+    Some(AssetFile {
       path: path.to_string(),
-      data: AssetFileData::File(file)
+      data: Cursor::new(buf.into_boxed_slice())
     })
   }
 }

@@ -15,11 +15,11 @@ impl ImageLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for ImageLoader {
-  fn matches(&self, file: &mut AssetFile<P>) -> bool {
+  fn matches(&self, file: &mut AssetFile) -> bool {
     file.path.ends_with(".png") || file.path.ends_with(".jpg") || file.path.ends_with(".jpeg")
   }
 
-  fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, file: AssetFile, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let is_png = file.path.ends_with(".png");
 
     let path = file.path.clone();

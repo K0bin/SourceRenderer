@@ -1,5 +1,7 @@
+use std::io::{Cursor, Read};
+use std::marker::PhantomData;
 use std::path::PathBuf;
-use crate::asset::asset_manager::{AssetContainer, AssetFile, AssetFileData};
+use crate::asset::asset_manager::{AssetContainer, AssetFile};
 use crate::asset::loaders::csgo_loader::CSGOMapLoaderError::CSGONotFound;
 use regex::Regex;
 use crate::asset::loaders::vpk_container::{CSGO_PRIMARY_PAK_NAME_PATTERN, CSGO_PAK_NAME_PATTERN};
@@ -8,20 +10,24 @@ use sourcerenderer_core::platform::IO;
 
 pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+\.bsp";
 
-pub struct CSGODirectoryContainer {
+pub struct CSGODirectoryContainer<P: Platform> {
   path: String,
   map_name_regex: Regex,
   primary_pak_name_regex: Regex,
-  pak_name_regex: Regex
+  pak_name_regex: Regex,
+  _p: PhantomData<<P::IO as IO>::File>
 }
+
+unsafe impl<P: Platform> Send for CSGODirectoryContainer<P> {}
+unsafe impl<P: Platform> Sync for CSGODirectoryContainer<P> {}
 
 #[derive(Debug)]
 pub enum CSGOMapLoaderError {
   CSGONotFound
 }
 
-impl CSGODirectoryContainer {
-  pub fn new<P: Platform>(path: &str) -> Result<Self, CSGOMapLoaderError> {
+impl<P: Platform> CSGODirectoryContainer<P> {
+  pub fn new(path: &str) -> Result<Self, CSGOMapLoaderError> {
     let mut exe_path = PathBuf::new();
     exe_path.push(path.to_owned());
     #[cfg(target_os = "windows")]
@@ -37,17 +43,18 @@ impl CSGODirectoryContainer {
       path: path.to_owned(),
       map_name_regex: Regex::new(CSGO_MAP_NAME_PATTERN).unwrap(),
       primary_pak_name_regex: Regex::new(CSGO_PRIMARY_PAK_NAME_PATTERN).unwrap(),
-      pak_name_regex: Regex::new(CSGO_PAK_NAME_PATTERN).unwrap()
+      pak_name_regex: Regex::new(CSGO_PAK_NAME_PATTERN).unwrap(),
+      _p: PhantomData
     })
   }
 }
 
-impl<P: Platform> AssetContainer<P> for CSGODirectoryContainer {
+impl<P: Platform> AssetContainer for CSGODirectoryContainer<P> {
   fn contains(&self, path: &str) -> bool {
     self.map_name_regex.is_match(path) || self.primary_pak_name_regex.is_match(path) || self.pak_name_regex.is_match(path)
   }
 
-  fn load(&self, path: &str) -> Option<AssetFile<P>> {
+  fn load(&self, path: &str) -> Option<AssetFile> {
     let actual_path = if self.map_name_regex.is_match(path) {
       let mut actual_path = PathBuf::new();
       actual_path.push(&self.path);
@@ -73,11 +80,13 @@ impl<P: Platform> AssetContainer<P> for CSGODirectoryContainer {
       return None;
     };
 
-    let file = <P::IO as IO>::open_external_asset(&actual_path);
-    file.ok().map(|file|
-      AssetFile {
+    let mut file = <P::IO as IO>::open_external_asset(&actual_path).ok()?;
+    let mut buf = Vec::<u8>::new();
+    file.read_to_end(&mut buf).ok()?;
+
+    Some(AssetFile {
       path: path.to_string(),
-      data: AssetFileData::File(file)
+      data: Cursor::new(buf.into_boxed_slice())
     })
   }
 }

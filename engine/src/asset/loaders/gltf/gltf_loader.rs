@@ -390,11 +390,11 @@ impl GltfLoader {
 }
 
 impl<P: Platform> AssetLoader<P> for GltfLoader {
-  fn matches(&self, file: &mut AssetFile<P>) -> bool {
+  fn matches(&self, file: &mut AssetFile) -> bool {
     (file.path.contains("gltf") || file.path.contains("glb")) && file.path.contains("/scene/") && Gltf::from_reader(file).is_ok()
   }
 
-  fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, file: AssetFile, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, _progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     let path = file.path.clone();
     let gltf = Gltf::from_reader(file).unwrap();
     const PUNCTUAL_LIGHT_EXTENSION: &'static str = "KHR_lights_punctual";

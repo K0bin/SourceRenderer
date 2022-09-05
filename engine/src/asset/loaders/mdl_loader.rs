@@ -16,12 +16,12 @@ const SCALING_FACTOR: f32 = 0.0236f32;
 pub struct MDLModelLoader {}
 
 impl<P: Platform> AssetLoader<P> for MDLModelLoader {
-  fn matches(&self, file: &mut AssetFile<P>) -> bool {
+  fn matches(&self, file: &mut AssetFile) -> bool {
     file.path.starts_with("models/") && file.path.ends_with(".mdl")
   }
 
   #[allow(clippy::never_loop)]
-  fn load(&self, mut file: AssetFile<P>, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
+  fn load(&self, mut file: AssetFile, manager: &Arc<AssetManager<P>>, _priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {
     if file.path.contains("autocombine") {
       print!("Model: {} is auto combined", &file.path);
     }

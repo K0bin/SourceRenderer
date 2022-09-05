@@ -103,60 +103,29 @@ pub enum MaterialValue {
   Vec4(Vec4)
 }
 
-pub struct AssetFile<P: Platform> {
+pub struct AssetFile {
   pub path: String,
-  pub data: AssetFileData<P>
+  pub data: Cursor<Box<[u8]>>
 }
 
-impl<P: Platform> Read for AssetFile<P> {
+impl Read for AssetFile {
   fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
     self.data.read(buf)
   }
 }
 
-impl<P: Platform> Seek for AssetFile<P> {
+impl Seek for AssetFile {
   fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
     self.data.seek(pos)
   }
 }
 
-pub enum AssetFileData<P: Platform> {
-  File(<P::IO as IO>::File),
-  Memory(Cursor<Box<[u8]>>)
-}
-
-impl<P: Platform> Read for AssetFileData<P> {
-  fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
-    match self {
-      AssetFileData::File(file) => {
-        file.read(buf)
-      }
-      AssetFileData::Memory(cursor) => {
-        cursor.read(buf)
-      }
-    }
-  }
-}
-
-impl<P: Platform> Seek for AssetFileData<P> {
-  fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
-    match self {
-      AssetFileData::File(file) => {
-        file.seek(pos)
-      }
-      AssetFileData::Memory(cursor) => {
-        cursor.seek(pos)
-      }
-    }
-  }
-}
-
-pub trait AssetContainer<P: Platform>
+pub trait AssetContainer
   : Send + Sync {
   fn contains(&self, path: &str) -> bool {
     self.load(path).is_some()
   }
-  fn load(&self, path: &str) -> Option<AssetFile<P>>;
+  fn load(&self, path: &str) -> Option<AssetFile>;
 }
 
 pub struct AssetLoaderProgress {
@@ -183,8 +152,8 @@ pub enum AssetLoadPriority {
 
 pub trait AssetLoader<P: Platform>
   : Send + Sync {
-  fn matches(&self, file: &mut AssetFile<P>) -> bool;
-  fn load(&self, file: AssetFile<P>, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()>;
+  fn matches(&self, file: &mut AssetFile) -> bool;
+  fn load(&self, file: AssetFile, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()>;
 }
 
 pub enum Asset {
@@ -199,7 +168,7 @@ pub enum Asset {
 pub struct AssetManager<P: Platform> {
   device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
   inner: Mutex<AssetManagerInner>,
-  containers: RwLock<Vec<Box<dyn AssetContainer<P>>>>,
+  containers: RwLock<Vec<Box<dyn AssetContainer>>>,
   loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
   renderer_sender: Sender<LoadedAsset>,
   renderer_receiver: Receiver<LoadedAsset>,
@@ -288,11 +257,11 @@ impl<P: Platform> AssetManager<P> {
     }), AssetLoadPriority::Normal);
   }
 
-  pub fn add_container(&self, container: Box<dyn AssetContainer<P>>) {
+  pub fn add_container(&self, container: Box<dyn AssetContainer>) {
     self.add_container_with_progress(container, None)
   }
 
-  pub fn add_container_with_progress(&self, container: Box<dyn AssetContainer<P>>, progress: Option<&Arc<AssetLoaderProgress>>) {
+  pub fn add_container_with_progress(&self, container: Box<dyn AssetContainer>, progress: Option<&Arc<AssetLoaderProgress>>) {
     let mut containers = self.containers.write().unwrap();
     containers.push(container);
     if let Some(progress) = progress {
@@ -456,9 +425,9 @@ impl<P: Platform> AssetManager<P> {
     Some(level)
   }
 
-  pub fn load_file(&self, path: &str) -> Option<AssetFile<P>> {
+  pub fn load_file(&self, path: &str) -> Option<AssetFile> {
     let containers = self.containers.read().unwrap();
-    let mut file_opt: Option<AssetFile<P>> = None;
+    let mut file_opt: Option<AssetFile> = None;
     for container in containers.iter() {
       let container_file_opt = container.load(path);
       if container_file_opt.is_some() {
@@ -486,23 +455,17 @@ impl<P: Platform> AssetManager<P> {
     false
   }
 
-  fn find_loader<'a>(file: &mut AssetFile<P>, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a dyn AssetLoader<P>> {
-    let start = match &mut file.data {
-      AssetFileData::File(file) => { file.seek(SeekFrom::Current(0)) }
-      AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Current(0)) }
-    }.unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
+  fn find_loader<'a>(file: &mut AssetFile, loaders: &'a [Box<dyn AssetLoader<P>>]) -> Option<&'a dyn AssetLoader<P>> {
+    let start = file.seek(SeekFrom::Current(0)).unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
     let loader_opt = loaders.iter().find(|loader| {
       let loader_matches = loader.matches(file);
-      match &mut file.data {
-        AssetFileData::File(file) => { file.seek(SeekFrom::Start(start)).unwrap(); }
-        AssetFileData::Memory(cursor) => { cursor.seek(SeekFrom::Start(start)).unwrap(); }
-      }
+      file.seek(SeekFrom::Start(start)).unwrap();
       loader_matches
     });
     loader_opt.map(|b| b.as_ref())
   }
 
-  fn load_asset(self: &Arc<Self>, mut file: AssetFile<P>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) {
+  fn load_asset(self: &Arc<Self>, mut file: AssetFile, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) {
     let path = file.path.clone();
 
     let loaders = self.loaders.read().unwrap();
