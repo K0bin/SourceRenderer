@@ -1,9 +1,8 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}, hash::{Hash, Hasher}};
 use std::sync::Condvar;
 
-use log::info;
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, RasterizerInfo, DepthStencilInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, LogicOp, AttachmentBlendInfo, VertexLayoutInfo, BlendInfo, GraphicsPipelineInfo as ActualGraphicsPipelineInfo, ShaderType, AttachmentInfo, DepthStencilAttachmentRef, OutputAttachmentRef, AttachmentRef, Device, RenderPassInfo, SubpassInfo, Shader}, Platform, atomic_refcell::AtomicRefCell};
+use sourcerenderer_core::{graphics::{Backend, RasterizerInfo, DepthStencilInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, LogicOp, AttachmentBlendInfo, VertexLayoutInfo, BlendInfo, GraphicsPipelineInfo as ActualGraphicsPipelineInfo, ShaderType, AttachmentInfo, DepthStencilAttachmentRef, OutputAttachmentRef, AttachmentRef, Device, RenderPassInfo, SubpassInfo}, Platform};
 
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 

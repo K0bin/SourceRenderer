@@ -20,7 +20,7 @@ use rayon::prelude::*;
 use crate::math::{Frustum, BoundingBox};
 use instant::Instant;
 
-use super::{PointLight, shader_manager};
+use super::PointLight;
 use super::drawable::{make_camera_proj, make_camera_view};
 use super::light::DirectionalLight;
 use super::render_path::RenderPath;

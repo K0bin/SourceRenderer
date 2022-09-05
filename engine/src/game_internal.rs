@@ -7,10 +7,10 @@ use log::trace;
 use nalgebra::UnitQuaternion;
 use sourcerenderer_core::{Platform, Vec3};
 
-use crate::asset::loaders::{GltfLoader, CSGODirectoryContainer, ImageLoader, FSContainer, ShaderLoader};
+use crate::asset::loaders::{GltfLoader, ImageLoader, ShaderLoader};
 use crate::{DeltaTime, Tick, TickDelta, TickDuration, TickRate, Transform, asset::loaders::GltfContainer, game::FilterAll, renderer::*};
 use crate::transform;
-use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
+use crate::asset::AssetManager;
 use crate::fps_camera;
 use crate::renderer::RendererInterface;
 use instant::Instant;

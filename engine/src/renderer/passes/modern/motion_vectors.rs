@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use sourcerenderer_core::graphics::{Backend, BarrierAccess, BarrierSync, BindingFrequency,
                                     CommandBuffer, Format, PipelineBinding, TextureInfo,
                                     TextureLayout, TextureStorageView, TextureUsage,

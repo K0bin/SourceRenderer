@@ -1,9 +1,8 @@
 use crate::asset::{AssetLoader, Asset, AssetManager};
 use sourcerenderer_core::Platform;
 use crate::asset::asset_manager::{AssetFile, AssetLoaderResult, AssetLoaderProgress, AssetLoadPriority, Texture};
-use std::io::{Cursor, BufReader};
+use std::io::BufReader;
 use sourcerenderer_vtf::{VtfTexture, ImageFormat as VTFTextureFormat};
-use std::fs::File;
 use sourcerenderer_core::graphics::{SampleCount, TextureInfo, TextureUsage, TextureDimension};
 use sourcerenderer_core::graphics::Format;
 use std::sync::Arc;

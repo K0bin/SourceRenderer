@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex, Condvar};
 use std::collections::{HashMap, VecDeque};
 use log::{trace, warn};
-use sourcerenderer_core::platform::{Platform, IO};
+use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{Vec4, graphics};
 use sourcerenderer_core::graphics::TextureInfo;
 use std::hash::Hash;

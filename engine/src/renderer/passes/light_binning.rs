@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, MemoryUsage, PipelineBinding, BarrierSync, BarrierAccess, WHOLE_BUFFER}};
+use sourcerenderer_core::{Vec3, graphics::{Backend as GraphicsBackend, Barrier, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, MemoryUsage, PipelineBinding, BarrierSync, BarrierAccess, WHOLE_BUFFER}};
 use sourcerenderer_core::Platform;
 use std::sync::Arc;
 
