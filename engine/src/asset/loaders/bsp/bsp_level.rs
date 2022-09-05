@@ -476,8 +476,6 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
     world.push((Lightmap { path: "lightmap".to_string() },));
 
-    Ok(AssetLoaderResult {
-      level: Some(world)
-    })
+    Ok(AssetLoaderResult::Level(world))
   }
 }

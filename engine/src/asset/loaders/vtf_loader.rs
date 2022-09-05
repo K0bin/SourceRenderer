@@ -53,9 +53,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
 
     manager.add_asset_with_progress(&path, Asset::Texture(texture), Some(progress), priority);
 
-    Ok(AssetLoaderResult {
-      level: None
-    })
+    Ok(AssetLoaderResult::None)
   }
 }
 

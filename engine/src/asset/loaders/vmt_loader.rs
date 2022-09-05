@@ -65,8 +65,6 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
       manager.add_asset_with_progress(&path, Asset::Material(material), Some(progress), priority);
     }
 
-    Ok(AssetLoaderResult {
-      level: None
-    })
+    Ok(AssetLoaderResult::None)
   }
 }

@@ -235,9 +235,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
       material_paths: materials
     }), Some(progress), AssetLoadPriority::Normal);
 
-    Ok(AssetLoaderResult {
-      level: None
-    })
+    Ok(AssetLoaderResult::None)
   }
 }
 

@@ -21,8 +21,6 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
     let mut buffer = Vec::<u8>::new();
     file.data.read_to_end(&mut buffer).map_err(|_e| ())?;
     manager.add_asset_with_progress(&file.path, Asset::Shader(buffer.into_boxed_slice()), Some(progress), priority);
-    Ok(AssetLoaderResult {
-      level: None
-    })
+    Ok(AssetLoaderResult::None)
   }
 }

@@ -417,9 +417,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
       for scene in gltf.scenes() {
         if scene.name().map_or_else(|| scene.index().to_string(), |name| name.to_string()) == scene_name {
           let world = GltfLoader::load_scene(&scene, manager, gltf_name);
-          return Ok(AssetLoaderResult {
-            level: Some(world),
-          });
+          return Ok(AssetLoaderResult::Level(world));
         }
       }
     }

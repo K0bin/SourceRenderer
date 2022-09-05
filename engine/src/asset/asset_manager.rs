@@ -139,8 +139,9 @@ impl AssetLoaderProgress {
   }
 }
 
-pub struct AssetLoaderResult {
-  pub level: Option<World>,
+pub enum AssetLoaderResult {
+  None,
+  Level(World)
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -417,8 +418,11 @@ impl<P: Platform> AssetManager<P> {
       warn!("Could not load file: {:?}", path);
       return None;
     }
-    let assets = assets_opt.unwrap();
-    let level = assets.level;
+    let result = assets_opt.unwrap();
+    let level = match result {
+      AssetLoaderResult::Level(level) => Some(level),
+      _ => None
+    };
     progress.finished.fetch_add(1, Ordering::SeqCst);
     let level = level?;
     while self.is_running.load(Ordering::SeqCst) && !progress.is_done() {}

@@ -49,8 +49,6 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
       data: vec![data.into_boxed_slice()].into_boxed_slice(),
     }), Some(progress), priority);
 
-    Ok(AssetLoaderResult {
-      level: None
-    })
+    Ok(AssetLoaderResult::None)
   }
 }
