@@ -2,7 +2,7 @@ use std::{hash::{Hash, Hasher}};
 
 use sourcerenderer_core::graphics::{GraphicsPipelineInfo, Shader, ShaderType, ComputePipeline, BindingFrequency, BindingInfo};
 
-use crate::{GLThreadSender, WebGLBackend, thread::{ShaderHandle, WebGLPipelineInfo}};
+use crate::{GLThreadSender, WebGLBackend, thread::{ShaderHandle, WebGLPipelineInfo, PipelineHandle}};
 
 pub struct WebGLShader {
   handle: ShaderHandle,
