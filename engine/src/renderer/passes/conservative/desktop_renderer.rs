@@ -26,7 +26,7 @@ pub struct ConservativeRenderer<P: Platform> {
 
 pub struct RTPasses<B: Backend> {
   acceleration_structure_update: AccelerationStructureUpdatePass<B>,
-  shadows: RTShadowPass<B>
+  shadows: RTShadowPass
 }
 
 pub struct FrameBindings<B: Backend> {
@@ -59,7 +59,7 @@ impl<P: Platform> ConservativeRenderer<P> {
     let occlusion = OcclusionPass::<P>::new(device, shader_manager);
     let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
       acceleration_structure_update: AccelerationStructureUpdatePass::<P::GraphicsBackend>::new(device, &mut init_cmd_buffer),
-      shadows: RTShadowPass::<P::GraphicsBackend>::new::<P>(device, resolution, &mut barriers)
+      shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager)
     });
     init_cmd_buffer.flush_barriers();
     device.flush_transfers();
@@ -219,7 +219,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers, shader_manager);
     self.ssao.execute(&mut cmd_buf, &self.barriers, Prepass::DEPTH_TEXTURE_NAME, Some(Prepass::MOTION_TEXTURE_NAME), &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), shader_manager, false);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, Prepass::DEPTH_TEXTURE_NAME, rt_passes.acceleration_structure_update.acceleration_structure(), &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
+      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, shader_manager, Prepass::DEPTH_TEXTURE_NAME, rt_passes.acceleration_structure_update.acceleration_structure(), &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
     }
     self.geometry.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, Prepass::DEPTH_TEXTURE_NAME, scene, &frame_bindings, zero_textures, scene.lightmap.unwrap());
     self.taa.execute(&mut cmd_buf, &self.barriers, shader_manager, GeometryPass::<P>::GEOMETRY_PASS_TEXTURE_NAME, Prepass::DEPTH_TEXTURE_NAME, Some(Prepass::MOTION_TEXTURE_NAME), false);

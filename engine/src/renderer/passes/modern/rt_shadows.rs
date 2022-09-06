@@ -1,17 +1,17 @@
-use std::{sync::Arc, path::Path, io::Read};
+use std::sync::Arc;
 
-use sourcerenderer_core::{graphics::{Backend, Device, TextureInfo, Format, SampleCount, TextureUsage, TextureViewInfo, ShaderType, RayTracingPipelineInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureDimension}, Vec2UI, Platform, platform::IO};
+use sourcerenderer_core::{graphics::{Backend, TextureInfo, Format, SampleCount, TextureUsage, TextureViewInfo, CommandBuffer, BindingFrequency, PipelineBinding, TextureStorageView, Texture, BarrierSync, TextureLayout, BarrierAccess, TextureDimension}, Vec2UI, Platform};
 
-use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}};
+use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}, shader_manager::{RayTracingPipelineHandle, ShaderManager, RayTracingPipelineInfo}};
 
-pub struct RTShadowPass<B: Backend> {
-  pipeline: Arc<B::RayTracingPipeline>,
+pub struct RTShadowPass {
+  pipeline: RayTracingPipelineHandle,
 }
 
-impl<B: Backend> RTShadowPass<B> {
+impl RTShadowPass {
   pub const SHADOWS_TEXTURE_NAME: &'static str = "RTShadow";
 
-  pub fn new<P: Platform>(device: &Arc<B::Device>, resolution: Vec2UI, resources: &mut RendererResources<B>) -> Self {
+  pub fn new<P: Platform>(resolution: Vec2UI, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
     resources.create_texture(Self::SHADOWS_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA8UNorm,
@@ -25,31 +25,10 @@ impl<B: Backend> RTShadowPass<B> {
       supports_srgb: false,
     }, false);
 
-    let ray_gen_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shadows.rgen.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::RayGen, &bytes, Some("shadows.rgen.spv"))
-    };
-
-    let closest_hit_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shadows.rchit.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::RayClosestHit, &bytes, Some("shadows.rchit.spv"))
-    };
-
-    let miss_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new("shadows.rmiss.spv"))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::RayMiss, &bytes, Some("shadows.rmiss.spv"))
-    };
-
-    let pipeline = device.create_raytracing_pipeline(&RayTracingPipelineInfo::<B> {
-      ray_gen_shader: &ray_gen_shader,
-      closest_hit_shaders: &[&closest_hit_shader],
-      miss_shaders: &[&miss_shader],
+    let pipeline = shader_manager.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
+      ray_gen_shader: "shaders/shadows.rgen.spv",
+      closest_hit_shaders: &["shaders/shadows.rchit.spv"],
+      miss_shaders: &["shaders/shadows.rmiss.spv"],
     });
 
     Self {
@@ -57,14 +36,15 @@ impl<B: Backend> RTShadowPass<B> {
     }
   }
 
-  pub fn execute(
+  pub fn execute<P: Platform>(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    resources: &RendererResources<B>,
+    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    resources: &RendererResources<P::GraphicsBackend>,
+    shader_manager: &ShaderManager<P>,
     depth_name: &str,
-    acceleration_structure: &Arc<B::AccelerationStructure>,
-    blue_noise: &Arc<B::TextureSamplingView>,
-    blue_noise_sampler: &Arc<B::Sampler>) {
+    acceleration_structure: &Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>,
+    blue_noise: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>,
+    blue_noise_sampler: &Arc<<P::GraphicsBackend as Backend>::Sampler>) {
     let texture_uav = resources.access_storage_view(
       cmd_buffer,
       Self::SHADOWS_TEXTURE_NAME,
@@ -87,7 +67,8 @@ impl<B: Backend> RTShadowPass<B> {
       HistoryResourceEntry::Current
     );
 
-    cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&self.pipeline));
+    let pipeline = shader_manager.get_ray_tracing_pipeline(self.pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&pipeline));
     cmd_buffer.bind_acceleration_structure(BindingFrequency::Frequent, 0, acceleration_structure);
     cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 1, &*texture_uav);
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 2, &*depth, resources.linear_sampler());

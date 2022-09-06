@@ -123,7 +123,7 @@ impl<P: Platform> ShadingPass<P> {
     let shadows = if device.supports_ray_tracing() {
       rt_shadows = resources.access_sampling_view(
         cmd_buffer,
-        RTShadowPass::<P::GraphicsBackend>::SHADOWS_TEXTURE_NAME,
+        RTShadowPass::SHADOWS_TEXTURE_NAME,
         BarrierSync::FRAGMENT_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,

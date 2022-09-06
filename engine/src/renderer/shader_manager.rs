@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}, hash::{Hash, Hasher}};
+use std::{collections::HashMap, sync::{Arc, Mutex}, hash::Hash};
 use std::sync::Condvar;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, RasterizerInfo, DepthStencilInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, LogicOp, AttachmentBlendInfo, VertexLayoutInfo, BlendInfo, GraphicsPipelineInfo as ActualGraphicsPipelineInfo, ShaderType, AttachmentInfo, DepthStencilAttachmentRef, OutputAttachmentRef, AttachmentRef, Device, RenderPassInfo, SubpassInfo}, Platform};
+use sourcerenderer_core::{graphics::{Backend, RasterizerInfo, DepthStencilInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, LogicOp, AttachmentBlendInfo, VertexLayoutInfo, BlendInfo, GraphicsPipelineInfo as ActualGraphicsPipelineInfo, ShaderType, AttachmentInfo, DepthStencilAttachmentRef, OutputAttachmentRef, AttachmentRef, Device, RenderPassInfo, SubpassInfo, RayTracingPipelineInfo as ActualRayTracingPipelineInfo}, Platform};
 
 use crate::asset::{AssetManager, AssetType, AssetLoadPriority};
 
@@ -60,42 +60,6 @@ pub struct GraphicsPipelineInfo<'a> {
   pub primitive_type: PrimitiveType
 }
 
-impl<'a> Hash for GraphicsPipelineInfo<'a> {
-  fn hash<H: Hasher>(&self, state: &mut H) {
-    self.vs.hash(state);
-    self.fs.hash(state);
-    self.vertex_layout.hash(state);
-    self.rasterizer.hash(state);
-    self.depth_stencil.hash(state);
-
-    self.blend.alpha_to_coverage_enabled.hash(state);
-    self.blend.logic_op_enabled.hash(state);
-    self.blend.logic_op.hash(state);
-    self.blend.attachments.hash(state);
-    let uint_constants: [u32; 4] = unsafe { [
-      std::mem::transmute(self.blend.constants[0]),
-      std::mem::transmute(self.blend.constants[1]),
-      std::mem::transmute(self.blend.constants[2]),
-      std::mem::transmute(self.blend.constants[3]),
-    ] };
-    uint_constants.hash(state);
-
-    self.primitive_type.hash(state);
-  }
-}
-
-impl<'a> PartialEq<GraphicsPipelineInfo<'a>> for StoredGraphicsPipelineInfo {
-  fn eq(&self, other: &GraphicsPipelineInfo<'a>) -> bool {
-    self.vs == other.vs
-      && self.fs.as_ref().map(|s| s.as_str()) == other.fs
-      && self.vertex_layout == other.vertex_layout
-      && self.blend == other.blend
-      && self.rasterizer == other.rasterizer
-      && self.depth_stencil == other.depth_stencil
-      && self.primitive_type == other.primitive_type
-  }
-}
-
 struct StoredGraphicsPipeline<B: Backend> {
   info: StoredGraphicsPipelineInfo,
   pipeline: Arc<B::GraphicsPipeline>,
@@ -131,6 +95,25 @@ struct ComputePipeline<B: Backend> {
   pipeline: Arc<B::ComputePipeline>
 }
 
+struct RayTracingPipeline<B: Backend> {
+  task: StoredRayTracingPipelineInfo,
+  pipeline: Arc<B::RayTracingPipeline>
+}
+
+#[derive(Debug, Clone)]
+pub struct RayTracingPipelineInfo<'a> {
+  pub ray_gen_shader: &'a str,
+  pub closest_hit_shaders: &'a [&'a str],
+  pub miss_shaders: &'a [&'a str],
+}
+
+#[derive(Debug, Clone)]
+struct StoredRayTracingPipelineInfo {
+  ray_gen_shader: String,
+  closest_hit_shaders: SmallVec<[String; 4]>,
+  miss_shaders: SmallVec<[String; 1]>
+}
+
 pub struct ShaderManager<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   asset_manager: Arc<AssetManager<P>>,
@@ -143,8 +126,10 @@ struct ShaderManagerInner<B: Backend> {
   shaders: HashMap<String, Arc<B::Shader>>,
   remaining_graphics_compilations: HashMap<GraphicsPipelineHandle, GraphicsCompileTask>,
   remaining_compute_compilations: HashMap<ComputePipelineHandle, String>,
+  remaining_rt_compilations: HashMap<RayTracingPipelineHandle, StoredRayTracingPipelineInfo>,
   graphics_pipelines: HashMap<GraphicsPipelineHandle, GraphicsPipeline<B>>,
   compute_pipelines: HashMap<ComputePipelineHandle, ComputePipeline<B>>,
+  rt_pipelines: HashMap<RayTracingPipelineHandle, RayTracingPipeline<B>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -157,6 +142,11 @@ pub struct ComputePipelineHandle {
   index: u64
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RayTracingPipelineHandle {
+  index: u64
+}
+
 impl<P: Platform> ShaderManager<P> {
   pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, asset_manager: &Arc<AssetManager<P>>) -> Self {
     Self {
@@ -166,8 +156,10 @@ impl<P: Platform> ShaderManager<P> {
         shaders: HashMap::new(),
         remaining_graphics_compilations: HashMap::new(),
         remaining_compute_compilations: HashMap::new(),
+        remaining_rt_compilations: HashMap::new(),
         graphics_pipelines: HashMap::new(),
         compute_pipelines: HashMap::new(),
+        rt_pipelines: HashMap::new(),
       })),
       next_pipeline_handle_index: 1u64,
       condvar: Arc::new(Condvar::new())
@@ -239,11 +231,37 @@ impl<P: Platform> ShaderManager<P> {
     handle
   }
 
+  pub fn request_ray_tracing_pipeline(&mut self, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
+    let handle = RayTracingPipelineHandle { index: self.next_pipeline_handle_index };
+    self.next_pipeline_handle_index += 1;
+
+    let stored = StoredRayTracingPipelineInfo {
+      closest_hit_shaders: info.closest_hit_shaders.iter().map(|s| s.to_string()).collect(),
+      miss_shaders: info.miss_shaders.iter().map(|s| s.to_string()).collect(),
+      ray_gen_shader: info.ray_gen_shader.to_string()
+    };
+
+    let mut inner = self.inner.lock().unwrap();
+    inner.remaining_rt_compilations.insert(handle, stored);
+
+    for shader in info.closest_hit_shaders {
+      self.asset_manager.request_asset(shader, AssetType::Shader, AssetLoadPriority::High);
+    }
+    for shader in info.miss_shaders {
+      self.asset_manager.request_asset(shader, AssetType::Shader, AssetLoadPriority::High);
+    }
+    self.asset_manager.request_asset(info.ray_gen_shader, AssetType::Shader, AssetLoadPriority::High);
+
+    handle
+  }
+
   pub fn add_shader(&mut self, path: &str, shader_bytecode: Box<[u8]>) {
-    let mut graphics_pipelines_using_shader = SmallVec::<[GraphicsPipelineHandle; 4]>::new();
-    let mut compute_pipelines_using_shader = SmallVec::<[ComputePipelineHandle; 4]>::new();
-    let mut ready_graphics_handles = SmallVec::<[GraphicsPipelineHandle; 4]>::new();
-    let mut ready_compute_handles = SmallVec::<[ComputePipelineHandle; 4]>::new();
+    let mut graphics_pipelines_using_shader = SmallVec::<[GraphicsPipelineHandle; 1]>::new();
+    let mut compute_pipelines_using_shader = SmallVec::<[ComputePipelineHandle; 1]>::new();
+    let mut rt_pipelines_using_shader = SmallVec::<[RayTracingPipelineHandle; 1]>::new();
+    let mut ready_graphics_handles = SmallVec::<[GraphicsPipelineHandle; 1]>::new();
+    let mut ready_compute_handles = SmallVec::<[ComputePipelineHandle; 1]>::new();
+    let mut ready_rt_handles = SmallVec::<[RayTracingPipelineHandle; 1]>::new();
     let shader_type: ShaderType;
 
     {
@@ -277,6 +295,21 @@ impl<P: Platform> ShaderManager<P> {
             compute_pipelines_using_shader.push(*handle);
           }
         }
+        if shader_type_opt.is_none() {
+          for (handle, pipeline) in &inner.rt_pipelines {
+            let c = &pipeline.task;
+            if path == &c.ray_gen_shader {
+              shader_type_opt = Some(ShaderType::RayGen);
+            } else if c.closest_hit_shaders.iter().any(|s| s == path) {
+              shader_type_opt = Some(ShaderType::RayClosestHit);
+            } else if c.miss_shaders.iter().any(|s| s == path) {
+              shader_type_opt = Some(ShaderType::RayMiss);
+            } else {
+              continue;
+            }
+            rt_pipelines_using_shader.push(*handle);
+          }
+        }
         for handle in graphics_pipelines_using_shader {
           let task = inner.graphics_pipelines.get(&handle).unwrap().task.clone();
           match shader_type_opt.unwrap() {
@@ -293,6 +326,24 @@ impl<P: Platform> ShaderManager<P> {
         for handle in compute_pipelines_using_shader {
           let task = inner.compute_pipelines.get(&handle).unwrap().clone().path.clone();
           inner.remaining_compute_compilations.insert(handle, task);
+        }
+        for handle in rt_pipelines_using_shader {
+          let task = inner.rt_pipelines.get(&handle).unwrap().task.clone();
+          if &task.ray_gen_shader != path {
+            self.asset_manager.request_asset(&task.ray_gen_shader, AssetType::Shader, AssetLoadPriority::Low);
+          }
+          for shader in task.closest_hit_shaders {
+            if &shader == path {
+              continue;
+            }
+            self.asset_manager.request_asset(&shader, AssetType::Shader, AssetLoadPriority::Low);
+          }
+          for shader in task.miss_shaders {
+            if &shader == path {
+              continue;
+            }
+            self.asset_manager.request_asset(&shader, AssetType::Shader, AssetLoadPriority::Low);
+          }
         }
       }
 
@@ -319,11 +370,30 @@ impl<P: Platform> ShaderManager<P> {
           ready_compute_handles.push(*handle);
         }
       }
+      for (handle, c) in &inner.remaining_rt_compilations {
+        if path == &c.ray_gen_shader {
+          assert!(shader_type_opt.is_none() || shader_type_opt.unwrap() == ShaderType::RayClosestHit);
+          shader_type_opt = Some(ShaderType::RayGen);
+        } else if c.closest_hit_shaders.iter().any(|s| s == path) {
+          assert!(shader_type_opt.is_none() || shader_type_opt.unwrap() == ShaderType::RayClosestHit);
+          shader_type_opt = Some(ShaderType::RayClosestHit);
+        } else if c.miss_shaders.iter().any(|s| s == path) {
+          assert!(shader_type_opt.is_none() || shader_type_opt.unwrap() == ShaderType::RayMiss);
+          shader_type_opt = Some(ShaderType::RayMiss);
+        } else {
+          continue;
+        }
+        if (&c.ray_gen_shader == path || inner.shaders.contains_key(&c.ray_gen_shader))
+          && (c.closest_hit_shaders.iter().all(|s| s == path || inner.shaders.contains_key(s)))
+          && (c.miss_shaders.iter().all(|s| s == path || inner.shaders.contains_key(s))) {
+          ready_rt_handles.push(*handle);
+        }
+      }
       shader_type = shader_type_opt.unwrap();
       inner.shaders.insert(path.to_string(), self.device.create_shader(shader_type, &shader_bytecode[..], Some(path)));
     }
 
-    if ready_graphics_handles.is_empty() && ready_compute_handles.is_empty() {
+    if ready_graphics_handles.is_empty() && ready_compute_handles.is_empty() && ready_rt_handles.is_empty() {
       return;
     }
 
@@ -424,11 +494,48 @@ impl<P: Platform> ShaderManager<P> {
         }
       }
 
+      for handle in ready_rt_handles {
+        let task: StoredRayTracingPipelineInfo;
+        let ray_gen_shader: Arc<<P::GraphicsBackend as Backend>::Shader>;
+        let mut closest_hit_shaders = SmallVec::<[Arc<<P::GraphicsBackend as Backend>::Shader>; 4]>::new();
+        let mut miss_shaders = SmallVec::<[Arc<<P::GraphicsBackend as Backend>::Shader>; 1]>::new();
+        {
+          let mut inner = c_inner.lock().unwrap();
+          task = inner.remaining_rt_compilations
+            .remove(&handle)
+            .unwrap();
+          ray_gen_shader = inner.shaders.get(&task.ray_gen_shader).cloned().unwrap();
+          for handle in &task.closest_hit_shaders {
+            closest_hit_shaders.push(inner.shaders.get(handle).cloned().unwrap());
+          }
+          for handle in &task.miss_shaders {
+            miss_shaders.push(inner.shaders.get(handle).cloned().unwrap());
+          }
+        }
+        let closest_hit_shader_refs: SmallVec<[&Arc<<P::GraphicsBackend as Backend>::Shader>; 4]> = closest_hit_shaders.iter().map(|s| s).collect();
+        let miss_shaders_refs: SmallVec<[&Arc<<P::GraphicsBackend as Backend>::Shader>; 1]> = miss_shaders.iter().map(|s| s).collect();
+        let info = ActualRayTracingPipelineInfo::<P::GraphicsBackend> {
+          ray_gen_shader: &ray_gen_shader,
+          closest_hit_shaders: &closest_hit_shader_refs[..],
+          miss_shaders: &miss_shaders_refs[..],
+        };
+        let pipeline = c_device.create_raytracing_pipeline(&info);
+        let mut inner = c_inner.lock().unwrap();
+        if let Some(existing_pipeline) = inner.rt_pipelines.get_mut(&handle) {
+          existing_pipeline.pipeline = pipeline;
+        } else {
+          inner.rt_pipelines.insert(handle, RayTracingPipeline::<P::GraphicsBackend> {
+            pipeline,
+            task
+          });
+        }
+      }
+
       {
         // Storing shader bytecode does nothing but waste memory,
         // Clear it once we're idle.
         /*let mut inner = c_inner.lock().unwrap();
-        if inner.remaining_graphics_compilations.is_empty() && inner.remaining_compute_compilations.is_empty() {
+        if inner.remaining_graphics_compilations.is_empty() && inner.remaining_compute_compilations.is_empty() && inner.remaining_rt_compilations.is_empty() {
           // TODO: Unloading it breaks reloading in the Asset Manager
           for shader_path in inner.shaders.keys() {
             c_asset_manager.notify_unloaded(shader_path);
@@ -470,5 +577,21 @@ impl<P: Platform> ShaderManager<P> {
     assert!(inner.remaining_compute_compilations.contains_key(&handle));
     let inner = self.condvar.wait_while(inner, |inner| !inner.compute_pipelines.contains_key(&handle)).unwrap();
     inner.compute_pipelines.get(&handle).unwrap().pipeline.clone()
+  }
+
+  pub fn try_get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Option<Arc<<P::GraphicsBackend as Backend>::RayTracingPipeline>> {
+    let inner = self.inner.lock().unwrap();
+    inner.rt_pipelines.get(&handle).map(|p| p.pipeline.clone())
+  }
+
+  pub fn get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Arc<<P::GraphicsBackend as Backend>::RayTracingPipeline> {
+    let inner = self.inner.lock().unwrap();
+    let pipeline_opt = inner.rt_pipelines.get(&handle);
+    if let Some(pipeline) = pipeline_opt {
+      return pipeline.pipeline.clone();
+    }
+    assert!(inner.remaining_rt_compilations.contains_key(&handle));
+    let inner = self.condvar.wait_while(inner, |inner| !inner.rt_pipelines.contains_key(&handle)).unwrap();
+    inner.rt_pipelines.get(&handle).unwrap().pipeline.clone()
   }
 }

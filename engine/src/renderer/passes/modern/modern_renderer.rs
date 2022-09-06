@@ -41,7 +41,7 @@ enum AntiAliasing<B: Backend> {
 
 pub struct RTPasses<B: Backend> {
   acceleration_structure_update: AccelerationStructureUpdatePass<B>,
-  shadows: RTShadowPass<B>
+  shadows: RTShadowPass
 }
 
 impl<P: Platform> ModernRenderer<P> {
@@ -64,7 +64,7 @@ impl<P: Platform> ModernRenderer<P> {
     let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, true);
     let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
       acceleration_structure_update: AccelerationStructureUpdatePass::<P::GraphicsBackend>::new(device, &mut init_cmd_buffer),
-      shadows: RTShadowPass::<P::GraphicsBackend>::new::<P>(device, resolution, &mut barriers)
+      shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager)
     });
     let visibility_buffer = VisibilityBufferPass::new::<P>(resolution, &mut barriers, shader_manager);
     let draw_prep = DrawPrepPass::new::<P>(&mut barriers, shader_manager);
@@ -245,7 +245,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
       let blue_noise = &self.blue_noise.frame(frame_info.frame);
       let blue_noise_sampler = &self.blue_noise.sampler();
       let acceleration_structure = rt_passes.acceleration_structure_update.acceleration_structure();
-      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, VisibilityBufferPass::DEPTH_TEXTURE_NAME, acceleration_structure, blue_noise, blue_noise_sampler);
+      rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, shader_manager, VisibilityBufferPass::DEPTH_TEXTURE_NAME, acceleration_structure, blue_noise, blue_noise_sampler);
     }
     self.shading_pass.execute(&mut cmd_buf,  &self.device, scene.lightmap.unwrap(), zero_textures.zero_texture_view, &self.barriers, shader_manager);
     self.ssr_pass.execute(&mut cmd_buf, &self.barriers, shader_manager, ShadingPass::<P>::SHADING_TEXTURE_NAME, VisibilityBufferPass::DEPTH_TEXTURE_NAME, true);
