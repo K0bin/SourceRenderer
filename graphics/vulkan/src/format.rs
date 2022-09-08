@@ -25,6 +25,7 @@ pub fn format_to_vk(format: Format, supports_d24: bool) -> vk::Format {
     Format::DXT3 => vk::Format::BC2_UNORM_BLOCK,
     Format::DXT5 => vk::Format::BC3_UNORM_BLOCK,
     Format::RG16UNorm => vk::Format::R16G16_UNORM,
+    Format::RG8UNorm => vk::Format::R8G8_UNORM,
     Format::R32UInt => vk::Format::R32_UINT,
     Format::RG16Float => vk::Format::R16G16_SFLOAT,
     Format::RGBA16Float => vk::Format::R16G16B16A16_SFLOAT,

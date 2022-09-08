@@ -1,10 +1,11 @@
-use std::{mem::MaybeUninit, ffi::{c_void, CString}, sync::Arc, collections::{HashMap, VecDeque}, path::PathBuf, io::Read};
+use std::{mem::MaybeUninit, ffi::c_void, sync::Arc, collections::{HashMap, VecDeque}, path::PathBuf, io::Read};
 
 use fsr2::*;
+use log::warn;
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, Device, MemoryUsage, BufferInfo, BufferUsage, TextureDimension, SampleCount, TextureUsage, TextureInfo, Format, Buffer, Texture, CommandBuffer, Barrier, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, ShaderType, ComputePipeline, BindingFrequency, BindingType, TextureViewInfo, WHOLE_BUFFER, PipelineBinding}, atomic_refcell::{AtomicRefCell, AtomicRefMut}, Platform, platform::IO, Vec2, Vec2UI};
 use sourcerenderer_core::graphics::Swapchain;
-use widestring::WideCStr;
+use widestring::{WideCStr, WideCString};
 use crate::renderer::drawable::View;
 use crate::renderer::passes::taa::halton_point;
 use crate::renderer::render_path::FrameInfo;
@@ -34,9 +35,9 @@ impl<B: Backend> Fsr2Pass<B> {
     let context_size = std::mem::size_of_val(&scratch_context);
 
     let interface = FfxFsr2Interface {
-      fpCreateDevice: Some(create_device::<B>),
+      fpCreateBackendContext: Some(create_backend_context::<B>),
+      fpDestroyBackendContext: Some(destroy_backend_context::<B>),
       fpGetDeviceCapabilities: Some(get_device_capabilities::<B>),
-      fpDestroyDevice: Some(destroy_device::<B>),
       fpCreateResource: Some(create_resource::<B>),
       fpRegisterResource: Some(register_resource::<B>),
       fpUnregisterResources: Some(unregister_resources::<B>),
@@ -44,8 +45,8 @@ impl<B: Backend> Fsr2Pass<B> {
       fpDestroyResource: Some(destroy_resource::<B>),
       fpCreatePipeline: Some(create_pipeline::<P, B>),
       fpDestroyPipeline: Some(destroy_pipeline::<B>),
-      fpScheduleRenderJob: Some(schedule_render_job::<B>),
-      fpExecuteRenderJobs: Some(execute_render_jobs::<B>),
+      fpScheduleGpuJob: Some(schedule_render_job::<B>),
+      fpExecuteGpuJobs: Some(execute_render_jobs::<B>),
       scratchBuffer: Arc::into_raw(scratch_context.clone()) as *mut c_void,
       scratchBufferSize: context_size as u64,
     };
@@ -67,7 +68,7 @@ impl<B: Backend> Fsr2Pass<B> {
       false
     );
 
-    let fsr_device: *mut B::Device = unsafe { std::mem::transmute(Arc::into_raw(device.clone())) };
+    let fsr_device: *mut B::Device = unsafe { std::mem::transmute(device.as_ref()) };
     let context_desc = FfxFsr2ContextDescription {
       flags: FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_AUTO_EXPOSURE | FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE,
       maxRenderSize: FfxDimensions2D {
@@ -260,7 +261,8 @@ unsafe fn texture_into_ffx<B: Backend>(texture: &Arc<B::Texture>, is_uav: bool) 
       depth: info.depth,
       mipCount: info.mip_levels,
       flags: 0
-    }
+    },
+    name: [0u32; 64]
   }
 }
 
@@ -277,17 +279,32 @@ const NULL_RESOURCE: FfxResource = FfxResource {
     depth: 0,
     mipCount: 0,
     flags: 0
-  }
+  },
+  name: [0u32; 64]
 };
+
+struct TextureSubresourceState {
+  sync: BarrierSync,
+  access: BarrierAccess,
+  layout: TextureLayout,
+}
+
+impl Default for TextureSubresourceState {
+  fn default() -> Self {
+    Self {
+      sync: BarrierSync::empty(),
+      access: BarrierAccess::empty(),
+      layout: TextureLayout::Undefined
+    }
+  }
+}
 
 enum Resource<B: Backend> {
   Texture {
     texture: Arc<B::Texture>,
     sampling_view: Arc<B::TextureSamplingView>,
-    storage_view: Arc<B::TextureStorageView>,
-    sync: BarrierSync,
-    access: BarrierAccess,
-    layout: TextureLayout,
+    storage_views: SmallVec<[Arc<B::TextureStorageView>; 8]>,
+    states: SmallVec<[TextureSubresourceState; 8]>,
   },
   Buffer {
     buffer: Arc<B::Buffer>,
@@ -301,7 +318,7 @@ struct ScratchContext<B: Backend> {
   dynamic_resources: Vec<u32>,
   next_resource_id: u32,
   free_ids: VecDeque<u32>,
-  jobs: Vec<FfxRenderJobDescription>,
+  jobs: Vec<FfxGpuJobDescription>,
   device: Arc<B::Device>,
   point_sampler: Arc<B::Sampler>,
   linear_sampler: Arc<B::Sampler>,
@@ -323,7 +340,7 @@ impl<B: Backend> ScratchContext<B> {
   }
 }
 
-extern "C" fn create_device<B: Backend>(
+extern "C" fn create_backend_context<B: Backend>(
   _backend_interface: *mut FfxFsr2Interface,
   _out_device: FfxDevice,
 ) -> FfxErrorCode {
@@ -341,13 +358,13 @@ unsafe extern "C" fn create_resource<B: Backend>(
   let mut context = ScratchContext::<B>::from_interface(backend_interface);
   let desc = &*desc;
 
-  let device = device_from_ffx::<B>(desc.device);
-
   let resource_id = context.get_new_resource_id();
   (*out_resource).internalIndex = resource_id as i32;
 
+  let device = &context.device;
+
   let name = if desc.name != std::ptr::null_mut() {
-    Some(WideCStr::from_ptr_str(std::mem::transmute(desc.name)).to_string().unwrap())
+    Some(WideCStr::from_ptr_str(desc.name).to_string().unwrap())
   } else {
     None
   };
@@ -435,20 +452,30 @@ unsafe extern "C" fn create_resource<B: Backend>(
       device.init_texture(&texture, &src_buffer, 0, 0, 0);
     }
 
-    let sampling_name = name.as_ref().map(|name| name.as_str()).unwrap_or_else(|| "").to_string() + "_sampling";
+    let sampling_name = name.as_ref().map(|name| name.as_str()).unwrap_or("").to_string() + "_sampling";
     let sampling_view = device.create_sampling_view(&texture, &TextureViewInfo::default(),
       if name.is_some() { Some(sampling_name.as_str()) } else { None });
-    let storage_name = name.as_ref().map(|name| name.as_str()).unwrap_or_else(|| "").to_string() + "_storage";
-    let storage_view = device.create_storage_view(&texture, &TextureViewInfo::default(),
-      if name.is_some() { Some(storage_name.as_str()) } else { None });
+
+    let mut storage_views = SmallVec::<[Arc<B::TextureStorageView>; 8]>::with_capacity(mip_count as usize);
+    let mut states = SmallVec::<[TextureSubresourceState; 8]>::with_capacity(mip_count as usize);
+    for i in 0..mip_count {
+      let storage_name = format!("{}_storage_{}", name.as_ref().map(|name| name.as_str()).unwrap_or(""), mip_count);
+      let storage_view = device.create_storage_view(&texture, &TextureViewInfo {
+        format: None,
+        mip_level_length: 1,
+        array_layer_length: 1,
+        base_array_layer: 0,
+        base_mip_level: i
+      }, if name.is_some() { Some(storage_name.as_str()) } else { None });
+      storage_views.push(storage_view);
+      states.push(TextureSubresourceState::default());
+    }
 
     context.resources.insert(resource_id, Resource::Texture {
       texture,
-      sync: BarrierSync::empty(),
-      access: BarrierAccess::empty(),
-      layout: TextureLayout::Undefined,
+      states,
       sampling_view,
-      storage_view,
+      storage_views,
     });
   }
 
@@ -502,10 +529,18 @@ unsafe extern "C" fn register_resource<B: Backend>(
 
     let sampling_view = context.device.create_sampling_view(&texture, &TextureViewInfo::default(), None);
     let storage_view = context.device.create_storage_view(&texture, &TextureViewInfo::default(), None);
+    let mut storage_views = SmallVec::<[Arc<B::TextureStorageView>; 8]>::new();
+    let mut states = SmallVec::<[TextureSubresourceState; 8]>::new();
+    storage_views.push(storage_view);
+    states.push(TextureSubresourceState {
+      layout,
+      access,
+      sync
+    });
     // TODO: only create views once and pass them via descriptorData
 
     context.resources.insert(resource_id, Resource::Texture {
-      texture, sync, access, layout, sampling_view, storage_view
+      texture, sampling_view, storage_views, states
     });
   } else {
     unimplemented!("FSR2 never registers buffers")
@@ -514,10 +549,11 @@ unsafe extern "C" fn register_resource<B: Backend>(
   FFX_OK
 }
 
-unsafe extern "C" fn destroy_device<B: Backend>(
-  _backend_interface: *mut FfxFsr2Interface,
-  device: FfxDevice) ->FfxErrorCode {
-  Arc::from_raw(device as *mut B::Device);
+unsafe extern "C" fn destroy_backend_context<B: Backend>(
+  backend_interface: *mut FfxFsr2Interface) ->FfxErrorCode {
+  let ptr = (*backend_interface).scratchBuffer as *mut AtomicRefCell<ScratchContext<B>>;
+  let _ = Arc::from_raw(ptr);
+
   FFX_OK
 }
 
@@ -531,6 +567,7 @@ unsafe extern "C" fn destroy_resource<B: Backend>(
   return if context.resources.remove(&id).is_some() {
     FFX_OK
   } else {
+    warn!("Trying to recycle invalid pointer with id {} in FSR2 integration.", id);
     FFX_ERROR_INVALID_POINTER
   };
 }
@@ -605,7 +642,7 @@ unsafe extern "C" fn get_device_capabilities<B: Backend>(
 
 unsafe extern "C" fn schedule_render_job<B: Backend>(
   backend_interface: *mut FfxFsr2Interface,
-  job: *const FfxRenderJobDescription
+  job: *const FfxGpuJobDescription
 ) -> FfxErrorCode {
   let mut context = ScratchContext::<B>::from_interface(backend_interface);
   context.jobs.push((*job).clone());
@@ -619,19 +656,19 @@ unsafe extern "C" fn execute_render_jobs<B: Backend>(
   let mut context = ScratchContext::<B>::from_interface(backend_interface);
   let cmd_buf = command_buffer_from_ffx::<B>(command_list);
 
-  let mut jobs = SmallVec::<[FfxRenderJobDescription; 16]>::new();
+  let mut jobs = SmallVec::<[FfxGpuJobDescription; 16]>::new();
   for job in context.jobs.drain(..) {
     jobs.push(job);
   }
 
   for job in jobs {
-    if job.jobType == FfxRenderJobType_FFX_RENDER_JOB_COPY {
+    if job.jobType == FfxGpuJobType_FFX_GPU_JOB_COPY {
       let _copy_job = &job.__bindgen_anon_1.clearJobDescriptor;
       unimplemented!("FSR2 never uses copy jobs internally")
-    } else if job.jobType == FfxRenderJobType_FFX_RENDER_JOB_CLEAR_FLOAT {
+    } else if job.jobType == FfxGpuJobType_FFX_GPU_JOB_CLEAR_FLOAT {
       let clear_job = &job.__bindgen_anon_1.clearJobDescriptor;
       execute_clear_job(&clear_job, &mut context, cmd_buf);
-    } else if job.jobType == FfxRenderJobType_FFX_RENDER_JOB_COMPUTE {
+    } else if job.jobType == FfxGpuJobType_FFX_GPU_JOB_COMPUTE {
       let compute_job = &job.__bindgen_anon_1.computeJobDescriptor;
       execute_dispatch_job(&compute_job, &mut context, cmd_buf);
     }
@@ -643,8 +680,8 @@ unsafe extern "C" fn execute_render_jobs<B: Backend>(
 unsafe fn execute_clear_job<B: Backend>(job: &FfxClearFloatJobDescription, context: &mut ScratchContext<B>, cmd_buf: &mut B::CommandBuffer) {
   let resource = context.resources.get_mut(&(job.target.internalIndex as u32)).unwrap();
   match resource {
-    Resource::Texture { texture, sync, access, layout, .. } => {
-      add_texture_barrier::<B>(cmd_buf, texture, sync, access, layout, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_WRITE, TextureLayout::Storage);
+    Resource::Texture { texture, states, .. } => {
+      add_texture_barrier::<B>(cmd_buf, texture, 0, 1, states, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_WRITE, TextureLayout::Storage);
       cmd_buf.flush_barriers();
       cmd_buf.clear_storage_texture(texture, 0, 0, std::mem::transmute_copy(&job.color))
     }
@@ -663,10 +700,10 @@ unsafe fn execute_dispatch_job<B: Backend>(job: &FfxComputeJobDescription, conte
     let resource = context.resources.get_mut(&(uav.internalIndex as u32)).unwrap();
     match resource {
       Resource::Texture {
-        texture, sync, access, layout, storage_view, ..
+        texture, states, storage_views, ..
       } => {
-        add_texture_barrier::<B>(cmd_buf, texture, sync, access, layout, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_WRITE, TextureLayout::Storage);
-        cmd_buf.bind_storage_texture(BindingFrequency::Frequent, job.pipeline.uavResourceBindings[i].slotIndex, storage_view);
+        add_texture_barrier::<B>(cmd_buf, texture, job.uavMip[i], 1, states, BarrierSync::COMPUTE_SHADER, BarrierAccess::STORAGE_WRITE, TextureLayout::Storage);
+        cmd_buf.bind_storage_texture(BindingFrequency::Frequent, job.pipeline.uavResourceBindings[i].slotIndex, &storage_views[job.uavMip[i] as usize]);
       },
       Resource::Buffer { .. } => unreachable!(),
     }
@@ -677,9 +714,9 @@ unsafe fn execute_dispatch_job<B: Backend>(job: &FfxComputeJobDescription, conte
     let resource = context.resources.get_mut(&(srv.internalIndex as u32)).unwrap();
     match resource {
       Resource::Texture {
-        texture, sync, access, layout, sampling_view, ..
+        texture, states, sampling_view, ..
       } => {
-        add_texture_barrier::<B>(cmd_buf, texture, sync, access, layout, BarrierSync::COMPUTE_SHADER, BarrierAccess::SAMPLING_READ, TextureLayout::Sampled);
+        add_texture_barrier::<B>(cmd_buf, texture, 0, texture.info().mip_levels, states, BarrierSync::COMPUTE_SHADER, BarrierAccess::SAMPLING_READ, TextureLayout::Sampled);
         cmd_buf.bind_sampling_view(BindingFrequency::Frequent, job.pipeline.srvResourceBindings[i].slotIndex, sampling_view);
       },
       Resource::Buffer { .. } => unreachable!(),
@@ -708,25 +745,28 @@ unsafe fn execute_dispatch_job<B: Backend>(job: &FfxComputeJobDescription, conte
   cmd_buf.dispatch(job.dimensions[0], job.dimensions[1], job.dimensions[2]);
 }
 
-fn add_texture_barrier<B: Backend>(cmd_buffer: &mut B::CommandBuffer, texture: &Arc<B::Texture>, sync: &mut BarrierSync, access: &mut BarrierAccess, layout: &mut TextureLayout, new_sync: BarrierSync, new_access: BarrierAccess, new_layout: TextureLayout) {
-  cmd_buffer.barrier(&[Barrier::TextureBarrier {
-    old_sync: *sync,
-    new_sync: new_sync,
-    old_layout: *layout,
-    new_layout: new_layout,
-    old_access: *access,
-    new_access: new_access,
-    texture: texture,
-    range: BarrierTextureRange {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1,
-    }
-  }]);
-  *sync = new_sync;
-  *access = new_access;
-  *layout = new_layout;
+fn add_texture_barrier<B: Backend>(cmd_buffer: &mut B::CommandBuffer, texture: &Arc<B::Texture>, mip: u32, mip_count: u32, states: &mut [TextureSubresourceState], new_sync: BarrierSync, new_access: BarrierAccess, new_layout: TextureLayout) {
+  for i in mip..(mip + mip_count) {
+    let state = &mut states[i as usize];
+    cmd_buffer.barrier(&[Barrier::TextureBarrier {
+      old_sync: state.sync,
+      new_sync: new_sync,
+      old_layout: state.layout,
+      new_layout: new_layout,
+      old_access: state.access,
+      new_access: new_access,
+      texture: texture,
+      range: BarrierTextureRange {
+        base_mip_level: i,
+        mip_level_length: 1,
+        base_array_layer: 0,
+        array_layer_length: 1,
+      }
+    }]);
+    state.sync = new_sync;
+    state.access = new_access;
+    state.layout = new_layout;
+  }
 }
 
 unsafe extern "C" fn create_pipeline<P: Platform, B: Backend>(
@@ -805,11 +845,11 @@ unsafe extern "C" fn create_pipeline<P: Platform, B: Backend>(
       }
       _ => unimplemented!()
     };
-    let c_name = CString::new(info.name).unwrap();
+    let c_name = WideCString::from_str(info.name).unwrap();
     binding.slotIndex = i;
     binding.resourceIdentifier = 0; // initialized by FSR2 CPP code
-    let c_name_slice = c_name.as_bytes_with_nul();
-    binding.name[..c_name_slice.len()].copy_from_slice(std::mem::transmute(c_name_slice));
+    let c_name_slice = c_name.as_ucstr().as_slice_with_nul();
+    binding.name[..c_name_slice.len()].copy_from_slice(c_name_slice);
   }
 
   let pipeline_ptr = Arc::into_raw(pipeline);
@@ -879,6 +919,9 @@ fn ffx_to_format(format: FfxSurfaceFormat) -> Format {
   if format == FfxSurfaceFormat_FFX_SURFACE_FORMAT_R32_FLOAT {
     return Format::R32Float;
   }
+  if format == FfxSurfaceFormat_FFX_SURFACE_FORMAT_R8G8_UNORM {
+    return Format::RG8UNorm;
+  }
   unimplemented!()
 }
 
@@ -899,6 +942,7 @@ fn format_to_ffx(format: Format) -> Option<FfxSurfaceFormat> {
     Format::RG16UInt => Some(FfxSurfaceFormat_FFX_SURFACE_FORMAT_R16G16_UINT),
     Format::R16UInt => Some(FfxSurfaceFormat_FFX_SURFACE_FORMAT_R16_UINT),
     Format::R16SNorm => Some(FfxSurfaceFormat_FFX_SURFACE_FORMAT_R16_SNORM),
+    Format::RG8UNorm => Some(FfxSurfaceFormat_FFX_SURFACE_FORMAT_R8G8_UNORM),
     _ => None
   }
 }

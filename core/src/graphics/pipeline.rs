@@ -360,7 +360,7 @@ impl<B: Backend> Clone for GraphicsPipelineInfo<'_, B> {
   }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BindingType {
   StorageBuffer,
   StorageTexture,
@@ -370,6 +370,7 @@ pub enum BindingType {
   TextureAndSampler
 }
 
+#[derive(Debug)]
 pub struct BindingInfo<'a> {
   pub name: &'a str,
   pub binding_type: BindingType
