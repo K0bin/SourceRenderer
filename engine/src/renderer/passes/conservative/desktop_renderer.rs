@@ -163,6 +163,10 @@ impl<P: Platform> ConservativeRenderer<P> {
 }
 
 impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
+  fn is_gpu_driven(&self) -> bool {
+    false
+  }
+
   fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>) {
     self.occlusion.write_occlusion_query_results(frame, bitset);
   }

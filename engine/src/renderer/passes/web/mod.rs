@@ -36,6 +36,10 @@ impl<P: Platform> WebRenderer<P> {
 }
 
 impl<P: Platform> RenderPath<P> for WebRenderer<P> {
+  fn is_gpu_driven(&self) -> bool {
+    false
+  }
+
   fn write_occlusion_culling_results(&self, _frame: u64, bitset: &mut Vec<u32>) {
     bitset.fill(!0u32);
   }

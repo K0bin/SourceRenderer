@@ -184,9 +184,11 @@ impl<P: Platform> ModernRenderer<P> {
 }
 
 impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
-  fn write_occlusion_culling_results(&self, _frame: u64, bitset: &mut Vec<u32>) {
-    bitset.fill(!0u32);
+  fn is_gpu_driven(&self) -> bool {
+    true
   }
+
+  fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
 
   fn on_swapchain_changed(&mut self, swapchain: &std::sync::Arc<<P::GraphicsBackend as Backend>::Swapchain>) {
     // TODO: resize render targets

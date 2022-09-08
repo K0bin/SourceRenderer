@@ -27,6 +27,7 @@ pub struct FrameInfo {
 }
 
 pub(super) trait RenderPath<P: Platform> {
+  fn is_gpu_driven(&self) -> bool;
   fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
   fn on_swapchain_changed(&mut self, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>);
   fn render(
