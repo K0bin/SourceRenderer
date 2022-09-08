@@ -1,9 +1,10 @@
 use std::{collections::HashMap, sync::Arc, mem::MaybeUninit};
 
 use field_offset::offset_of;
-use sourcerenderer_core::{Vec4, Matrix4, graphics::{Backend, CommandBuffer, BufferInfo, BufferUsage, MemoryUsage, Buffer}, Vec3};
+use smallvec::SmallVec;
+use sourcerenderer_core::{Vec4, Matrix4, graphics::{Backend, CommandBuffer, BufferInfo, BufferUsage, MemoryUsage, Buffer}, Vec3, Platform};
 
-use crate::renderer::{renderer_scene::RendererScene, renderer_assets::{RendererMaterial, RendererMaterialValue, RendererModel}};
+use crate::renderer::{renderer_scene::RendererScene, renderer_assets::{RendererMaterial, RendererMaterialValue, RendererAssets, ModelHandle, MaterialHandle}};
 
 pub const DRAWABLE_CAPACITY: u32 = 4096;
 pub const PART_CAPACITY: u32 = 4096;
@@ -88,7 +89,12 @@ struct GPUMesh {
 }
 
 #[profiling::function]
-pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &RendererScene<B>, zero_view_index: u32) -> Arc<B::Buffer> {
+pub(crate) fn upload<P: Platform>(
+  cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+  scene: &RendererScene<P::GraphicsBackend>,
+  zero_view_index: u32,
+  assets: &RendererAssets<P>
+) -> Arc<<P::GraphicsBackend as Backend>::Buffer> {
   let mut scene_box = Box::new(MaybeUninit::<GPUScene>::uninit()); // TODO reuse the same allocation
   let local = unsafe { scene_box.assume_init_mut() };
   {
@@ -99,29 +105,38 @@ pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &Rend
       part_start: u32,
       part_count: u32
     }
-    let mut model_map = HashMap::<u64, ModelEntry>::new();
-    let mut material_map = HashMap::<u64, u32>::new();
+    let mut model_map = HashMap::<ModelHandle, ModelEntry>::new();
+    let mut material_map = HashMap::<MaterialHandle, u32>::new();
     local.mesh_count = 0;
     local.draw_count = 0;
     local.material_count = 0;
     local.drawable_count = 0;
     local.part_count = 0;
     for drawable in scene.static_drawables() {
-      let model = &drawable.model;
-      let mesh = drawable.model.mesh();
-      let model_ptr = model.as_ref() as *const RendererModel<B> as u64;
-
-      let model_entry = if let Some(model_entry) = model_map.get(&model_ptr) {
+      let model_entry = if let Some(model_entry) = model_map.get(&drawable.model) {
         model_entry
       } else {
-        let materials = drawable.model.materials();
+        let model = assets.get_model(drawable.model);
+        if model.is_none() {
+          log::info!("Skipping draw because of missing model");
+          continue;
+        }
+        let model = model.unwrap();
+        let mesh = assets.get_mesh(model.mesh_handle());
+        if mesh.is_none() {
+          log::info!("Skipping draw because of missing mesh");
+          continue;
+        }
+        let mesh = mesh.unwrap();
+        let materials: SmallVec<[&RendererMaterial; 8]> = model.material_handles().iter().map(|handle| assets.get_material(*handle)).collect();
+
         let model_part_start = local.part_count;
         for (index, part) in mesh.parts.iter().enumerate() {
-          let material = &materials[index];
-          let material_ptr = material.as_ref() as *const RendererMaterial<B> as u64;
-          let material_index = if let Some(material_index) = material_map.get(&material_ptr) {
+          let material_handle = model.material_handles()[index];
+          let material_index = if let Some(material_index) = material_map.get(&material_handle) {
             *material_index
           } else {
+            let material = materials[index];
             let material_index = local.material_count;
             let mut gpu_material = GPUMaterial {
               albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
@@ -133,7 +148,8 @@ pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &Rend
 
             let albedo_value = material.get("albedo").unwrap();
             match albedo_value {
-              RendererMaterialValue::Texture(texture) => {
+              RendererMaterialValue::Texture(handle) => {
+                let texture = assets.get_texture(*handle);
                 let albedo_view = &texture.view;
                 cmd_buffer.track_texture_view(albedo_view);
                 gpu_material.albedo_texture_index = texture.bindless_index.unwrap();
@@ -167,7 +183,7 @@ pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &Rend
             }
             local.materials[material_index as usize] = gpu_material;
             debug_assert!(local.material_count < local.materials.len() as u32);
-            material_map.insert(material_ptr, material_index);
+            material_map.insert(material_handle, material_index);
             local.material_count += 1;
             material_index
           };
@@ -209,13 +225,13 @@ pub(crate) fn upload<B: Backend>(cmd_buffer: &mut B::CommandBuffer, scene: &Rend
         });
         debug_assert!(mesh_index < local.meshes.len() as u32);
         local.meshes[mesh_index as usize] = mesh;
-        model_map.insert(model_ptr, ModelEntry {
+        model_map.insert(drawable.model, ModelEntry {
           mesh_index,
           part_start: model_part_start,
           part_count: local.part_count - model_part_start
         });
         local.mesh_count += 1;
-        model_map.get(&model_ptr).unwrap()
+        model_map.get(&drawable.model).unwrap()
       };
 
       let drawable_index = local.drawable_count;

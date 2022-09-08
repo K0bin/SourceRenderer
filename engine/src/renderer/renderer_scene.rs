@@ -1,18 +1,18 @@
-use std::{collections::HashMap, usize, sync::Arc};
+use std::{collections::HashMap, usize};
 
 use legion::Entity;
 use sourcerenderer_core::{Matrix4, Vec4, graphics::Backend};
 
-use super::{PointLight, RendererStaticDrawable, light::{DirectionalLight, RendererDirectionalLight, RendererPointLight}, renderer_assets::RendererTexture};
+use super::{PointLight, RendererStaticDrawable, light::{DirectionalLight, RendererDirectionalLight, RendererPointLight}, renderer_assets::TextureHandle};
 
 pub struct RendererScene<B: Backend> {
-  static_meshes: Vec<RendererStaticDrawable<B>>,
+  static_meshes: Vec<RendererStaticDrawable>,
   point_lights: Vec<RendererPointLight<B>>,
   directional_lights: Vec<RendererDirectionalLight<B>>,
   drawable_entity_map: HashMap<Entity, usize>,
   point_light_entity_map: HashMap<Entity, usize>,
   directional_light_entity_map: HashMap<Entity, usize>,
-  lightmap: Option<Arc<RendererTexture<B>>>,
+  lightmap: Option<TextureHandle>,
 }
 
 impl<B: Backend> RendererScene<B> {
@@ -28,7 +28,7 @@ impl<B: Backend> RendererScene<B> {
     }
   }
 
-  pub fn static_drawables(&self) -> &[RendererStaticDrawable<B>] {
+  pub fn static_drawables(&self) -> &[RendererStaticDrawable] {
     &self.static_meshes[..]
   }
 
@@ -40,7 +40,7 @@ impl<B: Backend> RendererScene<B> {
     &self.directional_lights
   }
 
-  pub fn add_static_drawable(&mut self, entity: Entity, static_drawable: RendererStaticDrawable<B>) {
+  pub fn add_static_drawable(&mut self, entity: Entity, static_drawable: RendererStaticDrawable) {
     self.drawable_entity_map.insert(entity, self.static_meshes.len());
     self.static_meshes.push(static_drawable);
   }
@@ -105,11 +105,11 @@ impl<B: Backend> RendererScene<B> {
     self.point_lights.remove(index);
   }
 
-  pub fn set_lightmap(&mut self, lightmap: Option<&Arc<RendererTexture<B>>>) {
-    self.lightmap = lightmap.cloned();
+  pub fn set_lightmap(&mut self, lightmap: Option<TextureHandle>) {
+    self.lightmap = lightmap;
   }
 
-  pub fn lightmap(&self) -> Option<&Arc<RendererTexture<B>>> {
-    self.lightmap.as_ref()
+  pub fn lightmap(&self) -> Option<TextureHandle> {
+    self.lightmap
   }
 }

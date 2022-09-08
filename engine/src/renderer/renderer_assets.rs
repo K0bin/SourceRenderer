@@ -1,14 +1,35 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage, TextureDimension}};
+use smallvec::SmallVec;
+use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage, TextureDimension}, atomic_refcell::AtomicRefCell};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureViewInfo, BufferUsage };
 
-use sourcerenderer_core::atomic_refcell::{AtomicRef, AtomicRefCell};
-
 use super::{asset_buffer::{AssetBuffer, AssetBufferSlice}, shader_manager::ShaderManager};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct MeshHandle { index: u64 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct MaterialHandle { index: u64 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TextureHandle { index: u64 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ModelHandle { index: u64 }
+
+impl IndexHandle for MeshHandle {
+  fn new(index: u64) -> Self { Self { index } }
+}
+impl IndexHandle for MaterialHandle {
+  fn new(index: u64) -> Self { Self { index } }
+}
+impl IndexHandle for TextureHandle {
+  fn new(index: u64) -> Self { Self { index } }
+}
+impl IndexHandle for ModelHandle {
+  fn new(index: u64) -> Self { Self { index } }
+}
 
 pub struct RendererTexture<B: Backend> {
   pub(super) view: Arc<B::TextureSamplingView>,
@@ -22,24 +43,24 @@ impl<B: Backend> PartialEq for RendererTexture<B> {
 }
 impl<B: Backend> Eq for RendererTexture<B> {}
 
-pub struct RendererMaterial<B: Backend> {
-  pub(super) properties: HashMap<String, RendererMaterialValue<B>>,
+pub struct RendererMaterial {
+  pub(super) properties: HashMap<String, RendererMaterialValue>,
   pub(super) shader_name: String // TODO reference actual shader
 }
 
-impl<B: Backend> Clone for RendererMaterial<B> {
+impl Clone for RendererMaterial {
   fn clone(&self) -> Self {
     Self { properties: self.properties.clone(), shader_name: self.shader_name.clone() }
   }
 }
 
-pub enum RendererMaterialValue<B: Backend> {
+pub enum RendererMaterialValue {
   Float(f32),
   Vec4(Vec4),
-  Texture(Arc<RendererTexture<B>>)
+  Texture(TextureHandle)
 }
 
-impl<B: Backend> PartialEq for RendererMaterialValue<B> {
+impl PartialEq for RendererMaterialValue {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
       (Self::Float(l0), Self::Float(r0)) => (l0 * 100f32) as u32 == (r0 * 100f32) as u32,
@@ -53,25 +74,25 @@ impl<B: Backend> PartialEq for RendererMaterialValue<B> {
   }
 }
 
-impl<B: Backend> Eq for RendererMaterialValue<B> {}
+impl Eq for RendererMaterialValue {}
 
-impl<B: Backend> Clone for RendererMaterialValue<B> {
+impl Clone for RendererMaterialValue {
   fn clone(&self) -> Self {
     match self {
       Self::Float(val) => Self::Float(*val),
       Self::Vec4(val) => Self::Vec4(*val),
-      Self::Texture(tex) => Self::Texture(tex.clone())
+      Self::Texture(tex) => Self::Texture(*tex)
     }
   }
 }
 
-impl<B: Backend> PartialOrd for RendererMaterialValue<B> {
+impl PartialOrd for RendererMaterialValue {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl<B: Backend> Ord for RendererMaterialValue<B> {
+impl Ord for RendererMaterialValue {
   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
     match (self, other) {
       (RendererMaterialValue::Float(val1), RendererMaterialValue::Float(val2)) => ((val1 * 100f32) as u32).cmp(&((val2 * 100f32) as u32)),
@@ -79,7 +100,7 @@ impl<B: Backend> Ord for RendererMaterialValue<B> {
       (RendererMaterialValue::Float(_), RendererMaterialValue::Vec4(_)) => std::cmp::Ordering::Less,
       (RendererMaterialValue::Texture(_), RendererMaterialValue::Float(_)) => std::cmp::Ordering::Greater,
       (RendererMaterialValue::Texture(_), RendererMaterialValue::Vec4(_)) => std::cmp::Ordering::Greater,
-      (RendererMaterialValue::Texture(tex1), RendererMaterialValue::Texture(tex2)) => (tex1.view.as_ref() as *const B::TextureSamplingView).cmp(&(tex2.view.as_ref() as *const B::TextureSamplingView)),
+      (RendererMaterialValue::Texture(tex1), RendererMaterialValue::Texture(tex2)) => tex1.cmp(&tex2),
       (RendererMaterialValue::Vec4(val1), RendererMaterialValue::Vec4(val2)) => ((val1.x * 100f32) as u32).cmp(&((val2.x * 100f32) as u32))
                                                                                                                                       .then(((val1.y * 100f32) as u32).cmp(&((val2.y * 100f32) as u32)))
                                                                                                                                       .then(((val1.z * 100f32) as u32).cmp(&((val2.z * 100f32) as u32)))
@@ -90,7 +111,7 @@ impl<B: Backend> Ord for RendererMaterialValue<B> {
   }
 }
 
-impl<B: Backend> PartialEq for RendererMaterial<B> {
+impl PartialEq for RendererMaterial {
   fn eq(&self, other: &Self) -> bool {
     if self.shader_name != other.shader_name {
       return false;
@@ -104,30 +125,39 @@ impl<B: Backend> PartialEq for RendererMaterial<B> {
   }
 }
 
-impl<B: Backend> RendererMaterial<B> {
-  pub fn new_pbr(albedo_texture: &Arc<RendererTexture<B>>) -> Self {
+impl RendererMaterial {
+  pub fn new_pbr(albedo_texture: TextureHandle) -> Self {
     let mut props = HashMap::new();
-    props.insert("albedo".to_string(), RendererMaterialValue::Texture(albedo_texture.clone()));
+    props.insert("albedo".to_string(), RendererMaterialValue::Texture(albedo_texture));
     Self {
       shader_name: "pbr".to_string(),
       properties: props
     }
   }
 
-  pub fn get(&self, key: &str) -> Option<&RendererMaterialValue<B>> {
+  pub fn new_pbr_color(color: Vec4) -> Self {
+    let mut props = HashMap::new();
+    props.insert("albedo".to_string(), RendererMaterialValue::Vec4(color));
+    Self {
+      shader_name: "pbr".to_string(),
+      properties: props
+    }
+  }
+
+  pub fn get(&self, key: &str) -> Option<&RendererMaterialValue> {
     self.properties.get(key)
   }
 }
 
-impl<B: Backend> Eq for RendererMaterial<B> {}
+impl Eq for RendererMaterial {}
 
-impl<B: Backend> PartialOrd for RendererMaterial<B> {
+impl PartialOrd for RendererMaterial {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl<B: Backend> Ord for RendererMaterial<B> {
+impl Ord for RendererMaterial {
   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
     let mut last_result = self.shader_name.cmp(&other.shader_name)
     .then(self.properties.len().cmp(&other.properties.len()));
@@ -149,42 +179,25 @@ impl<B: Backend> Ord for RendererMaterial<B> {
   }
 }
 
-pub struct RendererModel<B: Backend> {
-  inner: AtomicRefCell<RendererModelInner<B>>
+pub struct RendererModel {
+  mesh: MeshHandle,
+  materials: SmallVec<[MaterialHandle; 16]>,
 }
 
-struct RendererModelInner<B: Backend> {
-  mesh: Arc<RendererMesh<B>>,
-  materials: Box<[Arc<RendererMaterial<B>>]>,
-  acceleration_structure: Option<Arc<B::AccelerationStructure>>,
-}
-
-impl<B: Backend> RendererModel<B> {
-  pub fn new(mesh: &Arc<RendererMesh<B>>, materials: Box<[Arc<RendererMaterial<B>>]>) -> Self {
+impl RendererModel {
+  pub fn new(mesh: MeshHandle, materials: SmallVec<[MaterialHandle; 16]>) -> Self {
     Self {
-      inner: AtomicRefCell::new(RendererModelInner::<B> {
-        mesh: mesh.clone(),
-        materials,
-        acceleration_structure: None
-      })
+      mesh: mesh,
+      materials,
     }
   }
 
-  pub fn mesh(&self) -> AtomicRef<Arc<RendererMesh<B>>> {
-    AtomicRef::map(self.inner.borrow(), |inner| &inner.mesh)
+  pub fn mesh_handle(&self) -> MeshHandle {
+    self.mesh
   }
 
-  pub fn materials(&self) -> AtomicRef<Box<[Arc<RendererMaterial<B>>]>> {
-    AtomicRef::map(self.inner.borrow(), |inner| &inner.materials)
-  }
-
-  pub fn acceleration_structure(&self) -> AtomicRef<Option<Arc<B::AccelerationStructure>>> {
-    AtomicRef::map(self.inner.borrow(), |inner| &inner.acceleration_structure)
-  }
-
-  pub fn set_acceleration_structure(&self, acceleration_structure: &Arc<B::AccelerationStructure>) {
-    let mut inner = self.inner.borrow_mut();
-    inner.acceleration_structure = Some(acceleration_structure.clone());
+  pub fn material_handles(&self) -> &[MaterialHandle] {
+    &self.materials
   }
 }
 
@@ -206,16 +219,87 @@ enum DelayedAssetType<B: Backend> {
   TextureView(Arc<B::TextureSamplingView>)
 }
 
-pub(super) struct RendererAssets<P: Platform> {
+trait IndexHandle {
+  fn new(index: u64) -> Self;
+}
+pub trait NullHandle : Sized {
+  fn null() -> Self;
+}
+impl<T : IndexHandle> NullHandle for T {
+  fn null() -> Self { Self::new(0u64) }
+}
+
+struct HandleMap<THandle, TValue>
+  where THandle : std::hash::Hash + PartialEq + Eq + Copy + IndexHandle {
+  path_to_handle: HashMap<String, THandle>,
+  handle_to_val: HashMap<THandle, TValue>,
+  next_handle_index: u64
+}
+
+impl<THandle, TValue> HandleMap<THandle, TValue>
+  where THandle : std::hash::Hash + PartialEq + Eq + Copy + IndexHandle  {
+  fn new() -> Self {
+    Self {
+      path_to_handle: HashMap::new(),
+      handle_to_val: HashMap::new(),
+      next_handle_index: 1u64
+    }
+  }
+
+  fn get_handle(&self, path: &str) -> Option<THandle> {
+    self.path_to_handle.get(path).copied()
+  }
+
+  fn get_or_create_handle(&mut self, path: &str) -> THandle {
+    if let Some(handle) = self.path_to_handle.get(path) {
+      return *handle;
+    }
+    self.create_handle(path)
+  }
+
+  fn get_value(&self, handle: THandle) -> Option<&TValue> {
+    self.handle_to_val.get(&handle)
+  }
+
+  fn contains(&self, handle: THandle) -> bool {
+    self.handle_to_val.contains_key(&handle)
+  }
+
+  fn create_handle(&mut self, path: &str) -> THandle {
+    let handle = THandle::new(self.next_handle_index);
+    self.next_handle_index += 1;
+    self.path_to_handle.insert(path.to_string(), handle);
+    handle
+  }
+
+  fn insert(&mut self, path: &str, value: TValue) -> THandle {
+    if let Some(existing_handle) = self.path_to_handle.get(path) {
+      self.handle_to_val.insert(*existing_handle, value);
+      return *existing_handle;
+    }
+    let handle = self.create_handle(path);
+    self.handle_to_val.insert(handle, value);
+    handle
+  }
+
+  fn remove_handle(&mut self, handle: THandle) {
+    let path = self.path_to_handle.iter().find(|(_path, h)| handle == **h).map(|(path, _handle)| path).unwrap().clone();
+    self.path_to_handle.remove(&path);
+    // TODO: consider either just keeping the path_to_handle map entry because we never reuse handles anyway
+    // or add another HashMap that does THandle->Path
+    self.handle_to_val.remove(&handle);
+  }
+}
+
+pub struct RendererAssets<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
-  models: HashMap<String, Arc<RendererModel<P::GraphicsBackend>>>,
-  meshes: HashMap<String, Arc<RendererMesh<P::GraphicsBackend>>>,
-  materials: HashMap<String, Arc<RendererMaterial<P::GraphicsBackend>>>,
-  textures: HashMap<String, Arc<RendererTexture<P::GraphicsBackend>>>,
-  texture_usages: HashMap<String, Vec<(String, String)>>,
-  material_usages: HashMap<String, Vec<(String, usize)>>,
-  zero_texture: Arc<RendererTexture<P::GraphicsBackend>>,
-  zero_texture_black: Arc<RendererTexture<P::GraphicsBackend>>,
+  models: HandleMap<ModelHandle, RendererModel>,
+  meshes: HandleMap<MeshHandle, RendererMesh<P::GraphicsBackend>>,
+  materials: HandleMap<MaterialHandle, RendererMaterial>,
+  textures: HandleMap<TextureHandle, RendererTexture<P::GraphicsBackend>>,
+  zero_texture: RendererTexture<P::GraphicsBackend>,
+  zero_texture_black: RendererTexture<P::GraphicsBackend>,
+  placeholder_material: RendererMaterial,
   delayed_assets: Vec<DelayedAsset<P::GraphicsBackend>>,
   vertex_buffer: AssetBuffer<P::GraphicsBackend>,
   index_buffer: AssetBuffer<P::GraphicsBackend>,
@@ -244,10 +328,10 @@ impl<P: Platform> RendererAssets<P> {
     } else {
       None
     };
-    let zero_rtexture = Arc::new(RendererTexture {
+    let zero_rtexture = RendererTexture {
       view: zero_view,
       bindless_index: zero_index
-    });
+    };
 
     let zero_data_black = [0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8];
     let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
@@ -270,10 +354,11 @@ impl<P: Platform> RendererAssets<P> {
     } else {
       None
     };
-    let zero_rtexture_black = Arc::new(RendererTexture {
+    let zero_rtexture_black = RendererTexture {
       view: zero_view_black,
       bindless_index: zero_black_index
-    });
+    };
+    let placeholder_material = RendererMaterial::new_pbr_color(Vec4::new(1f32, 1f32, 1f32, 1f32));
 
     let vertex_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_BIG * 4, BufferUsage::VERTEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
     let index_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_SMALL * 4, BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
@@ -282,21 +367,20 @@ impl<P: Platform> RendererAssets<P> {
 
     Self {
       device: device.clone(),
-      models: HashMap::new(),
-      meshes: HashMap::new(),
-      materials: HashMap::new(),
-      textures: HashMap::new(),
-      material_usages: HashMap::new(),
-      texture_usages: HashMap::new(),
+      models: HandleMap::new(),
+      meshes: HandleMap::new(),
+      materials: HandleMap::new(),
+      textures: HandleMap::new(),
       zero_texture: zero_rtexture,
       zero_texture_black: zero_rtexture_black,
+      placeholder_material,
       delayed_assets: Vec::new(),
       vertex_buffer,
       index_buffer,
     }
   }
 
-  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>) -> Arc<RendererTexture<P::GraphicsBackend>> {
+  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>) -> TextureHandle {
     let bindless_index = if self.device.supports_bindless() {
       if texture == &self.zero_texture.view {
         self.zero_texture.bindless_index
@@ -308,33 +392,14 @@ impl<P: Platform> RendererAssets<P> {
     } else {
       None
     };
-    let renderer_texture = Arc::new(RendererTexture {
+    let renderer_texture = RendererTexture {
       view: texture.clone(),
       bindless_index
-    });
-    self.textures.insert(texture_path.to_owned(), renderer_texture.clone());
-
-    if let Some(usages) = self.texture_usages.get(texture_path) {
-      for (material_name, prop_name) in usages.iter() {
-        let mut new_material = self.materials.get(material_name).unwrap().as_ref().clone();
-        new_material.properties.insert(prop_name.clone(), RendererMaterialValue::Texture(renderer_texture.clone()));
-        let mat_arc = Arc::new(new_material);
-        self.materials.insert(material_name.clone(), mat_arc.clone());
-
-        if let Some(usages) = self.material_usages.get(material_name) {
-          for (model_name, index) in usages.iter() {
-            let model = self.models.get(model_name).unwrap();
-            let mut inner = model.inner.borrow_mut();
-            inner.materials[*index] = mat_arc.clone();
-          }
-        }
-      }
-    }
-
-    renderer_texture
+    };
+    self.textures.insert(&texture_path, renderer_texture)
   }
 
-  pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: Mesh) {
+  pub fn integrate_mesh(&mut self, mesh_path: &str, mesh: Mesh) -> MeshHandle {
     assert_ne!(mesh.vertex_count, 0);
 
     let vertex_buffer = self.vertex_buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]), std::mem::size_of::<crate::renderer::Vertex>()); // FIXME: hardcoded vertex size
@@ -348,14 +413,14 @@ impl<P: Platform> RendererAssets<P> {
       buffer
     });
 
-    let mesh = Arc::new(RendererMesh {
+    let mesh = RendererMesh {
       vertices: vertex_buffer,
       indices: index_buffer,
       parts: mesh.parts.iter().cloned().collect(), // TODO: change base type to boxed slice
       bounding_box: mesh.bounding_box,
       vertex_count: mesh.vertex_count
-    });
-    self.meshes.insert(mesh_path.to_owned(), mesh);
+    };
+    self.meshes.insert(mesh_path, mesh)
   }
 
   pub fn upload_texture(&mut self, texture_path: &str, texture: Texture, do_async: bool) -> (Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
@@ -385,22 +450,12 @@ impl<P: Platform> RendererAssets<P> {
     (view, fence)
   }
 
-  pub fn integrate_material(&mut self, material_path: &str, material: &Material) -> Arc<RendererMaterial<P::GraphicsBackend>> {
-    let mut properties = HashMap::<String, RendererMaterialValue<P::GraphicsBackend>>::with_capacity(material.properties.len());
+  pub fn integrate_material(&mut self, material_path: &str, material: &Material) -> MaterialHandle {
+    let mut properties = HashMap::<String, RendererMaterialValue>::with_capacity(material.properties.len());
     for (key, value) in &material.properties {
       match value {
         MaterialValue::Texture(path) => {
-          let texture = self.textures.get(path)
-            .cloned()
-            .or_else(|| {
-              let zero_view = self.zero_texture.view.clone();
-              Some(self.integrate_texture(path, &zero_view))
-            }).unwrap();
-
-          self.texture_usages.entry(path.to_string())
-            .or_default()
-            .push((material_path.to_string(), key.to_string()));
-
+          let texture = self.textures.get_or_create_handle(path);
           properties.insert(key.to_string(), RendererMaterialValue::Texture(texture));
         }
 
@@ -414,74 +469,62 @@ impl<P: Platform> RendererAssets<P> {
       }
     }
 
-    let renderer_material = Arc::new(RendererMaterial {
+    let renderer_material = RendererMaterial {
       shader_name: material.shader_name.clone(),
       properties
-    });
+    };
 
-    if let Some(usages) = self.material_usages.get(material_path) {
-      for (model_name, index) in usages.iter() {
-        let model = self.models.get(model_name).unwrap();
-        let mut inner = model.inner.borrow_mut();
-        inner.materials[*index] = renderer_material.clone();
-      }
+    self.materials.insert(material_path, renderer_material)
+  }
+
+  pub fn integrate_model(&mut self, model_path: &str, model: &Model) -> ModelHandle {
+    let mesh = self.meshes.get_or_create_handle(&model.mesh_path);
+
+    let mut renderer_materials = SmallVec::<[MaterialHandle; 16]>::with_capacity(model.material_paths.len());
+    for material_path in &model.material_paths {
+      let material_handle = self.materials.get_or_create_handle(material_path);
+      renderer_materials.push(material_handle.clone());
     }
 
-    self.materials.insert(material_path.to_owned(), renderer_material.clone());
-    renderer_material
+    let renderer_model = RendererModel::new(mesh, renderer_materials);
+    self.models.insert(model_path, renderer_model)
   }
 
-  pub fn integrate_model(&mut self, model_path: &str, model: &Model) -> Option<Arc<RendererModel<P::GraphicsBackend>>> {
-    let mesh = self.meshes.get(&model.mesh_path).cloned()?;
-    let mut renderer_materials = Vec::<Arc<RendererMaterial<P::GraphicsBackend>>>::new();
-    for material in &model.material_paths {
-      let renderer_material = self.materials.get(material).cloned()
-        .or_else(|| {
-        Some(self.integrate_material(material, &Material::new_pbr("NULL", 0f32, 0f32)))
-      }).unwrap();
-      renderer_materials.push(renderer_material.clone());
-
-      self.material_usages.entry(material.clone())
-        .or_default()
-        .push((model_path.to_string(), renderer_materials.len() - 1));
-    }
-
-    let renderer_model = Arc::new(RendererModel::new(&mesh, renderer_materials.into_boxed_slice()));
-    self.models.insert(model_path.to_owned(), renderer_model.clone());
-    Some(renderer_model)
+  pub fn get_or_create_model_handle(&mut self, path: &str) -> ModelHandle {
+    self.models.get_or_create_handle(path)
   }
 
-  pub fn get_model(&self, model_path: &str) -> Arc<RendererModel<P::GraphicsBackend>> {
-    self.models.get(model_path)
-      .cloned()
-      .unwrap_or_else(|| panic!("Model not yet loaded: {}", model_path))
+  pub fn get_model(&self, handle: ModelHandle) -> Option<&RendererModel> {
+    self.models.get_value(handle)
   }
 
-  pub fn get_texture(&self, texture_path: &str) -> Arc<RendererTexture<P::GraphicsBackend>> {
-    self.textures.get(texture_path)
-      .cloned()
-      .unwrap_or_else(|| panic!("Texture not yet loaded: {}", texture_path))
+  pub fn has_model(&self, handle: ModelHandle) -> bool {
+    self.models.contains(handle)
   }
 
-  pub fn placeholder_texture(&self) -> &Arc<RendererTexture<P::GraphicsBackend>> {
+  pub fn get_mesh(&self, handle: MeshHandle) -> Option<&RendererMesh<P::GraphicsBackend>> {
+    self.meshes.get_value(handle)
+  }
+
+  pub fn get_or_create_texture_handle(&mut self, path: &str) -> TextureHandle {
+    self.textures.get_or_create_handle(path)
+  }
+
+  pub fn get_material(&self, handle: MaterialHandle) -> &RendererMaterial {
+    self.materials.get_value(handle).unwrap_or(&self.placeholder_material)
+  }
+
+  pub fn get_texture(&self, handle: TextureHandle) -> &RendererTexture<P::GraphicsBackend> {
+    self.textures.get_value(handle)
+      .unwrap_or_else(|| &self.zero_texture)
+  }
+
+  pub fn placeholder_texture(&self) -> &RendererTexture<P::GraphicsBackend> {
     &self.zero_texture
   }
 
-  pub fn placeholder_black(&self) -> &Arc<RendererTexture<P::GraphicsBackend>> {
+  pub fn placeholder_black(&self) -> &RendererTexture<P::GraphicsBackend> {
     &self.zero_texture_black
-  }
-
-  pub fn insert_placeholder_texture(&mut self, texture_path: &str, black: bool) -> Arc<RendererTexture<P::GraphicsBackend>> {
-    if self.textures.contains_key(texture_path) {
-      return self.textures.get(texture_path).unwrap().clone();
-    }
-
-    let texture = Arc::new(RendererTexture {
-      view: if black { self.zero_texture.view.clone() } else { self.zero_texture_black.view.clone() },
-      bindless_index: if black { self.zero_texture.bindless_index } else { self.zero_texture_black.bindless_index },
-    });
-    self.textures.insert(texture_path.to_string(), texture.clone());
-    texture
   }
 
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>, shader_manager: &mut ShaderManager<P>) {

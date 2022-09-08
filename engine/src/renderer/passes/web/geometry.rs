@@ -1,17 +1,23 @@
-use std::{io::Read, path::Path, sync::Arc};
+use std::sync::Arc;
 
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, GraphicsPipelineInfo, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange, TextureDimension}, platform::IO};
+use smallvec::SmallVec;
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange, TextureDimension}};
 
-use crate::{renderer::{drawable::View, renderer_assets::RendererMaterialValue, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}}};
+use crate::{renderer::{drawable::View, renderer_assets::{RendererMaterialValue, RendererAssets, RendererMaterial}, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{GraphicsPipelineInfo, GraphicsPipelineHandle, ShaderManager}}};
 
-pub struct GeometryPass<B: Backend> {
-  pipeline: Arc<B::GraphicsPipeline>,
+pub struct GeometryPass {
+  pipeline: GraphicsPipelineHandle
 }
 
-impl<B: Backend> GeometryPass<B> {
+impl GeometryPass {
   pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
 
-  pub(super) fn new<P: Platform>(device: &Arc<B::Device>, swapchain: &Arc<B::Swapchain>, _init_cmd_buffer: &mut B::CommandBuffer, resources: &mut RendererResources<B>) -> Self {
+  pub(super) fn new<P: Platform>(
+    swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    _init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    resources: &mut RendererResources<P::GraphicsBackend>,
+    shader_manager: &mut ShaderManager<P>
+  ) -> Self {
     resources.create_texture(Self::DEPTH_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::D32,
@@ -31,23 +37,10 @@ impl<B: Backend> GeometryPass<B> {
       "spv"
     };
 
-    let vertex_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(&format!("web_geometry.web.vert.{}", shader_file_extension)))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::VertexShader, &bytes, Some("web_geometry.vert.glsl"))
-    };
-
-    let fragment_shader = {
-      let mut file = <P::IO as IO>::open_asset(Path::new("shaders").join(Path::new(&format!("web_geometry.web.frag.{}", shader_file_extension)))).unwrap();
-      let mut bytes: Vec<u8> = Vec::new();
-      file.read_to_end(&mut bytes).unwrap();
-      device.create_shader(ShaderType::FragmentShader, &bytes, Some("web_geometry.frag.glsl"))
-    };
-
-    let pipeline_info: GraphicsPipelineInfo<B> = GraphicsPipelineInfo {
-      vs: &vertex_shader,
-      fs: Some(&fragment_shader),
+    let fs_name = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
+    let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
+      vs: &format!("shaders/web_geometry.web.vert.{}", shader_file_extension),
+      fs: Some(&fs_name),
       primitive_type: PrimitiveType::Triangles,
       vertex_layout: VertexLayoutInfo {
         input_assembler: &[
@@ -126,7 +119,7 @@ impl<B: Backend> GeometryPass<B> {
         ]
       }
     };
-    let pipeline = device.create_graphics_pipeline(&pipeline_info, &RenderPassInfo {
+    let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info, &RenderPassInfo {
       attachments: &[
         AttachmentInfo {
           format: swapchain.format(),
@@ -152,7 +145,7 @@ impl<B: Backend> GeometryPass<B> {
           }),
         }
       ]
-    }, 0, Some("WebGeometry"));
+    }, 0);
 
     Self {
       pipeline,
@@ -160,14 +153,17 @@ impl<B: Backend> GeometryPass<B> {
   }
 
 
-  pub(super) fn execute(
+  pub(super) fn execute<P: Platform>(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    scene: &RendererScene<B>,
+    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    scene: &RendererScene<P::GraphicsBackend>,
     view: &View,
-    camera_buffer: &Arc<B::Buffer>,
-    resources: &RendererResources<B>,
-    backbuffer: &Arc<B::TextureRenderTargetView>) {
+    camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    resources: &RendererResources<P::GraphicsBackend>,
+    backbuffer: &Arc<<P::GraphicsBackend as Backend>::TextureRenderTargetView>,
+    shader_manager: &ShaderManager<P>,
+    assets: &RendererAssets<P>
+  ) {
 
     cmd_buffer.barrier(&[Barrier::TextureBarrier {
       old_sync: BarrierSync::empty(),
@@ -222,7 +218,8 @@ impl<B: Backend> GeometryPass<B> {
 
     let rtv_info = backbuffer.texture().info();
 
-    cmd_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+    let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+    cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
     cmd_buffer.set_viewports(&[Viewport {
       position: Vec2::new(0.0f32, 0.0f32),
       extent: Vec2::new(rtv_info.width as f32, rtv_info.height as f32),
@@ -242,14 +239,25 @@ impl<B: Backend> GeometryPass<B> {
     for part in parts {
       let drawable = &drawables[part.drawable_index];
       cmd_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
-      let model = &drawable.model;
-      let mesh = model.mesh();
-      let materials = model.materials();
+      let model = assets.get_model(drawable.model);
+      if model.is_none() {
+        log::info!("Skipping draw because of missing model");
+        continue;
+      }
+      let model = model.unwrap();
+      let mesh = assets.get_mesh(model.mesh_handle());
+      if mesh.is_none() {
+        log::info!("Skipping draw because of missing mesh");
+        continue;
+      }
+      let mesh = mesh.unwrap();
+      let materials: SmallVec<[&RendererMaterial; 4]> = model.material_handles().iter().map(|handle| assets.get_material(*handle)).collect();
       let range = &mesh.parts[part.part_index];
       let material = &materials[part.part_index];
       let albedo_value = material.get("albedo").unwrap();
       match albedo_value {
-        RendererMaterialValue::Texture(texture) => {
+        RendererMaterialValue::Texture(handle) => {
+          let texture = assets.get_texture(*handle);
           let albedo_view = &texture.view;
           cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 0, albedo_view, resources.linear_sampler());
         },

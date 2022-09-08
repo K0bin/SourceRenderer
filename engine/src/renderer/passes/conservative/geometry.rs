@@ -1,4 +1,5 @@
 use nalgebra::Vector2;
+use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Vec4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, Queue, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, TextureInfo, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
 use std::{sync::Arc, cell::Ref};
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass, conservative::desktop_renderer::setup_frame}, shader_manager::{ShaderManager, GraphicsPipelineInfo, GraphicsPipelineHandle}};
@@ -189,7 +190,8 @@ impl<P: Platform> GeometryPass<P> {
     scene: &SceneInfo<P::GraphicsBackend>,
     bindings: &FrameBindings<P::GraphicsBackend>,
     zero_textures: &ZeroTextures<P::GraphicsBackend>,
-    lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
+    lightmap: &RendererTexture<P::GraphicsBackend>,
+    assets: &RendererAssets<P>
   ) {
     cmd_buffer.begin_label("Geometry pass");
     let static_drawables = scene.scene.static_drawables();
@@ -328,7 +330,7 @@ impl<P: Platform> GeometryPass<P> {
       command_buffer.track_texture_view(zero_textures.zero_texture_view);
       command_buffer.track_texture_view(zero_textures.zero_texture_view_black);
 
-      let mut last_material = Option::<Arc<RendererMaterial<P::GraphicsBackend>>>::None;
+      let mut last_material = Option::<&RendererMaterial>::None;
 
       for part in chunk.iter() {
         let drawable = &static_drawables[part.drawable_index];
@@ -340,9 +342,19 @@ impl<P: Platform> GeometryPass<P> {
 
         command_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
 
-        let model = &drawable.model;
-        let mesh = model.mesh();
-        let materials = model.materials();
+        let model = assets.get_model(drawable.model);
+        if model.is_none() {
+          log::info!("Skipping draw because of missing model");
+          continue;
+        }
+        let model = model.unwrap();
+        let mesh = assets.get_mesh(model.mesh_handle());
+        if mesh.is_none() {
+          log::info!("Skipping draw because of missing mesh");
+          continue;
+        }
+        let mesh = mesh.unwrap();
+        let materials: SmallVec<[&RendererMaterial; 8]> = model.material_handles().iter().map(|handle| assets.get_material(*handle)).collect();
 
         command_buffer.set_vertex_buffer(mesh.vertices.buffer(), mesh.vertices.offset() as usize);
         if let Some(indices) = mesh.indices.as_ref() {
@@ -374,8 +386,8 @@ impl<P: Platform> GeometryPass<P> {
 
           let albedo_value = material.get("albedo").unwrap();
           match albedo_value {
-            RendererMaterialValue::Texture(texture) => {
-              let albedo_view = &texture.view;
+            RendererMaterialValue::Texture(handle) => {
+              let albedo_view = &assets.get_texture(*handle).view;
               command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, albedo_view, &self.sampler);
               command_buffer.track_texture_view(albedo_view);
               material_info.albedo_texture_index = 0;
@@ -387,8 +399,8 @@ impl<P: Platform> GeometryPass<P> {
           }
           let roughness_value = material.get("roughness");
           match roughness_value {
-            Some(RendererMaterialValue::Texture(texture)) => {
-              let roughness_view = &texture.view;
+            Some(RendererMaterialValue::Texture(handle)) => {
+              let roughness_view = &assets.get_texture(*handle).view;
               command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, roughness_view, &self.sampler);
             }
             Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
@@ -399,8 +411,8 @@ impl<P: Platform> GeometryPass<P> {
           }
           let metalness_value = material.get("metalness");
           match metalness_value {
-            Some(RendererMaterialValue::Texture(texture)) => {
-              let metalness_view = &texture.view;
+            Some(RendererMaterialValue::Texture(handle)) => {
+              let metalness_view = &assets.get_texture(*handle).view;
               command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, metalness_view, &self.sampler);
             }
             Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),

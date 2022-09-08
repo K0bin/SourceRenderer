@@ -55,7 +55,7 @@ impl<P: Platform> ShadingPass<P> {
     &mut self,
     cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
     device: &<P::GraphicsBackend as Backend>::Device,
-    lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
+    lightmap: &RendererTexture<P::GraphicsBackend>,
     zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>,
     resources: &RendererResources<P::GraphicsBackend>,
     shader_manager: &ShaderManager<P>

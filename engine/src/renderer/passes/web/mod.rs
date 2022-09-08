@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain}};
 
-use crate::{input::Input, renderer::{LateLatching, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::RendererResources, shader_manager::ShaderManager}};
+use crate::{input::Input, renderer::{LateLatching, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::RendererResources, shader_manager::ShaderManager, renderer_assets::RendererAssets}};
 
 mod geometry;
 
@@ -11,15 +11,19 @@ use self::geometry::GeometryPass;
 pub struct WebRenderer<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-  geometry: GeometryPass<P::GraphicsBackend>,
+  geometry: GeometryPass,
   resources: RendererResources<P::GraphicsBackend>,
 }
 
 impl<P: Platform> WebRenderer<P> {
-  pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>) -> Self {
+  pub fn new(
+    device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+    swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    shader_manager: &mut ShaderManager<P>
+  ) -> Self {
     let mut resources = RendererResources::<P::GraphicsBackend>::new(device);
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
-    let geometry_pass = GeometryPass::new::<P>(device, swapchain, &mut init_cmd_buffer, &mut resources);
+    let geometry_pass = GeometryPass::new::<P>(swapchain, &mut init_cmd_buffer, &mut resources, shader_manager);
     let init_submission = init_cmd_buffer.finish();
     device.graphics_queue().submit(init_submission, None, &[], &[], false);
     Self {
@@ -46,7 +50,8 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
     late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
     input: &Input,
     _frame_info: &FrameInfo,
-    _shader_manager: &ShaderManager<P>
+    shader_manager: &ShaderManager<P>,
+    assets: &RendererAssets<P>
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
 
 
@@ -58,7 +63,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
     let view_ref = &scene.views[scene.active_view_index];
     let late_latching_buffer = late_latching.unwrap().buffer();
-    self.geometry.execute(&mut cmd_buffer, scene.scene, &view_ref, &late_latching_buffer, &self.resources, &backbuffer);
+    self.geometry.execute(&mut cmd_buffer, scene.scene, &view_ref, &late_latching_buffer, &self.resources, &backbuffer, shader_manager, assets);
 
     if let Some(late_latching) = late_latching {
       let input_state = input.poll();

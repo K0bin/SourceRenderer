@@ -72,7 +72,7 @@ impl<P: Platform> RendererInternal<P> {
 
     #[cfg(not(target_arch = "wasm32"))]
     let path: Box<dyn RenderPath<P>> = if cfg!(target_family = "wasm") {
-      Box::new(WebRenderer::new(device, swapchain))
+      Box::new(WebRenderer::new(device, swapchain, &mut shader_manager))
     } else {
       if device.supports_indirect() && device.supports_bindless() && device.supports_barycentrics() {
         Box::new(ModernRenderer::new(device, swapchain, &mut shader_manager))
@@ -187,8 +187,8 @@ impl<P: Platform> RendererInternal<P> {
         RendererCommand::RegisterStatic {
           model_path, entity, transform, receive_shadows, cast_shadows, can_move
          } => {
-          let model = self.assets.get_model(&model_path);
-          self.scene.add_static_drawable(entity, RendererStaticDrawable::<P::GraphicsBackend> {
+          let model = self.assets.get_or_create_model_handle(&model_path);
+          self.scene.add_static_drawable(entity, RendererStaticDrawable {
             entity,
             transform,
             old_transform: transform,
@@ -230,8 +230,8 @@ impl<P: Platform> RendererInternal<P> {
           self.scene.remove_directional_light(&entity);
         },
         RendererCommand::SetLightmap(path) => {
-          let texture = self.assets.get_texture(&path);
-          self.scene.set_lightmap(Some(&texture));
+          let handle = self.assets.get_or_create_texture_handle(&path);
+          self.scene.set_lightmap(Some(handle));
         },
       }
 
@@ -253,11 +253,6 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
-    // If we don't clone here, it's counted as a self borrow. IDK why this is a self borrow but all the structs below arent.
-    let lightmap = {
-      self.scene.lightmap().cloned().unwrap_or_else(|| self.assets.placeholder_black().clone())
-    };
-
     let render_result = {
       let frame_info = FrameInfo {
         frame: self.frame,
@@ -269,16 +264,21 @@ impl<P: Platform> RendererInternal<P> {
         zero_texture_view_black: &self.assets.placeholder_black().view,
       };
 
+      let lightmap: &RendererTexture<P::GraphicsBackend> = if let Some(lightmap_handle) = self.scene.lightmap() {
+        self.assets.get_texture(lightmap_handle)
+      } else {
+        self.assets.placeholder_texture()
+      }; // Doing .map() here is considered a immutable borrow of self
       let scene_info = SceneInfo {
         scene: &self.scene,
         views: &self.views,
         active_view_index: 0,
         vertex_buffer: self.assets.vertex_buffer(),
         index_buffer: self.assets.index_buffer(),
-        lightmap: Some(&lightmap)
+        lightmap: Some(lightmap)
       };
 
-      self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info, &self.shader_manager)
+      self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info, &self.shader_manager, &self.assets)
     };
 
     if let Err(swapchain_error) = render_result {
@@ -322,16 +322,21 @@ impl<P: Platform> RendererInternal<P> {
             zero_texture_view_black: &self.assets.placeholder_black().view,
           };
 
+          let lightmap: &RendererTexture<P::GraphicsBackend> = if let Some(lightmap_handle) = self.scene.lightmap() {
+            self.assets.get_texture(lightmap_handle)
+          } else {
+            self.assets.placeholder_texture()
+          }; // Doing .map() here is considered a immutable borrow of self
           let scene_info = SceneInfo {
             scene: &self.scene,
             views: &self.views,
             active_view_index: 0,
             vertex_buffer: self.assets.vertex_buffer(),
             index_buffer: self.assets.index_buffer(),
-            lightmap: Some(&lightmap)
+            lightmap: Some(lightmap)
           };
 
-          self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info, &self.shader_manager).expect("Rendering still fails after recreating swapchain.");
+          self.render_path.render(&scene_info, &zero_textures, renderer.late_latching(), renderer.input(), &frame_info, &self.shader_manager, &self.assets).expect("Rendering still fails after recreating swapchain.");
         }
         self.swapchain = new_swapchain;
       }
@@ -367,6 +372,8 @@ impl<P: Platform> RendererInternal<P> {
     let frustum = Frustum::new(view_mut.near_plane, view_mut.far_plane, view_mut.camera_fov, view_mut.aspect_ratio);
     let camera_matrix = view_mut.view_matrix;
     let camera_position = view_mut.camera_position;
+    let assets = &self.assets;
+
     const CHUNK_SIZE: usize = 64;
     static_meshes.par_chunks(CHUNK_SIZE).enumerate().for_each(|(chunk_index, chunk)| {
       let mut chunk_visible_parts = SmallVec::<[DrawablePart; CHUNK_SIZE]>::new();
@@ -374,8 +381,15 @@ impl<P: Platform> RendererInternal<P> {
       visible_drawables.bit_init(false);
       for (index, static_mesh) in chunk.iter().enumerate() {
         let model_view_matrix = camera_matrix * static_mesh.transform;
-        let model = &static_mesh.model;
-        let mesh = model.mesh();
+        let model = assets.get_model(static_mesh.model);
+        if model.is_none() {
+          continue;
+        }
+        let mesh = assets.get_mesh(model.unwrap().mesh_handle());
+        if mesh.is_none() {
+          continue;
+        }
+        let mesh = mesh.unwrap();
         let bounding_box = &mesh.bounding_box;
         let is_visible = if let Some(bounding_box) = bounding_box {
           frustum.intersects(bounding_box, &model_view_matrix)
@@ -452,6 +466,7 @@ impl<P: Platform> RendererInternal<P> {
     let static_meshes = self.scene.static_drawables();
 
     let view_mut = &mut self.views[0];
+    let assets = &self.assets;
     view_mut.drawable_parts.par_sort_unstable_by(|a, b| {
       // if the drawable index is greater than the amount of static meshes, it is a skinned mesh
       let b_is_skinned = a.drawable_index > static_meshes.len();
@@ -465,11 +480,17 @@ impl<P: Platform> RendererInternal<P> {
       } else {
         let static_mesh_a = &static_meshes[a.drawable_index];
         let static_mesh_b = &static_meshes[b.drawable_index];
-        let materials_a = static_mesh_a.model.materials();
-        let materials_b = static_mesh_b.model.materials();
+        let model_a = assets.get_model(static_mesh_a.model);
+        let model_b = assets.get_model(static_mesh_b.model);
+        if model_a.is_none() || model_b.is_none() {
+          // doesn't matter, we'll skip the draws anyway
+          return std::cmp::Ordering::Equal;
+        }
+        let materials_a = model_a.unwrap().material_handles();
+        let materials_b = model_b.unwrap().material_handles();
         let material_a = &materials_a[a.part_index];
         let material_b = &materials_b[b.part_index];
-        (material_a.as_ref() as *const RendererMaterial<P::GraphicsBackend>).cmp(&(material_b.as_ref() as *const RendererMaterial<P::GraphicsBackend>))
+        material_a.cmp(material_b)
       }
     });
   }

@@ -5,7 +5,7 @@ use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
 use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureViewInfo, WHOLE_BUFFER}, Vec4, Platform, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
-use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}, shader_manager::{GraphicsPipelineInfo, ShaderManager, GraphicsPipelineHandle}};
+use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}, shader_manager::{GraphicsPipelineInfo, ShaderManager, GraphicsPipelineHandle}, renderer_assets::RendererAssets};
 use crate::renderer::render_path::SceneInfo;
 
 const QUERY_COUNT: usize = 16384;
@@ -164,7 +164,8 @@ impl<P: Platform> OcclusionPass<P> {
     frame: u64,
     camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
     scene: &SceneInfo<P::GraphicsBackend>,
-    depth_name: &str
+    depth_name: &str,
+    assets: &RendererAssets<P>
   ) {
     let history_depth_buffer_ref = resources.access_depth_stencil_view(
       command_buffer,
@@ -248,7 +249,20 @@ impl<P: Platform> OcclusionPass<P> {
       for drawable_index in chunk {
         let drawable_index = *drawable_index;
         let drawable = &static_meshes[drawable_index as usize];
-        let mesh = drawable.model.mesh();
+
+        let model = assets.get_model(drawable.model);
+        if model.is_none() {
+          log::info!("Skipping draw because of missing model");
+          continue;
+        }
+        let model = model.unwrap();
+        let mesh = assets.get_mesh(model.mesh_handle());
+        if mesh.is_none() {
+          log::info!("Skipping draw because of missing mesh");
+          continue;
+        }
+        let mesh = mesh.unwrap();
+
         let bb = mesh.bounding_box.as_ref();
         if bb.is_none() {
           continue;

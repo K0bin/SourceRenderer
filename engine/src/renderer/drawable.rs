@@ -2,16 +2,15 @@ use nalgebra::Point3;
 use sourcerenderer_core::{Matrix4, Quaternion, Vec3};
 
 use legion::Entity;
-use std::{sync::Arc, usize};
+use std::usize;
 use std::f32;
-use sourcerenderer_core::graphics::Backend;
 use crate::renderer::renderer_assets::*;
 
-pub struct RendererStaticDrawable<B: Backend> {
+pub struct RendererStaticDrawable {
   pub entity: Entity,
   pub transform: Matrix4,
   pub old_transform: Matrix4,
-  pub model: Arc<RendererModel<B>>,
+  pub model: ModelHandle,
   pub receive_shadows: bool,
   pub cast_shadows: bool,
   pub can_move: bool

@@ -2,6 +2,7 @@ use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttach
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::passes::taa::scaled_halton_point;
+use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{RendererResources, HistoryResourceEntry};
 use crate::renderer::shader_manager::{ShaderManager, GraphicsPipelineInfo, GraphicsPipelineHandle};
 use crate::renderer::{RendererScene, drawable::View};
@@ -194,7 +195,8 @@ impl Prepass {
     camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
     camera_history_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
     resources: &RendererResources<P::GraphicsBackend>,
-    shader_manager: &ShaderManager<P>
+    shader_manager: &ShaderManager<P>,
+    assets: &RendererAssets<P>
   ) {
     cmd_buffer.begin_label("Depth prepass");
     let static_drawables = scene.static_drawables();
@@ -304,7 +306,6 @@ impl Prepass {
 
       for part in chunk.iter() {
         let drawable = &static_drawables[part.drawable_index];
-        let model = &drawable.model;
         if Self::DRAWABLE_LABELS {
           command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
         }
@@ -314,7 +315,18 @@ impl Prepass {
           old_model: drawable.old_transform
         }], ShaderType::VertexShader);
 
-        let mesh = &model.mesh();
+        let model = assets.get_model(drawable.model);
+        if model.is_none() {
+          log::info!("Skipping draw because of missing model");
+          continue;
+        }
+        let model = model.unwrap();
+        let mesh = assets.get_mesh(model.mesh_handle());
+        if mesh.is_none() {
+          log::info!("Skipping draw because of missing mesh");
+          continue;
+        }
+        let mesh = mesh.unwrap();
 
         command_buffer.set_vertex_buffer(mesh.vertices.buffer(), mesh.vertices.offset() as usize);
         if let Some(indices) = mesh.indices.as_ref() {

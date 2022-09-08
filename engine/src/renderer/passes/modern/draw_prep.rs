@@ -1,6 +1,6 @@
 use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, BarrierSync, BarrierAccess, CommandBuffer, BindingFrequency, WHOLE_BUFFER, PipelineBinding, TextureLayout, TextureViewInfo}, Platform, Vec4};
 
-use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}}, drawable::View, shader_manager::{ShaderManager, ComputePipelineHandle}}, math::Frustum};
+use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{modern::{gpu_scene::{PART_CAPACITY, DRAWABLE_CAPACITY}, hi_z::HierarchicalZPass}}, drawable::View, shader_manager::{ShaderManager, ComputePipelineHandle}, renderer_assets::RendererAssets}, math::Frustum};
 
 pub struct DrawPrepPass {
   culling_pipeline: ComputePipelineHandle,
@@ -34,7 +34,8 @@ impl DrawPrepPass {
     resources: &RendererResources<P::GraphicsBackend>,
     scene: &RendererScene<P::GraphicsBackend>,
     view: &View,
-    shader_manager: &ShaderManager<P>
+    shader_manager: &ShaderManager<P>,
+    assets: &RendererAssets<P>
   ) {
     {
       cmd_buffer.begin_label("Culling");
@@ -116,7 +117,14 @@ impl DrawPrepPass {
     }
 
     assert!(scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
-    let part_count = scene.static_drawables().iter().map(|d| d.model.mesh().parts.len()).fold(0, |a, b| a + b) as u32;
+    let part_count = scene.static_drawables().iter()
+      .map(|d| {
+        assets.get_model(d.model)
+          .and_then(|m| assets.get_mesh(m.mesh_handle()))
+          .map(|mesh| mesh.parts.len())
+          .unwrap_or(0)
+      })
+      .fold(0, |a, b| a + b) as u32;
     assert!(part_count <= PART_CAPACITY);
 
     let visibility_buffer = resources.access_buffer(

@@ -1,16 +1,18 @@
-use std::sync::Arc;
+use std::{sync::Arc, collections::HashMap};
 
-use sourcerenderer_core::{graphics::{Backend, CommandBuffer, AccelerationStructureInstance, Device, TopLevelAccelerationStructureInfo, BufferInfo, BufferUsage, MemoryUsage, BottomLevelAccelerationStructureInfo, AccelerationStructureMeshRange, IndexFormat, Format, Barrier, BarrierSync, BarrierAccess, FrontFace}};
+use smallvec::SmallVec;
+use sourcerenderer_core::{graphics::{Backend, CommandBuffer, AccelerationStructureInstance, Device, TopLevelAccelerationStructureInfo, BufferInfo, BufferUsage, MemoryUsage, BottomLevelAccelerationStructureInfo, AccelerationStructureMeshRange, IndexFormat, Format, Barrier, BarrierSync, BarrierAccess, FrontFace}, Platform};
 
-use crate::renderer::renderer_scene::RendererScene;
+use crate::renderer::{renderer_scene::RendererScene, renderer_assets::{RendererAssets, ModelHandle}};
 
-pub struct AccelerationStructureUpdatePass<B: Backend> {
-  device: Arc<B::Device>,
-  acceleration_structure: Arc<B::AccelerationStructure>
+pub struct AccelerationStructureUpdatePass<P: Platform> {
+  device: Arc<<P::GraphicsBackend as Backend>::Device>,
+  blas_map: HashMap<ModelHandle, Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>>,
+  acceleration_structure: Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>
 }
 
-impl<B: Backend> AccelerationStructureUpdatePass<B> {
-  pub fn new(device: &Arc<B::Device>, init_cmd_buffer: &mut B::CommandBuffer) -> Self {
+impl<P: Platform> AccelerationStructureUpdatePass<P> {
+  pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer) -> Self {
     let instances_buffer = init_cmd_buffer.upload_top_level_instances(&[]);
     let info = TopLevelAccelerationStructureInfo {
       instances_buffer: &instances_buffer,
@@ -29,25 +31,49 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
 
     Self {
       device: device.clone(),
+      blas_map: HashMap::new(),
       acceleration_structure
     }
   }
 
   pub fn execute(
     &mut self,
-    cmd_buffer: &mut B::CommandBuffer,
-    scene: &RendererScene<B>
+    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    scene: &RendererScene<P::GraphicsBackend>,
+    assets: &RendererAssets<P>
   ) {
+    // We never reuse handles, so this works.
+    let mut removed_models = SmallVec::<[ModelHandle; 4]>::new();
+    for (handle, _) in &self.blas_map {
+      if !assets.has_model(*handle) {
+        removed_models.push(*handle);
+      }
+    }
+    for handle in removed_models {
+      self.blas_map.remove(&handle);
+    }
+
     let static_drawables = scene.static_drawables();
 
     let mut created_blas = false;
-    let bl_acceleration_structures: Vec<Arc<B::AccelerationStructure>> = static_drawables
-      .iter()
-      .map(|drawable| {
-        let blas = drawable.model.acceleration_structure().clone();
-        blas.unwrap_or_else(|| {
+    let mut bl_acceleration_structures = Vec::<Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>>::new();
+
+    for drawable in static_drawables {
+      let blas = self.blas_map.get(&drawable.model)
+        .cloned()
+        .or_else(|| {
+          let model = assets.get_model(drawable.model);
+          if model.is_none() {
+            return None;
+          }
+          let model = model.unwrap();
+          let mesh = assets.get_mesh(model.mesh_handle());
+          if mesh.is_none() {
+            return None;
+          }
+          let mesh = mesh.unwrap();
+
           let blas = {
-            let mesh = drawable.model.mesh();
             let parts: Vec<AccelerationStructureMeshRange> = mesh.parts.iter().map(|p| {
               debug_assert_eq!(p.start % 3, 0);
               debug_assert_eq!(p.count % 3, 0);
@@ -81,13 +107,17 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
               size: sizes.size as usize,
               usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
             }, MemoryUsage::VRAM, Some("AccelerationStructure"));
-          cmd_buffer.create_bottom_level_acceleration_structure(&info, sizes.size as usize, &buffer, &scratch_buffer)
-        };
-        drawable.model.set_acceleration_structure(&blas);
-        created_blas = true;
-        blas
-      })
-    }).collect();
+            cmd_buffer.create_bottom_level_acceleration_structure(&info, sizes.size as usize, &buffer, &scratch_buffer)
+          };
+          self.blas_map.insert(drawable.model, blas.clone());
+          created_blas = true;
+          Some(blas)
+      });
+
+      if let Some(blas) = blas {
+        bl_acceleration_structures.push(blas);
+      }
+    }
 
     if created_blas {
       cmd_buffer.barrier(&[Barrier::GlobalBarrier {
@@ -99,10 +129,10 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
       cmd_buffer.flush_barriers();
     }
 
-    let mut instances = Vec::<AccelerationStructureInstance<B>>::with_capacity(static_drawables.len());
+    let mut instances = Vec::<AccelerationStructureInstance<P::GraphicsBackend>>::with_capacity(static_drawables.len());
     for (bl, drawable) in bl_acceleration_structures.iter().zip(static_drawables.iter()) {
       instances.push(
-        AccelerationStructureInstance::<B> {
+        AccelerationStructureInstance::<P::GraphicsBackend> {
           acceleration_structure: bl,
           transform: drawable.transform,
           front_face: FrontFace::Clockwise
@@ -137,7 +167,7 @@ impl<B: Backend> AccelerationStructureUpdatePass<B> {
     }]);
   }
 
-  pub fn acceleration_structure(&self) -> &Arc<B::AccelerationStructure> {
+  pub fn acceleration_structure(&self) -> &Arc<<P::GraphicsBackend as Backend>::AccelerationStructure> {
     &self.acceleration_structure
   }
 }

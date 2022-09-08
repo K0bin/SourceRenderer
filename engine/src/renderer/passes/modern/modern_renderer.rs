@@ -4,7 +4,7 @@ use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass, compositing::CompositingPass}, shader_manager::ShaderManager}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass, compositing::CompositingPass}, shader_manager::ShaderManager, renderer_assets::RendererAssets}};
 use crate::renderer::passes::fsr2::Fsr2Pass;
 use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 
@@ -18,7 +18,7 @@ pub struct ModernRenderer<P: Platform> {
   light_binning_pass: LightBinningPass,
   geometry_draw_prep: DrawPrepPass,
   ssao: SsaoPass<P>,
-  rt_passes: Option<RTPasses<P::GraphicsBackend>>,
+  rt_passes: Option<RTPasses<P>>,
   blue_noise: BlueNoise<P::GraphicsBackend>,
   hi_z_pass: HierarchicalZPass<P>,
   ssr_pass: SsrPass,
@@ -39,8 +39,8 @@ enum AntiAliasing<B: Backend> {
   }
 }
 
-pub struct RTPasses<B: Backend> {
-  acceleration_structure_update: AccelerationStructureUpdatePass<B>,
+pub struct RTPasses<P: Platform> {
+  acceleration_structure_update: AccelerationStructureUpdatePass<P>,
   shadows: RTShadowPass
 }
 
@@ -63,7 +63,7 @@ impl<P: Platform> ModernRenderer<P> {
     let light_binning = LightBinningPass::new::<P>(&mut barriers, shader_manager);
     let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, true);
     let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
-      acceleration_structure_update: AccelerationStructureUpdatePass::<P::GraphicsBackend>::new(device, &mut init_cmd_buffer),
+      acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(device, &mut init_cmd_buffer),
       shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager)
     });
     let visibility_buffer = VisibilityBufferPass::new::<P>(resolution, &mut barriers, shader_manager);
@@ -201,7 +201,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
     late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
     input: &Input,
     frame_info: &FrameInfo,
-    shader_manager: &ShaderManager<P>
+    shader_manager: &ShaderManager<P>,
+    assets: &RendererAssets<P>
   ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
@@ -211,7 +212,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
     let camera_buffer = late_latching.unwrap().buffer();
     let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
 
-    let gpu_scene_buffer = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */);
+    let gpu_scene_buffer = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
     self.setup_frame(
       &mut cmd_buf,
@@ -232,10 +233,10 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
     };
 
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene);
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene, assets);
     }
     self.hi_z_pass.execute(&mut cmd_buf, &self.barriers, shader_manager, VisibilityBufferPass::DEPTH_TEXTURE_NAME);
-    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, scene.scene, main_view, shader_manager);
+    self.geometry_draw_prep.execute(&mut cmd_buf, &self.barriers, scene.scene, main_view, shader_manager, assets);
     self.visibility_buffer.execute(&mut cmd_buf, &self.barriers, scene.vertex_buffer, scene.index_buffer, shader_manager);
     self.motion_vector_pass.execute(&mut cmd_buf, &self.barriers, shader_manager);
     self.clustering_pass.execute(&mut cmd_buf, resolution, main_view, &camera_buffer, &mut self.barriers, shader_manager);

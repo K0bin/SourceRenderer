@@ -5,7 +5,7 @@ use sourcerenderer_core::{graphics::{Backend, SwapchainError}, Platform};
 
 use crate::input::Input;
 
-use super::{LateLatching, drawable::View, renderer_assets::RendererTexture, renderer_scene::RendererScene, shader_manager::ShaderManager};
+use super::{LateLatching, drawable::View, renderer_assets::{RendererTexture, RendererAssets}, renderer_scene::RendererScene, shader_manager::ShaderManager};
 
 pub struct SceneInfo<'a, B: Backend> {
   pub scene: &'a RendererScene<B>,
@@ -13,7 +13,7 @@ pub struct SceneInfo<'a, B: Backend> {
   pub active_view_index: usize,
   pub vertex_buffer: &'a Arc<B::Buffer>,
   pub index_buffer: &'a Arc<B::Buffer>,
-  pub lightmap: Option<&'a Arc<RendererTexture<B>>>,
+  pub lightmap: Option<&'a RendererTexture<B>>,
 }
 
 pub struct ZeroTextures<'a, B: Backend> {
@@ -36,6 +36,7 @@ pub(super) trait RenderPath<P: Platform> {
     late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
     input: &Input,
     frame_info: &FrameInfo,
-    shader_manager: &ShaderManager<P>
+    shader_manager: &ShaderManager<P>,
+    assets: &RendererAssets<P>
   ) -> Result<(), SwapchainError>;
 }

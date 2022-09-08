@@ -4,7 +4,7 @@ use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2UI, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage, MemoryUsage, BufferInfo}, Vec2, Vec3};
 
-use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::blue_noise::BlueNoise, shader_manager::ShaderManager}};
+use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::blue_noise::BlueNoise, shader_manager::ShaderManager, renderer_assets::RendererAssets}};
 
 use super::{clustering::ClusteringPass, geometry::GeometryPass, light_binning::LightBinningPass, prepass::Prepass, sharpen::SharpenPass, ssao::SsaoPass, taa::TAAPass, occlusion::OcclusionPass, acceleration_structure_update::AccelerationStructureUpdatePass, rt_shadows::RTShadowPass};
 
@@ -20,12 +20,12 @@ pub struct ConservativeRenderer<P: Platform> {
   sharpen: SharpenPass,
   ssao: SsaoPass<P>,
   occlusion: OcclusionPass<P>,
-  rt_passes: Option<RTPasses<P::GraphicsBackend>>,
+  rt_passes: Option<RTPasses<P>>,
   blue_noise: BlueNoise<P::GraphicsBackend>
 }
 
-pub struct RTPasses<B: Backend> {
-  acceleration_structure_update: AccelerationStructureUpdatePass<B>,
+pub struct RTPasses<P: Platform> {
+  acceleration_structure_update: AccelerationStructureUpdatePass<P>,
   shadows: RTShadowPass
 }
 
@@ -58,7 +58,7 @@ impl<P: Platform> ConservativeRenderer<P> {
     let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, false);
     let occlusion = OcclusionPass::<P>::new(device, shader_manager);
     let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
-      acceleration_structure_update: AccelerationStructureUpdatePass::<P::GraphicsBackend>::new(device, &mut init_cmd_buffer),
+      acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(device, &mut init_cmd_buffer),
       shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager)
     });
     init_cmd_buffer.flush_barriers();
@@ -180,7 +180,8 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
     input: &Input,
     frame_info: &FrameInfo,
-    shader_manager: &ShaderManager<P>
+    shader_manager: &ShaderManager<P>,
+    assets: &RendererAssets<P>
   ) -> Result<(), SwapchainError> {
     let graphics_queue = self.device.graphics_queue();
     let mut cmd_buf = graphics_queue.create_command_buffer();
@@ -188,7 +189,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     let late_latching_buffer = late_latching.unwrap().buffer();
     let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
     if let Some(rt_passes) = self.rt_passes.as_mut() {
-      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene);
+      rt_passes.acceleration_structure_update.execute(&mut cmd_buf, scene.scene, assets);
     }
 
     let primary_view = &scene.views[scene.active_view_index];
@@ -213,15 +214,15 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     );
     setup_frame::<P::GraphicsBackend>(&mut cmd_buf, &frame_bindings);
 
-    self.occlusion.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, frame_info.frame, &late_latching_buffer, scene, Prepass::DEPTH_TEXTURE_NAME);
+    self.occlusion.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, frame_info.frame, &late_latching_buffer, scene, Prepass::DEPTH_TEXTURE_NAME, assets);
     self.clustering_pass.execute::<P>(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), primary_view, &late_latching_buffer, &mut self.barriers, shader_manager);
     self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &late_latching_buffer, &mut self.barriers, shader_manager);
-    self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers, shader_manager);
+    self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers, shader_manager, assets);
     self.ssao.execute(&mut cmd_buf, &self.barriers, Prepass::DEPTH_TEXTURE_NAME, Some(Prepass::MOTION_TEXTURE_NAME), &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), shader_manager, false);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, shader_manager, Prepass::DEPTH_TEXTURE_NAME, rt_passes.acceleration_structure_update.acceleration_structure(), &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
     }
-    self.geometry.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, Prepass::DEPTH_TEXTURE_NAME, scene, &frame_bindings, zero_textures, scene.lightmap.unwrap());
+    self.geometry.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, Prepass::DEPTH_TEXTURE_NAME, scene, &frame_bindings, zero_textures, scene.lightmap.unwrap(), assets);
     self.taa.execute(&mut cmd_buf, &self.barriers, shader_manager, GeometryPass::<P>::GEOMETRY_PASS_TEXTURE_NAME, Prepass::DEPTH_TEXTURE_NAME, Some(Prepass::MOTION_TEXTURE_NAME), false);
     self.sharpen.execute(&mut cmd_buf, &self.barriers, shader_manager);
 
