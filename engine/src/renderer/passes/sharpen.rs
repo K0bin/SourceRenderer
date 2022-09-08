@@ -16,7 +16,7 @@ impl SharpenPass {
   pub const SHAPENED_TEXTURE_NAME: &'static str = "Sharpened";
 
   pub fn new<P: Platform>(resolution: Vec2UI, resources: &mut RendererResources<P::GraphicsBackend>, shader_manager: &mut ShaderManager<P>) -> Self {
-    let pipeline = shader_manager.request_compute_pipeline(if !USE_CAS { "shaders/sharpen.comp.spv" } else { "cas.comp.spv" });
+    let pipeline = shader_manager.request_compute_pipeline(if !USE_CAS { "shaders/sharpen.comp.spv" } else { "shaders/cas.comp.spv" });
 
     resources.create_texture(Self::SHAPENED_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
