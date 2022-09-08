@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage, TextureDimension}, atomic_refcell::AtomicRefCell};
+use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage, TextureDimension}};
 use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureViewInfo, BufferUsage };
@@ -221,12 +221,6 @@ enum DelayedAssetType<B: Backend> {
 
 trait IndexHandle {
   fn new(index: u64) -> Self;
-}
-pub trait NullHandle : Sized {
-  fn null() -> Self;
-}
-impl<T : IndexHandle> NullHandle for T {
-  fn null() -> Self { Self::new(0u64) }
 }
 
 struct HandleMap<THandle, TValue>
