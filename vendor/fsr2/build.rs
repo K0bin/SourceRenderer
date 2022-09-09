@@ -34,6 +34,7 @@ fn main() {
     build
         .include("FidelityFX-FSR2/src/ffx-fsr2-api/")
         .flag("-DFFX_GCC")
+        .flag("-Wno-unknown-pragmas")
     	.file("FidelityFX-FSR2/src/ffx-fsr2-api/ffx_assert.cpp")
         .file("FidelityFX-FSR2/src/ffx-fsr2-api/ffx_fsr2.cpp");
 

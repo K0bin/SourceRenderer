@@ -43,6 +43,7 @@ fn main() {
             .flag("-Wno-unused-variable")
             .flag("-Wno-unused-parameter")
             .flag("-Wno-unused-private-field")
+            .flag("-Wno-nullability-completeness")
             .flag("-Wno-reorder")
             .cpp_link_stdlib("c++")
             .cpp(true);
