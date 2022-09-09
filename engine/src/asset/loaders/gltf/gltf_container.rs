@@ -15,9 +15,15 @@ pub struct GltfContainer<P: Platform> {
 }
 
 impl<P: Platform> GltfContainer<P> {
-  pub fn load(path: &str) -> IOResult<Self> {
+  pub fn load(path: &str, external: bool) -> IOResult<Self> {
 
-    let mut file = BufReader::new(P::IO::open_external_asset(path)?);
+    let mut file = BufReader::new(
+      if external {
+        P::IO::open_external_asset(path)?
+      } else {
+        P::IO::open_asset(path)?
+      }
+    );
     let header = glb::GlbHeader::read(&mut file)?;
 
     let json_chunk_header = glb::GlbChunkHeader::read(&mut file)?;

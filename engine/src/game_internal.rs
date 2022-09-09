@@ -38,20 +38,19 @@ impl GameInternal {
 
     let mut level = World::new(legion::WorldOptions::default());
 
-
-    #[cfg(target_os = "android")]
-    let asset_path = "";
-    #[cfg(target_os = "linux")]
-    let asset_path = "../../assets/";
-    #[cfg(target_os = "windows")]
-    let asset_path = "..\\..\\assets\\";
-    #[cfg(target_arch = "wasm32")]
-    let asset_path = "assets/";
-
     //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
-    asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro_sun.glb").unwrap()));
-    asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/SourceRenderer/assets/Sponza2/Sponza.glb").unwrap()));
+
+    #[cfg(target_os = "android")]
+    asset_manager.add_container(Box::new(GltfContainer::<P>::load("assets/bistro_sun.glb", false).unwrap()));
+
+    #[cfg(target_os = "linux")]
+    asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro_sun.glb", true).unwrap()));
+
+    #[cfg(target_os = "windows")]
+    asset_manager.add_container(Box::new(GltfContainer::<P>::load("C:\\Users\\robin\\Projekte\\bistro\\bistro_sun.glb", true).unwrap()));
+
+    //asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/SourceRenderer/assets/Sponza2/Sponza.glb", true).unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
     asset_manager.add_loader(Box::new(ImageLoader::new()));
     asset_manager.add_loader(Box::new(ShaderLoader::new()));

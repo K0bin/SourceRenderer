@@ -56,11 +56,11 @@ impl Platform for AndroidPlatform {
 
 pub struct AndroidFileWatcher {}
 impl FileWatcher for AndroidFileWatcher {
-  fn watch<P: AsRef<std::path::Path>>(&mut self, path: P) {
+  fn watch<P: AsRef<std::path::Path>>(&mut self, _path: P) {
     // It's probably possible to implement this, but not super useful.
   }
 
-  fn unwatch<P: AsRef<std::path::Path>>(&mut self, path: P) {
+  fn unwatch<P: AsRef<std::path::Path>>(&mut self, _path: P) {
     // It's probably possible to implement this, but not super useful.
   }
 }

@@ -18,3 +18,6 @@ Cargo.lock
 **.spv
 !/graphics/vulkan/meta_shaders/*.spv
 **.code-workspace
+
+assets/
+graphics/wgpu/

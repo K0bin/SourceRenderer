@@ -18,6 +18,7 @@ use jni::signature::JavaType;
 use ndk_sys::AAssetManager_fromJava;
 use jni::signature::Primitive;
 use std::mem::MaybeUninit;
+use crossbeam_channel::Sender;
 
 use crate::android_platform::AndroidFileWatcher;
 
@@ -97,7 +98,7 @@ impl IO for AndroidIO {
     Self::open_external_asset(path).is_ok()
   }
 
-  fn new_file_watcher(sender: Sender<String>) -> Self::FileWatcher {
+  fn new_file_watcher(_sender: Sender<String>) -> Self::FileWatcher {
     AndroidFileWatcher {}
   }
 }

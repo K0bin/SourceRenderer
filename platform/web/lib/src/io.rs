@@ -2,7 +2,7 @@ use std::io::{Read, Seek, SeekFrom, Result as IOResult, Error as IOError, ErrorK
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::path::Path;
 
-use sourcerenderer_core::platform::IO;
+use sourcerenderer_core::platform::{IO, FileWatcher};
 
 use wasm_bindgen::JsCast;
 use web_sys::DedicatedWorkerGlobalScope;
@@ -24,6 +24,7 @@ pub struct WebIO {}
 
 impl IO for WebIO {
   type File = WebFile;
+  type FileWatcher = NopWatcher;
 
   fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
     crate::console_log!("Opening asset: {:?}", path.as_ref().to_str().unwrap());
@@ -40,7 +41,7 @@ impl IO for WebIO {
     })
   }
 
-  fn asset_exists<P: AsRef<Path>>(path: P) -> bool {
+  fn asset_exists<P: AsRef<Path>>(_path: P) -> bool {
     false
   }
 
@@ -48,9 +49,20 @@ impl IO for WebIO {
     Self::open_asset(path)
   }
 
-  fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
+  fn external_asset_exists<P: AsRef<Path>>(_path: P) -> bool {
     false
   }
+
+  fn new_file_watcher(_sender: crossbeam_channel::Sender<String>) -> Self::FileWatcher {
+    NopWatcher {}
+  }
+}
+
+pub struct NopWatcher {}
+impl FileWatcher for NopWatcher {
+  fn watch<P: AsRef<Path>>(&mut self, path: P) {}
+
+  fn unwatch<P: AsRef<Path>>(&mut self, path: P) {}
 }
 
 pub struct WebFile {
