@@ -119,7 +119,17 @@ impl<B: Backend> Fsr2Pass<B> {
       TextureLayout::Sampled,
       false,
       HistoryResourceEntry::Current
-    );
+    ).clone();
+    let color_sampling_view = resources.get_sampling_view(
+      input_name,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    ).clone();
+    let color_storage_view = resources.get_storage_view(
+      input_name,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    ).clone();
 
     let depth_texture = resources.access_texture(
       cmd_buffer,
@@ -130,7 +140,12 @@ impl<B: Backend> Fsr2Pass<B> {
       TextureLayout::Sampled,
       false,
       HistoryResourceEntry::Current
-    );
+    ).clone();
+    let depth_sampling_view = resources.get_sampling_view(
+      depth_name,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    ).clone();
 
     let output_texture = resources.access_texture(
       cmd_buffer,
@@ -141,7 +156,17 @@ impl<B: Backend> Fsr2Pass<B> {
       TextureLayout::Storage,
       true,
       HistoryResourceEntry::Current
-    );
+    ).clone();
+    let output_sampling_view = resources.get_sampling_view(
+      Self::UPSCALED_TEXTURE_NAME,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    ).clone();
+    let output_storage_view = resources.get_storage_view(
+      Self::UPSCALED_TEXTURE_NAME,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    ).clone();
 
     let motion_texture = resources.access_texture(
       cmd_buffer,
@@ -152,7 +177,17 @@ impl<B: Backend> Fsr2Pass<B> {
       TextureLayout::Sampled,
       false,
       HistoryResourceEntry::Current
-    );
+    ).clone();
+    let motion_sampling_view = resources.get_sampling_view(
+      motion_name,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    ).clone();
+    let motion_storage_view = resources.get_storage_view(
+      motion_name,
+      &TextureViewInfo::default(),
+      HistoryResourceEntry::Current
+    ).clone();
 
     let aspect_ratio = (output_texture.info().width as f32) / (output_texture.info().height as f32);
     let v_fov = 2f32 * ((view.camera_fov * 0.5f32).tan() * aspect_ratio).atan();
@@ -162,13 +197,13 @@ impl<B: Backend> Fsr2Pass<B> {
     unsafe {
       let desc = FfxFsr2DispatchDescription {
         commandList: command_buffer_into_ffx::<B>(cmd_buffer),
-        color: texture_into_ffx::<B>(&color_texture, false),
-        depth: texture_into_ffx::<B>(&depth_texture, false),
+        color: texture_into_ffx::<B>(&color_texture, false, &color_sampling_view, Some(&color_storage_view)),
+        depth: texture_into_ffx::<B>(&depth_texture, false, &depth_sampling_view, None),
         exposure: NULL_RESOURCE,
-        motionVectors: texture_into_ffx::<B>(&motion_texture, false),
+        motionVectors: texture_into_ffx::<B>(&motion_texture, false, &motion_sampling_view, Some(&motion_storage_view)),
         reactive: NULL_RESOURCE,
         transparencyAndComposition: NULL_RESOURCE,
-        output: texture_into_ffx::<B>(&output_texture, true),
+        output: texture_into_ffx::<B>(&output_texture, true, &output_sampling_view, Some(&output_storage_view)),
         renderSize: FfxDimensions2D {
           width: color_texture.info().width,
           height: color_texture.info().height,
@@ -241,14 +276,24 @@ unsafe fn command_buffer_into_ffx<B: Backend>(command_buffer: &mut B::CommandBuf
   (command_buffer as *mut B::CommandBuffer) as FfxCommandList
 }
 
-unsafe fn texture_into_ffx<B: Backend>(texture: &Arc<B::Texture>, is_uav: bool) -> FfxResource {
+struct Fsr2TextureViews<B: Backend> {
+  sampling_view: Arc<B::TextureSamplingView>,
+  storage_view: Option<Arc<B::TextureStorageView>>,
+}
+
+unsafe fn texture_into_ffx<B: Backend>(texture: &Arc<B::Texture>, is_uav: bool, sampling_view: &Arc<B::TextureSamplingView>, mip0_storage_view: Option<&Arc<B::TextureStorageView>>) -> FfxResource {
   let texture_ptr = Arc::into_raw(texture.clone());
   let info = texture.info();
+  let views = Box::new(Fsr2TextureViews::<B> {
+    sampling_view: sampling_view.clone(),
+    storage_view: mip0_storage_view.cloned()
+  });
+  let views_ptr = Box::into_raw(views);
   FfxResource {
     resource: texture_ptr as *mut c_void,
     state: if !is_uav { FfxResourceStates_FFX_RESOURCE_STATE_COMPUTE_READ } else { FfxResourceStates_FFX_RESOURCE_STATE_UNORDERED_ACCESS },
     isDepth: info.format.is_depth(),
-    descriptorData: 0,
+    descriptorData: views_ptr as *mut c_void as u64,
     description: FfxResourceDescription {
       type_: match info.dimension {
         TextureDimension::Dim1D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE1D,
@@ -526,21 +571,27 @@ unsafe extern "C" fn register_resource<B: Backend>(
   let type_ = resource_desc.type_;
   if type_ != FfxResourceType_FFX_RESOURCE_TYPE_BUFFER {
     let texture = Arc::<B::Texture>::from_raw((*in_resource).resource as *mut B::Texture);
+    let ptr: *mut Fsr2TextureViews<B> = std::mem::transmute((*in_resource).descriptorData);
+    let views_box = Box::from_raw(ptr);
+    let views = *views_box;
 
-    let sampling_view = context.device.create_sampling_view(&texture, &TextureViewInfo::default(), None);
-    let storage_view = context.device.create_storage_view(&texture, &TextureViewInfo::default(), None);
     let mut storage_views = SmallVec::<[Arc<B::TextureStorageView>; 8]>::new();
     let mut states = SmallVec::<[TextureSubresourceState; 8]>::new();
-    storage_views.push(storage_view);
+    let Fsr2TextureViews {
+      sampling_view, storage_view
+    } = views;
+
+    if let Some(storage_view) = storage_view {
+      storage_views.push(storage_view);
+    }
     states.push(TextureSubresourceState {
       layout,
       access,
       sync
     });
-    // TODO: only create views once and pass them via descriptorData
 
     context.resources.insert(resource_id, Resource::Texture {
-      texture, sampling_view, storage_views, states
+      texture, sampling_view: sampling_view, storage_views, states
     });
   } else {
     unimplemented!("FSR2 never registers buffers")

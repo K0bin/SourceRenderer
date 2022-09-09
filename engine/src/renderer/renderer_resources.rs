@@ -272,7 +272,10 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(access & !(BarrierAccess::SAMPLING_READ | BarrierAccess::SHADER_READ), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
     self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
+    self.get_sampling_view(name, info, history)
+  }
 
+  pub fn get_sampling_view(&self, name: &str, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<<B as Backend>::TextureSamplingView>> {
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
@@ -312,7 +315,10 @@ impl<B: Backend> RendererResources<B> {
     debug_assert_eq!(access & !(BarrierAccess::SHADER_READ | BarrierAccess::SHADER_WRITE | BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE), BarrierAccess::empty());
     debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
     self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
+    self.get_storage_view(name, info, history)
+  }
 
+  pub fn get_storage_view(&self, name: &str, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<<B as Backend>::TextureStorageView>> {
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
