@@ -1,5 +1,7 @@
 package de.kobin.sourcerenderer
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.app.GameManager
 import android.content.Context
 import android.content.Intent
@@ -15,11 +17,24 @@ import androidx.documentfile.provider.DocumentFile
 class MainActivity : AppCompatActivity() {
     private var enginePtr: Long = 0
 
-    private var csgoDirUri: Uri? = null
+    companion object {
+        private const val TAG = "SourceRenderer"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSustainedPerformanceMode(true)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val am =
+                applicationContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val exitList = am.getHistoricalProcessExitReasons(applicationContext.packageName, 0, 1)
+            if (exitList.isNotEmpty()) {
+                val lastExitInformation: ApplicationExitInfo = exitList.first()
+                Log.e(TAG, "Crashed: $lastExitInformation")
+            }
+        }
+
 
         setContentView(R.layout.activity_main)
 
@@ -85,6 +100,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onLowMemory() {
+        super.onLowMemory()
+        Log.w(TAG, "Warning: Low memory!")
+        // TODO: Implement
+    }
+
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (super.onTouchEvent(event)) {
             return true
@@ -97,24 +118,22 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    private fun askForCsgoDirectory() {
+    private fun pickDirectory(callback: (Uri) -> Void) {
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             uri ?: return@registerForActivityResult
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            this.csgoDirUri = uri
-
             val tree = DocumentFile.fromTreeUri(applicationContext, uri)!!
             val file = tree.listFiles().firstOrNull { it != null } ?: return@registerForActivityResult
             val filePath = file.uri.toString()
-            var csgoDir = if (file.name != null) {
+            var dir = if (file.name != null) {
                 filePath.substring(0, filePath.lastIndexOf(file.name!!))
             } else {
                 filePath
             }
-            if (csgoDir.endsWith("%2F")) {
-                csgoDir = csgoDir.substring(0, csgoDir.length - "%2F".length)
+            if (dir.endsWith("%2F")) {
+                dir = dir.substring(0, dir.length - "%2F".length)
             }
-            this.csgoDirUri = Uri.parse(csgoDir)
+            callback(dir)
         }.launch(null)
     }
 

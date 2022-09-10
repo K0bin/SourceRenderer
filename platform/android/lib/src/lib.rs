@@ -112,6 +112,7 @@ pub extern "system" fn Java_de_kobin_sourcerenderer_App_initNative(
   internal_files_path: JString
 ) {
   enable_backtrace();
+  android_log::init("SourceRenderer").unwrap();
   setup_log(libc::STDOUT_FILENO, android_LogPriority_ANDROID_LOG_INFO);
   setup_log(libc::STDERR_FILENO, android_LogPriority_ANDROID_LOG_ERROR);
   let path: String = env.get_string(internal_files_path).unwrap().into();
