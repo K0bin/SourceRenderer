@@ -198,18 +198,18 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
     let primary_view = &scene.views[scene.active_view_index];
 
-    let scene_buffer = cmd_buf.create_temporary_buffer(&BufferInfo {
+    let empty_buffer = cmd_buf.create_temporary_buffer(&BufferInfo {
       size: 16,
       usage: BufferUsage::STORAGE
     }, MemoryUsage::VRAM);
 
     let frame_bindings = self.create_frame_bindings(
       &mut cmd_buf,
-      &scene_buffer,
+      &empty_buffer,
       &late_latching_buffer,
       &late_latching_history_buffer,
-      scene.vertex_buffer,
-      scene.index_buffer,
+      &empty_buffer,
+      &empty_buffer,
       scene.scene,
       primary_view,
       &self.swapchain,
