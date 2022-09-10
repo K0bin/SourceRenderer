@@ -14,14 +14,7 @@ pub struct VkAccelerationStructure {
   device: Arc<RawVkDevice>,
   buffer: Arc<VkBufferSlice>,
   acceleration_structure: vk::AccelerationStructureKHR,
-  va: vk::DeviceAddress,
-
-  // Bottom level
-  vertex_buffer: Option<Arc<VkBufferSlice>>,
-  index_buffer: Option<Arc<VkBufferSlice>>,
-
-  // Top level
-  bottom_level_structures: Vec<Arc<VkAccelerationStructure>>,
+  va: vk::DeviceAddress
 }
 
 impl VkAccelerationStructure {
@@ -157,15 +150,11 @@ impl VkAccelerationStructure {
       ]]);
     }
 
-    let bottom_level_structures: Vec<Arc<VkAccelerationStructure>> = info.instances.iter().map(|i| i.acceleration_structure).cloned().collect();
     Self {
       buffer: target_buffer.clone(),
       device: device.clone(),
       acceleration_structure,
-      va,
-      bottom_level_structures,
-      vertex_buffer: None,
-      index_buffer: None,
+      va
     }
   }
 
@@ -324,10 +313,7 @@ impl VkAccelerationStructure {
       buffer: target_buffer.clone(),
       device: device.clone(),
       acceleration_structure,
-      bottom_level_structures: Vec::new(),
       va,
-      vertex_buffer: Some(info.vertex_buffer.clone()),
-      index_buffer: Some(info.index_buffer.clone()),
     }
   }
 
