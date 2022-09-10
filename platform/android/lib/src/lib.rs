@@ -12,7 +12,7 @@ mod io;
 
 use std::ffi::CString;
 use jni::JNIEnv;
-use jni::objects::{JClass, JObject};
+use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jlong, jint, jfloat};
 use ndk_sys::{android_LogPriority_ANDROID_LOG_INFO, android_LogPriority_ANDROID_LOG_ERROR, __android_log_print, android_LogPriority};
 use sourcerenderer_core::Vec2UI;
@@ -108,12 +108,14 @@ struct EngineWrapper {
 pub extern "system" fn Java_de_kobin_sourcerenderer_App_initNative(
   env: jni::JNIEnv,
   _class: JClass,
-  asset_manager: JObject
+  asset_manager: JObject,
+  internal_files_path: JString
 ) {
   enable_backtrace();
   setup_log(libc::STDOUT_FILENO, android_LogPriority_ANDROID_LOG_INFO);
   setup_log(libc::STDERR_FILENO, android_LogPriority_ANDROID_LOG_ERROR);
-  io::initialize_globals(env, asset_manager);
+  let path: String = env.get_string(internal_files_path).unwrap().into();
+  io::initialize_globals(env, asset_manager, &path);
   Engine::<AndroidPlatform>::initialize_global();
 
   println!("Initialized application.");

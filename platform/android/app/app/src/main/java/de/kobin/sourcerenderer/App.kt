@@ -9,8 +9,8 @@ class App : Application() {
 
         IO.applicationContext = this.applicationContext
         System.loadLibrary("sourcerenderer")
-        initNative(this.assets)
+        initNative(this.assets, this.filesDir.absolutePath)
     }
 
-    private external fun initNative(assetManager: AssetManager)
+    private external fun initNative(assetManager: AssetManager, internalPath: String)
 }

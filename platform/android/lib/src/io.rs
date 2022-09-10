@@ -7,7 +7,7 @@ use ndk_sys::{AAsset,
 use std::io::{Read, Result as IOResult, Error as IOError, ErrorKind, Seek, SeekFrom};
 use std::os::raw::{c_void, c_int};
 use libc::{SEEK_CUR, SEEK_END, SEEK_SET, O_RDONLY};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ffi::CString;
 use sourcerenderer_core::platform::IO;
 use jni::{JavaVM, JNIEnv};
@@ -26,8 +26,9 @@ static mut ASSET_MANAGER: *mut AAssetManager = std::ptr::null_mut();
 static mut JVM: MaybeUninit<JavaVM> = MaybeUninit::uninit();
 static mut IO_CLASS: MaybeUninit<GlobalRef> = MaybeUninit::uninit();
 static mut IO_OPEN_FILE_METHOD: MaybeUninit<JStaticMethodID<'static>> = MaybeUninit::uninit();
+static mut ROOT_PATH: MaybeUninit<String> = MaybeUninit::uninit();
 
-pub fn initialize_globals(env: JNIEnv, asset_manager: JObject) {
+pub fn initialize_globals(env: JNIEnv, asset_manager: JObject, root_path: &str) {
   let asset_manager = unsafe { AAssetManager_fromJava(std::mem::transmute(env), *asset_manager) };
   unsafe {
     ASSET_MANAGER = asset_manager;
@@ -36,22 +37,33 @@ pub fn initialize_globals(env: JNIEnv, asset_manager: JObject) {
     let global_ref = env.new_global_ref(io_class).unwrap();
     IO_OPEN_FILE_METHOD = MaybeUninit::new(std::mem::transmute(env.get_static_method_id(&global_ref, "openFile", "(Ljava/lang/String;)I").unwrap()));
     IO_CLASS = MaybeUninit::new(global_ref);
+    ROOT_PATH = MaybeUninit::new(root_path.to_string());
     // retrieving those on a native thread doesn't work so the NDK docs recommend keeping a global reference
   }
 }
 
 pub struct AndroidIO {}
 
+const USE_INTERNAL_FILES_AS_ASSETS: bool = true;
+
 impl IO for AndroidIO {
   type File = AndroidFile;
   type FileWatcher = AndroidFileWatcher;
 
   fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
-    let asset_manager = unsafe {
-      ASSET_MANAGER
-    };
+    if !USE_INTERNAL_FILES_AS_ASSETS {
+      let asset_manager = unsafe {
+        ASSET_MANAGER
+      };
 
-    AndroidFile::open_asset(asset_manager, path)
+      AndroidFile::open_asset(asset_manager, path)
+    } else {
+      let root_path = unsafe { (&*(ROOT_PATH.as_ptr())).clone() };
+      let mut actual_path = PathBuf::from(root_path);
+      actual_path.push(path);
+      let file = File::open(actual_path)?;
+      Ok(AndroidFile::File(file))
+    }
   }
 
   fn asset_exists<P: AsRef<Path>>(path: P) -> bool {
@@ -89,7 +101,7 @@ impl IO for AndroidIO {
       }
       _ => {
         let file = unsafe { File::from_raw_fd(fd) };
-        Ok(AndroidFile::Content(file))
+        Ok(AndroidFile::File(file))
       }
     }
   }
@@ -105,7 +117,7 @@ impl IO for AndroidIO {
 
 pub enum AndroidFile {
   Asset(*mut AAsset),
-  Content(File)
+  File(File),
 }
 
 unsafe impl Send for AndroidFile {}
@@ -131,7 +143,7 @@ impl Drop for AndroidFile {
       Self::Asset(asset) => {
         unsafe { AAsset_close(*asset); }
       }
-      Self::Content(_file) => {}
+      Self::File(_file) => {}
     }
   }
 }
@@ -147,7 +159,7 @@ impl Read for AndroidFile {
           Ok(result as usize)
         }
       }
-      Self::Content(file) => {
+      Self::File(file) => {
         file.read(buf)
       }
     }
@@ -181,7 +193,7 @@ impl Seek for AndroidFile {
           Ok(offset as u64)
         }
       }
-      Self::Content(file) => {
+      Self::File(file) => {
         file.seek(pos)
       }
     }
