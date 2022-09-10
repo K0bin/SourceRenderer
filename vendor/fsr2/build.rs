@@ -17,7 +17,15 @@ fn main() {
     build.cpp(true);
 
     let compiler = build.try_get_compiler();
-    let is_clang = compiler.is_ok() && compiler.unwrap().is_like_clang();
+    let is_clang: bool;
+    let is_msvc: bool;
+    if let Ok(compiler) = compiler {
+        is_clang = compiler.is_like_clang();
+        is_msvc = compiler.is_like_msvc();
+    } else {
+        is_clang = false;
+        is_msvc = false;
+    }
 
     if is_apple && (is_clang || is_ios) {
         build.flag("-std=c++17").cpp_set_stdlib("c++");
@@ -34,9 +42,12 @@ fn main() {
     build
         .include("FidelityFX-FSR2/src/ffx-fsr2-api/")
         .flag("-DFFX_GCC")
-        .flag("-Wno-unknown-pragmas")
     	.file("FidelityFX-FSR2/src/ffx-fsr2-api/ffx_assert.cpp")
         .file("FidelityFX-FSR2/src/ffx-fsr2-api/ffx_fsr2.cpp");
+
+    if !is_msvc {
+        build.flag("-Wno-unknown-pragmas");
+    }
 
     build.compile("fsr2");
 

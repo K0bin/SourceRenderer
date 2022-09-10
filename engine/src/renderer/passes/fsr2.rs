@@ -70,7 +70,7 @@ impl<B: Backend> Fsr2Pass<B> {
 
     let fsr_device: *mut B::Device = unsafe { std::mem::transmute(device.as_ref()) };
     let context_desc = FfxFsr2ContextDescription {
-      flags: FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_AUTO_EXPOSURE | FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE,
+      flags: (FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_AUTO_EXPOSURE | FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE) as u32,
       maxRenderSize: FfxDimensions2D {
         width: swapchain.width(),
         height: swapchain.height()
@@ -307,7 +307,7 @@ unsafe fn texture_into_ffx<B: Backend>(texture: &Arc<B::Texture>, is_uav: bool, 
       mipCount: info.mip_levels,
       flags: 0
     },
-    name: [0u32; 64]
+    name: [0; 64]
   }
 }
 
@@ -325,7 +325,7 @@ const NULL_RESOURCE: FfxResource = FfxResource {
     mipCount: 0,
     flags: 0
   },
-  name: [0u32; 64]
+  name: [0; 64]
 };
 
 struct TextureSubresourceState {
