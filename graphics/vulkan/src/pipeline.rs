@@ -76,6 +76,7 @@ impl VkShader {
       ..Default::default()
     };
     let vk_device = &device.device;
+    println!("shader");
     let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
     let mut uses_bindless_texture_set = false;
     let mut sets: HashMap<u32, Vec<VkDescriptorSetEntryInfo>> = HashMap::new();

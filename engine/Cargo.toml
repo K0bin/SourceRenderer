@@ -9,7 +9,7 @@ nalgebra = "0.31.1"
 num_cpus = "1.13.0"
 sourcerenderer_core = { path = "../core" }
 image = "0.24.3"
-crossbeam-channel = "0.5.0"
+crossbeam-channel = "0.5.6"
 crossbeam-utils = "0.8.0"
 sourcerenderer_bsp = { path = "../valve_formats/bsp" }
 sourcerenderer_vpk = { path = "../valve_formats/vpk" }
