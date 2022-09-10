@@ -42,7 +42,7 @@ impl GameInternal {
     //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));
 
     #[cfg(target_os = "android")]
-    asset_manager.add_container(Box::new(GltfContainer::<P>::load("assets/bistro_sun.glb", false).unwrap()));
+    asset_manager.add_container(Box::new(GltfContainer::<P>::load("bistro_sun.glb", false).unwrap()));
 
     #[cfg(target_os = "linux")]
     asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/bistro/bistro_sun.glb", true).unwrap()));
