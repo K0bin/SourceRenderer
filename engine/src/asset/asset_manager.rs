@@ -432,7 +432,7 @@ impl<P: Platform> AssetManager<P> {
   pub fn load_file(&self, path: &str) -> Option<AssetFile> {
     let containers = self.containers.read().unwrap();
     let mut file_opt: Option<AssetFile> = None;
-    for container in containers.iter() {
+    for container in containers.iter().rev() {
       let container_file_opt = container.load(path);
       if container_file_opt.is_some() {
         file_opt = container_file_opt;
