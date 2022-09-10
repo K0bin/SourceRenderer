@@ -133,7 +133,7 @@ class MainActivity : AppCompatActivity() {
             if (dir.endsWith("%2F")) {
                 dir = dir.substring(0, dir.length - "%2F".length)
             }
-            callback(dir)
+            callback(Uri.parse(dir))
         }.launch(null)
     }
 
