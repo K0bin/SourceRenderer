@@ -89,15 +89,19 @@ impl GltfLoader {
 
       let vertices_count = vertices.len();
       let vertices_box = vertices.into_boxed_slice();
+      let size_old = std::mem::size_of_val(vertices_box.as_ref());
       let ptr = Box::into_raw(vertices_box);
       let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, vertices_count * std::mem::size_of::<Vertex>()) as *mut [u8] };
       let vertices_data = unsafe { Box::from_raw(data_ptr) };
+      assert_eq!(size_old, std::mem::size_of_val(vertices_data.as_ref()));
 
       let indices_count = indices.len();
       let indices_box = indices.into_boxed_slice();
+      let size_old = std::mem::size_of_val(indices_box.as_ref());
       let ptr = Box::into_raw(indices_box);
       let data_ptr = unsafe { slice::from_raw_parts_mut(ptr as *mut u8, indices_count * std::mem::size_of::<u32>()) as *mut [u8] };
       let indices_data = unsafe { Box::from_raw(data_ptr) };
+      assert_eq!(size_old, std::mem::size_of_val(indices_data.as_ref()));
 
       if let Some(bounding_box) = bounding_box.as_mut() {
         // Right hand -> left hand coordinate system conversion
