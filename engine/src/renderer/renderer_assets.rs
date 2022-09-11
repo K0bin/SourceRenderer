@@ -358,8 +358,8 @@ impl<P: Platform> RendererAssets<P> {
     };
     let placeholder_material = RendererMaterial::new_pbr_color(Vec4::new(1f32, 1f32, 1f32, 1f32));
 
-    let vertex_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_BIG * 4, BufferUsage::VERTEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
-    let index_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_SMALL * 4, BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
+    let vertex_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_BIG, BufferUsage::VERTEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
+    let index_buffer = AssetBuffer::<P::GraphicsBackend>::new(device, AssetBuffer::<P::GraphicsBackend>::SIZE_SMALL, BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE);
 
     device.flush_transfers();
 
@@ -557,7 +557,7 @@ impl<P: Platform> RendererAssets<P> {
         Asset::Model(model) => { self.integrate_model(&asset.path, &model); }
         Asset::Mesh(mesh) => { self.integrate_mesh(&asset.path, mesh); }
         Asset::Texture(texture) => {
-          let do_async = asset.priority == AssetLoadPriority::Low;
+          /*let do_async = asset.priority == AssetLoadPriority::Low;
           let (view, fence) = self.upload_texture(&asset.path, texture, do_async);
           if let Some(fence) = fence {
             self.delayed_assets.push(DelayedAsset {
@@ -567,7 +567,7 @@ impl<P: Platform> RendererAssets<P> {
             });
           } else {
             self.integrate_texture(&asset.path, &view);
-          }
+          }*/
         },
         Asset::Shader(shader) => {
           shader_manager.add_shader(&asset.path, shader);
