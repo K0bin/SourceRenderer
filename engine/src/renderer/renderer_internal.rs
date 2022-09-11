@@ -150,22 +150,34 @@ impl<P: Platform> RendererInternal<P> {
   }
 
   fn receive_messages(&mut self) -> bool {
-    let message_res = self.receiver.recv_timeout(Duration::from_millis(4));
+    // TODO: merge channels to get rid of this mess.
+    let mut message_opt = if self.assets.is_empty() || self.asset_manager.has_open_renderer_assets() || !self.window_event_receiver.is_empty() || self.scene.static_drawables().is_empty() {
+      let message_res = self.receiver.try_recv();
+      if let Err(err) = &message_res {
+        if err.is_disconnected() {
+          panic!("Rendering channel closed {:?}", message_res.err());
+        }
+      }
+      message_res.ok()
+    } else {
+      let message_res = self.receiver.recv_timeout(Duration::from_millis(16));
+      if let Err(err) = &message_res {
+        if err.is_disconnected() {
+          panic!("Rendering channel closed {:?}", message_res.err());
+        }
+      }
+      message_res.ok()
+    };
 
     // recv blocks, so do the preparation after receiving the first event
     self.receive_window_events();
     self.assets.receive_assets(&self.asset_manager, &mut self.shader_manager);
 
-    if message_res.is_err() {
+    if message_opt.is_none() {
       return false;
     }
 
     let main_view = &mut self.views[0];
-
-    if let Result::Err(err) = &message_res {
-      panic!("Rendering channel closed {:?}", err);
-    }
-    let mut message_opt = message_res.ok();
 
     while message_opt.is_some() {
       let message = message_opt.take().unwrap();
@@ -243,7 +255,7 @@ impl<P: Platform> RendererInternal<P> {
       let message_res = self.receiver.try_recv();
       if let Err(err) = &message_res {
         if err.is_disconnected() {
-          panic!("Rendering channel closed");
+          panic!("Rendering channel closed {:?}", message_res.err());
         }
       }
       message_opt = message_res.ok();

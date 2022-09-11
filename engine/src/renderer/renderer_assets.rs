@@ -283,6 +283,10 @@ impl<THandle, TValue> HandleMap<THandle, TValue>
     // or add another HashMap that does THandle->Path
     self.handle_to_val.remove(&handle);
   }
+
+  pub fn len(&self) -> usize {
+    self.handle_to_val.len()
+  }
 }
 
 pub struct RendererAssets<P: Platform> {
@@ -519,6 +523,10 @@ impl<P: Platform> RendererAssets<P> {
 
   pub fn placeholder_black(&self) -> &RendererTexture<P::GraphicsBackend> {
     &self.zero_texture_black
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.models.len() == 0 && self.meshes.len() == 0 && self.materials.len() == 0 && self.textures.len() == 0
   }
 
   pub(super) fn receive_assets(&mut self, asset_manager: &AssetManager<P>, shader_manager: &mut ShaderManager<P>) {

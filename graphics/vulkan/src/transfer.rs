@@ -342,7 +342,7 @@ impl VkTransfer {
       }
     }
 
-    if did_free_buffer {
+    if did_free_buffer && false {
       unsafe {
         let mut stats = MaybeUninit::<vma_sys::VmaTotalStatistics>::uninit();
         vma_sys::vmaCalculateStatistics(self.device.allocator, stats.as_mut_ptr());

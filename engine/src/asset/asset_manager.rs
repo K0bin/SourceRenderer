@@ -494,6 +494,10 @@ impl<P: Platform> AssetManager<P> {
     }
   }
 
+  pub fn has_open_renderer_assets(&self) -> bool {
+    !self.renderer_receiver.is_empty()
+  }
+
   pub fn receive_render_asset(&self) -> Option<LoadedAsset> {
     self.renderer_receiver.try_recv().ok()
   }
