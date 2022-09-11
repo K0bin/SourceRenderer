@@ -557,7 +557,7 @@ impl<P: Platform> RendererAssets<P> {
         Asset::Model(model) => { self.integrate_model(&asset.path, &model); }
         Asset::Mesh(mesh) => { self.integrate_mesh(&asset.path, mesh); }
         Asset::Texture(texture) => {
-          /*let do_async = asset.priority == AssetLoadPriority::Low;
+          let do_async = asset.priority == AssetLoadPriority::Low;
           let (view, fence) = self.upload_texture(&asset.path, texture, do_async);
           if let Some(fence) = fence {
             self.delayed_assets.push(DelayedAsset {
@@ -567,7 +567,7 @@ impl<P: Platform> RendererAssets<P> {
             });
           } else {
             self.integrate_texture(&asset.path, &view);
-          }*/
+          }
         },
         Asset::Shader(shader) => {
           shader_manager.add_shader(&asset.path, shader);
