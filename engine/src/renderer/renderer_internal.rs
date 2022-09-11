@@ -273,6 +273,8 @@ impl<P: Platform> RendererInternal<P> {
     let delta = Instant::now().duration_since(self.last_frame);
     self.last_frame = Instant::now();
 
+    self.views[0].aspect_ratio = (self.swapchain.width() as f32) / (self.swapchain.height() as f32);
+
     self.update_visibility();
     self.reorder();
 

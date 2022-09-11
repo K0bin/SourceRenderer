@@ -221,7 +221,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     self.occlusion.execute(&mut cmd_buf, &self.barriers, shader_manager, &self.device, frame_info.frame, &late_latching_buffer, scene, Prepass::DEPTH_TEXTURE_NAME, assets);
     self.clustering_pass.execute::<P>(&mut cmd_buf, Vec2UI::new(self.swapchain.width(), self.swapchain.height()), primary_view, &late_latching_buffer, &mut self.barriers, shader_manager);
     self.light_binning_pass.execute(&mut cmd_buf, scene.scene, &late_latching_buffer, &mut self.barriers, shader_manager);
-    self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, Matrix4::identity(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers, shader_manager, assets);
+    self.prepass.execute(&mut cmd_buf, &self.device, scene.scene, primary_view, self.swapchain.transform(), frame_info.frame, &late_latching_buffer, &late_latching_history_buffer, &self.barriers, shader_manager, assets);
     self.ssao.execute(&mut cmd_buf, &self.barriers, Prepass::DEPTH_TEXTURE_NAME, Some(Prepass::MOTION_TEXTURE_NAME), &late_latching_buffer, self.blue_noise.frame(frame_info.frame), self.blue_noise.sampler(), shader_manager, false);
     if let Some(rt_passes) = self.rt_passes.as_mut() {
       rt_passes.shadows.execute(&mut cmd_buf, &self.barriers, shader_manager, Prepass::DEPTH_TEXTURE_NAME, rt_passes.acceleration_structure_update.acceleration_structure(), &self.blue_noise.frame(frame_info.frame), &self.blue_noise.sampler());
