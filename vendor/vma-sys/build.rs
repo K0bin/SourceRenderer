@@ -110,10 +110,15 @@ impl bindgen::callbacks::ParseCallbacks for FixAshTypes {
         if original_item_name.starts_with("Vk") {
             // Strip `Vk` prefix, will use `ash::vk::*` instead
             Some(original_item_name.trim_start_matches("Vk").to_string())
-        } else if original_item_name.starts_with("PFN_vk") && original_item_name.ends_with("KHR") {
-            // VMA uses a few extensions like `PFN_vkGetBufferMemoryRequirements2KHR`,
-            // ash keeps these as `PFN_vkGetBufferMemoryRequirements2`
-            Some(original_item_name.trim_end_matches("KHR").to_string())
+        } else if original_item_name.starts_with("PFN_vk") {
+            let name = if original_item_name.ends_with("KHR") {
+                // VMA uses a few extensions like `PFN_vkGetBufferMemoryRequirements2KHR`,
+                // ash keeps these as `PFN_vkGetBufferMemoryRequirements2`
+                original_item_name.trim_end_matches("KHR")
+            } else {
+                original_item_name
+            };
+            Some(format!("Option<{}>", name))
         } else {
             None
         }

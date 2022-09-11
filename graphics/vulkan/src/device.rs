@@ -68,48 +68,48 @@ impl VkDevice {
       }
 
       let routed_functions = vma_sys::VmaVulkanFunctions {
-        vkGetInstanceProcAddr: get_instance_proc_addr_stub,
-        vkGetDeviceProcAddr: get_get_device_proc_stub,
-        vkGetPhysicalDeviceProperties: instance
+        vkGetInstanceProcAddr: None,
+        vkGetDeviceProcAddr: None,
+        vkGetPhysicalDeviceProperties: Some(instance
             .fp_v1_0()
-            .get_physical_device_properties,
-        vkGetPhysicalDeviceMemoryProperties: instance
+            .get_physical_device_properties),
+        vkGetPhysicalDeviceMemoryProperties: Some(instance
             .fp_v1_0()
-            .get_physical_device_memory_properties,
-        vkAllocateMemory: device.fp_v1_0().allocate_memory,
-        vkFreeMemory: device.fp_v1_0().free_memory,
-        vkMapMemory: device.fp_v1_0().map_memory,
-        vkUnmapMemory: device.fp_v1_0().unmap_memory,
-        vkFlushMappedMemoryRanges: device.fp_v1_0().flush_mapped_memory_ranges,
-        vkInvalidateMappedMemoryRanges: device
+            .get_physical_device_memory_properties),
+        vkAllocateMemory: Some(device.fp_v1_0().allocate_memory),
+        vkFreeMemory: Some(device.fp_v1_0().free_memory),
+        vkMapMemory: Some(device.fp_v1_0().map_memory),
+        vkUnmapMemory: Some(device.fp_v1_0().unmap_memory),
+        vkFlushMappedMemoryRanges: Some(device.fp_v1_0().flush_mapped_memory_ranges),
+        vkInvalidateMappedMemoryRanges: Some(device
             .fp_v1_0()
-            .invalidate_mapped_memory_ranges,
-        vkBindBufferMemory: device.fp_v1_0().bind_buffer_memory,
-        vkBindImageMemory: device.fp_v1_0().bind_image_memory,
-        vkGetBufferMemoryRequirements: device
+            .invalidate_mapped_memory_ranges),
+        vkBindBufferMemory: Some(device.fp_v1_0().bind_buffer_memory),
+        vkBindImageMemory: Some(device.fp_v1_0().bind_image_memory),
+        vkGetBufferMemoryRequirements: Some(device
             .fp_v1_0()
-            .get_buffer_memory_requirements,
-        vkGetImageMemoryRequirements: device
+            .get_buffer_memory_requirements),
+        vkGetImageMemoryRequirements: Some(device
             .fp_v1_0()
-            .get_image_memory_requirements,
-        vkCreateBuffer: device.fp_v1_0().create_buffer,
-        vkDestroyBuffer: device.fp_v1_0().destroy_buffer,
-        vkCreateImage: device.fp_v1_0().create_image,
-        vkDestroyImage: device.fp_v1_0().destroy_image,
-        vkCmdCopyBuffer: device.fp_v1_0().cmd_copy_buffer,
-        vkGetBufferMemoryRequirements2KHR: device
+            .get_image_memory_requirements),
+        vkCreateBuffer: Some(device.fp_v1_0().create_buffer),
+        vkDestroyBuffer: Some(device.fp_v1_0().destroy_buffer),
+        vkCreateImage: Some(device.fp_v1_0().create_image),
+        vkDestroyImage: Some(device.fp_v1_0().destroy_image),
+        vkCmdCopyBuffer: Some(device.fp_v1_0().cmd_copy_buffer),
+        vkGetBufferMemoryRequirements2KHR: Some(device
             .fp_v1_1()
-            .get_buffer_memory_requirements2,
-        vkGetImageMemoryRequirements2KHR: device
+            .get_buffer_memory_requirements2),
+        vkGetImageMemoryRequirements2KHR: Some(device
             .fp_v1_1()
-            .get_image_memory_requirements2,
-        vkBindBufferMemory2KHR: device.fp_v1_1().bind_buffer_memory2,
-        vkBindImageMemory2KHR: device.fp_v1_1().bind_image_memory2,
-        vkGetPhysicalDeviceMemoryProperties2KHR: instance
+            .get_image_memory_requirements2),
+        vkBindBufferMemory2KHR: Some(device.fp_v1_1().bind_buffer_memory2),
+        vkBindImageMemory2KHR: Some(device.fp_v1_1().bind_image_memory2),
+        vkGetPhysicalDeviceMemoryProperties2KHR: Some(instance
             .fp_v1_1()
-            .get_physical_device_memory_properties2,
-        vkGetDeviceBufferMemoryRequirements: device.fp_v1_3().get_device_buffer_memory_requirements,
-        vkGetDeviceImageMemoryRequirements: device.fp_v1_3().get_device_image_memory_requirements,
+            .get_physical_device_memory_properties2),
+        vkGetDeviceBufferMemoryRequirements: None, // device.fp_v1_3().get_device_buffer_memory_requirements,
+        vkGetDeviceImageMemoryRequirements: None // device.fp_v1_3().get_device_image_memory_requirements,
       };
 
       let vma_create_info = vma_sys::VmaAllocatorCreateInfo {
