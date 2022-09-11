@@ -111,7 +111,7 @@ impl VkSwapchain {
         panic!("Rendering to the surface is not supported.");
       }
 
-      let (matrix, transform) = match capabilities.current_transform {
+      let (_matrix, _transform) = match capabilities.current_transform {
         SurfaceTransformFlagsKHR::ROTATE_90 => {
           (
             Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2),
@@ -164,6 +164,10 @@ impl VkSwapchain {
           )
         }
       };
+
+      // TODO: Rendering is broken with actual pretransform
+      let matrix = Matrix4::identity();
+      let transform = SurfaceTransformFlagsKHR::IDENTITY;
 
       let image_count = VkSwapchain::pick_image_count(&capabilities, 3);
 
