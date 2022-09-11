@@ -11,7 +11,7 @@ use self::geometry::GeometryPass;
 pub struct WebRenderer<P: Platform> {
   device: Arc<<P::GraphicsBackend as Backend>::Device>,
   swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-  geometry: GeometryPass,
+  geometry: GeometryPass<P>,
   resources: RendererResources<P::GraphicsBackend>,
 }
 
@@ -23,7 +23,7 @@ impl<P: Platform> WebRenderer<P> {
   ) -> Self {
     let mut resources = RendererResources::<P::GraphicsBackend>::new(device);
     let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
-    let geometry_pass = GeometryPass::new::<P>(swapchain, &mut init_cmd_buffer, &mut resources, shader_manager);
+    let geometry_pass = GeometryPass::<P>::new(device, swapchain, &mut init_cmd_buffer, &mut resources, shader_manager);
     let init_submission = init_cmd_buffer.finish();
     device.graphics_queue().submit(init_submission, None, &[], &[], false);
     Self {

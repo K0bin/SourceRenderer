@@ -1,23 +1,40 @@
 use std::sync::Arc;
 
+use gltf::texture::{MagFilter, MinFilter};
 use smallvec::SmallVec;
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange, TextureDimension}};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange, TextureDimension, SamplerInfo, Filter, AddressMode, Device}};
 
 use crate::{renderer::{drawable::View, renderer_assets::{RendererMaterialValue, RendererAssets, RendererMaterial}, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{GraphicsPipelineInfo, GraphicsPipelineHandle, ShaderManager}}};
 
-pub struct GeometryPass {
-  pipeline: GraphicsPipelineHandle
+pub struct GeometryPass<P: Platform> {
+  pipeline: GraphicsPipelineHandle,
+  sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
 }
 
-impl GeometryPass {
+impl<P: Platform> GeometryPass<P> {
   pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
 
-  pub(super) fn new<P: Platform>(
+  pub(super) fn new(
+    device: &Arc<<P::GraphicsBackend as Backend>::Device>,
     swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     _init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
     resources: &mut RendererResources<P::GraphicsBackend>,
     shader_manager: &mut ShaderManager<P>
   ) -> Self {
+    let sampler = device.create_sampler(&SamplerInfo {
+      mag_filter: Filter::Linear,
+      min_filter: Filter::Linear,
+      mip_filter: Filter::Linear,
+      address_mode_u: AddressMode::Repeat,
+      address_mode_v: AddressMode::Repeat,
+      address_mode_w: AddressMode::ClampToEdge,
+      mip_bias: 0.0f32,
+      max_anisotropy: 1.0f32,
+      compare_op: None,
+      min_lod: 0.0f32,
+      max_lod: None,
+    });
+
     resources.create_texture(Self::DEPTH_TEXTURE_NAME, &TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::D32,
@@ -149,11 +166,12 @@ impl GeometryPass {
 
     Self {
       pipeline,
+      sampler
     }
   }
 
 
-  pub(super) fn execute<P: Platform>(
+  pub(super) fn execute(
     &mut self,
     cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
     scene: &RendererScene<P::GraphicsBackend>,
@@ -259,7 +277,7 @@ impl GeometryPass {
         RendererMaterialValue::Texture(handle) => {
           let texture = assets.get_texture(*handle);
           let albedo_view = &texture.view;
-          cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 0, albedo_view, resources.linear_sampler());
+          cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::Frequent, 0, albedo_view, &self.sampler);
         },
         _ => unimplemented!()
       }
