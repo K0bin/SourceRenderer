@@ -100,8 +100,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onLowMemory() {
-        super.onLowMemory()
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
         Log.w(TAG, "Warning: Low memory!")
         // TODO: Implement
     }
