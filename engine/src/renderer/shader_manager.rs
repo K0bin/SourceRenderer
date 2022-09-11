@@ -636,15 +636,15 @@ impl<P: Platform> ShaderManager<P> {
 
   pub fn has_remaining_mandatory_compilations(&self) -> bool {
     let has_graphics_compiles = {
-      let mut graphics = self.graphics.lock().unwrap();
+      let graphics = self.graphics.lock().unwrap();
       graphics.remaining_compilations.iter().any(|(_, t)| !t.is_async)
     };
     let has_compute_compiles = {
-      let mut compute = self.compute.lock().unwrap();
+      let compute = self.compute.lock().unwrap();
       compute.remaining_compilations.iter().any(|(_, t)| !t.is_async)
     };
     let has_rt_compiles = {
-      let mut rt = self.rt.lock().unwrap();
+      let rt = self.rt.lock().unwrap();
       rt.remaining_compilations.iter().any(|(_, t)| !t.is_async)
     };
     has_graphics_compiles || has_compute_compiles || has_rt_compiles
@@ -671,7 +671,6 @@ impl<P: Platform> ShaderManager<P> {
     if let Some(pipeline) = pipeline_opt {
       return pipeline.pipeline.clone();
     }
-    assert!(inner.remaining_compilations.contains_key(&handle));
     let inner = self.condvar.wait_while(inner, |inner| !inner.compiled_pipelines.contains_key(&handle)).unwrap();
     inner.compiled_pipelines.get(&handle).unwrap().pipeline.clone()
   }
