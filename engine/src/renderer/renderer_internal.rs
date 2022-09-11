@@ -183,7 +183,7 @@ impl<P: Platform> RendererInternal<P> {
       let message = message_opt.take().unwrap();
       match message {
         RendererCommand::EndFrame => {
-          break;
+          return true;
         }
 
         RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => {
@@ -260,7 +260,7 @@ impl<P: Platform> RendererInternal<P> {
       }
       message_opt = message_res.ok();
     }
-    true
+    false
   }
 
   #[profiling::function]
