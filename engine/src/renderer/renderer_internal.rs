@@ -369,8 +369,6 @@ impl<P: Platform> RendererInternal<P> {
     self.frame += 1;
     renderer.dec_queued_frames_counter();
     profiling::finish_frame!();
-
-    std::thread::sleep(Duration::new(0, 16_000_000));
   }
 
   #[profiling::function]
