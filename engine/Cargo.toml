@@ -6,11 +6,11 @@ edition = "2018"
 
 [dependencies]
 nalgebra = "0.31.1"
-num_cpus = "1.13.0"
+num_cpus = "1.13.1"
 sourcerenderer_core = { path = "../core" }
 image = "0.24.3"
 crossbeam-channel = "0.5.6"
-crossbeam-utils = "0.8.0"
+crossbeam-utils = "0.8.11"
 sourcerenderer_bsp = { path = "../valve_formats/bsp" }
 sourcerenderer_vpk = { path = "../valve_formats/vpk" }
 sourcerenderer_vtf = { path = "../valve_formats/vtf" }
@@ -19,19 +19,19 @@ sourcerenderer_mdl = { path = "../valve_formats/mdl" }
 sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
 legion = { version = "0.4.0", default-features = false, features=["crossbeam-events", "codegen"] }
-regex = "1.4.2"
+regex = "1.6.0"
 bitvec = "1.0.1"
-rayon = "1.5"
-smallvec = { version = "1.8.0", features = [ "union", "const_generics", "const_new" ] }
+rayon = "1.5.3"
+smallvec = { version = "1.9.0", features = [ "union", "const_generics", "const_new" ] }
 gltf = { version = "1.0.0", features = ["KHR_lights_punctual"] }
-rand = "0.8.4"
+rand = "0.8.5"
 bitset-core = "0.1.1"
-instant = "0.1"
-log = "0.4.14"
+instant = "0.1.12"
+log = "0.4.17"
 rapier3d = { version = "0.14.0", features = [ "enhanced-determinism", "f32" ] }
 half = "2.1.0"
 nalgebra-glm = "0.17.0"
-profiling = "1.0.5"
+profiling = "1.0.6"
 field-offset = "0.3.4"
 widestring = "1.0.2"
 
