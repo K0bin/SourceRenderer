@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::graphics::{SampleCount, Format, Backend};
+use crate::{graphics::{SampleCount, Format, Backend}, Matrix4};
 
 pub trait Surface {
 
@@ -20,6 +20,7 @@ pub trait Swapchain<B: Backend> : Sized {
   fn format(&self) -> Format;
   fn surface(&self) -> &Arc<B::Surface>;
   fn prepare_back_buffer(&self, semaphore: &Arc<B::Semaphore>) -> Option<Arc<B::TextureRenderTargetView>>;
+  fn transform(&self) -> Matrix4;
   fn width(&self) -> u32;
   fn height(&self) -> u32;
 }

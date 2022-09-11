@@ -166,6 +166,10 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
     Some(self.backbuffer_view.clone())
   }
 
+  fn transform(&self) -> sourcerenderer_core::Matrix4 {
+    sourcerenderer_core::Matrix4::identity()
+  }
+
   fn width(&self) -> u32 {
     self.width
   }

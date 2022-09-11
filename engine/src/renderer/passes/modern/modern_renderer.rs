@@ -113,6 +113,7 @@ impl<P: Platform> ModernRenderer<P> {
   fn setup_frame(
     &self,
     cmd_buf: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+    swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     gpu_scene_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
     camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
     camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
@@ -151,7 +152,7 @@ impl<P: Platform> ModernRenderer<P> {
       cluster_z_scale,
       cluster_count,
       _padding: 0,
-      swapchain_transform: Matrix4::identity(), // swapchain.transform(),
+      swapchain_transform: swapchain.transform(),
       halton_point: super::taa::scaled_halton_point(rendering_resolution.x, rendering_resolution.y, (frame % 8) as u32 + 1),
       rt_size: *rendering_resolution
     }], BufferUsage::CONSTANT);
@@ -218,6 +219,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
     self.setup_frame(
       &mut cmd_buf,
+      &self.swapchain,
       &gpu_scene_buffer,
       &camera_buffer,
       &camera_history_buffer,

@@ -382,10 +382,6 @@ impl VkSwapchain {
     self.state.load()
   }
 
-  pub fn transform(&self) -> &Matrix4 {
-    &self.transform_matrix
-  }
-
   pub fn acquired_image(&self) -> u32 {
     self.acquired_image.load(Ordering::SeqCst)
   }
@@ -421,6 +417,10 @@ impl Swapchain<VkBackend> for VkSwapchain {
 
   fn surface(&self) -> &Arc<VkSurface> {
     &self.surface
+  }
+
+  fn transform(&self) -> sourcerenderer_core::Matrix4 {
+    self.transform_matrix
   }
 
   fn prepare_back_buffer(&self, semaphore: &Arc<VkSemaphore>) -> Option<Arc<VkTextureView>> {

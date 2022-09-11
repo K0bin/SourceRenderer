@@ -95,7 +95,7 @@ impl<P: Platform> ConservativeRenderer<P> {
     index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
     scene: &RendererScene<P::GraphicsBackend>,
     view: &View,
-    _swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     rendering_resolution: &Vec2UI,
     frame: u64
   ) -> FrameBindings<P::GraphicsBackend> {
@@ -122,7 +122,7 @@ impl<P: Platform> ConservativeRenderer<P> {
       cluster_z_scale,
       cluster_count,
       _padding: 0,
-      swapchain_transform: Matrix4::identity(), // swapchain.transform(),
+      swapchain_transform: swapchain.transform(),
       halton_point: super::taa::scaled_halton_point(rendering_resolution.x, rendering_resolution.y, (frame % 8) as u32 + 1),
       rt_size: *rendering_resolution
     }], BufferUsage::CONSTANT);
