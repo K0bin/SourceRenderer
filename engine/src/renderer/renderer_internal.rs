@@ -68,7 +68,8 @@ impl<P: Platform> RendererInternal<P> {
     let views = vec![view];
 
     #[cfg(target_arch = "wasm32")]
-    let path = Box::new(WebRenderer::new::<P>(device, swapchain));
+    let path = Box::new(WebRenderer::new(device, swapchain, &mut shader_manager));
+
 
     #[cfg(not(target_arch = "wasm32"))]
     let path: Box<dyn RenderPath<P>> = if cfg!(target_family = "wasm") {
@@ -148,12 +149,16 @@ impl<P: Platform> RendererInternal<P> {
     }
   }
 
-  fn receive_messages(&mut self) {
-    let message_res = self.receiver.recv();
+  fn receive_messages(&mut self) -> bool {
+    let message_res = self.receiver.recv_timeout(Duration::from_millis(4));
 
     // recv blocks, so do the preparation after receiving the first event
     self.receive_window_events();
     self.assets.receive_assets(&self.asset_manager, &mut self.shader_manager);
+
+    if message_res.is_err() {
+      return false;
+    }
 
     let main_view = &mut self.views[0];
 
@@ -235,17 +240,23 @@ impl<P: Platform> RendererInternal<P> {
         },
       }
 
-      let message_res = self.receiver.recv();
-      if message_res.is_err() {
-        panic!("Rendering channel closed");
+      let message_res = self.receiver.try_recv();
+      if let Err(err) = &message_res {
+        if err.is_disconnected() {
+          panic!("Rendering channel closed");
+        }
       }
       message_opt = message_res.ok();
     }
+    true
   }
 
   #[profiling::function]
   pub(super) fn render(&mut self, renderer: &Renderer<P>) {
-    self.receive_messages();
+    let mut done_receiving_messages = false;
+    while !done_receiving_messages {
+      done_receiving_messages = self.receive_messages();
+    }
 
     let delta = Instant::now().duration_since(self.last_frame);
     self.last_frame = Instant::now();
