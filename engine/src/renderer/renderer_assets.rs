@@ -302,7 +302,7 @@ pub struct RendererAssets<P: Platform> {
 impl<P: Platform> RendererAssets<P> {
   pub(super) fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
     let zero_data = [255u8; 16];
-    let zero_buffer = device.upload_data(&zero_data, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
+    let zero_buffer = device.upload_data(&zero_data, MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     let zero_texture = device.create_texture(&TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA8UNorm,
@@ -328,7 +328,7 @@ impl<P: Platform> RendererAssets<P> {
     };
 
     let zero_data_black = [0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8];
-    let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::CachedRAM, BufferUsage::COPY_SRC);
+    let zero_buffer_black = device.upload_data(&zero_data_black, MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
     let zero_texture_black = device.create_texture(&TextureInfo {
       dimension: TextureDimension::Dim2D,
       format: Format::RGBA8UNorm,
@@ -571,6 +571,7 @@ impl<P: Platform> RendererAssets<P> {
 
     // Make sure the work initializing the resources actually gets submitted
     self.device.flush_transfers();
+    self.device.free_completed_transfers();
   }
 
   pub fn bump_frame(&self) {

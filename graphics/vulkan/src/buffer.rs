@@ -6,7 +6,7 @@ use std::ffi::CString;
 
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
-use ash::vk::{self, BufferDeviceAddressInfo, Handle};
+use ash::vk::{self, BufferDeviceAddressInfo, Handle, SharingMode};
 
 use crate::raw::*;
 use crate::device::memory_usage_to_vma;
@@ -27,7 +27,7 @@ unsafe impl Send for VkBuffer {}
 unsafe impl Sync for VkBuffer {}
 
 impl VkBuffer {
-  pub fn new(device: &Arc<RawVkDevice>, memory_usage: MemoryUsage, info: &BufferInfo, allocator: &vma_sys::VmaAllocator, name: Option<&str>) -> Arc<Self> {
+  pub fn new(device: &Arc<RawVkDevice>, memory_usage: MemoryUsage, info: &BufferInfo, allocator: &vma_sys::VmaAllocator, pool: Option<vma_sys::VmaPool>, name: Option<&str>) -> Arc<Self> {
     let mut queue_families = SmallVec::<[u32; 2]>::new();
     let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
     if info.usage.contains(BufferUsage::COPY_SRC) {
@@ -53,7 +53,7 @@ impl VkBuffer {
       preferredFlags: vk_mem_flags.preferred,
       requiredFlags: vk_mem_flags.required,
       memoryTypeBits: 0,
-      pool: std::ptr::null_mut(),
+      pool: pool.unwrap_or(std::ptr::null_mut()),
       pUserData: std::ptr::null_mut(),
       priority: 0f32
     };
@@ -360,6 +360,7 @@ const BIG_BUFFER_SLAB_SIZE: usize = 4096;
 const BUFFER_SLAB_SIZE: usize = 1024;
 const SMALL_BUFFER_SLAB_SIZE: usize = 512;
 const TINY_BUFFER_SLAB_SIZE: usize = 256;
+const STAGING_BUFFER_POOL_SIZE: usize = 16 << 20;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 struct BufferKey {
@@ -377,8 +378,12 @@ pub struct BufferAllocator {
   device: Arc<RawVkDevice>,
   buffers: Mutex<HashMap<BufferKey, VkBufferSliceCollection>>,
   device_limits: vk::PhysicalDeviceLimits,
-  reuse_automatically: bool
+  reuse_automatically: bool,
+  transfer_pool: Option<vma_sys::VmaPool>,
 }
+
+unsafe impl Send for BufferAllocator {}
+unsafe impl Sync for BufferAllocator {}
 
 impl BufferAllocator {
   pub fn new(device: &Arc<RawVkDevice>, reuse_automatically: bool) -> Self {
@@ -391,18 +396,75 @@ impl BufferAllocator {
       device.instance.get_physical_device_properties2(device.physical_device, &mut limits2)
     }
 
+    // Pure copy buffers are expected to be very short lived, so put them into a separate pool to avoid
+    // fragmentation
+    let transfer_pool = if reuse_automatically {
+      let buffer_info = vk::BufferCreateInfo {
+        size: 1024,
+        usage: buffer_usage_to_vk(BufferUsage::COPY_SRC, false),
+        sharing_mode: SharingMode::EXCLUSIVE,
+        queue_family_index_count: 0,
+        p_queue_family_indices: std::ptr::null(),
+        ..Default::default()
+      };
+      let vk_mem_flags = memory_usage_to_vma(MemoryUsage::UncachedRAM);
+      let allocation_info = vma_sys::VmaAllocationCreateInfo {
+        flags: vma_sys::VmaAllocationCreateFlagBits_VMA_ALLOCATION_CREATE_MAPPED_BIT as u32,
+        usage: vma_sys::VmaMemoryUsage_VMA_MEMORY_USAGE_UNKNOWN,
+        preferredFlags: vk_mem_flags.preferred,
+        requiredFlags: vk_mem_flags.required,
+        memoryTypeBits: 0,
+        pool: std::ptr::null_mut(),
+        pUserData: std::ptr::null_mut(),
+        priority: 0f32
+      };
+      let mut memory_type_index: u32 = 0;
+      unsafe {
+        assert_eq!(vma_sys::vmaFindMemoryTypeIndexForBufferInfo(device.allocator, &buffer_info as *const vk::BufferCreateInfo, &allocation_info as *const vma_sys::VmaAllocationCreateInfo, &mut memory_type_index as *mut u32), vk::Result::SUCCESS);
+      }
+
+      let pool_info = vma_sys::VmaPoolCreateInfo {
+        memoryTypeIndex: memory_type_index,
+        flags: 0,
+        blockSize: STAGING_BUFFER_POOL_SIZE as vk::DeviceSize,
+        minBlockCount: 0,
+        maxBlockCount: 0,
+        priority: 0.1f32,
+        minAllocationAlignment: 0,
+        pMemoryAllocateNext: std::ptr::null_mut(),
+      };
+      unsafe {
+        let mut pool: vma_sys::VmaPool = std::ptr::null_mut();
+        let res = vma_sys::vmaCreatePool(device.allocator, &pool_info as *const vma_sys::VmaPoolCreateInfo, &mut pool as *mut vma_sys::VmaPool);
+        if res != vk::Result::SUCCESS {
+          None
+        } else {
+          Some(pool)
+        }
+      }
+    } else {
+      None
+    };
+
     BufferAllocator {
       device: device.clone(),
       buffers: Mutex::new(buffers),
       device_limits: limits2.properties.limits,
-      reuse_automatically
+      reuse_automatically,
+      transfer_pool,
     }
   }
 
   pub fn get_slice(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<VkBufferSlice> {
     if info.size > BIG_BUFFER_SLAB_SIZE && self.reuse_automatically {
+      let pool = if memory_usage == MemoryUsage::UncachedRAM && info.usage == BufferUsage::COPY_SRC {
+        self.transfer_pool
+      } else {
+        None
+      };
+
       // Don't do one-off buffers for command lists
-      let buffer = VkBuffer::new(&self.device, memory_usage, info, &self.device.allocator, name);
+      let buffer = VkBuffer::new(&self.device, memory_usage, info, &self.device.allocator, pool, name);
       return Arc::new(VkBufferSlice {
         buffer,
         offset: 0,
@@ -487,7 +549,7 @@ impl BufferAllocator {
       1
     };
 
-    let buffer = VkBuffer::new(&self.device, memory_usage, &info, &self.device.allocator, None);
+    let buffer = VkBuffer::new(&self.device, memory_usage, &info, &self.device.allocator, None, None);
     for i in 0 .. (slices - 1) {
       let slice = Arc::new(VkBufferSlice {
         buffer: buffer.clone(),
@@ -509,6 +571,16 @@ impl BufferAllocator {
     let mut buffers_types = self.buffers.lock().unwrap();
     for (_key, buffers) in buffers_types.iter_mut() {
       buffers.free_slices.append(buffers.used_slices.as_mut());
+    }
+  }
+}
+
+impl Drop for BufferAllocator {
+  fn drop(&mut self) {
+    if let Some(pool) = self.transfer_pool {
+      unsafe {
+        vma_sys::vmaDestroyPool(self.device.allocator, pool);
+      }
     }
   }
 }

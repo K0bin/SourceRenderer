@@ -1,6 +1,7 @@
 use ash::vk;
 use crate::{VkQueue, VkTexture};
 use crate::raw::{RawVkDevice, RawVkCommandPool};
+use std::mem::MaybeUninit;
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 use crate::buffer::VkBufferSlice;
@@ -321,11 +322,14 @@ impl VkTransfer {
   }
 
   pub fn try_free_used_buffers(&self) {
+    let mut did_free_buffer = false;
+
     let mut guard = self.inner.lock().unwrap();
     for cmd_buffer in &mut guard.graphics.used_cmd_buffers {
       if cmd_buffer.fence.is_signalled() {
         let new_fence = self.shared.get_fence();
         cmd_buffer.reset(&new_fence);
+        did_free_buffer = true;
       }
     }
     if let Some(transfer) = guard.transfer.as_mut() {
@@ -333,6 +337,23 @@ impl VkTransfer {
         if cmd_buffer.fence.is_signalled() {
           let new_fence = self.shared.get_fence();
           cmd_buffer.reset(&new_fence);
+          did_free_buffer = true;
+        }
+      }
+    }
+
+    if did_free_buffer {
+      unsafe {
+        let mut stats = MaybeUninit::<vma_sys::VmaTotalStatistics>::uninit();
+        vma_sys::vmaCalculateStatistics(self.device.allocator, stats.as_mut_ptr());
+        let stats = stats.assume_init();
+        println!("Freed transfer command buffers");
+        println!("Total memory usage: Allocated: {} MiB, Used: {} MiB", stats.total.statistics.blockBytes >> 20, stats.total.statistics.allocationBytes >> 20);
+        for i in 0..stats.memoryHeap.len() {
+          let heap = &stats.memoryHeap[i];
+          if heap.statistics.blockBytes != 0 {
+            println!("Heap {}: Allocated: {} MiB, Used: {} Mib", i, heap.statistics.blockBytes >> 20, heap.statistics.allocationBytes >> 20);
+          }
         }
       }
     }
@@ -559,7 +580,7 @@ impl VkTransferCommandBuffer {
 
 impl Drop for VkTransferCommandBuffer {
   fn drop(&mut self) {
-    if !self.trackers.is_empty() {
+    if !self.trackers.is_empty() || self.is_used {
       self.fence.await_signal();
     }
   }
