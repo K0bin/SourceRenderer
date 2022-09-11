@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}, hash::Hash, future::ready, marker::PhantomData};
+use std::{collections::HashMap, sync::{Arc, Mutex}, hash::Hash, marker::PhantomData};
 use std::sync::Condvar;
 
 use smallvec::SmallVec;
@@ -20,6 +20,7 @@ trait PipelineCompileTask<P: Platform> : Send + Sync {
   fn can_compile(&self, loaded_shader_path: &str, shaders: &HashMap<String, Arc<<P::GraphicsBackend as Backend>::Shader>>) -> bool;
   fn collect_shaders_for_compilation(&self, shaders: &HashMap<String, Arc<<P::GraphicsBackend as Backend>::Shader>>) -> Self::TShaders;
   fn compile(&self, shaders: Self::TShaders, device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Arc<Self::TPipeline>;
+  fn is_async(&self) -> bool;
 }
 
 struct CompiledPipeline<P: Platform, T: PipelineCompileTask<P>> {
@@ -123,7 +124,8 @@ struct GraphicsCompileTask<P: Platform> {
   info: StoredGraphicsPipelineInfo,
   renderpass: StoredRenderPassInfo,
   subpass: u32,
-  _p: PhantomData<<P::GraphicsBackend as Backend>::Device>
+  is_async: bool,
+  _p: PhantomData<<P::GraphicsBackend as Backend>::Device>,
 }
 
 struct GraphicsPipeline<P: Platform> {
@@ -217,6 +219,10 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
 
     device.create_graphics_pipeline(&info, &rp, self.subpass, None)
   }
+
+  fn is_async(&self) -> bool {
+    self.is_async
+  }
 }
 
 //
@@ -230,6 +236,7 @@ struct ComputePipeline<B: Backend> {
 
 struct ComputeCompileTask<P: Platform> {
   path: String,
+  is_async: bool,
   _p: PhantomData<<P::GraphicsBackend as Backend>::Device>
 }
 
@@ -271,6 +278,10 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
   fn compile(&self, shader: Self::TShaders, device: &Arc<<<P as Platform>::GraphicsBackend as Backend>::Device>) -> Arc<Self::TPipeline> {
     device.create_compute_pipeline(&shader, None)
   }
+
+  fn is_async(&self) -> bool {
+    self.is_async
+  }
 }
 
 
@@ -295,6 +306,7 @@ struct StoredRayTracingPipelineInfo<P: Platform> {
   ray_gen_shader: String,
   closest_hit_shaders: SmallVec<[String; 4]>,
   miss_shaders: SmallVec<[String; 1]>,
+  is_async: bool,
   _p: PhantomData<<P::GraphicsBackend as Backend>::Device>
 }
 
@@ -395,6 +407,10 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
     };
     device.create_raytracing_pipeline(&info)
   }
+
+  fn is_async(&self) -> bool {
+    self.is_async
+  }
 }
 
 //
@@ -488,6 +504,7 @@ impl<P: Platform> ShaderManager<P> {
       info: stored,
       renderpass: rp,
       subpass: subpass_index,
+      is_async: false,
       _p: PhantomData
     })
   }
@@ -495,6 +512,7 @@ impl<P: Platform> ShaderManager<P> {
   pub fn request_compute_pipeline(&mut self, path: &str) -> ComputePipelineHandle {
     self.request_pipeline_internal(&self.compute, ComputeCompileTask::<P> {
       path: path.to_string(),
+      is_async: false,
       _p: PhantomData
     })
   }
@@ -504,6 +522,7 @@ impl<P: Platform> ShaderManager<P> {
       closest_hit_shaders: info.closest_hit_shaders.iter().map(|s| s.to_string()).collect(),
       miss_shaders: info.miss_shaders.iter().map(|s| s.to_string()).collect(),
       ray_gen_shader: info.ray_gen_shader.to_string(),
+      is_async: false,
       _p: PhantomData
     })
   }
@@ -613,6 +632,22 @@ impl<P: Platform> ShaderManager<P> {
     if !self.add_shader_type(&self.rt, path, &shader_bytecode) {
       panic!("Unhandled shader. {}", path);
     }
+  }
+
+  pub fn has_remaining_mandatory_compilations(&self) -> bool {
+    let has_graphics_compiles = {
+      let mut graphics = self.graphics.lock().unwrap();
+      graphics.remaining_compilations.iter().any(|(_, t)| !t.is_async)
+    };
+    let has_compute_compiles = {
+      let mut compute = self.compute.lock().unwrap();
+      compute.remaining_compilations.iter().any(|(_, t)| !t.is_async)
+    };
+    let has_rt_compiles = {
+      let mut rt = self.rt.lock().unwrap();
+      rt.remaining_compilations.iter().any(|(_, t)| !t.is_async)
+    };
+    has_graphics_compiles || has_compute_compiles || has_rt_compiles
   }
 
   fn try_get_pipeline_internal<T, THandle>(

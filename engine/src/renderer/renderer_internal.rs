@@ -151,6 +151,10 @@ impl<P: Platform> RendererInternal<P> {
 
   fn receive_messages(&mut self) -> bool {
     // TODO: merge channels to get rid of this mess.
+    while self.shader_manager.has_remaining_mandatory_compilations() {
+      self.assets.receive_assets(&self.asset_manager, &mut self.shader_manager);
+    }
+
     let mut message_opt = if self.assets.is_empty() || self.asset_manager.has_open_renderer_assets() || !self.window_event_receiver.is_empty() || self.scene.static_drawables().is_empty() {
       let message_res = self.receiver.try_recv();
       if let Err(err) = &message_res {
