@@ -9,6 +9,8 @@ use sourcerenderer_core::ThreadPoolBuilder;
 use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::platform::Window;
 
+use crate::asset::loaders::FSContainer;
+use crate::asset::loaders::ShaderLoader;
 use crate::input::Input;
 use crate::renderer::LateLatchCamera;
 use crate::renderer::LateLatching;
@@ -38,7 +40,7 @@ impl<P: Platform> Engine<P> {
   pub fn initialize_global() {}
 
   pub fn run(platform: &P) -> Self {
-    let instance = platform.create_graphics(true).expect("Failed to initialize graphics");
+    let instance = platform.create_graphics(false).expect("Failed to initialize graphics");
     let surface = platform.window().create_surface(instance.clone());
 
     let console = Arc::new(Console::new());
@@ -48,6 +50,8 @@ impl<P: Platform> Engine<P> {
     let device = Arc::new(adapters.remove(0).create_device(&surface));
     let swapchain = Arc::new(platform.window().create_swapchain(true, &device, &surface));
     let asset_manager = AssetManager::<P>::new(platform, &device);
+    asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
+    asset_manager.add_loader(Box::new(ShaderLoader::new()));
     let late_latching = Arc::new(LateLatchCamera::new(device.as_ref(), swapchain.width() as f32 / swapchain.height() as f32, std::f32::consts::FRAC_PI_2));
     let late_latching_trait_obj = late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
     let renderer = Renderer::<P>::run(platform, &instance, &device, &swapchain, &asset_manager, &input, Some(&late_latching_trait_obj), &console);

@@ -53,7 +53,6 @@ impl GameInternal {
     //asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/SourceRenderer/assets/Sponza2/Sponza.glb", true).unwrap()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
     asset_manager.add_loader(Box::new(ImageLoader::new()));
-    asset_manager.add_loader(Box::new(ShaderLoader::new()));
     let mut level = asset_manager.load_level("bistro_sun.glb/scene/Scene").unwrap();
     //let mut level = asset_manager.load_level("Sponza.glb/scene/Scene").unwrap();
     //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();

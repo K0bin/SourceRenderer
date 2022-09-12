@@ -73,8 +73,6 @@ impl<P: Platform> Game<P> {
     asset_manager.add_loader(Box::new(MDLModelLoader::new()));
     asset_manager.add_loader(Box::new(GltfLoader::new()));
 
-
-    asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
     //asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
 
     let game = Arc::new(Self {
