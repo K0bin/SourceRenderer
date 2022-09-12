@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain}};
+use sourcerenderer_core::{Platform, graphics::{Backend, CommandBuffer, Device, Queue, Swapchain, SwapchainError}};
 
 use crate::{input::Input, renderer::{LateLatching, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::RendererResources, shader_manager::ShaderManager, renderer_assets::RendererAssets}};
 
@@ -58,9 +58,12 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
     assets: &RendererAssets<P>
   ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
 
-
     let semaphore = self.device.create_semaphore();
-    let backbuffer = self.swapchain.prepare_back_buffer(&semaphore).unwrap();
+    let back_buffer_res = self.swapchain.prepare_back_buffer(&semaphore);
+    if back_buffer_res.is_none() {
+      return Err(SwapchainError::Other);
+    }
+    let backbuffer = back_buffer_res.unwrap();
 
     let queue = self.device.graphics_queue();
     let mut cmd_buffer = queue.create_command_buffer();
