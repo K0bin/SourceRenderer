@@ -14,7 +14,11 @@ impl ShaderLoader {
 
 impl<P: Platform> AssetLoader<P> for ShaderLoader {
   fn matches(&self, file: &mut AssetFile) -> bool {
-    file.path.ends_with(".spv")
+    if cfg!(target_arch = "wasm32") {
+      file.path.ends_with(".glsl")
+    } else {
+      file.path.ends_with(".spv")
+    }
   }
 
   fn load(&self, mut file: AssetFile, manager: &Arc<AssetManager<P>>, priority: AssetLoadPriority, progress: &Arc<AssetLoaderProgress>) -> Result<AssetLoaderResult, ()> {

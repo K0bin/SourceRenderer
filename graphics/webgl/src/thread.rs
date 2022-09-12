@@ -183,15 +183,7 @@ impl WebGLThreadBuffer {
     buffer_handle: BufferHandle,
     _memory_usage: MemoryUsage,
   ) -> Self {
-    let buffer_usage = info.usage;
-
-    if buffer_usage.contains(BufferUsage::INDEX) && buffer_usage != BufferUsage::INDEX {
-      if buffer_usage == BufferUsage::INDEX | BufferUsage::COPY_DST {
-        warn!("WebGL does not allow using index buffers for anything else. Buffer copies will be handled on the CPU.");
-      } else {
-        panic!("WebGL does not allow using index buffers for anything else.");
-      }
-    }
+    let buffer_usage = info.usage & (BufferUsage::INDEX | BufferUsage::COPY_DST);
 
     let mut usage = WebGlRenderingContext::STATIC_DRAW;
     if buffer_usage.intersects(BufferUsage::COPY_DST) {

@@ -159,15 +159,21 @@ impl<P: Platform> RendererInternal<P> {
       let message_res = self.receiver.try_recv();
       if let Err(err) = &message_res {
         if err.is_disconnected() {
-          panic!("Rendering channel closed {:?}", message_res.err());
+          panic!("Rendering channel closed {:?}", err);
         }
+      }
+      message_res.ok()
+    } else if cfg!(target_arch = "wasm32") {
+      let message_res = self.receiver.recv();
+      if let Err(err) = &message_res {
+        panic!("Rendering channel closed {:?}", err);
       }
       message_res.ok()
     } else {
       let message_res = self.receiver.recv_timeout(Duration::from_millis(16));
       if let Err(err) = &message_res {
         if err.is_disconnected() {
-          panic!("Rendering channel closed {:?}", message_res.err());
+          panic!("Rendering channel closed {:?}", err);
         }
       }
       message_res.ok()
@@ -259,7 +265,7 @@ impl<P: Platform> RendererInternal<P> {
       let message_res = self.receiver.try_recv();
       if let Err(err) = &message_res {
         if err.is_disconnected() {
-          panic!("Rendering channel closed {:?}", message_res.err());
+          panic!("Rendering channel closed {:?}", err);
         }
       }
       message_opt = message_res.ok();
