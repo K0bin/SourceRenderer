@@ -14,10 +14,8 @@ use smallvec::SmallVec;
 pub struct VkBuffer {
   buffer: vk::Buffer,
   allocation: vma_sys::VmaAllocation,
-  allocation_info: vma_sys::VmaAllocationInfo,
   device: Arc<RawVkDevice>,
   map_ptr: Option<*mut u8>,
-  is_coherent: bool,
   memory_usage: MemoryUsage,
   info: BufferInfo,
   va: Option<vk::DeviceSize>
@@ -48,7 +46,7 @@ impl VkBuffer {
     };
     let vk_mem_flags = memory_usage_to_vma(memory_usage);
     let allocation_create_info = vma_sys::VmaAllocationCreateInfo {
-      flags: vma_sys::VmaAllocationCreateFlagBits_VMA_ALLOCATION_CREATE_MAPPED_BIT as u32,
+      flags: if memory_usage != MemoryUsage::VRAM { vma_sys::VmaAllocationCreateFlagBits_VMA_ALLOCATION_CREATE_MAPPED_BIT as u32 } else { 0 },
       usage: vma_sys::VmaMemoryUsage_VMA_MEMORY_USAGE_UNKNOWN,
       preferredFlags: vk_mem_flags.preferred,
       requiredFlags: vk_mem_flags.required,
@@ -101,22 +99,11 @@ impl VkBuffer {
       None
     };
 
-    let is_coherent = if memory_usage != MemoryUsage::VRAM {
-      let memory_type = allocation_info.memoryType;
-      let mut memory_properties = vk::MemoryPropertyFlags::empty();
-      unsafe { vma_sys::vmaGetMemoryTypeProperties(*allocator, memory_type, &mut memory_properties) };
-      memory_properties.intersects(vk::MemoryPropertyFlags::HOST_COHERENT)
-    } else {
-      false
-    };
-
     Arc::new(VkBuffer {
       buffer,
       allocation,
-      allocation_info,
       device: device.clone(),
       map_ptr,
-      is_coherent,
       memory_usage,
       info: info.clone(),
       va
@@ -167,24 +154,19 @@ impl Buffer for VkBufferSlice {
   }
 
   unsafe fn map_unsafe(&self, invalidate: bool) -> Option<*mut u8> {
-    if invalidate && !self.buffer.is_coherent &&
-      (self.buffer.memory_usage == MemoryUsage::UncachedRAM
-        || self.buffer.memory_usage == MemoryUsage::CachedRAM
-        || self.buffer.memory_usage == MemoryUsage::MappableVRAM) {
+    if !invalidate {
       let allocator = self.buffer.device.allocator;
-      assert_eq!(vma_sys::vmaInvalidateAllocation(allocator, self.buffer.allocation, self.buffer.allocation_info.offset + self.offset as u64, self.length as u64), vk::Result::SUCCESS);
+      assert_eq!(vma_sys::vmaInvalidateAllocation(allocator, self.buffer.allocation, self.offset as u64, self.length as u64), vk::Result::SUCCESS);
     }
     self.buffer.map_ptr.map(|ptr| ptr.add(self.offset()))
   }
 
   unsafe fn unmap_unsafe(&self, flush: bool) {
-    if flush && !self.buffer.is_coherent &&
-      (self.buffer.memory_usage == MemoryUsage::UncachedRAM
-        || self.buffer.memory_usage == MemoryUsage::CachedRAM
-        || self.buffer.memory_usage == MemoryUsage::MappableVRAM) {
-      let allocator = self.buffer.device.allocator;
-      assert_eq!(vma_sys::vmaFlushAllocation(allocator, self.buffer.allocation, self.buffer.allocation_info.offset + self.offset as u64, self.length as u64), vk::Result::SUCCESS);
+    if !flush {
+      return;
     }
+    let allocator = self.buffer.device.allocator;
+    assert_eq!(vma_sys::vmaFlushAllocation(allocator, self.buffer.allocation, self.offset as u64, self.length as u64), vk::Result::SUCCESS);
   }
 
   fn length(&self) -> usize {
