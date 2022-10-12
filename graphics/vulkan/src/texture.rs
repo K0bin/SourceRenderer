@@ -104,9 +104,8 @@ impl VkTexture {
     };
     let mut image: vk::Image = vk::Image::null();
     let mut allocation: vma_sys::VmaAllocation = std::ptr::null_mut();
-    let mut allocation_info_uninit: MaybeUninit<vma_sys::VmaAllocationInfo> = MaybeUninit::uninit();
     unsafe {
-      assert_eq!(vma_sys::vmaCreateImage(device.allocator, &create_info, &allocation_create_info, &mut image, &mut allocation, allocation_info_uninit.as_mut_ptr()), vk::Result::SUCCESS);
+      assert_eq!(vma_sys::vmaCreateImage(device.allocator, &create_info, &allocation_create_info, &mut image, &mut allocation, std::ptr::null_mut()), vk::Result::SUCCESS);
     };
 
     if let Some(name) = name {
