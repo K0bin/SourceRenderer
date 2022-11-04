@@ -288,6 +288,8 @@ impl<P: Platform> RendererInternal<P> {
     self.update_visibility();
     self.reorder();
 
+    self.device.begin_frame();
+
     let render_result = {
       let frame_info = FrameInfo {
         frame: self.frame,

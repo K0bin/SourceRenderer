@@ -323,7 +323,7 @@ impl Device<VkBackend> for VkDevice {
   }
 
   fn supports_ray_tracing(&self) -> bool {
-    self.device.features.contains(VkFeatures::RAY_TRACING)
+    false // self.device.features.contains(VkFeatures::RAY_TRACING)
   }
 
   fn supports_indirect(&self) -> bool {
@@ -355,6 +355,10 @@ impl Device<VkBackend> for VkDevice {
 
   fn supports_barycentrics(&self) -> bool {
     self.device.features.contains(VkFeatures::BARYCENTRICS)
+  }
+
+  fn begin_frame(&self) {
+    self.context.begin_frame();
   }
 }
 

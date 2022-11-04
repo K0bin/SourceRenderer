@@ -59,4 +59,6 @@ pub trait Device<B: Backend> {
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<B>) -> Arc<B::RayTracingPipeline>;
+
+  fn begin_frame(&self);
 }
