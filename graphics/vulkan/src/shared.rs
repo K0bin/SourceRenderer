@@ -1,6 +1,6 @@
 use ash::vk::Handle;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Texture, ShaderType};
+use sourcerenderer_core::graphics::{Texture, ShaderType, TextureView};
 use sourcerenderer_core::pool::{Pool, Recyclable};
 use crate::bindless::{VkBindlessDescriptorSet, BINDLESS_TEXTURE_SET_INDEX};
 use crate::texture::VkTextureView;
@@ -163,15 +163,15 @@ impl VkShared {
     renderpass
   }
 
-  pub(crate) fn get_framebuffer(&self, render_pass: &Arc<VkRenderPass>, attachments: &[&Arc<VkTextureView>]) -> Arc<VkFrameBuffer> {
-    let key: SmallVec<[u64; 8]> = attachments.iter().map(|a| a.view_handle().as_raw()).collect();
+  pub(crate) fn get_framebuffer(&self, render_pass: &Arc<VkRenderPass>, attachments: &[&VkTextureView]) -> Arc<VkFrameBuffer> {
+    let key: SmallVec<[u64; 8]> = attachments.iter().map(|a| a.cookie()).collect();
     {
       let cache = self.frame_buffers.read().unwrap();
       if let Some(framebuffer) = cache.get(&key) {
         return framebuffer.clone();
       }
     }
-    let (width, height) = attachments.iter().fold((0, 0), |old, a| (a.texture().info().width.max(old.0), a.texture().info().height.max(old.1)));
+    let (width, height) = attachments.iter().fold((0, 0), |old, a| (a.texture_info().width.max(old.0), a.texture_info().height.max(old.1)));
     let frame_buffer = Arc::new(VkFrameBuffer::new(&self.device, width, height, render_pass, attachments));
     let mut cache = self.frame_buffers.write().unwrap();
     cache.insert(key, frame_buffer.clone());

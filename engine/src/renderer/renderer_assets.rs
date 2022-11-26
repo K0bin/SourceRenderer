@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage, TextureDimension}};
-use crate::{asset::{Asset, AssetManager, Material, Mesh, Model, Texture, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
+use sourcerenderer_core::{Vec4, graphics::{Backend, Device, Fence, TextureUsage, TextureDimension, Texture}};
+use crate::{asset::{self, Asset, AssetManager, Material, Mesh, Model, AssetLoadPriority, MeshRange, MaterialValue}, math::BoundingBox};
 use sourcerenderer_core::Platform;
 use sourcerenderer_core::graphics::{ TextureInfo, MemoryUsage, SampleCount, Format, TextureViewInfo, BufferUsage };
 
@@ -32,7 +32,7 @@ impl IndexHandle for ModelHandle {
 }
 
 pub struct RendererTexture<B: Backend> {
-  pub(super) view: Arc<B::TextureSamplingView>,
+  pub(super) texture: B::Texture,
   pub(super) bindless_index: Option<u32>
 }
 
@@ -216,7 +216,7 @@ struct DelayedAsset<B: Backend> {
   asset: DelayedAssetType<B>
 }
 enum DelayedAssetType<B: Backend> {
-  TextureView(Arc<B::TextureSamplingView>)
+  Texture(B::Texture)
 }
 
 trait IndexHandle {
@@ -320,14 +320,13 @@ impl<P: Platform> RendererAssets<P> {
       supports_srgb: false,
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0, 0);
-    let zero_view = device.create_sampling_view(&zero_texture, &TextureViewInfo::default(), Some("AssetManagerZeroTextureView"));
     let zero_index = if device.supports_bindless() {
-      Some(device.insert_texture_into_bindless_heap(&zero_view))
+      Some(device.insert_texture_into_bindless_heap(zero_texture.primary_view()))
     } else {
       None
     };
     let zero_rtexture = RendererTexture {
-      view: zero_view,
+      texture: zero_texture,
       bindless_index: zero_index
     };
 
@@ -346,14 +345,13 @@ impl<P: Platform> RendererAssets<P> {
       supports_srgb: false,
     }, Some("AssetManagerZeroTextureBlack"));
     device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0, 0);
-    let zero_view_black = device.create_sampling_view(&zero_texture_black, &TextureViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
     let zero_black_index = if device.supports_bindless() {
-      Some(device.insert_texture_into_bindless_heap(&zero_view_black))
+      Some(device.insert_texture_into_bindless_heap(zero_texture.primary_view()))
     } else {
       None
     };
     let zero_rtexture_black = RendererTexture {
-      view: zero_view_black,
+      texture: zero_texture,
       bindless_index: zero_black_index
     };
     let placeholder_material = RendererMaterial::new_pbr_color(Vec4::new(1f32, 1f32, 1f32, 1f32));
@@ -378,7 +376,7 @@ impl<P: Platform> RendererAssets<P> {
     }
   }
 
-  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>) -> TextureHandle {
+  pub fn integrate_texture(&mut self, texture_path: &str, texture: <P::GraphicsBackend as Backend>::Texture) -> TextureHandle {
     let bindless_index = if self.device.supports_bindless() {
       if texture == &self.zero_texture.view {
         self.zero_texture.bindless_index
@@ -391,7 +389,7 @@ impl<P: Platform> RendererAssets<P> {
       None
     };
     let renderer_texture = RendererTexture {
-      view: texture.clone(),
+      texture: texture,
       bindless_index
     };
     self.textures.insert(&texture_path, renderer_texture)
@@ -421,7 +419,7 @@ impl<P: Platform> RendererAssets<P> {
     self.meshes.insert(mesh_path, mesh)
   }
 
-  pub fn upload_texture(&mut self, texture_path: &str, texture: Texture, do_async: bool) -> (Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
+  pub fn upload_texture(&mut self, texture_path: &str, texture: asset::Texture, do_async: bool) -> (<P::GraphicsBackend as Backend>::TextureView, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
     let gpu_texture = self.device.create_texture(&texture.info, Some(texture_path));
     let subresources = texture.info.array_length * texture.info.mip_levels;
     let mut fence = Option::<Arc<<P::GraphicsBackend as Backend>::Fence>>::None;
@@ -543,8 +541,8 @@ impl<P: Platform> RendererAssets<P> {
 
     for delayed_asset in ready_delayed_assets.drain(..) {
       match &delayed_asset.asset {
-        DelayedAssetType::TextureView(view) => {
-          self.integrate_texture(&delayed_asset.path, view);
+        DelayedAssetType::Texture(texture) => {
+          self.integrate_texture(&delayed_asset.path, texture);
         }
       }
     }
@@ -563,7 +561,7 @@ impl<P: Platform> RendererAssets<P> {
             self.delayed_assets.push(DelayedAsset {
               fence,
               path: asset.path.to_string(),
-              asset: DelayedAssetType::TextureView(view)
+              asset: DelayedAssetType::Texture(texture)
             });
           } else {
             self.integrate_texture(&asset.path, &view);

@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 use std::sync::Arc;
 use std::ops::Deref;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 
 use ash::vk;
@@ -42,6 +42,7 @@ pub struct RawVkDevice {
   pub timeline_semaphores: ash::extensions::khr::TimelineSemaphore,
   pub synchronization2: ash::extensions::khr::Synchronization2,
   pub properties: vk::PhysicalDeviceProperties,
+  next_cookie: AtomicU64,
 }
 
 unsafe impl Send for RawVkDevice {}
@@ -123,6 +124,7 @@ impl RawVkDevice {
       timeline_semaphores,
       synchronization2,
       properties: properties.properties,
+      next_cookie: AtomicU64::new(1),
     }
   }
 
@@ -143,6 +145,10 @@ impl RawVkDevice {
     let _compute_queue_lock = self.compute_queue();
     let _transfer_queue_lock = self.transfer_queue();
     unsafe { self.device.device_wait_idle().unwrap(); }
+  }
+
+  pub fn get_cookie(&self) -> u64 {
+    self.next_cookie.fetch_add(1, Ordering::Relaxed)
   }
 }
 

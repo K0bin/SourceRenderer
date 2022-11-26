@@ -1,17 +1,21 @@
+use std::collections::HashMap;
 use std::ffi::c_void;
+use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::RwLock;
+use std::sync::RwLockReadGuard;
 use std::sync::Weak;
 
 use ash::vk;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::TextureDepthStencilView;
+use sourcerenderer_core::graphics::TextureView;
 use sourcerenderer_core::graphics::TextureDimension;
-use sourcerenderer_core::graphics::TextureRenderTargetView;
 use sourcerenderer_core::graphics::TextureUsage;
-use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureSamplingView, TextureViewInfo, TextureStorageView};
+use sourcerenderer_core::graphics::TextureViewMap;
+use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureViewInfo};
 
 use crate::bindless::VkBindlessDescriptorSet;
 use crate::raw::VkFeatures;
@@ -29,7 +33,9 @@ pub struct VkTexture {
   allocation: Option<vma_sys::VmaAllocation>,
   device: Arc<RawVkDevice>,
   info: TextureInfo,
-  bindless_slot: Mutex<Option<VkTextureBindlessSlot>>
+  primary_view: VkTextureView,
+  view_map: RwLock<HashMap<TextureViewInfo, VkTextureView>>,
+  cookie: u64
 }
 
 unsafe impl Send for VkTexture {}
@@ -121,35 +127,38 @@ impl VkTexture {
         }
       }
     }
+
+    let cookie = device.get_cookie();
+    let primary_view = VkTextureView::new(device, image, info, &TextureViewInfo::default(), cookie, name);
+
     Self {
       image,
       allocation: Some(allocation),
       device: device.clone(),
       info: info.clone(),
-      bindless_slot: Mutex::new(None)
+      primary_view,
+      view_map: RwLock::new(HashMap::new()),
+      cookie,
     }
   }
 
   pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, info: TextureInfo) -> Self {
+    let cookie = device.get_cookie();
+    let primary_view = VkTextureView::new(device, image, &info, &TextureViewInfo::default(), cookie, None);
+
     VkTexture {
       image,
       device: device.clone(),
       info,
       allocation: None,
-      bindless_slot: Mutex::new(None)
+      primary_view,
+      view_map: RwLock::new(HashMap::new()),
+      cookie,
     }
   }
 
   pub fn handle(&self) -> &vk::Image {
     &self.image
-  }
-
-  pub(crate) fn set_bindless_slot(&self, bindless_set: &Arc<VkBindlessDescriptorSet>, slot: u32) {
-    let mut lock = self.bindless_slot.lock().unwrap();
-    *lock = Some(VkTextureBindlessSlot {
-      bindless_set: Arc::downgrade(bindless_set),
-      slot,
-    });
   }
 }
 
@@ -191,14 +200,6 @@ fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
 
 impl Drop for VkTexture {
   fn drop(&mut self) {
-    let mut bindless_slot = self.bindless_slot.lock().unwrap();
-    if let Some(bindless_slot) = bindless_slot.take() {
-      let set = bindless_slot.bindless_set.upgrade();
-      if let Some(set) = set {
-        set.free_slot(bindless_slot.slot);
-      }
-    }
-
     if let Some(alloc) = self.allocation {
       unsafe {
         vma_sys::vmaDestroyImage(self.device.allocator, self.image, alloc);
@@ -207,9 +208,35 @@ impl Drop for VkTexture {
   }
 }
 
-impl Texture for VkTexture {
+impl Texture<VkBackend> for VkTexture {
+  type View = VkTextureView;
+  type ViewMap<'a> = VkTextureViewMapRef<'a>;
+
   fn info(&self) -> &TextureInfo {
     &self.info
+  }
+
+  fn primary_view(&self) -> &Self::View {
+    &self.primary_view
+  }
+
+  fn views<'a>(&'a self) -> Self::ViewMap<'a> {
+    VkTextureViewMapRef {
+      guard: self.view_map.read().unwrap()
+    }
+  }
+
+  fn cookie(&self) -> u64 {
+    self.cookie
+  }
+
+  fn create_view(&self, info: &TextureViewInfo, name: Option<&str>) {
+    let mut guard = self.view_map.write().unwrap();
+    if guard.contains_key(info) || info == self.primary_view.info() {
+      return;
+    }
+
+    guard.insert(info.clone(), VkTextureView::new(&self.device, self.image, &self.info, info, self.cookie, name));
   }
 }
 
@@ -226,6 +253,17 @@ impl PartialEq for VkTexture {
 }
 
 impl Eq for VkTexture {}
+
+pub struct VkTextureViewMapRef<'a> {
+  guard: RwLockReadGuard<'a, HashMap<TextureViewInfo, VkTextureView>>
+}
+
+impl<'a> TextureViewMap<'a, VkBackend> for VkTextureViewMapRef<'a> {
+  fn view(&'a self, info: &TextureViewInfo) -> &'a VkTextureView {
+    self.guard.get(info).expect("View has not been created.")
+  }
+}
+
 
 fn filter_to_vk(filter: Filter) -> vk::Filter {
   match filter {
@@ -262,17 +300,20 @@ fn address_mode_to_vk(address_mode: AddressMode) -> vk::SamplerAddressMode {
 
 pub struct VkTextureView {
   view: vk::ImageView,
-  texture: Arc<VkTexture>,
   device: Arc<RawVkDevice>,
   info: TextureViewInfo,
+  parent_info: TextureInfo,
+  parent_cookie: u64,
+  cookie: u64,
+  bindless_slot: Mutex<Option<VkTextureBindlessSlot>>,
 }
 
 impl VkTextureView {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Self {
-    let format = info.format.unwrap_or(texture.info.format);
+  pub(crate) fn new(device: &Arc<RawVkDevice>, image: vk::Image, texture_info: &TextureInfo, info: &TextureViewInfo, parent_cookie: u64, name: Option<&str>) -> Self {
+    let format = info.format.unwrap_or(texture_info.format);
     let view_create_info = vk::ImageViewCreateInfo {
-      image: *texture.handle(),
-      view_type: match texture.info.dimension {
+      image: image,
+      view_type: match texture_info.dimension {
         TextureDimension::Dim1D => vk::ImageViewType::TYPE_1D,
         TextureDimension::Dim2D => vk::ImageViewType::TYPE_2D,
         TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
@@ -317,9 +358,12 @@ impl VkTextureView {
 
     Self {
       view,
-      texture: texture.clone(),
       device: device.clone(),
       info: info.clone(),
+      parent_info: texture_info.clone(),
+      cookie: device.get_cookie(),
+      parent_cookie,
+      bindless_slot: Mutex::new(Option::None)
     }
   }
 
@@ -328,69 +372,55 @@ impl VkTextureView {
     &self.view
   }
 
-  pub(crate) fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
+  pub(crate) fn set_bindless_slot(&self, bindless_set: &Arc<VkBindlessDescriptorSet>, slot: u32) {
+    let mut lock = self.bindless_slot.lock().unwrap();
+    *lock = Some(VkTextureBindlessSlot {
+      bindless_set: Arc::downgrade(bindless_set),
+      slot,
+    });
   }
 }
 
 impl Drop for VkTextureView {
   fn drop(&mut self) {
+    let mut bindless_slot = self.bindless_slot.lock().unwrap();
+    if let Some(bindless_slot) = bindless_slot.take() {
+      let set = bindless_slot.bindless_set.upgrade();
+      if let Some(set) = set {
+        set.free_slot(bindless_slot.slot);
+      }
+    }
+
     unsafe {
       self.device.destroy_image_view(self.view, None);
     }
   }
 }
 
-impl TextureSamplingView<VkBackend> for VkTextureView {
-  fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
-  }
-
+impl TextureView for VkTextureView {
   fn info(&self) -> &TextureViewInfo {
     &self.info
   }
-}
 
-impl TextureStorageView<VkBackend> for VkTextureView {
-  fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
+  fn cookie(&self) -> u64 {
+    self.cookie
   }
 
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl TextureRenderTargetView<VkBackend> for VkTextureView {
-  fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl TextureDepthStencilView<VkBackend> for VkTextureView {
-  fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
+  fn texture_info(&self) -> &TextureInfo {
+    &self.parent_info
   }
 }
 
 impl Hash for VkTextureView {
   fn hash<H: Hasher>(&self, state: &mut H) {
-    self.texture.hash(state);
+    self.parent_cookie.hash(state);
     self.view.hash(state);
   }
 }
 
 impl PartialEq for VkTextureView {
   fn eq(&self, other: &Self) -> bool {
-    self.texture == other.texture
+    self.parent_cookie == other.parent_cookie
     && self.view == other.view
   }
 }

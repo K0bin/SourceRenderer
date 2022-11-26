@@ -283,16 +283,13 @@ pub struct VkFrameBuffer {
   width: u32,
   height: u32,
   render_pass: Arc<VkRenderPass>,
-  attachments: SmallVec<[Arc<VkTextureView>; 8]>
 }
 
 impl VkFrameBuffer {
-  pub(crate) fn new(device: &Arc<RawVkDevice>, width: u32, height: u32, render_pass: &Arc<VkRenderPass>, attachments: &[&Arc<VkTextureView>]) -> Self {
+  pub(crate) fn new(device: &Arc<RawVkDevice>, width: u32, height: u32, render_pass: &Arc<VkRenderPass>, attachments: &[&VkTextureView]) -> Self {
     let mut vk_attachments = SmallVec::<[vk::ImageView; 8]>::new();
-    let mut attachment_refs = SmallVec::<[Arc<VkTextureView>; 8]>::new();
     for attachment in attachments {
       vk_attachments.push(*attachment.view_handle());
-      attachment_refs.push((*attachment).clone());
     }
 
     Self {
@@ -309,7 +306,6 @@ impl VkFrameBuffer {
       }, None).unwrap() },
       width,
       height,
-      attachments: attachment_refs,
       render_pass: render_pass.clone()
     }
   }

@@ -1,5 +1,4 @@
 use crate::graphics::{Format, SampleCount, CompareFunc, Backend};
-use std::sync::Arc;
 
 bitflags! {
   pub struct TextureUsage: u32 {
@@ -59,8 +58,19 @@ pub struct TextureInfo {
   pub supports_srgb: bool
 }
 
-pub trait Texture {
+pub trait Texture<B: Backend> {
+  type ViewMap<'a>: TextureViewMap<'a, B> where Self: 'a;
+  type View : TextureView;
+
   fn info(&self) -> &TextureInfo;
+  fn cookie(&self) -> u64;
+  fn create_view(&self, info: &TextureViewInfo, name: Option<&str>);
+  fn primary_view(&self) -> &Self::View;
+  fn views<'a>(&'a self) -> Self::ViewMap<'a>;
+}
+
+pub trait TextureViewMap<'a, B: Backend> {
+  fn view(&'a self, info: &TextureViewInfo) -> &'a B::TextureView;
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -115,23 +125,8 @@ pub struct SamplerInfo {
   pub max_lod: Option<f32>,
 }
 
-pub trait TextureSamplingView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
+pub trait TextureView {
   fn info(&self) -> &TextureViewInfo;
+  fn texture_info(&self) -> &TextureInfo;
+  fn cookie(&self) -> u64;
 }
-
-pub trait TextureStorageView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
-  fn info(&self) -> &TextureViewInfo;
-}
-
-pub trait TextureRenderTargetView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
-  fn info(&self) -> &TextureViewInfo;
-}
-
-pub trait TextureDepthStencilView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
-  fn info(&self) -> &TextureViewInfo;
-}
-

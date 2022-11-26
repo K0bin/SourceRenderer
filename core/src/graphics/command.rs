@@ -67,24 +67,24 @@ pub trait CommandBuffer<B: Backend> {
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
   fn draw_indexed_indirect(&mut self, draw_buffer: &Arc<B::Buffer>, draw_buffer_offset: u32, count_buffer: &Arc<B::Buffer>, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
   fn draw_indirect(&mut self, draw_buffer: &Arc<B::Buffer>, draw_buffer_offset: u32, count_buffer: &Arc<B::Buffer>, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
-  fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>);
-  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>, sampler: &Arc<B::Sampler>);
-  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<B::TextureSamplingView>, &Arc<B::Sampler>)]);
-  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<B::TextureStorageView>]);
+  fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView);
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView, sampler: &Arc<B::Sampler>);
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&B::TextureView, &Arc<B::Sampler>)]);
+  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&B::TextureView]);
   fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);
-  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureStorageView>);
+  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView);
   fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<B::Sampler>);
   fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<B::AccelerationStructure>);
-  fn track_texture_view(&mut self, texture_view: &Arc<B::TextureSamplingView>);
+  fn track_texture_view(&mut self, texture_view: &B::TextureView);
   fn finish_binding(&mut self);
   fn begin_label(&mut self, label: &str);
   fn end_label(&mut self);
   fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
-  fn blit(&mut self, src_texture: &Arc<B::Texture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<B::Texture>, dst_array_layer: u32, dst_mip_level: u32);
+  fn blit(&mut self, src_texture: &B::Texture, src_array_layer: u32, src_mip_level: u32, dst_texture: &B::Texture, dst_array_layer: u32, dst_mip_level: u32);
   fn finish(self) -> B::CommandBufferSubmission;
 
-  fn clear_storage_texture(&mut self, view: &Arc<B::Texture>, array_layer: u32, mip_level: u32, values: [u32; 4]);
+  fn clear_storage_texture(&mut self, view: &B::Texture, array_layer: u32, mip_level: u32, values: [u32; 4]);
   fn clear_storage_buffer(&mut self, buffer: &Arc<B::Buffer>, offset: usize, length_in_u32s: usize, value: u32);
 
   fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode);
@@ -118,8 +118,8 @@ pub trait Queue<B: Backend> {
 }
 
 pub enum RenderPassAttachmentView<'a, B: Backend> {
-  RenderTarget(&'a Arc<B::TextureRenderTargetView>),
-  DepthStencil(&'a Arc<B::TextureDepthStencilView>)
+  RenderTarget(&'a B::TextureView),
+  DepthStencil(&'a B::TextureView)
 }
 
 pub struct RenderPassAttachment<'a, B: Backend> {
@@ -232,7 +232,7 @@ pub enum Barrier<'a, B: Backend> {
     new_layout: TextureLayout,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    texture: &'a Arc<B::Texture>,
+    texture: &'a B::Texture,
     range: BarrierTextureRange,
   },
   BufferBarrier {

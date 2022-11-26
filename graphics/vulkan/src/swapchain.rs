@@ -31,7 +31,6 @@ pub enum VkSwapchainState {
 
 pub struct VkSwapchain {
   textures: Vec<Arc<VkTexture>>,
-  views: Vec<Arc<VkTextureView>>,
   swapchain: Mutex<vk::SwapchainKHR>,
   swapchain_loader: SwapchainLoader,
   instance: Arc<RawVkInstance>,
@@ -229,17 +228,8 @@ impl VkSwapchain {
           })))
         .collect();
 
-      let swapchain_image_views: Vec<Arc<VkTextureView>> = textures
-        .iter()
-        .enumerate()
-        .map(|(index, texture)| {
-          Arc::new(VkTextureView::new(device, texture, &TextureViewInfo::default(), Some(&format!("Backbuffer view {}", index))))
-        })
-        .collect();
-
       Ok(Arc::new(VkSwapchain {
         textures,
-        views: swapchain_image_views,
         swapchain: Mutex::new(swapchain),
         swapchain_loader,
         instance: device.instance.clone(),
@@ -325,10 +315,6 @@ impl VkSwapchain {
 
   pub fn textures(&self) -> &[Arc<VkTexture>] {
     &self.textures
-  }
-
-  pub fn views(&self) -> &[Arc<VkTextureView>] {
-    &self.views[..]
   }
 
   pub fn width(&self) -> u32 {
@@ -427,14 +413,14 @@ impl Swapchain<VkBackend> for VkSwapchain {
     self.transform_matrix
   }
 
-  fn prepare_back_buffer(&self, semaphore: &Arc<VkSemaphore>) -> Option<Arc<VkTextureView>> {
+  fn prepare_back_buffer(&self, semaphore: &Arc<VkSemaphore>) -> Option<&VkTextureView> {
     let res = self.acquire_back_buffer(semaphore);
     res
       .ok()
       .and_then(|(img_index, _optimal)| // TODO: handle optimal
         //optimal.then(||
         Some(
-          self.views.get(img_index as usize).unwrap().clone()
+          self.textures.get(img_index as usize).unwrap().primary_view().clone()
         )
       )
   }

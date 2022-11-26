@@ -32,11 +32,7 @@ pub trait Device<B: Backend> {
   fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Arc<B::Buffer>;
   fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Arc<B::Buffer> where T: 'static + Send + Sync + Sized + Clone;
   fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> Arc<B::Shader>;
-  fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<B::Texture>;
-  fn create_sampling_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureSamplingView>;
-  fn create_render_target_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureRenderTargetView>;
-  fn create_storage_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureStorageView>;
-  fn create_depth_stencil_view(&self, texture: &Arc<B::Texture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<B::TextureDepthStencilView>;
+  fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> B::Texture;
   fn create_compute_pipeline(&self, shader: &Arc<B::Shader>, name: Option<&str>) -> Arc<B::ComputePipeline>;
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<B::Sampler>;
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<B::GraphicsPipeline>;
@@ -55,7 +51,7 @@ pub trait Device<B: Backend> {
   fn supports_indirect(&self) -> bool;
   fn supports_min_max_filter(&self) -> bool;
   fn supports_barycentrics(&self) -> bool; // TODO turn into flags
-  fn insert_texture_into_bindless_heap(&self, texture: &Arc<B::TextureSamplingView>) -> u32;
+  fn insert_texture_into_bindless_heap(&self, texture: &B::TextureView) -> u32;
   fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<B>) -> Arc<B::RayTracingPipeline>;

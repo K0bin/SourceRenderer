@@ -1,4 +1,4 @@
-use crate::graphics::{Instance, TextureSamplingView, Fence};
+use crate::graphics::{Instance, Fence};
 use crate::graphics::Adapter;
 use crate::graphics::Device;
 use crate::graphics::Surface;
@@ -7,10 +7,8 @@ use crate::graphics::Shader;
 use crate::graphics::Texture;
 use crate::graphics::Buffer;
 use crate::graphics::Swapchain;
-use crate::graphics::TextureStorageView;
-use crate::graphics::TextureRenderTargetView;
+use crate::graphics::TextureView;
 use super::{Queue, AccelerationStructure, ComputePipeline};
-use super::texture::TextureDepthStencilView;
 
 use std::hash::Hash;
 
@@ -23,11 +21,8 @@ pub trait Backend: 'static + Sized {
   type Swapchain: Swapchain<Self> + Send + Sync;
   type CommandBuffer: CommandBuffer<Self>;
   type CommandBufferSubmission: Send;
-  type Texture: Texture + Send + Sync + PartialEq + Eq;
-  type TextureSamplingView: TextureSamplingView<Self> + Send + Sync + PartialEq + Eq;
-  type TextureStorageView: TextureStorageView<Self> + Send + Sync + PartialEq + Eq;
-  type TextureRenderTargetView: TextureRenderTargetView<Self> + Send + Sync + PartialEq + Eq;
-  type TextureDepthStencilView: TextureDepthStencilView<Self> + Send + Sync + PartialEq + Eq;
+  type Texture: Texture<Self> + Send + Sync + PartialEq + Eq;
+  type TextureView: TextureView + Send + Sync + PartialEq + Eq;
   type Sampler: Send + Sync;
   type Buffer: Buffer + Send + Sync;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;

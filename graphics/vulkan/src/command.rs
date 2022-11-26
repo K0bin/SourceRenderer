@@ -8,7 +8,7 @@ use ash::vk;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance, WHOLE_BUFFER};
+use sourcerenderer_core::graphics::{Barrier, BindingFrequency, Buffer, BufferInfo, BufferUsage, LoadOp, MemoryUsage, PipelineBinding, RenderPassBeginInfo, ShaderType, StoreOp, Texture, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, BottomLevelAccelerationStructureInfo, AccelerationStructureInstance, WHOLE_BUFFER, TextureView};
 use sourcerenderer_core::graphics::CommandBuffer;
 use sourcerenderer_core::graphics::CommandBufferType;
 use sourcerenderer_core::graphics::RenderpassRecordingMode;
@@ -367,16 +367,14 @@ impl VkCommandBuffer {
     }
   }
 
-  pub(crate) fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+  pub(crate) fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureView) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::SampledTexture(texture));
-    self.trackers.track_texture_view(texture);
   }
 
-  pub(crate) fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
+  pub(crate) fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureView, sampler: &Arc<VkSampler>) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::SampledTextureAndSampler(texture, sampler));
-    self.trackers.track_texture_view(texture);
     self.trackers.track_sampler(sampler);
   }
 
@@ -394,10 +392,9 @@ impl VkCommandBuffer {
     self.trackers.track_buffer(buffer);
   }
 
-  pub(crate) fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+  pub(crate) fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureView) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageTexture(texture));
-    self.trackers.track_texture_view(texture);
   }
 
   pub(crate) fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<VkSampler>) {
@@ -592,7 +589,7 @@ impl VkCommandBuffer {
   }
 
 
-  pub(crate) fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
+  pub(crate) fn blit(&mut self, src_texture: &VkTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &VkTexture, dst_array_layer: u32, dst_mip_level: u32) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(self.render_pass.is_none());
     debug_assert!(!self.has_pending_barrier());
@@ -654,9 +651,6 @@ impl VkCommandBuffer {
         }]
       }], vk::Filter::LINEAR);
     }
-
-    self.trackers.track_texture(src_texture);
-    self.trackers.track_texture(dst_texture);
   }
 
   pub(crate) fn barrier(
@@ -699,7 +693,6 @@ impl VkCommandBuffer {
             },
             ..Default::default()
           });
-          self.trackers.track_texture(texture);
         },
         Barrier::BufferBarrier { old_sync, new_sync, old_access, new_access, buffer } => {
           let dst_stages = barrier_sync_to_stage(*new_sync);
@@ -795,7 +788,7 @@ impl VkCommandBuffer {
     let mut attachment_infos = SmallVec::<[VkAttachmentInfo; 16]>::with_capacity(renderpass_begin_info.attachments.len());
     let mut width = 0u32;
     let mut height = 0u32;
-    let mut attachment_views = SmallVec::<[&Arc<VkTextureView>; 8]>::with_capacity(renderpass_begin_info.attachments.len());
+    let mut attachment_views = SmallVec::<[&VkTextureView; 8]>::with_capacity(renderpass_begin_info.attachments.len());
     let mut clear_values = SmallVec::<[vk::ClearValue; 8]>::with_capacity(renderpass_begin_info.attachments.len());
 
     for attachment in renderpass_begin_info.attachments {
@@ -804,7 +797,7 @@ impl VkCommandBuffer {
         sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(view) => *view
       };
 
-      let info = view.texture().info();
+      let info = view.texture_info();
       attachment_infos.push(VkAttachmentInfo {
         format: info.format,
         samples: info.samples,
@@ -992,25 +985,20 @@ impl VkCommandBuffer {
     self.trackers.track_acceleration_structure(acceleration_structure);
   }
 
-  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<VkTextureView>, &Arc<VkSampler>)]) {
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&VkTextureView, &Arc<VkSampler>)]) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::SampledTextureAndSamplerArray(textures_and_samplers));
-    for (texture, samplers) in textures_and_samplers {
-      self.trackers.track_texture_view(*texture);
+    for (_, samplers) in textures_and_samplers {
       self.trackers.track_sampler(*samplers);
     }
   }
 
-  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<VkTextureView>]) {
+  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&VkTextureView]) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     self.descriptor_manager.bind(frequency, binding, VkBoundResourceRef::StorageTextureArray(textures));
-    for texture in textures {
-      self.trackers.track_texture_view(*texture);
-    }
   }
 
-  fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
-    self.trackers.track_texture_view(texture_view);
+  fn track_texture_view(&mut self, texture_view: &VkTextureView) {
   }
 
   fn draw_indexed_indirect(&mut self, draw_buffer: &Arc<VkBufferSlice>, draw_buffer_offset: u32, count_buffer: &Arc<VkBufferSlice>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
@@ -1055,7 +1043,7 @@ impl VkCommandBuffer {
     }
   }
 
-  fn clear_storage_texture(&mut self, texture: &Arc<VkTexture>, array_layer: u32, mip_level: u32, values: [u32; 4]) {
+  fn clear_storage_texture(&mut self, texture: &VkTexture, array_layer: u32, mip_level: u32, values: [u32; 4]) {
     debug_assert_eq!(self.state, VkCommandBufferState::Recording);
     debug_assert!(!self.has_pending_barrier());
     debug_assert!(self.render_pass.is_none());
@@ -1271,12 +1259,12 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+  fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureView) {
     self.item.as_mut().unwrap().bind_sampling_view(frequency, binding, texture);
   }
 
   #[inline(always)]
-  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>, sampler: &Arc<VkSampler>) {
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureView, sampler: &Arc<VkSampler>) {
     self.item.as_mut().unwrap().bind_sampling_view_and_sampler(frequency, binding, texture, sampler);
   }
 
@@ -1291,7 +1279,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<VkTextureView>) {
+  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &VkTextureView) {
     self.item.as_mut().unwrap().bind_storage_texture(frequency, binding, texture);
   }
 
@@ -1321,7 +1309,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn blit(&mut self, src_texture: &Arc<VkTexture>, src_array_layer: u32, src_mip_level: u32, dst_texture: &Arc<VkTexture>, dst_array_layer: u32, dst_mip_level: u32) {
+  fn blit(&mut self, src_texture: &VkTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &VkTexture, dst_array_layer: u32, dst_mip_level: u32) {
     self.item.as_mut().unwrap().blit(src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
   }
 
@@ -1421,7 +1409,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
+  fn track_texture_view(&mut self, texture_view: &VkTextureView) {
     self.item.as_mut().unwrap().track_texture_view(texture_view);
   }
 
@@ -1436,7 +1424,7 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn clear_storage_texture(&mut self, texture: &Arc<VkTexture>, array_layer: u32, mip_level: u32, values: [u32; 4]) {
+  fn clear_storage_texture(&mut self, texture: &VkTexture, array_layer: u32, mip_level: u32, values: [u32; 4]) {
     self.item.as_mut().unwrap().clear_storage_texture(texture, array_layer, mip_level, values);
   }
 
@@ -1446,12 +1434,12 @@ impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
   }
 
   #[inline(always)]
-  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<VkTextureView>, &Arc<VkSampler>)]) {
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&VkTextureView, &Arc<VkSampler>)]) {
     self.item.as_mut().unwrap().bind_sampling_view_and_sampler_array(frequency, binding, textures_and_samplers)
   }
 
   #[inline(always)]
-  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<VkTextureView>]) {
+  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&VkTextureView]) {
     self.item.as_mut().unwrap().bind_storage_view_array(frequency, binding, textures)
   }
 }

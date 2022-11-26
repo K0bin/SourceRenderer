@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture, TextureDimension}, Vec2UI};
+use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, Texture, TextureDimension, BarrierTextureRange}, Vec2UI};
 use sourcerenderer_core::Platform;
 use std::{sync::Arc, cell::Ref};
 
@@ -80,72 +80,75 @@ impl TAAPass {
   ) {
     cmd_buf.begin_label("TAA pass");
 
-    let output_srv = resources.access_sampling_view(
+    let output_texture = resources.access_texture(
       cmd_buf,
       input_name,
+      &BarrierTextureRange::default(),
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
       false,
-      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
+    let output_srv = output_texture.primary_view();
 
-    let taa_uav = resources.access_storage_view(
+    let taa_texture = resources.access_texture(
       cmd_buf,
       Self::TAA_TEXTURE_NAME,
+      &BarrierTextureRange::default(),
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::STORAGE_WRITE,
       TextureLayout::Storage,
       true,
-      &TextureViewInfo::default(),
       HistoryResourceEntry::Current
     );
+    let taa_uav = taa_texture.primary_view();
 
-    let taa_history_srv = resources.access_sampling_view(
+    let taa_history_texture = resources.access_texture(
       cmd_buf,
       Self::TAA_TEXTURE_NAME,
+      &BarrierTextureRange::default(),
       BarrierSync::COMPUTE_SHADER,
       BarrierAccess::SAMPLING_READ,
       TextureLayout::Sampled,
       false,
-      &TextureViewInfo::default(),
       HistoryResourceEntry::Past
     );
+    let taa_history_uav = taa_history_texture.primary_view();
 
-    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>>>::None;
-    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
-    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut motion_texture = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
+    let mut id_texture = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
+    let mut barycentrics_texture = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
     if !visibility_buffer {
-      motion_srv = Some(resources.access_sampling_view(
+      motion_texture = Some(resources.access_texture(
         cmd_buf,
         motion_name.unwrap(),
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
     } else {
-      id_view = Some(resources.access_storage_view(
+      id_texture = Some(resources.access_texture(
         cmd_buf,
         super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
-      barycentrics_view = Some(resources.access_storage_view(
+      barycentrics_texture = Some(resources.access_texture(
         cmd_buf,
         super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
     }
@@ -164,14 +167,14 @@ impl TAAPass {
     let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
     cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &*output_srv, resources.linear_sampler());
-    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*taa_history_srv, resources.linear_sampler());
+    cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, taa_history_texture.primary_view, resources.linear_sampler());
     cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &*taa_uav);
     cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 3, &*depth_srv, resources.linear_sampler());
     if !visibility_buffer {
-      cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 4, &motion_srv.unwrap(), resources.nearest_sampler());
+      cmd_buf.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 4, motion_texture.unwrap().primary_view(), resources.nearest_sampler());
     } else {
-      cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &id_view.unwrap());
-      cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 5, &barycentrics_view.unwrap());
+      cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 4, id_texture.unwrap().primary_view());
+      cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 5, barycentrics_texture.unwrap().primary_view());
     }
     cmd_buf.finish_binding();
 

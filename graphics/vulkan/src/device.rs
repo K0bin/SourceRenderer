@@ -223,25 +223,8 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkShader::new(&self.device, shader_type, bytecode, name))
   }
 
-  fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Arc<VkTexture> {
-    Arc::new(VkTexture::new(&self.device, info, name))
-  }
-
-  fn create_sampling_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    Arc::new(VkTextureView::new(&self.device, texture, info, name))
-  }
-
-  fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    Arc::new(VkTextureView::new(&self.device, texture, info, name))
-  }
-
-  fn create_storage_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    Arc::new(VkTextureView::new(&self.device, texture, info, name))
-  }
-
-  fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    assert!(texture.info().format.is_depth() || texture.info().format.is_stencil());
-    Arc::new(VkTextureView::new(&self.device, texture, info, name))
+  fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> VkTexture {
+    VkTexture::new(&self.device, info, name)
   }
 
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<VkSampler> {
@@ -334,10 +317,10 @@ impl Device<VkBackend> for VkDevice {
     self.device.features.contains(VkFeatures::MIN_MAX_FILTER)
   }
 
-  fn insert_texture_into_bindless_heap(&self, texture: &Arc<VkTextureView>) -> u32 {
+  fn insert_texture_into_bindless_heap(&self, texture: &VkTextureView) -> u32 {
     let bindless_set = self.shared.bindless_texture_descriptor_set().expect("Descriptor indexing is not supported on this device.");
     let slot = bindless_set.write_texture_descriptor(texture);
-    texture.texture().set_bindless_slot(bindless_set, slot);
+    texture.set_bindless_slot(bindless_set, slot);
     slot
   }
 

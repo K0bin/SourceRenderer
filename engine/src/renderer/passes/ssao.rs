@@ -1,6 +1,6 @@
 use std::{sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER, TextureDimension}};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, WHOLE_BUFFER, TextureDimension, TextureView, BarrierTextureRange}};
 
 use rand::random;
 
@@ -97,7 +97,7 @@ impl<P: Platform> SsaoPass<P> {
     depth_name: &str,
     motion_name: Option<&str>,
     camera: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-    blue_noise_view: &Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>,
+    blue_noise_view: &<P::GraphicsBackend as GraphicsBackend>::TextureView,
     blue_noise_sampler: &Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
     shader_manager: &ShaderManager<P>,
     visibility_buffer: bool
@@ -124,39 +124,39 @@ impl<P: Platform> SsaoPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>>>::None;
-    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
-    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut motion_texture = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
+    let mut id_texture = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
+    let mut barycentrics_texture = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
     if !visibility_buffer {
-      motion_srv = Some(resources.access_sampling_view(
+      motion_texture = Some(resources.access_texture(
         cmd_buffer,
         motion_name.unwrap(),
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::SAMPLING_READ,
         TextureLayout::Sampled,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
     } else {
-      id_view = Some(resources.access_storage_view(
+      id_texture = Some(resources.access_storage_view(
         cmd_buffer,
         super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
-      barycentrics_view = Some(resources.access_storage_view(
+      barycentrics_texture = Some(resources.access_storage_view(
         cmd_buffer,
         super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
     }
@@ -215,10 +215,10 @@ impl<P: Platform> SsaoPass<P> {
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*ssao_srv, resources.linear_sampler());
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, &*blurred_srv_b, resources.linear_sampler());
     if !visibility_buffer {
-      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 3, &motion_srv.unwrap(), resources.nearest_sampler());
+      cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 3, &motion_texture.unwrap().primary_view(), resources.nearest_sampler());
     } else {
-      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &id_view.unwrap());
-      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &barycentrics_view.unwrap());
+      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &id_texture.unwrap().primary_view());
+      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &barycentrics_texture.unwrap().primary_view());
     }
     cmd_buffer.finish_binding();
     let blur_info = blurred_uav.texture().info();

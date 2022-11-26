@@ -17,8 +17,8 @@ pub struct SceneInfo<'a, B: Backend> {
 }
 
 pub struct ZeroTextures<'a, B: Backend> {
-  pub zero_texture_view: &'a Arc<B::TextureSamplingView>,
-  pub zero_texture_view_black: &'a Arc<B::TextureSamplingView>,
+  pub zero_texture: &'a B::Texture,
+  pub zero_texture_black: &'a B::Texture,
 }
 
 pub struct FrameInfo {

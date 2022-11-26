@@ -1,6 +1,6 @@
 use std::{sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}};
+use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureDimension, BarrierTextureRange}};
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
@@ -77,29 +77,29 @@ impl SsrPass {
       HistoryResourceEntry::Current
     );
 
-    let mut ids = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
-    let mut barycentrics = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut ids = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
+    let mut barycentrics = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::Texture>>>::None;
 
     if visibility_buffer {
-      ids = Some(resources.access_storage_view(
+      ids = Some(resources.access_texture(
         cmd_buffer,
         VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
 
-      barycentrics = Some(resources.access_storage_view(
+      barycentrics = Some(resources.access_texture(
         cmd_buffer,
         VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
+        &BarrierTextureRange::default(),
         BarrierSync::COMPUTE_SHADER,
         BarrierAccess::STORAGE_READ,
         TextureLayout::Storage,
         false,
-        &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
     }
@@ -112,8 +112,8 @@ impl SsrPass {
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 1, &*color_srv, resources.linear_sampler());
     cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 2, &*depth_srv, resources.linear_sampler());
     if visibility_buffer {
-      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, ids.as_ref().unwrap());
-      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, barycentrics.as_ref().unwrap());
+      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, ids.unwrap().primary_view());
+      cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, barycentrics.unwrap().primary_view());
     }
     cmd_buffer.finish_binding();
     let ssr_info = ssr_uav.texture().info();

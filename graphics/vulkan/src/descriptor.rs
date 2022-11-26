@@ -1,7 +1,7 @@
 use std::{sync::{Arc, Mutex, MutexGuard}, cell::RefCell};
 use ash::{vk, prelude::VkResult};
 use crate::{raw::{RawVkDevice, VkFeatures}, texture::VkSampler, rt::VkAccelerationStructure};
-use sourcerenderer_core::graphics::BindingFrequency;
+use sourcerenderer_core::graphics::{BindingFrequency, TextureView};
 use std::collections::HashMap;
 
 use crate::texture::VkTextureView;
@@ -352,7 +352,7 @@ impl VkDescriptorSet {
             }
             VkBoundResource::StorageTexture(texture) => {
               let texture_info = vk::DescriptorImageInfo {
-                image_view: *texture.view_handle(),
+                image_view: texture.view,
                 sampler: vk::Sampler::null(),
                 image_layout: vk::ImageLayout::GENERAL
               };
@@ -365,7 +365,7 @@ impl VkDescriptorSet {
 
               for texture in textures {
                 let texture_info = vk::DescriptorImageInfo {
-                  image_view: *texture.view_handle(),
+                  image_view: texture.view,
                   sampler: vk::Sampler::null(),
                   image_layout: vk::ImageLayout::GENERAL
                 };
@@ -405,7 +405,7 @@ impl VkDescriptorSet {
             }
             VkBoundResource::SampledTexture(texture) => {
               let texture_info = vk::DescriptorImageInfo {
-                image_view: *texture.view_handle(),
+                image_view: texture.view,
                 sampler: vk::Sampler::null(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
@@ -418,7 +418,7 @@ impl VkDescriptorSet {
 
               for texture in textures {
                 let texture_info = vk::DescriptorImageInfo {
-                  image_view: *texture.view_handle(),
+                  image_view: texture.view,
                   sampler: vk::Sampler::null(),
                   image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                 };
@@ -430,7 +430,7 @@ impl VkDescriptorSet {
             },
             VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
               let texture_info = vk::DescriptorImageInfo {
-                image_view: *texture.view_handle(),
+                image_view: texture.view,
                 sampler: *sampler.handle(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
@@ -443,7 +443,7 @@ impl VkDescriptorSet {
 
               for (texture, sampler) in textures_and_samplers {
                 let texture_info = vk::DescriptorImageInfo {
-                  image_view: *texture.view_handle(),
+                  image_view: texture.view,
                   sampler: *sampler.handle(),
                   image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                 };
@@ -547,7 +547,7 @@ impl VkDescriptorSet {
             VkBoundResource::SampledTexture(texture) => {
               let mut entry = VkDescriptorEntry::default();
               entry.image = vk::DescriptorImageInfo {
-                image_view: *texture.view_handle(),
+                image_view: texture.view,
                 sampler: vk::Sampler::null(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
@@ -559,7 +559,7 @@ impl VkDescriptorSet {
               for texture in textures {
                 let mut entry = VkDescriptorEntry::default();
                 entry.image = vk::DescriptorImageInfo {
-                  image_view: *texture.view_handle(),
+                  image_view: texture.view,
                   sampler: vk::Sampler::null(),
                   image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                 };
@@ -569,7 +569,7 @@ impl VkDescriptorSet {
             VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
               let mut entry = VkDescriptorEntry::default();
               entry.image = vk::DescriptorImageInfo {
-                image_view: *texture.view_handle(),
+                image_view: texture.view,
                 sampler: *sampler.handle(),
                 image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
               };
@@ -581,7 +581,7 @@ impl VkDescriptorSet {
               for (texture, sampler) in textures_and_samplers {
                 let mut entry = VkDescriptorEntry::default();
                 entry.image = vk::DescriptorImageInfo {
-                  image_view: *texture.view_handle(),
+                  image_view: texture.view,
                   sampler: *sampler.handle(),
                   image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                 };
@@ -591,7 +591,7 @@ impl VkDescriptorSet {
             VkBoundResource::StorageTexture(texture) => {
               let mut entry = VkDescriptorEntry::default();
               entry.image = vk::DescriptorImageInfo {
-                image_view: *texture.view_handle(),
+                image_view: texture.view,
                 sampler: vk::Sampler::null(),
                 image_layout: vk::ImageLayout::GENERAL
               };
@@ -603,7 +603,7 @@ impl VkDescriptorSet {
               for texture in textures {
                 let mut entry = VkDescriptorEntry::default();
                 entry.image = vk::DescriptorImageInfo {
-                  image_view: *texture.view_handle(),
+                  image_view: texture.view,
                   sampler: vk::Sampler::null(),
                   image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                 };
@@ -685,18 +685,24 @@ pub(crate) struct VkBufferBindingInfo {
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
+pub(crate) struct ViewAndCookie {
+  view: vk::ImageView,
+  cookie: u64
+}
+
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub(crate) enum VkBoundResource {
   None,
   UniformBuffer(VkBufferBindingInfo),
   UniformBufferArray(SmallVec<[VkBufferBindingInfo; PER_SET_BINDINGS]>),
   StorageBuffer(VkBufferBindingInfo),
   StorageBufferArray(SmallVec<[VkBufferBindingInfo; PER_SET_BINDINGS]>),
-  StorageTexture(Arc<VkTextureView>),
-  StorageTextureArray(SmallVec<[Arc<VkTextureView>; PER_SET_BINDINGS]>),
-  SampledTexture(Arc<VkTextureView>),
-  SampledTextureArray(SmallVec<[Arc<VkTextureView>; PER_SET_BINDINGS]>),
-  SampledTextureAndSampler(Arc<VkTextureView>, Arc<VkSampler>),
-  SampledTextureAndSamplerArray(SmallVec<[(Arc<VkTextureView>, Arc<VkSampler>); PER_SET_BINDINGS]>),
+  StorageTexture(ViewAndCookie),
+  StorageTextureArray(SmallVec<[ViewAndCookie; PER_SET_BINDINGS]>),
+  SampledTexture(ViewAndCookie),
+  SampledTextureArray(SmallVec<[ViewAndCookie; PER_SET_BINDINGS]>),
+  SampledTextureAndSampler(ViewAndCookie, Arc<VkSampler>),
+  SampledTextureAndSamplerArray(SmallVec<[(ViewAndCookie, Arc<VkSampler>); PER_SET_BINDINGS]>),
   Sampler(Arc<VkSampler>),
   AccelerationStructure(Arc<VkAccelerationStructure>),
 }
@@ -733,12 +739,12 @@ pub(crate) enum VkBoundResourceRef<'a> {
   UniformBufferArray(&'a [VkBufferBindingInfoRef<'a>]),
   StorageBuffer(VkBufferBindingInfoRef<'a>),
   StorageBufferArray(&'a [VkBufferBindingInfoRef<'a>]),
-  StorageTexture(&'a Arc<VkTextureView>),
-  StorageTextureArray(&'a [&'a Arc<VkTextureView>]),
-  SampledTexture(&'a Arc<VkTextureView>),
-  SampledTextureArray(&'a [&'a Arc<VkTextureView>]),
-  SampledTextureAndSampler(&'a Arc<VkTextureView>, &'a Arc<VkSampler>),
-  SampledTextureAndSamplerArray(&'a [(&'a Arc<VkTextureView>, &'a Arc<VkSampler>)]),
+  StorageTexture(&'a VkTextureView),
+  StorageTextureArray(&'a [&'a VkTextureView]),
+  SampledTexture(&'a VkTextureView),
+  SampledTextureArray(&'a [&'a VkTextureView]),
+  SampledTextureAndSampler(&'a VkTextureView, &'a Arc<VkSampler>),
+  SampledTextureAndSamplerArray(&'a [(&'a VkTextureView, &'a Arc<VkSampler>)]),
   Sampler(&'a Arc<VkSampler>),
   AccelerationStructure(&'a Arc<VkAccelerationStructure>),
 }
@@ -755,16 +761,34 @@ impl From<&VkBoundResourceRef<'_>> for VkBoundResource {
       VkBoundResourceRef::None => VkBoundResource::None,
       VkBoundResourceRef::UniformBuffer(info) => VkBoundResource::UniformBuffer(info.into()),
       VkBoundResourceRef::StorageBuffer(info) => VkBoundResource::StorageBuffer(info.into()),
-      VkBoundResourceRef::StorageTexture(view) => VkBoundResource::StorageTexture((*view).clone()),
-      VkBoundResourceRef::SampledTexture(view) => VkBoundResource::SampledTexture((*view).clone()),
-      VkBoundResourceRef::SampledTextureAndSampler(view, sampler) => VkBoundResource::SampledTextureAndSampler((*view).clone(), (*sampler).clone()),
+      VkBoundResourceRef::StorageTexture(view) => VkBoundResource::StorageTexture(ViewAndCookie {
+        view: *view.view_handle(),
+        cookie: view.cookie()
+      }),
+      VkBoundResourceRef::SampledTexture(view) => VkBoundResource::SampledTexture(ViewAndCookie {
+        view: *view.view_handle(),
+        cookie: view.cookie()
+      }),
+      VkBoundResourceRef::SampledTextureAndSampler(view, sampler) => VkBoundResource::SampledTextureAndSampler(ViewAndCookie {
+        view: *view.view_handle(),
+        cookie: view.cookie()
+      }, (*sampler).clone()),
       VkBoundResourceRef::Sampler(sampler) => VkBoundResource::Sampler((*sampler).clone()),
       VkBoundResourceRef::AccelerationStructure(accel) => VkBoundResource::AccelerationStructure((*accel).clone()),
       VkBoundResourceRef::UniformBufferArray(arr) => VkBoundResource::UniformBufferArray(arr.iter().map(|a| { let info: VkBufferBindingInfo = a.into(); info }).collect()),
       VkBoundResourceRef::StorageBufferArray(arr) => VkBoundResource::StorageBufferArray(arr.iter().map(|a| { let info: VkBufferBindingInfo = a.into(); info }).collect()),
-      VkBoundResourceRef::StorageTextureArray(arr) => VkBoundResource::StorageTextureArray(arr.iter().map(|a| (*a).clone()).collect()),
-      VkBoundResourceRef::SampledTextureArray(arr) => VkBoundResource::SampledTextureArray(arr.iter().map(|a| (*a).clone()).collect()),
-      VkBoundResourceRef::SampledTextureAndSamplerArray(arr) => VkBoundResource::SampledTextureAndSamplerArray(arr.iter().map(|(t, s)| { let tuple: (Arc<VkTextureView>, Arc<VkSampler>) = ((*t).clone(), (*s).clone()); tuple }).collect()),
+      VkBoundResourceRef::StorageTextureArray(arr) => VkBoundResource::StorageTextureArray(arr.iter().map(|a| ViewAndCookie {
+        view: *a.view_handle(),
+        cookie: a.cookie()
+      }).collect()),
+      VkBoundResourceRef::SampledTextureArray(arr) => VkBoundResource::SampledTextureArray(arr.iter().map(|a| ViewAndCookie {
+        view: *a.view_handle(),
+        cookie: a.cookie()
+      }).collect()),
+      VkBoundResourceRef::SampledTextureAndSamplerArray(arr) => VkBoundResource::SampledTextureAndSamplerArray(arr.iter().map(|(t, s)| { let tuple: (ViewAndCookie, Arc<VkSampler>) = (ViewAndCookie {
+        view: *t.view_handle(),
+        cookie: t.cookie()
+      }, (*s).clone()); tuple }).collect()),
     }
   }
 }
@@ -867,16 +891,16 @@ impl PartialEq<VkBoundResourceRef<'_>> for VkBoundResource {
       }), VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef {
         buffer: new, offset: new_offset, length: new_length
       })) => old == *new && *old_offset == *new_offset && *old_length == *new_length,
-      (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => old == *new,
-      (VkBoundResource::SampledTexture(old), VkBoundResourceRef::SampledTexture(new)) => old == *new,
-      (VkBoundResource::SampledTextureAndSampler(old_tex, old_sampler), VkBoundResourceRef::SampledTextureAndSampler(new_tex, new_sampler)) => old_tex == *new_tex && old_sampler == *new_sampler,
+      (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => old.cookie == new.cookie(),
+      (VkBoundResource::SampledTexture(old), VkBoundResourceRef::SampledTexture(new)) => old.cookie == new.cookie(),
+      (VkBoundResource::SampledTextureAndSampler(old_tex, old_sampler), VkBoundResourceRef::SampledTextureAndSampler(new_tex, new_sampler)) => old_tex.cookie == new_tex.cookie() && old_sampler == *new_sampler,
       (VkBoundResource::Sampler(old_sampler), VkBoundResourceRef::Sampler(new_sampler)) => old_sampler == *new_sampler,
       (VkBoundResource::AccelerationStructure(old), VkBoundResourceRef::AccelerationStructure(new)) => old == *new,
       (VkBoundResource::StorageBufferArray(old), VkBoundResourceRef::StorageBufferArray(new)) => &old[..] == &new[..],
       (VkBoundResource::UniformBufferArray(old), VkBoundResourceRef::UniformBufferArray(new)) => &old[..] == &new[..],
-      (VkBoundResource::SampledTextureArray(old), VkBoundResourceRef::SampledTextureArray(new)) => old.iter().zip(new.iter()).all(|(old, new)| old == *new),
-      (VkBoundResource::StorageTextureArray(old), VkBoundResourceRef::StorageTextureArray(new)) => old.iter().zip(new.iter()).all(|(old, new)| old == *new),
-      (VkBoundResource::SampledTextureAndSamplerArray(old), VkBoundResourceRef::SampledTextureAndSamplerArray(new)) => old.iter().zip(new.iter()).all(|((old_texture, old_sampler), (new_texture, new_sampler))| old_texture == *new_texture && old_sampler == *new_sampler),
+      (VkBoundResource::SampledTextureArray(old), VkBoundResourceRef::SampledTextureArray(new)) => old.iter().zip(new.iter()).all(|(old, new)| old.cookie == new.cookie()),
+      (VkBoundResource::StorageTextureArray(old), VkBoundResourceRef::StorageTextureArray(new)) => old.iter().zip(new.iter()).all(|(old, new)| old.cookie == new.cookie()),
+      (VkBoundResource::SampledTextureAndSamplerArray(old), VkBoundResourceRef::SampledTextureAndSamplerArray(new)) => old.iter().zip(new.iter()).all(|((old_texture, old_sampler), (new_texture, new_sampler))| old_texture.cookie == new_texture.cookie() && old_sampler == *new_sampler),
       _ => false
     }
   }

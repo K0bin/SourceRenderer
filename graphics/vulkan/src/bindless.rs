@@ -109,7 +109,7 @@ impl VkBindlessDescriptorSet {
     lock.descriptor_set
   }
 
-  pub fn write_texture_descriptor(&self, texture: &Arc<VkTextureView>) -> u32 {
+  pub fn write_texture_descriptor(&self, texture: &VkTextureView) -> u32 {
     assert_eq!(self.descriptor_type, vk::DescriptorType::SAMPLED_IMAGE);
 
     let mut lock = self.inner.lock().unwrap();

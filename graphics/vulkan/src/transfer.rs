@@ -32,7 +32,7 @@ unsafe impl Sync for VkTransferBarrier {}
 enum VkTransferCopy {
   BufferToImage {
     src: Arc<VkBufferSlice>,
-    dst: Arc<VkTexture>,
+    dst: vk::Image,
     region: vk::BufferImageCopy
   },
   BufferToBuffer {
@@ -137,7 +137,7 @@ impl VkTransfer {
 
     guard.graphics.copies.push(VkTransferCopy::BufferToImage {
       src: src_buffer.clone(),
-      dst: texture.clone(),
+      dst: *texture.handle(),
       region: vk::BufferImageCopy {
         buffer_offset: (src_buffer.offset() + buffer_offset) as u64,
         image_offset: vk::Offset3D {
@@ -251,7 +251,7 @@ impl VkTransfer {
 
       transfer.copies.push(VkTransferCopy::BufferToImage {
         src: src_buffer.clone(),
-        dst: texture.clone(),
+        dst: *texture.handle(),
         region: vk::BufferImageCopy {
           buffer_offset: (src_buffer.offset() + buffer_offset) as u64,
           image_offset: vk::Offset3D {
@@ -415,9 +415,8 @@ impl VkTransfer {
           src, dst, region
         } => {
           cmd_buffer.trackers.track_buffer(&src);
-          cmd_buffer.trackers.track_texture(&dst);
           unsafe {
-            self.device.cmd_copy_buffer_to_image(*cmd_buffer.handle(), *src.buffer().handle(), *dst.handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[region]);
+            self.device.cmd_copy_buffer_to_image(*cmd_buffer.handle(), *src.buffer().handle(), dst, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[region]);
           }
         }
       }

@@ -297,8 +297,8 @@ impl<P: Platform> RendererInternal<P> {
       };
 
       let zero_textures = ZeroTextures {
-        zero_texture_view: &self.assets.placeholder_texture().view,
-        zero_texture_view_black: &self.assets.placeholder_black().view,
+        zero_texture_view: &self.assets.placeholder_texture().texture.primary_view(),
+        zero_texture_view_black: &self.assets.placeholder_black().texture.primary_view(),
       };
 
       let lightmap: &RendererTexture<P::GraphicsBackend> = if let Some(lightmap_handle) = self.scene.lightmap() {
