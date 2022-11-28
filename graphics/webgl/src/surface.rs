@@ -4,7 +4,7 @@ use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Tex
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLTexture, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::WebGLRenderTargetView, thread::WebGLTextureHandleView};
+use crate::{GLThreadSender, WebGLBackend, WebGLTexture, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::WebGLTextureView, thread::WebGLTextureHandleView};
 
 pub struct WebGLSurface {
   //canvas_element: HtmlCanvasElement
@@ -69,7 +69,7 @@ pub struct WebGLSwapchain {
   surface: Arc<WebGLSurface>,
   width: u32,
   height: u32,
-  backbuffer_view: Arc<WebGLRenderTargetView>,
+  backbuffer_view: Arc<WebGLTextureView>,
   sender: GLThreadSender,
   allocator: Arc<WebGLHandleAllocator>,
 }
@@ -90,7 +90,7 @@ impl WebGLSwapchain {
       supports_srgb: false,
     }, sender));
 
-    let view = Arc::new(WebGLRenderTargetView::new(&backbuffer, &TextureViewInfo::default()));
+    let view = Arc::new(WebGLTextureView::new(&backbuffer, &TextureViewInfo::default()));
 
     Self {
       sync: Arc::new(GLThreadSync {
@@ -159,9 +159,9 @@ impl Swapchain<WebGLBackend> for WebGLSwapchain {
     &self.surface
   }
 
-  fn prepare_back_buffer(&self, _semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLRenderTargetView>> {
+  fn prepare_back_buffer(&self, _semaphore: &Arc<WebGLSemaphore>) -> Option<Arc<WebGLTextureView>> {
     let guard = self.sync.empty_mutex.lock().unwrap();
-    let _ = self.sync.condvar.wait_while(guard, |_| self.sync.processed_frame.load(Ordering::SeqCst) + 1 < self.sync.prepared_frame.load(Ordering::SeqCst)).unwrap();
+    let _new_guard = self.sync.condvar.wait_while(guard, |_| self.sync.processed_frame.load(Ordering::SeqCst) + 1 < self.sync.prepared_frame.load(Ordering::SeqCst)).unwrap();
 
     Some(self.backbuffer_view.clone())
   }

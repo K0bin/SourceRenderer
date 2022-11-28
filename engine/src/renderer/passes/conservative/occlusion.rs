@@ -3,7 +3,7 @@ use std::{sync::{Arc, atomic::{AtomicU32, Ordering}, Mutex}, collections::HashMa
 use bitset_core::BitSet;
 use rayon::{slice::ParallelSlice, iter::ParallelIterator};
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureDepthStencilView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureViewInfo, WHOLE_BUFFER}, Vec4, Platform, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
+use sourcerenderer_core::{graphics::{Backend, BufferInfo, BufferUsage, MemoryUsage, Device, Buffer, CommandBuffer, Barrier, BarrierSync, BarrierAccess, RenderPassInfo, ShaderType, VertexLayoutInfo, PrimitiveType, ShaderInputElement, InputAssemblerElement, InputRate, Format, RasterizerInfo, FillMode, CullMode, SampleCount, FrontFace, DepthStencilInfo, CompareFunc, StencilInfo, BlendInfo, LogicOp, AttachmentBlendInfo, LoadOp, AttachmentInfo, StoreOp, SubpassInfo, DepthStencilAttachmentRef, RenderPassBeginInfo, RenderPassAttachment, RenderPassAttachmentView, RenderpassRecordingMode, PipelineBinding, Scissor, Viewport, TextureView, Texture, BindingFrequency, TextureLayout, Queue, IndexFormat, TextureViewInfo, WHOLE_BUFFER}, Vec4, Platform, Vec2UI, Vec2I, Vec2, Matrix4, Vec3, atomic_refcell::AtomicRefCell};
 
 use crate::renderer::{renderer_resources::{HistoryResourceEntry, RendererResources}, shader_manager::{GraphicsPipelineInfo, ShaderManager, GraphicsPipelineHandle}, renderer_assets::RendererAssets};
 use crate::renderer::render_path::SceneInfo;
@@ -167,7 +167,7 @@ impl<P: Platform> OcclusionPass<P> {
     depth_name: &str,
     assets: &RendererAssets<P>
   ) {
-    let history_depth_buffer_ref = resources.access_depth_stencil_view(
+    let history_depth_buffer_ref = resources.access_view(
       command_buffer,
       depth_name,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,

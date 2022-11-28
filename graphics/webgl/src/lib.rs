@@ -17,7 +17,7 @@ pub use instance::{WebGLInstance, WebGLAdapter};
 pub use device::WebGLDevice;
 pub use surface::{WebGLSurface, WebGLSwapchain};
 pub use command::{WebGLCommandBuffer, WebGLCommandSubmission};
-pub use texture::{WebGLTexture, WebGLTextureSamplingView};
+pub use texture::{WebGLTexture, WebGLTextureView};
 pub(crate) use texture::format_to_internal_gl;
 pub use buffer::WebGLBuffer;
 pub use pipeline::{WebGLShader, WebGLGraphicsPipeline, WebGLComputePipeline};

@@ -99,7 +99,7 @@ impl<B: Backend> ShadowMapPass<B> {
   }
 
   pub fn execute(cmd_buffer: &mut B::CommandBuffer, resources: &RendererResources<B>, gpu_driven: bool) {
-    resources.access_depth_stencil_view(cmd_buffer,
+    resources.access_view(cmd_buffer,
       Self::SHADOW_MAP_NAME,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
       BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,

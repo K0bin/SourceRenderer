@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform, Vec2UI, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureRenderTargetView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
+use sourcerenderer_core::{Matrix4, Platform, Vec2UI, graphics::{Backend, Barrier, CommandBuffer, Device, Queue, Swapchain, SwapchainError, TextureView, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, BindingFrequency, WHOLE_BUFFER, BufferUsage}, Vec2, Vec3};
 
 use crate::{input::Input, renderer::{LateLatching, drawable::View, render_path::{RenderPath, SceneInfo, ZeroTextures, FrameInfo}, renderer_resources::{RendererResources, HistoryResourceEntry}, renderer_scene::RendererScene, passes::{blue_noise::BlueNoise, ssr::SsrPass, compositing::CompositingPass}, shader_manager::ShaderManager, renderer_assets::RendererAssets}};
 use crate::renderer::passes::fsr2::Fsr2Pass;

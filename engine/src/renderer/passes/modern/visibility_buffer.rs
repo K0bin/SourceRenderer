@@ -1,4 +1,4 @@
-use sourcerenderer_core::{graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, StencilInfo, StoreOp, SubpassInfo, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDimension}};
+use sourcerenderer_core::{graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, StencilInfo, StoreOp, SubpassInfo, Texture, TextureInfo, TextureView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, TextureDimension}};
 use std::sync::Arc;
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{GraphicsPipelineInfo, ShaderManager, GraphicsPipelineHandle}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
@@ -166,7 +166,7 @@ impl VisibilityBufferPass {
       HistoryResourceEntry::Current
     );
 
-    let barycentrics_rtv = resources.access_render_target_view(
+    let barycentrics_rtv = resources.access_view(
       cmd_buffer,
       Self::BARYCENTRICS_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,
@@ -176,7 +176,7 @@ impl VisibilityBufferPass {
       HistoryResourceEntry::Current
     );
 
-    let primitive_id_rtv = resources.access_render_target_view(
+    let primitive_id_rtv = resources.access_view(
       cmd_buffer,
       Self::PRIMITIVE_ID_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,
@@ -186,7 +186,7 @@ impl VisibilityBufferPass {
       HistoryResourceEntry::Current
     );
 
-    let dsv = resources.access_depth_stencil_view(
+    let dsv = resources.access_view(
       cmd_buffer,
       Self::DEPTH_TEXTURE_NAME,
       BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH,

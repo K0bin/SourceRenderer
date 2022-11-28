@@ -3,7 +3,7 @@ use std::{mem::MaybeUninit, ffi::c_void, sync::Arc, collections::{HashMap, VecDe
 use fsr2::*;
 use log::warn;
 use smallvec::SmallVec;
-use sourcerenderer_core::{graphics::{Backend, Device, MemoryUsage, BufferInfo, BufferUsage, TextureDimension, SampleCount, TextureUsage, TextureInfo, Format, Buffer, Texture, CommandBuffer, Barrier, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, ShaderType, ComputePipeline, BindingFrequency, BindingType, TextureViewInfo, WHOLE_BUFFER, PipelineBinding}, atomic_refcell::{AtomicRefCell, AtomicRefMut}, Platform, platform::IO, Vec2, Vec2UI};
+use sourcerenderer_core::{graphics::{Backend, Device, MemoryUsage, BufferInfo, BufferUsage, TextureDimension, SampleCount, TextureUsage, TextureInfo, Format, Buffer, Texture, CommandBuffer, Barrier, BarrierSync, BarrierAccess, TextureLayout, BarrierTextureRange, ShaderType, ComputePipeline, BindingFrequency, BindingType, TextureViewInfo, WHOLE_BUFFER, PipelineBinding, TextureView}, atomic_refcell::{AtomicRefCell, AtomicRefMut}, Platform, platform::IO, Vec2, Vec2UI};
 use sourcerenderer_core::graphics::Swapchain;
 use widestring::{WideCStr, WideCString};
 use crate::renderer::drawable::View;
@@ -120,12 +120,7 @@ impl<B: Backend> Fsr2Pass<B> {
       false,
       HistoryResourceEntry::Current
     ).clone();
-    let color_sampling_view = resources.get_sampling_view(
-      input_name,
-      &TextureViewInfo::default(),
-      HistoryResourceEntry::Current
-    ).clone();
-    let color_storage_view = resources.get_storage_view(
+    let color_view = resources.get_view(
       input_name,
       &TextureViewInfo::default(),
       HistoryResourceEntry::Current
@@ -141,7 +136,7 @@ impl<B: Backend> Fsr2Pass<B> {
       false,
       HistoryResourceEntry::Current
     ).clone();
-    let depth_sampling_view = resources.get_sampling_view(
+    let depth_view = resources.get_view(
       depth_name,
       &TextureViewInfo::default(),
       HistoryResourceEntry::Current
@@ -157,12 +152,7 @@ impl<B: Backend> Fsr2Pass<B> {
       true,
       HistoryResourceEntry::Current
     ).clone();
-    let output_sampling_view = resources.get_sampling_view(
-      Self::UPSCALED_TEXTURE_NAME,
-      &TextureViewInfo::default(),
-      HistoryResourceEntry::Current
-    ).clone();
-    let output_storage_view = resources.get_storage_view(
+    let output_view = resources.get_view(
       Self::UPSCALED_TEXTURE_NAME,
       &TextureViewInfo::default(),
       HistoryResourceEntry::Current
@@ -178,12 +168,7 @@ impl<B: Backend> Fsr2Pass<B> {
       false,
       HistoryResourceEntry::Current
     ).clone();
-    let motion_sampling_view = resources.get_sampling_view(
-      motion_name,
-      &TextureViewInfo::default(),
-      HistoryResourceEntry::Current
-    ).clone();
-    let motion_storage_view = resources.get_storage_view(
+    let motion_view = resources.get_view(
       motion_name,
       &TextureViewInfo::default(),
       HistoryResourceEntry::Current
@@ -197,13 +182,13 @@ impl<B: Backend> Fsr2Pass<B> {
     unsafe {
       let desc = FfxFsr2DispatchDescription {
         commandList: command_buffer_into_ffx::<B>(cmd_buffer),
-        color: texture_into_ffx::<B>(&color_texture, false, &color_sampling_view, Some(&color_storage_view)),
-        depth: texture_into_ffx::<B>(&depth_texture, false, &depth_sampling_view, None),
+        color: texture_into_ffx::<B>(&color_texture, false, &color_view),
+        depth: texture_into_ffx::<B>(&depth_texture, false, &depth_view),
         exposure: NULL_RESOURCE,
-        motionVectors: texture_into_ffx::<B>(&motion_texture, false, &motion_sampling_view, Some(&motion_storage_view)),
+        motionVectors: texture_into_ffx::<B>(&motion_texture, false, &motion_view),
         reactive: NULL_RESOURCE,
         transparencyAndComposition: NULL_RESOURCE,
-        output: texture_into_ffx::<B>(&output_texture, true, &output_sampling_view, Some(&output_storage_view)),
+        output: texture_into_ffx::<B>(&output_texture, true, &output_view),
         renderSize: FfxDimensions2D {
           width: color_texture.info().width,
           height: color_texture.info().height,
@@ -277,23 +262,19 @@ unsafe fn command_buffer_into_ffx<B: Backend>(command_buffer: &mut B::CommandBuf
 }
 
 struct Fsr2TextureViews<B: Backend> {
-  sampling_view: Arc<B::TextureSamplingView>,
-  storage_view: Option<Arc<B::TextureStorageView>>,
+  sampling_view: Arc<B::TextureView>,
+  storage_view: Option<Arc<B::TextureView>>,
 }
 
-unsafe fn texture_into_ffx<B: Backend>(texture: &Arc<B::Texture>, is_uav: bool, sampling_view: &Arc<B::TextureSamplingView>, mip0_storage_view: Option<&Arc<B::TextureStorageView>>) -> FfxResource {
+unsafe fn texture_into_ffx<B: Backend>(texture: &Arc<B::Texture>, is_uav: bool, view: &Arc<B::TextureView>) -> FfxResource {
   let texture_ptr = Arc::into_raw(texture.clone());
   let info = texture.info();
-  let views = Box::new(Fsr2TextureViews::<B> {
-    sampling_view: sampling_view.clone(),
-    storage_view: mip0_storage_view.cloned()
-  });
-  let views_ptr = Box::into_raw(views);
+  let view_ptr = Arc::into_raw(view.clone());
   FfxResource {
     resource: texture_ptr as *mut c_void,
     state: if !is_uav { FfxResourceStates_FFX_RESOURCE_STATE_COMPUTE_READ } else { FfxResourceStates_FFX_RESOURCE_STATE_UNORDERED_ACCESS },
     isDepth: info.format.is_depth(),
-    descriptorData: views_ptr as *mut c_void as u64,
+    descriptorData: view_ptr as *mut c_void as u64,
     description: FfxResourceDescription {
       type_: match info.dimension {
         TextureDimension::Dim1D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE1D,
@@ -347,8 +328,8 @@ impl Default for TextureSubresourceState {
 enum Resource<B: Backend> {
   Texture {
     texture: Arc<B::Texture>,
-    sampling_view: Arc<B::TextureSamplingView>,
-    storage_views: SmallVec<[Arc<B::TextureStorageView>; 8]>,
+    sampling_view: Arc<B::TextureView>,
+    storage_views: SmallVec<[Arc<B::TextureView>; 8]>,
     states: SmallVec<[TextureSubresourceState; 8]>,
   },
   Buffer {
@@ -498,14 +479,14 @@ unsafe extern "C" fn create_resource<B: Backend>(
     }
 
     let sampling_name = name.as_ref().map(|name| name.as_str()).unwrap_or("").to_string() + "_sampling";
-    let sampling_view = device.create_sampling_view(&texture, &TextureViewInfo::default(),
+    let sampling_view = device.create_texture_view(&texture, &TextureViewInfo::default(),
       if name.is_some() { Some(sampling_name.as_str()) } else { None });
 
-    let mut storage_views = SmallVec::<[Arc<B::TextureStorageView>; 8]>::with_capacity(mip_count as usize);
+    let mut storage_views = SmallVec::<[Arc<B::TextureView>; 8]>::with_capacity(mip_count as usize);
     let mut states = SmallVec::<[TextureSubresourceState; 8]>::with_capacity(mip_count as usize);
     for i in 0..mip_count {
       let storage_name = format!("{}_storage_{}", name.as_ref().map(|name| name.as_str()).unwrap_or(""), mip_count);
-      let storage_view = device.create_storage_view(&texture, &TextureViewInfo {
+      let storage_view = device.create_texture_view(&texture, &TextureViewInfo {
         format: None,
         mip_level_length: 1,
         array_layer_length: 1,
@@ -571,19 +552,17 @@ unsafe extern "C" fn register_resource<B: Backend>(
   let type_ = resource_desc.type_;
   if type_ != FfxResourceType_FFX_RESOURCE_TYPE_BUFFER {
     let texture = Arc::<B::Texture>::from_raw((*in_resource).resource as *mut B::Texture);
-    let ptr: *mut Fsr2TextureViews<B> = std::mem::transmute((*in_resource).descriptorData);
-    let views_box = Box::from_raw(ptr);
-    let views = *views_box;
+    let ptr: *const B::TextureView = std::mem::transmute((*in_resource).descriptorData);
+    let view = Arc::from_raw(ptr);
 
-    let mut storage_views = SmallVec::<[Arc<B::TextureStorageView>; 8]>::new();
+    let mut storage_views = SmallVec::<[Arc<B::TextureView>; 8]>::new();
     let mut states = SmallVec::<[TextureSubresourceState; 8]>::new();
-    let Fsr2TextureViews {
-      sampling_view, storage_view
-    } = views;
 
-    if let Some(storage_view) = storage_view {
-      storage_views.push(storage_view);
+    let texture_info = view.texture().info();
+    if texture_info.usage.contains(TextureUsage::STORAGE) {
+      storage_views.push(view.clone());
     }
+    assert_eq!(texture_info.mip_levels, 1);
     states.push(TextureSubresourceState {
       layout,
       access,
@@ -591,7 +570,7 @@ unsafe extern "C" fn register_resource<B: Backend>(
     });
 
     context.resources.insert(resource_id, Resource::Texture {
-      texture, sampling_view: sampling_view, storage_views, states
+      texture, sampling_view: view, storage_views, states
     });
   } else {
     unimplemented!("FSR2 never registers buffers")

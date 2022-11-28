@@ -24,10 +24,7 @@ impl Default for TrackedTextureSubresource {
 struct TrackedTexture<B: Backend> {
   subresources: Vec<TrackedTextureSubresource>,
   texture: Arc<B::Texture>,
-  srvs: HashMap<TextureViewInfo, Arc<B::TextureSamplingView>>,
-  dsvs: HashMap<TextureViewInfo, Arc<B::TextureDepthStencilView>>,
-  rtvs: HashMap<TextureViewInfo, Arc<B::TextureRenderTargetView>>,
-  uavs: HashMap<TextureViewInfo, Arc<B::TextureStorageView>>,
+  views: HashMap<TextureViewInfo, Arc<B::TextureView>>,
 }
 
 struct TrackedBuffer<B: Backend> {
@@ -143,18 +140,12 @@ impl<B: Backend> RendererResources<B> {
       a: RefCell::new(TrackedTexture {
         subresources: subresources.clone(),
         texture: self.device.create_texture(info, Some(name)),
-        srvs: HashMap::new(),
-        uavs: HashMap::new(),
-        dsvs: HashMap::new(),
-        rtvs: HashMap::new()
+        views: HashMap::new(),
       }),
       b: has_history.then(|| RefCell::new(TrackedTexture {
         subresources,
         texture: self.device.create_texture(info, Some(&(name.to_string() + "_b"))),
-        srvs: HashMap::new(),
-        uavs: HashMap::new(),
-        dsvs: HashMap::new(),
-        rtvs: HashMap::new()
+        views: HashMap::new(),
       }))
     });
   }
@@ -267,15 +258,12 @@ impl<B: Backend> RendererResources<B> {
     Ref::map(texture_ref, |r| &r.texture)
   }
 
-  pub fn access_sampling_view(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureSamplingView>> {
-    debug_assert_eq!(layout, TextureLayout::Sampled);
-    debug_assert_eq!(access & !(BarrierAccess::SAMPLING_READ | BarrierAccess::SHADER_READ), BarrierAccess::empty());
-    debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
+  pub fn access_view(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureView>> {
     self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
-    self.get_sampling_view(name, info, history)
+    self.get_view(name, info, history)
   }
 
-  pub fn get_sampling_view(&self, name: &str, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<<B as Backend>::TextureSamplingView>> {
+  pub fn get_view(&self, name: &str, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<<B as Backend>::TextureView>> {
     let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
     debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
     let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
@@ -285,8 +273,8 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow()
       };
-      if texture_ref.srvs.contains_key(info) {
-        return Ref::map(texture_ref, |r| r.srvs.get(info).unwrap());
+      if texture_ref.views.contains_key(info) {
+        return Ref::map(texture_ref, |r| r.views.get(info).unwrap());
       }
     }
 
@@ -296,8 +284,8 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow_mut()
       };
-      let view = self.device.create_sampling_view(&texture_mut.texture, info, Some(&(name.to_string() + "_srv")));
-      texture_mut.srvs.insert(info.clone(), view);
+      let view = self.device.create_texture_view(&texture_mut.texture, info, Some(&(name.to_string() + "_srv")));
+      texture_mut.views.insert(info.clone(), view);
     }
 
     {
@@ -306,130 +294,7 @@ impl<B: Backend> RendererResources<B> {
       } else {
         texture_ab.b.as_ref().unwrap().borrow()
       };
-      return Ref::map(texture_ref, |r| r.srvs.get(info).unwrap());
-    }
-  }
-
-  pub fn access_storage_view(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureStorageView>> {
-    debug_assert!(layout == TextureLayout::Storage || layout == TextureLayout::General);
-    debug_assert_eq!(access & !(BarrierAccess::SHADER_READ | BarrierAccess::SHADER_WRITE | BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE), BarrierAccess::empty());
-    debug_assert_eq!(stages & !(BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER | BarrierSync::RAY_TRACING), BarrierSync::empty());
-    self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
-    self.get_storage_view(name, info, history)
-  }
-
-  pub fn get_storage_view(&self, name: &str, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<<B as Backend>::TextureStorageView>> {
-    let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
-    debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
-    let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
-    {
-      let texture_ref = if !use_b_resource {
-        texture_ab.a.borrow()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow()
-      };
-      if texture_ref.uavs.contains_key(info) {
-        return Ref::map(texture_ref, |r| r.uavs.get(info).unwrap());
-      }
-    }
-
-    {
-      let mut texture_mut = if !use_b_resource {
-        texture_ab.a.borrow_mut()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow_mut()
-      };
-      let view = self.device.create_storage_view(&texture_mut.texture, info, Some(&(name.to_string() + "_uav")));
-      texture_mut.uavs.insert(info.clone(), view);
-    }
-
-    {
-      let texture_ref = if !use_b_resource {
-        texture_ab.a.borrow()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow()
-      };
-      return Ref::map(texture_ref, |r| r.uavs.get(info).unwrap());
-    }
-  }
-
-  pub fn access_render_target_view(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureRenderTargetView>> {
-    debug_assert_eq!(layout, TextureLayout::RenderTarget);
-    debug_assert_eq!(access & !(BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE), BarrierAccess::empty());
-    debug_assert_eq!(stages & !(BarrierSync::RENDER_TARGET), BarrierSync::empty());
-    self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
-
-    let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
-    debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
-    let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
-    {
-      let texture_ref = if !use_b_resource {
-        texture_ab.a.borrow()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow()
-      };
-      if texture_ref.rtvs.contains_key(info) {
-        return Ref::map(texture_ref, |r| r.rtvs.get(info).unwrap());
-      }
-    }
-
-    {
-      let mut texture_mut = if !use_b_resource {
-        texture_ab.a.borrow_mut()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow_mut()
-      };
-      let view = self.device.create_render_target_view(&texture_mut.texture, info, Some(&(name.to_string() + "_rtv")));
-      texture_mut.rtvs.insert(info.clone(), view);
-    }
-
-    {
-      let texture_ref = if !use_b_resource {
-        texture_ab.a.borrow()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow()
-      };
-      return Ref::map(texture_ref, |r| r.rtvs.get(info).unwrap());
-    }
-  }
-
-  pub fn access_depth_stencil_view(&self, cmd_buffer: &mut B::CommandBuffer, name: &str, stages: BarrierSync, access: BarrierAccess, layout: TextureLayout, discard: bool, info: &TextureViewInfo, history: HistoryResourceEntry) -> Ref<Arc<B::TextureDepthStencilView>> {
-    debug_assert!(layout == TextureLayout::DepthStencilRead || layout == TextureLayout::DepthStencilReadWrite);
-    debug_assert_eq!(access & !(BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE), BarrierAccess::empty());
-    debug_assert_eq!(stages & !(BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH), BarrierSync::empty());
-    self.access_texture_internal(cmd_buffer, name, stages, &info.into(), access, layout, discard, history);
-
-    let texture_ab = self.textures.get(name).unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
-    debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
-    let use_b_resource = (history == HistoryResourceEntry::Past) == (self.current_pass == ABEntry::A) && texture_ab.b.is_some();
-    {
-      let texture_ref = if !use_b_resource {
-        texture_ab.a.borrow()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow()
-      };
-      if texture_ref.dsvs.contains_key(info) {
-        return Ref::map(texture_ref, |r| r.dsvs.get(info).unwrap());
-      }
-    }
-
-    {
-      let mut texture_mut = if !use_b_resource {
-        texture_ab.a.borrow_mut()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow_mut()
-      };
-      let view = self.device.create_depth_stencil_view(&texture_mut.texture, info, Some(&(name.to_string() + "_dsv")));
-      texture_mut.dsvs.insert(info.clone(), view);
-    }
-
-    {
-      let texture_ref = if !use_b_resource {
-        texture_ab.a.borrow()
-      } else {
-        texture_ab.b.as_ref().unwrap().borrow()
-      };
-      return Ref::map(texture_ref, |r| r.dsvs.get(info).unwrap());
+      return Ref::map(texture_ref, |r| r.views.get(info).unwrap());
     }
   }
 

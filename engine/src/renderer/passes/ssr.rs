@@ -1,6 +1,6 @@
 use std::{sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, TextureDimension}};
+use sourcerenderer_core::{Platform, Vec2UI, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureView, TextureDimension}};
 
 use crate::renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::modern::VisibilityBufferPass, shader_manager::{ComputePipelineHandle, ShaderManager}};
 
@@ -44,7 +44,7 @@ impl SsrPass {
     // TODO: merge back into the original image
     // TODO: specularity map
 
-    let ssr_uav = resources.access_storage_view(
+    let ssr_uav = resources.access_view(
       cmd_buffer,
       Self::SSR_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -55,7 +55,7 @@ impl SsrPass {
       HistoryResourceEntry::Current
     );
 
-    let depth_srv = resources.access_sampling_view(
+    let depth_srv = resources.access_view(
       cmd_buffer,
       depth_name,
       BarrierSync::COMPUTE_SHADER,
@@ -66,7 +66,7 @@ impl SsrPass {
       HistoryResourceEntry::Current
     );
 
-    let color_srv = resources.access_sampling_view(
+    let color_srv = resources.access_view(
       cmd_buffer,
       input_name,
       BarrierSync::COMPUTE_SHADER,
@@ -77,11 +77,11 @@ impl SsrPass {
       HistoryResourceEntry::Current
     );
 
-    let mut ids = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
-    let mut barycentrics = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut ids = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+    let mut barycentrics = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
 
     if visibility_buffer {
-      ids = Some(resources.access_storage_view(
+      ids = Some(resources.access_view(
         cmd_buffer,
         VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
@@ -92,7 +92,7 @@ impl SsrPass {
         HistoryResourceEntry::Current
       ));
 
-      barycentrics = Some(resources.access_storage_view(
+      barycentrics = Some(resources.access_view(
         cmd_buffer,
         VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,

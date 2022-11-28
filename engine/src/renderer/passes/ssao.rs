@@ -1,6 +1,6 @@
 use std::{sync::Arc, cell::Ref};
 
-use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureStorageView, WHOLE_BUFFER, TextureDimension}};
+use sourcerenderer_core::{Platform, Vec2UI, Vec4, graphics::{Backend as GraphicsBackend, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, Device, Format, MemoryUsage, PipelineBinding, SampleCount, Texture, TextureInfo, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, TextureView, WHOLE_BUFFER, TextureDimension}};
 
 use rand::random;
 
@@ -97,12 +97,12 @@ impl<P: Platform> SsaoPass<P> {
     depth_name: &str,
     motion_name: Option<&str>,
     camera: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-    blue_noise_view: &Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>,
+    blue_noise_view: &Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>,
     blue_noise_sampler: &Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
     shader_manager: &ShaderManager<P>,
     visibility_buffer: bool
   ) {
-    let ssao_uav = resources.access_storage_view(
+    let ssao_uav = resources.access_view(
       cmd_buffer,
       Self::SSAO_INTERNAL_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -113,7 +113,7 @@ impl<P: Platform> SsaoPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let depth_srv = resources.access_sampling_view(
+    let depth_srv = resources.access_view(
       cmd_buffer,
       depth_name,
       BarrierSync::COMPUTE_SHADER,
@@ -124,11 +124,11 @@ impl<P: Platform> SsaoPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>>>::None;
-    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
-    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
     if !visibility_buffer {
-      motion_srv = Some(resources.access_sampling_view(
+      motion_srv = Some(resources.access_view(
         cmd_buffer,
         motion_name.unwrap(),
         BarrierSync::COMPUTE_SHADER,
@@ -139,7 +139,7 @@ impl<P: Platform> SsaoPass<P> {
         HistoryResourceEntry::Current
       ));
     } else {
-      id_view = Some(resources.access_storage_view(
+      id_view = Some(resources.access_view(
         cmd_buffer,
         super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
@@ -149,7 +149,7 @@ impl<P: Platform> SsaoPass<P> {
         &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
-      barycentrics_view = Some(resources.access_storage_view(
+      barycentrics_view = Some(resources.access_view(
         cmd_buffer,
         super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
@@ -175,7 +175,7 @@ impl<P: Platform> SsaoPass<P> {
     cmd_buffer.dispatch((ssao_info.width + 7) / 8, (ssao_info.height + 7) / 8, ssao_info.depth);
 
     std::mem::drop(ssao_uav);
-    let ssao_srv = resources.access_sampling_view(
+    let ssao_srv = resources.access_view(
       cmd_buffer,
       Self::SSAO_INTERNAL_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -186,7 +186,7 @@ impl<P: Platform> SsaoPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let blurred_uav = resources.access_storage_view(
+    let blurred_uav = resources.access_view(
       cmd_buffer,
       Self::SSAO_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -197,7 +197,7 @@ impl<P: Platform> SsaoPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let blurred_srv_b = resources.access_sampling_view(
+    let blurred_srv_b = resources.access_view(
       cmd_buffer,
       Self::SSAO_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,

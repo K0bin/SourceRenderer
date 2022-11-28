@@ -32,7 +32,7 @@ impl IndexHandle for ModelHandle {
 }
 
 pub struct RendererTexture<B: Backend> {
-  pub(super) view: Arc<B::TextureSamplingView>,
+  pub(super) view: Arc<B::TextureView>,
   pub(super) bindless_index: Option<u32>
 }
 
@@ -216,7 +216,7 @@ struct DelayedAsset<B: Backend> {
   asset: DelayedAssetType<B>
 }
 enum DelayedAssetType<B: Backend> {
-  TextureView(Arc<B::TextureSamplingView>)
+  TextureView(Arc<B::TextureView>)
 }
 
 trait IndexHandle {
@@ -320,7 +320,7 @@ impl<P: Platform> RendererAssets<P> {
       supports_srgb: false,
     }, Some("AssetManagerZeroTexture"));
     device.init_texture(&zero_texture, &zero_buffer, 0, 0, 0);
-    let zero_view = device.create_sampling_view(&zero_texture, &TextureViewInfo::default(), Some("AssetManagerZeroTextureView"));
+    let zero_view = device.create_texture_view(&zero_texture, &TextureViewInfo::default(), Some("AssetManagerZeroTextureView"));
     let zero_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view))
     } else {
@@ -346,7 +346,7 @@ impl<P: Platform> RendererAssets<P> {
       supports_srgb: false,
     }, Some("AssetManagerZeroTextureBlack"));
     device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0, 0);
-    let zero_view_black = device.create_sampling_view(&zero_texture_black, &TextureViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
+    let zero_view_black = device.create_texture_view(&zero_texture_black, &TextureViewInfo::default(), Some("AssetManagerZeroTextureBlackView"));
     let zero_black_index = if device.supports_bindless() {
       Some(device.insert_texture_into_bindless_heap(&zero_view_black))
     } else {
@@ -378,7 +378,7 @@ impl<P: Platform> RendererAssets<P> {
     }
   }
 
-  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>) -> TextureHandle {
+  pub fn integrate_texture(&mut self, texture_path: &str, texture: &Arc<<P::GraphicsBackend as Backend>::TextureView>) -> TextureHandle {
     let bindless_index = if self.device.supports_bindless() {
       if texture == &self.zero_texture.view {
         self.zero_texture.bindless_index
@@ -421,7 +421,7 @@ impl<P: Platform> RendererAssets<P> {
     self.meshes.insert(mesh_path, mesh)
   }
 
-  pub fn upload_texture(&mut self, texture_path: &str, texture: Texture, do_async: bool) -> (Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
+  pub fn upload_texture(&mut self, texture_path: &str, texture: Texture, do_async: bool) -> (Arc<<P::GraphicsBackend as Backend>::TextureView>, Option<Arc<<P::GraphicsBackend as Backend>::Fence>>) {
     let gpu_texture = self.device.create_texture(&texture.info, Some(texture_path));
     let subresources = texture.info.array_length * texture.info.mip_levels;
     let mut fence = Option::<Arc<<P::GraphicsBackend as Backend>::Fence>>::None;
@@ -436,7 +436,7 @@ impl<P: Platform> RendererAssets<P> {
         self.device.init_texture(&gpu_texture, &init_buffer, mip_level, array_index, 0);
       }
     }
-    let view = self.device.create_sampling_view(
+    let view = self.device.create_texture_view(
       &gpu_texture, &TextureViewInfo {
         base_mip_level: 0,
         mip_level_length: texture.info.mip_levels,

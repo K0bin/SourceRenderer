@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureRenderTargetView, Texture, WHOLE_BUFFER, TextureDimension};
+use sourcerenderer_core::graphics::{OutputAttachmentRef, Queue, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderpassRecordingMode, TextureViewInfo, TextureLayout, BarrierAccess, BarrierSync, IndexFormat, TextureView, Texture, WHOLE_BUFFER, TextureDimension};
 use sourcerenderer_core::graphics::{AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassInfo, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, TextureInfo, TextureUsage, VertexLayoutInfo, Viewport};
 use std::sync::Arc;
 use crate::renderer::passes::taa::scaled_halton_point;
@@ -201,7 +201,7 @@ impl Prepass {
     cmd_buffer.begin_label("Depth prepass");
     let static_drawables = scene.static_drawables();
 
-    let depth_buffer = resources.access_depth_stencil_view(
+    let depth_buffer = resources.access_view(
       cmd_buffer,
       Self::DEPTH_TEXTURE_NAME,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -212,7 +212,7 @@ impl Prepass {
       HistoryResourceEntry::Current
     );
 
-    let motion = resources.access_render_target_view(
+    let motion = resources.access_view(
       cmd_buffer,
       Self::MOTION_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,
@@ -223,7 +223,7 @@ impl Prepass {
       HistoryResourceEntry::Current
     );
 
-    let normals = resources.access_render_target_view(
+    let normals = resources.access_view(
       cmd_buffer,
       Self::NORMALS_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,

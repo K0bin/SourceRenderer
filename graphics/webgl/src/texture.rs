@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureDepthStencilView, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureSamplingView, TextureStorageView, CompareFunc};
+use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureView, TextureViewInfo, TextureInfo, CompareFunc};
 
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebglCompressedTextureS3tc};
 
@@ -57,12 +57,12 @@ impl PartialEq for WebGLTexture {
 
 impl Eq for WebGLTexture {}
 
-pub struct WebGLTextureSamplingView {
+pub struct WebGLTextureView {
   texture: Arc<WebGLTexture>,
   info: TextureViewInfo
 }
 
-impl WebGLTextureSamplingView {
+impl WebGLTextureView {
   pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
     Self {
       texture: texture.clone(),
@@ -79,7 +79,7 @@ impl WebGLTextureSamplingView {
   }
 }
 
-impl TextureSamplingView<WebGLBackend> for WebGLTextureSamplingView {
+impl TextureView<WebGLBackend> for WebGLTextureView {
   fn texture(&self) -> &Arc<WebGLTexture> {
     &self.texture
   }
@@ -89,121 +89,14 @@ impl TextureSamplingView<WebGLBackend> for WebGLTextureSamplingView {
   }
 }
 
-impl PartialEq for WebGLTextureSamplingView {
+impl PartialEq for WebGLTextureView {
   fn eq(&self, other: &Self) -> bool {
     self.texture == other.texture
   }
 }
 
-impl Eq for WebGLTextureSamplingView {}
+impl Eq for WebGLTextureView {}
 
-pub struct WebGLRenderTargetView {
-  texture: Arc<WebGLTexture>,
-  info: TextureViewInfo
-}
-
-impl WebGLRenderTargetView {
-  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
-    Self {
-      texture: texture.clone(),
-      info: info.clone()
-    }
-  }
-
-  pub fn texture(&self) -> &Arc<WebGLTexture> {
-    &self.texture
-  }
-}
-
-impl TextureRenderTargetView<WebGLBackend> for WebGLRenderTargetView {
-  fn texture(&self) -> &Arc<WebGLTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl PartialEq for WebGLRenderTargetView {
-  fn eq(&self, other: &Self) -> bool {
-    self.texture == other.texture
-  }
-}
-
-impl Eq for WebGLRenderTargetView {}
-
-pub struct WebGLDepthStencilView {
-  texture: Arc<WebGLTexture>,
-  info: TextureViewInfo
-}
-
-impl WebGLDepthStencilView {
-  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
-    Self {
-      texture: texture.clone(),
-      info: info.clone()
-    }
-  }
-
-  pub fn texture(&self) -> &Arc<WebGLTexture> {
-    &self.texture
-  }
-
-  pub fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl TextureDepthStencilView<WebGLBackend> for WebGLDepthStencilView {
-  fn texture(&self) -> &Arc<WebGLTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl PartialEq for WebGLDepthStencilView {
-  fn eq(&self, other: &Self) -> bool {
-    self.texture == other.texture
-  }
-}
-
-impl Eq for WebGLDepthStencilView {}
-
-pub struct WebGLUnorderedAccessView {
-  texture: Arc<WebGLTexture>,
-  info: TextureViewInfo
-}
-
-impl WebGLUnorderedAccessView {
-  pub fn new(texture: &Arc<WebGLTexture>, info: &TextureViewInfo) -> Self {
-    Self {
-      texture: texture.clone(),
-      info: info.clone()
-    }
-  }
-}
-
-impl TextureStorageView<WebGLBackend> for WebGLUnorderedAccessView {
-  fn texture(&self) -> &Arc<WebGLTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl PartialEq for WebGLUnorderedAccessView {
-  fn eq(&self, other: &Self) -> bool {
-    true
-  }
-}
-
-impl Eq for WebGLUnorderedAccessView {}
 
 pub struct WebGLSampler {
   handle: crate::thread::SamplerHandle,

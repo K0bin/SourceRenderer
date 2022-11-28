@@ -1,10 +1,10 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureRenderTargetView, Format};
+use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureView, Format};
 use wasm_bindgen::JsValue;
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureSamplingView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, WebGLUnorderedAccessView, compare_func_to_gl}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding, WebGLTextureHandleView}, rt::WebGLAccelerationStructureStub, WebGLWork};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphicsPipeline, WebGLSwapchain, WebGLTexture, WebGLTextureView, device::WebGLHandleAllocator, sync::WebGLSemaphore, texture::{WebGLSampler, compare_func_to_gl}, thread::{TextureHandle, WebGLThreadBuffer, WebGLVBThreadBinding, WebGLTextureHandleView}, rt::WebGLAccelerationStructureStub, WebGLWork};
 
 use bitflags::bitflags;
 
@@ -243,11 +243,11 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }));
   }
 
-  fn bind_sampling_view(&mut self, _frequency: BindingFrequency, _binding: u32, _texture: &Arc<WebGLTextureSamplingView>) {
+  fn bind_sampling_view(&mut self, _frequency: BindingFrequency, _binding: u32, _texture: &Arc<WebGLTextureView>) {
     panic!("WebGL only supports combined images and samplers")
   }
 
-  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureSamplingView>, sampler: &Arc<WebGLSampler>) {
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureView>, sampler: &Arc<WebGLSampler>) {
     let handle = texture.texture().handle();
     let info = texture.texture().info();
     let is_cubemap = info.array_length == 6;
@@ -323,7 +323,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     }
   }
 
-  fn bind_storage_texture(&mut self, _frequency: BindingFrequency, _binding: u32, _texture: &Arc<WebGLUnorderedAccessView>) {
+  fn bind_storage_texture(&mut self, _frequency: BindingFrequency, _binding: u32, _texture: &Arc<WebGLTextureView>) {
     panic!("WebGL does not support storage textures")
   }
 
@@ -485,7 +485,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn track_texture_view(&mut self, _texture_view: &Arc<WebGLTextureSamplingView>) {
+  fn track_texture_view(&mut self, _texture_view: &Arc<WebGLTextureView>) {
     // nop
   }
 
@@ -497,11 +497,11 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support indirect rendering.");
   }
 
-  fn bind_sampling_view_and_sampler_array(&mut self, _frequency: BindingFrequency, _binding: u32, _textures_and_samplers: &[(&Arc<WebGLTextureSamplingView>, &Arc<WebGLSampler>)]) {
+  fn bind_sampling_view_and_sampler_array(&mut self, _frequency: BindingFrequency, _binding: u32, _textures_and_samplers: &[(&Arc<WebGLTextureView>, &Arc<WebGLSampler>)]) {
     panic!("No plans to support texture and sampler arrays on WebGL")
   }
 
-  fn bind_storage_view_array(&mut self, _frequency: BindingFrequency, _binding: u32, _textures: &[&Arc<WebGLUnorderedAccessView>]) {
+  fn bind_storage_view_array(&mut self, _frequency: BindingFrequency, _binding: u32, _textures: &[&Arc<WebGLTextureView>]) {
     panic!("WebGL doesnt support storage textures")
   }
 

@@ -19,7 +19,7 @@ pub trait Swapchain<B: Backend> : Sized {
   fn sample_count(&self) -> SampleCount;
   fn format(&self) -> Format;
   fn surface(&self) -> &Arc<B::Surface>;
-  fn prepare_back_buffer(&self, semaphore: &Arc<B::Semaphore>) -> Option<Arc<B::TextureRenderTargetView>>;
+  fn prepare_back_buffer(&self, semaphore: &Arc<B::Semaphore>) -> Option<Arc<B::TextureView>>;
   fn transform(&self) -> Matrix4;
   fn width(&self) -> u32;
   fn height(&self) -> u32;

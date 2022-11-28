@@ -67,16 +67,16 @@ pub trait CommandBuffer<B: Backend> {
   fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
   fn draw_indexed_indirect(&mut self, draw_buffer: &Arc<B::Buffer>, draw_buffer_offset: u32, count_buffer: &Arc<B::Buffer>, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
   fn draw_indirect(&mut self, draw_buffer: &Arc<B::Buffer>, draw_buffer_offset: u32, count_buffer: &Arc<B::Buffer>, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
-  fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>);
-  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureSamplingView>, sampler: &Arc<B::Sampler>);
-  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<B::TextureSamplingView>, &Arc<B::Sampler>)]);
-  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<B::TextureStorageView>]);
+  fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureView>);
+  fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureView>, sampler: &Arc<B::Sampler>);
+  fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&Arc<B::TextureView>, &Arc<B::Sampler>)]);
+  fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&Arc<B::TextureView>]);
   fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);
   fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &Arc<B::Buffer>, offset: usize, length: usize);
-  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureStorageView>);
+  fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<B::TextureView>);
   fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &Arc<B::Sampler>);
   fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &Arc<B::AccelerationStructure>);
-  fn track_texture_view(&mut self, texture_view: &Arc<B::TextureSamplingView>);
+  fn track_texture_view(&mut self, texture_view: &Arc<B::TextureView>);
   fn finish_binding(&mut self);
   fn begin_label(&mut self, label: &str);
   fn end_label(&mut self);
@@ -118,8 +118,8 @@ pub trait Queue<B: Backend> {
 }
 
 pub enum RenderPassAttachmentView<'a, B: Backend> {
-  RenderTarget(&'a Arc<B::TextureRenderTargetView>),
-  DepthStencil(&'a Arc<B::TextureDepthStencilView>)
+  RenderTarget(&'a Arc<B::TextureView>),
+  DepthStencil(&'a Arc<B::TextureView>)
 }
 
 pub struct RenderPassAttachment<'a, B: Backend> {

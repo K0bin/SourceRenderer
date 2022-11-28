@@ -1,5 +1,4 @@
 use std::ffi::c_void;
-use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
@@ -7,11 +6,10 @@ use std::sync::Weak;
 use ash::vk;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::TextureDepthStencilView;
+use sourcerenderer_core::graphics::TextureView;
 use sourcerenderer_core::graphics::TextureDimension;
-use sourcerenderer_core::graphics::TextureRenderTargetView;
 use sourcerenderer_core::graphics::TextureUsage;
-use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureSamplingView, TextureViewInfo, TextureStorageView};
+use sourcerenderer_core::graphics::{AddressMode, Filter, SamplerInfo, Texture, TextureInfo, TextureViewInfo};
 
 use crate::bindless::VkBindlessDescriptorSet;
 use crate::raw::VkFeatures;
@@ -341,37 +339,7 @@ impl Drop for VkTextureView {
   }
 }
 
-impl TextureSamplingView<VkBackend> for VkTextureView {
-  fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl TextureStorageView<VkBackend> for VkTextureView {
-  fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl TextureRenderTargetView<VkBackend> for VkTextureView {
-  fn texture(&self) -> &Arc<VkTexture> {
-    &self.texture
-  }
-
-  fn info(&self) -> &TextureViewInfo {
-    &self.info
-  }
-}
-
-impl TextureDepthStencilView<VkBackend> for VkTextureView {
+impl TextureView<VkBackend> for VkTextureView {
   fn texture(&self) -> &Arc<VkTexture> {
     &self.texture
   }

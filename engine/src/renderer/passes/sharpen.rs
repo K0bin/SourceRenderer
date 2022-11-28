@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, Texture, TextureInfo, TextureView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
 use sourcerenderer_core::{Platform, Vec2UI};
 
 use crate::renderer::shader_manager::{ComputePipelineHandle, ShaderManager};
@@ -37,7 +37,7 @@ impl SharpenPass {
   }
 
   pub fn execute<P: Platform>(&mut self, cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer, resources: &RendererResources<P::GraphicsBackend>, shader_manager: &ShaderManager<P>) {
-    let input_image_uav = resources.access_storage_view(
+    let input_image_uav = resources.access_view(
       cmd_buffer,
       TAAPass::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -48,7 +48,7 @@ impl SharpenPass {
       HistoryResourceEntry::Current
     );
 
-    let sharpen_uav = resources.access_storage_view(
+    let sharpen_uav = resources.access_view(
       cmd_buffer,
       Self::SHAPENED_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,

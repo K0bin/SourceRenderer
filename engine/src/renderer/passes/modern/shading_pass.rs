@@ -56,7 +56,7 @@ impl<P: Platform> ShadingPass<P> {
     cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
     device: &<P::GraphicsBackend as Backend>::Device,
     lightmap: &RendererTexture<P::GraphicsBackend>,
-    zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>,
+    zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
     resources: &RendererResources<P::GraphicsBackend>,
     shader_manager: &ShaderManager<P>
   ) {
@@ -67,7 +67,7 @@ impl<P: Platform> ShadingPass<P> {
 
     cmd_buffer.begin_label("Shading Pass");
 
-    let output = resources.access_storage_view(
+    let output = resources.access_view(
       cmd_buffer,
       Self::SHADING_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -78,7 +78,7 @@ impl<P: Platform> ShadingPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let ids = resources.access_storage_view(
+    let ids = resources.access_view(
       cmd_buffer,
       VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -89,7 +89,7 @@ impl<P: Platform> ShadingPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let barycentrics = resources.access_storage_view(
+    let barycentrics = resources.access_view(
       cmd_buffer,
       VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -108,7 +108,7 @@ impl<P: Platform> ShadingPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let ssao = resources.access_sampling_view(
+    let ssao = resources.access_view(
       cmd_buffer,
       SsaoPass::<P>::SSAO_TEXTURE_NAME,
       BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
@@ -119,9 +119,9 @@ impl<P: Platform> ShadingPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>>;
+    let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureView>>;
     let shadows = if device.supports_ray_tracing() {
-      rt_shadows = resources.access_sampling_view(
+      rt_shadows = resources.access_view(
         cmd_buffer,
         RTShadowPass::SHADOWS_TEXTURE_NAME,
         BarrierSync::FRAGMENT_SHADER,

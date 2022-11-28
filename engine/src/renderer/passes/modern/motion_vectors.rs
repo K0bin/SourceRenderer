@@ -1,6 +1,6 @@
 use sourcerenderer_core::graphics::{Backend, BarrierAccess, BarrierSync, BindingFrequency,
                                     CommandBuffer, Format, PipelineBinding, TextureInfo,
-                                    TextureLayout, TextureStorageView, TextureUsage,
+                                    TextureLayout, TextureView, TextureUsage,
                                     TextureViewInfo, Texture, TextureDimension,
                                     SampleCount};
 use sourcerenderer_core::{Platform, Vec2UI};
@@ -44,7 +44,7 @@ impl MotionVectorPass {
 
     cmd_buffer.begin_label("Motion Vectors");
 
-    let output_srv = resources.access_storage_view(
+    let output_srv = resources.access_view(
       cmd_buffer,
       Self::MOTION_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -60,7 +60,7 @@ impl MotionVectorPass {
       (info.width, info.height)
     };
 
-    let ids = resources.access_storage_view(
+    let ids = resources.access_view(
        cmd_buffer,
       VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -71,7 +71,7 @@ impl MotionVectorPass {
       HistoryResourceEntry::Current
     );
 
-    let barycentrics = resources.access_storage_view(
+    let barycentrics = resources.access_view(
       cmd_buffer,
       VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,

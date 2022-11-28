@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, Texture, TextureInfo, TextureStorageView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
+use sourcerenderer_core::graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, Texture, TextureInfo, TextureView, TextureViewInfo, TextureUsage, BarrierSync, BarrierAccess, TextureLayout, BufferUsage, WHOLE_BUFFER, TextureDimension};
 use sourcerenderer_core::{Platform, Vec2UI};
 
 use crate::renderer::shader_manager::{ComputePipelineHandle, ShaderManager};
@@ -43,7 +43,7 @@ impl CompositingPass {
     input_name: &str,
     shader_manager: &ShaderManager<P>
   ) {
-    let input_image = resources.access_sampling_view(
+    let input_image = resources.access_view(
       cmd_buffer,
       input_name,
       BarrierSync::COMPUTE_SHADER,
@@ -54,7 +54,7 @@ impl CompositingPass {
       HistoryResourceEntry::Current
     );
 
-    let ssr = resources.access_sampling_view(
+    let ssr = resources.access_view(
       cmd_buffer,
       SsrPass::SSR_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -65,7 +65,7 @@ impl CompositingPass {
       HistoryResourceEntry::Current
     );
 
-    let output = resources.access_storage_view(
+    let output = resources.access_view(
       cmd_buffer,
       Self::COMPOSITION_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,

@@ -7,7 +7,7 @@ use sourcerenderer_core::graphics::{Device, TextureInfo, Format, SampleCount, Te
 use sourcerenderer_core::{graphics::Backend, Platform, platform::IO};
 
 pub struct BlueNoise<B: Backend> {
-  frames: [Arc<B::TextureSamplingView>; 8],
+  frames: [Arc<B::TextureView>; 8],
   sampler: Arc<B::Sampler>
 }
 
@@ -40,7 +40,7 @@ impl<B: Backend> BlueNoise<B> {
     }
   }
 
-  fn load_frame<P: Platform>(device: &Arc<B::Device>, index: u32) -> Arc<B::TextureSamplingView> {
+  fn load_frame<P: Platform>(device: &Arc<B::Device>, index: u32) -> Arc<B::TextureView> {
     let path = Path::new("assets").join(Path::new("bn")).join(Path::new(&format!("LDR_RGB1_{}.png", index)));
     let mut file = P::IO::open_asset(&path).unwrap_or_else(|e| panic!("Failed to open {:?}: {:?}", &path, e));
     let mut buffer = Vec::<u8>::new();
@@ -67,7 +67,7 @@ impl<B: Backend> BlueNoise<B> {
     device.create_sampling_view(&texture, &TextureViewInfo::default(), Some(&format!("STBlueNoiseUAV{}", index)))
   }
 
-  pub fn frame(&self, index: u64) -> &Arc<B::TextureSamplingView> {
+  pub fn frame(&self, index: u64) -> &Arc<B::TextureView> {
     &self.frames[(index % (self.frames.len() as u64)) as usize]
   }
 

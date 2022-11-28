@@ -1,7 +1,7 @@
 use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}};
 use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureViewInfo, WHOLE_BUFFER};
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
-use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureSamplingView, command::WebGLQueue, sync::WebGLSemaphore, texture::{WebGLDepthStencilView, WebGLRenderTargetView, WebGLSampler, WebGLUnorderedAccessView, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue, SamplerHandle}};
+use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureView, command::WebGLQueue, sync::WebGLSemaphore, texture::{WebGLSampler, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue, SamplerHandle}};
 
 pub struct WebGLHandleAllocator {
   next_buffer_id: AtomicU64,
@@ -101,10 +101,6 @@ impl Device<WebGLBackend> for WebGLDevice {
     Arc::new(WebGLTexture::new(id, info, &self.thread_queue))
   }
 
-  fn create_sampling_view(&self, texture: &Arc<WebGLTexture>, info: &sourcerenderer_core::graphics::TextureViewInfo, _name: Option<&str>) -> Arc<WebGLTextureSamplingView> {
-    Arc::new(WebGLTextureSamplingView::new(texture, info))
-  }
-
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<WebGLBackend>, _pass_info: &RenderPassInfo, _subpass_index: u32, _name: Option<&str>) -> Arc<WebGLGraphicsPipeline> {
     let id = self.handles.new_pipeline_handle();
     Arc::new(WebGLGraphicsPipeline::new(id, info, &self.thread_queue))
@@ -192,16 +188,8 @@ impl Device<WebGLBackend> for WebGLDevice {
     // nop
   }
 
-  fn create_render_target_view(&self, texture: &Arc<WebGLTexture>, info: &TextureViewInfo, _name: Option<&str>) -> Arc<WebGLRenderTargetView> {
-    Arc::new(WebGLRenderTargetView::new(texture, info))
-  }
-
-  fn create_storage_view(&self, _texture: &Arc<WebGLTexture>, _info: &TextureViewInfo, _name: Option<&str>) -> Arc<WebGLUnorderedAccessView> {
-    panic!("WebGL does not support storage textures")
-  }
-
-  fn create_depth_stencil_view(&self, texture: &Arc<WebGLTexture>, info: &TextureViewInfo, _name: Option<&str>) -> Arc<WebGLDepthStencilView> {
-    Arc::new(WebGLDepthStencilView::new(texture, info))
+  fn create_texture_view(&self, texture: &Arc<WebGLTexture>, info: &TextureViewInfo, _name: Option<&str>) -> Arc<WebGLTextureView> {
+    Arc::new(WebGLTextureView::new(texture, info))
   }
 
   fn create_sampler(&self, info: &SamplerInfo) -> Arc<WebGLSampler> {
@@ -229,7 +217,7 @@ impl Device<WebGLBackend> for WebGLDevice {
     false
   }
 
-  fn insert_texture_into_bindless_heap(&self, _texture: &Arc<WebGLTextureSamplingView>) -> u32 {
+  fn insert_texture_into_bindless_heap(&self, _texture: &Arc<WebGLTextureView>) -> u32 {
     panic!("WebGL does not support bindless resources")
   }
 
@@ -259,5 +247,9 @@ impl Device<WebGLBackend> for WebGLDevice {
 
   fn supports_barycentrics(&self) -> bool {
     false
+  }
+
+  fn begin_frame(&self) {
+    // no-op
   }
 }

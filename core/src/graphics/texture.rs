@@ -115,23 +115,7 @@ pub struct SamplerInfo {
   pub max_lod: Option<f32>,
 }
 
-pub trait TextureSamplingView<B: Backend> {
+pub trait TextureView<B: Backend> {
   fn texture(&self) -> &Arc<B::Texture>;
   fn info(&self) -> &TextureViewInfo;
 }
-
-pub trait TextureStorageView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
-  fn info(&self) -> &TextureViewInfo;
-}
-
-pub trait TextureRenderTargetView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
-  fn info(&self) -> &TextureViewInfo;
-}
-
-pub trait TextureDepthStencilView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
-  fn info(&self) -> &TextureViewInfo;
-}
-

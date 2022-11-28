@@ -1,4 +1,4 @@
-use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureStorageView, Texture, TextureDimension}, Vec2UI};
+use sourcerenderer_core::{Vec2, graphics::{Backend as GraphicsBackend, BindingFrequency, CommandBuffer, Format, PipelineBinding, SampleCount, TextureInfo, TextureViewInfo, TextureUsage, TextureLayout, BarrierAccess, BarrierSync, TextureView, Texture, TextureDimension}, Vec2UI};
 use sourcerenderer_core::Platform;
 use std::{sync::Arc, cell::Ref};
 
@@ -80,7 +80,7 @@ impl TAAPass {
   ) {
     cmd_buf.begin_label("TAA pass");
 
-    let output_srv = resources.access_sampling_view(
+    let output_srv = resources.access_view(
       cmd_buf,
       input_name,
       BarrierSync::COMPUTE_SHADER,
@@ -91,7 +91,7 @@ impl TAAPass {
       HistoryResourceEntry::Current
     );
 
-    let taa_uav = resources.access_storage_view(
+    let taa_uav = resources.access_view(
       cmd_buf,
       Self::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -102,7 +102,7 @@ impl TAAPass {
       HistoryResourceEntry::Current
     );
 
-    let taa_history_srv = resources.access_sampling_view(
+    let taa_history_srv = resources.access_view(
       cmd_buf,
       Self::TAA_TEXTURE_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -113,11 +113,11 @@ impl TAAPass {
       HistoryResourceEntry::Past
     );
 
-    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureSamplingView>>>::None;
-    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
-    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureStorageView>>>::None;
+    let mut motion_srv = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+    let mut id_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+    let mut barycentrics_view = Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
     if !visibility_buffer {
-      motion_srv = Some(resources.access_sampling_view(
+      motion_srv = Some(resources.access_view(
         cmd_buf,
         motion_name.unwrap(),
         BarrierSync::COMPUTE_SHADER,
@@ -128,7 +128,7 @@ impl TAAPass {
         HistoryResourceEntry::Current
       ));
     } else {
-      id_view = Some(resources.access_storage_view(
+      id_view = Some(resources.access_view(
         cmd_buf,
         super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
@@ -138,7 +138,7 @@ impl TAAPass {
         &TextureViewInfo::default(),
         HistoryResourceEntry::Current
       ));
-      barycentrics_view = Some(resources.access_storage_view(
+      barycentrics_view = Some(resources.access_view(
         cmd_buf,
         super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
         BarrierSync::COMPUTE_SHADER,
@@ -150,7 +150,7 @@ impl TAAPass {
       ));
     }
 
-    let depth_srv = resources.access_sampling_view(
+    let depth_srv = resources.access_view(
       cmd_buf,
       depth_name,
       BarrierSync::COMPUTE_SHADER,

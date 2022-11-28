@@ -227,20 +227,7 @@ impl Device<VkBackend> for VkDevice {
     Arc::new(VkTexture::new(&self.device, info, name))
   }
 
-  fn create_sampling_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    Arc::new(VkTextureView::new(&self.device, texture, info, name))
-  }
-
-  fn create_render_target_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    Arc::new(VkTextureView::new(&self.device, texture, info, name))
-  }
-
-  fn create_storage_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    Arc::new(VkTextureView::new(&self.device, texture, info, name))
-  }
-
-  fn create_depth_stencil_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
-    assert!(texture.info().format.is_depth() || texture.info().format.is_stencil());
+  fn create_texture_view(&self, texture: &Arc<VkTexture>, info: &TextureViewInfo, name: Option<&str>) -> Arc<VkTextureView> {
     Arc::new(VkTextureView::new(&self.device, texture, info, name))
   }
 

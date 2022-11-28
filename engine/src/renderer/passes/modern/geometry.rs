@@ -1,6 +1,6 @@
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureRenderTargetView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
+use sourcerenderer_core::{Matrix4, graphics::{AddressMode, AttachmentBlendInfo, AttachmentInfo, Backend as GraphicsBackend, BindingFrequency, BlendInfo, BufferUsage, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, Device, FillMode, Filter, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, SamplerInfo, Scissor, ShaderInputElement, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureInfo, TextureView, TextureViewInfo, TextureUsage, VertexLayoutInfo, Viewport, TextureLayout, BarrierSync, BarrierAccess, IndexFormat, WHOLE_BUFFER, TextureDimension}};
 use std::{sync::Arc, cell::Ref};
 use crate::renderer::{PointLight, drawable::View, light::DirectionalLight, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, passes::{light_binning, ssao::SsaoPass, rt_shadows::RTShadowPass}, shader_manager::{ShaderManager, GraphicsPipelineHandle, GraphicsPipelineInfo}};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::Backend};
@@ -187,8 +187,8 @@ impl<P: Platform> GeometryPass<P> {
     scene: &RendererScene<P::GraphicsBackend>,
     view: &View,
     gpu_scene: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-    zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>,
-    _zero_texture_view_black: &Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>,
+    zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
+    _zero_texture_view_black: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
     lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
     swapchain_transform: Matrix4,
     frame: u64,
@@ -206,7 +206,7 @@ impl<P: Platform> GeometryPass<P> {
       HistoryResourceEntry::Current
     );
 
-    let rtv_ref = barriers.access_render_target_view(
+    let rtv_ref = barriers.access_view(
       cmd_buffer,
       Self::GEOMETRY_PASS_TEXTURE_NAME,
       BarrierSync::RENDER_TARGET,
@@ -217,7 +217,7 @@ impl<P: Platform> GeometryPass<P> {
     );
     let rtv = &*rtv_ref;
 
-    let prepass_depth_ref = barriers.access_depth_stencil_view(
+    let prepass_depth_ref = barriers.access_view(
       cmd_buffer,
       depth_name,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -229,7 +229,7 @@ impl<P: Platform> GeometryPass<P> {
     );
     let prepass_depth = &*prepass_depth_ref;
 
-    let ssao_ref = barriers.access_sampling_view(
+    let ssao_ref = barriers.access_view(
       cmd_buffer,
       SsaoPass::<P>::SSAO_TEXTURE_NAME,
       BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
@@ -250,9 +250,9 @@ impl<P: Platform> GeometryPass<P> {
     );
     let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-    let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureSamplingView>>;
+    let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureView>>;
     let shadows = if device.supports_ray_tracing() {
-      rt_shadows = barriers.access_sampling_view(
+      rt_shadows = barriers.access_view(
         cmd_buffer,
         RTShadowPass::SHADOWS_TEXTURE_NAME,
         BarrierSync::FRAGMENT_SHADER,

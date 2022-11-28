@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gltf::texture::{MagFilter, MinFilter};
 use smallvec::SmallVec;
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureRenderTargetView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange, TextureDimension, SamplerInfo, Filter, AddressMode, Device}};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI, graphics::{AttachmentBlendInfo, AttachmentInfo, Backend, Barrier, BindingFrequency, BlendInfo, CommandBuffer, CompareFunc, CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace, InputAssemblerElement, InputRate, LoadOp, LogicOp, OutputAttachmentRef, PipelineBinding, PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView, RenderPassBeginInfo, RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement, ShaderType, StencilInfo, StoreOp, SubpassInfo, Swapchain, Texture, TextureViewInfo, TextureInfo, TextureView, TextureUsage, VertexLayoutInfo, Viewport, BarrierSync, BarrierAccess, TextureLayout, IndexFormat, WHOLE_BUFFER, BarrierTextureRange, TextureDimension, SamplerInfo, Filter, AddressMode, Device}};
 
 use crate::{renderer::{drawable::View, renderer_assets::{RendererMaterialValue, RendererAssets, RendererMaterial}, renderer_scene::RendererScene, renderer_resources::{RendererResources, HistoryResourceEntry}, shader_manager::{GraphicsPipelineInfo, GraphicsPipelineHandle, ShaderManager}}};
 
@@ -178,7 +178,7 @@ impl<P: Platform> GeometryPass<P> {
     view: &View,
     camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
     resources: &RendererResources<P::GraphicsBackend>,
-    backbuffer: &Arc<<P::GraphicsBackend as Backend>::TextureRenderTargetView>,
+    backbuffer: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
     shader_manager: &ShaderManager<P>,
     assets: &RendererAssets<P>
   ) {
@@ -194,7 +194,7 @@ impl<P: Platform> GeometryPass<P> {
       range: BarrierTextureRange::default(),
     }]);
 
-    let dsv = resources.access_depth_stencil_view(
+    let dsv = resources.access_view(
       cmd_buffer,
       Self::DEPTH_TEXTURE_NAME,
       BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,

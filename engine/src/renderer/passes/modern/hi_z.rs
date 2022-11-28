@@ -90,7 +90,7 @@ impl<P: Platform> HierarchicalZPass<P> {
     assert!(mips <= 13); // TODO support >8k?
 
     cmd_buffer.begin_label("Hierarchical Z");
-    let src_texture = resources.access_sampling_view(
+    let src_texture = resources.access_view(
       cmd_buffer,
       depth_name,
       BarrierSync::COMPUTE_SHADER,
@@ -100,7 +100,7 @@ impl<P: Platform> HierarchicalZPass<P> {
       &TextureViewInfo::default(),
       HistoryResourceEntry::Past
     );
-    let dst_mip0 = resources.access_storage_view(
+    let dst_mip0 = resources.access_view(
       cmd_buffer,
       Self::HI_Z_BUFFER_NAME,
       BarrierSync::COMPUTE_SHADER,
@@ -124,9 +124,9 @@ impl<P: Platform> HierarchicalZPass<P> {
       BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE,
       HistoryResourceEntry::Current
     );
-    let mut dst_texture_views = SmallVec::<[Arc<<P::GraphicsBackend as Backend>::TextureStorageView>; 12]>::new();
+    let mut dst_texture_views = SmallVec::<[Arc<<P::GraphicsBackend as Backend>::TextureView>; 12]>::new();
     for i in 1..mips {
-      dst_texture_views.push(resources.access_storage_view(
+      dst_texture_views.push(resources.access_view(
         cmd_buffer,
         Self::HI_Z_BUFFER_NAME,
         BarrierSync::COMPUTE_SHADER,
@@ -142,7 +142,7 @@ impl<P: Platform> HierarchicalZPass<P> {
         }, HistoryResourceEntry::Current
       ).clone());
     }
-    let mut texture_refs = SmallVec::<[&Arc<<P::GraphicsBackend as Backend>::TextureStorageView>; 12]>::new();
+    let mut texture_refs = SmallVec::<[&Arc<<P::GraphicsBackend as Backend>::TextureView>; 12]>::new();
     for i in 0 .. (mips - 1) as usize {
       texture_refs.push(&dst_texture_views[i]);
     }

@@ -51,7 +51,7 @@ impl DrawPrepPass {
         let hi_z_info = resources.texture_info(HierarchicalZPass::<P>::HI_Z_BUFFER_NAME);
         hi_z_info.mip_levels
       };
-      let hi_z = resources.access_sampling_view(
+      let hi_z = resources.access_view(
         cmd_buffer,
         HierarchicalZPass::<P>::HI_Z_BUFFER_NAME,
         BarrierSync::COMPUTE_SHADER,
