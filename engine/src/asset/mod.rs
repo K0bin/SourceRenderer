@@ -1,15 +1,17 @@
-pub mod loaders;
 mod asset_manager;
+pub mod loaders;
 
-pub use asset_manager::Asset;
-pub use asset_manager::AssetLoader;
-pub use asset_manager::AssetType;
-pub use asset_manager::AssetManager;
-pub use asset_manager::Mesh;
-pub use asset_manager::MeshRange;
-pub use asset_manager::Texture;
-pub use asset_manager::Model;
-pub use asset_manager::Material;
-pub use asset_manager::MaterialValue;
-pub use asset_manager::AssetLoaderProgress;
-pub use asset_manager::AssetLoadPriority;
+pub use asset_manager::{
+    Asset,
+    AssetLoadPriority,
+    AssetLoader,
+    AssetLoaderProgress,
+    AssetManager,
+    AssetType,
+    Material,
+    MaterialValue,
+    Mesh,
+    MeshRange,
+    Model,
+    Texture,
+};
