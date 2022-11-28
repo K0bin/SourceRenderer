@@ -6,56 +6,64 @@ extern crate ash;
 
 #[macro_use]
 extern crate bitflags;
-extern crate thread_local;
 extern crate crossbeam_channel;
 extern crate crossbeam_utils;
-extern crate smallvec;
 extern crate rayon;
+extern crate smallvec;
+extern crate thread_local;
 
-pub use self::instance::VkInstance;
-pub use self::adapter::VkAdapter;
-pub use self::adapter::VkAdapterExtensionSupport;
+pub use self::adapter::{
+    VkAdapter,
+    VkAdapterExtensionSupport,
+};
+pub use self::backend::VkBackend;
+pub use self::buffer::VkBuffer;
+pub use self::command::{
+    VkCommandBufferRecorder,
+    VkCommandBufferSubmission,
+    VkCommandPool,
+};
 pub use self::device::VkDevice;
+pub use self::instance::VkInstance;
+pub(crate) use self::lifetime_tracker::VkLifetimeTrackers;
+pub use self::pipeline::VkPipeline;
+pub(crate) use self::query::*;
+pub use self::queue::VkQueue;
+pub use self::renderpass::{
+    VkFrameBuffer,
+    VkRenderPass,
+};
+pub(crate) use self::shared::VkShared;
 pub use self::surface::VkSurface;
 pub use self::swapchain::VkSwapchain;
-pub use self::queue::VkQueue;
-pub use self::command::VkCommandPool;
-pub use self::command::VkCommandBufferSubmission;
-pub use self::command::VkCommandBufferRecorder;
-pub use self::buffer::VkBuffer;
-pub use self::texture::VkTexture;
-pub use self::sync::VkSemaphore;
-pub use self::sync::VkFence;
-pub use self::pipeline::VkPipeline;
-pub use self::renderpass::VkFrameBuffer;
-pub use self::renderpass::VkRenderPass;
-pub use self::backend::VkBackend;
-pub(crate) use self::shared::VkShared;
-pub(crate) use self::lifetime_tracker::VkLifetimeTrackers;
-pub(crate) use self::thread_manager::VkThreadManager;
 pub(crate) use self::sync::VkFenceInner;
-pub(crate) use self::query::*;
+pub use self::sync::{
+    VkFence,
+    VkSemaphore,
+};
+pub use self::texture::VkTexture;
+pub(crate) use self::thread_manager::VkThreadManager;
 
-mod raw;
-mod backend;
-mod instance;
 mod adapter;
+mod backend;
+mod bindless;
+mod buffer;
+mod command;
+mod descriptor;
 mod device;
+mod format;
+mod instance;
+mod lifetime_tracker;
+mod pipeline;
+mod query;
 mod queue;
+mod raw;
+mod renderpass;
+mod rt;
+mod shared;
 mod surface;
 mod swapchain;
-mod command;
-mod buffer;
-mod pipeline;
-mod format;
-mod texture;
 mod sync;
-mod renderpass;
+mod texture;
 mod thread_manager;
-mod descriptor;
 mod transfer;
-mod shared;
-mod lifetime_tracker;
-mod query;
-mod bindless;
-mod rt;
