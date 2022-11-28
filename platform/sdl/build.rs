@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
-use build_util::{copy_directory_rec, compile_shaders, compile_shader};
+
+use build_util::{
+    compile_shader,
+    compile_shaders,
+    copy_directory_rec,
+};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -20,7 +25,14 @@ fn main() {
     shader_dir.push("engine");
     shader_dir.push("shaders");
 
-    compile_shaders(&shader_dir, &shader_dest_dir, true, false, &HashMap::new(), |_| true);
+    compile_shaders(
+        &shader_dir,
+        &shader_dest_dir,
+        true,
+        false,
+        &HashMap::new(),
+        |_| true,
+    );
 
     let mut fsr_shader_dir = manifest_dir.clone();
     fsr_shader_dir.pop();
@@ -34,17 +46,34 @@ fn main() {
     let mut map = HashMap::new();
     map.insert("FFX_GPU".to_string(), "1".to_string());
     map.insert("FFX_GLSL".to_string(), "1".to_string());
-    map.insert("FFX_FSR2_OPTION_LOW_RESOLUTION_MOTION_VECTORS".to_string(), "1".to_string());
-    map.insert("FFX_FSR2_OPTION_HDR_COLOR_INPUT".to_string(), "1".to_string());
-    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, false, &map, |f|
-        f.extension().and_then(|ext| ext.to_str()).map(|ext| ext == "glsl").unwrap_or_default()
+    map.insert(
+        "FFX_FSR2_OPTION_LOW_RESOLUTION_MOTION_VECTORS".to_string(),
+        "1".to_string(),
     );
+    map.insert(
+        "FFX_FSR2_OPTION_HDR_COLOR_INPUT".to_string(),
+        "1".to_string(),
+    );
+    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, false, &map, |f| {
+        f.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext == "glsl")
+            .unwrap_or_default()
+    });
     let mut accumulate_sharpen_path = fsr_shader_dir.clone();
     accumulate_sharpen_path.push("ffx_fsr2_accumulate_pass.glsl");
     let mut accumulate_sharpen_compiled_path = shader_dest_dir.clone();
     accumulate_sharpen_compiled_path.push("ffx_fsr2_accumulate_sharpen_pass.spv");
-    map.insert("FFX_FSR2_OPTION_APPLY_SHARPENING".to_string(), "1".to_string());
-    compile_shader(&accumulate_sharpen_path, &accumulate_sharpen_compiled_path, true, &map);
+    map.insert(
+        "FFX_FSR2_OPTION_APPLY_SHARPENING".to_string(),
+        "1".to_string(),
+    );
+    compile_shader(
+        &accumulate_sharpen_path,
+        &accumulate_sharpen_compiled_path,
+        true,
+        &map,
+    );
 
     let mut assets_dest_dir = manifest_dir.clone();
     assets_dest_dir.push("assets");
@@ -68,15 +97,14 @@ fn main() {
         if target.contains("msvc") {
             lib_dir.push("msvc");
             dll_dir.push("msvc");
-        }
-        else {
+        } else {
             lib_dir.push("gnu-mingw");
             dll_dir.push("gnu-mingw");
         }
         lib_dir.push("lib");
         dll_dir.push("dll");
         println!("cargo:rustc-link-search=all={}", lib_dir.display());
-        for entry in std::fs::read_dir(dll_dir).expect("Can't read DLL dir")  {
+        for entry in std::fs::read_dir(dll_dir).expect("Can't read DLL dir") {
             let entry_path = entry.expect("Invalid fs entry").path();
             let file_name_result = entry_path.file_name();
             let mut new_file_path = manifest_dir.clone();
