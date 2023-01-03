@@ -18,6 +18,7 @@ use sourcerenderer_core::{
     Vec3,
     Vec4,
 };
+use bitflags::bitflags;
 
 use crate::renderer::renderer_assets::{
     MaterialHandle,
@@ -33,6 +34,7 @@ pub const PART_CAPACITY: u32 = 4096;
 pub const DRAW_CAPACITY: u32 = 4096;
 pub const MATERIAL_CAPACITY: u32 = 4096;
 pub const MESH_CAPACITY: u32 = 4096;
+pub const LIGHT_CAPACITY: u32 = 64;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -42,7 +44,7 @@ struct GPUScene {
     drawable_count: u32,
     mesh_count: u32,
     draw_count: u32,
-    _padding: u32,
+    light_count: u32,
     _padding1: u32,
     _padding2: u32,
     draws: [GPUDraw; DRAW_CAPACITY as usize],
@@ -50,6 +52,7 @@ struct GPUScene {
     materials: [GPUMaterial; MATERIAL_CAPACITY as usize],
     drawables: [GPUDrawable; DRAWABLE_CAPACITY as usize],
     meshes: [GPUMesh; MESH_CAPACITY as usize],
+    lights: [GPULight; LIGHT_CAPACITY as usize]
 }
 
 #[repr(C)]
@@ -78,13 +81,20 @@ struct GPUMaterial {
     _padding: u32,
 }
 
+bitflags! {
+    struct GPUDrawableFlags : u32 {
+        const STATIC = 0b1;
+        const CASTS_SHADOW = 0b10;
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 struct GPUDrawable {
     transform: Matrix4,
     old_transform: Matrix4,
     mesh_index: u32,
-    _padding: u32,
+    flags: GPUDrawableFlags,
     _padding1: u32,
     _padding2: u32,
 }
@@ -108,6 +118,25 @@ struct GPUBoundingSphere {
 struct GPUMesh {
     aabb: GPUBoundingBox,
     sphere: GPUBoundingSphere,
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone)]
+enum GPULightType {
+    PointLight,
+    DirectionalLight,
+    SpotLight
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+struct GPULight {
+    position: Vec3,
+    light_type: GPULightType,
+    direction: Vec3,
+    intensity: f32,
+    color: Vec3,
+    _padding: u32
 }
 
 #[profiling::function]
@@ -282,6 +311,13 @@ pub(crate) fn upload<P: Platform>(
                 gpu_drawable.transform = drawable.transform;
                 gpu_drawable.old_transform = drawable.old_transform;
                 gpu_drawable.mesh_index = model_entry.mesh_index;
+                gpu_drawable.flags = GPUDrawableFlags::empty();
+                if !drawable.can_move {
+                    gpu_drawable.flags |= GPUDrawableFlags::STATIC;
+                }
+                if drawable.cast_shadows {
+                    gpu_drawable.flags |= GPUDrawableFlags::CASTS_SHADOW;
+                }
                 local.drawable_count += 1;
             }
 
@@ -296,6 +332,27 @@ pub(crate) fn upload<P: Platform>(
             }
         }
         debug_assert!(scene.static_drawables().len() < local.parts.len());
+
+        local.light_count = 0;
+        for light in scene.directional_lights() {
+            let gpu_light = &mut local.lights[local.light_count as usize];
+            gpu_light.light_type = GPULightType::DirectionalLight;
+            gpu_light.position = Vec3::new(0f32, 0f32, 0f32);
+            gpu_light.direction = light.direction;
+            gpu_light.intensity = light.intensity;
+            gpu_light.color = Vec3::new(1f32, 1f32, 1f32);
+            local.light_count += 1;
+        }
+        for light in scene.point_lights() {
+            let gpu_light = &mut local.lights[local.light_count as usize];
+            gpu_light.light_type = GPULightType::PointLight;
+            gpu_light.position = light.position;
+            gpu_light.direction = Vec3::new(0f32, 0f32, 0f32);
+            gpu_light.intensity = light.intensity;
+            gpu_light.color = Vec3::new(1f32, 1f32, 1f32);
+            local.light_count += 1;
+        }
+        debug_assert_eq!(scene.directional_lights().len() as u32 + scene.point_lights().len() as u32, local.light_count);
     }
 
     let buffer_size = align_up_to_cache_line(std::mem::size_of::<GPUScene>());
