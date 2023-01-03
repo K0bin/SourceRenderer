@@ -1,9 +1,12 @@
 #ifndef GPU_SCENE_H
 #define GPU_SCENE_H
 
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types : require
+
 struct GPUDraw {
-  uint drawableIndex;
-  uint partIndex;
+  uint16_t drawableIndex;
+  uint16_t partIndex;
 };
 
 struct GPUMeshPart {
@@ -50,6 +53,8 @@ struct GPUMesh {
 #define DRAW_CAPACITY 4096
 #define MATERIAL_CAPACITY 4096
 #define MESH_CAPACITY 4096
+
+// TODO: Move arrays to separate buffers
 
 struct GPUScene {
   uint partCount;

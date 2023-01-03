@@ -55,8 +55,8 @@ struct GPUScene {
 #[repr(C)]
 #[derive(Debug, Clone)]
 struct GPUDraw {
-    drawable_index: u32,
-    part_index: u32,
+    drawable_index: u16,
+    part_index: u16,
 }
 
 #[repr(C)]
@@ -275,8 +275,8 @@ pub(crate) fn upload<P: Platform>(
                 model_map.get(&drawable.model).unwrap()
             };
 
-            let drawable_index = local.drawable_count;
-            debug_assert!(drawable_index < local.drawables.len() as u32);
+            let drawable_index = local.drawable_count as u16;
+            debug_assert!(drawable_index < local.drawables.len() as u16);
             {
                 let gpu_drawable = &mut local.drawables[drawable_index as usize];
                 gpu_drawable.transform = drawable.transform;
@@ -291,7 +291,7 @@ pub(crate) fn upload<P: Platform>(
                 let draw_index = local.draw_count;
                 let gpu_draw = &mut local.draws[draw_index as usize];
                 gpu_draw.drawable_index = drawable_index;
-                gpu_draw.part_index = part_index;
+                gpu_draw.part_index = part_index as u16;
                 local.draw_count += 1;
             }
         }

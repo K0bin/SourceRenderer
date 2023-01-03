@@ -305,6 +305,13 @@ impl Adapter<VkBackend> for VkAdapter {
                 vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
             let mut supported_barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
+            let mut supported_16bit_features =
+                vk::PhysicalDevice16BitStorageFeatures::default();
+
+            supported_16bit_features.p_next = std::mem::replace(&mut supported_features.p_next,
+             &mut supported_16bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
+                as *mut c_void);
+
             if self
                 .extensions
                 .intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING)
@@ -418,10 +425,13 @@ impl Adapter<VkBackend> for VkAdapter {
             let mut sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
             let mut barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
+            let mut sixteen_bit_features = vk::PhysicalDevice16BitStorageFeatures::default();
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
             let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
-            enabled_features.shader_storage_image_write_without_format = vk::TRUE;
+            if supported_16bit_features.storage_buffer16_bit_access == vk::TRUE {
+                enabled_features.shader_storage_image_write_without_format = vk::TRUE;
+            }
 
             if self
                 .extensions
@@ -614,6 +624,9 @@ impl Adapter<VkBackend> for VkAdapter {
                 features |= VkFeatures::BARYCENTRICS;
                 enabled_features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
             }
+
+            sixteen_bit_features.p_next = std::mem::replace(&mut device_creation_pnext,
+              &mut sixteen_bit_features as *mut vk::PhysicalDevice16BitStorageFeatures as *mut c_void);
 
             if self
                 .extensions
