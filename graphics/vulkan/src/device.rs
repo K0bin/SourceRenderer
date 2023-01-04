@@ -450,7 +450,7 @@ impl Device<VkBackend> for VkDevice {
     }
 
     fn supports_ray_tracing(&self) -> bool {
-        false // self.device.features.contains(VkFeatures::RAY_TRACING)
+        self.device.features.contains(VkFeatures::RAY_TRACING)
     }
 
     fn supports_indirect(&self) -> bool {
