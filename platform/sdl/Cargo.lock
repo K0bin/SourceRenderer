@@ -1682,6 +1682,7 @@ dependencies = [
 name = "sourcerenderer_engine"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "bitset-core",
  "bitvec",
  "crossbeam-channel",

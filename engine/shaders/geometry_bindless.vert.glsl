@@ -25,11 +25,11 @@ void main(void) {
   vec4 pos = vec4(in_pos, 1);
 
   uint drawIndex = gl_InstanceIndex;
-  GPUDraw draw = scene.draws[drawIndex];
-  GPUMeshPart part = scene.parts[draw.partIndex];
+  GPUDraw draw = scene_draws[drawIndex];
+  GPUMeshPart part = scene_parts[draw.partIndex];
   uint materialIndex = part.materialIndex;
   uint drawableIndex = draw.drawableIndex;
-  GPUDrawable drawable = scene.drawables[drawableIndex];
+  GPUDrawable drawable = scene_drawables[drawableIndex];
   mat4 model = drawable.transform;
 
   mat4 mvp = camera.viewProj * model;

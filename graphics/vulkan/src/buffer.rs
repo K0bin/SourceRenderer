@@ -701,6 +701,7 @@ impl BufferAllocator {
         let mut buffers_types = self.buffers.lock().unwrap();
         for (_key, buffers) in buffers_types.iter_mut() {
             buffers.free_slices.append(buffers.used_slices.as_mut());
+            buffers.free_slices.sort_unstable_by_key(|a| a.length);
         }
     }
 }

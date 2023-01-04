@@ -47,8 +47,8 @@ void main() {
   bool isVisible = false;
 
   if (drawableIndex < scene.drawableCount) {
-    GPUDrawable drawable = scene.drawables[drawableIndex];
-    GPUMesh mesh = scene.meshes[drawable.meshIndex];
+    GPUDrawable drawable = scene_drawables[drawableIndex];
+    GPUMesh mesh = scene_meshes[drawable.meshIndex];
     GPUBoundingBox aabb = mesh.aabb;
     isVisible = true;
 

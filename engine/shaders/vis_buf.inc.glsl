@@ -17,6 +17,22 @@
 #define GPU_SCENE_NAME scene
 #endif
 
+#ifndef GPU_SCENE_PARTS_NAME
+#define GPU_SCENE_PARTS_NAME scene_parts
+#endif
+
+#ifndef GPU_SCENE_DRAWS_NAME
+#define GPU_SCENE_DRAWS_NAME scene_draws
+#endif
+
+#ifndef GPU_SCENE_DRAWABLES_NAME
+#define GPU_SCENE_DRAWABLES_NAME scene_drawables
+#endif
+
+#ifndef GPU_SCENE_MATERIALS_NAME
+#define GPU_SCENE_MATERIALS_NAME scene_materials
+#endif
+
 uint getDrawIndex(uint id) {
   return id >> 16;
 }
@@ -40,8 +56,8 @@ Vertex[3] getVertices(uint id) {
   uint drawId = getDrawIndex(id);
   uint primitiveId = getPrimitiveIndex(id);
 
-  GPUDraw draw = GPU_SCENE_NAME.draws[drawId];
-  GPUMeshPart part = GPU_SCENE_NAME.parts[draw.partIndex];
+  GPUDraw draw = GPU_SCENE_DRAWS_NAME[drawId];
+  GPUMeshPart part = GPU_SCENE_PARTS_NAME[draw.partIndex];
 
   uint firstIndex = part.meshFirstIndex + primitiveId * 3;
   uint index0 = INDICES_ARRAY_NAME[firstIndex];
@@ -61,8 +77,8 @@ Vertex getVertex(uint id, vec2 barycentrics) {
   uint drawId = getDrawIndex(id);
   uint primitiveId = getPrimitiveIndex(id);
 
-  GPUDraw draw = GPU_SCENE_NAME.draws[drawId];
-  GPUDrawable drawable = GPU_SCENE_NAME.drawables[draw.drawableIndex];
+  GPUDraw draw = GPU_SCENE_DRAWS_NAME[drawId];
+  GPUDrawable drawable = GPU_SCENE_DRAWABLES_NAME[draw.drawableIndex];
 
   mat4 transposedTransform = transpose(inverse(drawable.transform));
   Vertex vertex = interpolateVertex(barycentrics, vertices);
@@ -73,9 +89,9 @@ Vertex getVertex(uint id, vec2 barycentrics) {
 
 GPUMaterial getMaterial(uint id) {
   uint drawIndex = getDrawIndex(id);
-  GPUDraw draw = scene.draws[drawIndex];
-  GPUMeshPart part = scene.parts[draw.partIndex];
-  GPUMaterial material = scene.materials[part.materialIndex];
+  GPUDraw draw = GPU_SCENE_DRAWS_NAME[drawIndex];
+  GPUMeshPart part = GPU_SCENE_PARTS_NAME[draw.partIndex];
+  GPUMaterial material = GPU_SCENE_MATERIALS_NAME[part.materialIndex];
   return material;
 }
 
@@ -86,8 +102,8 @@ vec2 getMotionVector(uint id, vec2 barycentrics, Camera camera, Camera oldCamera
   uint drawId = getDrawIndex(id);
   uint primitiveId = getPrimitiveIndex(id);
 
-  GPUDraw draw = GPU_SCENE_NAME.draws[drawId];
-  GPUDrawable drawable = GPU_SCENE_NAME.drawables[draw.drawableIndex];
+  GPUDraw draw = GPU_SCENE_DRAWS_NAME[drawId];
+  GPUDrawable drawable = GPU_SCENE_DRAWABLES_NAME[draw.drawableIndex];
 
   Vertex interpolatedVertex = interpolateVertex(barycentrics, vertices);
   Vertex interpolatedOldVertex = interpolateVertex(barycentrics, oldVertices);

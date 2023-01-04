@@ -67,20 +67,9 @@ struct GPULight {
 // TODO: Move arrays to separate buffers
 
 struct GPUScene {
-  uint partCount;
-  uint materialCount;
   uint drawableCount;
-  uint meshCount;
   uint drawCount;
   uint lightCount;
-  uint _padding1;
-  uint _padding2;
-  GPUDraw draws[DRAW_CAPACITY]; // needs 4 byte alignment
-  GPUMeshPart parts[PART_CAPACITY]; // needs 4 byte alignment
-  GPUMaterial materials[MATERIAL_CAPACITY]; // needs 16 byte alignment
-  GPUDrawable drawables[DRAWABLE_CAPACITY]; // needs 16 byte alignment
-  GPUMesh meshes[MESH_CAPACITY]; // needs 16 byte alignment
-  GPULight lights[LIGHT_CAPACITY]; // needs 16 byte alignment
 };
 
 #endif

@@ -41,8 +41,8 @@ void main() {
 
   uint drawIndex = gl_GlobalInvocationID.x;
   if (drawIndex < scene.drawCount) {
-    GPUDraw draw = scene.draws[drawIndex];
-    GPUMeshPart part = scene.parts[draw.partIndex];
+    GPUDraw draw = scene_draws[drawIndex];
+    GPUMeshPart part = scene_parts[draw.partIndex];
     uint drawableIndex = draw.drawableIndex;
     bool drawableVisible = (visibleBitmasks[drawableIndex / 32] & (1 << (drawableIndex % 32))) != 0;
     #ifndef DEBUG

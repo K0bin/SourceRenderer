@@ -66,7 +66,7 @@ void main(void) {
     }
   #endif
 
-  GPUMaterial material = scene.materials[in_materialIndex];
+  GPUMaterial material = scene_materials[in_materialIndex];
 
   float roughness = material.roughnessFactor;
   float metalness = material.metalnessFactor;

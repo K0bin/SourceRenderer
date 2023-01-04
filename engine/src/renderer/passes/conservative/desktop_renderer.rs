@@ -457,58 +457,60 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 }
 
 pub fn setup_frame<B: Backend>(cmd_buf: &mut B::CommandBuffer, frame_bindings: &FrameBindings<B>) {
-    cmd_buf.bind_storage_buffer(
-        BindingFrequency::Frame,
-        0,
-        &frame_bindings.gpu_scene_buffer,
-        0,
-        WHOLE_BUFFER,
-    );
+    for i in 0..6 {
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            i,
+            &frame_bindings.gpu_scene_buffer,
+            0,
+            WHOLE_BUFFER,
+        );
+    }
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
-        1,
+        7,
         &frame_bindings.camera_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
-        2,
+        8,
         &frame_bindings.camera_history_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_storage_buffer(
         BindingFrequency::Frame,
-        3,
+        9,
         &frame_bindings.vertex_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_storage_buffer(
         BindingFrequency::Frame,
-        4,
+        10,
         &frame_bindings.index_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
-        5,
+        11,
         &frame_bindings.setup_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
-        6,
+        12,
         &frame_bindings.point_lights,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
-        7,
+        13,
         &frame_bindings.directional_lights,
         0,
         WHOLE_BUFFER,

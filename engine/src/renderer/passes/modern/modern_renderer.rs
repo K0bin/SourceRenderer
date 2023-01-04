@@ -59,6 +59,7 @@ use crate::renderer::renderer_resources::{
 use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::LateLatching;
+use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 
 pub struct ModernRenderer<P: Platform> {
     swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
@@ -185,7 +186,7 @@ impl<P: Platform> ModernRenderer<P> {
         &self,
         cmd_buf: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
         swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-        gpu_scene_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+        gpu_scene_buffers: SceneBuffers<P::GraphicsBackend>,
         camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
@@ -195,23 +196,24 @@ impl<P: Platform> ModernRenderer<P> {
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) {
-        cmd_buf.bind_storage_buffer(
-            BindingFrequency::Frame,
-            0,
-            &gpu_scene_buffer,
-            0,
-            WHOLE_BUFFER,
-        );
-        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 1, &camera_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, &gpu_scene_buffers.buffer, gpu_scene_buffers.scene_buffer.offset, gpu_scene_buffers.scene_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 1, &gpu_scene_buffers.buffer, gpu_scene_buffers.draws_buffer.offset, gpu_scene_buffers.draws_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 2, &gpu_scene_buffers.buffer, gpu_scene_buffers.meshes_buffer.offset, gpu_scene_buffers.meshes_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, &gpu_scene_buffers.buffer, gpu_scene_buffers.drawables_buffer.offset, gpu_scene_buffers.drawables_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, &gpu_scene_buffers.buffer, gpu_scene_buffers.parts_buffer.offset, gpu_scene_buffers.parts_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 5, &gpu_scene_buffers.buffer, gpu_scene_buffers.materials_buffer.offset, gpu_scene_buffers.materials_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 6, &gpu_scene_buffers.buffer, gpu_scene_buffers.lights_buffer.offset, gpu_scene_buffers.lights_buffer.length);
+
+        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, &camera_buffer, 0, WHOLE_BUFFER);
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
-            2,
+            8,
             &camera_history_buffer,
             0,
             WHOLE_BUFFER,
         );
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, &vertex_buffer, 0, WHOLE_BUFFER);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, &index_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 9, &vertex_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 10, &index_buffer, 0, WHOLE_BUFFER);
         let cluster_count = self.clustering_pass.cluster_count();
         let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
         let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2()
@@ -247,7 +249,7 @@ impl<P: Platform> ModernRenderer<P> {
             }],
             BufferUsage::CONSTANT,
         );
-        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 5, &setup_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 11, &setup_buffer, 0, WHOLE_BUFFER);
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct PointLight {
@@ -265,7 +267,7 @@ impl<P: Platform> ModernRenderer<P> {
         let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT);
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
-            6,
+            12,
             &point_lights_buffer,
             0,
             WHOLE_BUFFER,
@@ -288,7 +290,7 @@ impl<P: Platform> ModernRenderer<P> {
             cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT);
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
-            7,
+            13,
             &directional_lights_buffer,
             0,
             WHOLE_BUFFER,
@@ -330,13 +332,12 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         let camera_buffer = late_latching.unwrap().buffer();
         let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
 
-        let gpu_scene_buffer =
-            super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
+        let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
         self.setup_frame(
             &mut cmd_buf,
             &self.swapchain,
-            &gpu_scene_buffer,
+            scene_buffers,
             &camera_buffer,
             &camera_history_buffer,
             scene.vertex_buffer,
