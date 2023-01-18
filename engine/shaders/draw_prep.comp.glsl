@@ -29,8 +29,6 @@ layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, std430) restrict
   VkDrawIndexedIndirectCommand draws[];
 };
 
-shared uint[2] visible;
-
 void main() {
   #ifdef DEBUG
   if (gl_LocalInvocationIndex == 0) {
