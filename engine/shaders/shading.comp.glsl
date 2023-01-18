@@ -31,7 +31,7 @@ layout (set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) readonly buffer lightBi
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform sampler2D lightmap;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 7) uniform sampler2D shadows;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 8) uniform sampler2D ssao;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 9) uniform sampler2D shadowMap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 9) uniform sampler2DShadow shadowMap;
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
     mat4 lightViewProj;
@@ -109,7 +109,8 @@ void main() {
     if (i == 0) {
       lightContribution *= texture(shadows, texCoord).rrr;
 
-      lightContribution *= (texture(shadowMap, lightSpacePos.xy).r < lightSpacePos.z) ? 0.0 : 1.0;
+      vec4 shadowGather = textureGather(shadowMap, lightSpacePos.xy, lightSpacePos.z);
+      lightContribution *= dot(shadowGather, vec4(0.25, 0.25, 0.25, 0.25));
     }
     lighting += lightContribution;
   }

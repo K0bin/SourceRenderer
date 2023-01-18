@@ -19,7 +19,7 @@ use sourcerenderer_core::graphics::{
     TextureLayout,
     TextureUsage,
     TextureViewInfo,
-    WHOLE_BUFFER, ShaderType,
+    WHOLE_BUFFER, ShaderType, CompareFunc,
 };
 use sourcerenderer_core::{
     Platform,
@@ -42,6 +42,7 @@ use crate::renderer::shader_manager::{
 
 pub struct ShadingPass<P: Platform> {
     sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
+    shadow_sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
     pipeline: ComputePipelineHandle,
 }
 
@@ -88,7 +89,21 @@ impl<P: Platform> ShadingPass<P> {
             false,
         );
 
-        Self { sampler, pipeline }
+        let shadow_sampler = device.create_sampler(&SamplerInfo {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            mip_filter: Filter::Linear,
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mip_bias: 0.0f32,
+            max_anisotropy: 0.0f32,
+            compare_op: Some(CompareFunc::Less),
+            min_lod: 0f32,
+            max_lod: None,
+        });
+
+        Self { sampler, shadow_sampler, pipeline }
     }
     #[profiling::function]
     pub(super) fn execute(
@@ -225,7 +240,7 @@ impl<P: Platform> ShadingPass<P> {
             BindingFrequency::VeryFrequent,
             9,
             &shadow_map,
-            resources.linear_sampler()
+            &self.shadow_sampler
         );
 
         cmd_buffer.flush_barriers();
