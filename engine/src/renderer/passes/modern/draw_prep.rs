@@ -1,39 +1,17 @@
 use sourcerenderer_core::graphics::{
-    Backend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    MemoryUsage,
-    PipelineBinding,
-    TextureLayout,
-    TextureViewInfo,
-    WHOLE_BUFFER,
+    Backend, BarrierAccess, BarrierSync, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer,
+    MemoryUsage, PipelineBinding, TextureLayout, TextureViewInfo, WHOLE_BUFFER,
 };
-use sourcerenderer_core::{
-    Platform,
-    Vec4,
-};
+use sourcerenderer_core::{Platform, Vec4};
 
 use crate::math::Frustum;
 use crate::renderer::drawable::View;
-use crate::renderer::passes::modern::gpu_scene::{
-    DRAWABLE_CAPACITY,
-    PART_CAPACITY,
-};
+use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::renderer_assets::RendererAssets;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
+use crate::renderer::shader_manager::{ComputePipelineHandle, ShaderManager};
 
 pub struct DrawPrepPass {
     culling_pipeline: ComputePipelineHandle,

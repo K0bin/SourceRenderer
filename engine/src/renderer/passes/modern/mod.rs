@@ -17,6 +17,7 @@ mod hi_z;
 mod motion_vectors;
 mod shading_pass;
 mod visibility_buffer;
+mod shadow_map;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use modern_renderer::ModernRenderer;

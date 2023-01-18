@@ -31,6 +31,11 @@ layout (set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) readonly buffer lightBi
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform sampler2D lightmap;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 7) uniform sampler2D shadows;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 8) uniform sampler2D ssao;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 9) uniform sampler2D shadowMap;
+
+layout(push_constant) uniform VeryHighFrequencyUbo {
+    mat4 lightViewProj;
+};
 
 #include "frame_set.inc.glsl"
 
@@ -69,6 +74,11 @@ void main() {
   vec2 uv = vertex.uv;
   vec2 albedoUV = uv;
 
+  vec4 lightSpacePos = (lightViewProj * vec4(vertex.position, 1.0));
+  lightSpacePos.xyz /= lightSpacePos.w;
+  lightSpacePos.xyz = lightSpacePos.xyz * 0.5 + 0.5;
+  lightSpacePos.y = 1 - lightSpacePos.y;
+
   uint clusterIndex = getClusterIndex(texCoord, viewPos.z, clusterCount, uvec2(texSize), clusterZScale, clusterZBias);
   uint maxClusterCount = clusterCount.x * clusterCount.y * clusterCount.z;
   #ifdef DEBUG
@@ -98,6 +108,8 @@ void main() {
     vec3 lightContribution = pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
     if (i == 0) {
       lightContribution *= texture(shadows, texCoord).rrr;
+
+      lightContribution *= (texture(shadowMap, lightSpacePos.xy).r < lightSpacePos.z) ? 0.0 : 1.0;
     }
     lighting += lightContribution;
   }
@@ -128,4 +140,5 @@ void main() {
   }
 
   imageStore(outputTexture, iTexCoord, vec4(lighting * albedo, 1));
+  //imageStore(outputTexture, iTexCoord, vec4(texture(shadowMap, lightSpacePos.xy).r, 0, 0, 1));
 }

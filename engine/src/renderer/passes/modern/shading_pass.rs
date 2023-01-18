@@ -19,14 +19,15 @@ use sourcerenderer_core::graphics::{
     TextureLayout,
     TextureUsage,
     TextureViewInfo,
-    WHOLE_BUFFER,
+    WHOLE_BUFFER, ShaderType,
 };
 use sourcerenderer_core::{
     Platform,
-    Vec2UI,
+    Vec2UI, Matrix4,
 };
 
 use super::rt_shadows::RTShadowPass;
+use super::shadow_map::ShadowMapPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::renderer_assets::RendererTexture;
@@ -98,6 +99,7 @@ impl<P: Platform> ShadingPass<P> {
         zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
         resources: &RendererResources<P::GraphicsBackend>,
         shader_manager: &ShaderManager<P>,
+        light_view_proj: &Matrix4
     ) {
         let (width, height) = {
             let info = resources.texture_info(Self::SHADING_TEXTURE_NAME);
@@ -175,6 +177,17 @@ impl<P: Platform> ShadingPass<P> {
             zero_texture_view
         };
 
+        let shadow_map = resources.access_view(
+            cmd_buffer,
+            ShadowMapPass::<P>::SHADOW_MAP_NAME,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
         let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
@@ -205,6 +218,14 @@ impl<P: Platform> ShadingPass<P> {
             8,
             &ssao,
             resources.linear_sampler(),
+        );
+
+        cmd_buffer.upload_dynamic_data_inline(&[light_view_proj.clone()], ShaderType::ComputeShader);
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::VeryFrequent,
+            9,
+            &shadow_map,
+            resources.linear_sampler()
         );
 
         cmd_buffer.flush_barriers();

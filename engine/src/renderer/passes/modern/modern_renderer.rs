@@ -34,6 +34,7 @@ use super::hi_z::HierarchicalZPass;
 use super::light_binning::LightBinningPass;
 use super::rt_shadows::RTShadowPass;
 use super::shading_pass::ShadingPass;
+use super::shadow_map::ShadowMapPass;
 use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
@@ -78,6 +79,7 @@ pub struct ModernRenderer<P: Platform> {
     compositing_pass: CompositingPass,
     motion_vector_pass: MotionVectorPass,
     anti_aliasing: AntiAliasing<P::GraphicsBackend>,
+    shadow_map_pass: ShadowMapPass<P>
 }
 
 enum AntiAliasing<B: Backend> {
@@ -155,6 +157,8 @@ impl<P: Platform> ModernRenderer<P> {
             AntiAliasing::TAA { taa, sharpen }
         };
 
+        let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, shader_manager);
+
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
@@ -179,6 +183,7 @@ impl<P: Platform> ModernRenderer<P> {
             compositing_pass,
             motion_vector_pass,
             anti_aliasing,
+            shadow_map_pass: shadow_map
         }
     }
 
@@ -425,6 +430,36 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
                 blue_noise_sampler,
             );
         }
+
+        self.shadow_map_pass.prepare(
+            &mut cmd_buf,
+            &self.barriers,
+            &shader_manager,
+            &scene.scene
+        );
+
+        self.shadow_map_pass.execute(
+            &mut cmd_buf,
+            &self.barriers,
+            shader_manager,
+            scene.vertex_buffer,
+            scene.index_buffer,
+            &scene.scene,
+            &scene.views[scene.active_view_index]
+        );
+
+
+        let light = scene.scene.directional_lights().first();
+        let light_view_proj = if let Some(light) = light {
+            const Z_MULT: f32 = 100.0f32;
+            let view = &scene.views[scene.active_view_index];
+            let view_proj = view.proj_matrix * view.view_matrix;
+            let inv_camera_view = view_proj.try_inverse().unwrap();
+            ShadowMapPass::<P>::build_directional_light_view_proj(light, inv_camera_view, 10f32)
+        } else {
+            Matrix4::identity()
+        };
+
         self.shading_pass.execute(
             &mut cmd_buf,
             &self.device,
@@ -432,6 +467,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             zero_textures.zero_texture_view,
             &self.barriers,
             shader_manager,
+            &light_view_proj
         );
         self.ssr_pass.execute(
             &mut cmd_buf,
