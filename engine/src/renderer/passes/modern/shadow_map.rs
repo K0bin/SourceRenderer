@@ -273,7 +273,7 @@ impl<P: Platform> ShadowMapPass<P> {
         let draw_buffer = resources.access_buffer(
             cmd_buffer,
             Self::DRAW_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
+            BarrierSync::INDIRECT,
             BarrierAccess::INDIRECT_READ,
             HistoryResourceEntry::Current,
         );
