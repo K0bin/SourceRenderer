@@ -98,6 +98,7 @@ pub trait CommandBuffer<B: Backend> {
   fn end_query(&mut self, query_range: &Arc<B::QueryRange>, query_index: u32);
   fn copy_query_results_to_buffer(&mut self, query_range: &Arc<B::QueryRange>, buffer: &Arc<B::Buffer>, start_index: u32, count: u32);
 
+  // TODO: inherit bound resources for convenience
   fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
   fn execute_inner(&mut self, submission: Vec<B::CommandBufferSubmission>);
