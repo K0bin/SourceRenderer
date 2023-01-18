@@ -588,7 +588,7 @@ impl VkCommandBuffer {
                 buffer,
                 offset,
                 length: if length == WHOLE_BUFFER {
-                    buffer.length()
+                    buffer.length() - offset
                 } else {
                     length
                 },
@@ -614,7 +614,7 @@ impl VkCommandBuffer {
                 buffer,
                 offset,
                 length: if length == WHOLE_BUFFER {
-                    buffer.length()
+                    buffer.length() - offset
                 } else {
                     length
                 },
@@ -1596,12 +1596,14 @@ impl VkCommandBuffer {
         debug_assert!(self.render_pass.is_none());
 
         let actual_length_in_u32s = if length_in_u32s == WHOLE_BUFFER {
-            assert_eq!((buffer.length() - offset) % 4, 0);
+            debug_assert_eq!((buffer.length() - offset) % 4, 0);
             (buffer.length() - offset) / 4
         } else {
             length_in_u32s
         };
         let length_in_bytes = actual_length_in_u32s * 4;
+        debug_assert!(buffer.length() - offset >= length_in_bytes);
+
         #[repr(packed)]
         struct MetaClearShaderData {
             length: u32,
@@ -1614,7 +1616,7 @@ impl VkCommandBuffer {
 
         let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
         let mut bindings = <[VkBoundResourceRef; PER_SET_BINDINGS]>::default();
-        let binding_offsets = [offset as u32];
+        let binding_offsets = [(buffer.offset() + offset) as u32];
         let is_dynamic_binding = meta_pipeline
             .layout()
             .descriptor_set_layout(0)
@@ -1622,7 +1624,7 @@ impl VkCommandBuffer {
             .is_dynamic_binding(0);
         bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef {
             buffer,
-            offset: if is_dynamic_binding { 0 } else { offset },
+            offset,
             length: length_in_bytes,
         });
         let descriptor_set = self
