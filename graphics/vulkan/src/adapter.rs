@@ -429,8 +429,11 @@ impl Adapter<VkBackend> for VkAdapter {
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
             let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
-            if supported_16bit_features.storage_buffer16_bit_access == vk::TRUE {
-                enabled_features.shader_storage_image_write_without_format = vk::TRUE;
+            enabled_features.shader_storage_image_write_without_format = vk::TRUE;
+
+            if supported_features.features.shader_int16 == vk::TRUE && supported_16bit_features.storage_buffer16_bit_access == vk::TRUE {
+                sixteen_bit_features.storage_buffer16_bit_access = vk::TRUE;
+                enabled_features.shader_int16 = vk::TRUE;
             }
 
             if self
