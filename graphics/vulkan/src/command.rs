@@ -1595,34 +1595,36 @@ impl VkCommandBuffer {
         debug_assert!(!self.has_pending_barrier());
         debug_assert!(self.render_pass.is_none());
 
-        let actual_length = if length_in_u32s == WHOLE_BUFFER {
-            buffer.length() - offset
+        let actual_length_in_u32s = if length_in_u32s == WHOLE_BUFFER {
+            assert_eq!((buffer.length() - offset) % 4, 0);
+            (buffer.length() - offset) / 4
         } else {
             length_in_u32s
         };
+        let length_in_bytes = actual_length_in_u32s * 4;
         #[repr(packed)]
         struct MetaClearShaderData {
             length: u32,
             value: u32,
         }
         let push_data = MetaClearShaderData {
-            length: actual_length as u32,
+            length: length_in_bytes as u32,
             value: value,
         };
 
         let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
         let mut bindings = <[VkBoundResourceRef; PER_SET_BINDINGS]>::default();
-        bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef {
-            buffer,
-            offset,
-            length: actual_length,
-        });
-        let binding_offsets = [(buffer.offset() + offset) as u32];
+        let binding_offsets = [offset as u32];
         let is_dynamic_binding = meta_pipeline
             .layout()
             .descriptor_set_layout(0)
             .unwrap()
             .is_dynamic_binding(0);
+        bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef {
+            buffer,
+            offset: if is_dynamic_binding { 0 } else { offset },
+            length: length_in_bytes,
+        });
         let descriptor_set = self
             .descriptor_manager
             .get_or_create_set(
@@ -1665,7 +1667,7 @@ impl VkCommandBuffer {
                 },
             );
             self.device
-                .cmd_dispatch(self.buffer, (actual_length as u32 + 3) / 4, 1, 1);
+                .cmd_dispatch(self.buffer, (actual_length_in_u32s as u32 + 63) / 64, 1, 1);
         }
         self.descriptor_manager.mark_all_dirty();
     }
