@@ -118,7 +118,7 @@ impl<B: Backend> Fsr2Pass<B> {
                 mip_levels: 1,
                 array_length: 1,
                 samples: SampleCount::Samples1,
-                usage: TextureUsage::COPY_SRC | TextureUsage::STORAGE,
+                usage: TextureUsage::COPY_SRC | TextureUsage::STORAGE | TextureUsage::RENDER_TARGET,
                 supports_srgb: false,
             },
             false,
@@ -858,7 +858,7 @@ unsafe extern "C" fn execute_render_jobs<B: Backend>(
     let mut context = ScratchContext::<B>::from_interface(backend_interface);
     let cmd_buf = command_buffer_from_ffx::<B>(command_list);
 
-    let mut jobs = SmallVec::<[FfxGpuJobDescription; 16]>::new();
+    let mut jobs = SmallVec::<[FfxGpuJobDescription; 2]>::new();
     for job in context.jobs.drain(..) {
         jobs.push(job);
     }

@@ -18,7 +18,6 @@ use crate::asset::loaders::{
     GltfContainer,
     GltfLoader,
     ImageLoader,
-    ShaderLoader,
 };
 use crate::asset::AssetManager;
 use crate::game::{
@@ -30,6 +29,7 @@ use crate::renderer::{
     RendererInterface,
     *,
 };
+use crate::ui::UI;
 use crate::{
     fps_camera,
     transform,
@@ -41,7 +41,7 @@ use crate::{
     Transform,
 };
 
-pub struct GameInternal {
+pub struct GameInternal<P: Platform> {
     world: World,
     last_tick_time: Instant,
     last_iter_time: Instant,
@@ -50,14 +50,17 @@ pub struct GameInternal {
     resources: Resources,
     tick: u64,
     tick_duration: Duration,
+    ui: UI<P>
 }
 
-impl GameInternal {
-    pub fn new<P: Platform>(
+impl<P: Platform> GameInternal<P> {
+    pub fn new(
         asset_manager: &Arc<AssetManager<P>>,
         renderer: &Arc<Renderer<P>>,
         tick_rate: u32,
     ) -> Self {
+        let ui = UI::new(renderer.device());
+
         let mut world = World::default();
         let mut fixed_schedule = Schedule::builder();
         let mut schedule = Schedule::builder();
@@ -88,7 +91,7 @@ impl GameInternal {
         //asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/SourceRenderer/assets/Sponza2/Sponza.glb", true).unwrap()));
         asset_manager.add_loader(Box::new(GltfLoader::new()));
         asset_manager.add_loader(Box::new(ImageLoader::new()));
-        //let mut level = asset_manager.load_level("bistro_sun.glb/scene/Scene").unwrap();
+        let mut level = asset_manager.load_level("bistro_sun.glb/scene/Scene").unwrap();
         //let mut level = asset_manager.load_level("Sponza.glb/scene/Scene").unwrap();
         //let mut level = asset_manager.load_level("MetalRoughSpheresNoTextures.glb/scene/0").unwrap();
 
@@ -115,9 +118,9 @@ impl GameInternal {
           asset_manager.load_level("de_overpass.bsp").unwrap()
         };*/
         trace!("Done loading level");
-        let mut level = asset_manager
+        /*let mut level = asset_manager
             .load_level("assets/helmet/FlightHelmet.gltf/scene/0")
-            .unwrap();
+            .unwrap();*/
 
         PhysicsWorld::install(
             &mut world,
@@ -168,10 +171,11 @@ impl GameInternal {
             resources,
             tick: 0,
             tick_duration,
+            ui
         }
     }
 
-    pub fn update<P: Platform>(&mut self, game: &Game<P>, renderer: &Arc<Renderer<P>>) {
+    pub fn update(&mut self, game: &Game<P>, renderer: &Arc<Renderer<P>>) {
         self.resources.insert(game.input().poll());
 
         let now = Instant::now();
@@ -197,5 +201,9 @@ impl GameInternal {
         self.resources.insert(TickDelta(tick_delta));
         self.resources.insert(DeltaTime(delta));
         self.schedule.execute(&mut self.world, &mut self.resources);
+
+        self.ui.update();
+        let ui_data = self.ui.draw_data(renderer.device());
+        renderer.update_ui(ui_data);
     }
 }

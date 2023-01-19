@@ -12,6 +12,7 @@ pub(crate) mod ssao;
 pub(crate) mod ssr;
 pub(crate) mod taa;
 pub(crate) mod web;
+pub(crate) mod ui;
 
 use modern::{
     acceleration_structure_update,

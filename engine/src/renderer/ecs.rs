@@ -17,12 +17,13 @@ use sourcerenderer_core::{
 
 use crate::transform::interpolation::InterpolatedTransform;
 use crate::transform::GlobalTransform;
+use crate::ui::UIDrawData;
 use crate::{
     ActiveCamera,
     Camera,
 };
 
-pub trait RendererInterface {
+pub trait RendererInterface<P: Platform> {
     fn register_static_renderable(
         &self,
         entity: Entity,
@@ -51,6 +52,7 @@ pub trait RendererInterface {
     fn is_saturated(&self) -> bool;
     fn wait_until_available(&self, timeout: Duration);
     fn is_running(&self) -> bool;
+    fn update_ui(&self, ui_data: UIDrawData<P::GraphicsBackend>);
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -89,7 +91,7 @@ pub struct ActiveDirectionalLights(HashSet<Entity>);
 #[derive(Clone, Default, Debug)]
 pub struct RegisteredDirectionalLights(HashSet<Entity>);
 
-pub fn install<P: Platform, R: RendererInterface + Send + Sync + 'static>(
+pub fn install<P: Platform, R: RendererInterface<P> + Send + Sync + 'static>(
     systems: &mut Builder,
     renderer: R,
 ) {
@@ -112,7 +114,7 @@ pub fn install<P: Platform, R: RendererInterface + Send + Sync + 'static>(
 #[read_component(GlobalTransform)]
 #[read_component(Camera)]
 #[read_component(Lightmap)]
-fn renderer<P: Platform, R: RendererInterface + 'static>(
+fn renderer<P: Platform, R: RendererInterface<P> + 'static>(
     world: &mut SubWorld,
     #[state] renderer: &R,
     #[state] active_static_renderables: &mut ActiveStaticRenderables,

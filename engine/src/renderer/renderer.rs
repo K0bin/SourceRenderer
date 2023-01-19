@@ -50,6 +50,7 @@ use crate::input::Input;
 use crate::renderer::command::RendererCommand;
 use crate::renderer::RendererInternal;
 use crate::transform::interpolation::InterpolatedTransform;
+use crate::ui::UIDrawData;
 
 enum RendererImpl<P: Platform> {
     MultiThreaded(P::ThreadHandle),
@@ -61,7 +62,7 @@ unsafe impl<P: Platform> Send for RendererImpl<P> {}
 unsafe impl<P: Platform> Sync for RendererImpl<P> {}
 
 pub struct Renderer<P: Platform> {
-    sender: Sender<RendererCommand>,
+    sender: Sender<RendererCommand<P::GraphicsBackend>>,
     window_event_sender: Sender<Event<P>>,
     instance: Arc<<P::GraphicsBackend as Backend>::Instance>,
     device: Arc<<P::GraphicsBackend as Backend>::Device>,
@@ -76,7 +77,7 @@ pub struct Renderer<P: Platform> {
 
 impl<P: Platform> Renderer<P> {
     fn new(
-        sender: Sender<RendererCommand>,
+        sender: Sender<RendererCommand<P::GraphicsBackend>>,
         window_event_sender: Sender<Event<P>>,
         instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
         device: &Arc<<P::GraphicsBackend as Backend>::Device>,
@@ -109,7 +110,7 @@ impl<P: Platform> Renderer<P> {
         late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>,
         console: &Arc<Console>,
     ) -> Arc<Renderer<P>> {
-        let (sender, receiver) = unbounded::<RendererCommand>();
+        let (sender, receiver) = unbounded::<RendererCommand<P::GraphicsBackend>>();
         let (window_event_sender, window_event_receiver) = unbounded();
         let renderer = Arc::new(Renderer::new(
             sender.clone(),
@@ -207,7 +208,7 @@ impl<P: Platform> Renderer<P> {
                 return;
             }
 
-            let end_frame_res = self.sender.send(RendererCommand::EndFrame);
+            let end_frame_res = self.sender.send(RendererCommand::<P::GraphicsBackend>::EndFrame);
             if end_frame_res.is_err() {
                 log::error!("Render thread crashed.");
             }
@@ -259,14 +260,14 @@ impl<P: Platform> Renderer<P> {
     }
 }
 
-impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
+impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
     fn register_static_renderable(
         &self,
         entity: Entity,
         transform: &InterpolatedTransform,
         renderable: &StaticRenderableComponent,
     ) {
-        let result = self.sender.send(RendererCommand::RegisterStatic {
+        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::RegisterStatic {
             entity,
             transform: transform.0,
             model_path: renderable.model_path.to_string(),
@@ -280,7 +281,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     }
 
     fn unregister_static_renderable(&self, entity: Entity) {
-        let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
+        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::UnregisterStatic(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -292,7 +293,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
         transform: &InterpolatedTransform,
         component: &PointLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::RegisterPointLight {
+        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::RegisterPointLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -317,7 +318,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
         transform: &InterpolatedTransform,
         component: &DirectionalLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::RegisterDirectionalLight {
+        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::RegisterDirectionalLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -337,7 +338,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     }
 
     fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
-        let result = self.sender.send(RendererCommand::UpdateCameraTransform {
+        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::UpdateCameraTransform {
             camera_transform_mat,
             fov,
         });
@@ -347,7 +348,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     }
 
     fn update_transform(&self, entity: Entity, transform: Matrix4) {
-        let result = self.sender.send(RendererCommand::UpdateTransform {
+        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::UpdateTransform {
             entity,
             transform_mat: transform,
         });
@@ -359,7 +360,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     fn end_frame(&self) {
         let mut queued_guard = self.queued_frames_counter.lock().unwrap();
         *queued_guard += 1;
-        let result = self.sender.send(RendererCommand::EndFrame);
+        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::EndFrame);
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -368,7 +369,7 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
     fn update_lightmap(&self, path: &str) {
         let result = self
             .sender
-            .send(RendererCommand::SetLightmap(path.to_string()));
+            .send(RendererCommand::<P::GraphicsBackend>::SetLightmap(path.to_string()));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -397,5 +398,12 @@ impl<P: Platform> RendererInterface for Arc<Renderer<P>> {
 
     fn is_running(&self) -> bool {
         self.is_running.load(Ordering::SeqCst)
+    }
+
+    fn update_ui(&self, ui_data: UIDrawData<P::GraphicsBackend>) {
+        let result = self.sender.send(RendererCommand::RenderUI(ui_data));
+        if let Result::Err(err) = result {
+            panic!("Sending message to render thread failed {:?}", err);
+        }
     }
 }

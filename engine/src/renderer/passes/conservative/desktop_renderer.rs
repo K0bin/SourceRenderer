@@ -454,6 +454,10 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
         Ok(())
     }
+
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GraphicsBackend>) {
+        todo!()
+    }
 }
 
 pub fn setup_frame<B: Backend>(cmd_buf: &mut B::CommandBuffer, frame_bindings: &FrameBindings<B>) {

@@ -16,6 +16,7 @@ use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
 use super::LateLatching;
 use crate::input::Input;
+use crate::ui::UIDrawData;
 
 pub struct SceneInfo<'a, B: Backend> {
     pub scene: &'a RendererScene<B>,
@@ -40,6 +41,7 @@ pub(super) trait RenderPath<P: Platform> {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>);
+    fn set_ui_data(&mut self, data: UIDrawData<P::GraphicsBackend>);
     fn render(
         &mut self,
         scene: &SceneInfo<P::GraphicsBackend>,

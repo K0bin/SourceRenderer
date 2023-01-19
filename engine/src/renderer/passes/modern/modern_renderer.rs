@@ -46,6 +46,7 @@ use crate::renderer::passes::compositing::CompositingPass;
 use crate::renderer::passes::fsr2::Fsr2Pass;
 use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 use crate::renderer::passes::ssr::SsrPass;
+use crate::renderer::passes::ui::UIPass;
 use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
@@ -61,11 +62,14 @@ use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::LateLatching;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
+use crate::ui::UIDrawData;
 
 pub struct ModernRenderer<P: Platform> {
     swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     device: Arc<<P::GraphicsBackend as Backend>::Device>,
     barriers: RendererResources<P::GraphicsBackend>,
+    ui_data: UIDrawData<P::GraphicsBackend>,
+
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     geometry_draw_prep: DrawPrepPass,
@@ -79,7 +83,8 @@ pub struct ModernRenderer<P: Platform> {
     compositing_pass: CompositingPass,
     motion_vector_pass: MotionVectorPass,
     anti_aliasing: AntiAliasing<P::GraphicsBackend>,
-    shadow_map_pass: ShadowMapPass<P>
+    shadow_map_pass: ShadowMapPass<P>,
+    ui_pass: UIPass<P>
 }
 
 enum AntiAliasing<B: Backend> {
@@ -159,6 +164,8 @@ impl<P: Platform> ModernRenderer<P> {
 
         let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, shader_manager);
 
+        let ui_pass = UIPass::new(device);
+
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
@@ -170,6 +177,7 @@ impl<P: Platform> ModernRenderer<P> {
             swapchain: swapchain.clone(),
             device: device.clone(),
             barriers,
+            ui_data: UIDrawData::<P::GraphicsBackend>::default(),
             clustering_pass: clustering,
             light_binning_pass: light_binning,
             geometry_draw_prep: draw_prep,
@@ -183,7 +191,8 @@ impl<P: Platform> ModernRenderer<P> {
             compositing_pass,
             motion_vector_pass,
             anti_aliasing,
-            shadow_map_pass: shadow_map
+            shadow_map_pass: shadow_map,
+            ui_pass,
         }
     }
 
@@ -512,6 +521,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             }
         };
 
+        self.ui_pass.execute(&mut cmd_buf, &self.barriers, &zero_textures.zero_texture_view_black, output_texture_name, &self.ui_data);
+
         let output_texture = self.barriers.access_texture(
             &mut cmd_buf,
             output_texture_name,
@@ -579,5 +590,9 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         }
 
         Ok(())
+    }
+
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GraphicsBackend>) {
+        self.ui_data = data;
     }
 }

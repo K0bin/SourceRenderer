@@ -41,7 +41,7 @@ pub struct TimeStampedInputState(InputState, Instant);
 
 enum GameImpl<P: Platform> {
     MultiThreaded(P::ThreadHandle),
-    SingleThreaded(Box<GameInternal>),
+    SingleThreaded(Box<GameInternal<P>>),
     Uninitialized,
 }
 

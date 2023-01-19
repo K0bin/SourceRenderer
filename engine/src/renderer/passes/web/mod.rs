@@ -130,4 +130,8 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
         Ok(())
     }
+
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GraphicsBackend>) {
+        todo!()
+    }
 }

@@ -917,6 +917,8 @@ pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
         BlendFactor::SrcAlphaSaturate => vk::BlendFactor::SRC_ALPHA_SATURATE,
         BlendFactor::SrcColor => vk::BlendFactor::SRC_COLOR,
         BlendFactor::Zero => vk::BlendFactor::ZERO,
+        BlendFactor::SrcAlpha => vk::BlendFactor::SRC_ALPHA,
+        BlendFactor::OneMinusSrcAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
     }
 }
 

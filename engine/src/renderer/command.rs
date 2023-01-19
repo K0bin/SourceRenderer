@@ -1,7 +1,9 @@
 use legion::Entity;
-use sourcerenderer_core::Matrix4;
+use sourcerenderer_core::{Matrix4, graphics::Backend};
 
-pub enum RendererCommand {
+use crate::ui::UIDrawData;
+
+pub enum RendererCommand<B: Backend> {
     RegisterStatic {
         entity: Entity,
         transform: Matrix4,
@@ -32,5 +34,6 @@ pub enum RendererCommand {
         fov: f32,
     },
     SetLightmap(String),
+    RenderUI(UIDrawData<B>),
     EndFrame,
 }

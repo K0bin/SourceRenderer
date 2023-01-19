@@ -71,8 +71,8 @@ pub(super) struct RendererInternal<P: Platform> {
     asset_manager: Arc<AssetManager<P>>,
     scene: RendererScene<P::GraphicsBackend>,
     views: Vec<View>,
-    sender: Sender<RendererCommand>,
-    receiver: Receiver<RendererCommand>,
+    sender: Sender<RendererCommand<P::GraphicsBackend>>,
+    receiver: Receiver<RendererCommand<P::GraphicsBackend>>,
     window_event_receiver: Receiver<Event<P>>,
     last_frame: Instant,
     frame: u64,
@@ -86,9 +86,9 @@ impl<P: Platform> RendererInternal<P> {
         device: &Arc<<P::GraphicsBackend as Backend>::Device>,
         swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
         asset_manager: &Arc<AssetManager<P>>,
-        sender: Sender<RendererCommand>,
+        sender: Sender<RendererCommand<P::GraphicsBackend>>,
         window_event_receiver: Receiver<Event<P>>,
-        receiver: Receiver<RendererCommand>,
+        receiver: Receiver<RendererCommand<P::GraphicsBackend>>,
         console: &Arc<Console>,
     ) -> Self {
         let assets = RendererAssets::new(device);
@@ -243,11 +243,11 @@ impl<P: Platform> RendererInternal<P> {
         while message_opt.is_some() {
             let message = message_opt.take().unwrap();
             match message {
-                RendererCommand::EndFrame => {
+                RendererCommand::<P::GraphicsBackend>::EndFrame => {
                     return true;
                 }
 
-                RendererCommand::UpdateCameraTransform {
+                RendererCommand::<P::GraphicsBackend>::UpdateCameraTransform {
                     camera_transform_mat,
                     fov,
                 } => {
@@ -266,14 +266,14 @@ impl<P: Platform> RendererInternal<P> {
                     )
                 }
 
-                RendererCommand::UpdateTransform {
+                RendererCommand::<P::GraphicsBackend>::UpdateTransform {
                     entity,
                     transform_mat,
                 } => {
                     self.scene.update_transform(&entity, transform_mat);
                 }
 
-                RendererCommand::RegisterStatic {
+                RendererCommand::<P::GraphicsBackend>::RegisterStatic {
                     model_path,
                     entity,
                     transform,
@@ -295,11 +295,11 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::UnregisterStatic(entity) => {
+                RendererCommand::<P::GraphicsBackend>::UnregisterStatic(entity) => {
                     self.scene.remove_static_drawable(&entity);
                 }
 
-                RendererCommand::RegisterPointLight {
+                RendererCommand::<P::GraphicsBackend>::RegisterPointLight {
                     entity,
                     transform,
                     intensity,
@@ -312,11 +312,11 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::UnregisterPointLight(entity) => {
+                RendererCommand::<P::GraphicsBackend>::UnregisterPointLight(entity) => {
                     self.scene.remove_point_light(&entity);
                 }
 
-                RendererCommand::RegisterDirectionalLight {
+                RendererCommand::<P::GraphicsBackend>::RegisterDirectionalLight {
                     entity,
                     transform,
                     intensity,
@@ -332,13 +332,24 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::UnregisterDirectionalLight(entity) => {
+                RendererCommand::<P::GraphicsBackend>::UnregisterDirectionalLight(entity) => {
                     self.scene.remove_directional_light(&entity);
                 }
-                RendererCommand::SetLightmap(path) => {
+                RendererCommand::<P::GraphicsBackend>::SetLightmap(path) => {
                     let handle = self.assets.get_or_create_texture_handle(&path);
                     self.scene.set_lightmap(Some(handle));
                 }
+                RendererCommand::RegisterStatic { entity, transform, model_path, receive_shadows, cast_shadows, can_move } => todo!(),
+                RendererCommand::UnregisterStatic(_) => todo!(),
+                RendererCommand::RegisterPointLight { entity, transform, intensity } => todo!(),
+                RendererCommand::UnregisterPointLight(_) => todo!(),
+                RendererCommand::RegisterDirectionalLight { entity, transform, intensity } => todo!(),
+                RendererCommand::UnregisterDirectionalLight(_) => todo!(),
+                RendererCommand::UpdateTransform { entity, transform_mat } => todo!(),
+                RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => todo!(),
+                RendererCommand::SetLightmap(_) => todo!(),
+                RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
+                RendererCommand::EndFrame => todo!(),
             }
 
             let message_res = self.receiver.try_recv();
