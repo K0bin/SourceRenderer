@@ -181,17 +181,21 @@ impl VkInstance {
             return vk::FALSE;
         }
 
-        let msg = CStr::from_ptr(callback_data.p_message).to_str().unwrap();
-        if msg.contains("DestroyImageView") {
-            //panic!("HELP");
+        if message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
+            panic!(
+                "VK: {:?} - {:?}: {:?}",
+                message_severity,
+                message_types,
+                CStr::from_ptr(callback_data.p_message)
+            );
+        } else {
+            println!(
+                "VK: {:?} - {:?}: {:?}",
+                message_severity,
+                message_types,
+                CStr::from_ptr(callback_data.p_message)
+            );
         }
-
-        println!(
-            "VK: {:?} - {:?}: {:?}",
-            message_severity,
-            message_types,
-            CStr::from_ptr(callback_data.p_message)
-        );
         vk::FALSE
     }
 }
