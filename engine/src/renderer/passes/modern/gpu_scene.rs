@@ -388,7 +388,7 @@ pub fn upload<P: Platform>(
     let parts_offset = align_up(meshes_offset + meshes_size, 256);
     let materials_offset = align_up(parts_offset + parts_size, 256);
     let lights_offset = align_up(materials_offset + materials_size, 256);
-    let buffer_size = lights_offset + lights_size;
+    let buffer_size = lights_offset + lights_size.max(std::mem::size_of::<GPULight>());
 
     let scene_buffer = cmd_buffer.create_temporary_buffer(
         &BufferInfo {
