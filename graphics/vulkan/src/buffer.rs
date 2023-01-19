@@ -173,6 +173,10 @@ impl VkBuffer {
     pub fn va(&self) -> Option<vk::DeviceAddress> {
         self.va
     }
+
+    pub fn info(&self) -> &BufferInfo {
+        &self.info
+    }
 }
 
 impl Drop for VkBuffer {
@@ -221,7 +225,7 @@ impl Buffer for VkBufferSlice {
                     allocator,
                     self.buffer.allocation,
                     self.offset as u64,
-                    self.length as u64
+                    self.info.size as u64
                 ),
                 vk::Result::SUCCESS
             );
@@ -239,18 +243,18 @@ impl Buffer for VkBufferSlice {
                 allocator,
                 self.buffer.allocation,
                 self.offset as u64,
-                self.length as u64
+                self.info.size as u64
             ),
             vk::Result::SUCCESS
         );
     }
 
     fn length(&self) -> usize {
-        self.length
+        self.info.size
     }
 
     fn info(&self) -> &BufferInfo {
-        &self.buffer.info
+        &self.info
     }
 }
 
@@ -364,7 +368,7 @@ pub(crate) fn align_down_64(value: u64, alignment: u64) -> u64 {
 pub struct VkBufferSlice {
     buffer: Arc<VkBuffer>,
     offset: usize,
-    length: usize,
+    info: BufferInfo
 }
 
 impl Debug for VkBufferSlice {
@@ -373,8 +377,8 @@ impl Debug for VkBufferSlice {
             f,
             "(Buffer Slice: {}-{} (length: {}))",
             self.offset,
-            self.offset + self.length,
-            self.length
+            self.offset + self.info.size,
+            self.info.size
         )
     }
 }
@@ -383,13 +387,13 @@ impl Hash for VkBufferSlice {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.buffer.hash(state);
         self.offset.hash(state);
-        self.length.hash(state);
+        self.info.size.hash(state);
     }
 }
 
 impl PartialEq for VkBufferSlice {
     fn eq(&self, other: &Self) -> bool {
-        self.buffer == other.buffer && self.length == other.length && self.offset == other.offset
+        self.buffer == other.buffer && self.info.size == other.info.size && self.offset == other.offset
     }
 }
 
@@ -405,7 +409,7 @@ impl VkBufferSlice {
     }
 
     pub fn length(&self) -> usize {
-        self.length
+        self.info.size
     }
 
     pub fn va(&self) -> Option<vk::DeviceAddress> {
@@ -562,7 +566,7 @@ impl BufferAllocator {
             return Arc::new(VkBufferSlice {
                 buffer,
                 offset: 0,
-                length: info.size,
+                info: info.clone()
             });
         }
 
@@ -611,8 +615,8 @@ impl BufferAllocator {
             .enumerate()
             .find(|(_, slice)| {
                 slice.offset % alignment == 0
-                    && slice.length % alignment == 0
-                    && slice.length >= info.size
+                    && slice.info.size % alignment == 0
+                    && slice.info.size >= info.size
             })
             .map(|(index, _b)| index);
         if let Some(index) = slice_index {
@@ -642,8 +646,8 @@ impl BufferAllocator {
                 .enumerate()
                 .find(|(_, slice)| {
                     slice.offset % alignment == 0
-                        && slice.length % alignment == 0
-                        && slice.length >= info.size
+                        && slice.info.size % alignment == 0
+                        && slice.info.size >= info.size
                 })
                 .map(|(index, _b)| index);
             if let Some(index) = slice_index {
@@ -680,18 +684,22 @@ impl BufferAllocator {
             None,
             None,
         );
+        let slice_info = BufferInfo {
+            usage: info.usage,
+            size: slice_size
+        };
         for i in 0..(slices - 1) {
             let slice = Arc::new(VkBufferSlice {
                 buffer: buffer.clone(),
                 offset: i * slice_size,
-                length: slice_size,
+                info: slice_info.clone()
             });
             matching_buffers.free_slices.push(slice);
         }
         let slice = Arc::new(VkBufferSlice {
             buffer,
             offset: (slices - 1) * slice_size,
-            length: slice_size,
+            info: slice_info
         });
         matching_buffers.used_slices.push(slice.clone());
         slice
@@ -701,7 +709,7 @@ impl BufferAllocator {
         let mut buffers_types = self.buffers.lock().unwrap();
         for (_key, buffers) in buffers_types.iter_mut() {
             buffers.free_slices.append(buffers.used_slices.as_mut());
-            buffers.free_slices.sort_unstable_by_key(|a| a.length);
+            buffers.free_slices.sort_unstable_by_key(|a| a.info.size);
         }
     }
 }
