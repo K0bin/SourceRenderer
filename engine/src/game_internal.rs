@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crossbeam_channel::{Receiver, TryRecvError};
 use instant::Instant;
 use legion::{
     Resources,
@@ -9,9 +10,10 @@ use legion::{
 };
 use log::trace;
 use nalgebra::UnitQuaternion;
+use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
     Platform,
-    Vec3,
+    Vec3, Vec2UI,
 };
 
 use crate::asset::loaders::{
@@ -50,6 +52,7 @@ pub struct GameInternal<P: Platform> {
     resources: Resources,
     tick: u64,
     tick_duration: Duration,
+    window_event_receiver: Receiver<Event<P>>,
     ui: UI<P>
 }
 
@@ -58,8 +61,10 @@ impl<P: Platform> GameInternal<P> {
         asset_manager: &Arc<AssetManager<P>>,
         renderer: &Arc<Renderer<P>>,
         tick_rate: u32,
+        window_event_receiver: Receiver<Event<P>>,
+        window_size: Vec2UI
     ) -> Self {
-        let ui = UI::new(renderer.device());
+        let ui = UI::new(renderer.device(), window_size);
 
         let mut world = World::default();
         let mut fixed_schedule = Schedule::builder();
@@ -171,6 +176,7 @@ impl<P: Platform> GameInternal<P> {
             resources,
             tick: 0,
             tick_duration,
+            window_event_receiver,
             ui
         }
     }
@@ -194,6 +200,34 @@ impl<P: Platform> GameInternal<P> {
                 .execute(&mut self.world, &mut self.resources);
             self.tick += 1;
             tick_delta = now.duration_since(self.last_tick_time);
+        }
+
+        let mut window_event_opt = self.window_event_receiver.try_recv();
+        while window_event_opt.is_ok() {
+            let window_event = window_event_opt.unwrap();
+
+            match window_event {
+                Event::FingerDown(_)
+                | Event::FingerUp(_)
+                | Event::FingerMoved { .. }
+                | Event::MouseMoved(_)
+                | Event::SurfaceChanged(_)
+                | Event::WindowMinimized
+                | Event::Quit
+                | Event::KeyUp(_)
+                | Event::KeyDown(_) => {},
+                Event::WindowRestored(size) => {
+                    self.ui.set_window_size(size);
+                },
+                Event::WindowSizeChanged(size) => {
+                    self.ui.set_window_size(size);
+                },
+            }
+
+            window_event_opt = self.window_event_receiver.try_recv();
+        }
+        if let Err(TryRecvError::Disconnected) = window_event_opt {
+            panic!("Window event channel disconnected");
         }
 
         let delta = now.duration_since(self.last_iter_time);

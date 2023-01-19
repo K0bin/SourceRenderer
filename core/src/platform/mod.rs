@@ -41,7 +41,7 @@ pub trait Platform: 'static + Sized {
       F: Send + 'static;
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq)]
 pub enum Event<P: Platform> {
   KeyDown(Key),
   KeyUp(Key),
@@ -57,6 +57,24 @@ pub enum Event<P: Platform> {
     index: u32,
     position: Vec2
   }
+}
+
+impl<P: Platform> Clone for Event<P> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::KeyDown(key) => Self::KeyDown(*key),
+            Self::KeyUp(key) => Self::KeyUp(*key),
+            Self::Quit => Self::Quit,
+            Self::WindowMinimized => Self::WindowMinimized,
+            Self::SurfaceChanged(surface) => Self::SurfaceChanged(surface.clone()),
+            Self::WindowRestored(size) => Self::WindowRestored(*size),
+            Self::WindowSizeChanged(size) => Self::WindowSizeChanged(*size),
+            Self::MouseMoved(mouse_pos) => Self::MouseMoved(*mouse_pos),
+            Self::FingerDown(finger_index) => Self::FingerDown(*finger_index),
+            Self::FingerUp(finger_index) => Self::FingerUp(*finger_index),
+            Self::FingerMoved { index, position } => Self::FingerMoved { index: *index, position: *position },
+        }
+    }
 }
 
 pub trait Window<P: Platform> {

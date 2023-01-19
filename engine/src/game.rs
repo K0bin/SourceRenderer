@@ -8,6 +8,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
+use crossbeam_channel::{unbounded, Sender};
 use instant::Instant;
 use legion::query::{
     FilterResult,
@@ -16,8 +17,8 @@ use legion::query::{
 use legion::storage::ComponentTypeId;
 use log::trace;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::platform::ThreadHandle;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::platform::{ThreadHandle, Event, Window};
+use sourcerenderer_core::{Platform, Vec2UI};
 
 use crate::asset::loaders::{
     BspLevelLoader,
@@ -53,6 +54,7 @@ pub struct Game<P: Platform> {
     input: Arc<Input>,
     fps_camera: Mutex<FPSCamera>,
     is_running: AtomicBool,
+    window_event_sender: Sender<Event<P>>,
     game_impl: AtomicRefCell<GameImpl<P>>,
 }
 
@@ -99,11 +101,17 @@ impl<P: Platform> Game<P> {
 
         //asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
 
+        let (window_sender, window_receiver) = unbounded();
+
+        let window = platform.window();
+        let window_size = Vec2UI::new(window.width(), window.height());
+
         let game = Arc::new(Self {
             input: input.clone(),
             fps_camera: Mutex::new(FPSCamera::new()),
             is_running: AtomicBool::new(true),
             game_impl: AtomicRefCell::new(GameImpl::Uninitialized),
+            window_event_sender: window_sender
         });
 
         let c_renderer = renderer.clone();
@@ -113,7 +121,7 @@ impl<P: Platform> Game<P> {
             let thread_handle = platform.start_thread("GameThread", move || {
                 trace!("Started game thread");
                 let game = c_game.upgrade().unwrap();
-                let mut internal = GameInternal::new(&c_asset_manager, &c_renderer, tick_rate);
+                let mut internal = GameInternal::new(&c_asset_manager, &c_renderer, tick_rate, window_receiver, window_size);
                 loop {
                     if !game.is_running() {
                         break;
@@ -128,7 +136,7 @@ impl<P: Platform> Game<P> {
                 *thread_handle_guard = GameImpl::MultiThreaded(thread_handle);
             }
         } else {
-            let internal = GameInternal::new(&c_asset_manager, &c_renderer, tick_rate);
+            let internal = GameInternal::new(&c_asset_manager, &c_renderer, tick_rate, window_receiver, window_size);
             let mut thread_handle_guard = game.game_impl.borrow_mut();
             *thread_handle_guard = GameImpl::SingleThreaded(Box::new(internal));
         }
@@ -179,5 +187,9 @@ impl<P: Platform> Game<P> {
         if let GameImpl::SingleThreaded(game) = &mut *game_impl {
             game.update(self, renderer);
         }
+    }
+
+    pub fn dispatch_window_event(&self, event: Event<P>) {
+        self.window_event_sender.send(event).unwrap();
     }
 }

@@ -55,7 +55,7 @@ impl<P: Platform> Engine<P> {
 
     pub fn run(platform: &P) -> Self {
         let instance = platform
-            .create_graphics(false)
+            .create_graphics(true)
             .expect("Failed to initialize graphics");
         let surface = platform.window().create_surface(instance.clone());
 
@@ -117,6 +117,8 @@ impl<P: Platform> Engine<P> {
             | Event::WindowRestored(_)
             | Event::WindowSizeChanged(_)
             | Event::SurfaceChanged(_) => {
+                let event_1 = event.clone();
+                self.game.dispatch_window_event(event_1);
                 self.renderer.dispatch_window_event(event);
             }
         }

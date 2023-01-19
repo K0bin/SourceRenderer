@@ -5,11 +5,12 @@ use sourcerenderer_core::{graphics::{Backend, Device, MemoryUsage, BufferUsage, 
 
 pub struct UI<P: Platform> {
     imgui: Context,
-    texture_map: HashMap<imgui::TextureId, Arc<<P::GraphicsBackend as Backend>::TextureView>>
+    texture_map: HashMap<imgui::TextureId, Arc<<P::GraphicsBackend as Backend>::TextureView>>,
+    window_size: Vec2UI
 }
 
 impl<P: Platform> UI<P> {
-    pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
+    pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>, window_size: Vec2UI) -> Self {
         let mut imgui = imgui::Context::create();
         imgui.set_platform_name(Some("Dreieck".to_string()));
         imgui.style_mut().use_dark_colors();
@@ -42,17 +43,23 @@ impl<P: Platform> UI<P> {
 
         Self {
             imgui,
-            texture_map
+            texture_map,
+            window_size
         }
     }
 
+    pub fn set_window_size(&mut self, size: Vec2UI) {
+        self.window_size = size;
+    }
+
     pub fn update(&mut self) {
-        self.imgui.io_mut().display_size = [ 1280f32, 720f32 ];
-        self.imgui.io_mut().display_framebuffer_scale = [ 1f32, 1f32 ];
+        let io = self.imgui.io_mut();
+        io.display_size = [ self.window_size.x as f32, self.window_size.y as f32 ];
+        io.display_framebuffer_scale = [ 1f32, 1f32 ];
         let frame = self.imgui.frame();
         frame.text("Hi");
         let mut opened = false;
-        frame.show_demo_window(&mut opened)
+        frame.show_demo_window(&mut opened);
     }
 
     pub fn draw_data(&mut self, device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> UIDrawData<P::GraphicsBackend> {
