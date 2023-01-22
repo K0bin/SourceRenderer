@@ -23,8 +23,8 @@ pub struct Frustum {
 
 impl Frustum {
     pub fn new(z_near: f32, z_far: f32, fov: f32, aspect_ratio: f32) -> Self {
-        let near_half_height = (fov / 2f32).tan() * z_near;
-        let near_half_width = near_half_height * aspect_ratio;
+        let near_half_width = (fov / 2f32).tan() * z_near;
+        let near_half_height = near_half_width * aspect_ratio;
         Self {
             near_half_width,
             near_half_height,
