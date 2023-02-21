@@ -5,7 +5,7 @@ use archive_md5_section_entry::ArchiveMD5SectionEntry;
 use read_util::{PrimitiveRead, StringRead, StringReadError, RawDataRead};
 use crc::{self, Crc};
 use utilities::AsnKeyParser;
-use rsa::{BigUint, PaddingScheme, Hash, PublicKey};
+use rsa::{BigUint, PaddingScheme, PublicKey, Pkcs1v15Encrypt};
 use rand::rngs::OsRng;
 use std::sync::Mutex;
 
@@ -441,11 +441,8 @@ impl<R> Package<R>
     }
     let data = data_res.unwrap();
 
-    let padding = PaddingScheme::PKCS1v15Sign {
-      hash: Some(Hash::SHA1)
-    };
     let mut rng = OsRng;
-    let enc_data_res = public_key.encrypt(&mut rng, padding, &data);
+    let enc_data_res = public_key.encrypt(&mut rng, Pkcs1v15Encrypt, &data);
     if enc_data_res.is_err() {
       return false;
     }

@@ -39,7 +39,9 @@ pub trait Device<B: Backend> {
   fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<B::GraphicsPipeline>;
   fn wait_for_idle(&self);
   fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize);
+  //fn init_texture_from_data<T>(&self, texture: &Arc<B::Texture>, data: &[T], mip_level: u32, array_layer: u32);
   fn init_texture_async(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<Arc<B::Fence>>;
+  //fn init_texture_async_from_data<T>(&self, texture: &Arc<B::Texture>, data: &[T], mip_level: u32, array_layer: u32) -> Option<Arc<B::Fence>>;
   fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>, src_offset: usize, dst_offset: usize, length: usize);
   fn flush_transfers(&self);
   fn free_completed_transfers(&self);

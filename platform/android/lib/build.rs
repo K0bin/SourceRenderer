@@ -90,7 +90,7 @@ fn main() {
   let mut asset_dest_dir = android_asset_dir.clone();
   asset_dest_dir.push("assets");
   if !asset_dest_dir.exists() {
-    std::fs::create_dir(&asset_dest_dir).expect("Failed to create shader target directory.");
+    std::fs::create_dir(&asset_dest_dir).expect("Failed to create assets target directory.");
   }
   copy_directory_rec(&assets_dir, &asset_dest_dir, &(|_| true));
 }

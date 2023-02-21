@@ -751,7 +751,7 @@ impl VkShader {
                 unsafe {
                     debug_utils
                         .debug_utils_loader
-                        .debug_utils_set_object_name(
+                        .set_debug_utils_object_name(
                             device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::SHADER_MODULE,
@@ -1346,7 +1346,7 @@ impl VkPipeline {
                 unsafe {
                     debug_utils
                         .debug_utils_loader
-                        .debug_utils_set_object_name(
+                        .set_debug_utils_object_name(
                             device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::PIPELINE,
@@ -1490,7 +1490,7 @@ impl VkPipeline {
                 unsafe {
                     debug_utils
                         .debug_utils_loader
-                        .debug_utils_set_object_name(
+                        .set_debug_utils_object_name(
                             device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::PIPELINE,
@@ -1624,7 +1624,7 @@ impl VkPipeline {
                 unsafe {
                     debug_utils
                         .debug_utils_loader
-                        .debug_utils_set_object_name(
+                        .set_debug_utils_object_name(
                             device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::PIPELINE,

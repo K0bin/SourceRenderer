@@ -117,7 +117,7 @@ impl VkBuffer {
                 unsafe {
                     debug_utils
                         .debug_utils_loader
-                        .debug_utils_set_object_name(
+                        .set_debug_utils_object_name(
                             device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::BUFFER,

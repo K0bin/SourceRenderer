@@ -122,7 +122,7 @@ fn physics_tick(
             rigid_body.set_translation(transform.position, true);
             let euler_angles = transform.rotation.euler_angles();
             rigid_body.set_rotation(
-                Vec3::new(euler_angles.0, euler_angles.1, euler_angles.2),
+                Rotation::from_euler_angles(euler_angles.0, euler_angles.1, euler_angles.2),
                 true,
             );
         }
@@ -219,6 +219,7 @@ fn physics_tick(
         &mut physics_world.impulse_joint_set,
         &mut physics_world.multibody_joint_set,
         &mut physics_world.ccd_solver,
+        None,
         &(),
         &(),
     );
