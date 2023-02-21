@@ -104,7 +104,7 @@ impl<B: Backend> Fsr2Pass<B> {
             fpScheduleGpuJob: Some(schedule_render_job::<B>),
             fpExecuteGpuJobs: Some(execute_render_jobs::<B>),
             scratchBuffer: Arc::into_raw(scratch_context.clone()) as *mut c_void,
-            scratchBufferSize: context_size as u64,
+            scratchBufferSize: context_size as usize,
         };
 
         resources.create_texture(

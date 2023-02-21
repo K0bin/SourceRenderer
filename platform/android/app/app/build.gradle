@@ -3,18 +3,14 @@ plugins {
     id 'kotlin-android'
 }
 
-Properties properties = new Properties()
-properties.load(project.rootProject.file('local.properties').newDataInputStream())
-def ndkDir = properties.getProperty('ndk.dir')
-
 android {
-    compileSdkVersion 31
+    compileSdkVersion 33
     buildToolsVersion "31.0.0"
 
     defaultConfig {
         applicationId "de.k0bin.sourcerenderer"
         minSdkVersion 24
-        targetSdkVersion 31
+        targetSdkVersion 33
         versionCode 1
         versionName "1.0"
 
@@ -34,7 +30,8 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
-    ndkVersion '22.1.7171670'
+    ndkVersion '25.2.9519653'
+    namespace 'de.kobin.sourcerenderer'
 }
 
 task buildRust(type: Exec) {
@@ -43,7 +40,6 @@ task buildRust(type: Exec) {
         commands.add("--release")
     }
 
-    environment "ANDROID_NDK_HOME", ndkDir
     workingDir "../../lib"
     commandLine commands
 }

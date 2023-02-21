@@ -3,31 +3,11 @@ use std::path::{PathBuf, Path};
 use std::collections::HashMap;
 use build_util::*;
 
-fn find_ndk() -> Option<PathBuf> {
-  if let Some(path) = env::var_os("ANDROID_NDK_HOME") {
-    return Some(PathBuf::from(path));
-  };
-
-  if let Some(path) = env::var_os("NDK_HOME") {
-    return Some(PathBuf::from(path));
-  };
-
-  if let Some(sdk_path) = env::var_os("ANDROID_SDK_HOME") {
-    let ndk_path = PathBuf::from(&sdk_path).join("ndk");
-    let highest_ndk = std::fs::read_dir(ndk_path).ok().and_then(|read_dir| read_dir.filter_map(|it| it.ok()).max_by_key(|it| it.file_name()));
-    if let Some(v) = highest_ndk {
-      return Some(v.path());
-    }
-  };
-
-  None
-}
-
 fn main() {
   let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
   // Copy libc++_shared over
-  let ndk_path = find_ndk().expect("Can't find Android NDK, try setting the environment variable ANDROID_NDK_HOME.");
+  let ndk_path = build_util::android::derive_ndk_path().expect("Can't find Android NDK, try setting the environment variable ANDROID_NDK_HOME.").1;
   let target = env::var("TARGET").expect("Can't determine target triple.");
 
   let mut target_mapping = HashMap::<&'static str, &'static str>::new();

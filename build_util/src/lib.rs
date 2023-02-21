@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 mod shader_compiler;
+pub mod android;
 pub use shader_compiler::*;
 
 pub fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
