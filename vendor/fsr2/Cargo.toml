@@ -11,4 +11,4 @@ edition = "2021"
 cc = "1.0.73"
 bindgen = "0.64.0"
 build-util = { path = "../../build_util" }
-
+widestring = "1.0.2"

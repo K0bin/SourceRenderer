@@ -139,6 +139,7 @@ impl<B: Backend> Fsr2Pass<B> {
             },
             callbacks: interface,
             device: fsr_device as FfxDevice,
+            fpMessage: Some(debug_callback)
         };
 
         let mut context = MaybeUninit::<FfxFsr2Context>::uninit();
@@ -287,6 +288,13 @@ impl<B: Backend> Fsr2Pass<B> {
                     x: color_texture.info().width as f32 * -1f32,
                     y: color_texture.info().height as f32 * -1f32,
                 },
+                viewSpaceToMetersFactor: 1.0f32,
+                autoReactiveMax: 0.0f32,
+                autoReactiveScale: 1.0f32,
+                autoTcScale: 1.0f32,
+                autoTcThreshold: 0.0f32,
+                enableAutoReactive: false,
+                colorOpaqueOnly: NULL_RESOURCE
             };
 
             let result = ffxFsr2ContextDispatch(
@@ -630,7 +638,7 @@ unsafe extern "C" fn create_resource<B: Backend>(
             let storage_name = format!(
                 "{}_storage_{}",
                 name.as_ref().map(|name| name.as_str()).unwrap_or(""),
-                mip_count
+                i
             );
             let storage_view = device.create_texture_view(
                 &texture,
@@ -1059,10 +1067,7 @@ unsafe extern "C" fn create_pipeline<P: Platform, B: Backend>(
 
     let mut path: PathBuf = PathBuf::from("shaders");
     let name: String;
-    if pass == FfxFsr2Pass_FFX_FSR2_PASS_PREPARE_INPUT_COLOR {
-        path = path.join("ffx_fsr2_prepare_input_color_pass.spv");
-        name = "ffx_fsr2_prepare_input_color_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_DEPTH_CLIP {
+    if pass == FfxFsr2Pass_FFX_FSR2_PASS_DEPTH_CLIP {
         path = path.join("ffx_fsr2_depth_clip_pass.spv");
         name = "ffx_fsr2_depth_clip_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_RECONSTRUCT_PREVIOUS_DEPTH {
@@ -1086,6 +1091,9 @@ unsafe extern "C" fn create_pipeline<P: Platform, B: Backend>(
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_GENERATE_REACTIVE {
         path = path.join("ffx_fsr2_autogen_reactive_pass.spv");
         name = "ffx_fsr2_autogen_reactive_pass".to_string();
+    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_TCR_AUTOGENERATE {
+        path = path.join("ffx_fsr2_autogen_reactive_pass.spv");
+        name = "ffx_fsr2_tcr_autogenerate_pass".to_string();
     } else {
         panic!("Unsupported pass: {}", pass);
     }
@@ -1104,7 +1112,7 @@ unsafe extern "C" fn create_pipeline<P: Platform, B: Backend>(
     let ffx_pipeline = &mut (*out_pipeline);
     ffx_pipeline.rootSignature = std::ptr::null_mut();
 
-    for i in 0..16 {
+    for i in 0..32 {
         let info = pipeline.binding_info(BindingFrequency::Frequent, i);
         if info.is_none() {
             continue;
@@ -1225,4 +1233,9 @@ fn format_to_ffx(format: Format) -> Option<FfxSurfaceFormat> {
         Format::RG8UNorm => Some(FfxSurfaceFormat_FFX_SURFACE_FORMAT_R8G8_UNORM),
         _ => None,
     }
+}
+
+unsafe extern "C" fn debug_callback(msg_type: FfxFsr2MsgType, msg: *const widestring::WideChar) {
+    let text = WideCStr::from_ptr_str(msg).to_string().unwrap();
+    println!("FSR2 Message [{:?}]: {}", msg_type, text);
 }

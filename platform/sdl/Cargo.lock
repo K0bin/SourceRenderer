@@ -555,6 +555,7 @@ dependencies = [
  "bindgen 0.64.0",
  "build-util",
  "cc",
+ "widestring",
 ]
 
 [[package]]
