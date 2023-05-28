@@ -106,7 +106,7 @@ impl GltfLoader {
         };
 
         let fixed_position = fixup_vec(&translation);
-        let fixed_rotation = Vec4::new(rotation.x, -rotation.y, -rotation.z, rotation.w);
+        let fixed_rotation = Vec4::new(-rotation.x, rotation.y, rotation.z, rotation.w);
         let rot_quat = Quaternion::new_normalize(nalgebra::Quaternion {
             coords: fixed_rotation,
         });
@@ -270,7 +270,15 @@ impl GltfLoader {
         }
 
         if let Some(light) = node.light() {
+            println!("light is dir");
             let mut entry = world.entry(entity).unwrap();
+            let transform: &mut Transform = entry.get_component_mut::<Transform>().unwrap();
+            let mut coords = transform.rotation.coords.clone();
+            coords.z = -coords.z;
+            transform.rotation = Quaternion::new_normalize(nalgebra::Quaternion {
+                coords
+              }
+            );
             match light.kind() {
                 gltf::khr_lights_punctual::Kind::Directional => {
                     entry.add_component(DirectionalLightComponent {
