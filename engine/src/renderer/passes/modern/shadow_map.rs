@@ -45,6 +45,7 @@ TODO:
 pub struct ShadowMapPass<P: Platform> {
     pipeline: GraphicsPipelineHandle,
     draw_prep_pipeline: ComputePipelineHandle,
+    shadow_map_res: u32,
     _marker: PhantomData<P>,
 }
 
@@ -58,13 +59,15 @@ impl<P: Platform> ShadowMapPass<P> {
         init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
+        let shadow_map_res = 4096;
+
         resources.create_texture(
             &Self::SHADOW_MAP_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
                 format: Format::D24,
-                width: 4096,
-                height: 4096,
+                width: shadow_map_res,
+                height: shadow_map_res,
                 depth: 1,
                 mip_levels: 1,
                 array_length: 1,
@@ -162,6 +165,7 @@ impl<P: Platform> ShadowMapPass<P> {
         Self {
             pipeline,
             draw_prep_pipeline: prep_pipeline,
+            shadow_map_res,
             _marker: PhantomData,
         }
     }
@@ -250,7 +254,7 @@ impl<P: Platform> ShadowMapPass<P> {
         const Z_MULT: f32 = 100.0f32;
         let view_proj = view.proj_matrix * view.view_matrix;
         let inv_camera_view = view_proj.try_inverse().unwrap();
-        let light_mv = Self::build_directional_light_view_proj(light, inv_camera_view, Z_MULT);
+        let light_mv = Self::build_directional_light_view_proj(light, inv_camera_view, Z_MULT, self.shadow_map_res);
 
         cmd_buffer.begin_label("Shadow map");
         let shadow_map = resources.access_view(
@@ -323,7 +327,11 @@ impl<P: Platform> ShadowMapPass<P> {
         cmd_buffer.end_label();
     }
 
-    pub fn build_directional_light_view_proj(light: &RendererDirectionalLight<P::GraphicsBackend>, inv_camera_view: Matrix4, z_mult: f32) -> Matrix4 {
+    pub fn build_directional_light_view_proj(light: &RendererDirectionalLight<P::GraphicsBackend>, inv_camera_view: Matrix4, z_mult: f32, shadow_map_res: u32) -> Matrix4 {
+        // https://www.junkship.net/News/2020/11/22/shadow-of-a-doubt-part-2
+        // https://github.com/BabylonJS/Babylon.js/blob/9e0bd9ff72aba11f090236a0690c4ca2be34249a/packages/dev/core/src/Lights/Shadows/cascadedShadowGenerator.ts
+        // https://alextardif.com/shadowmapping.html
+
         let mut world_space_frustum_corners = [Vec4::new(0f32, 0f32, 0f32, 0f32); 8];
         for x in 0..2 {
             for y in 0..2 {
@@ -345,19 +353,24 @@ impl<P: Platform> ShadowMapPass<P> {
         }
         center /= world_space_frustum_corners.len() as f32;
 
+        let mut radius = 0.0f32;
+        for corner in &world_space_frustum_corners {
+            radius = radius.max((corner.xyz() - center).magnitude());
+        }
+
         let mut light_view = Matrix4::look_at_lh(&Point3::from(center - light.direction), &Point3::from(center), &Vec3::new(0f32, 1f32, 0f32));
 
-        let mut min = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
-        let mut max = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
-        for corner in &world_space_frustum_corners {
-            let light_space_frustum_corner = light_view * corner;
-            min.x = min.x.min(light_space_frustum_corner.x);
-            max.x = max.x.max(light_space_frustum_corner.x);
-            min.y = min.y.min(light_space_frustum_corner.y);
-            max.y = max.y.max(light_space_frustum_corner.y);
-            min.z = min.z.min(light_space_frustum_corner.z);
-            max.z = max.z.max(light_space_frustum_corner.z);
-        }
+        // Snap to texel
+        let texels_per_unit = (shadow_map_res as f32) / (radius * 2.0f32);
+        let snapping_view = Matrix4::new_scaling(texels_per_unit) * light_view.clone();
+        let snapping_view_inv = snapping_view.try_inverse().unwrap();
+        let mut view_space_center = snapping_view.transform_vector(&center);
+        view_space_center.x = view_space_center.x.floor();
+        view_space_center.y = view_space_center.y.floor();
+        center = snapping_view_inv.transform_vector(&view_space_center);
+
+        let min = Vec3::new(-radius, -radius, -radius);
+        let max = Vec3::new(radius, radius, radius);
 
         let cascade_extent = max - min;
 
@@ -365,5 +378,9 @@ impl<P: Platform> ShadowMapPass<P> {
 
         let light_proj = nalgebra_glm::ortho_lh_zo(min.x, max.x, min.y, max.y, 0.0f32, cascade_extent.z);
         light_proj * light_view
+    }
+
+    pub fn resolution(&self) -> u32 {
+        self.shadow_map_res
     }
 }

@@ -464,7 +464,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             let view = &scene.views[scene.active_view_index];
             let view_proj = view.proj_matrix * view.view_matrix;
             let inv_camera_view = view_proj.try_inverse().unwrap();
-            ShadowMapPass::<P>::build_directional_light_view_proj(light, inv_camera_view, 10f32)
+            ShadowMapPass::<P>::build_directional_light_view_proj(light, inv_camera_view, 10f32, self.shadow_map_pass.resolution())
         } else {
             Matrix4::identity()
         };
