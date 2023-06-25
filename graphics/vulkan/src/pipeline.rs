@@ -175,22 +175,14 @@ impl VkShader {
         let push_constant_resource = push_constant_buffers.first();
         let push_constants_range = push_constant_resource
             .map(|resource| unsafe {
-                let mut ranges: *const spirv_cross_sys::spvc_buffer_range = std::ptr::null();
-                let mut range_count: u64 = 0;
+                let type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
+                assert_ne!(type_handle, std::ptr::null());
+                let mut size = 0u64;
                 assert_eq!(
-                    spirv_cross_sys::spvc_compiler_get_active_buffer_ranges(
-                        compiler,
-                        resource.id,
-                        &mut ranges,
-                        &mut range_count
-                    ),
+                    spirv_cross_sys::spvc_compiler_get_declared_struct_size(compiler, type_handle, &mut size as *mut u64),
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
-                std::slice::from_raw_parts(ranges, range_count as usize)
-            })
-            .filter(|buffer_ranges| !buffer_ranges.is_empty())
-            .map(|buffer_ranges| {
-                let mut push_constant_range = vk::PushConstantRange {
+                let push_constant_range = vk::PushConstantRange {
                     stage_flags: match shader_type {
                         ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
                         ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
@@ -201,11 +193,8 @@ impl VkShader {
                         _ => unimplemented!(),
                     },
                     offset: 0u32,
-                    size: 0,
+                    size: size as u32,
                 };
-                for range in buffer_ranges {
-                    push_constant_range.size += range.range as u32;
-                }
 
                 if push_constant_range.size > 128 {
                     panic!(
