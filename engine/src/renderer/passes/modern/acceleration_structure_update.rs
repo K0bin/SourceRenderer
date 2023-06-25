@@ -176,13 +176,11 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
 
         if created_blas {
             cmd_buffer.barrier(&[Barrier::GlobalBarrier {
-                old_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
-                new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
-                old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE
-                    | BarrierAccess::SHADER_WRITE,
+                old_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+                new_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+                old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
                 new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ
-                    | BarrierAccess::ACCELERATION_STRUCTURE_WRITE
-                    | BarrierAccess::SHADER_READ,
+                    | BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
             }]);
             cmd_buffer.flush_barriers();
         }
@@ -235,10 +233,10 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
         );
 
         cmd_buffer.barrier(&[Barrier::GlobalBarrier {
-            old_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::ACCELERATION_STRUCTURE_BUILD,
-            new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::RAY_TRACING,
-            old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE | BarrierAccess::SHADER_WRITE,
-            new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::SHADER_READ,
+            old_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+            new_sync: BarrierSync::RAY_TRACING,
+            old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
+            new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ,
         }]);
     }
 

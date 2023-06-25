@@ -210,7 +210,7 @@ pub struct VkCommandBuffer {
     queue_family_index: u32,
     descriptor_manager: VkBindingManager,
     buffer_allocator: Arc<BufferAllocator>,
-    pending_memory_barrier: vk::MemoryBarrier2,
+    pending_memory_barriers: [vk::MemoryBarrier2; 2],
     pending_image_barriers: Vec<vk::ImageMemoryBarrier2>,
     pending_buffer_barriers: Vec<vk::BufferMemoryBarrier2>,
     frame: u64,
@@ -255,7 +255,7 @@ impl VkCommandBuffer {
             buffer_allocator: buffer_allocator.clone(),
             pending_buffer_barriers: Vec::with_capacity(4),
             pending_image_barriers: Vec::with_capacity(4),
-            pending_memory_barrier: vk::MemoryBarrier2::default(),
+            pending_memory_barriers: [vk::MemoryBarrier2::default(); 2],
             frame: 0,
             inheritance: None,
             query_allocator: query_allocator.clone(),
@@ -495,8 +495,10 @@ impl VkCommandBuffer {
     fn has_pending_barrier(&self) -> bool {
         !self.pending_image_barriers.is_empty()
             || !self.pending_buffer_barriers.is_empty()
-            || !self.pending_memory_barrier.src_stage_mask.is_empty()
-            || !self.pending_memory_barrier.dst_stage_mask.is_empty()
+            || !self.pending_memory_barriers[0].src_stage_mask.is_empty()
+            || !self.pending_memory_barriers[0].dst_stage_mask.is_empty()
+            || !self.pending_memory_barriers[1].src_stage_mask.is_empty()
+            || !self.pending_memory_barriers[1].dst_stage_mask.is_empty()
     }
 
     pub(crate) fn draw(&mut self, vertices: u32, offset: u32) {
@@ -1035,12 +1037,31 @@ impl VkCommandBuffer {
                 } => {
                     let dst_stages = barrier_sync_to_stage(*new_sync);
                     let src_stages = barrier_sync_to_stage(*old_sync);
-                    self.pending_memory_barrier.dst_stage_mask |= dst_stages;
-                    self.pending_memory_barrier.src_stage_mask |= src_stages;
-                    self.pending_memory_barrier.src_access_mask |=
-                        barrier_access_to_access(*old_access);
-                    self.pending_memory_barrier.dst_access_mask |=
-                        barrier_access_to_access(*new_access);
+                    let src_access = barrier_access_to_access(*old_access);
+                    let dst_access = barrier_access_to_access(*new_access);
+
+                    self.pending_memory_barriers[0].dst_stage_mask |= dst_stages & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                    self.pending_memory_barriers[0].src_stage_mask |= src_stages & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                    self.pending_memory_barriers[0].src_access_mask |=
+                        barrier_access_to_access(*old_access) & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+                    self.pending_memory_barriers[0].dst_access_mask |=
+                        dst_access & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+
+                    self.pending_memory_barriers[1].dst_access_mask |=
+                        dst_access & (vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+
+                    if !self.pending_memory_barriers[1].dst_access_mask.is_empty() {
+                        /*
+                        VUID-VkMemoryBarrier2-dstAccessMask-06256
+                        If the rayQuery feature is not enabled and dstAccessMask includes VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                        dstStageMask must not include any of the VK_PIPELINESTAGE*_SHADER_BIT stages except VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
+
+                        So we need to handle RT barriers separately.
+                        */
+                        self.pending_memory_barriers[1].src_stage_mask = src_stages & (vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                        self.pending_memory_barriers[1].src_access_mask = src_access & (vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+                        self.pending_memory_barriers[1].dst_stage_mask = dst_stages & (vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                    }
                 }
             }
         }
@@ -1070,10 +1091,14 @@ impl VkCommandBuffer {
                     .synchronization2
                     .cmd_pipeline_barrier2(self.buffer, &dependency_info);
             }
-            self.pending_memory_barrier.src_stage_mask = vk::PipelineStageFlags2::empty();
-            self.pending_memory_barrier.dst_stage_mask = vk::PipelineStageFlags2::empty();
-            self.pending_memory_barrier.src_access_mask = vk::AccessFlags2::empty();
-            self.pending_memory_barrier.dst_access_mask = vk::AccessFlags2::empty();
+            self.pending_memory_barriers[0].src_stage_mask = vk::PipelineStageFlags2::empty();
+            self.pending_memory_barriers[0].dst_stage_mask = vk::PipelineStageFlags2::empty();
+            self.pending_memory_barriers[0].src_access_mask = vk::AccessFlags2::empty();
+            self.pending_memory_barriers[0].dst_access_mask = vk::AccessFlags2::empty();
+            self.pending_memory_barriers[1].src_stage_mask = vk::PipelineStageFlags2::empty();
+            self.pending_memory_barriers[1].dst_stage_mask = vk::PipelineStageFlags2::empty();
+            self.pending_memory_barriers[1].src_access_mask = vk::AccessFlags2::empty();
+            self.pending_memory_barriers[1].dst_access_mask = vk::AccessFlags2::empty();
             self.pending_image_barriers.clear();
             self.pending_buffer_barriers.clear();
             return;
@@ -1088,14 +1113,19 @@ impl VkCommandBuffer {
             p_image_memory_barriers: self.pending_image_barriers.as_ptr(),
             buffer_memory_barrier_count: self.pending_buffer_barriers.len() as u32,
             p_buffer_memory_barriers: self.pending_buffer_barriers.as_ptr(),
-            memory_barrier_count: if self.pending_memory_barrier.src_stage_mask.is_empty()
-                && self.pending_memory_barrier.dst_stage_mask.is_empty()
+            memory_barrier_count: if self.pending_memory_barriers[0].src_stage_mask.is_empty()
+                && self.pending_memory_barriers[0].dst_stage_mask.is_empty()
+                && self.pending_memory_barriers[1].src_stage_mask.is_empty()
+                && self.pending_memory_barriers[1].dst_stage_mask.is_empty()
             {
                 0
-            } else {
+            } else if self.pending_memory_barriers[1].src_stage_mask.is_empty()
+                && self.pending_memory_barriers[1].dst_stage_mask.is_empty() {
                 1
+            } else {
+                2
             },
-            p_memory_barriers: &self.pending_memory_barrier as *const vk::MemoryBarrier2,
+            p_memory_barriers: &self.pending_memory_barriers as *const vk::MemoryBarrier2,
             ..Default::default()
         };
 
@@ -1104,10 +1134,14 @@ impl VkCommandBuffer {
                 .synchronization2
                 .cmd_pipeline_barrier2(self.buffer, &dependency_info);
         }
-        self.pending_memory_barrier.src_stage_mask = vk::PipelineStageFlags2::empty();
-        self.pending_memory_barrier.dst_stage_mask = vk::PipelineStageFlags2::empty();
-        self.pending_memory_barrier.src_access_mask = vk::AccessFlags2::empty();
-        self.pending_memory_barrier.dst_access_mask = vk::AccessFlags2::empty();
+        self.pending_memory_barriers[0].src_stage_mask = vk::PipelineStageFlags2::empty();
+        self.pending_memory_barriers[0].dst_stage_mask = vk::PipelineStageFlags2::empty();
+        self.pending_memory_barriers[0].src_access_mask = vk::AccessFlags2::empty();
+        self.pending_memory_barriers[0].dst_access_mask = vk::AccessFlags2::empty();
+        self.pending_memory_barriers[1].src_stage_mask = vk::PipelineStageFlags2::empty();
+        self.pending_memory_barriers[1].dst_stage_mask = vk::PipelineStageFlags2::empty();
+        self.pending_memory_barriers[1].src_access_mask = vk::AccessFlags2::empty();
+        self.pending_memory_barriers[1].dst_access_mask = vk::AccessFlags2::empty();
         self.pending_image_barriers.clear();
         self.pending_buffer_barriers.clear();
     }
