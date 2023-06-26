@@ -105,6 +105,7 @@ impl<P: Platform> ShadingPass<P> {
 
         Self { sampler, shadow_sampler, pipeline }
     }
+
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
@@ -113,8 +114,7 @@ impl<P: Platform> ShadingPass<P> {
         lightmap: &RendererTexture<P::GraphicsBackend>,
         zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
         resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
-        light_view_proj: &Matrix4
+        shader_manager: &ShaderManager<P>
     ) {
         let (width, height) = {
             let info = resources.texture_info(Self::SHADING_TEXTURE_NAME);
@@ -192,6 +192,11 @@ impl<P: Platform> ShadingPass<P> {
             zero_texture_view
         };
 
+        let cascade_count = {
+            let shadow_map_info = resources.texture_info(ShadowMapPass::<P>::SHADOW_MAP_NAME);
+            shadow_map_info.array_length
+        };
+
         let shadow_map = resources.access_view(
             cmd_buffer,
             ShadowMapPass::<P>::SHADOW_MAP_NAME,
@@ -199,7 +204,13 @@ impl<P: Platform> ShadingPass<P> {
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
-            &TextureViewInfo::default(),
+            &TextureViewInfo {
+                base_array_layer: 0,
+                array_layer_length: cascade_count,
+                mip_level_length: 1,
+                base_mip_level: 0,
+                format: None
+            },
             HistoryResourceEntry::Current,
         );
 
@@ -235,7 +246,6 @@ impl<P: Platform> ShadingPass<P> {
             resources.linear_sampler(),
         );
 
-        cmd_buffer.upload_dynamic_data_inline(&[light_view_proj.clone()], ShaderType::ComputeShader);
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             9,

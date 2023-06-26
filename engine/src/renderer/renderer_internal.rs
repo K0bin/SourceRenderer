@@ -339,17 +339,7 @@ impl<P: Platform> RendererInternal<P> {
                     let handle = self.assets.get_or_create_texture_handle(&path);
                     self.scene.set_lightmap(Some(handle));
                 }
-                RendererCommand::RegisterStatic { entity, transform, model_path, receive_shadows, cast_shadows, can_move } => todo!(),
-                RendererCommand::UnregisterStatic(_) => todo!(),
-                RendererCommand::RegisterPointLight { entity, transform, intensity } => todo!(),
-                RendererCommand::UnregisterPointLight(_) => todo!(),
-                RendererCommand::RegisterDirectionalLight { entity, transform, intensity } => todo!(),
-                RendererCommand::UnregisterDirectionalLight(_) => todo!(),
-                RendererCommand::UpdateTransform { entity, transform_mat } => todo!(),
-                RendererCommand::UpdateCameraTransform { camera_transform_mat, fov } => todo!(),
-                RendererCommand::SetLightmap(_) => todo!(),
                 RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
-                RendererCommand::EndFrame => todo!(),
             }
 
             let message_res = self.receiver.try_recv();

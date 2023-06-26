@@ -390,8 +390,8 @@ unsafe fn texture_into_ffx<B: Backend>(
         descriptorData: view_ptr as *mut c_void as u64,
         description: FfxResourceDescription {
             type_: match info.dimension {
-                TextureDimension::Dim1D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE1D,
-                TextureDimension::Dim2D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE2D,
+                TextureDimension::Dim1D | TextureDimension::Dim1DArray => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE1D,
+                TextureDimension::Dim2D | TextureDimension::Dim2DArray => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE2D,
                 TextureDimension::Dim3D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE3D,
             },
             format: format_to_ffx(info.format)
@@ -811,8 +811,8 @@ unsafe extern "C" fn get_resource_description<B: Backend>(
             let info = texture.info();
             FfxResourceDescription {
                 type_: match info.dimension {
-                    TextureDimension::Dim1D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE1D,
-                    TextureDimension::Dim2D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE2D,
+                    TextureDimension::Dim1D | TextureDimension::Dim1DArray => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE1D,
+                    TextureDimension::Dim2D | TextureDimension::Dim2DArray=> FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE2D,
                     TextureDimension::Dim3D => FfxResourceType_FFX_RESOURCE_TYPE_TEXTURE3D,
                 },
                 format: format_to_ffx(info.format)

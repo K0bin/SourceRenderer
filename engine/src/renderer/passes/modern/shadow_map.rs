@@ -1,7 +1,10 @@
 use std::marker::PhantomData;
 use std::{path::Path, sync::Arc};
 
+use legion::world;
 use nalgebra::Point3;
+use nalgebra_glm::proj;
+use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Vec3, Vec4};
 use sourcerenderer_core::graphics::{
     BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, MemoryUsage, PipelineBinding,
@@ -46,7 +49,16 @@ pub struct ShadowMapPass<P: Platform> {
     pipeline: GraphicsPipelineHandle,
     draw_prep_pipeline: ComputePipelineHandle,
     shadow_map_res: u32,
+    cascades: SmallVec<[ShadowMapCascade; 5]>,
     _marker: PhantomData<P>,
+}
+
+#[derive(Debug, Default)]
+pub struct ShadowMapCascade {
+    pub z_min: f32,
+    pub z_max: f32,
+    _padding: [u32; 2],
+    pub view_proj: Matrix4
 }
 
 impl<P: Platform> ShadowMapPass<P> {
@@ -54,23 +66,24 @@ impl<P: Platform> ShadowMapPass<P> {
     pub const DRAW_BUFFER_NAME: &'static str = "ShadowMapDraws";
     pub const VISIBLE_BITFIELD: &'static str = "ShadowMapVisibility";
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        _device: &Arc<<P::GraphicsBackend as Backend>::Device>,
         resources: &mut RendererResources<P::GraphicsBackend>,
-        init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        _init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let shadow_map_res = 4096;
+        let cascades_count = 5;
 
         resources.create_texture(
             &Self::SHADOW_MAP_NAME,
             &TextureInfo {
-                dimension: TextureDimension::Dim2D,
+                dimension: TextureDimension::Dim2DArray,
                 format: Format::D24,
                 width: shadow_map_res,
                 height: shadow_map_res,
                 depth: 1,
                 mip_levels: 1,
-                array_length: 1,
+                array_length: cascades_count,
                 samples: SampleCount::Samples1,
                 usage: TextureUsage::DEPTH_STENCIL | TextureUsage::SAMPLED,
                 supports_srgb: false,
@@ -162,11 +175,47 @@ impl<P: Platform> ShadowMapPass<P> {
 
         let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.spv");
 
+        let mut cascades = SmallVec::<[ShadowMapCascade; 5]>::with_capacity(cascades_count as usize);
+        cascades.resize_with(cascades_count as usize, || ShadowMapCascade::default());
+
         Self {
             pipeline,
             draw_prep_pipeline: prep_pipeline,
             shadow_map_res,
+            cascades,
             _marker: PhantomData,
+        }
+    }
+
+    pub fn calculate_cascades(&mut self,
+        scene: &RendererScene<P::GraphicsBackend>,
+        view: &View) {
+        for cascade in &mut self.cascades {
+            *cascade = Default::default();
+        }
+        let light = scene.directional_lights().first();
+        if light.is_none() {
+            return;
+        }
+        let light: &RendererDirectionalLight<<P as Platform>::GraphicsBackend> = light.unwrap();
+
+        let z_min = view.near_plane;
+        let z_max = view.far_plane;
+
+        let lambda = 0.15f32;
+        let mut z_start = z_min;
+        for cascade_index in 0..self.cascades.len() {
+            let view_proj = view.proj_matrix * view.view_matrix;
+            let inv_camera_view_proj = view_proj.try_inverse().unwrap();
+
+            let i = cascade_index as u32 + 1u32;
+            let m = self.cascades.len() as u32;
+            let log_split = (z_min * (z_max / z_min)).powf(i as f32 / m as f32);
+            let uniform_split = z_min + (z_max - z_min) * (i as f32 / m as f32);
+            let z_end = log_split * lambda + (1.0f32 - lambda) * uniform_split;
+
+            self.cascades[cascade_index] = Self::build_cascade(light, inv_camera_view_proj, z_start, z_end, z_min, z_max, self.shadow_map_res);
+            z_start = z_end;
         }
     }
 
@@ -243,36 +292,14 @@ impl<P: Platform> ShadowMapPass<P> {
         vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         scene: &RendererScene<P::GraphicsBackend>,
-        view: &View
+        _view: &View
     ) {
+        cmd_buffer.begin_label("Shadow map");
+
         let light = scene.directional_lights().first();
         if light.is_none() {
             return;
         }
-        let light = light.unwrap();
-
-        const Z_MULT: f32 = 100.0f32;
-        let view_proj = view.proj_matrix * view.view_matrix;
-        let inv_camera_view = view_proj.try_inverse().unwrap();
-        let light_mv = Self::build_directional_light_view_proj(light, inv_camera_view, Z_MULT, self.shadow_map_res);
-
-        cmd_buffer.begin_label("Shadow map");
-        let shadow_map = resources.access_view(
-            cmd_buffer,
-            Self::SHADOW_MAP_NAME,
-            BarrierSync::EARLY_DEPTH,
-            BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
-            TextureLayout::DepthStencilReadWrite,
-            true,
-            &TextureViewInfo {
-                base_mip_level: 0,
-                mip_level_length: 1,
-                base_array_layer: 0,
-                array_layer_length: 1,
-                format: None,
-            },
-            HistoryResourceEntry::Current,
-        );
 
         let draw_buffer = resources.access_buffer(
             cmd_buffer,
@@ -282,71 +309,110 @@ impl<P: Platform> ShadowMapPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        cmd_buffer.begin_render_pass(
-            &RenderPassBeginInfo {
-                attachments: &[RenderPassAttachment {
-                    view: RenderPassAttachmentView::DepthStencil(&shadow_map),
-                    load_op: LoadOp::Clear,
-                    store_op: StoreOp::Store,
-                }],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 0,
-                        read_only: false,
-                    }),
-                }],
-            },
-            RenderpassRecordingMode::Commands,
-        );
+        let mut cascade_index = 0u32;
+        for cascade in &self.cascades {
+            let shadow_map = resources.access_view(
+                cmd_buffer,
+                Self::SHADOW_MAP_NAME,
+                BarrierSync::EARLY_DEPTH,
+                BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+                TextureLayout::DepthStencilReadWrite,
+                true,
+                &TextureViewInfo {
+                    base_mip_level: 0,
+                    mip_level_length: 1,
+                    base_array_layer: cascade_index,
+                    array_layer_length: 1,
+                    format: None,
+                },
+                HistoryResourceEntry::Current,
+            );
 
-        let dsv_info = shadow_map.texture().info();
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
-        cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
-        cmd_buffer.set_viewports(&[Viewport {
-            position: Vec2::new(0.0f32, 0.0f32),
-            extent: Vec2::new(dsv_info.width as f32, dsv_info.height as f32),
-            min_depth: 0.0f32,
-            max_depth: 1.0f32,
-        }]);
-        cmd_buffer.set_scissors(&[Scissor {
-            position: Vec2I::new(0, 0),
-            extent: Vec2UI::new(9999, 9999),
-        }]);
+            cmd_buffer.flush_barriers();
 
-        cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
-        cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);
+            cmd_buffer.begin_render_pass(
+                &RenderPassBeginInfo {
+                    attachments: &[RenderPassAttachment {
+                        view: RenderPassAttachmentView::DepthStencil(&shadow_map),
+                        load_op: LoadOp::Clear,
+                        store_op: StoreOp::Store,
+                    }],
+                    subpasses: &[SubpassInfo {
+                        input_attachments: &[],
+                        output_color_attachments: &[],
+                        depth_stencil_attachment: Some(DepthStencilAttachmentRef {
+                            index: 0,
+                            read_only: false,
+                        }),
+                    }],
+                },
+                RenderpassRecordingMode::Commands,
+            );
 
-        cmd_buffer.upload_dynamic_data_inline(&[light_mv], ShaderType::VertexShader);
+            let dsv_info = shadow_map.texture().info();
+            let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+            cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+            cmd_buffer.set_viewports(&[Viewport {
+                position: Vec2::new(0.0f32, 0.0f32),
+                extent: Vec2::new(dsv_info.width as f32, dsv_info.height as f32),
+                min_depth: 0.0f32,
+                max_depth: 1.0f32,
+            }]);
+            cmd_buffer.set_scissors(&[Scissor {
+                position: Vec2I::new(0, 0),
+                extent: Vec2UI::new(9999, 9999),
+            }]);
 
-        cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);
+            cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
+            cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);
 
-        cmd_buffer.end_render_pass();
+            cmd_buffer.upload_dynamic_data_inline(&[cascade.view_proj], ShaderType::VertexShader);
+
+            cmd_buffer.finish_binding();
+            cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);
+
+            cmd_buffer.end_render_pass();
+
+            cascade_index += 1;
+        }
         cmd_buffer.end_label();
     }
 
-    pub fn build_directional_light_view_proj(light: &RendererDirectionalLight<P::GraphicsBackend>, inv_camera_view: Matrix4, z_mult: f32, shadow_map_res: u32) -> Matrix4 {
+    pub fn build_cascade(light: &RendererDirectionalLight<P::GraphicsBackend>, inv_camera_view_proj: Matrix4, cascade_z_start: f32, cascade_z_end: f32, z_min: f32, z_max: f32, shadow_map_res: u32) -> ShadowMapCascade {
         // https://www.junkship.net/News/2020/11/22/shadow-of-a-doubt-part-2
-        // https://github.com/BabylonJS/Babylon.js/blob/9e0bd9ff72aba11f090236a0690c4ca2be34249a/packages/dev/core/src/Lights/Shadows/cascadedShadowGenerator.ts
+        // https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Lights/Shadows/cascadedShadowGenerator.ts
         // https://alextardif.com/shadowmapping.html
+        // https://therealmjp.github.io/posts/shadow-maps/
+        // https://learn.microsoft.com/en-us/windows/win32/dxtecharts/common-techniques-to-improve-shadow-depth-maps
+        // https://github.com/TheRealMJP/Shadows/blob/master/Shadows/SetupShadows.hlsl
 
         let mut world_space_frustum_corners = [Vec4::new(0f32, 0f32, 0f32, 0f32); 8];
         for x in 0..2 {
             for y in 0..2 {
-                for z in 0..2 {
-                    let mut world_space_frustum_corner = inv_camera_view * Vec4::new(
+                    for z in 0..2 {
+                    let mut world_space_frustum_corner = inv_camera_view_proj * Vec4::new(
                         2.0f32 * (x as f32) - 1.0f32,
                         2.0f32 * (y as f32) - 1.0f32,
                         z as f32,
                         1.0f32
                     );
                     world_space_frustum_corner /= world_space_frustum_corner.w;
-                    world_space_frustum_corners[x * 4 + y * 2 + z] = world_space_frustum_corner;
+                    world_space_frustum_corners[z * 4 + x * 2 + y] = world_space_frustum_corner;
                 }
             }
         }
+
+        let z_range = z_max - z_min;
+        let start_depth = (cascade_z_start - z_min) / z_range;
+        let end_depth = (cascade_z_end - z_min) / z_range;
+        for i in 0..4 {
+            let corner_ray = world_space_frustum_corners[i + 4] - world_space_frustum_corners[i];
+            let near_corner_ray = corner_ray * start_depth;
+            let far_corner_ray = corner_ray * end_depth;
+            world_space_frustum_corners[i + 4] = world_space_frustum_corners[i] + far_corner_ray;
+            world_space_frustum_corners[i] = world_space_frustum_corners[i] + near_corner_ray;
+        }
+
         let mut center = Vec3::new(0f32, 0f32, 0f32);
         for corner in &world_space_frustum_corners {
             center += corner.xyz();
@@ -358,9 +424,12 @@ impl<P: Platform> ShadowMapPass<P> {
             radius = radius.max((corner.xyz() - center).magnitude());
         }
 
+        let mut min = Vec3::new(-radius, -radius, -radius);
+        let mut max = Vec3::new(radius, radius, radius);
+
         let mut light_view = Matrix4::look_at_lh(&Point3::from(center - light.direction), &Point3::from(center), &Vec3::new(0f32, 1f32, 0f32));
 
-        // Snap to texel
+        // Snap center to texel
         let texels_per_unit = (shadow_map_res as f32) / (radius * 2.0f32);
         let snapping_view = Matrix4::new_scaling(texels_per_unit) * light_view.clone();
         let snapping_view_inv = snapping_view.try_inverse().unwrap();
@@ -368,19 +437,31 @@ impl<P: Platform> ShadowMapPass<P> {
         view_space_center.x = view_space_center.x.floor();
         view_space_center.y = view_space_center.y.floor();
         center = snapping_view_inv.transform_vector(&view_space_center);
+        light_view = Matrix4::look_at_lh(&Point3::from(center - light.direction), &Point3::from(center), &Vec3::new(0f32, 1f32, 0f32));
 
-        let min = Vec3::new(-radius, -radius, -radius);
-        let max = Vec3::new(radius, radius, radius);
+        // Snap left, right, top. bottom to texel
+        let world_units_per_texel = (radius * 2f32) / (shadow_map_res as f32);
+        min.x = (min.x / world_units_per_texel).floor() * world_units_per_texel;
+        min.y = (min.y / world_units_per_texel).floor() * world_units_per_texel;
+        max.x = (max.x / world_units_per_texel).ceil() * world_units_per_texel;
+        max.y = (max.y / world_units_per_texel).ceil() * world_units_per_texel;
 
-        let cascade_extent = max - min;
+        let light_proj = nalgebra_glm::ortho_lh_zo(min.x, max.x, min.y, max.y, 0.01f32, max.z - min.z);
+        let light_mat = light_proj * light_view;
 
-        light_view = Matrix4::look_at_lh(&Point3::from(center - light.direction * -min.z), &Point3::from(center), &Vec3::new(0f32, 1f32, 0f32));
-
-        let light_proj = nalgebra_glm::ortho_lh_zo(min.x, max.x, min.y, max.y, 0.0f32, cascade_extent.z);
-        light_proj * light_view
+        ShadowMapCascade {
+            _padding: Default::default(),
+            view_proj: light_mat,
+            z_min: cascade_z_start,
+            z_max: cascade_z_end
+        }
     }
 
     pub fn resolution(&self) -> u32 {
         self.shadow_map_res
+    }
+
+    pub fn cascades(&self) -> &[ShadowMapCascade] {
+        return &self.cascades;
     }
 }
