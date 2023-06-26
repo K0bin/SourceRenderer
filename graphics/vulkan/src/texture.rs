@@ -65,9 +65,9 @@ impl VkTexture {
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             usage: texture_usage_to_vk(info.usage),
             image_type: match info.dimension {
-                TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
-                TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
-                TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
+                TextureDimension::Dim1DArray | TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
+                TextureDimension::Dim2DArray | TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
+                TextureDimension::Dim3D => vk::ImageType::TYPE_3D
             },
             extent: vk::Extent3D {
                 width: max(1, info.width),
@@ -80,6 +80,10 @@ impl VkTexture {
             samples: samples_to_vk(info.samples),
             ..Default::default()
         };
+
+        debug_assert!(info.array_length == 1 || (info.dimension == TextureDimension::Dim1DArray || info.dimension == TextureDimension::Dim2DArray));
+        debug_assert!(info.depth == 1 || info.dimension == TextureDimension::Dim3D);
+        debug_assert!(info.height == 1 || (info.dimension == TextureDimension::Dim2D || info.dimension == TextureDimension::Dim2DArray || info.dimension == TextureDimension::Dim3D));
 
         let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
         compatible_formats.push(create_info.format);
@@ -326,6 +330,8 @@ impl VkTextureView {
                 TextureDimension::Dim1D => vk::ImageViewType::TYPE_1D,
                 TextureDimension::Dim2D => vk::ImageViewType::TYPE_2D,
                 TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
+                TextureDimension::Dim1DArray => vk::ImageViewType::TYPE_1D_ARRAY,
+                TextureDimension::Dim2DArray => vk::ImageViewType::TYPE_2D_ARRAY,
             },
             format: format_to_vk(format, device.supports_d24),
             components: vk::ComponentMapping {

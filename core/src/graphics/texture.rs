@@ -42,7 +42,9 @@ impl Default for TextureLayout {
 pub enum TextureDimension {
   Dim1D,
   Dim2D,
-  Dim3D
+  Dim3D,
+  Dim1DArray,
+  Dim2DArray,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
