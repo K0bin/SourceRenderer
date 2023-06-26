@@ -348,7 +348,6 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
     }
 
     fn request_shaders(&self, asset_manager: &Arc<AssetManager<P>>) {
-        println!("requesting {:?}", self.path);
         asset_manager.request_asset(&self.path, AssetType::Shader, AssetLoadPriority::High);
     }
 
@@ -452,18 +451,15 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
     }
 
     fn request_shaders(&self, asset_manager: &Arc<AssetManager<P>>) {
-        println!("requesting {:?}", &self.ray_gen_shader);
         asset_manager.request_asset(
             &self.ray_gen_shader,
             AssetType::Shader,
             AssetLoadPriority::High,
         );
         for shader in &self.closest_hit_shaders {
-            println!("requesting {:?}", shader);
             asset_manager.request_asset(shader, AssetType::Shader, AssetLoadPriority::High);
         }
         for shader in &self.miss_shaders {
-            println!("requesting {:?}", shader);
             asset_manager.request_asset(shader, AssetType::Shader, AssetLoadPriority::High);
         }
     }

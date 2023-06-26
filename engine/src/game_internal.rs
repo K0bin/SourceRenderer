@@ -89,7 +89,7 @@ impl<P: Platform> GameInternal<P> {
 
         #[cfg(target_os = "windows")]
         asset_manager.add_container(Box::new(
-            GltfContainer::<P>::load("C:\\Users\\robin\\Projekte\\bistro\\bistro_sun.glb", true)
+            GltfContainer::<P>::load("bistro_sun.glb", true)
                 .unwrap(),
         ));
 

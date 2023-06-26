@@ -28,4 +28,7 @@ void main(void) {
     vec4 pos = vec4(in_pos, 1);
     mat4 mvp = viewProj * model;
     gl_Position = mvp * pos;
+
+    // Pancaking
+    gl_Position.z = max(gl_Position.z, 0.01);
 }

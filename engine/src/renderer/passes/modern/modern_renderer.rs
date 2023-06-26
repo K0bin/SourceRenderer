@@ -232,6 +232,26 @@ impl<P: Platform> ModernRenderer<P> {
         let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
         let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2()
             / (view.far_plane / view.near_plane).log2();
+
+        let cascades = self.shadow_map_pass.cascades();
+        let mut gpu_cascade_data: [ShadowCascade; 5] = Default::default();
+        for i in 0..cascades.len() {
+            let mut gpu_cascade = &mut gpu_cascade_data[i];
+            let cascade = &cascades[i];
+            gpu_cascade.light_mat = cascade.view_proj;
+            gpu_cascade.z_max = cascade.z_max;
+            gpu_cascade.z_min = cascade.z_min;
+        }
+
+        #[repr(C)]
+        #[derive(Debug, Clone, Default)]
+        struct ShadowCascade {
+            light_mat: Matrix4,
+            z_min: f32,
+            z_max: f32,
+            _padding: [u32; 2]
+        }
+
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct SetupBuffer {
@@ -244,7 +264,10 @@ impl<P: Platform> ModernRenderer<P> {
             swapchain_transform: Matrix4,
             halton_point: Vec2,
             rt_size: Vec2UI,
+            cascades: [ShadowCascade; 5],
+            cascade_count: u32
         }
+
         let setup_buffer = cmd_buf.upload_dynamic_data(
             &[SetupBuffer {
                 point_light_count: scene.point_lights().len() as u32,
@@ -260,6 +283,8 @@ impl<P: Platform> ModernRenderer<P> {
                     (frame % 8) as u32 + 1,
                 ),
                 rt_size: *rendering_resolution,
+                cascade_count: cascades.len() as u32,
+                cascades: gpu_cascade_data,
             }],
             BufferUsage::CONSTANT,
         );
@@ -347,6 +372,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
 
         let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
+
+        self.shadow_map_pass.calculate_cascades(scene.scene, main_view);
 
         self.setup_frame(
             &mut cmd_buf,
@@ -457,26 +484,13 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             &scene.views[scene.active_view_index]
         );
 
-
-        let light = scene.scene.directional_lights().first();
-        let light_view_proj = if let Some(light) = light {
-            const Z_MULT: f32 = 100.0f32;
-            let view = &scene.views[scene.active_view_index];
-            let view_proj = view.proj_matrix * view.view_matrix;
-            let inv_camera_view = view_proj.try_inverse().unwrap();
-            ShadowMapPass::<P>::build_directional_light_view_proj(light, inv_camera_view, 10f32, self.shadow_map_pass.resolution())
-        } else {
-            Matrix4::identity()
-        };
-
         self.shading_pass.execute(
             &mut cmd_buf,
             &self.device,
             scene.lightmap.unwrap(),
             zero_textures.zero_texture_view,
             &self.barriers,
-            shader_manager,
-            &light_view_proj
+            shader_manager
         );
         self.ssr_pass.execute(
             &mut cmd_buf,

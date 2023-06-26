@@ -46,6 +46,11 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 9, std430) readonly restrict buffer
 layout(set = DESCRIPTOR_SET_FRAME, binding = 10, std430) readonly restrict buffer indicesSSBO {
   uint indices[];
 };
+struct ShadowCascade {
+  mat4 lightMatrix;
+  float zMin;
+  float zMax;
+};
 layout(set = DESCRIPTOR_SET_FRAME, binding = 11, std140) uniform SetupUBO {
   uint pointLightCount;
   uint directionalLightCount;
@@ -55,6 +60,9 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 11, std140) uniform SetupUBO {
   mat4 swapchainTransform;
   vec2 jitterPoint;
   uvec2 rtSize;
+  ShadowCascade[5] cascades;
+  uint cascadeCount;
+
 };
 struct PointLight {
   vec4 positionAndIntensity;

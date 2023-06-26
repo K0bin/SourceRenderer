@@ -31,11 +31,7 @@ layout (set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) readonly buffer lightBi
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform sampler2D lightmap;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 7) uniform sampler2D shadows;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 8) uniform sampler2D ssao;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 9) uniform sampler2DShadow shadowMap;
-
-layout(push_constant) uniform VeryHighFrequencyUbo {
-    mat4 lightViewProj;
-};
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 9) uniform sampler2DArrayShadow shadowMaps;
 
 #include "frame_set.inc.glsl"
 
@@ -45,7 +41,7 @@ struct Cluster {
   vec4 maxPoint;
 };
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6, std430) readonly buffer clusterAABB {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 10, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };
 #endif
@@ -74,11 +70,6 @@ void main() {
   vec2 uv = vertex.uv;
   vec2 albedoUV = uv;
 
-  vec4 lightSpacePos = (lightViewProj * vec4(vertex.position, 1.0));
-  lightSpacePos.xyz /= lightSpacePos.w;
-  lightSpacePos.xyz = lightSpacePos.xyz * 0.5 + 0.5;
-  lightSpacePos.y = 1 - lightSpacePos.y;
-
   uint clusterIndex = getClusterIndex(texCoord, viewPos.z, clusterCount, uvec2(texSize), clusterZScale, clusterZBias);
   uint maxClusterCount = clusterCount.x * clusterCount.y * clusterCount.z;
   #ifdef DEBUG
@@ -106,12 +97,33 @@ void main() {
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
     vec3 lightContribution = pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
+
     if (i == 0) {
       lightContribution *= texture(shadows, texCoord).rrr;
+      uint cascadeIndex = cascadeCount;
+      for (uint j = 0; j < cascadeCount; j++) {
+        ShadowCascade cascade = cascades[j];
+        if (viewPos.z >= cascade.zMin && viewPos.z < cascade.zMax) {
+          cascadeIndex = j;
+          break;
+        }
+      }
 
-      vec4 shadowGather = textureGather(shadowMap, lightSpacePos.xy, lightSpacePos.z);
-      lightContribution *= dot(shadowGather, vec4(0.25, 0.25, 0.25, 0.25));
+      if (cascadeIndex < cascadeCount) {
+        ShadowCascade cascade = cascades[cascadeIndex];
+        vec4 lightSpacePos = (cascade.lightMatrix * vec4(vertex.position, 1.0));
+        lightSpacePos.xyz /= lightSpacePos.w;
+        lightSpacePos.xyz = lightSpacePos.xyz * 0.5 + 0.5;
+        lightSpacePos.y = 1 - lightSpacePos.y;
+
+        vec3 coord = vec3(lightSpacePos.xy, cascadeIndex);
+        if (coord.x >= 0.0 && coord.x < 1.0 && coord.y >= 0.0 && coord.y < 1.0) {
+          vec4 shadowGather = textureGather(shadowMaps, coord, lightSpacePos.z);
+          lightContribution *= dot(shadowGather, vec4(0.25, 0.25, 0.25, 0.25));
+        }
+      }
     }
+
     lighting += lightContribution;
   }
 
@@ -141,5 +153,4 @@ void main() {
   }
 
   imageStore(outputTexture, iTexCoord, vec4(lighting * albedo, 1));
-  //imageStore(outputTexture, iTexCoord, vec4(texture(shadowMap, lightSpacePos.xy).r, 0, 0, 1));
 }
