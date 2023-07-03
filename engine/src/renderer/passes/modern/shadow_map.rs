@@ -26,7 +26,7 @@ use sourcerenderer_core::{
 use crate::renderer::drawable::View;
 use crate::renderer::light::{DirectionalLight, RendererDirectionalLight};
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
-use crate::renderer::render_path::RenderPassParameters;
+use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
 use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::{
     ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager,
@@ -188,18 +188,17 @@ impl<P: Platform> ShadowMapPass<P> {
         }
     }
 
-    pub fn calculate_cascades(&mut self,
-        pass_params: &RenderPassParameters<'_, P>) {
+    pub fn calculate_cascades(&mut self, scene: &SceneInfo<'_, P::GraphicsBackend>) {
         for cascade in &mut self.cascades {
             *cascade = Default::default();
         }
-        let light = pass_params.scene.scene.directional_lights().first();
+        let light = scene.scene.directional_lights().first();
         if light.is_none() {
             return;
         }
         let light: &RendererDirectionalLight<<P as Platform>::GraphicsBackend> = light.unwrap();
 
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &scene.views[scene.active_view_index];
         let z_min = view.near_plane;
         let z_max = view.far_plane;
 

@@ -370,6 +370,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
+        self.shadow_map_pass.calculate_cascades(scene);
+
         self.setup_frame(
             &mut cmd_buf,
             scene,
@@ -396,8 +398,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             zero_textures,
             assets
         };
-
-        self.shadow_map_pass.calculate_cascades(&params);
 
         if let Some(rt_passes) = self.rt_passes.as_mut() {
             rt_passes
