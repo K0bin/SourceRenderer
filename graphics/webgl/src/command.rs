@@ -9,6 +9,7 @@ use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLFence, WebGLGraphics
 use bitflags::bitflags;
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
   pub struct WebGLCommandBufferDirty: u32 {
     const VAO = 0b0001;
   }

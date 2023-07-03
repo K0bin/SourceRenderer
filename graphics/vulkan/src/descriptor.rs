@@ -36,6 +36,7 @@ use crate::texture::{
 pub const PER_SET_BINDINGS: usize = 32;
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct DirtyDescriptorSets: u32 {
         const VERY_FREQUENT = 0b0001;
         const FREQUENT = 0b0010;

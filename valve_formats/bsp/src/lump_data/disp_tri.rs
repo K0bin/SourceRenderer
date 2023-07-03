@@ -27,7 +27,7 @@ impl LumpData for DispTri {
 }
 
 bitflags! {
-  #[derive(Default)]
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
   pub struct DispTriTags : u16 {
     const EMPTY = 0;
     const SURFACE = 1;

@@ -135,6 +135,7 @@ pub struct RenderPassBeginInfo<'a, B: Backend> {
 }
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct BarrierSync: u32 {
     const VERTEX_INPUT                 = 0b1;
     const VERTEX_SHADER                = 0b10;
@@ -154,6 +155,7 @@ bitflags! {
 }
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct BarrierAccess: u32 {
     const INDEX_READ                   = 0b1;
     const INDIRECT_READ                = 0b10;

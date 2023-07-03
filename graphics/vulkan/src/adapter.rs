@@ -45,6 +45,7 @@ const BARYCENTRICS_EXT_NAME: &str = "VK_NV_fragment_shader_barycentric"; // TODO
 const IMAGE_FORMAT_LIST_EXT_NAME: &str = "VK_KHR_image_format_list";
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct VkAdapterExtensionSupport: u32 {
     const NONE                       = 0b0;
     const SWAPCHAIN                  = 0b1;

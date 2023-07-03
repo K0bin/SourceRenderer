@@ -5,6 +5,7 @@ use nalgebra::Vector3;
 use crate::{PrimitiveRead, StringRead};
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
   pub struct StudioHDRFlags: u32 {
     const AUTO_GENERATED_HITBOX = 1;
     const USES_ENV_CUBEMAP = 1 << 1;

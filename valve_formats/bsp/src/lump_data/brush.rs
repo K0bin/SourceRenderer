@@ -10,7 +10,7 @@ pub struct Brush {
 }
 
 bitflags! {
-  #[derive(Default)]
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
   pub struct BrushContents: u32 {
     const EMPTY = 0;
     const SOLID = 0x1;
@@ -47,14 +47,6 @@ bitflags! {
   }
 }
 
-impl BrushContents {
-  pub fn new(bits: u32) -> BrushContents {
-    return BrushContents {
-      bits
-    };
-  }
-}
-
 impl LumpData for Brush {
   fn lump_type() -> LumpType {
     LumpType::Brushes
@@ -74,7 +66,7 @@ impl LumpData for Brush {
     Ok(Self {
       first_side,
       sides_count,
-        contents: BrushContents { bits: contents }
+      contents: BrushContents::from_bits(contents).unwrap()
     })
   }
 }

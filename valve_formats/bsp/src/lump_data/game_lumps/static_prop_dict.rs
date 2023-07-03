@@ -43,6 +43,7 @@ impl StaticPropDict {
 }
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
   pub struct StaticPropFlags: u8 {
     const FADES = 1;
     const USE_LIGHTING_ORIGIN = 2;

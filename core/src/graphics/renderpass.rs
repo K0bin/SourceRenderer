@@ -60,6 +60,7 @@ pub struct OutputAttachmentRef {
 
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct RenderPassPipelineStage: u32 {
     const VERTEX   = 0b1;
     const FRAGMENT = 0b10;

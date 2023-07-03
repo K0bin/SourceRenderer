@@ -118,7 +118,7 @@ impl LumpData for Leaf {
     let padding = reader.read_i16()?;
 
     Ok(Self {
-      contents: BrushContents::new(contents),
+      contents: BrushContents::from_bits(contents).unwrap(),
       cluster,
       area,
       flags,

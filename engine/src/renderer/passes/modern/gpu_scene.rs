@@ -59,6 +59,7 @@ struct GPUMaterial {
 }
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     struct GPUDrawableFlags : u32 {
         const STATIC = 0b1;
         const CASTS_SHADOW = 0b10;

@@ -2,6 +2,7 @@ use crate::graphics::{Format, SampleCount, CompareFunc, Backend};
 use std::sync::Arc;
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct TextureUsage: u32 {
     const SAMPLED       = 0b1;
     const RENDER_TARGET = 0b10;

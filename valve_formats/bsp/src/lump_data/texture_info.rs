@@ -3,6 +3,7 @@ use crate::{LumpData, LumpType, PrimitiveRead};
 use std::io::{Read, Result as IOResult};
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
   pub struct SurfaceFlags: i32 {
     const LIGHT = 0x1;
     const SKY2D = 0x2;

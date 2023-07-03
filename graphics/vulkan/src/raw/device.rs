@@ -14,6 +14,7 @@ use crate::queue::VkQueueInfo;
 use crate::raw::RawVkInstance;
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct VkFeatures : u32 {
     const DESCRIPTOR_INDEXING        = 0b1;
     const DEDICATED_ALLOCATION       = 0b10;

@@ -275,6 +275,7 @@ impl Default for BlendInfo<'_> {
 }
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct ColorComponents : u8 {
     const RED   = 0b0001;
     const GREEN = 0b0010;

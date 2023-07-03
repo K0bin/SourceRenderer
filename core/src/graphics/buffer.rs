@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 bitflags! {
+  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
   pub struct BufferUsage: u32 {
     const VERTEX                             = 0b1;
     const INDEX                              = 0b10;
