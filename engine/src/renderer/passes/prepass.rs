@@ -62,6 +62,7 @@ use sourcerenderer_core::{
 
 use crate::renderer::drawable::View;
 use crate::renderer::passes::taa::scaled_halton_point;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -258,21 +259,18 @@ impl Prepass {
     pub(super) fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
-        scene: &RendererScene<P::GraphicsBackend>,
-        view: &View,
+        pass_params: &RenderPassParameters<'_, P>,
         swapchain_transform: Matrix4,
         frame: u64,
         camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        camera_history_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
+        camera_history_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>
     ) {
-        cmd_buffer.begin_label("Depth prepass");
-        let static_drawables = scene.static_drawables();
+        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
 
-        let depth_buffer = resources.access_view(
+        cmd_buffer.begin_label("Depth prepass");
+        let static_drawables = pass_params.scene.scene.static_drawables();
+
+        let depth_buffer = pass_params.resources.access_view(
             cmd_buffer,
             Self::DEPTH_TEXTURE_NAME,
             BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -283,7 +281,7 @@ impl Prepass {
             HistoryResourceEntry::Current,
         );
 
-        let motion = resources.access_view(
+        let motion = pass_params.resources.access_view(
             cmd_buffer,
             Self::MOTION_TEXTURE_NAME,
             BarrierSync::RENDER_TARGET,
@@ -294,7 +292,7 @@ impl Prepass {
             HistoryResourceEntry::Current,
         );
 
-        let normals = resources.access_view(
+        let normals = pass_params.resources.access_view(
             cmd_buffer,
             Self::NORMALS_TEXTURE_NAME,
             BarrierSync::RENDER_TARGET,
@@ -345,6 +343,9 @@ impl Prepass {
             RenderpassRecordingMode::CommandBuffers,
         );
 
+        let assets = pass_params.assets;
+        let device = pass_params.device;
+
         let info = motion.texture().info();
         let per_frame = FrameData {
             swapchain_transform,
@@ -356,7 +357,7 @@ impl Prepass {
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
         let chunks = view.drawable_parts.par_chunks(CHUNK_SIZE);
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
         let inner_cmd_buffers: Vec<
             <P::GraphicsBackend as GraphicsBackend>::CommandBufferSubmission,
         > = chunks

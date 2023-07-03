@@ -25,6 +25,7 @@ use sourcerenderer_core::graphics::{
 };
 use sourcerenderer_core::Platform;
 
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -118,19 +119,18 @@ impl<P: Platform> HierarchicalZPass<P> {
     pub fn execute(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
     ) {
         let (width, height, mips) = {
-            let info = resources.texture_info(Self::HI_Z_BUFFER_NAME);
+            let info = pass_params.resources.texture_info(Self::HI_Z_BUFFER_NAME);
             (info.width, info.height, info.mip_levels)
         };
 
         assert!(mips <= 13); // TODO support >8k?
 
         cmd_buffer.begin_label("Hierarchical Z");
-        let src_texture = resources.access_view(
+        let src_texture = pass_params.resources.access_view(
             cmd_buffer,
             depth_name,
             BarrierSync::COMPUTE_SHADER,
@@ -140,7 +140,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Past,
         );
-        let dst_mip0 = resources
+        let dst_mip0 = pass_params.resources
             .access_view(
                 cmd_buffer,
                 Self::HI_Z_BUFFER_NAME,
@@ -152,20 +152,20 @@ impl<P: Platform> HierarchicalZPass<P> {
                 HistoryResourceEntry::Current,
             )
             .clone();
-        let copy_pipeline = shader_manager.get_compute_pipeline(self.copy_pipeline);
+        let copy_pipeline = pass_params.shader_manager.get_compute_pipeline(self.copy_pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&copy_pipeline));
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             0,
             &src_texture,
-            resources.nearest_sampler(),
+            pass_params.resources.nearest_sampler(),
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &dst_mip0);
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((width + 7) / 8, (height + 7) / 8, 1);
 
-        let counter_buffer = resources.access_buffer(
+        let counter_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             Self::FFX_COUNTER_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -176,7 +176,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             SmallVec::<[Arc<<P::GraphicsBackend as Backend>::TextureView>; 12]>::new();
         for i in 1..mips {
             dst_texture_views.push(
-                resources
+                pass_params.resources
                     .access_view(
                         cmd_buffer,
                         Self::HI_Z_BUFFER_NAME,
@@ -205,7 +205,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             texture_refs.push(&dst_texture_views[0]); // fill the rest of the array with views that never get used, so the validation layers shut up
         }
 
-        let ffx_pipeline = shader_manager.get_compute_pipeline(self.ffx_pipeline);
+        let ffx_pipeline = pass_params.shader_manager.get_compute_pipeline(self.ffx_pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&ffx_pipeline));
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,

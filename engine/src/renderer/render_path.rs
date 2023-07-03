@@ -12,6 +12,7 @@ use super::renderer_assets::{
     RendererAssets,
     RendererTexture,
 };
+use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
 use super::LateLatching;
@@ -27,6 +28,7 @@ pub struct SceneInfo<'a, B: Backend> {
     pub lightmap: Option<&'a RendererTexture<B>>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ZeroTextures<'a, B: Backend> {
     pub zero_texture_view: &'a Arc<B::TextureView>,
     pub zero_texture_view_black: &'a Arc<B::TextureView>,
@@ -35,6 +37,15 @@ pub struct ZeroTextures<'a, B: Backend> {
 pub struct FrameInfo {
     pub frame: u64,
     pub delta: Duration,
+}
+
+pub struct RenderPassParameters<'a, P: Platform> {
+    pub device: &'a <P::GraphicsBackend as Backend>::Device,
+    pub scene: &'a SceneInfo<'a, P::GraphicsBackend>,
+    pub shader_manager: &'a ShaderManager<P>,
+    pub resources: &'a mut RendererResources<P::GraphicsBackend>,
+    pub zero_textures: &'a ZeroTextures<'a, P::GraphicsBackend>,
+    pub assets: &'a RendererAssets<P>
 }
 
 pub(super) trait RenderPath<P: Platform> {

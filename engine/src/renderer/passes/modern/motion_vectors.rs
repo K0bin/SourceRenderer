@@ -21,6 +21,7 @@ use sourcerenderer_core::{
 };
 
 use crate::renderer::passes::modern::VisibilityBufferPass;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -67,14 +68,13 @@ impl MotionVectorPass {
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        pass_params: &RenderPassParameters<'_, P>
     ) {
-        let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
 
         cmd_buffer.begin_label("Motion Vectors");
 
-        let output_srv = resources.access_view(
+        let output_srv = pass_params.resources.access_view(
             cmd_buffer,
             Self::MOTION_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -90,7 +90,7 @@ impl MotionVectorPass {
             (info.width, info.height)
         };
 
-        let ids = resources.access_view(
+        let ids = pass_params.resources.access_view(
             cmd_buffer,
             VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -101,7 +101,7 @@ impl MotionVectorPass {
             HistoryResourceEntry::Current,
         );
 
-        let barycentrics = resources.access_view(
+        let barycentrics = pass_params.resources.access_view(
             cmd_buffer,
             VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,

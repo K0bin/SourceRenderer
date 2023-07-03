@@ -22,6 +22,7 @@ use sourcerenderer_core::{
 };
 
 use super::ssr::SsrPass;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -70,11 +71,10 @@ impl CompositingPass {
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
+        params: &RenderPassParameters<'_, P>,
         input_name: &str,
-        shader_manager: &ShaderManager<P>,
     ) {
-        let input_image = resources.access_view(
+        let input_image = params.resources.access_view(
             cmd_buffer,
             input_name,
             BarrierSync::COMPUTE_SHADER,
@@ -85,7 +85,7 @@ impl CompositingPass {
             HistoryResourceEntry::Current,
         );
 
-        let ssr = resources.access_view(
+        let ssr = params.resources.access_view(
             cmd_buffer,
             SsrPass::SSR_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -96,7 +96,7 @@ impl CompositingPass {
             HistoryResourceEntry::Current,
         );
 
-        let output = resources.access_view(
+        let output = params.resources.access_view(
             cmd_buffer,
             Self::COMPOSITION_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -109,7 +109,7 @@ impl CompositingPass {
 
         cmd_buffer.begin_label("Compositing pass");
 
-        let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = params.shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
 
         #[repr(C)]
@@ -131,13 +131,13 @@ impl CompositingPass {
             BindingFrequency::VeryFrequent,
             1,
             &input_image,
-            resources.linear_sampler(),
+            params.resources.linear_sampler(),
         );
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             2,
             &ssr,
-            resources.linear_sampler(),
+            params.resources.linear_sampler(),
         );
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,

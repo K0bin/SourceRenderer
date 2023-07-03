@@ -8,6 +8,7 @@ use crate::math::Frustum;
 use crate::renderer::drawable::View;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
@@ -56,15 +57,13 @@ impl DrawPrepPass {
     pub fn execute<P: Platform>(
         &self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        scene: &RendererScene<P::GraphicsBackend>,
-        view: &View,
-        shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
+        pass_params: &RenderPassParameters<'_, P>
     ) {
         {
+            let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+
             cmd_buffer.begin_label("Culling");
-            let buffer = resources.access_buffer(
+            let buffer = pass_params.resources.access_buffer(
                 cmd_buffer,
                 Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,
                 BarrierSync::COMPUTE_SHADER,
@@ -73,10 +72,10 @@ impl DrawPrepPass {
             );
 
             let hi_z_mips = {
-                let hi_z_info = resources.texture_info(HierarchicalZPass::<P>::HI_Z_BUFFER_NAME);
+                let hi_z_info = pass_params.resources.texture_info(HierarchicalZPass::<P>::HI_Z_BUFFER_NAME);
                 hi_z_info.mip_levels
             };
-            let hi_z = resources.access_view(
+            let hi_z = pass_params.resources.access_view(
                 cmd_buffer,
                 HierarchicalZPass::<P>::HI_Z_BUFFER_NAME,
                 BarrierSync::COMPUTE_SHADER,
@@ -138,19 +137,19 @@ impl DrawPrepPass {
                 BindingFrequency::VeryFrequent,
                 2,
                 &*hi_z,
-                resources.nearest_sampler(),
+                pass_params.resources.nearest_sampler(),
             );
-            let culling_pipeline = shader_manager.get_compute_pipeline(self.culling_pipeline);
+            let culling_pipeline = pass_params.shader_manager.get_compute_pipeline(self.culling_pipeline);
             cmd_buffer.set_pipeline(PipelineBinding::Compute(&culling_pipeline));
             cmd_buffer.flush_barriers();
             cmd_buffer.finish_binding();
-            cmd_buffer.dispatch((scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
+            cmd_buffer.dispatch((pass_params.scene.scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
             cmd_buffer.end_label();
         }
 
         cmd_buffer.begin_label("Preparing indirect draws");
         {
-            let draw_buffer = resources.access_buffer(
+            let draw_buffer = pass_params.resources.access_buffer(
                 cmd_buffer,
                 Self::INDIRECT_DRAW_BUFFER,
                 BarrierSync::COMPUTE_SHADER,
@@ -161,28 +160,28 @@ impl DrawPrepPass {
             cmd_buffer.clear_storage_buffer(&draw_buffer, 0, 4, 0);
         }
 
-        assert!(scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
-        let part_count = scene
+        assert!(pass_params.scene.scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
+        let part_count = pass_params.scene.scene
             .static_drawables()
             .iter()
             .map(|d| {
-                assets
+                pass_params.assets
                     .get_model(d.model)
-                    .and_then(|m| assets.get_mesh(m.mesh_handle()))
+                    .and_then(|m| pass_params.assets.get_mesh(m.mesh_handle()))
                     .map(|mesh| mesh.parts.len())
                     .unwrap_or(0)
             })
             .fold(0, |a, b| a + b) as u32;
         assert!(part_count <= PART_CAPACITY);
 
-        let visibility_buffer = resources.access_buffer(
+        let visibility_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_READ,
             HistoryResourceEntry::Current,
         );
-        let draw_buffer = resources.access_buffer(
+        let draw_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             Self::INDIRECT_DRAW_BUFFER,
             BarrierSync::COMPUTE_SHADER,
@@ -203,7 +202,7 @@ impl DrawPrepPass {
             0,
             WHOLE_BUFFER,
         );
-        let prep_pipeline = shader_manager.get_compute_pipeline(self.prep_pipeline);
+        let prep_pipeline = pass_params.shader_manager.get_compute_pipeline(self.prep_pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&prep_pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();

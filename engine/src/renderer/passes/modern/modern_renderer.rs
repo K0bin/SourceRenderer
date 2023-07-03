@@ -40,7 +40,6 @@ use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::input::Input;
-use crate::renderer::drawable::View;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::compositing::CompositingPass;
 use crate::renderer::passes::fsr2::Fsr2Pass;
@@ -51,14 +50,13 @@ use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
     SceneInfo,
-    ZeroTextures,
+    ZeroTextures, RenderPassParameters,
 };
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::LateLatching;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
@@ -82,14 +80,14 @@ pub struct ModernRenderer<P: Platform> {
     shading_pass: ShadingPass<P>,
     compositing_pass: CompositingPass,
     motion_vector_pass: MotionVectorPass,
-    anti_aliasing: AntiAliasing<P::GraphicsBackend>,
+    anti_aliasing: AntiAliasing<P>,
     shadow_map_pass: ShadowMapPass<P>,
     ui_pass: UIPass<P>
 }
 
-enum AntiAliasing<B: Backend> {
+enum AntiAliasing<P: Platform> {
     TAA { taa: TAAPass, sharpen: SharpenPass },
-    FSR2 { fsr: Fsr2Pass<B> },
+    FSR2 { fsr: Fsr2Pass<P> },
 }
 
 pub struct RTPasses<P: Platform> {
@@ -149,7 +147,7 @@ impl<P: Platform> ModernRenderer<P> {
             MotionVectorPass::new::<P>(&mut barriers, resolution, shader_manager);
 
         let anti_aliasing = if Self::USE_FSR2 {
-            let fsr_pass = Fsr2Pass::<P::GraphicsBackend>::new::<P>(
+            let fsr_pass = Fsr2Pass::<P>::new(
                 device,
                 &mut barriers,
                 resolution,
@@ -199,17 +197,16 @@ impl<P: Platform> ModernRenderer<P> {
     fn setup_frame(
         &self,
         cmd_buf: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        scene: &SceneInfo<P::GraphicsBackend>,
         swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
         gpu_scene_buffers: SceneBuffers<P::GraphicsBackend>,
         camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        scene: &RendererScene<P::GraphicsBackend>,
-        view: &View,
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) {
+        let view = &scene.views[scene.active_view_index];
+
         cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, &gpu_scene_buffers.buffer, gpu_scene_buffers.scene_buffer.offset, gpu_scene_buffers.scene_buffer.length);
         cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 1, &gpu_scene_buffers.buffer, gpu_scene_buffers.draws_buffer.offset, gpu_scene_buffers.draws_buffer.length);
         cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 2, &gpu_scene_buffers.buffer, gpu_scene_buffers.meshes_buffer.offset, gpu_scene_buffers.meshes_buffer.length);
@@ -226,8 +223,8 @@ impl<P: Platform> ModernRenderer<P> {
             0,
             WHOLE_BUFFER,
         );
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 9, &vertex_buffer, 0, WHOLE_BUFFER);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 10, &index_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 9, scene.vertex_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 10, scene.index_buffer, 0, WHOLE_BUFFER);
         let cluster_count = self.clustering_pass.cluster_count();
         let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
         let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2()
@@ -270,8 +267,8 @@ impl<P: Platform> ModernRenderer<P> {
 
         let setup_buffer = cmd_buf.upload_dynamic_data(
             &[SetupBuffer {
-                point_light_count: scene.point_lights().len() as u32,
-                directional_light_count: scene.directional_lights().len() as u32,
+                point_light_count: scene.scene.point_lights().len() as u32,
+                directional_light_count: scene.scene.directional_lights().len() as u32,
                 cluster_z_bias,
                 cluster_z_scale,
                 cluster_count,
@@ -295,7 +292,7 @@ impl<P: Platform> ModernRenderer<P> {
             position: Vec3,
             intensity: f32,
         }
-        let point_lights: SmallVec<[PointLight; 16]> = scene
+        let point_lights: SmallVec<[PointLight; 16]> = scene.scene
             .point_lights()
             .iter()
             .map(|l| PointLight {
@@ -317,7 +314,7 @@ impl<P: Platform> ModernRenderer<P> {
             direction: Vec3,
             intensity: f32,
         }
-        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene
+        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene.scene
             .directional_lights()
             .iter()
             .map(|l| DirectionalLight {
@@ -373,82 +370,75 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
-        self.shadow_map_pass.calculate_cascades(scene.scene, main_view);
-
         self.setup_frame(
             &mut cmd_buf,
+            scene,
             &self.swapchain,
             scene_buffers,
             &camera_buffer,
             &camera_history_buffer,
-            scene.vertex_buffer,
-            scene.index_buffer,
-            scene.scene,
-            main_view,
             &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
-            frame_info.frame,
+            frame_info.frame
         );
 
         let resolution = {
-            let info = self
+            let info: std::cell::Ref<'_, sourcerenderer_core::graphics::TextureInfo> = self
                 .barriers
                 .texture_info(VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME);
             Vec2UI::new(info.width, info.height)
         };
 
+        let params = RenderPassParameters {
+            device: self.device.as_ref(),
+            scene,
+            shader_manager,
+            resources: &mut self.barriers,
+            zero_textures,
+            assets
+        };
+
+        self.shadow_map_pass.calculate_cascades(&params);
+
         if let Some(rt_passes) = self.rt_passes.as_mut() {
             rt_passes
                 .acceleration_structure_update
-                .execute(&mut cmd_buf, scene.scene, assets);
+                .execute(&mut cmd_buf, &params);
         }
         self.hi_z_pass.execute(
             &mut cmd_buf,
-            &self.barriers,
-            shader_manager,
+            &params,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
         );
         self.geometry_draw_prep.execute(
             &mut cmd_buf,
-            &self.barriers,
-            scene.scene,
-            main_view,
-            shader_manager,
-            assets,
+            &params
         );
         self.visibility_buffer.execute(
             &mut cmd_buf,
-            &self.barriers,
-            scene.vertex_buffer,
-            scene.index_buffer,
-            shader_manager,
+            &params
         );
         self.motion_vector_pass
-            .execute(&mut cmd_buf, &self.barriers, shader_manager);
+            .execute(&mut cmd_buf, &params);
         self.clustering_pass.execute(
             &mut cmd_buf,
+            &params,
             resolution,
-            main_view,
-            &camera_buffer,
-            &mut self.barriers,
-            shader_manager,
+            &camera_buffer
         );
         self.light_binning_pass.execute(
             &mut cmd_buf,
-            scene.scene,
-            &camera_buffer,
-            &mut self.barriers,
-            shader_manager,
+            &params,
+            &camera_buffer
         );
         self.ssao.execute(
             &mut cmd_buf,
-            &self.barriers,
+            &params,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
             None,
             &camera_buffer,
             self.blue_noise.frame(frame_info.frame),
             self.blue_noise.sampler(),
-            shader_manager,
-            true,
+            true
         );
         if let Some(rt_passes) = self.rt_passes.as_mut() {
             let blue_noise = &self.blue_noise.frame(frame_info.frame);
@@ -458,84 +448,67 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
                 .acceleration_structure();
             rt_passes.shadows.execute(
                 &mut cmd_buf,
-                &self.barriers,
-                shader_manager,
+                &params,
                 VisibilityBufferPass::DEPTH_TEXTURE_NAME,
                 acceleration_structure,
                 blue_noise,
                 blue_noise_sampler,
             );
         }
-
         self.shadow_map_pass.prepare(
             &mut cmd_buf,
-            &self.barriers,
-            &shader_manager,
-            &scene.scene
+            &params
         );
 
         self.shadow_map_pass.execute(
             &mut cmd_buf,
-            &self.barriers,
-            shader_manager,
-            scene.vertex_buffer,
-            scene.index_buffer,
-            &scene.scene,
-            &scene.views[scene.active_view_index]
+            &params
         );
 
         self.shading_pass.execute(
             &mut cmd_buf,
-            &self.device,
-            scene.lightmap.unwrap(),
-            zero_textures.zero_texture_view,
-            &self.barriers,
-            shader_manager
+            &params
         );
         self.ssr_pass.execute(
             &mut cmd_buf,
-            &self.barriers,
-            shader_manager,
+            &params,
             ShadingPass::<P>::SHADING_TEXTURE_NAME,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
             true,
         );
         self.compositing_pass.execute(
             &mut cmd_buf,
-            &self.barriers,
+            &params,
             ShadingPass::<P>::SHADING_TEXTURE_NAME,
-            shader_manager,
         );
 
         let output_texture_name = match &mut self.anti_aliasing {
             AntiAliasing::FSR2 { fsr } => {
                 fsr.execute(
                     &mut cmd_buf,
-                    &self.barriers,
+                    &params,
                     CompositingPass::COMPOSITION_TEXTURE_NAME,
                     VisibilityBufferPass::DEPTH_TEXTURE_NAME,
                     MotionVectorPass::MOTION_TEXTURE_NAME,
-                    main_view,
                     frame_info,
                 );
-                Fsr2Pass::<P::GraphicsBackend>::UPSCALED_TEXTURE_NAME
+                Fsr2Pass::<P>::UPSCALED_TEXTURE_NAME
             }
             AntiAliasing::TAA { taa, sharpen } => {
                 taa.execute(
                     &mut cmd_buf,
-                    &self.barriers,
-                    shader_manager,
+                    &params,
                     CompositingPass::COMPOSITION_TEXTURE_NAME,
                     VisibilityBufferPass::DEPTH_TEXTURE_NAME,
                     None,
                     true,
                 );
-                sharpen.execute(&mut cmd_buf, &self.barriers, shader_manager);
+                sharpen.execute(&mut cmd_buf, &params);
                 SharpenPass::SHAPENED_TEXTURE_NAME
             }
         };
 
-        self.ui_pass.execute(&mut cmd_buf, &self.barriers, &zero_textures.zero_texture_view_black, output_texture_name, &self.ui_data);
+        self.ui_pass.execute(&mut cmd_buf, &params, output_texture_name, &self.ui_data);
 
         let output_texture = self.barriers.access_texture(
             &mut cmd_buf,

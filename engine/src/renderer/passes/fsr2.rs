@@ -55,30 +55,29 @@ use widestring::{
     WideCString,
 };
 
-use crate::renderer::drawable::View;
 use crate::renderer::passes::taa::halton_point;
-use crate::renderer::render_path::FrameInfo;
+use crate::renderer::render_path::{FrameInfo, RenderPassParameters};
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
 
-pub struct Fsr2Pass<B: Backend> {
-    device: Arc<B::Device>,
+pub struct Fsr2Pass<P: Platform> {
+    device: Arc<<P::GraphicsBackend as Backend>::Device>,
     context: FfxFsr2Context,
-    scratch_context: Arc<AtomicRefCell<ScratchContext<B>>>,
+    scratch_context: Arc<AtomicRefCell<ScratchContext<P::GraphicsBackend>>>,
 }
 
-impl<B: Backend> Fsr2Pass<B> {
+impl<P: Platform> Fsr2Pass<P> {
     pub const UPSCALED_TEXTURE_NAME: &'static str = "FSR2Upscaled";
 
-    pub fn new<P: Platform>(
-        device: &Arc<B::Device>,
-        resources: &mut RendererResources<B>,
+    pub fn new(
+        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        resources: &mut RendererResources<P::GraphicsBackend>,
         _resolution: Vec2UI,
-        swapchain: &B::Swapchain,
+        swapchain: &<P::GraphicsBackend as Backend>::Swapchain,
     ) -> Self {
-        let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<B> {
+        let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<P::GraphicsBackend> {
             resources: HashMap::new(),
             next_resource_id: 1,
             dynamic_resources: Vec::new(),
@@ -91,18 +90,18 @@ impl<B: Backend> Fsr2Pass<B> {
         let context_size = std::mem::size_of_val(&scratch_context);
 
         let interface = FfxFsr2Interface {
-            fpCreateBackendContext: Some(create_backend_context::<B>),
-            fpDestroyBackendContext: Some(destroy_backend_context::<B>),
-            fpGetDeviceCapabilities: Some(get_device_capabilities::<B>),
-            fpCreateResource: Some(create_resource::<B>),
-            fpRegisterResource: Some(register_resource::<B>),
-            fpUnregisterResources: Some(unregister_resources::<B>),
-            fpGetResourceDescription: Some(get_resource_description::<B>),
-            fpDestroyResource: Some(destroy_resource::<B>),
-            fpCreatePipeline: Some(create_pipeline::<P, B>),
-            fpDestroyPipeline: Some(destroy_pipeline::<B>),
-            fpScheduleGpuJob: Some(schedule_render_job::<B>),
-            fpExecuteGpuJobs: Some(execute_render_jobs::<B>),
+            fpCreateBackendContext: Some(create_backend_context::<P::GraphicsBackend>),
+            fpDestroyBackendContext: Some(destroy_backend_context::<P::GraphicsBackend>),
+            fpGetDeviceCapabilities: Some(get_device_capabilities::<P::GraphicsBackend>),
+            fpCreateResource: Some(create_resource::<P::GraphicsBackend>),
+            fpRegisterResource: Some(register_resource::<P::GraphicsBackend>),
+            fpUnregisterResources: Some(unregister_resources::<P::GraphicsBackend>),
+            fpGetResourceDescription: Some(get_resource_description::<P::GraphicsBackend>),
+            fpDestroyResource: Some(destroy_resource::<P::GraphicsBackend>),
+            fpCreatePipeline: Some(create_pipeline::<P>),
+            fpDestroyPipeline: Some(destroy_pipeline::<P::GraphicsBackend>),
+            fpScheduleGpuJob: Some(schedule_render_job::<P::GraphicsBackend>),
+            fpExecuteGpuJobs: Some(execute_render_jobs::<P::GraphicsBackend>),
             scratchBuffer: Arc::into_raw(scratch_context.clone()) as *mut c_void,
             scratchBufferSize: context_size as usize,
         };
@@ -124,7 +123,7 @@ impl<B: Backend> Fsr2Pass<B> {
             false,
         );
 
-        let fsr_device: *mut B::Device = unsafe { std::mem::transmute(device.as_ref()) };
+        let fsr_device: *mut <P::GraphicsBackend as Backend>::Device = unsafe { std::mem::transmute(device.as_ref()) };
         let context_desc = FfxFsr2ContextDescription {
             flags: (FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_AUTO_EXPOSURE
                 | FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE)
@@ -162,17 +161,18 @@ impl<B: Backend> Fsr2Pass<B> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut B::CommandBuffer,
-        resources: &RendererResources<B>,
+        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        pass_params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,
         motion_name: &str,
-        view: &View,
         frame: &FrameInfo,
     ) {
+        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+
         cmd_buffer.begin_label("FSR2");
 
-        let color_texture = resources
+        let color_texture = pass_params.resources
             .access_texture(
                 cmd_buffer,
                 input_name,
@@ -184,7 +184,7 @@ impl<B: Backend> Fsr2Pass<B> {
                 HistoryResourceEntry::Current,
             )
             .clone();
-        let color_view = resources
+        let color_view = pass_params.resources
             .get_view(
                 input_name,
                 &TextureViewInfo::default(),
@@ -192,7 +192,7 @@ impl<B: Backend> Fsr2Pass<B> {
             )
             .clone();
 
-        let depth_texture = resources
+        let depth_texture = pass_params.resources
             .access_texture(
                 cmd_buffer,
                 depth_name,
@@ -204,7 +204,7 @@ impl<B: Backend> Fsr2Pass<B> {
                 HistoryResourceEntry::Current,
             )
             .clone();
-        let depth_view = resources
+        let depth_view = pass_params.resources
             .get_view(
                 depth_name,
                 &TextureViewInfo::default(),
@@ -212,7 +212,7 @@ impl<B: Backend> Fsr2Pass<B> {
             )
             .clone();
 
-        let output_texture = resources
+        let output_texture = pass_params.resources
             .access_texture(
                 cmd_buffer,
                 Self::UPSCALED_TEXTURE_NAME,
@@ -224,7 +224,7 @@ impl<B: Backend> Fsr2Pass<B> {
                 HistoryResourceEntry::Current,
             )
             .clone();
-        let output_view = resources
+        let output_view = pass_params.resources
             .get_view(
                 Self::UPSCALED_TEXTURE_NAME,
                 &TextureViewInfo::default(),
@@ -232,7 +232,7 @@ impl<B: Backend> Fsr2Pass<B> {
             )
             .clone();
 
-        let motion_texture = resources
+        let motion_texture = pass_params.resources
             .access_texture(
                 cmd_buffer,
                 motion_name,
@@ -244,7 +244,7 @@ impl<B: Backend> Fsr2Pass<B> {
                 HistoryResourceEntry::Current,
             )
             .clone();
-        let motion_view = resources
+        let motion_view = pass_params.resources
             .get_view(
                 motion_name,
                 &TextureViewInfo::default(),
@@ -260,14 +260,14 @@ impl<B: Backend> Fsr2Pass<B> {
 
         unsafe {
             let desc = FfxFsr2DispatchDescription {
-                commandList: command_buffer_into_ffx::<B>(cmd_buffer),
-                color: texture_into_ffx::<B>(&color_texture, false, &color_view),
-                depth: texture_into_ffx::<B>(&depth_texture, false, &depth_view),
+                commandList: command_buffer_into_ffx::<P::GraphicsBackend>(cmd_buffer),
+                color: texture_into_ffx::<P::GraphicsBackend>(&color_texture, false, &color_view),
+                depth: texture_into_ffx::<P::GraphicsBackend>(&depth_texture, false, &depth_view),
                 exposure: NULL_RESOURCE,
-                motionVectors: texture_into_ffx::<B>(&motion_texture, false, &motion_view),
+                motionVectors: texture_into_ffx::<P::GraphicsBackend>(&motion_texture, false, &motion_view),
                 reactive: NULL_RESOURCE,
                 transparencyAndComposition: NULL_RESOURCE,
-                output: texture_into_ffx::<B>(&output_texture, true, &output_view),
+                output: texture_into_ffx::<P::GraphicsBackend>(&output_texture, true, &output_view),
                 renderSize: FfxDimensions2D {
                     width: color_texture.info().width,
                     height: color_texture.info().height,
@@ -339,7 +339,7 @@ impl<B: Backend> Fsr2Pass<B> {
     }
 }
 
-impl<B: Backend> Drop for Fsr2Pass<B> {
+impl<P: Platform> Drop for Fsr2Pass<P> {
     fn drop(&mut self) {
         unsafe {
             let result = ffxFsr2ContextDestroy(&mut self.context as *mut FfxFsr2Context);
@@ -1057,13 +1057,13 @@ fn add_texture_barrier<B: Backend>(
     }
 }
 
-unsafe extern "C" fn create_pipeline<P: Platform, B: Backend>(
+unsafe extern "C" fn create_pipeline<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
     pass: FfxFsr2Pass,
     _pipeline_description: *const FfxPipelineDescription,
     out_pipeline: *mut FfxPipelineState,
 ) -> FfxErrorCode {
-    let context = ScratchContext::<B>::from_interface(backend_interface);
+    let context = ScratchContext::<P::GraphicsBackend>::from_interface(backend_interface);
 
     let mut path: PathBuf = PathBuf::from("shaders");
     let name: String;

@@ -4,58 +4,7 @@ use std::sync::Arc;
 use nalgebra::Vector2;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    AddressMode,
-    AttachmentBlendInfo,
-    AttachmentInfo,
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BlendInfo,
-    BufferUsage,
-    CommandBuffer,
-    CompareFunc,
-    CullMode,
-    DepthStencilAttachmentRef,
-    DepthStencilInfo,
-    Device,
-    FillMode,
-    Filter,
-    Format,
-    FrontFace,
-    IndexFormat,
-    InputAssemblerElement,
-    InputRate,
-    LoadOp,
-    LogicOp,
-    OutputAttachmentRef,
-    PipelineBinding,
-    PrimitiveType,
-    Queue,
-    RasterizerInfo,
-    RenderPassAttachment,
-    RenderPassAttachmentView,
-    RenderPassBeginInfo,
-    RenderPassInfo,
-    RenderpassRecordingMode,
-    SampleCount,
-    SamplerInfo,
-    Scissor,
-    ShaderInputElement,
-    ShaderType,
-    StencilInfo,
-    StoreOp,
-    SubpassInfo,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureViewInfo,
-    VertexLayoutInfo,
-    Viewport,
-    WHOLE_BUFFER,
-};
+use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -71,8 +20,7 @@ use crate::renderer::passes::light_binning;
 use crate::renderer::passes::rt_shadows::RTShadowPass;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::{
-    SceneInfo,
-    ZeroTextures,
+    RenderPassParameters,
 };
 use crate::renderer::renderer_assets::*;
 use crate::renderer::renderer_resources::{
@@ -101,7 +49,7 @@ struct FrameData {
 }
 
 pub struct GeometryPass<P: Platform> {
-    sampler: Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
+    sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
     pipeline: GraphicsPipelineHandle,
 }
 
@@ -111,7 +59,7 @@ impl<P: Platform> GeometryPass<P> {
     const DRAWABLE_LABELS: bool = false;
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
+        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
         resolution: Vec2UI,
         barriers: &mut RendererResources<P::GraphicsBackend>,
         shader_manager: &mut ShaderManager<P>,
@@ -258,26 +206,20 @@ impl<P: Platform> GeometryPass<P> {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        barriers: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
-        device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
+        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
-        scene: &SceneInfo<P::GraphicsBackend>,
         bindings: &FrameBindings<P::GraphicsBackend>,
-        zero_textures: &ZeroTextures<P::GraphicsBackend>,
-        lightmap: &RendererTexture<P::GraphicsBackend>,
-        assets: &RendererAssets<P>,
     ) {
         cmd_buffer.begin_label("Geometry pass");
-        let static_drawables = scene.scene.static_drawables();
+        let static_drawables = pass_params.scene.scene.static_drawables();
 
         let (width, height) = {
-            let info = barriers.texture_info(Self::GEOMETRY_PASS_TEXTURE_NAME);
+            let info = pass_params.resources.texture_info(Self::GEOMETRY_PASS_TEXTURE_NAME);
             (info.width, info.height)
         };
 
-        let rtv_ref = barriers.access_view(
+        let rtv_ref = pass_params.resources.access_view(
             cmd_buffer,
             Self::GEOMETRY_PASS_TEXTURE_NAME,
             BarrierSync::RENDER_TARGET,
@@ -289,7 +231,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         let rtv = &*rtv_ref;
 
-        let prepass_depth_ref = barriers.access_view(
+        let prepass_depth_ref = pass_params.resources.access_view(
             cmd_buffer,
             depth_name,
             BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -301,7 +243,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         let prepass_depth = &*prepass_depth_ref;
 
-        let ssao_ref = barriers.access_view(
+        let ssao_ref = pass_params.resources.access_view(
             cmd_buffer,
             SsaoPass::<P>::SSAO_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
@@ -313,7 +255,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         let ssao = &*ssao_ref;
 
-        let light_bitmask_buffer_ref = barriers.access_buffer(
+        let light_bitmask_buffer_ref = pass_params.resources.access_buffer(
             cmd_buffer,
             light_binning::LightBinningPass::LIGHT_BINNING_BUFFER_NAME,
             BarrierSync::FRAGMENT_SHADER,
@@ -322,9 +264,9 @@ impl<P: Platform> GeometryPass<P> {
         );
         let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-        let rt_shadows: Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>;
-        let shadows = if device.supports_ray_tracing() {
-            rt_shadows = barriers.access_view(
+        let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureView>>;
+        let shadows = if pass_params.device.supports_ray_tracing() {
+            rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
                 RTShadowPass::SHADOWS_TEXTURE_NAME,
                 BarrierSync::FRAGMENT_SHADER,
@@ -336,7 +278,7 @@ impl<P: Platform> GeometryPass<P> {
             );
             &*rt_shadows
         } else {
-            zero_textures.zero_texture_view
+            pass_params.zero_textures.zero_texture_view
         };
 
         /*let clusters = barriers.access_buffer(
@@ -376,13 +318,18 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::CommandBuffers,
         );
 
+        let device = pass_params.device;
+        let assets = pass_params.assets;
+        let zero_textures = pass_params.zero_textures;
+        let lightmap = pass_params.scene.lightmap;
+
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
-        let view = &scene.views[scene.active_view_index];
+        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
         let chunks = view.drawable_parts.par_chunks(CHUNK_SIZE);
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
         let inner_cmd_buffers: Vec<
-            <P::GraphicsBackend as GraphicsBackend>::CommandBufferSubmission,
+            <P::GraphicsBackend as Backend>::CommandBufferSubmission,
         > = chunks
             .map(|chunk| {
                 let mut command_buffer = device
@@ -404,7 +351,7 @@ impl<P: Platform> GeometryPass<P> {
                 command_buffer.bind_sampling_view_and_sampler(
                     BindingFrequency::Frequent,
                     0,
-                    &lightmap.view,
+                    if let Some(lightmap) = lightmap { &lightmap.view } else { zero_textures.zero_texture_view },
                     &self.sampler,
                 );
                 command_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);

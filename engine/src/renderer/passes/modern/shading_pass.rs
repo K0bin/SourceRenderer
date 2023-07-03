@@ -30,6 +30,7 @@ use super::rt_shadows::RTShadowPass;
 use super::shadow_map::ShadowMapPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::renderer::passes::ssao::SsaoPass;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_assets::RendererTexture;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -110,20 +111,16 @@ impl<P: Platform> ShadingPass<P> {
     pub(super) fn execute(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        device: &<P::GraphicsBackend as Backend>::Device,
-        lightmap: &RendererTexture<P::GraphicsBackend>,
-        zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>
+        pass_params: &RenderPassParameters<'_, P>
     ) {
         let (width, height) = {
-            let info = resources.texture_info(Self::SHADING_TEXTURE_NAME);
+            let info = pass_params.resources.texture_info(Self::SHADING_TEXTURE_NAME);
             (info.width, info.height)
         };
 
         cmd_buffer.begin_label("Shading Pass");
 
-        let output = resources.access_view(
+        let output = pass_params.resources.access_view(
             cmd_buffer,
             Self::SHADING_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -134,7 +131,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let ids = resources.access_view(
+        let ids = pass_params.resources.access_view(
             cmd_buffer,
             VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -145,7 +142,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let barycentrics = resources.access_view(
+        let barycentrics = pass_params.resources.access_view(
             cmd_buffer,
             VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -156,7 +153,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let light_bitmask_buffer = resources.access_buffer(
+        let light_bitmask_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             super::light_binning::LightBinningPass::LIGHT_BINNING_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -164,7 +161,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let ssao = resources.access_view(
+        let ssao = pass_params.resources.access_view(
             cmd_buffer,
             SsaoPass::<P>::SSAO_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
@@ -176,8 +173,8 @@ impl<P: Platform> ShadingPass<P> {
         );
 
         let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureView>>;
-        let shadows = if device.supports_ray_tracing() {
-            rt_shadows = resources.access_view(
+        let shadows = if pass_params.device.supports_ray_tracing() {
+            rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
                 RTShadowPass::SHADOWS_TEXTURE_NAME,
                 BarrierSync::FRAGMENT_SHADER,
@@ -189,15 +186,15 @@ impl<P: Platform> ShadingPass<P> {
             );
             &*rt_shadows
         } else {
-            zero_texture_view
+            pass_params.zero_textures.zero_texture_view
         };
 
         let cascade_count = {
-            let shadow_map_info = resources.texture_info(ShadowMapPass::<P>::SHADOW_MAP_NAME);
+            let shadow_map_info = pass_params.resources.texture_info(ShadowMapPass::<P>::SHADOW_MAP_NAME);
             shadow_map_info.array_length
         };
 
-        let shadow_map = resources.access_view(
+        let shadow_map = pass_params.resources.access_view(
             cmd_buffer,
             ShadowMapPass::<P>::SHADOW_MAP_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -214,7 +211,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);
@@ -230,20 +227,20 @@ impl<P: Platform> ShadingPass<P> {
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             6,
-            &lightmap.view,
-            resources.linear_sampler(),
+            &pass_params.scene.lightmap.unwrap().view,
+            pass_params.resources.linear_sampler(),
         );
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             7,
             shadows,
-            resources.linear_sampler(),
+            pass_params.resources.linear_sampler(),
         );
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             8,
             &ssao,
-            resources.linear_sampler(),
+            pass_params.resources.linear_sampler(),
         );
 
         cmd_buffer.bind_sampling_view_and_sampler(

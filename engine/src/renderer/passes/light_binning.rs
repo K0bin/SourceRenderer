@@ -20,6 +20,7 @@ use sourcerenderer_core::{
 };
 
 use super::clustering::ClusteringPass;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -77,18 +78,16 @@ impl LightBinningPass {
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        scene: &RendererScene<P::GraphicsBackend>,
-        camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        barriers: &mut RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        pass_params: &RenderPassParameters<'_, P>,
+        camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>
     ) {
         cmd_buffer.begin_label("Light binning");
         let cluster_count = Vector3::<u32>::new(16, 9, 24);
         let setup_info = SetupInfo {
-            point_light_count: scene.point_lights().len() as u32,
+            point_light_count: pass_params.scene.scene.point_lights().len() as u32,
             cluster_count: cluster_count.x * cluster_count.y * cluster_count.z,
         };
-        let point_lights: Vec<CullingPointLight> = scene
+        let point_lights: Vec<CullingPointLight> = pass_params.scene.scene
             .point_lights()
             .iter()
             .map(|l| CullingPointLight {
@@ -111,14 +110,14 @@ impl LightBinningPass {
             buffer: camera_buffer,
         }]);
 
-        let light_bitmask_buffer = barriers.access_buffer(
+        let light_bitmask_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             Self::LIGHT_BINNING_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
         );
-        let clusters_buffer = barriers.access_buffer(
+        let clusters_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             ClusteringPass::CLUSTERS_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -126,7 +125,7 @@ impl LightBinningPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = shader_manager.get_compute_pipeline(self.light_binning_pipeline);
+        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.light_binning_pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,

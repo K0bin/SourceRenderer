@@ -54,6 +54,7 @@ use sourcerenderer_core::{
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -225,13 +226,10 @@ impl VisibilityBufferPass {
     pub(super) fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        vertex_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        index_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        shader_manager: &ShaderManager<P>,
+        params: &RenderPassParameters<'_, P>
     ) {
         cmd_buffer.begin_label("Visibility Buffer pass");
-        let draw_buffer = resources.access_buffer(
+        let draw_buffer = params.resources.access_buffer(
             cmd_buffer,
             DrawPrepPass::INDIRECT_DRAW_BUFFER,
             BarrierSync::INDIRECT,
@@ -239,7 +237,7 @@ impl VisibilityBufferPass {
             HistoryResourceEntry::Current,
         );
 
-        let barycentrics_rtv = resources.access_view(
+        let barycentrics_rtv = params.resources.access_view(
             cmd_buffer,
             Self::BARYCENTRICS_TEXTURE_NAME,
             BarrierSync::RENDER_TARGET,
@@ -250,7 +248,7 @@ impl VisibilityBufferPass {
             HistoryResourceEntry::Current,
         );
 
-        let primitive_id_rtv = resources.access_view(
+        let primitive_id_rtv = params.resources.access_view(
             cmd_buffer,
             Self::PRIMITIVE_ID_TEXTURE_NAME,
             BarrierSync::RENDER_TARGET,
@@ -261,7 +259,7 @@ impl VisibilityBufferPass {
             HistoryResourceEntry::Current,
         );
 
-        let dsv = resources.access_view(
+        let dsv = params.resources.access_view(
             cmd_buffer,
             Self::DEPTH_TEXTURE_NAME,
             BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH,
@@ -313,7 +311,7 @@ impl VisibilityBufferPass {
         );
 
         let rtv_info = barycentrics_rtv.texture().info();
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = params.shader_manager.get_graphics_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
@@ -326,8 +324,8 @@ impl VisibilityBufferPass {
             extent: Vec2UI::new(9999, 9999),
         }]);
 
-        cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
-        cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);
+        cmd_buffer.set_vertex_buffer(params.scene.vertex_buffer, 0);
+        cmd_buffer.set_index_buffer(params.scene.index_buffer, 0, IndexFormat::U32);
 
         cmd_buffer.finish_binding();
         cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);

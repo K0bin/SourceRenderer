@@ -22,11 +22,10 @@ use sourcerenderer_core::graphics::{
 };
 use sourcerenderer_core::Platform;
 
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_assets::{
-    ModelHandle,
-    RendererAssets,
+    ModelHandle
 };
-use crate::renderer::renderer_scene::RendererScene;
 
 pub struct AccelerationStructureUpdatePass<P: Platform> {
     device: Arc<<P::GraphicsBackend as Backend>::Device>,
@@ -77,13 +76,12 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
     pub fn execute(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        scene: &RendererScene<P::GraphicsBackend>,
-        assets: &RendererAssets<P>,
+        pass_params: &RenderPassParameters<'_, P>
     ) {
         // We never reuse handles, so this works.
         let mut removed_models = SmallVec::<[ModelHandle; 4]>::new();
         for (handle, _) in &self.blas_map {
-            if !assets.has_model(*handle) {
+            if !pass_params.assets.has_model(*handle) {
                 removed_models.push(*handle);
             }
         }
@@ -91,7 +89,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
             self.blas_map.remove(&handle);
         }
 
-        let static_drawables = scene.static_drawables();
+        let static_drawables = pass_params.scene.scene.static_drawables();
 
         let mut created_blas = false;
         let mut bl_acceleration_structures =
@@ -99,12 +97,12 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
 
         for drawable in static_drawables {
             let blas = self.blas_map.get(&drawable.model).cloned().or_else(|| {
-                let model = assets.get_model(drawable.model);
+                let model = pass_params.assets.get_model(drawable.model);
                 if model.is_none() {
                     return None;
                 }
                 let model = model.unwrap();
-                let mesh = assets.get_mesh(model.mesh_handle());
+                let mesh = pass_params.assets.get_mesh(model.mesh_handle());
                 if mesh.is_none() {
                     return None;
                 }

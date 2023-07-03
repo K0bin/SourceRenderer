@@ -22,6 +22,7 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -73,14 +74,13 @@ impl RTShadowPass {
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
         acceleration_structure: &Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>,
         blue_noise: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
         blue_noise_sampler: &Arc<<P::GraphicsBackend as Backend>::Sampler>,
     ) {
-        let texture_uav = resources.access_view(
+        let texture_uav = pass_params.resources.access_view(
             cmd_buffer,
             Self::SHADOWS_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER | BarrierSync::RAY_TRACING,
@@ -91,7 +91,7 @@ impl RTShadowPass {
             HistoryResourceEntry::Current,
         );
 
-        let depth = resources.access_view(
+        let depth = pass_params.resources.access_view(
             cmd_buffer,
             depth_name,
             BarrierSync::RAY_TRACING | BarrierSync::COMPUTE_SHADER,
@@ -102,7 +102,7 @@ impl RTShadowPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = shader_manager.get_ray_tracing_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_ray_tracing_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&pipeline));
         cmd_buffer.bind_acceleration_structure(
             BindingFrequency::Frequent,
@@ -114,7 +114,7 @@ impl RTShadowPass {
             BindingFrequency::Frequent,
             2,
             &*depth,
-            resources.linear_sampler(),
+            pass_params.resources.linear_sampler(),
         );
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::Frequent,

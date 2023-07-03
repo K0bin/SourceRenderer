@@ -24,6 +24,7 @@ use sourcerenderer_core::{
 };
 
 use crate::renderer::passes::modern::VisibilityBufferPass;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -71,8 +72,7 @@ impl SsrPass {
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,
         visibility_buffer: bool,
@@ -80,7 +80,7 @@ impl SsrPass {
         // TODO: merge back into the original image
         // TODO: specularity map
 
-        let ssr_uav = resources.access_view(
+        let ssr_uav = params.resources.access_view(
             cmd_buffer,
             Self::SSR_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -91,7 +91,7 @@ impl SsrPass {
             HistoryResourceEntry::Current,
         );
 
-        let depth_srv = resources.access_view(
+        let depth_srv = params.resources.access_view(
             cmd_buffer,
             depth_name,
             BarrierSync::COMPUTE_SHADER,
@@ -102,7 +102,7 @@ impl SsrPass {
             HistoryResourceEntry::Current,
         );
 
-        let color_srv = resources.access_view(
+        let color_srv = params.resources.access_view(
             cmd_buffer,
             input_name,
             BarrierSync::COMPUTE_SHADER,
@@ -119,7 +119,7 @@ impl SsrPass {
             Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
 
         if visibility_buffer {
-            ids = Some(resources.access_view(
+            ids = Some(params.resources.access_view(
                 cmd_buffer,
                 VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
                 BarrierSync::COMPUTE_SHADER,
@@ -130,7 +130,7 @@ impl SsrPass {
                 HistoryResourceEntry::Current,
             ));
 
-            barycentrics = Some(resources.access_view(
+            barycentrics = Some(params.resources.access_view(
                 cmd_buffer,
                 VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
                 BarrierSync::COMPUTE_SHADER,
@@ -142,7 +142,7 @@ impl SsrPass {
             ));
         }
 
-        let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = params.shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buffer.begin_label("SSR pass");
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
@@ -151,13 +151,13 @@ impl SsrPass {
             BindingFrequency::VeryFrequent,
             1,
             &*color_srv,
-            resources.linear_sampler(),
+            params.resources.linear_sampler(),
         );
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             2,
             &*depth_srv,
-            resources.linear_sampler(),
+            params.resources.linear_sampler(),
         );
         if visibility_buffer {
             cmd_buffer.bind_storage_texture(

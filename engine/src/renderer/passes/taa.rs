@@ -24,6 +24,7 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -103,8 +104,7 @@ impl TAAPass {
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buf: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        pass_params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,
         motion_name: Option<&str>,
@@ -112,7 +112,7 @@ impl TAAPass {
     ) {
         cmd_buf.begin_label("TAA pass");
 
-        let output_srv = resources.access_view(
+        let output_srv = pass_params.resources.access_view(
             cmd_buf,
             input_name,
             BarrierSync::COMPUTE_SHADER,
@@ -123,7 +123,7 @@ impl TAAPass {
             HistoryResourceEntry::Current,
         );
 
-        let taa_uav = resources.access_view(
+        let taa_uav = pass_params.resources.access_view(
             cmd_buf,
             Self::TAA_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -134,7 +134,7 @@ impl TAAPass {
             HistoryResourceEntry::Current,
         );
 
-        let taa_history_srv = resources.access_view(
+        let taa_history_srv = pass_params.resources.access_view(
             cmd_buf,
             Self::TAA_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -152,7 +152,7 @@ impl TAAPass {
         let mut barycentrics_view =
             Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
         if !visibility_buffer {
-            motion_srv = Some(resources.access_view(
+            motion_srv = Some(pass_params.resources.access_view(
                 cmd_buf,
                 motion_name.unwrap(),
                 BarrierSync::COMPUTE_SHADER,
@@ -163,7 +163,7 @@ impl TAAPass {
                 HistoryResourceEntry::Current,
             ));
         } else {
-            id_view = Some(resources.access_view(
+            id_view = Some(pass_params.resources.access_view(
                 cmd_buf,
                 super::modern::VisibilityBufferPass::PRIMITIVE_ID_TEXTURE_NAME,
                 BarrierSync::COMPUTE_SHADER,
@@ -173,7 +173,7 @@ impl TAAPass {
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
             ));
-            barycentrics_view = Some(resources.access_view(
+            barycentrics_view = Some(pass_params.resources.access_view(
                 cmd_buf,
                 super::modern::VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME,
                 BarrierSync::COMPUTE_SHADER,
@@ -185,7 +185,7 @@ impl TAAPass {
             ));
         }
 
-        let depth_srv = resources.access_view(
+        let depth_srv = pass_params.resources.access_view(
             cmd_buf,
             depth_name,
             BarrierSync::COMPUTE_SHADER,
@@ -196,33 +196,33 @@ impl TAAPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buf.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             0,
             &*output_srv,
-            resources.linear_sampler(),
+            pass_params.resources.linear_sampler(),
         );
         cmd_buf.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             1,
             &*taa_history_srv,
-            resources.linear_sampler(),
+            pass_params.resources.linear_sampler(),
         );
         cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &*taa_uav);
         cmd_buf.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             3,
             &*depth_srv,
-            resources.linear_sampler(),
+            pass_params.resources.linear_sampler(),
         );
         if !visibility_buffer {
             cmd_buf.bind_sampling_view_and_sampler(
                 BindingFrequency::VeryFrequent,
                 4,
                 &motion_srv.unwrap(),
-                resources.nearest_sampler(),
+                pass_params.resources.nearest_sampler(),
             );
         } else {
             cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &id_view.unwrap());

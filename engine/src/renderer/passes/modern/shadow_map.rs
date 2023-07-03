@@ -26,6 +26,7 @@ use sourcerenderer_core::{
 use crate::renderer::drawable::View;
 use crate::renderer::light::{DirectionalLight, RendererDirectionalLight};
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::{
     ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager,
@@ -188,17 +189,17 @@ impl<P: Platform> ShadowMapPass<P> {
     }
 
     pub fn calculate_cascades(&mut self,
-        scene: &RendererScene<P::GraphicsBackend>,
-        view: &View) {
+        pass_params: &RenderPassParameters<'_, P>) {
         for cascade in &mut self.cascades {
             *cascade = Default::default();
         }
-        let light = scene.directional_lights().first();
+        let light = pass_params.scene.scene.directional_lights().first();
         if light.is_none() {
             return;
         }
         let light: &RendererDirectionalLight<<P as Platform>::GraphicsBackend> = light.unwrap();
 
+        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
         let z_min = view.near_plane;
         let z_max = view.far_plane;
 
@@ -222,13 +223,11 @@ impl<P: Platform> ShadowMapPass<P> {
     pub fn prepare(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
-        scene: &RendererScene<P::GraphicsBackend>,
+        pass_params: &RenderPassParameters<'_, P>
     ) {
         cmd_buffer.begin_label("Shadow map culling");
 
-        let draws_buffer = resources.access_buffer(
+        let draws_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             Self::DRAW_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -237,7 +236,7 @@ impl<P: Platform> ShadowMapPass<P> {
         );
 
         {
-            let visibility_buffer = resources.access_buffer(
+            let visibility_buffer = pass_params.resources.access_buffer(
                 cmd_buffer,
                 Self::VISIBLE_BITFIELD,
                 BarrierSync::COMPUTE_SHADER,
@@ -254,7 +253,7 @@ impl<P: Platform> ShadowMapPass<P> {
             );
         }
 
-        let visibility_buffer = resources.access_buffer(
+        let visibility_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             Self::VISIBLE_BITFIELD,
             BarrierSync::COMPUTE_SHADER,
@@ -262,7 +261,7 @@ impl<P: Platform> ShadowMapPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = shader_manager.get_compute_pipeline(self.draw_prep_pipeline);
+        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.draw_prep_pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
@@ -280,28 +279,23 @@ impl<P: Platform> ShadowMapPass<P> {
         );
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();
-        cmd_buffer.dispatch((scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
+        cmd_buffer.dispatch((pass_params.scene.scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
         cmd_buffer.end_label();
     }
 
     pub fn execute(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
-        vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        scene: &RendererScene<P::GraphicsBackend>,
-        _view: &View
+        pass_params: &RenderPassParameters<'_, P>
     ) {
         cmd_buffer.begin_label("Shadow map");
 
-        let light = scene.directional_lights().first();
+        let light = pass_params.scene.scene.directional_lights().first();
         if light.is_none() {
             return;
         }
 
-        let draw_buffer = resources.access_buffer(
+        let draw_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             Self::DRAW_BUFFER_NAME,
             BarrierSync::INDIRECT,
@@ -311,7 +305,7 @@ impl<P: Platform> ShadowMapPass<P> {
 
         let mut cascade_index = 0u32;
         for cascade in &self.cascades {
-            let shadow_map = resources.access_view(
+            let shadow_map = pass_params.resources.access_view(
                 cmd_buffer,
                 Self::SHADOW_MAP_NAME,
                 BarrierSync::EARLY_DEPTH,
@@ -350,7 +344,7 @@ impl<P: Platform> ShadowMapPass<P> {
             );
 
             let dsv_info = shadow_map.texture().info();
-            let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+            let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
             cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
             cmd_buffer.set_viewports(&[Viewport {
                 position: Vec2::new(0.0f32, 0.0f32),
@@ -363,8 +357,8 @@ impl<P: Platform> ShadowMapPass<P> {
                 extent: Vec2UI::new(9999, 9999),
             }]);
 
-            cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
-            cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);
+            cmd_buffer.set_vertex_buffer(pass_params.scene.vertex_buffer, 0);
+            cmd_buffer.set_index_buffer(pass_params.scene.index_buffer, 0, IndexFormat::U32);
 
             cmd_buffer.upload_dynamic_data_inline(&[cascade.view_proj], ShaderType::VertexShader);
 

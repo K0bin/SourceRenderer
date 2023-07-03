@@ -74,7 +74,7 @@ use sourcerenderer_core::{
     Vec4,
 };
 
-use crate::renderer::render_path::SceneInfo;
+use crate::renderer::render_path::{SceneInfo, RenderPassParameters};
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -246,16 +246,12 @@ impl<P: Platform> OcclusionPass<P> {
     pub fn execute(
         &mut self,
         command_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
-        device: &<P::GraphicsBackend as Backend>::Device,
+        pass_params: &RenderPassParameters<'_, P>,
         frame: u64,
         camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        scene: &SceneInfo<P::GraphicsBackend>,
-        depth_name: &str,
-        assets: &RendererAssets<P>,
+        depth_name: &str
     ) {
-        let history_depth_buffer_ref = resources.access_view(
+        let history_depth_buffer_ref = pass_params.resources.access_view(
             command_buffer,
             depth_name,
             BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -274,8 +270,8 @@ impl<P: Platform> OcclusionPass<P> {
         occlusion_query_map.clear();
         let occlusion_query_map_lock = Mutex::new(occlusion_query_map);
 
-        let static_meshes = scene.scene.static_drawables();
-        let view = &scene.views[scene.active_view_index];
+        let static_meshes = pass_params.scene.scene.static_drawables();
+        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
 
         let mut map = self.drawable_occluded_frames.borrow_mut();
         self.visible_drawable_indices.clear();
@@ -317,7 +313,10 @@ impl<P: Platform> OcclusionPass<P> {
             RenderpassRecordingMode::CommandBuffers,
         );
 
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+        let device = pass_params.device;
+        let assets = pass_params.assets;
+
+        let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
         let query_count = AtomicU32::new(0);
         const CHUNK_SIZE: usize = 256;
         let chunks = self.visible_drawable_indices.par_chunks(CHUNK_SIZE);

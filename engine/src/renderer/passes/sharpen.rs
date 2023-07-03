@@ -22,6 +22,7 @@ use sourcerenderer_core::{
 };
 
 use super::taa::TAAPass;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -74,10 +75,9 @@ impl SharpenPass {
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
-        resources: &RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        pass_params: &RenderPassParameters<'_, P>
     ) {
-        let input_image_uav = resources.access_view(
+        let input_image_uav = pass_params.resources.access_view(
             cmd_buffer,
             TAAPass::TAA_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -88,7 +88,7 @@ impl SharpenPass {
             HistoryResourceEntry::Current,
         );
 
-        let sharpen_uav = resources.access_view(
+        let sharpen_uav = pass_params.resources.access_view(
             cmd_buffer,
             Self::SHAPENED_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -101,7 +101,7 @@ impl SharpenPass {
 
         cmd_buffer.begin_label("Sharpening pass");
 
-        let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT);
         cmd_buffer.bind_uniform_buffer(

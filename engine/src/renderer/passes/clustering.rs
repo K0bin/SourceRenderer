@@ -21,6 +21,7 @@ use sourcerenderer_core::{
 };
 
 use crate::renderer::drawable::View;
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -68,13 +69,13 @@ impl ClusteringPass {
     pub fn execute<P: Platform>(
         &mut self,
         command_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        pass_params: &RenderPassParameters<'_, P>,
         rt_size: Vec2UI,
-        view_ref: &View,
-        camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        barriers: &mut RendererResources<P::GraphicsBackend>,
-        shader_manager: &ShaderManager<P>,
+        camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>
     ) {
         command_buffer.begin_label("Clustering pass");
+
+        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
 
         let cluster_count = Vector3::<u32>::new(16, 9, 24);
         let screen_to_view = ShaderScreenToView {
@@ -83,13 +84,13 @@ impl ClusteringPass {
                 ((rt_size.y as f32) / cluster_count.y as f32).ceil() as u32,
             ),
             rt_dimensions: rt_size,
-            z_near: view_ref.near_plane,
-            z_far: view_ref.far_plane,
+            z_near: view.near_plane,
+            z_far: view.far_plane,
         };
 
         let screen_to_view_cbuffer =
             command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE);
-        let clusters_buffer = barriers.access_buffer(
+        let clusters_buffer = pass_params.resources.access_buffer(
             command_buffer,
             Self::CLUSTERS_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -107,7 +108,7 @@ impl ClusteringPass {
         debug_assert_eq!(cluster_count.x % 8, 0);
         debug_assert_eq!(cluster_count.y % 1, 0);
         debug_assert_eq!(cluster_count.z % 8, 0); // Ensure the cluster count fits with the work group size
-        let pipeline = shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
         command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         command_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,

@@ -40,20 +40,18 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use crate::input::Input;
-use crate::renderer::drawable::View;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
     SceneInfo,
-    ZeroTextures,
+    ZeroTextures, RenderPassParameters,
 };
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::LateLatching;
 
@@ -144,17 +142,16 @@ impl<P: Platform> ConservativeRenderer<P> {
     fn create_frame_bindings(
         &self,
         cmd_buf: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        scene: &SceneInfo<P::GraphicsBackend>,
         gpu_scene_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        scene: &RendererScene<P::GraphicsBackend>,
-        view: &View,
         swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) -> FrameBindings<P::GraphicsBackend> {
+        let view = &scene.views[scene.active_view_index];
+
         let cluster_count = self.clustering_pass.cluster_count();
         let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
         let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2()
@@ -174,8 +171,8 @@ impl<P: Platform> ConservativeRenderer<P> {
         }
         let setup_buffer = cmd_buf.upload_dynamic_data(
             &[SetupBuffer {
-                point_light_count: scene.point_lights().len() as u32,
-                directional_light_count: scene.directional_lights().len() as u32,
+                point_light_count: scene.scene.point_lights().len() as u32,
+                directional_light_count: scene.scene.directional_lights().len() as u32,
                 cluster_z_bias,
                 cluster_z_scale,
                 cluster_count,
@@ -196,7 +193,7 @@ impl<P: Platform> ConservativeRenderer<P> {
             position: Vec3,
             intensity: f32,
         }
-        let point_lights: SmallVec<[PointLight; 16]> = scene
+        let point_lights: SmallVec<[PointLight; 16]> = scene.scene
             .point_lights()
             .iter()
             .map(|l| PointLight {
@@ -211,7 +208,7 @@ impl<P: Platform> ConservativeRenderer<P> {
             direction: Vec3,
             intensity: f32,
         }
-        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene
+        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene.scene
             .directional_lights()
             .iter()
             .map(|l| DirectionalLight {
@@ -226,8 +223,8 @@ impl<P: Platform> ConservativeRenderer<P> {
             gpu_scene_buffer: gpu_scene_buffer.clone(),
             camera_buffer: camera_buffer.clone(),
             camera_history_buffer: camera_history_buffer.clone(),
-            vertex_buffer: vertex_buffer.clone(),
-            index_buffer: index_buffer.clone(),
+            vertex_buffer: scene.vertex_buffer.clone(),
+            index_buffer: scene.index_buffer.clone(),
             directional_lights: directional_lights_buffer,
             point_lights: point_lights_buffer,
             setup_buffer,
@@ -268,11 +265,6 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
         let late_latching_buffer = late_latching.unwrap().buffer();
         let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
-        if let Some(rt_passes) = self.rt_passes.as_mut() {
-            rt_passes
-                .acceleration_structure_update
-                .execute(&mut cmd_buf, scene.scene, assets);
-        }
 
         let primary_view = &scene.views[scene.active_view_index];
 
@@ -286,74 +278,71 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
         let frame_bindings = self.create_frame_bindings(
             &mut cmd_buf,
+            scene,
             &empty_buffer,
             &late_latching_buffer,
             &late_latching_history_buffer,
-            &empty_buffer,
-            &empty_buffer,
-            scene.scene,
-            primary_view,
             &self.swapchain,
             &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
             frame_info.frame,
         );
         setup_frame::<P::GraphicsBackend>(&mut cmd_buf, &frame_bindings);
 
+        let params = RenderPassParameters {
+            device: self.device.as_ref(),
+            scene,
+            shader_manager,
+            resources: &mut self.barriers,
+            zero_textures,
+            assets
+        };
+
+        if let Some(rt_passes) = self.rt_passes.as_mut() {
+            rt_passes
+                .acceleration_structure_update
+                .execute(&mut cmd_buf, &params);
+        }
+
         self.occlusion.execute(
             &mut cmd_buf,
-            &self.barriers,
-            shader_manager,
-            &self.device,
+            &params,
             frame_info.frame,
             &late_latching_buffer,
-            scene,
             Prepass::DEPTH_TEXTURE_NAME,
-            assets,
         );
         self.clustering_pass.execute::<P>(
             &mut cmd_buf,
+            &params,
             Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
-            primary_view,
-            &late_latching_buffer,
-            &mut self.barriers,
-            shader_manager,
+            &late_latching_buffer
         );
         self.light_binning_pass.execute(
             &mut cmd_buf,
-            scene.scene,
-            &late_latching_buffer,
-            &mut self.barriers,
-            shader_manager,
+            &params,
+            &late_latching_buffer
         );
         self.prepass.execute(
             &mut cmd_buf,
-            &self.device,
-            scene.scene,
-            primary_view,
+            &params,
             self.swapchain.transform(),
             frame_info.frame,
             &late_latching_buffer,
-            &late_latching_history_buffer,
-            &self.barriers,
-            shader_manager,
-            assets,
+            &late_latching_history_buffer
         );
         self.ssao.execute(
             &mut cmd_buf,
-            &self.barriers,
+            &params,
             Prepass::DEPTH_TEXTURE_NAME,
             Some(Prepass::MOTION_TEXTURE_NAME),
             &late_latching_buffer,
             self.blue_noise.frame(frame_info.frame),
             self.blue_noise.sampler(),
-            shader_manager,
-            false,
+            false
         );
         if let Some(rt_passes) = self.rt_passes.as_mut() {
             rt_passes.shadows.execute(
                 &mut cmd_buf,
-                &self.barriers,
-                shader_manager,
+                &params,
                 Prepass::DEPTH_TEXTURE_NAME,
                 rt_passes
                     .acceleration_structure_update
@@ -364,27 +353,20 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         }
         self.geometry.execute(
             &mut cmd_buf,
-            &self.barriers,
-            shader_manager,
-            &self.device,
+            &params,
             Prepass::DEPTH_TEXTURE_NAME,
-            scene,
-            &frame_bindings,
-            zero_textures,
-            scene.lightmap.unwrap(),
-            assets,
+            &frame_bindings
         );
         self.taa.execute(
             &mut cmd_buf,
-            &self.barriers,
-            shader_manager,
+            &params,
             GeometryPass::<P>::GEOMETRY_PASS_TEXTURE_NAME,
             Prepass::DEPTH_TEXTURE_NAME,
             Some(Prepass::MOTION_TEXTURE_NAME),
-            false,
+            false
         );
         self.sharpen
-            .execute(&mut cmd_buf, &self.barriers, shader_manager);
+            .execute(&mut cmd_buf, &params);
 
         let sharpened_texture = self.barriers.access_texture(
             &mut cmd_buf,

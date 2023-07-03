@@ -1,8 +1,8 @@
 use std::{sync::Arc, io::Read};
 
-use sourcerenderer_core::{Vec2, Platform, graphics::{Backend, CommandBuffer, BufferUsage, Device, ShaderType, GraphicsPipelineInfo, VertexLayoutInfo, ShaderInputElement, Format, InputAssemblerElement, InputRate, RasterizerInfo, FillMode, CullMode, FrontFace, SampleCount, DepthStencilInfo, CompareFunc, BlendInfo, AttachmentBlendInfo, BlendFactor, BlendOp, ColorComponents, PrimitiveType, RenderPassInfo, AttachmentInfo, SubpassInfo, AttachmentRef, RenderPassPipelineStage, OutputAttachmentRef, PipelineBinding, RenderpassRecordingMode, RenderPassBeginInfo, Scissor, Viewport, IndexFormat, TextureInfo, TextureDimension, TextureUsage, MemoryUsage, BindingFrequency, BarrierSync, BarrierAccess, TextureLayout, TextureViewInfo, RenderPassAttachment, RenderPassAttachmentView, LoadOp, StoreOp}, platform::IO, Vec2I, Vec2UI};
+use sourcerenderer_core::{Vec2, Platform, graphics::*, platform::IO};
 
-use crate::{renderer::{renderer_resources::{RendererResources, HistoryResourceEntry}, passes::compositing::CompositingPass}, ui::{UICmdList, UIDrawData}};
+use crate::{renderer::{renderer_resources::HistoryResourceEntry, render_path::RenderPassParameters}, ui::UIDrawData};
 
 pub struct UIPass<P: Platform> {
     device: Arc<<P::GraphicsBackend as Backend>::Device>,
@@ -113,12 +113,11 @@ impl<P: Platform> UIPass<P> {
     pub fn execute(
         &mut self,
         command_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        renderer_resources: &RendererResources<P::GraphicsBackend>,
-        zero_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
+        pass_params: &RenderPassParameters<'_, P>,
         output_texture_name: &str,
         draw: &UIDrawData<P::GraphicsBackend>
     ) {
-        let rtv = renderer_resources.access_view(
+        let rtv = pass_params.resources.access_view(
             command_buffer,
             output_texture_name,
             BarrierSync::RENDER_TARGET,
@@ -179,9 +178,9 @@ impl<P: Platform> UIPass<P> {
                 ]);
 
                 if let Some(texture) = &draw.texture {
-                    command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, texture, renderer_resources.linear_sampler());
+                    command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, texture, pass_params.resources.linear_sampler());
                 } else {
-                    command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, zero_view, renderer_resources.linear_sampler());
+                    command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, pass_params.zero_textures.zero_texture_view, pass_params.resources.linear_sampler());
                 }
 
                 command_buffer.finish_binding();
