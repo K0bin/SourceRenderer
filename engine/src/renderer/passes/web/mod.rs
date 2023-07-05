@@ -6,7 +6,7 @@ use sourcerenderer_core::graphics::{
     Device,
     Queue,
     Swapchain,
-    SwapchainError,
+    SwapchainError, FenceRef,
 };
 use sourcerenderer_core::Platform;
 
@@ -51,7 +51,7 @@ impl<P: Platform> WebRenderer<P> {
         let init_submission = init_cmd_buffer.finish();
         device
             .graphics_queue()
-            .submit(init_submission, None, &[], &[], false);
+            .submit(init_submission, &[], &[], false);
         Self {
             device: device.clone(),
             swapchain: swapchain.clone(),
@@ -86,12 +86,11 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
-        let semaphore = self.device.create_semaphore();
-        let back_buffer_res = self.swapchain.prepare_back_buffer(&semaphore);
+        let back_buffer_res = self.swapchain.prepare_back_buffer();
         if back_buffer_res.is_none() {
             return Err(SwapchainError::Other);
         }
-        let backbuffer = back_buffer_res.unwrap();
+        let back_buffer = back_buffer_res.unwrap();
 
         let queue = self.device.graphics_queue();
         let mut cmd_buffer = queue.create_command_buffer();
@@ -104,7 +103,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
             &view_ref,
             &late_latching_buffer,
             &self.resources,
-            &backbuffer,
+            back_buffer.texture_view,
             shader_manager,
             assets,
         );
@@ -114,15 +113,13 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
             late_latching.before_submit(&input_state, &view_ref);
         }
 
-        let submit_semaphore = self.device.create_semaphore();
         queue.submit(
             cmd_buffer.finish(),
-            None,
-            &[&semaphore],
-            &[&submit_semaphore],
+            &[FenceRef::WSIFence(back_buffer.prepare_fence)],
+            &[FenceRef::WSIFence(back_buffer.present_fence)],
             false,
         );
-        queue.present(&self.swapchain, &[&submit_semaphore], false);
+        queue.present(&self.swapchain, back_buffer.present_fence, false);
 
         if let Some(late_latching) = late_latching {
             late_latching.after_submit(&self.device);

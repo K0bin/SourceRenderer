@@ -36,10 +36,8 @@ pub use self::renderpass::{
 pub(crate) use self::shared::VkShared;
 pub use self::surface::VkSurface;
 pub use self::swapchain::VkSwapchain;
-pub(crate) use self::sync::VkFenceInner;
 pub use self::sync::{
-    VkFence,
-    VkSemaphore,
+    VkTimelineSemaphore,
 };
 pub use self::texture::VkTexture;
 pub(crate) use self::thread_manager::VkThreadManager;

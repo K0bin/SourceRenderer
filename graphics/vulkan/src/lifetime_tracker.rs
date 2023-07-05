@@ -8,17 +8,14 @@ use crate::texture::{
 };
 use crate::{
     VkCommandBufferSubmission,
-    VkFence,
     VkFrameBuffer,
     VkPipeline,
     VkRenderPass,
-    VkSemaphore,
-    VkTexture,
+    VkTexture, VkTimelineSemaphore,
 };
 
 pub struct VkLifetimeTrackers {
-    semaphores: Vec<Arc<VkSemaphore>>,
-    fences: Vec<Arc<VkFence>>,
+    semaphores: Vec<Arc<VkTimelineSemaphore>>,
     buffers: Vec<Arc<VkBufferSlice>>,
     textures: Vec<Arc<VkTexture>>,
     texture_views: Vec<Arc<VkTextureView>>,
@@ -34,7 +31,6 @@ impl VkLifetimeTrackers {
     pub(crate) fn new() -> Self {
         Self {
             semaphores: Vec::new(),
-            fences: Vec::new(),
             buffers: Vec::new(),
             textures: Vec::new(),
             texture_views: Vec::new(),
@@ -49,7 +45,6 @@ impl VkLifetimeTrackers {
 
     pub(crate) fn reset(&mut self) {
         self.semaphores.clear();
-        self.fences.clear();
         self.buffers.clear();
         self.textures.clear();
         self.texture_views.clear();
@@ -61,12 +56,8 @@ impl VkLifetimeTrackers {
         self.inner_command_buffers.clear();
     }
 
-    pub(crate) fn track_semaphore(&mut self, semaphore: &Arc<VkSemaphore>) {
+    pub(crate) fn track_semaphore(&mut self, semaphore: &Arc<VkTimelineSemaphore>) {
         self.semaphores.push(semaphore.clone());
-    }
-
-    pub(crate) fn track_fence(&mut self, fence: &Arc<VkFence>) {
-        self.fences.push(fence.clone());
     }
 
     pub(crate) fn track_buffer(&mut self, buffer: &Arc<VkBufferSlice>) {
@@ -112,7 +103,6 @@ impl VkLifetimeTrackers {
     pub(crate) fn is_empty(&self) -> bool {
         self.texture_views.is_empty()
             && self.semaphores.is_empty()
-            && self.fences.is_empty()
             && self.buffers.is_empty()
             && self.textures.is_empty()
             && self.render_passes.is_empty()

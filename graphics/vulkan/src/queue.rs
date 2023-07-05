@@ -11,18 +11,14 @@ use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{
     CommandBufferType,
     Queue,
-    Swapchain,
+    Swapchain, FenceRef,
 };
 
 use crate::command::VkInnerCommandBufferInfo;
 use crate::raw::RawVkDevice;
 use crate::swapchain::{
     VkSwapchain,
-    VkSwapchainState,
-};
-use crate::sync::{
-    VkFence,
-    VkSemaphore,
+    VkSwapchainState, VkBinarySemaphore,
 };
 use crate::thread_manager::VkThreadManager;
 use crate::transfer::VkTransferCommandBuffer;
@@ -57,12 +53,12 @@ pub struct VkQueue {
 }
 
 struct VkQueueInner {
-    virtual_queue: Vec<VkVirtualSubmission>,
-    signalled_semaphores: SmallVec<[Arc<VkSemaphore>; 8]>,
+    virtual_queue: Vec<VkVirtualSubmission>
 }
 
 struct VkSemaphoreSignalOrWait {
-    semaphore: Arc<VkSemaphore>,
+    semaphore: vk::Semaphore,
+    value: u64,
     stage: vk::PipelineStageFlags2,
 }
 
@@ -71,7 +67,6 @@ enum VkVirtualSubmission {
         command_buffer: vk::CommandBuffer,
         wait_semaphores: SmallVec<[VkSemaphoreSignalOrWait; 4]>,
         signal_semaphores: SmallVec<[VkSemaphoreSignalOrWait; 4]>,
-        fence: Option<Arc<VkFence>>,
         submission: Option<VkCommandBufferSubmission>,
     },
     Present {
@@ -93,8 +88,7 @@ impl VkQueue {
         Self {
             info,
             queue: Mutex::new(VkQueueInner {
-                virtual_queue: Vec::new(),
-                signalled_semaphores: SmallVec::new(),
+                virtual_queue: Vec::new()
             }),
             device: device.clone(),
             shared: shared.clone(),
@@ -118,12 +112,18 @@ impl VkQueue {
             self.info.queue_family_index as u32
         );
 
+        let mut signal_semaphores = SmallVec::<[VkSemaphoreSignalOrWait; 4]>::with_capacity(1);
+        signal_semaphores.push(VkSemaphoreSignalOrWait {
+            semaphore: *command_buffer.fence().fence.handle(),
+            value: command_buffer.fence().value,
+            stage: vk::PipelineStageFlags2::ALL_COMMANDS
+        });
+
         let vk_cmd_buffer = *command_buffer.handle();
         let submission = VkVirtualSubmission::CommandBuffer {
             command_buffer: vk_cmd_buffer,
             wait_semaphores: SmallVec::new(),
-            signal_semaphores: SmallVec::new(),
-            fence: Some(command_buffer.fence().clone()),
+            signal_semaphores: signal_semaphores,
             submission: None,
         };
         let mut guard = self.queue.lock().unwrap();
@@ -133,9 +133,8 @@ impl VkQueue {
     pub fn submit(
         &self,
         command_buffer: VkCommandBufferSubmission,
-        fence: Option<&Arc<VkFence>>,
-        wait_semaphores: &[&Arc<VkSemaphore>],
-        signal_semaphores: &[&Arc<VkSemaphore>],
+        wait_semaphores: &[FenceRef<VkBackend>],
+        signal_semaphores: &[FenceRef<VkBackend>],
     ) {
         assert_eq!(
             command_buffer.command_buffer_type(),
@@ -145,7 +144,6 @@ impl VkQueue {
             command_buffer.queue_family_index(),
             self.info.queue_family_index as u32
         );
-        debug_assert!(fence.is_none() || !fence.unwrap().is_signalled());
         if wait_semaphores.len() > 4 || signal_semaphores.len() > 4 {
             panic!("Can only signal and wait for 4 semaphores each.");
         }
@@ -155,16 +153,36 @@ impl VkQueue {
 
         let wait_semaphores = wait_semaphores
             .iter()
-            .map(|semaphore| VkSemaphoreSignalOrWait {
-                semaphore: (*semaphore).clone(),
-                stage: vk::PipelineStageFlags2::ALL_COMMANDS,
+            .map(|fence_ref: &FenceRef<'_, VkBackend>| {
+                let (semaphore_handle, value) = match fence_ref {
+                    FenceRef::Fence {
+                        fence, value
+                    } => (*fence.handle(), *value),
+                    FenceRef::WSIFence(fence) => (*fence.handle(), 0u64)
+                };
+
+                VkSemaphoreSignalOrWait {
+                    semaphore: semaphore_handle,
+                    value,
+                    stage: vk::PipelineStageFlags2::ALL_COMMANDS,
+                }
             })
             .collect::<SmallVec<[VkSemaphoreSignalOrWait; 4]>>();
         let signal_semaphores = signal_semaphores
             .iter()
-            .map(|semaphore| VkSemaphoreSignalOrWait {
-                semaphore: (*semaphore).clone(),
-                stage: vk::PipelineStageFlags2::ALL_COMMANDS,
+            .map(|fence_ref: &FenceRef<'_, VkBackend>| {
+                let (semaphore_handle, value) = match fence_ref {
+                    FenceRef::Fence {
+                        fence, value
+                    } => (*fence.handle(), *value),
+                    FenceRef::WSIFence(fence) => (*fence.handle(), 0u64)
+                };
+
+                VkSemaphoreSignalOrWait {
+                    semaphore: semaphore_handle,
+                    value,
+                    stage: vk::PipelineStageFlags2::ALL_COMMANDS,
+                }
             })
             .collect::<SmallVec<[VkSemaphoreSignalOrWait; 4]>>();
 
@@ -173,7 +191,6 @@ impl VkQueue {
             command_buffer: vk_cmd_buffer,
             wait_semaphores,
             signal_semaphores,
-            fence: fence.cloned(),
             submission: Some(cmd_buffer_mut),
         };
 
@@ -185,7 +202,7 @@ impl VkQueue {
         &self,
         swapchain: &Arc<VkSwapchain>,
         image_index: u32,
-        wait_semaphores: &[&Arc<VkSemaphore>],
+        wait_semaphores: &[&VkBinarySemaphore],
     ) {
         if wait_semaphores.len() > 4 {
             panic!("Can only wait for 4 semaphores.");
@@ -194,7 +211,8 @@ impl VkQueue {
         let wait_semaphores = wait_semaphores
             .iter()
             .map(|semaphore| VkSemaphoreSignalOrWait {
-                semaphore: (*semaphore).clone(),
+                semaphore: *semaphore.handle(),
+                value: 0u64,
                 stage: vk::PipelineStageFlags2::ALL_COMMANDS,
             })
             .collect::<SmallVec<[VkSemaphoreSignalOrWait; 4]>>();
@@ -239,26 +257,33 @@ impl Queue<VkBackend> for VkQueue {
     fn submit(
         &self,
         submission: VkCommandBufferSubmission,
-        fence: Option<&Arc<VkFence>>,
-        wait_semaphores: &[&Arc<VkSemaphore>],
-        signal_semaphores: &[&Arc<VkSemaphore>],
+        wait_fences: &[FenceRef<VkBackend>],
+        signal_fences: &[FenceRef<VkBackend>],
         delayed: bool,
     ) {
         let frame_local = self.threads.get_thread_local().get_frame_local();
 
-        if let Some(fence) = fence {
-            frame_local.track_fence(fence);
+        for semaphore in wait_fences {
+            match semaphore {
+                FenceRef::Fence {
+                    fence,
+                    value
+                 } => frame_local.track_semaphore(fence),
+                FenceRef::WSIFence(_) => { /* Tracked by the swapchain */ }
+            }
         }
 
-        for semaphore in wait_semaphores {
-            frame_local.track_semaphore(semaphore);
+        for semaphore in signal_fences {
+            match semaphore {
+                FenceRef::Fence {
+                    fence,
+                    value
+                 } => frame_local.track_semaphore(fence),
+                FenceRef::WSIFence(_) => { /* Tracked by the swapchain */ }
+            }
         }
 
-        for semaphore in signal_semaphores {
-            frame_local.track_semaphore(semaphore);
-        }
-
-        self.submit(submission, fence, wait_semaphores, signal_semaphores);
+        self.submit(submission, wait_fences, signal_fences);
 
         if !delayed {
             self.process_submissions();
@@ -268,14 +293,11 @@ impl Queue<VkBackend> for VkQueue {
     fn present(
         &self,
         swapchain: &Arc<VkSwapchain>,
-        wait_semaphores: &[&Arc<VkSemaphore>],
+        wait_fence: &VkBinarySemaphore,
         delayed: bool,
     ) {
         let frame_local = self.threads.get_thread_local().get_frame_local();
-        for sem in wait_semaphores {
-            frame_local.track_semaphore(*sem);
-        }
-        self.present(swapchain, swapchain.acquired_image(), wait_semaphores);
+        self.present(swapchain, swapchain.acquired_image(), &[wait_fence]);
 
         if !delayed {
             self.process_submissions();
@@ -315,11 +337,9 @@ impl Queue<VkBackend> for VkQueue {
                     command_buffer,
                     wait_semaphores,
                     signal_semaphores,
-                    fence,
                     submission,
                 } => {
-                    if fence.is_none() && wait_semaphores.is_empty() && signal_semaphores.is_empty()
-                    {
+                    if wait_semaphores.is_empty() && signal_semaphores.is_empty() {
                         if let Some(last_info) = batch.last_mut() {
                             if last_info.wait_semaphore_info_count == 0
                                 && last_info.signal_semaphore_info_count == 0
@@ -340,8 +360,8 @@ impl Queue<VkBackend> for VkQueue {
                     for semaphore in &signal_semaphores {
                         assert!(semaphores.len() < semaphores.capacity());
                         semaphores.push(vk::SemaphoreSubmitInfo {
-                            semaphore: *semaphore.semaphore.handle(),
-                            value: 0,
+                            semaphore: semaphore.semaphore,
+                            value: semaphore.value,
                             stage_mask: semaphore.stage,
                             device_index: 0,
                             ..Default::default()
@@ -352,8 +372,8 @@ impl Queue<VkBackend> for VkQueue {
                     for semaphore in &wait_semaphores {
                         assert!(semaphores.len() < semaphores.capacity());
                         semaphores.push(vk::SemaphoreSubmitInfo {
-                            semaphore: *semaphore.semaphore.handle(),
-                            value: 0,
+                            semaphore: semaphore.semaphore,
+                            value: semaphore.value,
                             stage_mask: semaphore.stage,
                             device_index: 0,
                             ..Default::default()
@@ -361,51 +381,12 @@ impl Queue<VkBackend> for VkQueue {
                     }
 
                     if !append {
-                        if let Some(fence) = fence {
-                            if !batch.is_empty() {
-                                unsafe {
-                                    let result = self.device.synchronization2.queue_submit2(
-                                        *vk_queue,
-                                        &batch,
-                                        vk::Fence::null(),
-                                    );
-                                    if result.is_err() {
-                                        self.device.is_alive.store(true, Ordering::SeqCst);
-                                        self.device.queue_wait_idle(*vk_queue).unwrap();
-                                        panic!("Submit failed: {:?}", result);
-                                    }
-                                }
-                                batch.clear();
-                                submissions.clear();
-                                command_buffers.clear();
-                                semaphores.clear();
-                            }
-
-                            let command_buffer_info = vk::CommandBufferSubmitInfo {
-                                command_buffer,
-                                device_mask: 0,
-                                ..Default::default()
-                            };
-
-                            let submit = vk::SubmitInfo2 {
-                                flags: vk::SubmitFlags::empty(),
-                                wait_semaphore_info_count: wait_semaphores.len() as u32,
-                                p_wait_semaphore_infos: p_wait_semaphores,
-                                command_buffer_info_count: 1,
-                                p_command_buffer_infos: &command_buffer_info
-                                    as *const vk::CommandBufferSubmitInfo,
-                                signal_semaphore_info_count: signal_semaphores.len() as u32,
-                                p_signal_semaphore_infos: p_signal_semaphores,
-                                ..Default::default()
-                            };
-
-                            fence.mark_submitted();
-                            let fence_handle = fence.handle();
+                        if batch.len() == batch.capacity() {
                             unsafe {
                                 let result = self.device.synchronization2.queue_submit2(
                                     *vk_queue,
-                                    &[submit],
-                                    *fence_handle,
+                                    &batch,
+                                    vk::Fence::null(),
                                 );
                                 if result.is_err() {
                                     self.device.is_alive.store(true, Ordering::SeqCst);
@@ -413,48 +394,33 @@ impl Queue<VkBackend> for VkQueue {
                                     panic!("Submit failed: {:?}", result);
                                 }
                             }
-                        } else {
-                            if batch.len() == batch.capacity() {
-                                unsafe {
-                                    let result = self.device.synchronization2.queue_submit2(
-                                        *vk_queue,
-                                        &batch,
-                                        vk::Fence::null(),
-                                    );
-                                    if result.is_err() {
-                                        self.device.is_alive.store(true, Ordering::SeqCst);
-                                        self.device.queue_wait_idle(*vk_queue).unwrap();
-                                        panic!("Submit failed: {:?}", result);
-                                    }
-                                }
-                                submissions.clear();
-                                batch.clear();
-                                command_buffers.clear();
-                                semaphores.clear();
-                            }
-
-                            command_buffers.push(vk::CommandBufferSubmitInfo {
-                                command_buffer,
-                                device_mask: 0,
-                                ..Default::default()
-                            });
-                            let submit = vk::SubmitInfo2 {
-                                flags: vk::SubmitFlags::empty(),
-                                wait_semaphore_info_count: wait_semaphores.len() as u32,
-                                p_wait_semaphore_infos: p_wait_semaphores,
-                                command_buffer_info_count: 1,
-                                p_command_buffer_infos: unsafe {
-                                    command_buffers.as_ptr().add(command_buffers.len() - 1)
-                                },
-                                signal_semaphore_info_count: signal_semaphores.len() as u32,
-                                p_signal_semaphore_infos: p_signal_semaphores,
-                                ..Default::default()
-                            };
-                            if let Some(submission) = submission {
-                                submissions.push(submission);
-                            }
-                            batch.push(submit);
+                            submissions.clear();
+                            batch.clear();
+                            command_buffers.clear();
+                            semaphores.clear();
                         }
+
+                        command_buffers.push(vk::CommandBufferSubmitInfo {
+                            command_buffer,
+                            device_mask: 0,
+                            ..Default::default()
+                        });
+                        let submit = vk::SubmitInfo2 {
+                            flags: vk::SubmitFlags::empty(),
+                            wait_semaphore_info_count: wait_semaphores.len() as u32,
+                            p_wait_semaphore_infos: p_wait_semaphores,
+                            command_buffer_info_count: 1,
+                            p_command_buffer_infos: unsafe {
+                                command_buffers.as_ptr().add(command_buffers.len() - 1)
+                            },
+                            signal_semaphore_info_count: signal_semaphores.len() as u32,
+                            p_signal_semaphore_infos: p_signal_semaphores,
+                            ..Default::default()
+                        };
+                        if let Some(submission) = submission {
+                            submissions.push(submission);
+                        }
+                        batch.push(submit);
                     }
                 }
 
@@ -487,7 +453,7 @@ impl Queue<VkBackend> for VkQueue {
                     let p_wait_semaphores = wait_semaphore_handles.as_ptr();
                     for semaphore in &wait_semaphores {
                         assert!(wait_semaphores.len() < wait_semaphore_handles.capacity());
-                        wait_semaphore_handles.push(*semaphore.semaphore.handle());
+                        wait_semaphore_handles.push(semaphore.semaphore);
                     }
 
                     let swapchain_handle = swapchain.handle();

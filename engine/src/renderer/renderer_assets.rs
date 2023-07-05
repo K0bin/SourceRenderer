@@ -6,14 +6,13 @@ use sourcerenderer_core::graphics::{
     Backend,
     BufferUsage,
     Device,
-    Fence,
     Format,
     MemoryUsage,
     SampleCount,
     TextureDimension,
     TextureInfo,
     TextureUsage,
-    TextureViewInfo,
+    TextureViewInfo, FenceValuePair,
 };
 use sourcerenderer_core::{
     Platform,
@@ -284,7 +283,7 @@ pub struct RendererMesh<B: Backend> {
 }
 
 struct DelayedAsset<B: Backend> {
-    fence: Arc<B::Fence>,
+    fence: FenceValuePair<B>,
     path: String,
     asset: DelayedAssetType<B>,
 }
@@ -571,13 +570,13 @@ impl<P: Platform> RendererAssets<P> {
         do_async: bool,
     ) -> (
         Arc<<P::GraphicsBackend as Backend>::TextureView>,
-        Option<Arc<<P::GraphicsBackend as Backend>::Fence>>,
+        Option<FenceValuePair<P::GraphicsBackend>>
     ) {
         let gpu_texture = self
             .device
             .create_texture(&texture.info, Some(texture_path));
         let subresources = texture.info.array_length * texture.info.mip_levels;
-        let mut fence = Option::<Arc<<P::GraphicsBackend as Backend>::Fence>>::None;
+        let mut fence = Option::<FenceValuePair<P::GraphicsBackend>>::None;
         for subresource in 0..subresources {
             let mip_level = subresource % texture.info.mip_levels;
             let array_index = subresource / texture.info.mip_levels;
@@ -715,7 +714,7 @@ impl<P: Platform> RendererAssets<P> {
         let mut retained_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
         let mut ready_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
         for delayed_asset in self.delayed_assets.drain(..) {
-            if delayed_asset.fence.is_signaled() {
+            if delayed_asset.fence.is_signalled() {
                 ready_delayed_assets.push(delayed_asset);
             } else {
                 retained_delayed_assets.push(delayed_asset);

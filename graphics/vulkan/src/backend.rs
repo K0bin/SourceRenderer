@@ -3,6 +3,8 @@ use texture::VkTextureView;
 
 use crate::pipeline::VkShader;
 use crate::rt::VkAccelerationStructure;
+use crate::swapchain::VkBinarySemaphore;
+use crate::sync::VkTimelineSemaphore;
 use crate::texture::VkSampler;
 use crate::{
     VkDevice,
@@ -28,9 +30,9 @@ impl sourcerenderer_core::graphics::Backend for VkBackend {
     type Swapchain = VkSwapchain;
     type TextureView = VkTextureView;
     type Sampler = VkSampler;
-    type Fence = VkFence;
-    type Semaphore = VkSemaphore;
+    type Fence = VkTimelineSemaphore;
     type Queue = VkQueue;
     type QueryRange = VkQueryRange;
     type AccelerationStructure = VkAccelerationStructure;
+    type WSIFence = VkBinarySemaphore;
 }

@@ -4,7 +4,7 @@ use std::cmp::{
 };
 use std::sync::atomic::{
     AtomicU32,
-    Ordering,
+    Ordering, AtomicU64,
 };
 use std::sync::{
     Arc,
@@ -17,6 +17,7 @@ use ash::prelude::VkResult;
 use ash::vk;
 use ash::vk::SurfaceTransformFlagsKHR;
 use crossbeam_utils::atomic::AtomicCell;
+use smallvec::SmallVec;
 use sourcerenderer_core::graphics::{
     Format,
     SampleCount,
@@ -26,7 +27,7 @@ use sourcerenderer_core::graphics::{
     TextureDimension,
     TextureInfo,
     TextureUsage,
-    TextureViewInfo,
+    TextureViewInfo, WSIFence, PreparedBackBuffer,
 };
 use sourcerenderer_core::{
     Matrix4,
@@ -40,9 +41,8 @@ use crate::raw::{
 use crate::texture::VkTextureView;
 use crate::{
     VkBackend,
-    VkSemaphore,
     VkSurface,
-    VkTexture,
+    VkTexture, VkQueue,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -54,8 +54,11 @@ pub enum VkSwapchainState {
 }
 
 pub struct VkSwapchain {
-    textures: Vec<Arc<VkTexture>>,
-    views: Vec<Arc<VkTextureView>>,
+    textures: SmallVec<[Arc<VkTexture>; 5]>,
+    views: SmallVec<[Arc<VkTextureView>; 5]>,
+    acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
+    present_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
+    semaphore_index: AtomicU64,
     swapchain: Mutex<vk::SwapchainKHR>,
     swapchain_loader: SwapchainLoader,
     instance: Arc<RawVkInstance>,
@@ -66,6 +69,9 @@ pub struct VkSwapchain {
     acquired_image: AtomicU32,
     presented_image: AtomicU32,
     transform_matrix: Matrix4,
+    graphics_queue: Arc<VkQueue>,
+    compute_queue: Option<Arc<VkQueue>>,
+    transfer_queue: Option<Arc<VkQueue>>
 }
 
 impl VkSwapchain {
@@ -76,6 +82,9 @@ impl VkSwapchain {
         device: &Arc<RawVkDevice>,
         surface: &Arc<VkSurface>,
         old_swapchain: Option<&Self>,
+        graphics_queue: &Arc<VkQueue>,
+        compute_queue: Option<&Arc<VkQueue>>,
+        transfer_queue: Option<&Arc<VkQueue>>
     ) -> Result<Arc<Self>, SwapchainError> {
         if surface.is_lost() {
             return Err(SwapchainError::SurfaceLost);
@@ -243,7 +252,7 @@ impl VkSwapchain {
             };
 
             let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
-            let textures: Vec<Arc<VkTexture>> = swapchain_images
+            let textures: SmallVec<[Arc<VkTexture>; 5]> = swapchain_images
                 .iter()
                 .map(|image| {
                     Arc::new(VkTexture::from_image(
@@ -267,7 +276,7 @@ impl VkSwapchain {
                 })
                 .collect();
 
-            let swapchain_image_views: Vec<Arc<VkTextureView>> = textures
+            let swapchain_image_views: SmallVec<[Arc<VkTextureView>; 5]> = textures
                 .iter()
                 .enumerate()
                 .map(|(index, texture)| {
@@ -280,9 +289,20 @@ impl VkSwapchain {
                 })
                 .collect();
 
+            let acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]> = (0..textures.len())
+                .map(|_i| VkBinarySemaphore::new(device))
+                .collect();
+
+            let present_semaphores: SmallVec<[VkBinarySemaphore; 5]> = (0..textures.len())
+                .map(|_i| VkBinarySemaphore::new(device))
+                .collect();
+
             Ok(Arc::new(VkSwapchain {
                 textures,
                 views: swapchain_image_views,
+                acquire_semaphores,
+                present_semaphores,
+                semaphore_index: AtomicU64::new(0u64),
                 swapchain: Mutex::new(swapchain),
                 swapchain_loader,
                 instance: device.instance.clone(),
@@ -293,6 +313,9 @@ impl VkSwapchain {
                 presented_image: AtomicU32::new(0),
                 acquired_image: AtomicU32::new(0),
                 transform_matrix: matrix,
+                graphics_queue: graphics_queue.clone(),
+                compute_queue: compute_queue.cloned(),
+                transfer_queue: transfer_queue.cloned()
             }))
         }
     }
@@ -303,8 +326,11 @@ impl VkSwapchain {
         height: u32,
         device: &Arc<RawVkDevice>,
         surface: &Arc<VkSurface>,
+        graphics_queue: &Arc<VkQueue>,
+        compute_queue: Option<&Arc<VkQueue>>,
+        transfer_queue: Option<&Arc<VkQueue>>
     ) -> Result<Arc<Self>, SwapchainError> {
-        VkSwapchain::new_internal(vsync, width, height, device, surface, None)
+        VkSwapchain::new_internal(vsync, width, height, device, surface, None, graphics_queue, compute_queue, transfer_queue)
     }
 
     pub fn pick_extent(
@@ -411,7 +437,7 @@ impl VkSwapchain {
     }
 
     #[allow(clippy::logic_bug)]
-    pub fn acquire_back_buffer(&self, semaphore: &VkSemaphore) -> VkResult<(u32, bool)> {
+    pub fn acquire_back_buffer(&self, semaphore: &VkBinarySemaphore) -> VkResult<(u32, bool)> {
         while self.presented_image.load(Ordering::SeqCst)
             != self.acquired_image.load(Ordering::SeqCst)
         {}
@@ -477,6 +503,15 @@ impl VkSwapchain {
 
 impl Drop for VkSwapchain {
     fn drop(&mut self) {
+        self.graphics_queue.wait_for_idle();
+        if let Some(queue) = self.compute_queue.as_ref() {
+            queue.wait_for_idle();
+        }
+        if let Some(queue) = self.transfer_queue.as_ref() {
+            queue.wait_for_idle();
+        }
+
+        self.device.wait_for_idle();
         let swapchain = self.swapchain.lock().unwrap();
         unsafe { self.swapchain_loader.destroy_swapchain(*swapchain, None) }
     }
@@ -496,6 +531,9 @@ impl Swapchain<VkBackend> for VkSwapchain {
             } else {
                 Some(old)
             },
+            &old.graphics_queue,
+            old.compute_queue.as_ref(),
+            old.transfer_queue.as_ref()
         )
     }
 
@@ -517,6 +555,9 @@ impl Swapchain<VkBackend> for VkSwapchain {
             } else {
                 Some(old)
             },
+            &old.graphics_queue,
+            old.compute_queue.as_ref(),
+            old.transfer_queue.as_ref()
         )
     }
 
@@ -536,14 +577,22 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.transform_matrix
     }
 
-    fn prepare_back_buffer(&self, semaphore: &Arc<VkSemaphore>) -> Option<Arc<VkTextureView>> {
-        let res = self.acquire_back_buffer(semaphore);
-        res.ok()
+    fn prepare_back_buffer(&self) -> Option<PreparedBackBuffer<'_, VkBackend>> {
+        let res = self.acquire_back_buffer(&self.acquire_semaphores[self.semaphore_index.load(Ordering::Acquire) as usize % self.acquire_semaphores.len()]);
+        let prepared_back_buffer = res.ok()
             .and_then(|(img_index, _optimal)| // TODO: handle optimal
         //optimal.then(||
         Some(
-          self.views.get(img_index as usize).unwrap().clone()
-        ))
+            PreparedBackBuffer {
+                texture_view: self.views.get(img_index as usize).unwrap(),
+                prepare_fence: &self.acquire_semaphores[img_index as usize],
+                present_fence: &self.present_semaphores[img_index as usize],
+            }
+        ));
+        if prepared_back_buffer.is_some() {
+            self.semaphore_index.fetch_add(1, Ordering::AcqRel);
+        }
+        prepared_back_buffer
     }
 
     fn width(&self) -> u32 {
@@ -575,3 +624,43 @@ fn surface_vk_format_to_core(format: vk::Format) -> Format {
         _ => panic!("Unsupported format: {:?}", format),
     }
 }
+
+
+pub struct VkBinarySemaphore {
+    device: Arc<RawVkDevice>,
+    semaphore: vk::Semaphore,
+}
+
+impl VkBinarySemaphore {
+    pub fn new(device: &Arc<RawVkDevice>) -> Self {
+        let semaphore = unsafe {
+            device
+                .create_semaphore(
+                    &vk::SemaphoreCreateInfo {
+                        flags: vk::SemaphoreCreateFlags::empty(),
+                        ..Default::default()
+                    },
+                    None,
+                )
+                .unwrap()
+        };
+        Self {
+            device: device.clone(),
+            semaphore,
+        }
+    }
+
+    pub fn handle(&self) -> &vk::Semaphore {
+        &self.semaphore
+    }
+}
+
+impl Drop for VkBinarySemaphore {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_semaphore(self.semaphore, None);
+        }
+    }
+}
+
+impl WSIFence for VkBinarySemaphore {}

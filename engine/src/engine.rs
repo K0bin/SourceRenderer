@@ -55,7 +55,7 @@ impl<P: Platform> Engine<P> {
 
     pub fn run(platform: &P) -> Self {
         let instance = platform
-            .create_graphics(true)
+            .create_graphics(false)
             .expect("Failed to initialize graphics");
         let surface = platform.window().create_surface(instance.clone());
 

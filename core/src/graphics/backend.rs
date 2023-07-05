@@ -8,6 +8,7 @@ use crate::graphics::Texture;
 use crate::graphics::Buffer;
 use crate::graphics::Swapchain;
 use crate::graphics::TextureView;
+use super::surface::WSIFence;
 use super::{Queue, AccelerationStructure, ComputePipeline};
 use std::hash::Hash;
 
@@ -29,8 +30,8 @@ pub trait Backend: 'static + Sized {
   type ComputePipeline: ComputePipeline + Send + Sync;
   type RayTracingPipeline: Send + Sync;
   type Fence : Fence + Send + Sync;
-  type Semaphore : Send + Sync;
   type Queue : Queue<Self> + Send + Sync;
   type QueryRange : Send + Sync;
   type AccelerationStructure : AccelerationStructure + Send + Sync;
+  type WSIFence : WSIFence + Send + Sync;
 }

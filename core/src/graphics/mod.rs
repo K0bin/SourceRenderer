@@ -5,6 +5,7 @@ pub use self::instance::Instance;
 pub use self::surface::Surface;
 pub use self::surface::Swapchain;
 pub use self::surface::SwapchainError;
+pub use self::surface::WSIFence;
 pub use self::command::CommandBuffer;
 pub use self::command::CommandBufferType;
 pub use self::command::InnerCommandBufferProvider;
@@ -34,6 +35,9 @@ pub use self::command::BarrierSync;
 pub use self::command::BarrierAccess;
 pub use self::command::IndexFormat;
 pub use self::command::BarrierTextureRange;
+pub use self::command::FenceRef;
+pub use self::sync::FenceValuePair;
+pub use self::surface::PreparedBackBuffer;
 pub use self::texture::{
   TextureView, TextureViewInfo, Filter, AddressMode,
   SamplerInfo, TextureLayout, TextureDimension

@@ -12,10 +12,6 @@ use sourcerenderer_core::graphics::{
     ShaderType,
     Texture,
 };
-use sourcerenderer_core::pool::{
-    Pool,
-    Recyclable,
-};
 
 use crate::bindless::{
     VkBindlessDescriptorSet,
@@ -39,25 +35,14 @@ use crate::renderpass::{
     VkFrameBuffer,
     VkRenderPassInfo,
 };
-use crate::sync::{
-    VkEvent,
-    VkFenceState,
-    VkSemaphoreInner,
-};
 use crate::texture::VkTextureView;
 use crate::{
-    VkFence,
-    VkFenceInner,
     VkPipeline,
     VkRenderPass,
-    VkSemaphore,
 };
 
 pub struct VkShared {
     device: Arc<RawVkDevice>,
-    semaphores: Pool<VkSemaphoreInner>,
-    fences: Pool<VkFenceInner>,
-    events: Pool<VkEvent>,
     buffers: BufferAllocator, // consider per thread
     descriptor_set_layouts: RwLock<HashMap<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>>,
     pipeline_layouts: RwLock<HashMap<VkPipelineLayoutKey, Arc<VkPipelineLayout>>>,
@@ -82,9 +67,6 @@ pub(crate) struct VkPipelineLayoutKey {
 
 impl VkShared {
     pub fn new(device: &Arc<RawVkDevice>) -> Self {
-        let semaphores_device_clone = device.clone();
-        let fences_device_clone = device.clone();
-        let events_device_clone = device.clone();
         let mut descriptor_set_layouts =
             HashMap::<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>::new();
 
@@ -116,11 +98,6 @@ impl VkShared {
 
         Self {
             device: device.clone(),
-            semaphores: Pool::new(Box::new(move || {
-                VkSemaphoreInner::new(&semaphores_device_clone)
-            })),
-            fences: Pool::new(Box::new(move || VkFenceInner::new(&fences_device_clone))),
-            events: Pool::new(Box::new(move || VkEvent::new(&events_device_clone))),
             buffers: BufferAllocator::new(device, true),
             descriptor_set_layouts: RwLock::new(descriptor_set_layouts),
             pipeline_layouts: RwLock::new(HashMap::new()),
@@ -134,31 +111,6 @@ impl VkShared {
     #[inline]
     pub(crate) fn get_clear_buffer_meta_pipeline(&self) -> &Arc<VkPipeline> {
         &self.clear_buffer_meta_pipeline
-    }
-
-    #[inline]
-    pub(crate) fn get_semaphore(&self) -> Arc<VkSemaphore> {
-        Arc::new(VkSemaphore::new(self.semaphores.get()))
-    }
-
-    #[inline]
-    pub(crate) fn get_event(&self) -> Arc<Recyclable<VkEvent>> {
-        let event = self.events.get();
-        if event.is_signalled() {
-            event.reset();
-        }
-        Arc::new(event)
-    }
-
-    #[inline]
-    pub(crate) fn get_fence(&self) -> Arc<VkFence> {
-        let inner = self.fences.get();
-        let state = inner.state();
-        debug_assert_ne!(state, VkFenceState::Submitted);
-        if state == VkFenceState::Signalled {
-            inner.reset();
-        }
-        Arc::new(VkFence::new(inner))
     }
 
     pub(crate) fn get_descriptor_set_layout(

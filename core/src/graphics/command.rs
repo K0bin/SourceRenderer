@@ -110,11 +110,19 @@ pub trait CommandBuffer<B: Backend> {
   fn trace_ray(&mut self, width: u32, height: u32, depth: u32);
 }
 
+pub enum FenceRef<'a, B: Backend> {
+  Fence {
+    fence: &'a Arc<B::Fence>,
+    value: u64
+  },
+  WSIFence(&'a B::WSIFence)
+}
+
 pub trait Queue<B: Backend> {
   fn create_command_buffer(&self) -> B::CommandBuffer;
   fn create_inner_command_buffer(&self, inheritance: &<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance) -> B::CommandBuffer;
-  fn submit(&self, submission: B::CommandBufferSubmission, fence: Option<&Arc<B::Fence>>, wait_semaphores: &[&Arc<B::Semaphore>], signal_semaphores: &[&Arc<B::Semaphore>], delayed: bool);
-  fn present(&self, swapchain: &Arc<B::Swapchain>, wait_semaphores: &[&Arc<B::Semaphore>], delayed: bool);
+  fn submit(&self, submission: B::CommandBufferSubmission, wait_fences: &[FenceRef<B>], signal_fences: &[FenceRef<B>], delayed: bool);
+  fn present(&self, swapchain: &Arc<B::Swapchain>, wait_fence: &B::WSIFence, delayed: bool);
   fn process_submissions(&self);
 }
 

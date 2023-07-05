@@ -90,7 +90,7 @@ impl VkRenderPass {
                 subpass_attachment_bitmasks.get_mut(subpass_index).unwrap();
 
             for input_attachment in &subpass.input_attachments {
-                let mut metadata = attachment_metadata
+                let metadata = attachment_metadata
                     .entry(input_attachment.index)
                     .or_default();
                 let attachment_info = info
@@ -120,7 +120,7 @@ impl VkRenderPass {
                 *subpass_attachment_bitmask |= 1 << input_attachment.index;
             }
             for color_attachment in &subpass.output_color_attachments {
-                let mut metadata = attachment_metadata
+                let metadata = attachment_metadata
                     .entry(color_attachment.index)
                     .or_default();
                 metadata.produced_in_subpass =
@@ -132,7 +132,7 @@ impl VkRenderPass {
                 *subpass_attachment_bitmask |= 1 << color_attachment.index;
 
                 if let Some(resolve_attachment_index) = color_attachment.resolve_attachment_index {
-                    let mut resolve_metadata = attachment_metadata
+                    let resolve_metadata = attachment_metadata
                         .entry(resolve_attachment_index)
                         .or_default();
                     resolve_metadata.produced_in_subpass =
@@ -146,7 +146,7 @@ impl VkRenderPass {
                 }
             }
             if let Some(depth_stencil_attachment) = &subpass.depth_stencil_attachment {
-                let mut depth_stencil_metadata = attachment_metadata
+                let depth_stencil_metadata = attachment_metadata
                     .entry(depth_stencil_attachment.index)
                     .or_default();
                 if depth_stencil_metadata.initial_layout.is_none() {
@@ -193,7 +193,7 @@ impl VkRenderPass {
             if attachment.store_op == StoreOp::DontCare
                 || attachment.stencil_store_op == StoreOp::DontCare
             {
-                let mut metadata = attachment_metadata.entry(index as u32).or_default();
+                let metadata = attachment_metadata.entry(index as u32).or_default();
                 metadata.last_used_in_subpass = vk::SUBPASS_EXTERNAL;
             }
         }

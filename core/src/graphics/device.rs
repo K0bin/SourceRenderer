@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::graphics::{TextureInfo, TextureViewInfo, BufferUsage, GraphicsPipelineInfo, ShaderType, Backend};
 
-use super::{RenderPassInfo, buffer::BufferInfo, texture::SamplerInfo, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, rt::RayTracingPipelineInfo};
+use super::{RenderPassInfo, buffer::BufferInfo, texture::SamplerInfo, AccelerationStructureSizes, BottomLevelAccelerationStructureInfo, TopLevelAccelerationStructureInfo, rt::RayTracingPipelineInfo, FenceValuePair};
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterType {
@@ -40,13 +40,12 @@ pub trait Device<B: Backend> {
   fn wait_for_idle(&self);
   fn init_texture(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize);
   //fn init_texture_from_data<T>(&self, texture: &Arc<B::Texture>, data: &[T], mip_level: u32, array_layer: u32);
-  fn init_texture_async(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<Arc<B::Fence>>;
+  fn init_texture_async(&self, texture: &Arc<B::Texture>, buffer: &Arc<B::Buffer>, mip_level: u32, array_layer: u32, buffer_offset: usize) -> Option<FenceValuePair<B>>;
   //fn init_texture_async_from_data<T>(&self, texture: &Arc<B::Texture>, data: &[T], mip_level: u32, array_layer: u32) -> Option<Arc<B::Fence>>;
   fn init_buffer(&self, src_buffer: &Arc<B::Buffer>, dst_buffer: &Arc<B::Buffer>, src_offset: usize, dst_offset: usize, length: usize);
   fn flush_transfers(&self);
   fn free_completed_transfers(&self);
   fn create_fence(&self) -> Arc<B::Fence>;
-  fn create_semaphore(&self) -> Arc<B::Semaphore>;
   fn graphics_queue(&self) -> &Arc<B::Queue>;
   fn prerendered_frames(&self) -> u32;
   fn supports_bindless(&self) -> bool;

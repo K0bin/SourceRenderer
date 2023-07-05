@@ -18,9 +18,7 @@ use crate::sync::VkTimelineSemaphore;
 use crate::{
     VkCommandBufferRecorder,
     VkCommandPool,
-    VkFence,
     VkLifetimeTrackers,
-    VkSemaphore,
     VkShared,
 };
 
@@ -63,11 +61,6 @@ struct VkFrameLocalInner {
     command_pool: VkCommandPool,
     life_time_trackers: VkLifetimeTrackers,
     frame: u64,
-}
-
-pub struct VkFrame {
-    counter: u64,
-    fence: Arc<VkFence>,
 }
 
 impl VkThreadManager {
@@ -239,14 +232,9 @@ impl VkFrameLocal {
             .get_inner_command_buffer(frame, inner_info)
     }
 
-    pub fn track_semaphore(&self, semaphore: &Arc<VkSemaphore>) {
+    pub fn track_semaphore(&self, semaphore: &Arc<VkTimelineSemaphore>) {
         let mut inner = self.inner.borrow_mut();
         inner.life_time_trackers.track_semaphore(semaphore);
-    }
-
-    pub fn track_fence(&self, fence: &Arc<VkFence>) {
-        let mut inner = self.inner.borrow_mut();
-        inner.life_time_trackers.track_fence(fence);
     }
 
     pub fn reset(&self) {

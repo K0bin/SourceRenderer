@@ -17,7 +17,7 @@ use sourcerenderer_core::graphics::{
     SwapchainError,
     TextureLayout,
     TextureView,
-    WHOLE_BUFFER,
+    WHOLE_BUFFER, FenceRef,
 };
 use sourcerenderer_core::{
     Matrix4,
@@ -168,7 +168,7 @@ impl<P: Platform> ModernRenderer<P> {
         device.flush_transfers();
 
         let c_graphics_queue = device.graphics_queue().clone();
-        c_graphics_queue.submit(init_cmd_buffer.finish(), None, &[], &[], true);
+        c_graphics_queue.submit(init_cmd_buffer.finish(), &[], &[], true);
         rayon::spawn(move || c_graphics_queue.process_submissions());
 
         Self {
@@ -521,9 +521,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             HistoryResourceEntry::Current,
         );
 
-        let prepare_sem = self.device.create_semaphore();
-        let cmd_buf_sem = self.device.create_semaphore();
-        let back_buffer_res = self.swapchain.prepare_back_buffer(&prepare_sem);
+        let back_buffer_res = self.swapchain.prepare_back_buffer();
         if back_buffer_res.is_none() {
             return Err(SwapchainError::Other);
         }
@@ -537,11 +535,11 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             new_access: BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::CopyDst,
-            texture: back_buffer.texture(),
+            texture: back_buffer.texture_view.texture(),
             range: BarrierTextureRange::default(),
         }]);
         cmd_buf.flush_barriers();
-        cmd_buf.blit(&*output_texture, 0, 0, back_buffer.texture(), 0, 0);
+        cmd_buf.blit(&*output_texture, 0, 0, back_buffer.texture_view.texture(), 0, 0);
         cmd_buf.barrier(&[Barrier::TextureBarrier {
             old_sync: BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
@@ -549,7 +547,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: back_buffer.texture(),
+            texture: back_buffer.texture_view.texture(),
             range: BarrierTextureRange::default(),
         }]);
         std::mem::drop(output_texture);
@@ -562,12 +560,11 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         }
         graphics_queue.submit(
             cmd_buf.finish(),
-            None,
-            &[&prepare_sem],
-            &[&cmd_buf_sem],
+            &[FenceRef::WSIFence(back_buffer.prepare_fence)],
+            &[FenceRef::WSIFence(back_buffer.present_fence)],
             true,
         );
-        graphics_queue.present(&self.swapchain, &[&cmd_buf_sem], true);
+        graphics_queue.present(&self.swapchain, back_buffer.present_fence, true);
 
         let c_graphics_queue = graphics_queue.clone();
         rayon::spawn(move || c_graphics_queue.process_submissions());

@@ -27,7 +27,7 @@ use crate::renderpass::{
     VkSubpassInfo,
 };
 use crate::rt::VkAccelerationStructure;
-use crate::sync::VkFence;
+use crate::sync::VkTimelineSemaphore;
 use crate::texture::{
     VkSampler,
     VkTexture,
@@ -36,7 +36,6 @@ use crate::texture::{
 use crate::transfer::VkTransfer;
 use crate::{
     VkBackend,
-    VkSemaphore,
     VkShared,
     VkThreadManager,
 };
@@ -246,13 +245,13 @@ impl VkDevice {
     }
 
     #[inline]
-    pub fn compute_queue(&self) -> &Option<Arc<VkQueue>> {
-        &self.compute_queue
+    pub fn compute_queue(&self) -> Option<&Arc<VkQueue>> {
+        self.compute_queue.as_ref()
     }
 
     #[inline]
-    pub fn transfer_queue(&self) -> &Option<Arc<VkQueue>> {
-        &self.transfer_queue
+    pub fn transfer_queue(&self) -> Option<&Arc<VkQueue>> {
+        self.transfer_queue.as_ref()
     }
 }
 
@@ -335,6 +334,13 @@ impl Device<VkBackend> for VkDevice {
     }
 
     fn wait_for_idle(&self) {
+        self.graphics_queue.wait_for_idle();
+        if let Some(queue) = self.transfer_queue.as_ref() {
+            queue.wait_for_idle();
+        }
+        if let Some(queue) = self.compute_queue.as_ref() {
+            queue.wait_for_idle();
+        }
         self.device.wait_for_idle();
     }
 
@@ -402,7 +408,7 @@ impl Device<VkBackend> for VkDevice {
         mip_level: u32,
         array_layer: u32,
         buffer_offset: usize,
-    ) -> Option<Arc<VkFence>> {
+    ) -> Option<FenceValuePair<VkBackend>> {
         self.transfer
             .init_texture_async(texture, buffer, mip_level, array_layer, buffer_offset)
     }
@@ -427,12 +433,8 @@ impl Device<VkBackend> for VkDevice {
         self.transfer.try_free_used_buffers();
     }
 
-    fn create_fence(&self) -> Arc<VkFence> {
-        self.context.shared().get_fence()
-    }
-
-    fn create_semaphore(&self) -> Arc<VkSemaphore> {
-        self.context.shared().get_semaphore()
+    fn create_fence(&self) -> Arc<VkTimelineSemaphore> {
+        Arc::new(VkTimelineSemaphore::new(&self.device))
     }
 
     fn graphics_queue(&self) -> &Arc<VkQueue> {
