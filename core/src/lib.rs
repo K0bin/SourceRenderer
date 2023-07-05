@@ -10,6 +10,7 @@ extern crate rayon;
 extern crate bitset_core;
 
 pub mod graphics;
+pub mod gpu;
 pub mod platform;
 pub mod pool;
 pub mod input;
