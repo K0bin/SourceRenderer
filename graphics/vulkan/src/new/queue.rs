@@ -74,8 +74,8 @@ impl Queue<VkBackend> for VkQueue {
     unsafe fn submit(&self, submissions: &[Submission<VkBackend>]) {
         let guard = self.lock_queue();
 
-        let command_buffers = SmallVec::<[vk::CommandBufferSubmitInfo; 2]>::with_capacity(submissions.len());
-        let semaphores = SmallVec::<[vk::SemaphoreSubmitInfo; 2]>::with_capacity(submissions.len());
+        let mut command_buffers = SmallVec::<[vk::CommandBufferSubmitInfo; 2]>::with_capacity(submissions.len());
+        let mut semaphores = SmallVec::<[vk::SemaphoreSubmitInfo; 2]>::with_capacity(submissions.len());
 
         for submission in submissions {
             for cmd_buffer in submission.command_buffers {

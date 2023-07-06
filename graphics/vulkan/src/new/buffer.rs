@@ -158,6 +158,10 @@ impl VkBuffer {
     pub fn va(&self) -> Option<vk::DeviceAddress> {
         self.va
     }
+
+    pub(crate) fn info(&self) -> &BufferInfo {
+        &self.info
+    }
 }
 
 impl Drop for VkBuffer {

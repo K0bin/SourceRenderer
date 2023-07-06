@@ -9,6 +9,7 @@ impl GPUBackend for VkBackend {
     type Device = VkDevice;
     type Instance = VkInstance;
     type CommandBuffer = VkCommandBuffer;
+    type CommandPool = VkCommandPool;
     type Adapter = VkAdapter;
     type Surface = VkSurface;
     type Texture = VkTexture;

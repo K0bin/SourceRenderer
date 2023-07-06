@@ -10,7 +10,11 @@ use std::sync::Arc;
 use ash::extensions::khr::Surface as KhrSurface;
 use ash::vk;
 
+use sourcerenderer_core::gpu::*;
+
 use super::*;
+
+use crate::queue::VkQueueInfo;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
 const GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME: &str = "VK_KHR_get_memory_requirements2";
@@ -86,7 +90,7 @@ pub struct VkAdapter {
 }
 
 impl VkAdapter {
-    pub fn new(instance: Arc<RawVkInstance>, physical_device: vk::PhysicalDevice) -> Self {
+    pub fn new(instance: &Arc<RawVkInstance>, physical_device: vk::PhysicalDevice) -> Self {
         let properties = unsafe {
             instance
                 .instance
@@ -142,7 +146,7 @@ impl VkAdapter {
         }
 
         VkAdapter {
-            instance,
+            instance: instance.clone(),
             physical_device,
             properties,
             extensions,
@@ -150,7 +154,7 @@ impl VkAdapter {
     }
 
     pub fn physical_device_handle(&self) -> vk::PhysicalDevice {
-        &self.physical_device
+        self.physical_device
     }
 
     pub fn raw_instance(&self) -> &Arc<RawVkInstance> {
@@ -159,6 +163,8 @@ impl VkAdapter {
 }
 
 // Vulkan physical devices are implicitly freed with the instance
+
+pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
 
 impl Adapter<VkBackend> for VkAdapter {
     fn create_device(&self, surface: &VkSurface) -> VkDevice {
@@ -212,7 +218,7 @@ impl Adapter<VkBackend> for VkAdapter {
                     .get_physical_device_surface_support(
                         self.physical_device,
                         graphics_queue_family_props.0 as u32,
-                        *surface.surface_handle(),
+                        surface.surface_handle(),
                     )
                     .unwrap_or(false),
             };
@@ -226,7 +232,7 @@ impl Adapter<VkBackend> for VkAdapter {
                         .get_physical_device_surface_support(
                             self.physical_device,
                             index as u32,
-                            *surface.surface_handle(),
+                            surface.surface_handle(),
                         )
                         .unwrap_or(false),
                 }
@@ -241,7 +247,7 @@ impl Adapter<VkBackend> for VkAdapter {
                         .get_physical_device_surface_support(
                             self.physical_device,
                             index as u32,
-                            *surface.surface_handle(),
+                            surface.surface_handle(),
                         )
                         .unwrap_or(false),
                 }

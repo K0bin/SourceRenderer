@@ -1,12 +1,4 @@
-use std::sync::atomic::{
-    AtomicBool,
-    Ordering,
-};
-use std::sync::{
-    Arc,
-    Mutex,
-    MutexGuard,
-};
+use std::sync::Arc;
 
 use ash::extensions::khr::Surface as SurfaceLoader;
 use ash::prelude::VkResult;
@@ -16,10 +8,10 @@ use ash::vk::Handle;
 use super::*;
 
 pub struct VkSurface {
-    surface: Mutex<vk::SurfaceKHR>,
+    surface: vk::SurfaceKHR,
     surface_loader: SurfaceLoader,
     instance: Arc<RawVkInstance>,
-    is_lost: AtomicBool,
+    is_lost: bool,
 }
 
 impl VkSurface {
@@ -29,16 +21,16 @@ impl VkSurface {
         surface_loader: SurfaceLoader,
     ) -> Self {
         Self {
-            surface: Mutex::new(surface),
+            surface: surface,
             surface_loader,
             instance: instance.clone(),
-            is_lost: AtomicBool::new(false),
+            is_lost: false,
         }
     }
 
     #[inline]
-    pub fn surface_handle(&self) -> MutexGuard<vk::SurfaceKHR> {
-        self.surface.lock().unwrap()
+    pub fn surface_handle(&self) -> vk::SurfaceKHR {
+        self.surface
     }
 
     #[inline]
@@ -53,7 +45,7 @@ impl VkSurface {
         let handle = self.surface_handle();
         unsafe {
             self.surface_loader
-                .get_physical_device_surface_capabilities(*physical_device, *handle)
+                .get_physical_device_surface_capabilities(*physical_device, handle)
         }
     }
 
@@ -64,7 +56,7 @@ impl VkSurface {
         let handle = self.surface_handle();
         unsafe {
             self.surface_loader
-                .get_physical_device_surface_formats(*physical_device, *handle)
+                .get_physical_device_surface_formats(*physical_device, handle)
         }
     }
 
@@ -75,23 +67,23 @@ impl VkSurface {
         let handle = self.surface_handle();
         unsafe {
             self.surface_loader
-                .get_physical_device_surface_present_modes(*physical_device, *handle)
+                .get_physical_device_surface_present_modes(*physical_device, handle)
         }
     }
 
     pub fn is_lost(&self) -> bool {
-        self.is_lost.load(Ordering::SeqCst)
+        self.is_lost
     }
 
-    pub fn mark_lost(&self) {
-        self.is_lost.store(true, Ordering::SeqCst);
+    pub fn mark_lost(&mut self) {
+        self.is_lost = true
     }
 }
 
 impl PartialEq for VkSurface {
     fn eq(&self, other: &Self) -> bool {
-        let self_handle = self.surface.lock().unwrap().as_raw();
-        let other_handle = other.surface.lock().unwrap().as_raw();
+        let self_handle = self.surface.as_raw();
+        let other_handle = other.surface.as_raw();
         self.instance.instance.handle() == other.instance.instance.handle()
             && self_handle == other_handle
     }
@@ -103,7 +95,7 @@ impl Drop for VkSurface {
     fn drop(&mut self) {
         let handle = self.surface_handle();
         unsafe {
-            self.surface_loader.destroy_surface(*handle, None);
+            self.surface_loader.destroy_surface(handle, None);
         }
     }
 }

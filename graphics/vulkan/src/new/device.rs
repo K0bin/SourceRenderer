@@ -336,7 +336,7 @@ impl Device<VkBackend> for VkDevice {
         self.device.features.contains(VkFeatures::MIN_MAX_FILTER)
     }
 
-    unsafe fn get_bottom_level_acceleration_structure_size(
+    /*unsafe fn get_bottom_level_acceleration_structure_size(
         &self,
         info: &BottomLevelAccelerationStructureInfo<VkBackend>,
     ) -> AccelerationStructureSizes {
@@ -361,7 +361,7 @@ impl Device<VkBackend> for VkDevice {
             info,
             &self.shared,
         )
-    }
+    }*/
 
     fn supports_barycentrics(&self) -> bool {
         self.device.features.contains(VkFeatures::BARYCENTRICS)

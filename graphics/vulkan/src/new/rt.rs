@@ -7,29 +7,14 @@ use ash::vk::{
     DeviceOrHostAddressConstKHR,
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    AccelerationStructure,
-    AccelerationStructureInstance,
-    AccelerationStructureSizes,
-    BottomLevelAccelerationStructureInfo,
-    BufferUsage,
-    FrontFace,
-    IndexFormat,
-    TopLevelAccelerationStructureInfo,
-};
 
-use crate::buffer::VkBufferSlice;
-use crate::command::{
-    index_format_to_vk,
-    VkCommandBuffer,
-};
-use crate::format::format_to_vk;
-use crate::raw::RawVkDevice;
-use crate::VkBackend;
+use sourcerenderer_core::gpu::*;
+
+use super::*;
 
 pub struct VkAccelerationStructure {
     device: Arc<RawVkDevice>,
-    buffer: Arc<VkBufferSlice>,
+    buffer: VkBuffer,
     acceleration_structure: vk::AccelerationStructureKHR,
     va: vk::DeviceAddress,
 }
@@ -38,7 +23,7 @@ impl VkAccelerationStructure {
     pub fn upload_top_level_instances(
         command_buffer: &mut VkCommandBuffer,
         instances: &[AccelerationStructureInstance<VkBackend>],
-    ) -> Arc<VkBufferSlice> {
+    ) -> VkBuffer {
         let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances
             .iter()
             .map(|instance| {

@@ -1,15 +1,9 @@
 use std::cmp::min;
 use std::ffi::CString;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use ash::vk;
-use crossbeam_channel::{
-    unbounded,
-    Receiver,
-    Sender,
-};
 use smallvec::SmallVec;
 
 use sourcerenderer_core::gpu::*;
@@ -21,10 +15,6 @@ const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 #[allow(clippy::vec_box)]
 pub struct VkCommandPool {
     raw: Arc<RawVkCommandPool>,
-    primary_buffers: Vec<Box<VkCommandBuffer>>,
-    secondary_buffers: Vec<Box<VkCommandBuffer>>,
-    receiver: Receiver<Box<VkCommandBuffer>>,
-    sender: Sender<Box<VkCommandBuffer>>,
     shared: Arc<VkShared>,
     queue_family_index: u32,
 }
@@ -41,70 +31,32 @@ impl VkCommandPool {
             ..Default::default()
         };
 
-        let (sender, receiver) = unbounded();
-
         Self {
             raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
-            primary_buffers: Vec::new(),
-            secondary_buffers: Vec::new(),
-            receiver,
-            sender,
             shared: shared.clone(),
             queue_family_index
         }
     }
-
-    pub fn get_command_buffer(&mut self, frame: u64) -> Box<VkCommandBuffer> {
-        let mut buffer = self.primary_buffers.pop().unwrap_or_else(|| {
-            Box::new(VkCommandBuffer::new(
-                &self.raw.device,
-                &self.raw,
-                CommandBufferType::Primary,
-                self.queue_family_index,
-                &self.shared
-            ))
-        });
-        buffer.begin(frame, None);
-        buffer
-    }
-
-    pub fn get_inner_command_buffer(
-        &mut self,
-        frame: u64,
-        inner_info: Option<&VkInnerCommandBufferInfo>,
-    ) -> Box<VkCommandBuffer> {
-        let mut buffer = self.secondary_buffers.pop().unwrap_or_else(|| {
-            Box::new(VkCommandBuffer::new(
-                &self.raw.device,
-                &self.raw,
-                CommandBufferType::Secondary,
-                self.queue_family_index,
-                &self.shared
-            ))
-        });
-        buffer.begin(frame, inner_info);
-        buffer
-    }
 }
 
-impl Resettable for VkCommandPool {
-    fn reset(&mut self) {
-        unsafe {
-            self.raw
-                .device
-                .reset_command_pool(**self.raw, vk::CommandPoolResetFlags::empty())
-                .unwrap();
-        }
+impl CommandPool<VkBackend> for VkCommandPool {
+    unsafe fn create_command_buffer(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>) -> VkCommandBuffer {
+        let mut buffer = VkCommandBuffer::new(
+            &self.raw.device,
+            &self.raw,
+            if inner_info.is_none() { CommandBufferType::Primary } else { CommandBufferType::Primary },
+            self.queue_family_index,
+            &self.shared
+        );
+        buffer.begin(None);
+        buffer
+    }
 
-        for mut cmd_buf in self.receiver.try_iter() {
-            cmd_buf.reset();
-            let buffers = if cmd_buf.command_buffer_type == CommandBufferType::Primary {
-                &mut self.primary_buffers
-            } else {
-                &mut self.secondary_buffers
-            };
-            buffers.push(cmd_buf);
-        }
+    unsafe fn reset(&mut self) {
+        self.raw
+            .device
+            .reset_command_pool(**self.raw, vk::CommandPoolResetFlags::empty())
+            .unwrap();
     }
 }
 
@@ -122,6 +74,12 @@ pub struct VkInnerCommandBufferInfo {
     pub frame_buffer: Arc<VkFrameBuffer>,
 }
 
+pub struct BoundPipeline {
+    pipeline: vk::Pipeline,
+    bind_point: vk::PipelineBindPoint,
+    pipeline_layout: Arc<VkPipelineLayout>
+}
+
 pub struct VkCommandBuffer {
     buffer: vk::CommandBuffer,
     pool: Arc<RawVkCommandPool>,
@@ -130,11 +88,10 @@ pub struct VkCommandBuffer {
     command_buffer_type: CommandBufferType,
     shared: Arc<VkShared>,
     render_pass: Option<Arc<VkRenderPass>>,
-    pipeline: Option<Arc<VkPipeline>>,
+    pipeline: Option<BoundPipeline>,
     sub_pass: u32,
     queue_family_index: u32,
     descriptor_manager: VkBindingManager,
-    frame: u64,
     inheritance: Option<VkInnerCommandBufferInfo>,
 }
 
@@ -152,7 +109,7 @@ impl VkCommandBuffer {
                 vk::CommandBufferLevel::PRIMARY
             } else {
                 vk::CommandBufferLevel::SECONDARY
-            }, // TODO: support secondary command buffers / bundles
+            },
             command_buffer_count: 1, // TODO: figure out how many buffers per pool (maybe create a new pool once we've run out?)
             ..Default::default()
         };
@@ -169,13 +126,12 @@ impl VkCommandBuffer {
             state: VkCommandBufferState::Ready,
             queue_family_index,
             descriptor_manager: VkBindingManager::new(device),
-            frame: 0,
             inheritance: None,
         }
     }
 
     pub fn handle(&self) -> vk::CommandBuffer {
-        &self.buffer
+        self.buffer
     }
 
     pub fn cmd_buffer_type(&self) -> CommandBufferType {
@@ -184,25 +140,22 @@ impl VkCommandBuffer {
 
     pub(crate) fn reset(&mut self) {
         self.state = VkCommandBufferState::Ready;
-        self.trackers.reset();
-        self.descriptor_manager.reset(self.frame);
+        self.descriptor_manager.reset(0);
     }
 
-    pub(crate) fn begin(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) {
+    pub(crate) fn begin(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>) {
         assert_eq!(self.state, VkCommandBufferState::Ready);
-        debug_assert!(frame >= self.frame);
 
         self.state = VkCommandBufferState::Recording;
-        self.frame = frame;
 
         let (flags, inhertiance_info) = if let Some(inner_info) = inner_info {
             (
                 vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
                     | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
                 vk::CommandBufferInheritanceInfo {
-                    render_pass: *inner_info.render_pass.handle(),
+                    render_pass: inner_info.render_pass.handle(),
                     subpass: inner_info.sub_pass,
-                    framebuffer: *inner_info.frame_buffer.handle(),
+                    framebuffer: inner_info.frame_buffer.handle(),
                     ..Default::default()
                 },
             )
@@ -228,17 +181,13 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) unsafe fn end(&mut self) {
-        assert_eq!(self.state, VkCommandBufferState::Recording);
-        if self.render_pass.is_some() {
-            self.end_render_pass();
-        }
+    pub(crate) fn mark_submitted(&mut self) {
+        assert_eq!(self.state, VkCommandBufferState::Finished);
+        self.state = VkCommandBufferState::Submitted;
+    }
 
-        self.flush_barriers();
-        self.state = VkCommandBufferState::Finished;
-        unsafe {
-            self.device.end_command_buffer(self.buffer).unwrap();
-        }
+    pub(crate) fn command_buffer_type(&self) -> CommandBufferType {
+        self.command_buffer_type
     }
 }
 
@@ -251,6 +200,8 @@ impl Drop for VkCommandBuffer {
 }
 
 impl CommandBuffer<VkBackend> for VkCommandBuffer {
+    type CommandBufferInheritance = VkInnerCommandBufferInfo;
+
     unsafe fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
 
@@ -261,20 +212,24 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     self.device.cmd_bind_pipeline(
                         self.buffer,
                         vk::PipelineBindPoint::GRAPHICS,
-                        *vk_pipeline,
+                        vk_pipeline,
                     );
                 }
 
-                self.trackers.track_pipeline(*graphics_pipeline);
-                if graphics_pipeline.uses_bindless_texture_set()
+                self.pipeline = Some(BoundPipeline {
+                    pipeline: vk_pipeline,
+                    bind_point: vk::PipelineBindPoint::GRAPHICS,
+                    pipeline_layout: graphics_pipeline.layout().clone()
+                });
+
+                /*if graphics_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
                         .features
                         .contains(VkFeatures::DESCRIPTOR_INDEXING)
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
-                }
-                self.pipeline = Some((*graphics_pipeline).clone())
+                }*/
             }
             PipelineBinding::Compute(compute_pipeline) => {
                 let vk_pipeline = compute_pipeline.handle();
@@ -282,19 +237,24 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     self.device.cmd_bind_pipeline(
                         self.buffer,
                         vk::PipelineBindPoint::COMPUTE,
-                        *vk_pipeline,
+                        vk_pipeline,
                     );
                 }
-                self.trackers.track_pipeline(*compute_pipeline);
-                if compute_pipeline.uses_bindless_texture_set()
+
+                self.pipeline = Some(BoundPipeline {
+                    pipeline: vk_pipeline,
+                    bind_point: vk::PipelineBindPoint::COMPUTE,
+                    pipeline_layout: compute_pipeline.layout().clone()
+                });
+
+                /*if compute_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
                         .features
                         .contains(VkFeatures::DESCRIPTOR_INDEXING)
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
-                }
-                self.pipeline = Some((*compute_pipeline).clone())
+                }*/
             }
             PipelineBinding::RayTracing(rt_pipeline) => {
                 let vk_pipeline = rt_pipeline.handle();
@@ -302,19 +262,24 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     self.device.cmd_bind_pipeline(
                         self.buffer,
                         vk::PipelineBindPoint::RAY_TRACING_KHR,
-                        *vk_pipeline,
+                        vk_pipeline,
                     );
                 }
-                self.trackers.track_pipeline(*rt_pipeline);
-                if rt_pipeline.uses_bindless_texture_set()
+
+                self.pipeline = Some(BoundPipeline {
+                    pipeline: vk_pipeline,
+                    bind_point: vk::PipelineBindPoint::RAY_TRACING_KHR,
+                    pipeline_layout: rt_pipeline.layout().clone()
+                });
+
+                /*if rt_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
                         .features
                         .contains(VkFeatures::DESCRIPTOR_INDEXING)
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
-                }
-                self.pipeline = Some((*rt_pipeline).clone())
+                }*/
             }
         };
         self.descriptor_manager.mark_all_dirty();
@@ -349,7 +314,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             self.device.cmd_bind_vertex_buffers(
                 self.buffer,
                 0,
-                &[vertex_buffer.buffer().handle()],
+                &[vertex_buffer.handle()],
                 &[offset as u64],
             );
         }
@@ -365,7 +330,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         unsafe {
             self.device.cmd_bind_index_buffer(
                 self.buffer,
-                index_buffer.buffer().handle(),
+                index_buffer.handle(),
                 offset,
                 index_format_to_vk(format),
             );
@@ -415,8 +380,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn draw(&mut self, vertices: u32, offset: u32) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
-        debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-        debug_assert!(!self.has_pending_barrier());
+        debug_assert!(self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
@@ -435,8 +399,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
-        debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-        debug_assert!(!self.has_pending_barrier());
+        debug_assert!(self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
@@ -462,7 +425,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.bind(
             frequency,
             binding,
-            &VkBoundResource::SampledTexture(texture.handle()),
+            VkBoundResourceRef::SampledTexture(texture.view_handle()),
         );
     }
 
@@ -477,7 +440,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.bind(
             frequency,
             binding,
-            &VkBoundResource::SampledTextureAndSampler(texture.view_handle(), sampler.handle()),
+            VkBoundResourceRef::SampledTextureAndSampler(texture.view_handle(), sampler.handle()),
         );
     }
 
@@ -486,19 +449,19 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         frequency: BindingFrequency,
         binding: u32,
         buffer: &VkBuffer,
-        offset: usize,
-        length: usize,
+        offset: u64,
+        length: u64,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert_ne!(length, 0);
         self.descriptor_manager.bind(
             frequency,
             binding,
-            &VkBoundResource::UniformBuffer(VkBufferBindingInfo {
+            VkBoundResourceRef::UniformBuffer(VkBufferBindingInfo {
                 buffer: buffer.handle(),
                 offset,
                 length: if length == WHOLE_BUFFER {
-                    buffer.length() - offset
+                    buffer.info().size - offset
                 } else {
                     length
                 },
@@ -511,19 +474,19 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         frequency: BindingFrequency,
         binding: u32,
         buffer: &VkBuffer,
-        offset: usize,
-        length: usize,
+        offset: u64,
+        length: u64,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert_ne!(length, 0);
         self.descriptor_manager.bind(
             frequency,
             binding,
-            &VkBoundResource::StorageBuffer(VkBufferBindingInfo {
+            VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
                 buffer: buffer.handle(),
                 offset,
                 length: if length == WHOLE_BUFFER {
-                    buffer.length() - offset
+                    buffer.info().size - offset
                 } else {
                     length
                 },
@@ -541,7 +504,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.bind(
             frequency,
             binding,
-            &VkBoundResource::StorageTexture(texture.view_handle()),
+            VkBoundResourceRef::StorageTexture(texture.view_handle()),
         );
     }
 
@@ -553,14 +516,12 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         self.descriptor_manager
-            .bind(frequency, binding, &VkBoundResource::Sampler(sampler.handle()));
+            .bind(frequency, binding, VkBoundResourceRef::Sampler(sampler.handle()));
     }
 
     unsafe fn finish_binding(&mut self) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
-
-        self.flush_barriers();
 
         let mut offsets = SmallVec::<[u32; PER_SET_BINDINGS]>::new();
         let mut descriptor_sets =
@@ -568,9 +529,9 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         let mut base_index = 0;
 
         let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-        let pipeline_layout = pipeline.layout();
+        let pipeline_layout = &pipeline.pipeline_layout;
 
-        let finished_sets = self.descriptor_manager.finish(self.frame, pipeline_layout);
+        let finished_sets = self.descriptor_manager.finish(0, pipeline_layout);
         for (index, set_option) in finished_sets.iter().enumerate() {
             match set_option {
                 None => {
@@ -578,14 +539,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         unsafe {
                             self.device.cmd_bind_descriptor_sets(
                                 self.buffer,
-                                match pipeline.pipeline_type() {
-                                    VkPipelineType::Graphics => vk::PipelineBindPoint::GRAPHICS,
-                                    VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
-                                    VkPipelineType::RayTracing => {
-                                        vk::PipelineBindPoint::RAY_TRACING_KHR
-                                    }
-                                },
-                                *pipeline_layout.handle(),
+                                pipeline.bind_point,
+                                pipeline_layout.handle(),
                                 base_index,
                                 &descriptor_sets,
                                 &offsets,
@@ -597,7 +552,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     base_index = index as u32 + 1;
                 }
                 Some(set_binding) => {
-                    descriptor_sets.push(*set_binding.set.handle());
+                    descriptor_sets.push(set_binding.set.handle());
                     for i in 0..set_binding.dynamic_offset_count as usize {
                         offsets.push(set_binding.dynamic_offsets[i] as u32);
                     }
@@ -611,12 +566,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             unsafe {
                 self.device.cmd_bind_descriptor_sets(
                     self.buffer,
-                    match pipeline.pipeline_type() {
-                        VkPipelineType::Graphics => vk::PipelineBindPoint::GRAPHICS,
-                        VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
-                        VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    },
-                    *pipeline_layout.handle(),
+                    pipeline.bind_point,
+                    pipeline_layout.handle(),
                     base_index,
                     &descriptor_sets,
                     &offsets,
@@ -627,22 +578,18 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             base_index = BINDLESS_TEXTURE_SET_INDEX;
         }
 
-        if pipeline.uses_bindless_texture_set() {
+        /*if pipeline.uses_bindless_texture_set() {
             let bindless_texture_descriptor_set =
                 self.shared.bindless_texture_descriptor_set().unwrap();
             descriptor_sets.push(bindless_texture_descriptor_set.descriptor_set_handle());
-        }
+        }*/
 
         if !descriptor_sets.is_empty() {
             unsafe {
                 self.device.cmd_bind_descriptor_sets(
                     self.buffer,
-                    match pipeline.pipeline_type() {
-                        VkPipelineType::Graphics => vk::PipelineBindPoint::GRAPHICS,
-                        VkPipelineType::Compute => vk::PipelineBindPoint::COMPUTE,
-                        VkPipelineType::RayTracing => vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    },
-                    *pipeline_layout.handle(),
+                    pipeline.bind_point,
+                    pipeline_layout.handle(),
                     base_index,
                     &descriptor_sets,
                     &offsets,
@@ -651,82 +598,75 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    pub(crate) fn begin_label(&self, label: &str) {
+    unsafe fn begin_label(&mut self, label: &str) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         let label_cstring = CString::new(label).unwrap();
         if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
-            unsafe {
-                debug_utils.debug_utils_loader.cmd_begin_debug_utils_label(
-                    self.buffer,
-                    &vk::DebugUtilsLabelEXT {
-                        p_label_name: label_cstring.as_ptr(),
-                        color: [0.0f32; 4],
-                        ..Default::default()
-                    },
-                );
-            }
+            debug_utils.debug_utils_loader.cmd_begin_debug_utils_label(
+                self.buffer,
+                &vk::DebugUtilsLabelEXT {
+                    p_label_name: label_cstring.as_ptr(),
+                    color: [0.0f32; 4],
+                    ..Default::default()
+                },
+            );
         }
     }
 
-    pub(crate) fn end_label(&self) {
+    unsafe fn end_label(&mut self) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
-            unsafe {
-                debug_utils
-                    .debug_utils_loader
-                    .cmd_end_debug_utils_label(self.buffer);
-            }
+            debug_utils
+                .debug_utils_loader
+                .cmd_end_debug_utils_label(self.buffer);
         }
     }
 
-    pub(crate) fn execute_inner(&mut self, mut submissions: &[CommandBuffer]) {
+    unsafe fn execute_inner(&mut self, submissions: &mut [VkCommandBuffer]) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         if submissions.is_empty() {
             return;
         }
 
-        for submission in &submissions {
+        for submission in submissions.iter() {
             assert_eq!(
                 submission.command_buffer_type(),
                 CommandBufferType::Secondary
             );
         }
         let submission_handles: SmallVec<[vk::CommandBuffer; 16]> =
-            submissions.iter().map(|s| *s.handle()).collect();
+            submissions.iter().map(|s| s.handle()).collect();
         unsafe {
             self.device
                 .cmd_execute_commands(self.buffer, &submission_handles);
         }
-        for mut submission in submissions.drain(..) {
+        for submission in submissions {
             submission.mark_submitted();
-            self.trackers.track_inner_command_buffer(submission);
         }
     }
 
-    pub(crate) fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+    unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         debug_assert!(self.pipeline.is_some());
-        debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Compute);
-        debug_assert!(!self.has_pending_barrier());
+        debug_assert!(self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::COMPUTE);
         unsafe {
             self.device
                 .cmd_dispatch(self.buffer, group_count_x, group_count_y, group_count_z);
         }
     }
 
-    pub(crate) fn blit(
+    unsafe fn blit(
         &mut self,
-        src_texture: &Arc<VkTexture>,
+        src_texture: &VkTexture,
         src_array_layer: u32,
         src_mip_level: u32,
-        dst_texture: &Arc<VkTexture>,
+        dst_texture: &VkTexture,
         dst_array_layer: u32,
         dst_mip_level: u32,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
-        debug_assert!(!self.has_pending_barrier());
         let src_info = src_texture.info();
         let dst_info = dst_texture.info();
         let mut src_aspect = vk::ImageAspectFlags::empty();
@@ -753,9 +693,9 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         unsafe {
             self.device.cmd_blit_image(
                 self.buffer,
-                *src_texture.handle(),
+                src_texture.handle(),
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                *dst_texture.handle(),
+                dst_texture.handle(),
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[vk::ImageBlit {
                     src_subresource: vk::ImageSubresourceLayers {
@@ -790,12 +730,13 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                 vk::Filter::LINEAR,
             );
         }
-
-        self.trackers.track_texture(src_texture);
-        self.trackers.track_texture(dst_texture);
     }
 
-    pub(crate) fn barrier(&mut self, barriers: &[Barrier<VkBackend>]) {
+    unsafe fn barrier(&mut self, barriers: &[Barrier<VkBackend>]) {
+        let mut pending_image_barriers = SmallVec::<[vk::ImageMemoryBarrier2; 4]>::with_capacity(barriers.len());
+        let mut pending_buffer_barriers = SmallVec::<[vk::BufferMemoryBarrier2; 4]>::with_capacity(barriers.len());
+        let mut pending_memory_barriers = <[vk::MemoryBarrier2; 2]>::default();
+
         for barrier in barriers {
             match barrier {
                 Barrier::TextureBarrier {
@@ -822,7 +763,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
                     let dst_stages = barrier_sync_to_stage(*new_sync);
                     let src_stages = barrier_sync_to_stage(*old_sync);
-                    self.pending_image_barriers.push(vk::ImageMemoryBarrier2 {
+                    pending_image_barriers.push(vk::ImageMemoryBarrier2 {
                         src_stage_mask: src_stages,
                         dst_stage_mask: dst_stages,
                         src_access_mask: barrier_access_to_access(*old_access),
@@ -831,7 +772,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         new_layout: texture_layout_to_image_layout(*new_layout),
                         src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                         dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                        image: *texture.handle(),
+                        image: texture.handle(),
                         subresource_range: vk::ImageSubresourceRange {
                             aspect_mask,
                             base_array_layer: range.base_array_layer,
@@ -841,7 +782,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         },
                         ..Default::default()
                     });
-                    self.trackers.track_texture(texture);
                 }
                 Barrier::BufferBarrier {
                     old_sync,
@@ -849,22 +789,23 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     old_access,
                     new_access,
                     buffer,
+                    offset,
+                    length
                 } => {
                     let dst_stages = barrier_sync_to_stage(*new_sync);
                     let src_stages = barrier_sync_to_stage(*old_sync);
-                    self.pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
+                    pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
                         src_stage_mask: src_stages,
                         dst_stage_mask: dst_stages,
                         src_access_mask: barrier_access_to_access(*old_access),
                         dst_access_mask: barrier_access_to_access(*new_access),
                         src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                         dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                        buffer: *buffer.buffer().handle(),
-                        offset: buffer.offset() as u64,
-                        size: buffer.length() as u64,
+                        buffer: buffer.handle(),
+                        offset: *offset as u64,
+                        size: (buffer.info().size - *offset).min(*length),
                         ..Default::default()
                     });
-                    self.trackers.track_buffer(buffer);
                 }
                 Barrier::GlobalBarrier {
                     old_sync,
@@ -877,17 +818,17 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     let src_access = barrier_access_to_access(*old_access);
                     let dst_access = barrier_access_to_access(*new_access);
 
-                    self.pending_memory_barriers[0].dst_stage_mask |= dst_stages & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
-                    self.pending_memory_barriers[0].src_stage_mask |= src_stages & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
-                    self.pending_memory_barriers[0].src_access_mask |=
+                    pending_memory_barriers[0].dst_stage_mask |= dst_stages & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                    pending_memory_barriers[0].src_stage_mask |= src_stages & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                    pending_memory_barriers[0].src_access_mask |=
                         barrier_access_to_access(*old_access) & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
-                    self.pending_memory_barriers[0].dst_access_mask |=
+                    pending_memory_barriers[0].dst_access_mask |=
                         dst_access & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
 
-                    self.pending_memory_barriers[1].dst_access_mask |=
+                    pending_memory_barriers[1].dst_access_mask |=
                         dst_access & (vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
 
-                    if !self.pending_memory_barriers[1].dst_access_mask.is_empty() {
+                    if !pending_memory_barriers[1].dst_access_mask.is_empty() {
                         /*
                         VUID-VkMemoryBarrier2-dstAccessMask-06256
                         If the rayQuery feature is not enabled and dstAccessMask includes VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
@@ -895,13 +836,86 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
                         So we need to handle RT barriers separately.
                         */
-                        self.pending_memory_barriers[1].src_stage_mask = src_stages & (vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
-                        self.pending_memory_barriers[1].src_access_mask = src_access & (vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
-                        self.pending_memory_barriers[1].dst_stage_mask = dst_stages & (vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                        pending_memory_barriers[1].src_stage_mask = src_stages & (vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                        pending_memory_barriers[1].src_access_mask = src_access & (vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+                        pending_memory_barriers[1].dst_stage_mask = dst_stages & (vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
                     }
                 }
             }
         }
+
+        const FULL_BARRIER: bool = false; // IN CASE OF EMERGENCY, SET TO TRUE
+        if FULL_BARRIER {
+            let full_memory_barrier = vk::MemoryBarrier2 {
+                src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
+                dst_access_mask: vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE,
+                ..Default::default()
+            };
+            let dependency_info = vk::DependencyInfo {
+                image_memory_barrier_count: 0,
+                p_image_memory_barriers: std::ptr::null(),
+                buffer_memory_barrier_count: 0,
+                p_buffer_memory_barriers: std::ptr::null(),
+                memory_barrier_count: 1,
+                p_memory_barriers: &full_memory_barrier as *const vk::MemoryBarrier2,
+                ..Default::default()
+            };
+            unsafe {
+                self.device
+                    .synchronization2
+                    .cmd_pipeline_barrier2(self.buffer, &dependency_info);
+            }
+            pending_memory_barriers[0].src_stage_mask = vk::PipelineStageFlags2::empty();
+            pending_memory_barriers[0].dst_stage_mask = vk::PipelineStageFlags2::empty();
+            pending_memory_barriers[0].src_access_mask = vk::AccessFlags2::empty();
+            pending_memory_barriers[0].dst_access_mask = vk::AccessFlags2::empty();
+            pending_memory_barriers[1].src_stage_mask = vk::PipelineStageFlags2::empty();
+            pending_memory_barriers[1].dst_stage_mask = vk::PipelineStageFlags2::empty();
+            pending_memory_barriers[1].src_access_mask = vk::AccessFlags2::empty();
+            pending_memory_barriers[1].dst_access_mask = vk::AccessFlags2::empty();
+            pending_image_barriers.clear();
+            pending_buffer_barriers.clear();
+            return;
+        }
+
+        let has_pending_barriers = !pending_image_barriers.is_empty()
+            || !pending_buffer_barriers.is_empty()
+            || !pending_memory_barriers[0].src_stage_mask.is_empty()
+            || !pending_memory_barriers[0].dst_stage_mask.is_empty()
+            || !pending_memory_barriers[1].src_stage_mask.is_empty()
+            || !pending_memory_barriers[1].dst_stage_mask.is_empty();
+
+        if !has_pending_barriers {
+            return;
+        }
+
+        let dependency_info = vk::DependencyInfo {
+            image_memory_barrier_count: pending_image_barriers.len() as u32,
+            p_image_memory_barriers: pending_image_barriers.as_ptr(),
+            buffer_memory_barrier_count: pending_buffer_barriers.len() as u32,
+            p_buffer_memory_barriers: pending_buffer_barriers.as_ptr(),
+            memory_barrier_count: if pending_memory_barriers[0].src_stage_mask.is_empty()
+                && pending_memory_barriers[0].dst_stage_mask.is_empty()
+                && pending_memory_barriers[1].src_stage_mask.is_empty()
+                && pending_memory_barriers[1].dst_stage_mask.is_empty()
+            {
+                0
+            } else if pending_memory_barriers[1].src_stage_mask.is_empty()
+                && pending_memory_barriers[1].dst_stage_mask.is_empty()
+            {
+                1
+            } else {
+                2
+            },
+            p_memory_barriers: &pending_memory_barriers as *const vk::MemoryBarrier2,
+            ..Default::default()
+        };
+
+        self.device
+            .synchronization2
+            .cmd_pipeline_barrier2(self.buffer, &dependency_info);
     }
 
     unsafe fn begin_render_pass(
@@ -912,14 +926,12 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
 
-        self.flush_barriers();
-
         let mut attachment_infos = SmallVec::<[VkAttachmentInfo; 16]>::with_capacity(
             renderpass_begin_info.attachments.len(),
         );
         let mut width = 0u32;
         let mut height = 0u32;
-        let mut attachment_views = SmallVec::<[&Arc<VkTextureView>; 8]>::with_capacity(
+        let mut attachment_views = SmallVec::<[&VkTextureView; 8]>::with_capacity(
             renderpass_begin_info.attachments.len(),
         );
         let mut clear_values =
@@ -927,15 +939,15 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
         for attachment in renderpass_begin_info.attachments {
             let view = match &attachment.view {
-                sourcerenderer_core::graphics::RenderPassAttachmentView::RenderTarget(view) => {
+                RenderPassAttachmentView::RenderTarget(view) => {
                     *view
                 }
-                sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(view) => {
+                RenderPassAttachmentView::DepthStencil(view) => {
                     *view
                 }
             };
 
-            let info = view.texture().info();
+            let info = view.texture_info();
             attachment_infos.push(VkAttachmentInfo {
                 format: info.format,
                 samples: info.samples,
@@ -981,8 +993,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         // TODO: begin info fields
         unsafe {
             let begin_info = vk::RenderPassBeginInfo {
-                framebuffer: *framebuffer.handle(),
-                render_pass: *renderpass.handle(),
+                framebuffer: framebuffer.handle(),
+                render_pass: renderpass.handle(),
                 render_area: vk::Rect2D {
                     offset: vk::Offset2D { x: 0i32, y: 0i32 },
                     extent: vk::Extent2D { width, height },
@@ -1002,8 +1014,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             );
         }
         self.sub_pass = 0;
-        self.trackers.track_frame_buffer(&framebuffer);
-        self.trackers.track_render_pass(&renderpass);
         self.render_pass = Some(renderpass.clone());
         self.inheritance = Some(VkInnerCommandBufferInfo {
             render_pass: renderpass,
@@ -1016,7 +1026,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.inheritance.as_ref().unwrap()
     }
 
-    unsafe fn create_bottom_level_acceleration_structure(
+    /*unsafe fn create_bottom_level_acceleration_structure(
         &mut self,
         info: &BottomLevelAccelerationStructureInfo<VkBackend>,
         size: usize,
@@ -1025,10 +1035,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     ) -> VkAccelerationStructure {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
-        self.trackers.track_buffer(scratch_buffer);
-        self.trackers.track_buffer(target_buffer);
-        self.trackers.track_buffer(info.vertex_buffer);
-        self.trackers.track_buffer(info.index_buffer);
         let acceleration_structure = Arc::new(VkAccelerationStructure::new_bottom_level(
             &self.device,
             info,
@@ -1050,7 +1056,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     fn create_top_level_acceleration_structure(
         &mut self,
-        info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<VkBackend>,
+        info: &TopLevelAccelerationStructureInfo<VkBackend>,
         size: usize,
         target_buffer: &VkBuffer,
         scratch_buffer: &VkBuffer,
@@ -1077,7 +1083,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         debug_assert!(
-            self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::RayTracing
+            self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::RAY_TRACING_KHR
         );
 
         let rt = self.device.rt.as_ref().unwrap();
@@ -1106,49 +1112,38 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResource::AccelerationStructure(acceleration_structure.handle()),
+            VkBoundResourceRef::AccelerationStructure(acceleration_structure.handle()),
         );
-        self.trackers
-            .track_acceleration_structure(acceleration_structure);
-    }
+    }*/
 
-    fn bind_sampling_view_and_sampler_array(
+    unsafe fn bind_sampling_view_and_sampler_array(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
         textures_and_samplers: &[(&VkTextureView, &VkSampler)],
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        let handles: SmallVec::<[(vk::ImageView, vk::Sampler); 8]> = textures_and_samplers.iter().map(|(tv, s)| (tv.view_handle(), s.handle())).collect();
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResource::SampledTextureAndSamplerArray((textures_and_samplers.0.handle(), )),
+            VkBoundResourceRef::SampledTextureAndSamplerArray(&handles),
         );
-        for (texture, samplers) in textures_and_samplers {
-            self.trackers.track_texture_view(*texture);
-            self.trackers.track_sampler(*samplers);
-        }
     }
 
-    fn bind_storage_view_array(
+    unsafe fn bind_storage_view_array(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        textures: &[&Arc<VkTextureView>],
+        textures: &[&VkTextureView],
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        let handles: SmallVec::<[vk::ImageView; 8]> = textures.iter().map(|tv| tv.view_handle()).collect();
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::StorageTextureArray(textures),
+            VkBoundResourceRef::StorageTextureArray(&handles),
         );
-        for texture in textures {
-            self.trackers.track_texture_view(*texture);
-        }
-    }
-
-    fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
-        self.trackers.track_texture_view(texture_view);
     }
 
     unsafe fn draw_indexed_indirect(
@@ -1162,8 +1157,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
-        debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-        debug_assert!(!self.has_pending_barrier());
+        debug_assert!(self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
@@ -1174,9 +1168,9 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                 .unwrap()
                 .cmd_draw_indexed_indirect_count(
                     self.buffer,
-                    draw_buffer.buffer().handle(),
+                    draw_buffer.handle(),
                     draw_buffer_offset as u64,
-                    count_buffer.buffer().handle(),
+                    count_buffer.handle(),
                     count_buffer_offset as u64,
                     max_draw_count,
                     stride,
@@ -1184,7 +1178,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    fn draw_indirect(
+    unsafe fn draw_indirect(
         &mut self,
         draw_buffer: &VkBuffer,
         draw_buffer_offset: u32,
@@ -1195,8 +1189,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
-        debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
-        debug_assert!(!self.has_pending_barrier());
+        debug_assert!(self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
@@ -1207,9 +1200,9 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                 .unwrap()
                 .cmd_draw_indirect_count(
                     self.buffer,
-                    draw_buffer.buffer().handle(),
+                    draw_buffer.handle(),
                     draw_buffer_offset as u64,
-                    count_buffer.buffer().handle(),
+                    count_buffer.handle(),
                     count_buffer_offset as u64,
                     max_draw_count,
                     stride,
@@ -1217,15 +1210,42 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    fn clear_storage_texture(
+    unsafe fn set_push_constant_data<T>(
         &mut self,
-        texture: &Arc<VkTexture>,
+        data: &[T],
+        visible_for_shader_type: ShaderType,
+    ) where
+        T: 'static + Send + Sync + Sized + Clone,
+    {
+        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
+        let pipeline_layout = &pipeline.pipeline_layout;
+        let range = pipeline_layout
+            .push_constant_range(visible_for_shader_type)
+            .expect("No push constants set up for shader");
+        let size = std::mem::size_of_val(data);
+        unsafe {
+            self.device.cmd_push_constants(
+                self.buffer,
+                pipeline_layout.handle(),
+                shader_type_to_vk(visible_for_shader_type),
+                range.offset,
+                std::slice::from_raw_parts(
+                    data.as_ptr() as *const u8,
+                    min(size, range.size as usize),
+                ),
+            );
+        }
+    }
+
+    unsafe fn clear_storage_texture(
+        &mut self,
+        texture: &VkTexture,
         array_layer: u32,
         mip_level: u32,
         values: [u32; 4],
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-        debug_assert!(!self.has_pending_barrier());
         debug_assert!(self.render_pass.is_none());
 
         let format = texture.info().format;
@@ -1254,7 +1274,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             {
                 self.device.cmd_clear_depth_stencil_image(
                     self.buffer,
-                    *texture.handle(),
+                    texture.handle(),
                     vk::ImageLayout::GENERAL,
                     &vk::ClearDepthStencilValue {
                         depth: values[0] as f32,
@@ -1265,7 +1285,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             } else {
                 self.device.cmd_clear_color_image(
                     self.buffer,
-                    *texture.handle(),
+                    texture.handle(),
                     vk::ImageLayout::GENERAL,
                     &vk::ClearColorValue { uint32: values },
                     &[range],
@@ -1274,25 +1294,24 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    fn clear_storage_buffer(
+    unsafe fn clear_storage_buffer(
         &mut self,
-        buffer: &Arc<VkBufferSlice>,
-        offset: usize,
-        length_in_u32s: usize,
+        buffer: &VkBuffer,
+        offset: u64,
+        length_in_u32s: u64,
         value: u32,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-        debug_assert!(!self.has_pending_barrier());
         debug_assert!(self.render_pass.is_none());
 
         let actual_length_in_u32s = if length_in_u32s == WHOLE_BUFFER {
-            debug_assert_eq!((buffer.length() - offset) % 4, 0);
-            (buffer.length() - offset) / 4
+            debug_assert_eq!((buffer.info().size - offset) % 4, 0);
+            (buffer.info().size - offset) / 4
         } else {
             length_in_u32s
         };
         let length_in_bytes = actual_length_in_u32s * 4;
-        debug_assert!(buffer.length() - offset >= length_in_bytes);
+        debug_assert!(buffer.info().size - offset >= length_in_bytes);
 
         #[repr(packed)]
         struct MetaClearShaderData {
@@ -1306,21 +1325,21 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
         let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
         let mut bindings = <[VkBoundResourceRef; PER_SET_BINDINGS]>::default();
-        let binding_offsets = [(buffer.offset() + offset) as u32];
+        let binding_offsets = [offset as u32];
         let is_dynamic_binding = meta_pipeline
             .layout()
             .descriptor_set_layout(0)
             .unwrap()
             .is_dynamic_binding(0);
-        bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef {
-            buffer,
+        bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
+            buffer: buffer.handle(),
             offset,
             length: length_in_bytes,
         });
         let descriptor_set = self
             .descriptor_manager
             .get_or_create_set(
-                self.frame,
+                0,
                 meta_pipeline
                     .layout()
                     .descriptor_set_layout(0)
@@ -1333,12 +1352,12 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             self.device.cmd_bind_pipeline(
                 self.buffer,
                 vk::PipelineBindPoint::COMPUTE,
-                *meta_pipeline.handle(),
+                meta_pipeline.handle(),
             );
 
             self.device.cmd_push_constants(
                 self.buffer,
-                *meta_pipeline.layout().handle(),
+                meta_pipeline.layout().handle(),
                 vk::ShaderStageFlags::COMPUTE,
                 0,
                 std::slice::from_raw_parts(
@@ -1349,9 +1368,9 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             self.device.cmd_bind_descriptor_sets(
                 self.buffer,
                 vk::PipelineBindPoint::COMPUTE,
-                *meta_pipeline.layout().handle(),
+                meta_pipeline.layout().handle(),
                 0,
-                &[*descriptor_set.handle()],
+                &[descriptor_set.handle()],
                 if is_dynamic_binding {
                     &binding_offsets
                 } else {
@@ -1362,6 +1381,16 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                 .cmd_dispatch(self.buffer, (actual_length_in_u32s as u32 + 63) / 64, 1, 1);
         }
         self.descriptor_manager.mark_all_dirty();
+    }
+
+    unsafe fn finish(&mut self) {
+        assert_eq!(self.state, VkCommandBufferState::Recording);
+        if self.render_pass.is_some() {
+            self.end_render_pass();
+        }
+
+        self.state = VkCommandBufferState::Finished;
+        self.device.end_command_buffer(self.buffer).unwrap();
     }
 }
 

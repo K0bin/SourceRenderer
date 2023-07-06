@@ -1587,7 +1587,7 @@ impl VkPipeline {
         }
     }
 
-    pub fn new_ray_tracing(
+    /*pub fn new_ray_tracing(
         device: &Arc<RawVkDevice>,
         info: &RayTracingPipelineInfo<VkBackend>,
         shared: &VkShared
@@ -1931,7 +1931,7 @@ impl VkPipeline {
             device,
             MemoryUsage::UncachedRAM,
             &BufferInfo {
-                size: align_up_32(handle_stride, group_alignment as u32) as usize * groups.len(),
+                size: align_up_32(handle_stride, group_alignment as u32) as u64 * groups.len() as u64,
                 usage: BufferUsage::SHADER_BINDING_TABLE,
             },
             None,
@@ -2015,7 +2015,7 @@ impl VkPipeline {
                 miss_region,
             }),
         }
-    }
+    }*/
 
     #[inline]
     pub(crate) fn handle(&self) -> vk::Pipeline {
@@ -2023,7 +2023,7 @@ impl VkPipeline {
     }
 
     #[inline]
-    pub(crate) fn layout(&self) -> &VkPipelineLayout {
+    pub(crate) fn layout(&self) -> &Arc<VkPipelineLayout> {
         &self.layout
     }
 

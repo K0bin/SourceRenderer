@@ -305,13 +305,16 @@ pub(crate) struct VkDescriptorSet {
 }
 
 impl VkDescriptorSet {
-    fn new<'a>(
+    fn new<'a, T>(
         pool: &Arc<VkDescriptorPool>,
         device: &Arc<RawVkDevice>,
         layout: &Arc<VkDescriptorSetLayout>,
         is_transient: bool,
-        bindings: &'a [VkBoundResource; PER_SET_BINDINGS],
-    ) -> VkResult<Self> {
+        bindings: &'a [T; PER_SET_BINDINGS],
+    ) -> VkResult<Self>
+    where
+        VkBoundResource: From<&'a T>,
+    {
         let pool_guard = pool.handle();
         let set_create_info = vk::DescriptorSetAllocateInfo {
             descriptor_pool: *pool_guard,
@@ -325,7 +328,7 @@ impl VkDescriptorSet {
 
         let mut stored_bindings = <[VkBoundResource; PER_SET_BINDINGS]>::default();
         for (index, binding) in bindings.iter().enumerate() {
-            stored_bindings[index] = binding.clone();
+            stored_bindings[index] = binding.into();
         }
 
         match Option::<vk::DescriptorUpdateTemplate>::None {
@@ -926,9 +929,9 @@ impl Drop for VkDescriptorSet {
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub(crate) struct VkBufferBindingInfo {
-    buffer: vk::Buffer,
-    offset: usize,
-    length: usize,
+    pub(crate) buffer: vk::Buffer,
+    pub(crate) offset: u64,
+    pub(crate) length: u64,
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
@@ -953,6 +956,94 @@ pub(crate) enum VkBoundResource {
 impl Default for VkBoundResource {
     fn default() -> Self {
         VkBoundResource::None
+    }
+}
+
+
+#[derive(Hash, Eq, PartialEq, Clone)]
+pub(crate) enum VkBoundResourceRef<'a> {
+    None,
+    UniformBuffer(VkBufferBindingInfo),
+    UniformBufferArray(&'a [VkBufferBindingInfo]),
+    StorageBuffer(VkBufferBindingInfo),
+    StorageBufferArray(&'a [VkBufferBindingInfo]),
+    StorageTexture(vk::ImageView),
+    StorageTextureArray(&'a [vk::ImageView]),
+    SampledTexture(vk::ImageView),
+    SampledTextureArray(&'a [vk::ImageView]),
+    SampledTextureAndSampler(vk::ImageView, vk::Sampler),
+    SampledTextureAndSamplerArray(
+        &'a [(vk::ImageView, vk::Sampler)],
+    ),
+    Sampler(vk::Sampler),
+    AccelerationStructure(vk::AccelerationStructureKHR),
+}
+
+impl Default for VkBoundResourceRef<'_> {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl From<&VkBoundResourceRef<'_>> for VkBoundResource {
+    fn from(binding: &VkBoundResourceRef<'_>) -> Self {
+        match binding {
+            VkBoundResourceRef::None => VkBoundResource::None,
+            VkBoundResourceRef::UniformBuffer(info) => VkBoundResource::UniformBuffer(info.clone()),
+            VkBoundResourceRef::StorageBuffer(info) => VkBoundResource::StorageBuffer(info.clone()),
+            VkBoundResourceRef::StorageTexture(view) => {
+                VkBoundResource::StorageTexture(*view)
+            }
+            VkBoundResourceRef::SampledTexture(view) => {
+                VkBoundResource::SampledTexture(*view)
+            }
+            VkBoundResourceRef::SampledTextureAndSampler(view, sampler) => {
+                VkBoundResource::SampledTextureAndSampler(*view, *sampler)
+            }
+            VkBoundResourceRef::Sampler(sampler) => VkBoundResource::Sampler(*sampler),
+            VkBoundResourceRef::AccelerationStructure(accel) => {
+                VkBoundResource::AccelerationStructure(*accel)
+            }
+            VkBoundResourceRef::UniformBufferArray(arr) => VkBoundResource::UniformBufferArray(
+                arr.iter()
+                    .map(|a| {
+                        let info: VkBufferBindingInfo = a.clone();
+                        info
+                    })
+                    .collect(),
+            ),
+            VkBoundResourceRef::StorageBufferArray(arr) => VkBoundResource::StorageBufferArray(
+                arr.iter()
+                    .map(|a| {
+                        let info: VkBufferBindingInfo = a.clone();
+                        info
+                    })
+                    .collect(),
+            ),
+            VkBoundResourceRef::StorageTextureArray(arr) => {
+                VkBoundResource::StorageTextureArray(arr.iter().map(|a| *a).collect())
+            }
+            VkBoundResourceRef::SampledTextureArray(arr) => {
+                VkBoundResource::SampledTextureArray(arr.iter().map(|a| *a).collect())
+            }
+            VkBoundResourceRef::SampledTextureAndSamplerArray(arr) => {
+                VkBoundResource::SampledTextureAndSamplerArray(
+                    arr.iter()
+                        .map(|(t, s)| {
+                            let tuple: (vk::ImageView, vk::Sampler) =
+                                (*t, *s);
+                            tuple
+                        })
+                        .collect(),
+                )
+            }
+        }
+    }
+}
+
+impl From<&Self> for VkBoundResource {
+    fn from(other: &Self) -> Self {
+        other.clone()
     }
 }
 
@@ -1021,6 +1112,156 @@ impl BindingCompare<Self> for VkBoundResource {
                 false
             }
         }
+    }
+}
+
+
+impl BindingCompare<VkBoundResourceRef<'_>> for VkBoundResource {
+    fn binding_eq(
+        &self,
+        other: &VkBoundResourceRef<'_>,
+        binding_info: Option<&VkDescriptorSetEntryInfo>,
+    ) -> bool {
+        if self == &VkBoundResource::None && binding_info.is_none() {
+            true
+        } else if binding_info.is_none() {
+            false
+        } else if binding_info.unwrap().descriptor_type
+            != vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+            && binding_info.unwrap().descriptor_type != vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
+        {
+            self == other
+        } else {
+            // https://github.com/rust-lang/rust/issues/53667
+            if let (
+                VkBoundResource::UniformBuffer(VkBufferBindingInfo {
+                    buffer: entry_buffer,
+                    offset: _,
+                    length: entry_length,
+                }),
+                VkBoundResourceRef::UniformBuffer(VkBufferBindingInfo {
+                    buffer,
+                    offset: _,
+                    length,
+                }),
+            ) = (self, other)
+            {
+                buffer == entry_buffer && *length == *entry_length
+            } else if let (
+                VkBoundResource::StorageBuffer(VkBufferBindingInfo {
+                    buffer: entry_buffer,
+                    offset: _,
+                    length: entry_length,
+                }),
+                VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
+                    buffer,
+                    offset: _,
+                    length,
+                }),
+            ) = (self, other)
+            {
+                buffer == entry_buffer && *length == *entry_length
+            } else if let (
+                VkBoundResource::StorageBufferArray(arr),
+                VkBoundResourceRef::StorageBufferArray(arr1),
+            ) = (self, other)
+            {
+                arr.iter()
+                    .zip(*arr1)
+                    .all(|(b, b1)| b.buffer == b1.buffer && b.length == b1.length)
+            } else if let (
+                VkBoundResource::UniformBufferArray(arr),
+                VkBoundResourceRef::UniformBufferArray(arr1),
+            ) = (self, other)
+            {
+                arr.iter()
+                    .zip(*arr1)
+                    .all(|(b, b1)| b.buffer == b1.buffer && b.length == b1.length)
+            } else {
+                false
+            }
+        }
+    }
+}
+
+
+impl PartialEq<VkBoundResourceRef<'_>> for VkBoundResource {
+    fn eq(&self, other: &VkBoundResourceRef) -> bool {
+        match (self, other) {
+            (VkBoundResource::None, VkBoundResourceRef::None) => true,
+            (
+                VkBoundResource::UniformBuffer(VkBufferBindingInfo {
+                    buffer: old,
+                    offset: old_offset,
+                    length: old_length,
+                }),
+                VkBoundResourceRef::UniformBuffer(VkBufferBindingInfo {
+                    buffer: new,
+                    offset: new_offset,
+                    length: new_length,
+                }),
+            ) => old == new && old_offset == new_offset && old_length == new_length,
+            (
+                VkBoundResource::StorageBuffer(VkBufferBindingInfo {
+                    buffer: old,
+                    offset: old_offset,
+                    length: old_length,
+                }),
+                VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
+                    buffer: new,
+                    offset: new_offset,
+                    length: new_length,
+                }),
+            ) => old == new && old_offset == new_offset && old_length == new_length,
+            (VkBoundResource::StorageTexture(old), VkBoundResourceRef::StorageTexture(new)) => {
+                old == new
+            }
+            (VkBoundResource::SampledTexture(old), VkBoundResourceRef::SampledTexture(new)) => {
+                old == new
+            }
+            (
+                VkBoundResource::SampledTextureAndSampler(old_tex, old_sampler),
+                VkBoundResourceRef::SampledTextureAndSampler(new_tex, new_sampler),
+            ) => old_tex == new_tex && old_sampler == new_sampler,
+            (VkBoundResource::Sampler(old_sampler), VkBoundResourceRef::Sampler(new_sampler)) => {
+                old_sampler == new_sampler
+            }
+            (
+                VkBoundResource::AccelerationStructure(old),
+                VkBoundResourceRef::AccelerationStructure(new),
+            ) => old == new,
+            (
+                VkBoundResource::StorageBufferArray(old),
+                VkBoundResourceRef::StorageBufferArray(new),
+            ) => &old[..] == &new[..],
+            (
+                VkBoundResource::UniformBufferArray(old),
+                VkBoundResourceRef::UniformBufferArray(new),
+            ) => &old[..] == &new[..],
+            (
+                VkBoundResource::SampledTextureArray(old),
+                VkBoundResourceRef::SampledTextureArray(new),
+            ) => old.iter().zip(new.iter()).all(|(old, new)| old == new),
+            (
+                VkBoundResource::StorageTextureArray(old),
+                VkBoundResourceRef::StorageTextureArray(new),
+            ) => old.iter().zip(new.iter()).all(|(old, new)| old == new),
+            (
+                VkBoundResource::SampledTextureAndSamplerArray(old),
+                VkBoundResourceRef::SampledTextureAndSamplerArray(new),
+            ) => old.iter().zip(new.iter()).all(
+                |((old_texture, old_sampler), (new_texture, new_sampler))| {
+                    old_texture == new_texture && old_sampler == new_sampler
+                },
+            ),
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<VkBoundResource> for VkBoundResourceRef<'_> {
+    fn eq(&self, other: &VkBoundResource) -> bool {
+        other == self
     }
 }
 
@@ -1096,16 +1337,16 @@ impl VkBindingManager {
         &mut self,
         frequency: BindingFrequency,
         slot: u32,
-        binding: &VkBoundResource,
+        binding: VkBoundResourceRef,
     ) {
         let bindings_table = &mut self.bindings[frequency as usize];
         let existing_binding = &mut bindings_table[slot as usize];
 
-        let identical = existing_binding == binding;
+        let identical = existing_binding == &binding;
 
         if !identical {
             self.dirty.insert(DirtyDescriptorSets::from(frequency));
-            *existing_binding = binding.clone();
+            *existing_binding = (&binding).into();
         }
     }
 
@@ -1232,12 +1473,16 @@ impl VkBindingManager {
         set_binding
     }
 
-    pub fn get_or_create_set<'a>(
+    pub fn get_or_create_set<'a, T>(
         &self,
         frame: u64,
         layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &'a [VkBoundResource; PER_SET_BINDINGS],
-    ) -> Option<Arc<VkDescriptorSet>> {
+        bindings: &'a [T; PER_SET_BINDINGS],
+    ) -> Option<Arc<VkDescriptorSet>>
+    where
+        VkBoundResource: BindingCompare<T>,
+        VkBoundResource: From<&'a T>
+    {
         if layout.is_empty() {
             return None;
         }
@@ -1260,7 +1505,7 @@ impl VkBindingManager {
             let mut new_set = Option::<VkDescriptorSet>::None;
             'pools_iter: for pool in pools.iter() {
                 let set_res =
-                    VkDescriptorSet::new(pool, &self.device, layout, transient, &bindings);
+                    VkDescriptorSet::new(pool, &self.device, layout, transient, bindings);
                 match set_res {
                     Ok(set) => {
                         new_set = Some(set);
@@ -1273,7 +1518,7 @@ impl VkBindingManager {
             if new_set.is_none() {
                 let pool = Arc::new(VkDescriptorPool::new(&self.device, transient));
                 new_set =
-                    VkDescriptorSet::new(&pool, &self.device, layout, transient, &bindings).ok();
+                    VkDescriptorSet::new(&pool, &self.device, layout, transient, bindings).ok();
                 pools.push(pool);
             }
             let new_set = Arc::new(new_set.unwrap());
