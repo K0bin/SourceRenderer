@@ -48,8 +48,8 @@ pub trait CommandPool<B: GPUBackend> {
 
 pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn set_pipeline(&mut self, pipeline: PipelineBinding<B>);
-  unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &B::Buffer, offset: usize);
-  unsafe fn set_index_buffer(&mut self, index_buffer: &B::Buffer, offset: usize, format: IndexFormat);
+  unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &B::Buffer, offset: u64);
+  unsafe fn set_index_buffer(&mut self, index_buffer: &B::Buffer, offset: u64, format: IndexFormat);
   unsafe fn set_viewports(&mut self, viewports: &[ Viewport ]);
   unsafe fn set_scissors(&mut self, scissors: &[ Scissor ]);
   unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: ShaderType)
@@ -62,8 +62,8 @@ pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView, sampler: &B::Sampler);
   unsafe fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&B::TextureView, &B::Sampler)]);
   unsafe fn bind_storage_view_array(&mut self, frequency: BindingFrequency, binding: u32, textures: &[&B::TextureView]);
-  unsafe fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &B::Buffer, offset: usize, length: usize);
-  unsafe fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &B::Buffer, offset: usize, length: usize);
+  unsafe fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &B::Buffer, offset: u64, length: u64);
+  unsafe fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &B::Buffer, offset: u64, length: u64);
   unsafe fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView);
   unsafe fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &B::Sampler);
   unsafe fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &B::AccelerationStructure);
@@ -83,15 +83,10 @@ pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn end_render_pass(&mut self);
   unsafe fn barrier(&mut self, barriers: &[Barrier<B>]);
 
-  /*unsafe fn create_query_range(&mut self, count: u32) -> B::QueryRange;
-  unsafe fn begin_query(&mut self, query_range: &B::QueryRange, query_index: u32);
-  unsafe fn end_query(&mut self, query_range: &B::QueryRange, query_index: u32);
-  unsafe fn copy_query_results_to_buffer(&mut self, query_range: &B::QueryRange, buffer: &B::Buffer, start_index: u32, count: u32);*/
-
   // TODO: inherit bound resources for convenience
   unsafe fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
-  unsafe fn execute_inner(&mut self, submission: Vec<B::CommandBuffer>);
+  unsafe fn execute_inner(&mut self, submission: &[B::CommandBuffer]);
 
   // RT
   unsafe fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;

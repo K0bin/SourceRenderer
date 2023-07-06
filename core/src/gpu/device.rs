@@ -26,7 +26,6 @@ pub const WHOLE_BUFFER: u64 = u64::MAX;
 
 pub trait Device<B: GPUBackend> {
   unsafe fn create_buffer(&self, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> B::Buffer;
-  unsafe fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> B::Buffer where T: 'static + Send + Sync + Sized + Clone;
   unsafe fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> B::Shader;
   unsafe fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> B::Texture;
   unsafe fn create_texture_view(&self, texture: &B::Texture, info: &TextureViewInfo, name: Option<&str>) -> B::TextureView;
