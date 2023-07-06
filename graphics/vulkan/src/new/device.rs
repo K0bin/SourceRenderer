@@ -6,6 +6,8 @@ use sourcerenderer_core::gpu::*;
 
 use super::*;
 
+use crate::queue::VkQueueInfo; // the RawVkDevice uses this, so we cannot use the new one
+
 pub struct VkDevice {
     device: Arc<RawVkDevice>,
     graphics_queue: VkQueue,
@@ -204,42 +206,19 @@ impl VkDevice {
 }
 
 impl Device<VkBackend> for VkDevice {
-    fn create_buffer(
+    unsafe fn create_buffer(
         &self,
         info: &BufferInfo,
         memory_usage: MemoryUsage,
         name: Option<&str>,
-    ) -> Arc<VkBufferSlice> {
-        self.context
-            .shared()
-            .buffer_allocator()
-            .get_slice(info, memory_usage, name)
-    }
-
-    fn upload_data<T>(
-        &self,
-        data: &[T],
-        memory_usage: MemoryUsage,
-        usage: BufferUsage,
-    ) -> Arc<VkBufferSlice>
-    where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
-        assert_ne!(memory_usage, MemoryUsage::VRAM);
-        let slice = self.context.shared().buffer_allocator().get_slice(
-            &BufferInfo {
-                size: std::mem::size_of_val(data),
-                usage,
-            },
+    ) -> VkBuffer {
+        VkBuffer::new(
+            &self.device,
             memory_usage,
+            info,
             None,
-        );
-        unsafe {
-            let ptr = slice.map_unsafe(false).expect("Failed to map buffer slice");
-            std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
-            slice.unmap_unsafe(true);
-        }
-        slice
+            name
+        )
     }
 
     unsafe fn create_shader(
@@ -361,14 +340,16 @@ impl Device<VkBackend> for VkDevice {
         &self,
         info: &BottomLevelAccelerationStructureInfo<VkBackend>,
     ) -> AccelerationStructureSizes {
-        VkAccelerationStructure::bottom_level_size(&self.device, info)
+        unimplemented!()
+        //VkAccelerationStructure::bottom_level_size(&self.device, info)
     }
 
     unsafe fn get_top_level_acceleration_structure_size(
         &self,
         info: &TopLevelAccelerationStructureInfo<VkBackend>,
     ) -> AccelerationStructureSizes {
-        VkAccelerationStructure::top_level_size(&self.device, info)
+        unimplemented!()
+        //VkAccelerationStructure::top_level_size(&self.device, info)
     }
 
     unsafe fn create_raytracing_pipeline(

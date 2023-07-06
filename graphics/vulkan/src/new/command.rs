@@ -16,6 +16,8 @@ use sourcerenderer_core::gpu::*;
 
 use super::*;
 
+const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
+
 #[allow(clippy::vec_box)]
 pub struct VkCommandPool {
     raw: Arc<RawVkCommandPool>,
@@ -25,8 +27,6 @@ pub struct VkCommandPool {
     sender: Sender<Box<VkCommandBuffer>>,
     shared: Arc<VkShared>,
     queue_family_index: u32,
-    buffer_allocator: Arc<BufferAllocator>,
-    query_allocator: Arc<VkQueryAllocator>,
 }
 
 impl VkCommandPool {
@@ -34,8 +34,6 @@ impl VkCommandPool {
         device: &Arc<RawVkDevice>,
         queue_family_index: u32,
         shared: &Arc<VkShared>,
-        buffer_allocator: &Arc<BufferAllocator>,
-        query_allocator: &Arc<VkQueryAllocator>,
     ) -> Self {
         let create_info = vk::CommandPoolCreateInfo {
             queue_family_index,
@@ -52,46 +50,40 @@ impl VkCommandPool {
             receiver,
             sender,
             shared: shared.clone(),
-            queue_family_index,
-            buffer_allocator: buffer_allocator.clone(),
-            query_allocator: query_allocator.clone(),
+            queue_family_index
         }
     }
 
-    pub fn get_command_buffer(&mut self, frame: u64) -> VkCommandBufferRecorder {
+    pub fn get_command_buffer(&mut self, frame: u64) -> Box<VkCommandBuffer> {
         let mut buffer = self.primary_buffers.pop().unwrap_or_else(|| {
             Box::new(VkCommandBuffer::new(
                 &self.raw.device,
                 &self.raw,
                 CommandBufferType::Primary,
                 self.queue_family_index,
-                &self.shared,
-                &self.buffer_allocator,
-                &self.query_allocator,
+                &self.shared
             ))
         });
         buffer.begin(frame, None);
-        VkCommandBufferRecorder::new(buffer, self.sender.clone())
+        buffer
     }
 
     pub fn get_inner_command_buffer(
         &mut self,
         frame: u64,
         inner_info: Option<&VkInnerCommandBufferInfo>,
-    ) -> VkCommandBufferRecorder {
+    ) -> Box<VkCommandBuffer> {
         let mut buffer = self.secondary_buffers.pop().unwrap_or_else(|| {
             Box::new(VkCommandBuffer::new(
                 &self.raw.device,
                 &self.raw,
                 CommandBufferType::Secondary,
                 self.queue_family_index,
-                &self.shared,
-                &self.buffer_allocator,
-                &self.query_allocator,
+                &self.shared
             ))
         });
         buffer.begin(frame, inner_info);
-        VkCommandBufferRecorder::new(buffer, self.sender.clone())
+        buffer
     }
 }
 
@@ -140,16 +132,10 @@ pub struct VkCommandBuffer {
     render_pass: Option<Arc<VkRenderPass>>,
     pipeline: Option<Arc<VkPipeline>>,
     sub_pass: u32,
-    trackers: VkLifetimeTrackers,
     queue_family_index: u32,
     descriptor_manager: VkBindingManager,
-    buffer_allocator: Arc<BufferAllocator>,
-    pending_memory_barriers: [vk::MemoryBarrier2; 2],
-    pending_image_barriers: Vec<vk::ImageMemoryBarrier2>,
-    pending_buffer_barriers: Vec<vk::BufferMemoryBarrier2>,
     frame: u64,
     inheritance: Option<VkInnerCommandBufferInfo>,
-    query_allocator: Arc<VkQueryAllocator>,
 }
 
 impl VkCommandBuffer {
@@ -158,9 +144,7 @@ impl VkCommandBuffer {
         pool: &Arc<RawVkCommandPool>,
         command_buffer_type: CommandBufferType,
         queue_family_index: u32,
-        shared: &Arc<VkShared>,
-        buffer_allocator: &Arc<BufferAllocator>,
-        query_allocator: &Arc<VkQueryAllocator>,
+        shared: &Arc<VkShared>
     ) -> Self {
         let buffers_create_info = vk::CommandBufferAllocateInfo {
             command_pool: ***pool,
@@ -183,16 +167,10 @@ impl VkCommandBuffer {
             sub_pass: 0u32,
             shared: shared.clone(),
             state: VkCommandBufferState::Ready,
-            trackers: VkLifetimeTrackers::new(),
             queue_family_index,
             descriptor_manager: VkBindingManager::new(device),
-            buffer_allocator: buffer_allocator.clone(),
-            pending_buffer_barriers: Vec::with_capacity(4),
-            pending_image_barriers: Vec::with_capacity(4),
-            pending_memory_barriers: [vk::MemoryBarrier2::default(); 2],
             frame: 0,
             inheritance: None,
-            query_allocator: query_allocator.clone(),
         }
     }
 
@@ -250,7 +228,7 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) fn end(&mut self) {
+    pub(crate) unsafe fn end(&mut self) {
         assert_eq!(self.state, VkCommandBufferState::Recording);
         if self.render_pass.is_some() {
             self.end_render_pass();
@@ -262,8 +240,18 @@ impl VkCommandBuffer {
             self.device.end_command_buffer(self.buffer).unwrap();
         }
     }
+}
 
-    pub(crate) fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
+impl Drop for VkCommandBuffer {
+    fn drop(&mut self) {
+        if self.state == VkCommandBufferState::Submitted {
+            self.device.wait_for_idle();
+        }
+    }
+}
+
+impl CommandBuffer<VkBackend> for VkCommandBuffer {
+    unsafe fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
 
         match &pipeline {
@@ -332,7 +320,7 @@ impl VkCommandBuffer {
         self.descriptor_manager.mark_all_dirty();
     }
 
-    pub(crate) fn end_render_pass(&mut self) {
+    unsafe fn end_render_pass(&mut self) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
@@ -343,7 +331,7 @@ impl VkCommandBuffer {
         self.render_pass = None;
     }
 
-    pub(crate) fn advance_subpass(&mut self) {
+    unsafe fn advance_subpass(&mut self) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
@@ -355,38 +343,36 @@ impl VkCommandBuffer {
         self.sub_pass += 1;
     }
 
-    pub(crate) fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>, offset: usize) {
+    unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &VkBuffer, offset: u64) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-        self.trackers.track_buffer(vertex_buffer);
         unsafe {
             self.device.cmd_bind_vertex_buffers(
                 self.buffer,
                 0,
-                &[*vertex_buffer.buffer().handle()],
-                &[(vertex_buffer.offset() + offset) as u64],
+                &[vertex_buffer.buffer().handle()],
+                &[offset as u64],
             );
         }
     }
 
-    pub(crate) fn set_index_buffer(
+    unsafe fn set_index_buffer(
         &mut self,
-        index_buffer: &Arc<VkBufferSlice>,
-        offset: usize,
+        index_buffer: &VkBuffer,
+        offset: u64,
         format: IndexFormat,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-        self.trackers.track_buffer(index_buffer);
         unsafe {
             self.device.cmd_bind_index_buffer(
                 self.buffer,
-                *index_buffer.buffer().handle(),
-                (index_buffer.offset() + offset) as u64,
+                index_buffer.buffer().handle(),
+                offset,
                 index_format_to_vk(format),
             );
         }
     }
 
-    pub(crate) fn set_viewports(&mut self, viewports: &[Viewport]) {
+    unsafe fn set_viewports(&mut self, viewports: &[Viewport]) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         unsafe {
             for (i, viewport) in viewports.iter().enumerate() {
@@ -406,7 +392,7 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) fn set_scissors(&mut self, scissors: &[Scissor]) {
+    unsafe fn set_scissors(&mut self, scissors: &[Scissor]) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         unsafe {
             let vk_scissors: Vec<vk::Rect2D> = scissors
@@ -426,16 +412,7 @@ impl VkCommandBuffer {
         }
     }
 
-    fn has_pending_barrier(&self) -> bool {
-        !self.pending_image_barriers.is_empty()
-            || !self.pending_buffer_barriers.is_empty()
-            || !self.pending_memory_barriers[0].src_stage_mask.is_empty()
-            || !self.pending_memory_barriers[0].dst_stage_mask.is_empty()
-            || !self.pending_memory_barriers[1].src_stage_mask.is_empty()
-            || !self.pending_memory_barriers[1].dst_stage_mask.is_empty()
-    }
-
-    pub(crate) fn draw(&mut self, vertices: u32, offset: u32) {
+    unsafe fn draw(&mut self, vertices: u32, offset: u32) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
         debug_assert!(self.pipeline.as_ref().unwrap().pipeline_type() == VkPipelineType::Graphics);
@@ -448,7 +425,7 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) fn draw_indexed(
+    unsafe fn draw_indexed(
         &mut self,
         instances: u32,
         first_instance: u32,
@@ -475,43 +452,40 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) fn bind_sampling_view(
+    unsafe fn bind_sampling_view(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        texture: &Arc<VkTextureView>,
+        texture: &VkTextureView,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::SampledTexture(texture),
+            &VkBoundResource::SampledTexture(texture.handle()),
         );
-        self.trackers.track_texture_view(texture);
     }
 
-    pub(crate) fn bind_sampling_view_and_sampler(
+    unsafe fn bind_sampling_view_and_sampler(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        texture: &Arc<VkTextureView>,
-        sampler: &Arc<VkSampler>,
+        texture: &VkTextureView,
+        sampler: &VkSampler,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::SampledTextureAndSampler(texture, sampler),
+            &VkBoundResource::SampledTextureAndSampler(texture.view_handle(), sampler.handle()),
         );
-        self.trackers.track_texture_view(texture);
-        self.trackers.track_sampler(sampler);
     }
 
-    pub(crate) fn bind_uniform_buffer(
+    unsafe fn bind_uniform_buffer(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        buffer: &Arc<VkBufferSlice>,
+        buffer: &VkBuffer,
         offset: usize,
         length: usize,
     ) {
@@ -520,8 +494,8 @@ impl VkCommandBuffer {
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::UniformBuffer(VkBufferBindingInfoRef {
-                buffer,
+            &VkBoundResource::UniformBuffer(VkBufferBindingInfo {
+                buffer: buffer.handle(),
                 offset,
                 length: if length == WHOLE_BUFFER {
                     buffer.length() - offset
@@ -530,14 +504,13 @@ impl VkCommandBuffer {
                 },
             }),
         );
-        self.trackers.track_buffer(buffer);
     }
 
-    pub(crate) fn bind_storage_buffer(
+    unsafe fn bind_storage_buffer(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        buffer: &Arc<VkBufferSlice>,
+        buffer: &VkBuffer,
         offset: usize,
         length: usize,
     ) {
@@ -546,8 +519,8 @@ impl VkCommandBuffer {
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::StorageBuffer(VkBufferBindingInfoRef {
-                buffer,
+            &VkBoundResource::StorageBuffer(VkBufferBindingInfo {
+                buffer: buffer.handle(),
                 offset,
                 length: if length == WHOLE_BUFFER {
                     buffer.length() - offset
@@ -556,37 +529,34 @@ impl VkCommandBuffer {
                 },
             }),
         );
-        self.trackers.track_buffer(buffer);
     }
 
-    pub(crate) fn bind_storage_texture(
+    unsafe fn bind_storage_texture(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        texture: &Arc<VkTextureView>,
+        texture: &VkTextureView,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::StorageTexture(texture),
+            &VkBoundResource::StorageTexture(texture.view_handle()),
         );
-        self.trackers.track_texture_view(texture);
     }
 
-    pub(crate) fn bind_sampler(
+    unsafe fn bind_sampler(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        sampler: &Arc<VkSampler>,
+        sampler: &VkSampler,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         self.descriptor_manager
-            .bind(frequency, binding, VkBoundResourceRef::Sampler(sampler));
-        self.trackers.track_sampler(sampler);
+            .bind(frequency, binding, &VkBoundResource::Sampler(sampler.handle()));
     }
 
-    pub(crate) fn finish_binding(&mut self) {
+    unsafe fn finish_binding(&mut self) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
 
@@ -681,73 +651,6 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) fn upload_dynamic_data<T>(
-        &self,
-        data: &[T],
-        usage: BufferUsage,
-    ) -> Arc<VkBufferSlice>
-    where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
-        let slice = self.buffer_allocator.get_slice(
-            &BufferInfo {
-                size: std::mem::size_of_val(data),
-                usage,
-            },
-            MemoryUsage::UncachedRAM,
-            None,
-        );
-        unsafe {
-            let ptr = slice.map_unsafe(false).expect("Failed to map buffer");
-            std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
-            slice.unmap_unsafe(true);
-        }
-        slice
-    }
-
-    pub(crate) fn upload_dynamic_data_inline<T>(
-        &self,
-        data: &[T],
-        visible_for_shader_type: ShaderType,
-    ) where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
-        let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-        let pipeline_layout = pipeline.layout();
-        let range = pipeline_layout
-            .push_constant_range(visible_for_shader_type)
-            .expect("No push constants set up for shader");
-        let size = std::mem::size_of_val(data);
-        unsafe {
-            self.device.cmd_push_constants(
-                self.buffer,
-                *pipeline_layout.handle(),
-                shader_type_to_vk(visible_for_shader_type),
-                range.offset,
-                std::slice::from_raw_parts(
-                    data.as_ptr() as *const u8,
-                    min(size, range.size as usize),
-                ),
-            );
-        }
-    }
-
-    pub(crate) fn allocate_scratch_buffer(
-        &self,
-        info: &BufferInfo,
-        memory_usage: MemoryUsage,
-    ) -> Arc<VkBufferSlice> {
-        self.buffer_allocator.get_slice(
-            &BufferInfo {
-                size: info.size as usize,
-                usage: info.usage,
-            },
-            memory_usage,
-            None,
-        )
-    }
-
     pub(crate) fn begin_label(&self, label: &str) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         let label_cstring = CString::new(label).unwrap();
@@ -776,7 +679,7 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) fn execute_inner(&mut self, mut submissions: Vec<VkCommandBufferSubmission>) {
+    pub(crate) fn execute_inner(&mut self, mut submissions: &[CommandBuffer]) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         if submissions.is_empty() {
             return;
@@ -1001,86 +904,7 @@ impl VkCommandBuffer {
         }
     }
 
-    pub(crate) fn flush_barriers(&mut self) {
-        const FULL_BARRIER: bool = false; // IN CASE OF EMERGENCY, SET TO TRUE
-        if FULL_BARRIER {
-            let full_memory_barrier = vk::MemoryBarrier2 {
-                src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-                dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-                src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
-                dst_access_mask: vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE,
-                ..Default::default()
-            };
-            let dependency_info = vk::DependencyInfo {
-                image_memory_barrier_count: 0,
-                p_image_memory_barriers: std::ptr::null(),
-                buffer_memory_barrier_count: 0,
-                p_buffer_memory_barriers: std::ptr::null(),
-                memory_barrier_count: 1,
-                p_memory_barriers: &full_memory_barrier as *const vk::MemoryBarrier2,
-                ..Default::default()
-            };
-            unsafe {
-                self.device
-                    .synchronization2
-                    .cmd_pipeline_barrier2(self.buffer, &dependency_info);
-            }
-            self.pending_memory_barriers[0].src_stage_mask = vk::PipelineStageFlags2::empty();
-            self.pending_memory_barriers[0].dst_stage_mask = vk::PipelineStageFlags2::empty();
-            self.pending_memory_barriers[0].src_access_mask = vk::AccessFlags2::empty();
-            self.pending_memory_barriers[0].dst_access_mask = vk::AccessFlags2::empty();
-            self.pending_memory_barriers[1].src_stage_mask = vk::PipelineStageFlags2::empty();
-            self.pending_memory_barriers[1].dst_stage_mask = vk::PipelineStageFlags2::empty();
-            self.pending_memory_barriers[1].src_access_mask = vk::AccessFlags2::empty();
-            self.pending_memory_barriers[1].dst_access_mask = vk::AccessFlags2::empty();
-            self.pending_image_barriers.clear();
-            self.pending_buffer_barriers.clear();
-            return;
-        }
-
-        if !self.has_pending_barrier() {
-            return;
-        }
-
-        let dependency_info = vk::DependencyInfo {
-            image_memory_barrier_count: self.pending_image_barriers.len() as u32,
-            p_image_memory_barriers: self.pending_image_barriers.as_ptr(),
-            buffer_memory_barrier_count: self.pending_buffer_barriers.len() as u32,
-            p_buffer_memory_barriers: self.pending_buffer_barriers.as_ptr(),
-            memory_barrier_count: if self.pending_memory_barriers[0].src_stage_mask.is_empty()
-                && self.pending_memory_barriers[0].dst_stage_mask.is_empty()
-                && self.pending_memory_barriers[1].src_stage_mask.is_empty()
-                && self.pending_memory_barriers[1].dst_stage_mask.is_empty()
-            {
-                0
-            } else if self.pending_memory_barriers[1].src_stage_mask.is_empty()
-                && self.pending_memory_barriers[1].dst_stage_mask.is_empty() {
-                1
-            } else {
-                2
-            },
-            p_memory_barriers: &self.pending_memory_barriers as *const vk::MemoryBarrier2,
-            ..Default::default()
-        };
-
-        unsafe {
-            self.device
-                .synchronization2
-                .cmd_pipeline_barrier2(self.buffer, &dependency_info);
-        }
-        self.pending_memory_barriers[0].src_stage_mask = vk::PipelineStageFlags2::empty();
-        self.pending_memory_barriers[0].dst_stage_mask = vk::PipelineStageFlags2::empty();
-        self.pending_memory_barriers[0].src_access_mask = vk::AccessFlags2::empty();
-        self.pending_memory_barriers[0].dst_access_mask = vk::AccessFlags2::empty();
-        self.pending_memory_barriers[1].src_stage_mask = vk::PipelineStageFlags2::empty();
-        self.pending_memory_barriers[1].dst_stage_mask = vk::PipelineStageFlags2::empty();
-        self.pending_memory_barriers[1].src_access_mask = vk::AccessFlags2::empty();
-        self.pending_memory_barriers[1].dst_access_mask = vk::AccessFlags2::empty();
-        self.pending_image_barriers.clear();
-        self.pending_buffer_barriers.clear();
-    }
-
-    pub(crate) fn begin_render_pass(
+    unsafe fn begin_render_pass(
         &mut self,
         renderpass_begin_info: &RenderPassBeginInfo<VkBackend>,
         recording_mode: RenderpassRecordingMode,
@@ -1188,106 +1012,17 @@ impl VkCommandBuffer {
         });
     }
 
-    pub fn inheritance(&self) -> &VkInnerCommandBufferInfo {
+    unsafe fn inheritance(&self) -> &VkInnerCommandBufferInfo {
         self.inheritance.as_ref().unwrap()
     }
 
-    pub fn wait_events(
-        &mut self,
-        events: &[vk::Event],
-        src_stage_mask: vk::PipelineStageFlags,
-        dst_stage_mask: vk::PipelineStageFlags,
-        memory_barriers: &[vk::MemoryBarrier],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-        image_memory_barriers: &[vk::ImageMemoryBarrier],
-    ) {
-        unsafe {
-            self.device.cmd_wait_events(
-                self.buffer,
-                events,
-                src_stage_mask,
-                dst_stage_mask,
-                memory_barriers,
-                buffer_memory_barriers,
-                image_memory_barriers,
-            );
-        }
-    }
-
-    pub fn signal_event(&mut self, event: vk::Event, stage_mask: vk::PipelineStageFlags) {
-        unsafe {
-            self.device.cmd_set_event(self.buffer, event, stage_mask);
-        }
-    }
-
-    pub fn create_query_range(&mut self, count: u32) -> Arc<VkQueryRange> {
-        let query_range = Arc::new(self.query_allocator.get(vk::QueryType::OCCLUSION, count));
-        if !query_range.pool.is_reset() {
-            unsafe {
-                self.device.cmd_reset_query_pool(
-                    self.buffer,
-                    *query_range.pool.handle(),
-                    0,
-                    query_range.pool.query_count(),
-                );
-            }
-            query_range.pool.mark_reset();
-        }
-        query_range
-    }
-
-    pub fn begin_query(&mut self, query_range: &Arc<VkQueryRange>, index: u32) {
-        unsafe {
-            self.device.cmd_begin_query(
-                self.buffer,
-                *query_range.pool.handle(),
-                query_range.index + index,
-                vk::QueryControlFlags::empty(),
-            );
-        }
-    }
-
-    pub fn end_query(&mut self, query_range: &Arc<VkQueryRange>, index: u32) {
-        unsafe {
-            self.device.cmd_end_query(
-                self.buffer,
-                *query_range.pool.handle(),
-                query_range.index + index,
-            );
-        }
-    }
-
-    pub fn copy_query_results_to_buffer(
-        &mut self,
-        query_range: &Arc<VkQueryRange>,
-        buffer: &Arc<VkBufferSlice>,
-        start_index: u32,
-        count: u32,
-    ) {
-        let vk_start = query_range.index + start_index;
-        let vk_count = query_range.count.min(count);
-        unsafe {
-            self.device.cmd_copy_query_pool_results(
-                self.buffer,
-                *query_range.pool.handle(),
-                vk_start,
-                vk_count,
-                *buffer.buffer().handle(),
-                buffer.offset() as u64,
-                std::mem::size_of::<u32>() as u64,
-                vk::QueryResultFlags::WAIT,
-            )
-        }
-        self.trackers.track_buffer(buffer);
-    }
-
-    pub fn create_bottom_level_acceleration_structure(
+    unsafe fn create_bottom_level_acceleration_structure(
         &mut self,
         info: &BottomLevelAccelerationStructureInfo<VkBackend>,
         size: usize,
-        target_buffer: &Arc<VkBufferSlice>,
-        scratch_buffer: &Arc<VkBufferSlice>,
-    ) -> Arc<VkAccelerationStructure> {
+        target_buffer: &VkBuffer,
+        scratch_buffer: &VkBuffer,
+    ) -> VkAccelerationStructure {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         self.trackers.track_buffer(scratch_buffer);
@@ -1302,34 +1037,26 @@ impl VkCommandBuffer {
             scratch_buffer,
             self.handle(),
         ));
-        self.trackers
-            .track_acceleration_structure(&acceleration_structure);
         acceleration_structure
     }
 
     fn upload_top_level_instances(
         &mut self,
         instances: &[AccelerationStructureInstance<VkBackend>],
-    ) -> Arc<VkBufferSlice> {
-        for instance in instances {
-            self.trackers
-                .track_acceleration_structure(instance.acceleration_structure);
-        }
-        VkAccelerationStructure::upload_top_level_instances(self, instances)
+    ) -> VkBuffer {
+        unimplemented!()
+        //VkAccelerationStructure::upload_top_level_instances(self, instances)
     }
 
     fn create_top_level_acceleration_structure(
         &mut self,
         info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<VkBackend>,
         size: usize,
-        target_buffer: &Arc<VkBufferSlice>,
-        scratch_buffer: &Arc<VkBufferSlice>,
-    ) -> Arc<VkAccelerationStructure> {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        target_buffer: &VkBuffer,
+        scratch_buffer: &VkBuffer,
+    ) -> VkAccelerationStructure {
+        /*debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
-        self.trackers.track_buffer(scratch_buffer);
-        self.trackers.track_buffer(target_buffer);
-        self.trackers.track_buffer(info.instances_buffer);
         for instance in info.instances {
             self.trackers
                 .track_acceleration_structure(instance.acceleration_structure);
@@ -1342,12 +1069,11 @@ impl VkCommandBuffer {
             scratch_buffer,
             self.handle(),
         ));
-        self.trackers
-            .track_acceleration_structure(&acceleration_structure);
-        acceleration_structure
+        acceleration_structure*/
+        unimplemented!()
     }
 
-    fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
+    unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         debug_assert!(
@@ -1370,17 +1096,17 @@ impl VkCommandBuffer {
         }
     }
 
-    fn bind_acceleration_structure(
+    unsafe fn bind_acceleration_structure(
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        acceleration_structure: &Arc<VkAccelerationStructure>,
+        acceleration_structure: &VkAccelerationStructure,
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::AccelerationStructure(acceleration_structure),
+            VkBoundResource::AccelerationStructure(acceleration_structure.handle()),
         );
         self.trackers
             .track_acceleration_structure(acceleration_structure);
@@ -1390,13 +1116,13 @@ impl VkCommandBuffer {
         &mut self,
         frequency: BindingFrequency,
         binding: u32,
-        textures_and_samplers: &[(&Arc<VkTextureView>, &Arc<VkSampler>)],
+        textures_and_samplers: &[(&VkTextureView, &VkSampler)],
     ) {
         debug_assert_eq!(self.state, VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
-            VkBoundResourceRef::SampledTextureAndSamplerArray(textures_and_samplers),
+            VkBoundResource::SampledTextureAndSamplerArray((textures_and_samplers.0.handle(), )),
         );
         for (texture, samplers) in textures_and_samplers {
             self.trackers.track_texture_view(*texture);
@@ -1425,11 +1151,11 @@ impl VkCommandBuffer {
         self.trackers.track_texture_view(texture_view);
     }
 
-    fn draw_indexed_indirect(
+    unsafe fn draw_indexed_indirect(
         &mut self,
-        draw_buffer: &Arc<VkBufferSlice>,
+        draw_buffer: &VkBuffer,
         draw_buffer_offset: u32,
-        count_buffer: &Arc<VkBufferSlice>,
+        count_buffer: &VkBuffer,
         count_buffer_offset: u32,
         max_draw_count: u32,
         stride: u32,
@@ -1441,8 +1167,6 @@ impl VkCommandBuffer {
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
-        self.trackers.track_buffer(draw_buffer);
-        self.trackers.track_buffer(count_buffer);
         unsafe {
             self.device
                 .indirect_count
@@ -1450,10 +1174,10 @@ impl VkCommandBuffer {
                 .unwrap()
                 .cmd_draw_indexed_indirect_count(
                     self.buffer,
-                    *draw_buffer.buffer().handle(),
-                    draw_buffer.offset() as u64 + draw_buffer_offset as u64,
-                    *count_buffer.buffer().handle(),
-                    count_buffer.offset() as u64 + count_buffer_offset as u64,
+                    draw_buffer.buffer().handle(),
+                    draw_buffer_offset as u64,
+                    count_buffer.buffer().handle(),
+                    count_buffer_offset as u64,
                     max_draw_count,
                     stride,
                 );
@@ -1462,9 +1186,9 @@ impl VkCommandBuffer {
 
     fn draw_indirect(
         &mut self,
-        draw_buffer: &Arc<VkBufferSlice>,
+        draw_buffer: &VkBuffer,
         draw_buffer_offset: u32,
-        count_buffer: &Arc<VkBufferSlice>,
+        count_buffer: &VkBuffer,
         count_buffer_offset: u32,
         max_draw_count: u32,
         stride: u32,
@@ -1476,8 +1200,6 @@ impl VkCommandBuffer {
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
-        self.trackers.track_buffer(draw_buffer);
-        self.trackers.track_buffer(count_buffer);
         unsafe {
             self.device
                 .indirect_count
@@ -1485,10 +1207,10 @@ impl VkCommandBuffer {
                 .unwrap()
                 .cmd_draw_indirect_count(
                     self.buffer,
-                    *draw_buffer.buffer().handle(),
-                    draw_buffer.offset() as u64 + draw_buffer_offset as u64,
-                    *count_buffer.buffer().handle(),
-                    count_buffer.offset() as u64 + count_buffer_offset as u64,
+                    draw_buffer.buffer().handle(),
+                    draw_buffer_offset as u64,
+                    count_buffer.buffer().handle(),
+                    count_buffer_offset as u64,
                     max_draw_count,
                     stride,
                 );
@@ -1640,594 +1362,6 @@ impl VkCommandBuffer {
                 .cmd_dispatch(self.buffer, (actual_length_in_u32s as u32 + 63) / 64, 1, 1);
         }
         self.descriptor_manager.mark_all_dirty();
-    }
-}
-
-impl Drop for VkCommandBuffer {
-    fn drop(&mut self) {
-        if self.state == VkCommandBufferState::Submitted {
-            self.device.wait_for_idle();
-        }
-    }
-}
-
-// Small wrapper around VkCommandBuffer to
-// disable Send + Sync because sending VkCommandBuffers across threads
-// is only safe after recording is done
-pub struct VkCommandBufferRecorder {
-    item: Option<Box<VkCommandBuffer>>,
-    sender: Sender<Box<VkCommandBuffer>>,
-    phantom: PhantomData<*const u8>,
-}
-
-impl Drop for VkCommandBufferRecorder {
-    fn drop(&mut self) {
-        if self.item.is_none() {
-            return;
-        }
-        let item = std::mem::replace(&mut self.item, Option::None).unwrap();
-        self.sender.send(item).unwrap();
-    }
-}
-
-impl VkCommandBufferRecorder {
-    fn new(item: Box<VkCommandBuffer>, sender: Sender<Box<VkCommandBuffer>>) -> Self {
-        Self {
-            item: Some(item),
-            sender,
-            phantom: PhantomData,
-        }
-    }
-
-    #[inline(always)]
-    pub fn end_render_pass(&mut self) {
-        self.item.as_mut().unwrap().end_render_pass();
-    }
-
-    pub fn advance_subpass(&mut self) {
-        self.item.as_mut().unwrap().advance_subpass();
-    }
-
-    pub fn wait_events(
-        &mut self,
-        events: &[vk::Event],
-        src_stage_mask: vk::PipelineStageFlags,
-        dst_stage_mask: vk::PipelineStageFlags,
-        memory_barriers: &[vk::MemoryBarrier],
-        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
-        image_memory_barriers: &[vk::ImageMemoryBarrier],
-    ) {
-        self.item.as_mut().unwrap().wait_events(
-            events,
-            src_stage_mask,
-            dst_stage_mask,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
-        );
-    }
-
-    pub fn signal_event(&mut self, event: vk::Event, stage_mask: vk::PipelineStageFlags) {
-        self.item.as_mut().unwrap().signal_event(event, stage_mask);
-    }
-
-    pub(crate) fn allocate_scratch_buffer(
-        &mut self,
-        info: &BufferInfo,
-        memory_usage: MemoryUsage,
-    ) -> Arc<VkBufferSlice> {
-        self.item
-            .as_mut()
-            .unwrap()
-            .allocate_scratch_buffer(info, memory_usage)
-    }
-}
-
-impl CommandBuffer<VkBackend> for VkCommandBufferRecorder {
-    #[inline(always)]
-    fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
-        self.item.as_mut().unwrap().set_pipeline(pipeline);
-    }
-
-    #[inline(always)]
-    fn set_vertex_buffer(&mut self, vertex_buffer: &Arc<VkBufferSlice>, offset: usize) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .set_vertex_buffer(vertex_buffer, offset)
-    }
-
-    #[inline(always)]
-    fn set_index_buffer(
-        &mut self,
-        index_buffer: &Arc<VkBufferSlice>,
-        offset: usize,
-        format: IndexFormat,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .set_index_buffer(index_buffer, offset, format)
-    }
-
-    #[inline(always)]
-    fn set_viewports(&mut self, viewports: &[Viewport]) {
-        self.item.as_mut().unwrap().set_viewports(viewports);
-    }
-
-    #[inline(always)]
-    fn set_scissors(&mut self, scissors: &[Scissor]) {
-        self.item.as_mut().unwrap().set_scissors(scissors);
-    }
-
-    #[inline(always)]
-    fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Arc<VkBufferSlice>
-    where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
-        self.item.as_mut().unwrap().upload_dynamic_data(data, usage)
-    }
-
-    #[inline(always)]
-    fn upload_dynamic_data_inline<T>(&mut self, data: &[T], visible_for_shader_type: ShaderType)
-    where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
-        self.item
-            .as_mut()
-            .unwrap()
-            .upload_dynamic_data_inline(data, visible_for_shader_type);
-    }
-
-    #[inline(always)]
-    fn draw(&mut self, vertices: u32, offset: u32) {
-        self.item.as_mut().unwrap().draw(vertices, offset);
-    }
-
-    #[inline(always)]
-    fn draw_indexed(
-        &mut self,
-        instances: u32,
-        first_instance: u32,
-        indices: u32,
-        first_index: u32,
-        vertex_offset: i32,
-    ) {
-        self.item.as_mut().unwrap().draw_indexed(
-            instances,
-            first_instance,
-            indices,
-            first_index,
-            vertex_offset,
-        );
-    }
-
-    #[inline(always)]
-    fn bind_sampling_view(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        texture: &Arc<VkTextureView>,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_sampling_view(frequency, binding, texture);
-    }
-
-    #[inline(always)]
-    fn bind_sampling_view_and_sampler(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        texture: &Arc<VkTextureView>,
-        sampler: &Arc<VkSampler>,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_sampling_view_and_sampler(frequency, binding, texture, sampler);
-    }
-
-    #[inline(always)]
-    fn bind_uniform_buffer(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        buffer: &Arc<VkBufferSlice>,
-        offset: usize,
-        length: usize,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_uniform_buffer(frequency, binding, buffer, offset, length);
-    }
-
-    #[inline(always)]
-    fn bind_storage_buffer(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        buffer: &Arc<VkBufferSlice>,
-        offset: usize,
-        length: usize,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_storage_buffer(frequency, binding, buffer, offset, length);
-    }
-
-    #[inline(always)]
-    fn bind_storage_texture(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        texture: &Arc<VkTextureView>,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_storage_texture(frequency, binding, texture);
-    }
-
-    #[inline(always)]
-    fn bind_sampler(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        sampler: &Arc<VkSampler>,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_sampler(frequency, binding, sampler);
-    }
-
-    #[inline(always)]
-    fn finish_binding(&mut self) {
-        self.item.as_mut().unwrap().finish_binding();
-    }
-
-    #[inline(always)]
-    fn begin_label(&mut self, label: &str) {
-        self.item.as_mut().unwrap().begin_label(label);
-    }
-
-    #[inline(always)]
-    fn end_label(&mut self) {
-        self.item.as_mut().unwrap().end_label();
-    }
-
-    #[inline(always)]
-    fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .dispatch(group_count_x, group_count_y, group_count_z);
-    }
-
-    #[inline(always)]
-    fn blit(
-        &mut self,
-        src_texture: &Arc<VkTexture>,
-        src_array_layer: u32,
-        src_mip_level: u32,
-        dst_texture: &Arc<VkTexture>,
-        dst_array_layer: u32,
-        dst_mip_level: u32,
-    ) {
-        self.item.as_mut().unwrap().blit(
-            src_texture,
-            src_array_layer,
-            src_mip_level,
-            dst_texture,
-            dst_array_layer,
-            dst_mip_level,
-        );
-    }
-
-    fn finish(self) -> VkCommandBufferSubmission {
-        assert_eq!(
-            self.item.as_ref().unwrap().state,
-            VkCommandBufferState::Recording
-        );
-        let mut mut_self = self;
-        let mut item = std::mem::replace(&mut mut_self.item, None).unwrap();
-        item.end();
-        VkCommandBufferSubmission::new(item, mut_self.sender.clone())
-    }
-
-    #[inline(always)]
-    fn barrier<'a>(&mut self, barriers: &[Barrier<VkBackend>]) {
-        self.item.as_mut().unwrap().barrier(barriers);
-    }
-
-    #[inline(always)]
-    fn flush_barriers(&mut self) {
-        self.item.as_mut().unwrap().flush_barriers();
-    }
-
-    #[inline(always)]
-    fn begin_render_pass(
-        &mut self,
-        renderpass_info: &RenderPassBeginInfo<VkBackend>,
-        recording_mode: RenderpassRecordingMode,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .begin_render_pass(renderpass_info, recording_mode);
-    }
-
-    #[inline(always)]
-    fn advance_subpass(&mut self) {
-        self.item.as_mut().unwrap().advance_subpass();
-    }
-
-    #[inline(always)]
-    fn end_render_pass(&mut self) {
-        self.item.as_mut().unwrap().end_render_pass();
-    }
-
-    type CommandBufferInheritance = VkInnerCommandBufferInfo;
-
-    #[inline(always)]
-    fn inheritance(&self) -> &VkInnerCommandBufferInfo {
-        self.item.as_ref().unwrap().inheritance()
-    }
-
-    #[inline(always)]
-    fn execute_inner(&mut self, submission: Vec<VkCommandBufferSubmission>) {
-        self.item.as_mut().unwrap().execute_inner(submission);
-    }
-
-    #[inline(always)]
-    fn begin_query(&mut self, query_range: &Arc<VkQueryRange>, query_index: u32) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .begin_query(query_range, query_index);
-    }
-
-    #[inline(always)]
-    fn end_query(&mut self, query_range: &Arc<VkQueryRange>, query_index: u32) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .end_query(query_range, query_index);
-    }
-
-    #[inline(always)]
-    fn create_query_range(&mut self, count: u32) -> Arc<VkQueryRange> {
-        self.item.as_mut().unwrap().create_query_range(count)
-    }
-
-    #[inline(always)]
-    fn copy_query_results_to_buffer(
-        &mut self,
-        query_range: &Arc<VkQueryRange>,
-        buffer: &Arc<VkBufferSlice>,
-        start_index: u32,
-        count: u32,
-    ) {
-        self.item.as_mut().unwrap().copy_query_results_to_buffer(
-            query_range,
-            buffer,
-            start_index,
-            count,
-        );
-    }
-
-    #[inline(always)]
-    fn create_bottom_level_acceleration_structure(
-        &mut self,
-        info: &BottomLevelAccelerationStructureInfo<VkBackend>,
-        size: usize,
-        target_buffer: &Arc<VkBufferSlice>,
-        scratch_buffer: &Arc<VkBufferSlice>,
-    ) -> Arc<VkAccelerationStructure> {
-        self.item
-            .as_mut()
-            .unwrap()
-            .create_bottom_level_acceleration_structure(info, size, target_buffer, scratch_buffer)
-    }
-
-    #[inline(always)]
-    fn upload_top_level_instances(
-        &mut self,
-        instances: &[AccelerationStructureInstance<VkBackend>],
-    ) -> Arc<VkBufferSlice> {
-        self.item
-            .as_mut()
-            .unwrap()
-            .upload_top_level_instances(instances)
-    }
-
-    #[inline(always)]
-    fn create_top_level_acceleration_structure(
-        &mut self,
-        info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<VkBackend>,
-        size: usize,
-        target_buffer: &Arc<VkBufferSlice>,
-        scratch_buffer: &Arc<VkBufferSlice>,
-    ) -> Arc<VkAccelerationStructure> {
-        self.item
-            .as_mut()
-            .unwrap()
-            .create_top_level_acceleration_structure(info, size, target_buffer, scratch_buffer)
-    }
-
-    #[inline(always)]
-    fn create_temporary_buffer(
-        &mut self,
-        info: &BufferInfo,
-        memory_usage: MemoryUsage,
-    ) -> Arc<VkBufferSlice> {
-        self.item
-            .as_mut()
-            .unwrap()
-            .allocate_scratch_buffer(info, memory_usage)
-    }
-
-    #[inline(always)]
-    fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
-        self.item.as_mut().unwrap().trace_ray(width, height, depth);
-    }
-
-    #[inline(always)]
-    fn bind_acceleration_structure(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        acceleration_structure: &Arc<VkAccelerationStructure>,
-    ) {
-        self.item.as_mut().unwrap().bind_acceleration_structure(
-            frequency,
-            binding,
-            acceleration_structure,
-        );
-    }
-
-    #[inline(always)]
-    fn track_texture_view(&mut self, texture_view: &Arc<VkTextureView>) {
-        self.item.as_mut().unwrap().track_texture_view(texture_view);
-    }
-
-    #[inline(always)]
-    fn draw_indexed_indirect(
-        &mut self,
-        draw_buffer: &Arc<VkBufferSlice>,
-        draw_buffer_offset: u32,
-        count_buffer: &Arc<VkBufferSlice>,
-        count_buffer_offset: u32,
-        max_draw_count: u32,
-        stride: u32,
-    ) {
-        self.item.as_mut().unwrap().draw_indexed_indirect(
-            draw_buffer,
-            draw_buffer_offset,
-            count_buffer,
-            count_buffer_offset,
-            max_draw_count,
-            stride,
-        );
-    }
-
-    #[inline(always)]
-    fn draw_indirect(
-        &mut self,
-        draw_buffer: &Arc<VkBufferSlice>,
-        draw_buffer_offset: u32,
-        count_buffer: &Arc<VkBufferSlice>,
-        count_buffer_offset: u32,
-        max_draw_count: u32,
-        stride: u32,
-    ) {
-        self.item.as_mut().unwrap().draw_indexed_indirect(
-            draw_buffer,
-            draw_buffer_offset,
-            count_buffer,
-            count_buffer_offset,
-            max_draw_count,
-            stride,
-        );
-    }
-
-    #[inline(always)]
-    fn clear_storage_texture(
-        &mut self,
-        texture: &Arc<VkTexture>,
-        array_layer: u32,
-        mip_level: u32,
-        values: [u32; 4],
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .clear_storage_texture(texture, array_layer, mip_level, values);
-    }
-
-    #[inline(always)]
-    fn clear_storage_buffer(
-        &mut self,
-        buffer: &Arc<VkBufferSlice>,
-        offset: usize,
-        length_in_u32s: usize,
-        value: u32,
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .clear_storage_buffer(buffer, offset, length_in_u32s, value);
-    }
-
-    #[inline(always)]
-    fn bind_sampling_view_and_sampler_array(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        textures_and_samplers: &[(&Arc<VkTextureView>, &Arc<VkSampler>)],
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_sampling_view_and_sampler_array(frequency, binding, textures_and_samplers)
-    }
-
-    #[inline(always)]
-    fn bind_storage_view_array(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        textures: &[&Arc<VkTextureView>],
-    ) {
-        self.item
-            .as_mut()
-            .unwrap()
-            .bind_storage_view_array(frequency, binding, textures)
-    }
-}
-
-pub struct VkCommandBufferSubmission {
-    item: Option<Box<VkCommandBuffer>>,
-    sender: Sender<Box<VkCommandBuffer>>,
-}
-
-unsafe impl Send for VkCommandBufferSubmission {}
-
-impl VkCommandBufferSubmission {
-    fn new(item: Box<VkCommandBuffer>, sender: Sender<Box<VkCommandBuffer>>) -> Self {
-        Self {
-            item: Some(item),
-            sender,
-        }
-    }
-
-    pub(crate) fn mark_submitted(&mut self) {
-        let item = self.item.as_mut().unwrap();
-        assert_eq!(item.state, VkCommandBufferState::Finished);
-        item.state = VkCommandBufferState::Submitted;
-    }
-
-    pub(crate) fn handle(&self) -> vk::CommandBuffer {
-        self.item.as_ref().unwrap().handle()
-    }
-
-    pub(crate) fn command_buffer_type(&self) -> CommandBufferType {
-        self.item.as_ref().unwrap().command_buffer_type
-    }
-
-    pub(crate) fn queue_family_index(&self) -> u32 {
-        self.item.as_ref().unwrap().queue_family_index
-    }
-}
-
-impl Drop for VkCommandBufferSubmission {
-    fn drop(&mut self) {
-        let item = std::mem::replace(&mut self.item, None).unwrap();
-        let _ = self.sender.send(item);
     }
 }
 

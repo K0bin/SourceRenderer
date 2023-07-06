@@ -9,12 +9,14 @@ use sourcerenderer_core::gpu::*;
 
 use super::*;
 
-#[derive(Clone, Debug, Copy)]
+use crate::queue::VkQueueInfo; // the RawVkDevice uses this, so we cannot use the new one
+
+/*#[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
     pub queue_family_index: usize,
     pub queue_index: usize,
     pub supports_presentation: bool,
-}
+}*/
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum VkQueueType {

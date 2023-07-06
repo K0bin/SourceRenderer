@@ -24,7 +24,7 @@ pub use crate::raw::*;
 mod backend;
 //mod bindless; // NEEDS REDESIGN
 mod buffer;
-//mod command;
+mod command;
 mod descriptor;
 mod device;
 mod format;
