@@ -19,7 +19,7 @@ bitflags! {
 
 #[derive(Debug, Clone)]
 pub struct BufferInfo {
-  pub size: usize,
+  pub size: u64,
   pub usage: BufferUsage
 }
 

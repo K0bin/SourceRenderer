@@ -18,12 +18,12 @@ pub struct PreparedBackBuffer<'a, B: GPUBackend> {
 }
 
 pub trait Swapchain<B: GPUBackend> : Sized {
-  fn recreate(old: Self, width: u32, height: u32) -> Result<Self, SwapchainError>;
-  fn recreate_on_surface(old: Self, surface: B::Surface, width: u32, height: u32) -> Result<Self, SwapchainError>;
+  unsafe fn recreate(old: Self, width: u32, height: u32) -> Result<Self, SwapchainError>;
+  unsafe fn recreate_on_surface(old: Self, surface: B::Surface, width: u32, height: u32) -> Result<Self, SwapchainError>;
   fn sample_count(&self) -> SampleCount;
   fn format(&self) -> Format;
   fn surface(&self) -> &B::Surface;
-  fn prepare_back_buffer(&self) -> Option<PreparedBackBuffer<'_, B>>;
+  unsafe fn prepare_back_buffer(&mut self) -> Option<PreparedBackBuffer<'_, B>>;
   fn transform(&self) -> Matrix4;
   fn width(&self) -> u32;
   fn height(&self) -> u32;

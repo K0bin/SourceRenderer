@@ -43,7 +43,8 @@ pub enum CommandPoolType {
 }
 
 pub trait CommandPool<B: GPUBackend> {
-  unsafe fn create_command_buffer(&self) -> B::CommandBuffer;
+  unsafe fn create_command_buffer(&mut self, inner_info: Option<&<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance>) -> B::CommandBuffer;
+  unsafe fn reset(&mut self);
 }
 
 pub trait CommandBuffer<B: GPUBackend> {
@@ -66,17 +67,16 @@ pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &B::Buffer, offset: u64, length: u64);
   unsafe fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView);
   unsafe fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &B::Sampler);
-  unsafe fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &B::AccelerationStructure);
-  unsafe fn track_texture_view(&mut self, texture_view: &B::TextureView);
+  //unsafe fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &B::AccelerationStructure);
   unsafe fn finish_binding(&mut self);
   unsafe fn begin_label(&mut self, label: &str);
   unsafe fn end_label(&mut self);
   unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
   unsafe fn blit(&mut self, src_texture: &B::Texture, src_array_layer: u32, src_mip_level: u32, dst_texture: &B::Texture, dst_array_layer: u32, dst_mip_level: u32);
-  unsafe fn finish(self);
+  unsafe fn finish(&mut self);
 
   unsafe fn clear_storage_texture(&mut self, view: &B::Texture, array_layer: u32, mip_level: u32, values: [u32; 4]);
-  unsafe fn clear_storage_buffer(&mut self, buffer: &B::Buffer, offset: usize, length_in_u32s: usize, value: u32);
+  unsafe fn clear_storage_buffer(&mut self, buffer: &B::Buffer, offset: u64, length_in_u32s: u64, value: u32);
 
   unsafe fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode);
   unsafe fn advance_subpass(&mut self);
@@ -86,13 +86,13 @@ pub trait CommandBuffer<B: GPUBackend> {
   // TODO: inherit bound resources for convenience
   unsafe fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
-  unsafe fn execute_inner(&mut self, submission: &[B::CommandBuffer]);
+  unsafe fn execute_inner(&mut self, submission: &mut [B::CommandBuffer]);
 
   // RT
-  unsafe fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
+  /*unsafe fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: u64, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
   unsafe fn upload_top_level_instances(&mut self, instances: &[AccelerationStructureInstance<B>]) -> B::Buffer;
-  unsafe fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>, size: usize, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
-  unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32);
+  unsafe fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>, size: u64, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
+  unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32);*/
 }
 
 pub enum RenderPassAttachmentView<'a, B: GPUBackend> {
@@ -220,7 +220,9 @@ pub enum Barrier<'a, B: GPUBackend> {
     new_sync: BarrierSync,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    buffer: &'a B::Buffer
+    buffer: &'a B::Buffer,
+    offset: u64,
+    length: u64
   },
   GlobalBarrier {
     old_sync: BarrierSync,

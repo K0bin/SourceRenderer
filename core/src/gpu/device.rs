@@ -40,7 +40,7 @@ pub trait Device<B: GPUBackend> {
   fn supports_indirect(&self) -> bool;
   fn supports_min_max_filter(&self) -> bool;
   fn supports_barycentrics(&self) -> bool; // TODO turn into flags
-  unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
+  /*unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   unsafe fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
-  unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<B>) -> B::RayTracingPipeline;
+  unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<B>) -> B::RayTracingPipeline;*/
 }
