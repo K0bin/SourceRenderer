@@ -43,7 +43,7 @@ pub enum CommandPoolType {
 }
 
 pub trait CommandPool<B: GPUBackend> {
-  unsafe fn create_command_buffer(&mut self, inner_info: Option<&<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance>) -> B::CommandBuffer;
+  unsafe fn create_command_buffer(&mut self, inner_info: Option<&<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance>, frame: u64) -> B::CommandBuffer;
   unsafe fn reset(&mut self);
 }
 
@@ -73,6 +73,8 @@ pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn end_label(&mut self);
   unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
   unsafe fn blit(&mut self, src_texture: &B::Texture, src_array_layer: u32, src_mip_level: u32, dst_texture: &B::Texture, dst_array_layer: u32, dst_mip_level: u32);
+
+  unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>, frame: u64);
   unsafe fn finish(&mut self);
 
   unsafe fn clear_storage_texture(&mut self, view: &B::Texture, array_layer: u32, mip_level: u32, values: [u32; 4]);
@@ -83,10 +85,11 @@ pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn end_render_pass(&mut self);
   unsafe fn barrier(&mut self, barriers: &[Barrier<B>]);
 
-  // TODO: inherit bound resources for convenience
   unsafe fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
   unsafe fn execute_inner(&mut self, submission: &mut [B::CommandBuffer]);
+
+  unsafe fn cleanup(&mut self, frame: u64);
 
   // RT
   /*unsafe fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: u64, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
