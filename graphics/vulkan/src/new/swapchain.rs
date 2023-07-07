@@ -1,21 +1,31 @@
-use std::cmp::{
-    max,
-    min,
+use std::{
+    cmp::{
+        max,
+        min,
+    },
+    sync::{
+        atomic::{
+            AtomicU32,
+            AtomicU64,
+            Ordering,
+        },
+        Arc,
+    },
 };
-use std::sync::atomic::{
-    AtomicU32,
-    Ordering, AtomicU64,
-};
-use std::sync::Arc;
 
-use ash::extensions::khr::Swapchain as SwapchainLoader;
-use ash::prelude::VkResult;
-use ash::vk;
-use ash::vk::SurfaceTransformFlagsKHR;
+use ash::{
+    extensions::khr::Swapchain as SwapchainLoader,
+    prelude::VkResult,
+    vk,
+    vk::SurfaceTransformFlagsKHR,
+};
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
-
-use sourcerenderer_core::{gpu::*, Matrix4, Vec3};
+use sourcerenderer_core::{
+    gpu::*,
+    Matrix4,
+    Vec3,
+};
 
 use super::*;
 
@@ -52,7 +62,7 @@ impl VkSwapchain {
         height: u32,
         device: &Arc<RawVkDevice>,
         mut surface: VkSurface,
-        old_swapchain: Option<vk::SwapchainKHR>
+        old_swapchain: Option<vk::SwapchainKHR>,
     ) -> Result<Self, SwapchainError> {
         if surface.is_lost() {
             return Err(SwapchainError::SurfaceLost);
@@ -192,8 +202,7 @@ impl VkSwapchain {
                         vk::CompositeAlphaFlagsKHR::INHERIT
                     },
                     clipped: vk::TRUE,
-                    old_swapchain: old_swapchain
-                        .unwrap_or(vk::SwapchainKHR::default()),
+                    old_swapchain: old_swapchain.unwrap_or(vk::SwapchainKHR::default()),
                     ..Default::default()
                 };
 
@@ -274,7 +283,7 @@ impl VkSwapchain {
                 state: VkSwapchainState::Okay,
                 presented_image: 0,
                 acquired_image: 0,
-                transform_matrix: matrix
+                transform_matrix: matrix,
             })
         }
     }
@@ -284,7 +293,7 @@ impl VkSwapchain {
         width: u32,
         height: u32,
         device: &Arc<RawVkDevice>,
-        surface: VkSurface
+        surface: VkSurface,
     ) -> Result<Self, SwapchainError> {
         VkSwapchain::new_internal(vsync, width, height, device, surface, None)
     }
@@ -390,8 +399,7 @@ impl VkSwapchain {
         self.semaphore_index += 1;
         let semaphore = &self.acquire_semaphores[index];
 
-        while self.presented_image != self.acquired_image
-        {}
+        while self.presented_image != self.acquired_image {}
         let result = {
             let swapchain_handle = self.handle();
             self.swapchain_loader.acquire_next_image(
@@ -454,7 +462,10 @@ impl VkSwapchain {
 impl Drop for VkSwapchain {
     fn drop(&mut self) {
         self.device.wait_for_idle();
-        unsafe { self.swapchain_loader.destroy_swapchain(self.swapchain, None) }
+        unsafe {
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None)
+        }
     }
 }
 
@@ -476,7 +487,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
                 None
             } else {
                 Some(old_sc_handle)
-            }
+            },
         )
     }
 
@@ -502,7 +513,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
                 None
             } else {
                 Some(old_sc_handle)
-            }
+            },
         )
     }
 
@@ -565,7 +576,6 @@ fn surface_vk_format_to_core(format: vk::Format) -> Format {
         _ => panic!("Unsupported format: {:?}", format),
     }
 }
-
 
 pub struct VkBinarySemaphore {
     device: Arc<RawVkDevice>,

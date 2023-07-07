@@ -1,11 +1,12 @@
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
+use std::sync::{
+    atomic::AtomicU64,
+    Arc,
+};
 
 use ash::vk;
 use sourcerenderer_core::gpu::*;
 
 use super::*;
-
 use crate::queue::VkQueueInfo; // the RawVkDevice uses this, so we cannot use the new one
 
 pub struct VkDevice {
@@ -147,32 +148,14 @@ impl VkDevice {
 
         let shared = Arc::new(VkShared::new(&raw));
 
-        let graphics_queue = {
-            VkQueue::new(
-                graphics_queue_info,
-                VkQueueType::Graphics,
-                &raw,
-                &shared
-            )
-        };
+        let graphics_queue =
+            { VkQueue::new(graphics_queue_info, VkQueueType::Graphics, &raw, &shared) };
 
-        let compute_queue = compute_queue_info.map(|info| {
-            VkQueue::new(
-                info,
-                VkQueueType::Compute,
-                &raw,
-                &shared
-            )
-        });
+        let compute_queue =
+            compute_queue_info.map(|info| VkQueue::new(info, VkQueueType::Compute, &raw, &shared));
 
-        let transfer_queue = transfer_queue_info.map(|info| {
-            VkQueue::new(
-                info,
-                VkQueueType::Transfer,
-                &raw,
-                &shared
-            )
-        });
+        let transfer_queue = transfer_queue_info
+            .map(|info| VkQueue::new(info, VkQueueType::Transfer, &raw, &shared));
 
         VkDevice {
             device: raw,
@@ -212,13 +195,7 @@ impl Device<VkBackend> for VkDevice {
         memory_usage: MemoryUsage,
         name: Option<&str>,
     ) -> VkBuffer {
-        VkBuffer::new(
-            &self.device,
-            memory_usage,
-            info,
-            None,
-            name
-        )
+        VkBuffer::new(&self.device, memory_usage, info, None, name)
     }
 
     unsafe fn create_shader(
@@ -227,7 +204,7 @@ impl Device<VkBackend> for VkDevice {
         bytecode: &[u8],
         name: Option<&str>,
     ) -> VkShader {
-    VkShader::new(&self.device, shader_type, bytecode, name)
+        VkShader::new(&self.device, shader_type, bytecode, name)
     }
 
     unsafe fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> VkTexture {
@@ -247,17 +224,8 @@ impl Device<VkBackend> for VkDevice {
         VkSampler::new(&self.device, info)
     }
 
-    unsafe fn create_compute_pipeline(
-        &self,
-        shader: &VkShader,
-        name: Option<&str>,
-    ) -> VkPipeline {
-        VkPipeline::new_compute(
-            &self.device,
-            shader,
-            self.shared.as_ref(),
-            name,
-        )
+    unsafe fn create_compute_pipeline(&self, shader: &VkShader, name: Option<&str>) -> VkPipeline {
+        VkPipeline::new_compute(&self.device, shader, self.shared.as_ref(), name)
     }
 
     unsafe fn wait_for_idle(&self) {
@@ -301,12 +269,7 @@ impl Device<VkBackend> for VkDevice {
             render_pass: &rp,
             sub_pass: subpass,
         };
-        VkPipeline::new_graphics(
-            &self.device,
-            &vk_info,
-            shared,
-            name,
-        )
+        VkPipeline::new_graphics(&self.device, &vk_info, shared, name)
     }
 
     unsafe fn create_fence(&self) -> VkTimelineSemaphore {
@@ -320,8 +283,8 @@ impl Device<VkBackend> for VkDevice {
     fn supports_bindless(&self) -> bool {
         false
         /*self.device
-            .features
-            .contains(VkFeatures::DESCRIPTOR_INDEXING)*/
+        .features
+        .contains(VkFeatures::DESCRIPTOR_INDEXING)*/
     }
 
     fn supports_ray_tracing(&self) -> bool {
@@ -366,7 +329,6 @@ impl Device<VkBackend> for VkDevice {
     fn supports_barycentrics(&self) -> bool {
         self.device.features.contains(VkFeatures::BARYCENTRICS)
     }
-
 }
 
 impl Drop for VkDevice {

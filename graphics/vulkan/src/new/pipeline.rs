@@ -1,19 +1,23 @@
-use std::collections::HashMap;
-use std::ffi::{
-    CStr,
-    CString,
+use std::{
+    collections::HashMap,
+    ffi::{
+        CStr,
+        CString,
+    },
+    hash::{
+        Hash,
+        Hasher,
+    },
+    os::raw::c_char,
+    sync::Arc,
 };
-use std::hash::{
-    Hash,
-    Hasher,
-};
-use std::os::raw::c_char;
-use std::sync::Arc;
 
-use ash::vk;
-use ash::vk::{
-    Handle,
-    PipelineRasterizationStateCreateFlags,
+use ash::{
+    vk,
+    vk::{
+        Handle,
+        PipelineRasterizationStateCreateFlags,
+    },
 };
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::*;
@@ -123,38 +127,42 @@ impl VkShader {
             std::slice::from_raw_parts(resources_list, resources_count as usize)
         };
         let push_constant_resource = push_constant_buffers.first();
-        let push_constants_range = push_constant_resource
-            .map(|resource| unsafe {
-                let type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                assert_ne!(type_handle, std::ptr::null());
-                let mut size = 0u64;
-                assert_eq!(
-                    spirv_cross_sys::spvc_compiler_get_declared_struct_size(compiler, type_handle, &mut size as *mut u64),
-                    spirv_cross_sys::spvc_result_SPVC_SUCCESS
+        let push_constants_range = push_constant_resource.map(|resource| unsafe {
+            let type_handle =
+                spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
+            assert_ne!(type_handle, std::ptr::null());
+            let mut size = 0u64;
+            assert_eq!(
+                spirv_cross_sys::spvc_compiler_get_declared_struct_size(
+                    compiler,
+                    type_handle,
+                    &mut size as *mut u64
+                ),
+                spirv_cross_sys::spvc_result_SPVC_SUCCESS
+            );
+            let push_constant_range = vk::PushConstantRange {
+                stage_flags: match shader_type {
+                    ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
+                    ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
+                    ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+                    ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+                    ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
+                    ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                    _ => unimplemented!(),
+                },
+                offset: 0u32,
+                size: size as u32,
+            };
+
+            if push_constant_range.size > 128 {
+                panic!(
+                    "Shader push constants exceed the size limit of 128 bytes, name: {:?}",
+                    name
                 );
-                let push_constant_range = vk::PushConstantRange {
-                    stage_flags: match shader_type {
-                        ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
-                        ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
-                        ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
-                        ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
-                        ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
-                        ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-                        _ => unimplemented!(),
-                    },
-                    offset: 0u32,
-                    size: size as u32,
-                };
+            }
 
-                if push_constant_range.size > 128 {
-                    panic!(
-                        "Shader push constants exceed the size limit of 128 bytes, name: {:?}",
-                        name
-                    );
-                }
-
-                push_constant_range
-            });
+            push_constant_range
+        });
 
         let separate_images = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
@@ -1377,22 +1385,22 @@ impl VkPipeline {
 
         if shader.uses_bindless_texture_set {
             /*descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
-                VkDescriptorSetLayoutKey {
-                    bindings: vec![VkDescriptorSetEntryInfo {
-                        name: "bindless_textures".to_string(),
-                        shader_stage: vk::ShaderStageFlags::VERTEX
-                            | vk::ShaderStageFlags::FRAGMENT
-                            | vk::ShaderStageFlags::COMPUTE,
-                        index: 0,
-                        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                        count: BINDLESS_TEXTURE_COUNT,
-                        writable: false,
-                        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                            | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                            | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-                    }],
-                    flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
-                };*/
+            VkDescriptorSetLayoutKey {
+                bindings: vec![VkDescriptorSetEntryInfo {
+                    name: "bindless_textures".to_string(),
+                    shader_stage: vk::ShaderStageFlags::VERTEX
+                        | vk::ShaderStageFlags::FRAGMENT
+                        | vk::ShaderStageFlags::COMPUTE,
+                    index: 0,
+                    descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+                    count: BINDLESS_TEXTURE_COUNT,
+                    writable: false,
+                    flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
+                        | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
+                        | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
+                }],
+                flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
+            };*/
         }
 
         let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();

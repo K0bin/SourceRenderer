@@ -1,23 +1,25 @@
 #![allow(dead_code)]
 
-pub use self::adapter::*;
-pub use self::backend::*;
 // pub use self::bindless::*;
-pub use self::buffer::*;
-pub use self::renderpass::*;
-pub use self::surface::*;
-pub use self::swapchain::*;
-pub use self::sync::*;
-pub use self::texture::*;
-pub use self::shared::*;
-pub use self::command::*;
-pub use self::descriptor::*;
-pub use self::device::*;
-pub use self::format::*;
-pub use self::instance::*;
-pub use self::pipeline::*;
 //pub use self::query::*;
 pub use self::queue::*;
+pub use self::{
+    adapter::*,
+    backend::*,
+    buffer::*,
+    command::*,
+    descriptor::*,
+    device::*,
+    format::*,
+    instance::*,
+    pipeline::*,
+    renderpass::*,
+    shared::*,
+    surface::*,
+    swapchain::*,
+    sync::*,
+    texture::*,
+};
 pub use crate::raw::*;
 
 mod adapter;

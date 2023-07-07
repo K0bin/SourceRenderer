@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use ash::extensions::khr::Surface as SurfaceLoader;
-use ash::prelude::VkResult;
-use ash::vk;
-use ash::vk::Handle;
+use ash::{
+    extensions::khr::Surface as SurfaceLoader,
+    prelude::VkResult,
+    vk,
+    vk::Handle,
+};
 
 use super::*;
 

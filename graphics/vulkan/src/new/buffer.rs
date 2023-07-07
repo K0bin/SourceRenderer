@@ -5,16 +5,15 @@ use std::{
         Hasher,
     },
     mem::MaybeUninit,
-    sync::Arc
+    sync::Arc,
 };
 
 use ash::vk::{
     self,
     BufferDeviceAddressInfo,
-    Handle
+    Handle,
 };
 use smallvec::SmallVec;
-
 use sourcerenderer_core::gpu::*;
 
 use super::*;

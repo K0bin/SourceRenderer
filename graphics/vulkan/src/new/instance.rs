@@ -1,22 +1,23 @@
-use std::ffi::{
-    CStr,
-    CString,
+use std::{
+    ffi::{
+        CStr,
+        CString,
+    },
+    os::raw::{
+        c_char,
+        c_void,
+    },
+    sync::Arc,
 };
-use std::os::raw::{
-    c_char,
-    c_void,
-};
-use std::sync::Arc;
 
 use ash::vk;
-
 use sourcerenderer_core::gpu::*;
 
 use super::*;
 
 pub struct VkInstance {
     raw: Arc<RawVkInstance>,
-    adapters: Vec<VkAdapter>
+    adapters: Vec<VkAdapter>,
 }
 
 impl VkInstance {
@@ -152,18 +153,14 @@ impl VkInstance {
                 debug_utils,
             });
 
-            let physical_devices: Vec<vk::PhysicalDevice> = raw.instance.enumerate_physical_devices().unwrap();
+            let physical_devices: Vec<vk::PhysicalDevice> =
+                raw.instance.enumerate_physical_devices().unwrap();
             let adapters: Vec<VkAdapter> = physical_devices
                 .into_iter()
-                .map(|phys_dev| {
-                    VkAdapter::new(&raw, phys_dev)
-                })
+                .map(|phys_dev| VkAdapter::new(&raw, phys_dev))
                 .collect();
 
-            VkInstance {
-                raw,
-                adapters
-            }
+            VkInstance { raw, adapters }
         }
     }
 

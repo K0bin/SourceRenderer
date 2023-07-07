@@ -12,7 +12,6 @@ use ash::{
     vk::Handle,
 };
 use smallvec::SmallVec;
-
 use sourcerenderer_core::gpu::*;
 
 use super::*;
@@ -29,7 +28,7 @@ pub struct VkShared {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
 pub(crate) struct VkDescriptorSetLayoutKey {
-    pub(crate) bindings: SmallVec::<[VkDescriptorSetEntryInfo; 16]>,
+    pub(crate) bindings: SmallVec<[VkDescriptorSetEntryInfo; 16]>,
     pub(crate) flags: vk::DescriptorSetLayoutCreateFlags,
 }
 
@@ -48,17 +47,17 @@ impl VkShared {
             HashMap::<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>::new();
 
         /*let bindless_texture_descriptor_set =
-            if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
-                let bindless_set = Arc::new(VkBindlessDescriptorSet::new(
-                    device,
-                    vk::DescriptorType::SAMPLED_IMAGE,
-                ));
-                let (layout_key, descriptor_layout) = bindless_set.layout();
-                descriptor_set_layouts.insert(layout_key.clone(), descriptor_layout.clone());
-                Some(bindless_set)
-            } else {
-                None
-            };*/
+        if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+            let bindless_set = Arc::new(VkBindlessDescriptorSet::new(
+                device,
+                vk::DescriptorType::SAMPLED_IMAGE,
+            ));
+            let (layout_key, descriptor_layout) = bindless_set.layout();
+            descriptor_set_layouts.insert(layout_key.clone(), descriptor_layout.clone());
+            Some(bindless_set)
+        } else {
+            None
+        };*/
 
         let shader_bytes = include_bytes!("../../meta_shaders/clear_buffer.comp.spv");
         let shader = Arc::new(VkShader::new(
@@ -67,11 +66,8 @@ impl VkShared {
             &shader_bytes[..],
             Some("ClearBufferMeta"),
         ));
-        let clear_buffer_meta_pipeline = VkPipeline::new_compute_meta(
-            device,
-            &shader,
-            Some("ClearBufferPipeline"),
-        );
+        let clear_buffer_meta_pipeline =
+            VkPipeline::new_compute_meta(device, &shader, Some("ClearBufferPipeline"));
 
         Self {
             device: device.clone(),

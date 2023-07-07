@@ -1,20 +1,23 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::hash::{
-    Hash,
-    Hasher,
-};
-use std::sync::{
-    Arc,
-    Mutex,
-    MutexGuard,
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    ffi::c_void,
+    hash::{
+        Hash,
+        Hasher,
+    },
+    sync::{
+        Arc,
+        Mutex,
+        MutexGuard,
+    },
 };
 
-use ash::prelude::VkResult;
-use ash::vk;
+use ash::{
+    prelude::VkResult,
+    vk,
+};
 use smallvec::SmallVec;
-
 use sourcerenderer_core::gpu::*;
 
 use super::*;
@@ -946,9 +949,7 @@ pub(crate) enum VkBoundResource {
     SampledTexture(vk::ImageView),
     SampledTextureArray(SmallVec<[vk::ImageView; PER_SET_BINDINGS]>),
     SampledTextureAndSampler(vk::ImageView, vk::Sampler),
-    SampledTextureAndSamplerArray(
-        SmallVec<[(vk::ImageView, vk::Sampler); PER_SET_BINDINGS]>,
-    ),
+    SampledTextureAndSamplerArray(SmallVec<[(vk::ImageView, vk::Sampler); PER_SET_BINDINGS]>),
     Sampler(vk::Sampler),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -958,7 +959,6 @@ impl Default for VkBoundResource {
         VkBoundResource::None
     }
 }
-
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub(crate) enum VkBoundResourceRef<'a> {
@@ -972,9 +972,7 @@ pub(crate) enum VkBoundResourceRef<'a> {
     SampledTexture(vk::ImageView),
     SampledTextureArray(&'a [vk::ImageView]),
     SampledTextureAndSampler(vk::ImageView, vk::Sampler),
-    SampledTextureAndSamplerArray(
-        &'a [(vk::ImageView, vk::Sampler)],
-    ),
+    SampledTextureAndSamplerArray(&'a [(vk::ImageView, vk::Sampler)]),
     Sampler(vk::Sampler),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -991,12 +989,8 @@ impl From<&VkBoundResourceRef<'_>> for VkBoundResource {
             VkBoundResourceRef::None => VkBoundResource::None,
             VkBoundResourceRef::UniformBuffer(info) => VkBoundResource::UniformBuffer(info.clone()),
             VkBoundResourceRef::StorageBuffer(info) => VkBoundResource::StorageBuffer(info.clone()),
-            VkBoundResourceRef::StorageTexture(view) => {
-                VkBoundResource::StorageTexture(*view)
-            }
-            VkBoundResourceRef::SampledTexture(view) => {
-                VkBoundResource::SampledTexture(*view)
-            }
+            VkBoundResourceRef::StorageTexture(view) => VkBoundResource::StorageTexture(*view),
+            VkBoundResourceRef::SampledTexture(view) => VkBoundResource::SampledTexture(*view),
             VkBoundResourceRef::SampledTextureAndSampler(view, sampler) => {
                 VkBoundResource::SampledTextureAndSampler(*view, *sampler)
             }
@@ -1030,8 +1024,7 @@ impl From<&VkBoundResourceRef<'_>> for VkBoundResource {
                 VkBoundResource::SampledTextureAndSamplerArray(
                     arr.iter()
                         .map(|(t, s)| {
-                            let tuple: (vk::ImageView, vk::Sampler) =
-                                (*t, *s);
+                            let tuple: (vk::ImageView, vk::Sampler) = (*t, *s);
                             tuple
                         })
                         .collect(),
@@ -1115,7 +1108,6 @@ impl BindingCompare<Self> for VkBoundResource {
     }
 }
 
-
 impl BindingCompare<VkBoundResourceRef<'_>> for VkBoundResource {
     fn binding_eq(
         &self,
@@ -1183,7 +1175,6 @@ impl BindingCompare<VkBoundResourceRef<'_>> for VkBoundResource {
         }
     }
 }
-
 
 impl PartialEq<VkBoundResourceRef<'_>> for VkBoundResource {
     fn eq(&self, other: &VkBoundResourceRef) -> bool {
@@ -1424,8 +1415,7 @@ impl VkBindingManager {
                             length: _,
                         }) => {
                             set_binding.dynamic_offsets
-                                [set_binding.dynamic_offset_count as usize] =
-                                *offset as u64;
+                                [set_binding.dynamic_offset_count as usize] = *offset as u64;
                             set_binding.dynamic_offset_count += 1;
                         }
                         VkBoundResource::StorageBuffer(VkBufferBindingInfo {
@@ -1434,8 +1424,7 @@ impl VkBindingManager {
                             length: _,
                         }) => {
                             set_binding.dynamic_offsets
-                                [set_binding.dynamic_offset_count as usize] =
-                                *offset as u64;
+                                [set_binding.dynamic_offset_count as usize] = *offset as u64;
                             set_binding.dynamic_offset_count += 1;
                         }
                         VkBoundResource::StorageBufferArray(buffers) => {
@@ -1446,8 +1435,7 @@ impl VkBindingManager {
                             } in buffers
                             {
                                 set_binding.dynamic_offsets
-                                    [set_binding.dynamic_offset_count as usize] =
-                                    *offset as u64;
+                                    [set_binding.dynamic_offset_count as usize] = *offset as u64;
                                 set_binding.dynamic_offset_count += 1;
                             }
                         }
@@ -1459,8 +1447,7 @@ impl VkBindingManager {
                             } in buffers
                             {
                                 set_binding.dynamic_offsets
-                                    [set_binding.dynamic_offset_count as usize] =
-                                    *offset as u64;
+                                    [set_binding.dynamic_offset_count as usize] = *offset as u64;
                                 set_binding.dynamic_offset_count += 1;
                             }
                         }
@@ -1481,7 +1468,7 @@ impl VkBindingManager {
     ) -> Option<Arc<VkDescriptorSet>>
     where
         VkBoundResource: BindingCompare<T>,
-        VkBoundResource: From<&'a T>
+        VkBoundResource: From<&'a T>,
     {
         if layout.is_empty() {
             return None;
@@ -1504,8 +1491,7 @@ impl VkBindingManager {
             };
             let mut new_set = Option::<VkDescriptorSet>::None;
             'pools_iter: for pool in pools.iter() {
-                let set_res =
-                    VkDescriptorSet::new(pool, &self.device, layout, transient, bindings);
+                let set_res = VkDescriptorSet::new(pool, &self.device, layout, transient, bindings);
                 match set_res {
                     Ok(set) => {
                         new_set = Some(set);

@@ -1,8 +1,9 @@
-use std::ffi::c_void;
-use std::sync::Arc;
+use std::{
+    ffi::c_void,
+    sync::Arc,
+};
 
 use ash::vk;
-
 use sourcerenderer_core::gpu::*;
 
 use super::*;
@@ -81,7 +82,9 @@ impl Drop for VkTimelineSemaphore {
 impl Fence for VkTimelineSemaphore {
     fn value(&self) -> u64 {
         unsafe {
-            self.device.get_semaphore_counter_value(self.semaphore).unwrap()
+            self.device
+                .get_semaphore_counter_value(self.semaphore)
+                .unwrap()
         }
     }
 

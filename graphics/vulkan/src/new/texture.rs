@@ -1,18 +1,21 @@
-use std::cmp::max;
-use std::ffi::{
-    c_void,
-    CString,
+use std::{
+    cmp::max,
+    ffi::{
+        c_void,
+        CString,
+    },
+    hash::{
+        Hash,
+        Hasher,
+    },
+    sync::Arc,
 };
-use std::hash::{
-    Hash,
-    Hasher,
-};
-use std::sync::Arc;
 
-use ash::vk;
-use ash::vk::Handle;
+use ash::{
+    vk,
+    vk::Handle,
+};
 use smallvec::SmallVec;
-
 use sourcerenderer_core::gpu::*;
 
 use super::*;
@@ -21,7 +24,7 @@ pub struct VkTexture {
     image: vk::Image,
     allocation: Option<vma_sys::VmaAllocation>,
     device: Arc<RawVkDevice>,
-    info: TextureInfo
+    info: TextureInfo,
 }
 
 unsafe impl Send for VkTexture {}
@@ -38,7 +41,7 @@ impl VkTexture {
             image_type: match info.dimension {
                 TextureDimension::Dim1DArray | TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
                 TextureDimension::Dim2DArray | TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
-                TextureDimension::Dim3D => vk::ImageType::TYPE_3D
+                TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
             },
             extent: vk::Extent3D {
                 width: max(1, info.width),
@@ -52,9 +55,18 @@ impl VkTexture {
             ..Default::default()
         };
 
-        debug_assert!(info.array_length == 1 || (info.dimension == TextureDimension::Dim1DArray || info.dimension == TextureDimension::Dim2DArray));
+        debug_assert!(
+            info.array_length == 1
+                || (info.dimension == TextureDimension::Dim1DArray
+                    || info.dimension == TextureDimension::Dim2DArray)
+        );
         debug_assert!(info.depth == 1 || info.dimension == TextureDimension::Dim3D);
-        debug_assert!(info.height == 1 || (info.dimension == TextureDimension::Dim2D || info.dimension == TextureDimension::Dim2DArray || info.dimension == TextureDimension::Dim3D));
+        debug_assert!(
+            info.height == 1
+                || (info.dimension == TextureDimension::Dim2D
+                    || info.dimension == TextureDimension::Dim2DArray
+                    || info.dimension == TextureDimension::Dim3D)
+        );
 
         let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
         compatible_formats.push(create_info.format);
@@ -156,7 +168,7 @@ impl VkTexture {
             image,
             device: device.clone(),
             info,
-            allocation: None
+            allocation: None,
         }
     }
 
@@ -330,7 +342,7 @@ impl VkTextureView {
             view,
             device: device.clone(),
             info: info.clone(),
-            texture_info: texture.info().clone()
+            texture_info: texture.info().clone(),
         }
     }
 

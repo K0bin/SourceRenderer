@@ -1,19 +1,21 @@
-use std::f32;
-use std::ffi::{
-    c_void,
-    CStr,
-    CString,
+use std::{
+    f32,
+    ffi::{
+        c_void,
+        CStr,
+        CString,
+    },
+    os::raw::c_char,
+    sync::Arc,
 };
-use std::os::raw::c_char;
-use std::sync::Arc;
 
-use ash::extensions::khr::Surface as KhrSurface;
-use ash::vk;
-
+use ash::{
+    extensions::khr::Surface as KhrSurface,
+    vk,
+};
 use sourcerenderer_core::gpu::*;
 
 use super::*;
-
 use crate::queue::VkQueueInfo;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
@@ -301,12 +303,13 @@ impl Adapter<VkBackend> for VkAdapter {
                 vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
             let mut supported_barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
-            let mut supported_16bit_features =
-                vk::PhysicalDevice16BitStorageFeatures::default();
+            let mut supported_16bit_features = vk::PhysicalDevice16BitStorageFeatures::default();
 
-            supported_16bit_features.p_next = std::mem::replace(&mut supported_features.p_next,
-             &mut supported_16bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
-                as *mut c_void);
+            supported_16bit_features.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_16bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
+                    as *mut c_void,
+            );
 
             if self
                 .extensions
@@ -427,7 +430,9 @@ impl Adapter<VkBackend> for VkAdapter {
 
             enabled_features.shader_storage_image_write_without_format = vk::TRUE;
 
-            if supported_features.features.shader_int16 == vk::TRUE && supported_16bit_features.storage_buffer16_bit_access == vk::TRUE {
+            if supported_features.features.shader_int16 == vk::TRUE
+                && supported_16bit_features.storage_buffer16_bit_access == vk::TRUE
+            {
                 sixteen_bit_features.storage_buffer16_bit_access = vk::TRUE;
                 enabled_features.shader_int16 = vk::TRUE;
             }
@@ -624,8 +629,11 @@ impl Adapter<VkBackend> for VkAdapter {
                 enabled_features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
             }
 
-            sixteen_bit_features.p_next = std::mem::replace(&mut device_creation_pnext,
-              &mut sixteen_bit_features as *mut vk::PhysicalDevice16BitStorageFeatures as *mut c_void);
+            sixteen_bit_features.p_next = std::mem::replace(
+                &mut device_creation_pnext,
+                &mut sixteen_bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
+                    as *mut c_void,
+            );
 
             if self
                 .extensions

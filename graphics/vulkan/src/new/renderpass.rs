@@ -1,15 +1,16 @@
-use std::cmp::max;
-use std::collections::HashMap;
-use std::hash::{
-    Hash,
-    Hasher,
+use std::{
+    cmp::max,
+    collections::HashMap,
+    hash::{
+        Hash,
+        Hasher,
+    },
+    sync::Arc,
+    usize,
 };
-use std::sync::Arc;
-use std::usize;
 
 use ash::vk;
 use smallvec::SmallVec;
-
 use sourcerenderer_core::gpu::*;
 
 use super::*;
