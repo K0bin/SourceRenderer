@@ -71,14 +71,15 @@ impl VkQueue {
 }
 
 impl Queue<VkBackend> for VkQueue {
-    unsafe fn submit(&self, submissions: &[Submission<VkBackend>]) {
+    unsafe fn submit(&self, submissions: &mut [Submission<VkBackend>]) {
         let guard = self.lock_queue();
 
         let mut command_buffers = SmallVec::<[vk::CommandBufferSubmitInfo; 2]>::with_capacity(submissions.len());
         let mut semaphores = SmallVec::<[vk::SemaphoreSubmitInfo; 2]>::with_capacity(submissions.len());
 
-        for submission in submissions {
-            for cmd_buffer in submission.command_buffers {
+        for submission in submissions.iter_mut() {
+            for cmd_buffer in submission.command_buffers.iter_mut() {
+                cmd_buffer.mark_submitted();
                 command_buffers.push(vk::CommandBufferSubmitInfo {
                     command_buffer: cmd_buffer.handle(),
                     device_mask: 0u32,
@@ -135,11 +136,11 @@ impl Queue<VkBackend> for VkQueue {
         let mut semaphore_ptr = semaphores.as_ptr();
         let vk_submissions: SmallVec<[vk::SubmitInfo2; 2]> = submissions.iter().map(|submission| {
             let submission_cmd_buffer_ptr = cmd_buffer_ptr;
-            cmd_buffer_ptr.add(submission.command_buffers.len());
+            cmd_buffer_ptr = cmd_buffer_ptr.add(submission.command_buffers.len());
             let submission_wait_semaphores_ptr = semaphore_ptr;
-            semaphore_ptr.add(submission.wait_fences.len());
+            semaphore_ptr = semaphore_ptr.add(submission.wait_fences.len());
             let submission_signal_semaphores_ptr = semaphore_ptr;
-            semaphore_ptr.add(submission.signal_fences.len());
+            semaphore_ptr = semaphore_ptr.add(submission.signal_fences.len());
 
             vk::SubmitInfo2 {
                 flags: vk::SubmitFlags::empty(),
@@ -160,8 +161,8 @@ impl Queue<VkBackend> for VkQueue {
         //swapchain.loader().qu
     }
 
-    unsafe fn create_command_pool(&self, command_pool_type: CommandPoolType) -> VkCommandPool {
-        unimplemented!()
+    unsafe fn create_command_pool(&self, _command_pool_type: CommandPoolType) -> VkCommandPool {
+        VkCommandPool::new(&self.device, self.info.queue_family_index as u32, &self.shared)
     }
 }
 

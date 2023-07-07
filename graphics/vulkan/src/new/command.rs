@@ -40,7 +40,7 @@ impl VkCommandPool {
 }
 
 impl CommandPool<VkBackend> for VkCommandPool {
-    unsafe fn create_command_buffer(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>) -> VkCommandBuffer {
+    unsafe fn create_command_buffer(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>, frame: u64) -> VkCommandBuffer {
         let mut buffer = VkCommandBuffer::new(
             &self.raw.device,
             &self.raw,
@@ -48,7 +48,7 @@ impl CommandPool<VkBackend> for VkCommandPool {
             self.queue_family_index,
             &self.shared
         );
-        buffer.begin(None);
+        buffer.begin(None, frame);
         buffer
     }
 
@@ -93,6 +93,7 @@ pub struct VkCommandBuffer {
     queue_family_index: u32,
     descriptor_manager: VkBindingManager,
     inheritance: Option<VkInnerCommandBufferInfo>,
+    frame: u64
 }
 
 impl VkCommandBuffer {
@@ -127,6 +128,7 @@ impl VkCommandBuffer {
             queue_family_index,
             descriptor_manager: VkBindingManager::new(device),
             inheritance: None,
+            frame: 0u64
         }
     }
 
@@ -136,49 +138,6 @@ impl VkCommandBuffer {
 
     pub fn cmd_buffer_type(&self) -> CommandBufferType {
         self.command_buffer_type
-    }
-
-    pub(crate) fn reset(&mut self) {
-        self.state = VkCommandBufferState::Ready;
-        self.descriptor_manager.reset(0);
-    }
-
-    pub(crate) fn begin(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>) {
-        assert_eq!(self.state, VkCommandBufferState::Ready);
-
-        self.state = VkCommandBufferState::Recording;
-
-        let (flags, inhertiance_info) = if let Some(inner_info) = inner_info {
-            (
-                vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
-                    | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
-                vk::CommandBufferInheritanceInfo {
-                    render_pass: inner_info.render_pass.handle(),
-                    subpass: inner_info.sub_pass,
-                    framebuffer: inner_info.frame_buffer.handle(),
-                    ..Default::default()
-                },
-            )
-        } else {
-            (
-                vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
-                Default::default(),
-            )
-        };
-
-        unsafe {
-            self.device
-                .begin_command_buffer(
-                    self.buffer,
-                    &vk::CommandBufferBeginInfo {
-                        flags,
-                        p_inheritance_info: &inhertiance_info
-                            as *const vk::CommandBufferInheritanceInfo,
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
-        }
     }
 
     pub(crate) fn mark_submitted(&mut self) {
@@ -1383,6 +1342,48 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.mark_all_dirty();
     }
 
+
+
+    unsafe fn begin(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>, frame: u64) {
+        assert_eq!(self.state, VkCommandBufferState::Ready);
+        assert!(self.frame < frame);
+        self.frame = frame;
+
+        self.state = VkCommandBufferState::Recording;
+
+        let (flags, inhertiance_info) = if let Some(inner_info) = inner_info {
+            (
+                vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
+                    | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
+                vk::CommandBufferInheritanceInfo {
+                    render_pass: inner_info.render_pass.handle(),
+                    subpass: inner_info.sub_pass,
+                    framebuffer: inner_info.frame_buffer.handle(),
+                    ..Default::default()
+                },
+            )
+        } else {
+            (
+                vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+                Default::default(),
+            )
+        };
+
+        unsafe {
+            self.device
+                .begin_command_buffer(
+                    self.buffer,
+                    &vk::CommandBufferBeginInfo {
+                        flags,
+                        p_inheritance_info: &inhertiance_info
+                            as *const vk::CommandBufferInheritanceInfo,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+        }
+    }
+
     unsafe fn finish(&mut self) {
         assert_eq!(self.state, VkCommandBufferState::Recording);
         if self.render_pass.is_some() {
@@ -1391,6 +1392,10 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
         self.state = VkCommandBufferState::Finished;
         self.device.end_command_buffer(self.buffer).unwrap();
+    }
+
+    unsafe fn cleanup(&mut self, frame: u64) {
+        self.descriptor_manager.reset(frame);
     }
 }
 
