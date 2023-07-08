@@ -1,81 +1,17 @@
-use std::{sync::{Arc, Mutex}, collections::HashMap, fmt::{Debug, Formatter}, hash::{Hash, Hasher}, mem::ManuallyDrop, ops::Deref};
+use std::{sync::{Arc, Mutex}, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, mem::ManuallyDrop};
 
 use sourcerenderer_core::gpu::*;
 
-use super::DeferredDestroyer;
+use super::*;
 
-// Using a pointer for the buffer here is technically not safe because it means you could keep the
-// slice around after destroying the context and **then** use it with either a new context or one of
-// the device methods.
-// Should be fine in practice.
-
-enum GPUBufferSliceRef<B: GPUBackend> {
-    SharedRef {
-        buffer: ManuallyDrop<Arc<B::Buffer>>,
-        destroyer: Arc<DeferredDestroyer<B>>
-    },
-    Pointer(*const B::Buffer)
-}
-
-impl<B: GPUBackend> Deref for GPUBufferSliceRef<B> {
-    type Target = B::Buffer;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::SharedRef {
-                buffer,
-                destroyer: _
-            } => (*buffer).as_ref(),
-            Self::Pointer(ptr) => unsafe { &**ptr }
-        }
-    }
-}
-
-impl<B: GPUBackend> Drop for GPUBufferSliceRef<B> {
-    fn drop(&mut self) {
-        match self {
-            Self::SharedRef {
-                ref mut buffer,
-                ref destroyer
-            } => {
-                let buffer = unsafe { ManuallyDrop::take(&mut *buffer) };
-                destroyer.destroy_buffer_reference(buffer);
-            },
-            _ => {}
-        }
-    }
-}
-
-impl<B: GPUBackend> PartialEq for GPUBufferSliceRef<B> {
-    fn eq(&self, other: &Self) -> bool {
-        let self_ref: &B::Buffer = self;
-        let other_ref: &B::Buffer = other;
-        self_ref == other_ref
-    }
-}
-
-impl<B: GPUBackend> Clone for GPUBufferSliceRef<B> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::SharedRef {
-                buffer,
-                destroyer
-            } => Self::SharedRef { buffer: buffer.clone(), destroyer: destroyer.clone() },
-            Self::Pointer(ptr) => Self::Pointer(*ptr)
-        }
-    }
-}
-
-unsafe impl<B: GPUBackend> Send for GPUBufferSlice<B> {}
-unsafe impl<B: GPUBackend> Sync for GPUBufferSlice<B> {}
-
-pub struct GPUBufferSlice<B: GPUBackend> {
-  buffer: GPUBufferSliceRef<B>,
+pub struct BufferSlice<B: GPUBackend> {
+  buffer: ManuallyDrop<Arc<B::Buffer>>,
+  destroyer: Arc<DeferredDestroyer<B>>,
   offset: u64,
   length: u64
 }
 
-impl<B: GPUBackend> Debug for GPUBufferSlice<B> {
+impl<B: GPUBackend> Debug for BufferSlice<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -87,23 +23,12 @@ impl<B: GPUBackend> Debug for GPUBufferSlice<B> {
     }
 }
 
-impl<B: GPUBackend> Hash for GPUBufferSlice<B> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.buffer.hash(state);
-        self.offset.hash(state);
-        self.length.hash(state);
+impl<B: GPUBackend> Drop for BufferSlice<B> {
+    fn drop(&mut self) {
+        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
+        self.destroyer.destroy_buffer_reference(buffer);
     }
 }
-
-impl<B: GPUBackend> PartialEq for GPUBufferSlice<B> {
-    fn eq(&self, other: &Self) -> bool {
-        self.buffer == other.buffer
-            && self.length == other.length
-            && self.offset == other.offset
-    }
-}
-
-impl<B: GPUBackend> Eq for GPUBufferSlice<B> {}
 
 const SLICED_BUFFER_SIZE: u64 = 16384;
 const BIG_BUFFER_SLAB_SIZE: u64 = 4096;
@@ -118,36 +43,17 @@ struct BufferKey {
     buffer_usage: BufferUsage,
 }
 
-enum GPUBufferSliceBuffer<B: GPUBackend> {
-    SharedRef(Arc<B::Buffer>),
-    Owned(B::Buffer)
-}
-
-impl<B: GPUBackend> Deref for GPUBufferSliceBuffer<B> {
-    type Target = B::Buffer;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::SharedRef(buffer) => buffer.as_ref(),
-            Self::Owned(buffer) => buffer,
-        }
-    }
-}
-
 struct SlicedBuffer<B: GPUBackend> {
     slice_size: u64,
-    buffer: ManuallyDrop<GPUBufferSliceBuffer<B>>,
-    free_slices: Vec<GPUBufferSlice<B>>,
+    buffer: ManuallyDrop<Arc<B::Buffer>>,
+    free_slices: Vec<BufferSlice<B>>,
     destroyer: Arc<DeferredDestroyer<B>>
 }
 
 impl<B: GPUBackend> Drop for SlicedBuffer<B> {
     fn drop(&mut self) {
         let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
-        match buffer {
-            GPUBufferSliceBuffer::Owned(buffer) => { self.destroyer.destroy_buffer(buffer); }
-            GPUBufferSliceBuffer::SharedRef(buffer_ref) => { self.destroyer.destroy_buffer_reference(buffer_ref); }
-        }
+        self.destroyer.destroy_buffer_reference(buffer);
     }
 }
 
@@ -155,14 +61,9 @@ impl<B: GPUBackend> SlicedBuffer<B> {
     pub(crate) fn reset(&mut self) {
         let slices = (SLICED_BUFFER_SIZE / self.slice_size).max(1);
         for i in 0..slices {
-          let slice: GPUBufferSlice<_> = GPUBufferSlice {
-                buffer: match &*self.buffer {
-                    GPUBufferSliceBuffer::SharedRef(buffer_arc) => GPUBufferSliceRef::SharedRef {
-                        buffer: ManuallyDrop::new(buffer_arc.clone()),
-                        destroyer: self.destroyer.clone()
-                    },
-                    GPUBufferSliceBuffer::Owned(buffer) => GPUBufferSliceRef::Pointer(buffer as *const B::Buffer),
-                },
+          let slice: BufferSlice<_> = BufferSlice {
+                buffer: self.buffer.clone(),
+                destroyer: self.destroyer.clone(),
                 offset: i * self.slice_size,
                 length: self.slice_size
           };
@@ -171,34 +72,29 @@ impl<B: GPUBackend> SlicedBuffer<B> {
     }
 }
 
-pub struct GPUBufferAllocator<B: GPUBackend> {
+pub struct BufferAllocator<B: GPUBackend> {
     device: Arc<B::Device>,
     destroyer: Arc<DeferredDestroyer<B>>,
     buffers: Mutex<HashMap<BufferKey, Vec<SlicedBuffer<B>>>>,
-    transient: bool,
 }
 
-impl<B: GPUBackend> GPUBufferAllocator<B> {
+impl<B: GPUBackend> BufferAllocator<B> {
 
     pub fn get_slice(
       &self,
       info: &BufferInfo,
       memory_usage: MemoryUsage,
       name: Option<&str>,
-    ) -> GPUBufferSlice<B> {
+    ) -> BufferSlice<B> {
 
-        if info.size > BIG_BUFFER_SLAB_SIZE && !self.transient {
+        if info.size > BIG_BUFFER_SLAB_SIZE {
             // Don't do one-off buffers for command lists
-            let buffer = Arc::new(
-                unsafe {
-                self.device.create_buffer(info, memory_usage, name)
-                }
-            );
-            return GPUBufferSlice {
-                buffer: GPUBufferSliceRef::SharedRef {
-                    buffer: ManuallyDrop::new(buffer),
-                    destroyer: self.destroyer.clone()
-                },
+            let buffer = unsafe {
+                Arc::new(self.device.create_buffer(info, memory_usage, name))
+            };
+            return BufferSlice {
+                buffer: ManuallyDrop::new(buffer),
+                destroyer: self.destroyer.clone(),
                 offset: 0,
                 length: info.size
             };
@@ -213,9 +109,8 @@ impl<B: GPUBackend> GPUBufferAllocator<B> {
         };
         let mut guard = self.buffers.lock().unwrap();
         let matching_buffers = guard.entry(key).or_insert(Vec::new());
-        // TODO: consider a smarter data structure than a simple list of all slices regardless of size.
 
-        let mut slice_opt: Option<GPUBufferSlice<B>> = None;
+        let mut slice_opt: Option<BufferSlice<B>> = None;
         let mut emptied_buffer_index: Option<usize> = None;
         for (index, sliced_buffer) in matching_buffers.iter_mut().enumerate() {
             if sliced_buffer.slice_size < info.size || sliced_buffer.slice_size % alignment != 0 {
@@ -240,23 +135,35 @@ impl<B: GPUBackend> GPUBufferAllocator<B> {
             return slice;
         }
 
-        if !self.transient && !matching_buffers.is_empty() {
-            for sliced_buffer in matching_buffers.iter_mut() {
-                let buffer = if let GPUBufferSliceBuffer::SharedRef(buffer) = &*sliced_buffer.buffer {
-                    buffer
-                } else {
-                    unreachable!();
-                };
+        let mut slice_opt: Option<BufferSlice<B>> = None;
+        let mut refilled_buffer_slice: Option<usize> = None;
+        if !matching_buffers.is_empty() {
+            // TODO: ref count individual slices to minimize fragmentation
+            // the hot path is in the transient buffer allocator anyway
 
-                if Arc::strong_count(buffer) != 1 {
+            for (index, sliced_buffer) in matching_buffers.iter_mut().enumerate() {
+                if Arc::strong_count(&sliced_buffer.buffer) != 1 {
                     continue;
                 }
 
                 // There's only one reference to the buffer, so all slices are unused
                 sliced_buffer.reset();
+                slice_opt = sliced_buffer.free_slices.pop();
 
-                return sliced_buffer.free_slices.pop().unwrap();
+                if slice_opt.is_some() {
+                    if index != 0 {
+                        refilled_buffer_slice = Some(index);
+                    }
+                }
             }
+        }
+        if let Some(index) = refilled_buffer_slice {
+            // Move now refilled buffer to the front of the vector, so we find it quickly in the future
+            let buffer = matching_buffers.remove(index);
+            matching_buffers.insert(0, buffer);
+        }
+        if let Some(slice) = slice_opt {
+            return slice;
         }
 
         let mut slice_size = align_up_64(info.size, alignment);
@@ -279,16 +186,12 @@ impl<B: GPUBackend> GPUBufferAllocator<B> {
         };
 
         let buffer = unsafe {
-            self.device.create_buffer(&info, memory_usage, None)
+            Arc::new(self.device.create_buffer(&info, memory_usage, None))
         };
 
         let mut sliced_buffer = SlicedBuffer::<B> {
             slice_size: slice_size,
-            buffer: ManuallyDrop::new(if self.transient {
-                GPUBufferSliceBuffer::Owned(buffer)
-            } else {
-                GPUBufferSliceBuffer::SharedRef(Arc::new(buffer))
-            }),
+            buffer: ManuallyDrop::new(buffer),
             free_slices: Vec::with_capacity(slices as usize),
             destroyer: self.destroyer.clone()
         };
@@ -296,22 +199,7 @@ impl<B: GPUBackend> GPUBufferAllocator<B> {
         let slice = sliced_buffer.free_slices.pop().unwrap();
         matching_buffers.push(sliced_buffer);
         slice
-  }
-
-  pub fn reset(&self) {
-    if !self.transient {
-        return;
     }
-
-    let mut buffers_types = self.buffers.lock().unwrap();
-    for (_key, buffers) in buffers_types.iter_mut() {
-        for sliced_buffer in buffers.iter_mut() {
-            sliced_buffer.reset();
-        }
-        buffers.sort_unstable_by_key(|a| a.slice_size);
-    }
-}
-
 }
 
 

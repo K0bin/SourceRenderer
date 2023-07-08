@@ -12,12 +12,12 @@ struct GPUDevice<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> GPUDevice<B> {
-    pub fn create_context(&self) -> GPUContext<B> {
+    pub fn create_context(&self) -> GraphicsContext<B> {
         assert!(!self.has_context.swap(true, Ordering::AcqRel));
-        GPUContext::new(&self.device, &self.destroyer, self.prerendered_frames)
+        GraphicsContext::new(&self.device, &self.destroyer, self.prerendered_frames)
     }
 
-    pub fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> GPUTexture<B> {
-        GPUTexture::new(&self.device, &self.destroyer, info, name)
+    pub fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Texture<B> {
+        Texture::new(&self.device, &self.destroyer, info, name)
     }
 }

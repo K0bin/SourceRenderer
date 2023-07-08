@@ -7,7 +7,7 @@ use sourcerenderer_core::gpu::*;
 
 use super::*;
 
-pub struct GPUContext<B: GPUBackend> {
+pub struct GraphicsContext<B: GPUBackend> {
   device: Arc<B::Device>,
   fence: B::Fence,
   current_frame: u64,
@@ -26,7 +26,7 @@ pub struct FrameContext<B: GPUBackend> {
   command_pool: B::CommandPool
 }
 
-impl<B: GPUBackend> GPUContext<B> {
+impl<B: GPUBackend> GraphicsContext<B> {
   pub(crate) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, prerendered_frames: u32) -> Self {
     Self {
       device: device.clone(),
@@ -55,7 +55,7 @@ impl<B: GPUBackend> GPUContext<B> {
   }
 }
 
-impl<B: GPUBackend> Drop for GPUContext<B> {
+impl<B: GPUBackend> Drop for GraphicsContext<B> {
   fn drop(&mut self) {
       self.fence.await_value(self.current_frame - 1);
 
@@ -105,50 +105,50 @@ struct DeferredDestroyerInner<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> DeferredDestroyer<B> {
-  pub fn destroy_texture(&self, texture: B::Texture) {
-    let mut guard = self.inner.lock().unwrap();
-    let frame = guard.current_counter;
-    guard.textures.push((frame, texture));
-  }
+    pub fn destroy_texture(&self, texture: B::Texture) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.textures.push((frame, texture));
+    }
 
-  pub fn destroy_texture_view(&self, texture_view: B::TextureView) {
-    let mut guard = self.inner.lock().unwrap();
-    let frame = guard.current_counter;
-    guard.texture_views.push((frame, texture_view));
-  }
+    pub fn destroy_texture_view(&self, texture_view: B::TextureView) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.texture_views.push((frame, texture_view));
+    }
 
-  pub fn destroy_buffer_reference(&self, buffer: Arc<B::Buffer>) {
-    let mut guard = self.inner.lock().unwrap();
-    let frame = guard.current_counter;
-    guard.buffer_refs.push((frame, buffer));
-  }
+    pub fn destroy_buffer_reference(&self, buffer: Arc<B::Buffer>) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.buffer_refs.push((frame, buffer));
+    }
 
-  pub fn destroy_buffer(&self, buffer: B::Buffer) {
-    let mut guard: std::sync::MutexGuard<'_, DeferredDestroyerInner<B>> = self.inner.lock().unwrap();
-    let frame = guard.current_counter;
-    guard.buffers.push((frame, buffer));
-  }
+    pub fn destroy_buffer(&self, buffer: B::Buffer) {
+        let mut guard: std::sync::MutexGuard<'_, DeferredDestroyerInner<B>> = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.buffers.push((frame, buffer));
+    }
 
-  pub fn set_counter(&self, counter: u64) {
-    let mut guard = self.inner.lock().unwrap();
-    guard.current_counter = counter;
-  }
+    pub fn set_counter(&self, counter: u64) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.current_counter = counter;
+    }
 
-  pub fn destroy_unused(&self, counter: u64) {
-    let mut guard = self.inner.lock().unwrap();
-    guard.textures.retain(|(resource_counter, _texture)| *resource_counter > counter);
-    guard.texture_views.retain(|(resource_counter, _texture)| *resource_counter > counter);
-    guard.buffers.retain(|(resource_counter, _texture)| *resource_counter > counter);
-    guard.buffer_refs.retain(|(resource_counter, _texture)| *resource_counter > counter);
-  }
+    pub fn destroy_unused(&self, counter: u64) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.textures.retain(|(resource_counter, _texture)| *resource_counter > counter);
+        guard.texture_views.retain(|(resource_counter, _texture)| *resource_counter > counter);
+        guard.buffers.retain(|(resource_counter, _texture)| *resource_counter > counter);
+        guard.buffer_refs.retain(|(resource_counter, _texture)| *resource_counter > counter);
+    }
 }
 
 impl<B: GPUBackend> Drop for DeferredDestroyer<B> {
-  fn drop(&mut self) {
-    let guard = self.inner.lock().unwrap();
-      assert!(guard.textures.is_empty());
-      assert!(guard.texture_views.is_empty());
-      assert!(guard.buffer_refs.is_empty());
-      assert!(guard.buffers.is_empty());
-  }
+    fn drop(&mut self) {
+        let guard = self.inner.lock().unwrap();
+        assert!(guard.textures.is_empty());
+        assert!(guard.texture_views.is_empty());
+        assert!(guard.buffer_refs.is_empty());
+        assert!(guard.buffers.is_empty());
+    }
 }

@@ -4,20 +4,20 @@ use sourcerenderer_core::gpu::*;
 
 use super::*;
 
-pub struct GPUTexture<B: GPUBackend> {
+pub struct Texture<B: GPUBackend> {
     device: Arc<B::Device>,
     texture: ManuallyDrop<B::Texture>,
     destroyer: Arc<DeferredDestroyer<B>>
 }
 
-impl<B: GPUBackend> Drop for GPUTexture<B> {
+impl<B: GPUBackend> Drop for Texture<B> {
     fn drop(&mut self) {
         let texture = unsafe { ManuallyDrop::take(&mut self.texture) };
         self.destroyer.destroy_texture(texture);
     }
 }
 
-impl<B: GPUBackend> GPUTexture<B> {
+impl<B: GPUBackend> Texture<B> {
     pub(crate) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, name: Option<&str>) -> Self {
         let texture = unsafe { device.create_texture(info, name) };
         Self {
@@ -32,22 +32,22 @@ impl<B: GPUBackend> GPUTexture<B> {
     }
 }
 
-pub struct GPUTextureView<B: GPUBackend> {
+pub struct TextureView<B: GPUBackend> {
     device: Arc<B::Device>,
-    texture: Arc<GPUTexture<B>>,
+    texture: Arc<Texture<B>>,
     texture_view: ManuallyDrop<B::TextureView>,
     destroyer: Arc<DeferredDestroyer<B>>
 }
 
-impl<B: GPUBackend> Drop for GPUTextureView<B> {
+impl<B: GPUBackend> Drop for TextureView<B> {
     fn drop(&mut self) {
         let texture_view = unsafe { ManuallyDrop::take(&mut self.texture_view) };
         self.destroyer.destroy_texture_view(texture_view);
     }
 }
 
-impl<B: GPUBackend> GPUTextureView<B> {
-    pub(crate) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &Arc<GPUTexture<B>>, info: &TextureViewInfo, name: Option<&str>) -> Self {
+impl<B: GPUBackend> TextureView<B> {
+    pub(crate) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &Arc<Texture<B>>, info: &TextureViewInfo, name: Option<&str>) -> Self {
         let texture_view = unsafe { device.create_texture_view(texture.handle(), info, name) };
         Self {
             device: device.clone(),
