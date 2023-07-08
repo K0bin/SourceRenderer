@@ -17,7 +17,7 @@ impl<B: GPUBackend> GPUDevice<B> {
         GraphicsContext::new(&self.device, &self.destroyer, self.prerendered_frames)
     }
 
-    pub fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Texture<B> {
-        Texture::new(&self.device, &self.destroyer, info, name)
+    pub fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> super::Texture<B> {
+        super::Texture::new(&self.device, &self.destroyer, info, name)
     }
 }
