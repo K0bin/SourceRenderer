@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::{Vec2, Vec2I, Vec2UI, graphics::{self, Backend}};
+use crate::{Vec2, Vec2I, Vec2UI, graphics::{self, Backend}, gpu::GPUBackend};
 use crate::input::Key;
 
 mod io;
@@ -28,6 +28,7 @@ pub trait ThreadHandle : Send + Sync {
 
 pub trait Platform: 'static + Sized {
   type GraphicsBackend: graphics::Backend + Send + Sync;
+  type GPUBackend: GPUBackend;
   type Window: Window<Self>;
   type IO: io::IO;
   type ThreadHandle: ThreadHandle;

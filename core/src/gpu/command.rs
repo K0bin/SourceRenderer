@@ -42,12 +42,12 @@ pub enum CommandPoolType {
   InnerCommandBuffers
 }
 
-pub trait CommandPool<B: GPUBackend> {
+pub trait CommandPool<B: GPUBackend> : Send {
   unsafe fn create_command_buffer(&mut self, inner_info: Option<&<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance>, frame: u64) -> B::CommandBuffer;
   unsafe fn reset(&mut self);
 }
 
-pub trait CommandBuffer<B: GPUBackend> {
+pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn set_pipeline(&mut self, pipeline: PipelineBinding<B>);
   unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &B::Buffer, offset: u64);
   unsafe fn set_index_buffer(&mut self, index_buffer: &B::Buffer, offset: u64, format: IndexFormat);

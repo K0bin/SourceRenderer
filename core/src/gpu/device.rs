@@ -35,6 +35,8 @@ pub trait Device<B: GPUBackend> {
   unsafe fn wait_for_idle(&self);
   unsafe fn create_fence(&self) -> B::Fence;
   fn graphics_queue(&self) -> &B::Queue;
+  fn compute_queue(&self) -> Option<&B::Queue>;
+  fn transfer_queue(&self) -> Option<&B::Queue>;
   fn supports_bindless(&self) -> bool;
   fn supports_ray_tracing(&self) -> bool;
   fn supports_indirect(&self) -> bool;

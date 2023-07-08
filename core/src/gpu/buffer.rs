@@ -24,7 +24,7 @@ pub struct BufferInfo {
 }
 
 
-pub trait Buffer {
+pub trait Buffer : std::hash::Hash + PartialEq + Eq + Send + Sync {
   unsafe fn map_unsafe(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut u8>;
   unsafe fn unmap_unsafe(&self, offset: u64, length: u64, flush: bool);
 }
