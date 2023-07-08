@@ -280,6 +280,14 @@ impl Device<VkBackend> for VkDevice {
         &self.graphics_queue
     }
 
+    fn compute_queue(&self) -> Option<&VkQueue> {
+        self.compute_queue.as_ref()
+    }
+
+    fn transfer_queue(&self) -> Option<&VkQueue> {
+        self.transfer_queue.as_ref()
+    }
+
     fn supports_bindless(&self) -> bool {
         false
         /*self.device
