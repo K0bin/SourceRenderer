@@ -39,12 +39,15 @@ impl VkBuffer {
         pool: Option<vma_sys::VmaPool>,
         name: Option<&str>,
     ) -> Self {
-        let mut queue_families = SmallVec::<[u32; 2]>::new();
+        let mut queue_families = SmallVec::<[u32; 3]>::new();
         let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
-        if info.usage.contains(BufferUsage::COPY_SRC) {
+        if info.sharing_mode == QueueSharingMode::Concurrent && (device.transfer_queue_info.is_some() || device.compute_queue_info.is_some()) {
+            sharing_mode = vk::SharingMode::CONCURRENT;
             queue_families.push(device.graphics_queue_info.queue_family_index as u32);
-            if let Some(info) = device.transfer_queue_info {
-                sharing_mode = vk::SharingMode::CONCURRENT;
+            if let Some(info) = device.transfer_queue_info.as_ref() {
+                queue_families.push(info.queue_family_index as u32);
+            }
+            if let Some(info) = device.compute_queue_info.as_ref() {
                 queue_families.push(info.queue_family_index as u32);
             }
         }
@@ -187,6 +190,10 @@ impl PartialEq for VkBuffer {
 impl Eq for VkBuffer {}
 
 impl Buffer for VkBuffer {
+    fn info(&self) -> &BufferInfo {
+        &self.info
+    }
+
     unsafe fn map_unsafe(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut u8> {
         if !invalidate {
             let allocator = self.device.allocator;

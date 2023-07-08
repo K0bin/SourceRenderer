@@ -239,6 +239,12 @@ impl PartialEq for VkTexture {
 
 impl Eq for VkTexture {}
 
+impl Texture for VkTexture {
+    fn info(&self) -> &TextureInfo {
+        &self.info
+    }
+}
+
 fn filter_to_vk(filter: Filter) -> vk::Filter {
     match filter {
         Filter::Linear => vk::Filter::LINEAR,
@@ -382,9 +388,20 @@ impl PartialEq for VkTextureView {
 
 impl Eq for VkTextureView {}
 
+impl TextureView for VkTextureView {
+    fn info(&self) -> &TextureViewInfo {
+        &self.info
+    }
+
+    fn texture_info(&self) -> &TextureInfo {
+        &self.texture_info
+    }
+}
+
 pub struct VkSampler {
     sampler: vk::Sampler,
     device: Arc<RawVkDevice>,
+    info: SamplerInfo
 }
 
 impl VkSampler {
@@ -428,6 +445,7 @@ impl VkSampler {
         Self {
             sampler,
             device: device.clone(),
+            info: info.clone()
         }
     }
 
@@ -458,3 +476,34 @@ impl PartialEq for VkSampler {
 }
 
 impl Eq for VkSampler {}
+
+impl Sampler for VkSampler {
+    fn info(&self) -> &SamplerInfo {
+        &self.info
+    }
+}
+
+pub(crate) fn texture_subresource_to_vk(subresource: &TextureSubresource, texture_format: Format) -> vk::ImageSubresource {
+    vk::ImageSubresource {
+        mip_level: subresource.mip_level,
+        array_layer: subresource.array_layer,
+        aspect_mask: if texture_format.is_depth() {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            vk::ImageAspectFlags::COLOR
+        }
+    }
+}
+
+pub(crate) fn texture_subresource_to_vk_layers(subresource: &TextureSubresource, texture_format: Format, layers: u32) -> vk::ImageSubresourceLayers {
+    vk::ImageSubresourceLayers {
+        mip_level: subresource.mip_level,
+        base_array_layer: subresource.array_layer,
+        aspect_mask: if texture_format.is_depth() {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            vk::ImageAspectFlags::COLOR
+        },
+        layer_count: layers
+    }
+}

@@ -17,20 +17,30 @@ const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 pub struct VkCommandPool {
     raw: Arc<RawVkCommandPool>,
     shared: Arc<VkShared>,
+    flags: CommandPoolFlags,
     queue_family_index: u32,
 }
 
 impl VkCommandPool {
-    pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, shared: &Arc<VkShared>) -> Self {
+    pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, flags: CommandPoolFlags, shared: &Arc<VkShared>) -> Self {
+        let mut vk_flags = vk::CommandPoolCreateFlags::empty();
+        if flags.contains(CommandPoolFlags::INDIVIDUAL_RESET) {
+            vk_flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
+        }
+        if flags.contains(CommandPoolFlags::TRANSIENT) {
+            vk_flags |= vk::CommandPoolCreateFlags::TRANSIENT;
+        }
+
         let create_info = vk::CommandPoolCreateInfo {
             queue_family_index,
-            flags: vk::CommandPoolCreateFlags::empty(),
+            flags: vk_flags,
             ..Default::default()
         };
 
         Self {
             raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
             shared: shared.clone(),
+            flags,
             queue_family_index,
         }
     }
@@ -51,7 +61,8 @@ impl CommandPool<VkBackend> for VkCommandPool {
                 CommandBufferType::Primary
             },
             self.queue_family_index,
-            &self.shared,
+            self.flags.contains(CommandPoolFlags::INDIVIDUAL_RESET),
+            &self.shared
         );
         buffer.begin(None, frame);
         buffer
@@ -99,6 +110,7 @@ pub struct VkCommandBuffer {
     descriptor_manager: VkBindingManager,
     inheritance: Option<VkInnerCommandBufferInfo>,
     frame: u64,
+    reset_individually: bool
 }
 
 impl VkCommandBuffer {
@@ -107,6 +119,7 @@ impl VkCommandBuffer {
         pool: &Arc<RawVkCommandPool>,
         command_buffer_type: CommandBufferType,
         queue_family_index: u32,
+        reset_individually: bool,
         shared: &Arc<VkShared>,
     ) -> Self {
         let buffers_create_info = vk::CommandBufferAllocateInfo {
@@ -134,6 +147,7 @@ impl VkCommandBuffer {
             descriptor_manager: VkBindingManager::new(device),
             inheritance: None,
             frame: 0u64,
+            reset_individually
         }
     }
 
@@ -721,6 +735,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     new_access,
                     texture,
                     range,
+                    queue_ownership
                 } => {
                     let info = texture.info();
                     let mut aspect_mask = vk::ImageAspectFlags::empty();
@@ -734,6 +749,41 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         aspect_mask |= vk::ImageAspectFlags::COLOR;
                     }
 
+                    let mut src_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
+                    let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
+                    if let Some(queue_transfer) = queue_ownership {
+                        src_queue_family_index = match queue_transfer.from {
+                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                        };
+                        dst_queue_family_index = match queue_transfer.to {
+                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                        };
+                    }
+                    if src_queue_family_index == vk::QUEUE_FAMILY_IGNORED || dst_queue_family_index == vk::QUEUE_FAMILY_IGNORED {
+                        src_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
+                        dst_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
+                    }
+
                     let dst_stages = barrier_sync_to_stage(*new_sync);
                     let src_stages = barrier_sync_to_stage(*old_sync);
                     pending_image_barriers.push(vk::ImageMemoryBarrier2 {
@@ -743,8 +793,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         dst_access_mask: barrier_access_to_access(*new_access),
                         old_layout: texture_layout_to_image_layout(*old_layout),
                         new_layout: texture_layout_to_image_layout(*new_layout),
-                        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        src_queue_family_index: src_queue_family_index,
+                        dst_queue_family_index: dst_queue_family_index,
                         image: texture.handle(),
                         subresource_range: vk::ImageSubresourceRange {
                             aspect_mask,
@@ -764,16 +814,53 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     buffer,
                     offset,
                     length,
+                    queue_ownership
                 } => {
                     let dst_stages = barrier_sync_to_stage(*new_sync);
                     let src_stages = barrier_sync_to_stage(*old_sync);
+
+                    let mut src_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
+                    let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
+                    if let Some(queue_transfer) = queue_ownership {
+                        src_queue_family_index = match queue_transfer.from {
+                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                        };
+                        dst_queue_family_index = match queue_transfer.to {
+                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                                info.queue_family_index as u32
+                            } else {
+                                vk::QUEUE_FAMILY_IGNORED
+                            },
+                        };
+                    }
+                    if src_queue_family_index == vk::QUEUE_FAMILY_IGNORED || dst_queue_family_index == vk::QUEUE_FAMILY_IGNORED {
+                        src_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
+                        dst_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
+                    }
+
                     pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
                         src_stage_mask: src_stages,
                         dst_stage_mask: dst_stages,
                         src_access_mask: barrier_access_to_access(*old_access),
                         dst_access_mask: barrier_access_to_access(*new_access),
-                        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        src_queue_family_index: src_queue_family_index,
+                        dst_queue_family_index: dst_queue_family_index,
                         buffer: buffer.handle(),
                         offset: *offset as u64,
                         size: (buffer.info().size - *offset).min(*length),
@@ -1409,6 +1496,51 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
+    unsafe fn copy_buffer(&mut self, src: &VkBuffer, dst: &VkBuffer, region: &BufferCopyRegion) {
+        assert_eq!(self.state, VkCommandBufferState::Recording);
+        let copy = vk::BufferCopy {
+            src_offset: region.src_offset,
+            dst_offset: region.dst_offset,
+            size: region.size
+                .min(src.info().size - region.src_offset)
+                .min(dst.info().size - region.dst_offset)
+        };
+        self.device.cmd_copy_buffer(self.buffer, src.handle(), dst.handle(), &[copy]);
+    }
+
+    unsafe fn copy_buffer_to_texture(&mut self, src: &VkBuffer, dst: &VkTexture, region: &BufferTextureCopyRegion) {
+        assert_eq!(self.state, VkCommandBufferState::Recording);
+        let format = dst.info().format;
+        let texels_width = if region.buffer_row_pitch != 0 {
+            (region.buffer_row_pitch as u32) * format.block_size().x / format.element_size()
+        } else {
+            0
+        };
+        let texels_height = if region.buffer_slice_pitch != 0 {
+            (region.buffer_slice_pitch as u32) / texels_width * format.block_size().y / format.element_size()
+        } else {
+            0
+        };
+
+        let copy = vk::BufferImageCopy {
+            image_subresource: texture_subresource_to_vk_layers(&region.texture_subresource, format, 1),
+            buffer_offset: region.buffer_offset,
+            buffer_row_length: texels_width,
+            buffer_image_height: texels_height,
+            image_offset: vk::Offset3D {
+                x: region.texture_offset.x as i32,
+                y: region.texture_offset.y as i32,
+                z: region.texture_offset.z as i32
+            },
+            image_extent: vk::Extent3D {
+                width: region.texture_extent.x,
+                height: region.texture_extent.y,
+                depth: region.texture_extent.z,
+            }
+        };
+        self.device.cmd_copy_buffer_to_image(self.buffer, src.handle(), dst.handle(), vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[copy]);
+    }
+
     unsafe fn finish(&mut self) {
         assert_eq!(self.state, VkCommandBufferState::Recording);
         if self.render_pass.is_some() {
@@ -1419,7 +1551,10 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.device.end_command_buffer(self.buffer).unwrap();
     }
 
-    unsafe fn cleanup(&mut self, frame: u64) {
+    unsafe fn reset(&mut self, frame: u64) {
+        if self.reset_individually {
+            self.device.reset_command_buffer(self.buffer, vk::CommandBufferResetFlags::empty());
+        }
         self.descriptor_manager.reset(frame);
     }
 }
