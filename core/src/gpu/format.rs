@@ -1,3 +1,5 @@
+use crate::Vec2UI;
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Format {
@@ -9,10 +11,10 @@ pub enum Format {
   RGBA8Srgb,
   BGR8UNorm,
   BGRA8UNorm,
-  DXT1,
-  DXT1Alpha,
-  DXT3,
-  DXT5,
+  BC1,
+  BC1Alpha,
+  BC2,
+  BC3,
   R16Float,
   R32Float,
   RG32Float,
@@ -54,10 +56,10 @@ impl Format {
 
   pub fn is_compressed(&self) -> bool {
     matches!(self,
-      Format::DXT1
-      | Format::DXT1Alpha
-      | Format::DXT3
-      | Format::DXT5)
+      Format::BC1
+      | Format::BC1Alpha
+      | Format::BC2
+      | Format::BC3)
   }
 
   pub fn element_size(&self) -> u32 {
@@ -67,6 +69,11 @@ impl Format {
       Format::RG32Float => 8,
       Format::RGB32Float => 12,
       Format::RGBA32Float => 16,
+
+      Format::BC1 => 8,
+      Format::BC1Alpha => 8,
+      Format::BC2 => 16,
+      Format::BC3 => 16,
       _ => todo!()
     }
   }
@@ -75,6 +82,17 @@ impl Format {
     match self {
       Format::RGBA8UNorm => Some(Format::RGBA8Srgb),
       _ => None
+    }
+  }
+
+  pub fn block_size(&self) -> Vec2UI {
+    match self {
+      Format::BC1
+        | Format::BC1Alpha
+        | Format::BC2
+        | Format::BC3 => Vec2UI::new(4, 4),
+
+      _ => Vec2UI::new(1, 1)
     }
   }
 }

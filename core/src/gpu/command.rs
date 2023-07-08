@@ -1,6 +1,7 @@
 use crate::Vec2;
 use crate::Vec2I;
 use crate::Vec2UI;
+use crate::Vec3UI;
 
 use super::*;
 
@@ -42,6 +43,21 @@ pub enum CommandPoolType {
   InnerCommandBuffers
 }
 
+pub struct BufferTextureCopyRegion {
+  pub buffer_offset: u64,
+  pub buffer_row_pitch: u64,
+  pub buffer_slice_pitch: u64,
+  pub texture_subresource: TextureSubresource,
+  pub texture_offset: Vec3UI,
+  pub texture_extent: Vec3UI,
+}
+
+pub struct BufferCopyRegion {
+  pub src_offset: u64,
+  pub dst_offset: u64,
+  pub size: u64
+}
+
 pub trait CommandPool<B: GPUBackend> : Send {
   unsafe fn create_command_buffer(&mut self, inner_info: Option<&<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance>, frame: u64) -> B::CommandBuffer;
   unsafe fn reset(&mut self);
@@ -77,6 +93,9 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>, frame: u64);
   unsafe fn finish(&mut self);
 
+  unsafe fn copy_buffer_to_texture(&mut self, src: &B::Buffer, dst: &B::Texture, region: &BufferTextureCopyRegion);
+  unsafe fn copy_buffer(&mut self, src: &B::Buffer, dst: &B::Buffer, region: &BufferCopyRegion);
+
   unsafe fn clear_storage_texture(&mut self, view: &B::Texture, array_layer: u32, mip_level: u32, values: [u32; 4]);
   unsafe fn clear_storage_buffer(&mut self, buffer: &B::Buffer, offset: u64, length_in_u32s: u64, value: u32);
 
@@ -89,7 +108,7 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   type CommandBufferInheritance: Send + Sync;
   unsafe fn execute_inner(&mut self, submission: &mut [B::CommandBuffer]);
 
-  unsafe fn cleanup(&mut self, frame: u64);
+  unsafe fn reset(&mut self, frame: u64);
 
   // RT
   /*unsafe fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: u64, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
@@ -177,7 +196,7 @@ impl BarrierAccess {
   }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct BarrierTextureRange {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
@@ -207,6 +226,19 @@ impl From<&TextureViewInfo> for BarrierTextureRange {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QueueType {
+  Graphics,
+  Compute,
+  Transfer
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct QueueOwnershipTransfer {
+  pub from: QueueType,
+  pub to: QueueType
+}
+
 pub enum Barrier<'a, B: GPUBackend> {
   TextureBarrier {
     old_sync: BarrierSync,
@@ -217,6 +249,7 @@ pub enum Barrier<'a, B: GPUBackend> {
     new_access: BarrierAccess,
     texture: &'a B::Texture,
     range: BarrierTextureRange,
+    queue_ownership: Option<QueueOwnershipTransfer>
   },
   BufferBarrier {
     old_sync: BarrierSync,
@@ -225,7 +258,8 @@ pub enum Barrier<'a, B: GPUBackend> {
     new_access: BarrierAccess,
     buffer: &'a B::Buffer,
     offset: u64,
-    length: u64
+    length: u64,
+    queue_ownership: Option<QueueOwnershipTransfer>
   },
   GlobalBarrier {
     old_sync: BarrierSync,
@@ -233,6 +267,14 @@ pub enum Barrier<'a, B: GPUBackend> {
     old_access: BarrierAccess,
     new_access: BarrierAccess,
   }
+}
+
+bitflags! {
+    #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]
+    pub struct CommandPoolFlags : u32 {
+        const TRANSIENT = 0x1;
+        const INDIVIDUAL_RESET = 0x2;
+    }
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]

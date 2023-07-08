@@ -1,5 +1,4 @@
-use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use std::hash::Hash;
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -17,95 +16,23 @@ bitflags! {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum QueueSharingMode {
+  Exclusive,
+  Concurrent
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BufferInfo {
   pub size: u64,
-  pub usage: BufferUsage
+  pub usage: BufferUsage,
+  pub sharing_mode: QueueSharingMode
 }
 
 
-pub trait Buffer : std::hash::Hash + PartialEq + Eq + Send + Sync {
+pub trait Buffer : Hash + PartialEq + Eq + Send + Sync {
+  fn info(&self) -> &BufferInfo;
+
   unsafe fn map_unsafe(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut u8>;
   unsafe fn unmap_unsafe(&self, offset: u64, length: u64, flush: bool);
 }
-
-/*
-pub struct MutMappedBuffer<'a, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  buffer: &'a B,
-  data: &'a mut T,
-  phantom: PhantomData<*const u8>
-}
-
-impl<'a, B, T> MutMappedBuffer<'a, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  pub fn new(buffer: &'a B, invalidate: bool) -> Option<Self> {
-    unsafe { buffer.map_unsafe(invalidate) }.map(move |ptr|
-      Self {
-        buffer,
-        data: unsafe { (ptr as *mut T).as_mut().unwrap() },
-        phantom: PhantomData
-      }
-    )
-  }
-}
-
-impl<B, T> Drop for MutMappedBuffer<'_, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  fn drop(&mut self) {
-    unsafe { self.buffer.unmap_unsafe(true); }
-  }
-}
-
-impl<B, T> Deref for MutMappedBuffer<'_, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  type Target = T;
-
-  fn deref(&self) -> &Self::Target {
-    self.data
-  }
-}
-
-impl<B, T> DerefMut for MutMappedBuffer<'_, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    self.data
-  }
-}
-
-pub struct MappedBuffer<'a, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  buffer: &'a B,
-  data: &'a T,
-  phantom: PhantomData<*const u8>
-}
-
-impl<'a, B, T> MappedBuffer<'a, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  pub fn new(buffer: &'a B, invalidate: bool) -> Option<Self> {
-    unsafe { buffer.map_unsafe(invalidate) }.map(move |ptr|
-      Self {
-        buffer,
-        data: unsafe { (ptr as *const T).as_ref().unwrap() },
-        phantom: PhantomData
-      }
-    )
-  }
-}
-
-impl<B, T> Drop for MappedBuffer<'_, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  fn drop(&mut self) {
-    unsafe { self.buffer.unmap_unsafe(false); }
-  }
-}
-
-impl<B, T> Deref for MappedBuffer<'_, B, T>
-  where B: Buffer, T: 'static + Send + Sync + Sized + Clone {
-  type Target = T;
-
-  fn deref(&self) -> &Self::Target {
-    self.data
-  }
-}
-*/
