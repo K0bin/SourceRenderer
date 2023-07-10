@@ -115,7 +115,7 @@ impl<B: GPUBackend> Transfer<B> {
     pub fn init_texture(
       &self,
       texture: &Arc<B::Texture>,
-      src_buffer: &Arc<B::Buffer>,
+      src_buffer: &Arc<BufferSlice<B>>,
       mip_level: u32,
       array_layer: u32,
       buffer_offset: u64
@@ -143,11 +143,11 @@ impl<B: GPUBackend> Transfer<B> {
 
       guard.graphics.copies.push(
         TransferCopy::BufferToImage {
-          src: src_buffer.clone(),
+          src: src_buffer.buffer.clone(),
           dst: texture.clone(),
           region:
             BufferTextureCopyRegion {
-                buffer_offset,
+                buffer_offset: buffer_offset + src_buffer.offset,
                 buffer_row_pitch: 0u64,
                 buffer_slice_pitch: 0u64,
                 texture_subresource: TextureSubresource {
@@ -180,26 +180,26 @@ impl<B: GPUBackend> Transfer<B> {
       }));
 
       guard.graphics.destroyer.set_counter(guard.graphics.fence_value.value);
-      guard.graphics.destroyer.destroy_buffer_reference(src_buffer.clone());
+      guard.graphics.destroyer.destroy_buffer_slice_reference(src_buffer.clone());
       guard.graphics.destroyer.destroy_texture_reference(texture.clone());
     }
 
     pub fn init_buffer(
       &self,
-      src_buffer: &Arc<B::Buffer>,
-      dst_buffer: &Arc<B::Buffer>,
+      src_buffer: &Arc<BufferSlice<B>>,
+      dst_buffer: &Arc<BufferSlice<B>>,
       src_offset: u64,
       dst_offset: u64,
       length: u64
     ) {
       debug_assert_ne!(length, 0);
 
-      let actual_length = length.min(src_buffer.info().size - src_offset).min(dst_buffer.info().size - dst_offset);
+      let actual_length = length.min(src_buffer.length - src_offset).min(dst_buffer.length - dst_offset);
 
       let mut guard = self.inner.lock().unwrap();
       guard.graphics.copies.push(TransferCopy::BufferToBuffer {
-        src: src_buffer.clone(),
-        dst: dst_buffer.clone(),
+        src: src_buffer.buffer.clone(),
+        dst: dst_buffer.buffer.clone(),
         region: BufferCopyRegion {
           src_offset,
           dst_offset,
@@ -215,21 +215,21 @@ impl<B: GPUBackend> Transfer<B> {
           new_sync: BarrierSync::all(),
           old_access: BarrierAccess::COPY_WRITE,
           new_access: BarrierAccess::SHADER_READ,
-          buffer: dst_buffer.clone(),
-          offset: dst_offset,
+          buffer: dst_buffer.buffer.clone(),
+          offset: dst_offset + dst_buffer.offset,
           length: actual_length,
           queue_ownership: None
       }));
 
       guard.graphics.destroyer.set_counter(guard.graphics.fence_value.value);
-      guard.graphics.destroyer.destroy_buffer_reference(src_buffer.clone());
-      guard.graphics.destroyer.destroy_buffer_reference(dst_buffer.clone());
+      guard.graphics.destroyer.destroy_buffer_slice_reference(src_buffer.clone());
+      guard.graphics.destroyer.destroy_buffer_slice_reference(dst_buffer.clone());
     }
 
     pub fn init_texture_async(
       &self,
       texture: &Arc<B::Texture>,
-      src_buffer: &Arc<B::Buffer>,
+      src_buffer: &Arc<BufferSlice<B>>,
       mip_level: u32,
       array_layer: u32,
       buffer_offset: u64
@@ -244,7 +244,7 @@ impl<B: GPUBackend> Transfer<B> {
       let fence_value_pair = {
         let transfer = guard.transfer.as_mut().unwrap();
         transfer.destroyer.set_counter(transfer.fence_value.value);
-        transfer.destroyer.destroy_buffer_reference(src_buffer.clone());
+        transfer.destroyer.destroy_buffer_slice_reference(src_buffer.clone());
         transfer.destroyer.destroy_texture_reference(texture.clone());
 
         unsafe {
@@ -271,11 +271,11 @@ impl<B: GPUBackend> Transfer<B> {
 
           transfer.copies.push(
             TransferCopy::BufferToImage {
-              src: src_buffer.clone(),
+              src: src_buffer.buffer.clone(),
               dst: texture.clone(),
               region:
                 BufferTextureCopyRegion {
-                    buffer_offset,
+                    buffer_offset: buffer_offset + src_buffer.offset,
                     buffer_row_pitch: 0u64,
                     buffer_slice_pitch: 0u64,
                     texture_subresource: TextureSubresource {
@@ -337,7 +337,6 @@ impl<B: GPUBackend> Transfer<B> {
           }
       ));
       guard.graphics.destroyer.set_counter(guard.graphics.fence_value.value);
-      guard.graphics.destroyer.destroy_buffer_reference(src_buffer.clone());
       guard.graphics.destroyer.destroy_texture_reference(texture.clone());
 
       Some(fence_value_pair)

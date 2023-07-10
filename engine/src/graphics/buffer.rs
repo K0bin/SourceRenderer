@@ -5,10 +5,9 @@ use sourcerenderer_core::gpu::*;
 use super::*;
 
 pub struct BufferSlice<B: GPUBackend> {
-  buffer: ManuallyDrop<Arc<B::Buffer>>,
-  destroyer: Arc<DeferredDestroyer<B>>,
-  offset: u64,
-  length: u64
+  pub(crate) buffer: Arc<B::Buffer>,
+  pub offset: u64,
+  pub length: u64
 }
 
 impl<B: GPUBackend> Debug for BufferSlice<B> {
@@ -20,13 +19,6 @@ impl<B: GPUBackend> Debug for BufferSlice<B> {
             self.offset + self.length,
             self.length
         )
-    }
-}
-
-impl<B: GPUBackend> Drop for BufferSlice<B> {
-    fn drop(&mut self) {
-        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
-        self.destroyer.destroy_buffer_reference(buffer);
     }
 }
 
@@ -43,31 +35,19 @@ struct BufferKey {
     buffer_usage: BufferUsage,
 }
 
-struct SlicedBuffer<B: GPUBackend> {
-    slice_size: u64,
-    buffer: ManuallyDrop<Arc<B::Buffer>>,
-    free_slices: Vec<BufferSlice<B>>,
+struct BufferSliceCollection<B: GPUBackend> {
+    free_slices: Vec<Arc<BufferSlice<B>>>,
+    used_slices: Vec<Arc<BufferSlice<B>>>,
     destroyer: Arc<DeferredDestroyer<B>>
 }
 
-impl<B: GPUBackend> Drop for SlicedBuffer<B> {
+impl<B: GPUBackend> Drop for BufferSliceCollection<B> {
     fn drop(&mut self) {
-        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
-        self.destroyer.destroy_buffer_reference(buffer);
-    }
-}
-
-impl<B: GPUBackend> SlicedBuffer<B> {
-    pub(crate) fn reset(&mut self) {
-        let slices = (SLICED_BUFFER_SIZE / self.slice_size).max(1);
-        for i in 0..slices {
-          let slice: BufferSlice<_> = BufferSlice {
-                buffer: self.buffer.clone(),
-                destroyer: self.destroyer.clone(),
-                offset: i * self.slice_size,
-                length: self.slice_size
-          };
-          self.free_slices.push(slice);
+        for slice in self.free_slices.drain(..) {
+            self.destroyer.destroy_buffer_slice_reference(slice);
+        }
+        for slice in self.used_slices.drain(..) {
+            self.destroyer.destroy_buffer_slice_reference(slice);
         }
     }
 }
@@ -75,7 +55,7 @@ impl<B: GPUBackend> SlicedBuffer<B> {
 pub struct BufferAllocator<B: GPUBackend> {
     device: Arc<B::Device>,
     destroyer: Arc<DeferredDestroyer<B>>,
-    buffers: Mutex<HashMap<BufferKey, Vec<SlicedBuffer<B>>>>,
+    buffers: Mutex<HashMap<BufferKey, BufferSliceCollection<B>>>,
 }
 
 impl<B: GPUBackend> BufferAllocator<B> {
@@ -85,19 +65,18 @@ impl<B: GPUBackend> BufferAllocator<B> {
       info: &BufferInfo,
       memory_usage: MemoryUsage,
       name: Option<&str>,
-    ) -> BufferSlice<B> {
+    ) -> Arc<BufferSlice<B>> {
 
         if info.size > BIG_BUFFER_SLAB_SIZE {
             // Don't do one-off buffers for command lists
             let buffer = unsafe {
                 Arc::new(self.device.create_buffer(info, memory_usage, name))
             };
-            return BufferSlice {
-                buffer: ManuallyDrop::new(buffer),
-                destroyer: self.destroyer.clone(),
+            return Arc::new(BufferSlice {
+                buffer: buffer,
                 offset: 0,
                 length: info.size
-            };
+            });
         }
 
         let mut info = info.clone();
@@ -108,62 +87,52 @@ impl<B: GPUBackend> BufferAllocator<B> {
             buffer_usage: info.usage,
         };
         let mut guard = self.buffers.lock().unwrap();
-        let matching_buffers = guard.entry(key).or_insert(Vec::new());
+        let matching_buffers = guard.entry(key).or_insert_with(|| BufferSliceCollection {
+            free_slices: Vec::new(),
+            used_slices: Vec::new(),
+            destroyer: self.destroyer.clone()
+        });
 
-        let mut slice_opt: Option<BufferSlice<B>> = None;
-        let mut emptied_buffer_index: Option<usize> = None;
-        for (index, sliced_buffer) in matching_buffers.iter_mut().enumerate() {
-            if sliced_buffer.slice_size < info.size || sliced_buffer.slice_size % alignment != 0 {
-                continue;
-            }
-
-            let last_slice = sliced_buffer.free_slices.len() == 1;
-            slice_opt = sliced_buffer.free_slices.pop();
-            if slice_opt.is_some() {
-                if last_slice && index != matching_buffers.len() - 1 {
-                    emptied_buffer_index = Some(index);
-                }
+        let mut found_slice_index: Option<usize> = None;
+        for (index, slice) in matching_buffers.free_slices.iter().enumerate() {
+            if slice.length >= info.size && slice.offset % alignment == 0 {
+                found_slice_index = Some(index);
                 break;
             }
         }
-        if let Some(index) = emptied_buffer_index {
-            // Move now empty buffer to the end of the vector, so we don't have to iterate over it in the future
-            let buffer = matching_buffers.remove(index);
-            matching_buffers.push(buffer);
-        }
-        if let Some(slice) = slice_opt {
-            return slice;
+        if let Some(index) = found_slice_index {
+            return matching_buffers.free_slices.remove(index);
         }
 
         let mut slice_opt: Option<BufferSlice<B>> = None;
         let mut refilled_buffer_slice: Option<usize> = None;
-        if !matching_buffers.is_empty() {
-            // TODO: ref count individual slices to minimize fragmentation
-            // the hot path is in the transient buffer allocator anyway
-
-            for (index, sliced_buffer) in matching_buffers.iter_mut().enumerate() {
-                if Arc::strong_count(&sliced_buffer.buffer) != 1 {
-                    continue;
-                }
-
-                // There's only one reference to the buffer, so all slices are unused
-                sliced_buffer.reset();
-                slice_opt = sliced_buffer.free_slices.pop();
-
-                if slice_opt.is_some() {
-                    if index != 0 {
-                        refilled_buffer_slice = Some(index);
-                    }
+        if !matching_buffers.used_slices.is_empty() {
+            // This is awful. Completely rewrite this with drain_filter once that's stabilized.
+            // Right now cleaner alternatives would likely need to do more copying and allocations.
+            let length = matching_buffers.used_slices.len();
+            for i in (0..length).rev() {
+                let refcount = {
+                    let slice = &matching_buffers.used_slices[i];
+                    Arc::strong_count(slice)
+                };
+                if refcount == 1 {
+                    matching_buffers
+                        .free_slices
+                        .push(matching_buffers.used_slices.remove(i));
                 }
             }
-        }
-        if let Some(index) = refilled_buffer_slice {
-            // Move now refilled buffer to the front of the vector, so we find it quickly in the future
-            let buffer = matching_buffers.remove(index);
-            matching_buffers.insert(0, buffer);
-        }
-        if let Some(slice) = slice_opt {
-            return slice;
+            matching_buffers.free_slices.sort_by_key(|b| b.length);
+            
+            found_slice_index = None;
+            for (index, slice) in matching_buffers.free_slices.iter().enumerate() {
+                if slice.length >= info.size && slice.offset % alignment == 0 {
+                    found_slice_index = Some(index);
+                    break;
+                }
+            }
+            if let Some(index) = found_slice_index {
+                return matching_buffers.free_slices.remove(index);
+            }
         }
 
         let mut slice_size = align_up_64(info.size, alignment);
@@ -189,15 +158,21 @@ impl<B: GPUBackend> BufferAllocator<B> {
             Arc::new(self.device.create_buffer(&info, memory_usage, None))
         };
 
-        let mut sliced_buffer = SlicedBuffer::<B> {
-            slice_size: slice_size,
-            buffer: ManuallyDrop::new(buffer),
-            free_slices: Vec::with_capacity(slices as usize),
-            destroyer: self.destroyer.clone()
-        };
-        sliced_buffer.reset();
-        let slice = sliced_buffer.free_slices.pop().unwrap();
-        matching_buffers.push(sliced_buffer);
+        for i in 0..(slices - 1) {
+            let slice = Arc::new(BufferSlice::<B> {
+                buffer: buffer.clone(),
+                offset: i * slice_size,
+                length: slice_size
+            });
+            matching_buffers.free_slices.push(slice);
+        }
+
+        let slice = Arc::new(BufferSlice::<B> {
+            buffer,
+            offset: (slices - 1) * slice_size,
+            length: slice_size
+        });
+        matching_buffers.used_slices.push(slice.clone());
         slice
     }
 }

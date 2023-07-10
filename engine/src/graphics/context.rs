@@ -104,7 +104,8 @@ struct DeferredDestroyerInner<B: GPUBackend> {
   texture_refs: Vec<(u64, Arc<B::Texture>)>,
   texture_views: Vec<(u64, B::TextureView)>,
   buffers: Vec<(u64, B::Buffer)>,
-  buffer_refs: Vec<(u64, Arc<B::Buffer>)>
+  buffer_refs: Vec<(u64, Arc<B::Buffer>)>,
+  buffer_slice_refs: Vec<(u64, Arc<BufferSlice<B>>)>
 }
 
 impl<B: GPUBackend> DeferredDestroyer<B> {
@@ -117,7 +118,8 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
                     texture_refs: Vec::new(),
                     texture_views: Vec::new(),
                     buffers: Vec::new(),
-                    buffer_refs: Vec::new()
+                    buffer_refs: Vec::new(),
+                    buffer_slice_refs: Vec::new()
                 }
             )
         }
@@ -153,6 +155,12 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
         guard.buffer_refs.push((frame, buffer));
     }
 
+    pub fn destroy_buffer_slice_reference(&self, buffer: Arc<BufferSlice<B>>) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.buffer_slice_refs.push((frame, buffer));
+    }
+
     pub fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         guard.current_counter = counter;
@@ -165,6 +173,7 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
         guard.texture_views.retain(|(resource_counter, _texture)| *resource_counter > counter);
         guard.buffers.retain(|(resource_counter, _texture)| *resource_counter > counter);
         guard.buffer_refs.retain(|(resource_counter, _texture)| *resource_counter > counter);
+        guard.buffer_slice_refs.retain(|(resource_counter, _texture)| *resource_counter > counter);
     }
 }
 
