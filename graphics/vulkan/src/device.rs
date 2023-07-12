@@ -63,9 +63,7 @@ impl VkDevice {
         max_surface_image_count: u32,
     ) -> Self {
         let mut vma_flags = vma_sys::VmaAllocatorCreateFlags::default();
-        if features.intersects(VkFeatures::DEDICATED_ALLOCATION) {
-            vma_flags |= vma_sys::VmaAllocatorCreateFlagBits_VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT as u32;
-        }
+        vma_flags |= vma_sys::VmaAllocatorCreateFlagBits_VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT as u32;
         if features.intersects(VkFeatures::RAY_TRACING) {
             vma_flags |=
                 vma_sys::VmaAllocatorCreateFlagBits_VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT

@@ -43,7 +43,7 @@ impl VkTimelineSemaphore {
         self.semaphore
     }
 
-    pub fn await_value(&self, value: u64) {
+    pub unsafe fn await_value(&self, value: u64) {
         unsafe {
             self.device
                 .timeline_semaphores
@@ -61,7 +61,7 @@ impl VkTimelineSemaphore {
         }
     }
 
-    pub fn value(&self) -> u64 {
+    pub unsafe fn value(&self) -> u64 {
         unsafe {
             self.device
                 .timeline_semaphores
@@ -80,7 +80,7 @@ impl Drop for VkTimelineSemaphore {
 }
 
 impl Fence for VkTimelineSemaphore {
-    fn value(&self) -> u64 {
+    unsafe fn value(&self) -> u64 {
         unsafe {
             self.device
                 .get_semaphore_counter_value(self.semaphore)
@@ -88,7 +88,7 @@ impl Fence for VkTimelineSemaphore {
         }
     }
 
-    fn await_value(&self, value: u64) {
+    unsafe fn await_value(&self, value: u64) {
         unsafe {
             let wait_info = vk::SemaphoreWaitInfo {
                 flags: vk::SemaphoreWaitFlags::ANY,

@@ -23,6 +23,7 @@ impl GPUBackend for VkBackend {
     type Sampler = VkSampler;
     type Fence = VkTimelineSemaphore;
     type Queue = VkQueue;
+    type Heap = VkMemoryHeap;
     //type QueryRange = VkQueryRange;
     //type AccelerationStructure = VkAccelerationStructure;
     type WSIFence = VkBinarySemaphore;

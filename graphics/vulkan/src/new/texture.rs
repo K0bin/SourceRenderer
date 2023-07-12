@@ -22,16 +22,18 @@ use super::*;
 
 pub struct VkTexture {
     image: vk::Image,
-    allocation: Option<vma_sys::VmaAllocation>,
     device: Arc<RawVkDevice>,
     info: TextureInfo,
+    memory: Option<vk::DeviceMemory>,
+    is_image_owned: bool,
+    is_memory_owned: bool
 }
 
 unsafe impl Send for VkTexture {}
 unsafe impl Sync for VkTexture {}
 
 impl VkTexture {
-    pub fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, name: Option<&str>) -> Self {
+    pub(crate) unsafe fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, memory: ResourceMemory, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
         let mut create_info = vk::ImageCreateInfo {
             flags: vk::ImageCreateFlags::empty(),
             tiling: vk::ImageTiling::OPTIMAL,
@@ -104,37 +106,80 @@ impl VkTexture {
                 .unwrap()
         };
 
-        let allocation_create_info = vma_sys::VmaAllocationCreateInfo {
-            flags: vma_sys::VmaAllocationCreateFlags::default(),
-            usage: vma_sys::VmaMemoryUsage_VMA_MEMORY_USAGE_UNKNOWN,
-            preferredFlags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            requiredFlags: vk::MemoryPropertyFlags::empty(),
-            memoryTypeBits: 0,
-            pool: std::ptr::null_mut(),
-            pUserData: std::ptr::null_mut(),
-            priority: if info.usage.intersects(
-                TextureUsage::STORAGE | TextureUsage::DEPTH_STENCIL | TextureUsage::RENDER_TARGET,
-            ) {
-                1f32
-            } else {
-                0f32
-            },
-        };
-        let mut image: vk::Image = vk::Image::null();
-        let mut allocation: vma_sys::VmaAllocation = std::ptr::null_mut();
-        unsafe {
-            assert_eq!(
-                vma_sys::vmaCreateImage(
-                    device.allocator,
-                    &create_info,
-                    &allocation_create_info,
-                    &mut image,
-                    &mut allocation,
-                    std::ptr::null_mut()
-                ),
-                vk::Result::SUCCESS
-            );
-        };
+
+        let image_res = device.create_image(&create_info, None);
+        if let Err(e) = image_res {
+            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                return Err(OutOfMemoryError {});
+            }
+        }
+        let image = image_res.unwrap();
+
+        let mut is_memory_owned = false;
+        let vk_memory: vk::DeviceMemory;
+        match memory {
+            ResourceMemory::Dedicated {
+                memory_type_index
+            } => {
+                let requirements_info = vk::ImageMemoryRequirementsInfo2 {
+                    image,
+                    ..Default::default()
+                };
+                let mut requirements = vk::MemoryRequirements2::default();
+                device.get_image_memory_requirements2(&requirements_info, &mut requirements);
+                assert!((requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)) != 0);
+
+                let memory_info = vk::MemoryAllocateInfo {
+                    allocation_size: requirements.memory_requirements.size,
+                    memory_type_index,
+                    ..Default::default()
+                };
+                let memory_result: Result<vk::DeviceMemory, vk::Result> = device.allocate_memory(&memory_info, None);
+                if let Err(e) = memory_result {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                        return Err(OutOfMemoryError {});
+                    }
+                }
+                vk_memory = memory_result.unwrap();
+
+                let bind_result = device.bind_image_memory2(&[
+                    vk::BindImageMemoryInfo {
+                        image,
+                        memory: vk_memory,
+                        memory_offset: 0u64,
+                        ..Default::default()
+                    }
+                ]);
+                if let Err(e) = bind_result {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                        return Err(OutOfMemoryError {});
+                    }
+                }
+
+                is_memory_owned = true;
+            }
+
+            ResourceMemory::Suballocated {
+                memory,
+                offset
+            } => {
+                let bind_result = device.bind_image_memory2(&[
+                    vk::BindImageMemoryInfo {
+                        image,
+                        memory: memory.handle(),
+                        memory_offset: offset,
+                        ..Default::default()
+                    }
+                ]);
+                if let Err(e) = bind_result {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                        return Err(OutOfMemoryError {});
+                    }
+                }
+
+                vk_memory = memory.handle();
+            }
+        }
 
         if let Some(name) = name {
             if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
@@ -155,12 +200,14 @@ impl VkTexture {
                 }
             }
         }
-        Self {
+        Ok(Self {
             image,
-            allocation: Some(allocation),
             device: device.clone(),
             info: info.clone(),
-        }
+            memory: Some(vk_memory),
+            is_image_owned: true,
+            is_memory_owned
+        })
     }
 
     pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, info: TextureInfo) -> Self {
@@ -168,7 +215,9 @@ impl VkTexture {
             image,
             device: device.clone(),
             info,
-            allocation: None,
+            is_image_owned: false,
+            is_memory_owned: false,
+            memory: None
         }
     }
 
@@ -181,7 +230,7 @@ impl VkTexture {
     }
 }
 
-fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
+pub(crate) fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
     let mut flags = vk::ImageUsageFlags::empty();
 
     if usage.contains(TextureUsage::STORAGE) {
@@ -217,9 +266,14 @@ fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
 
 impl Drop for VkTexture {
     fn drop(&mut self) {
-        if let Some(alloc) = self.allocation {
-            unsafe {
-                vma_sys::vmaDestroyImage(self.device.allocator, self.image, alloc);
+        unsafe {
+            if self.is_image_owned {
+                self.device.destroy_image(self.image, None);
+            }
+            if let Some(memory) = self.memory {
+                if self.is_memory_owned {
+                    self.device.free_memory(memory, None);
+                }
             }
         }
     }

@@ -1553,7 +1553,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn reset(&mut self, frame: u64) {
         if self.reset_individually {
-            self.device.reset_command_buffer(self.buffer, vk::CommandBufferResetFlags::empty());
+            self.device.reset_command_buffer(self.buffer, vk::CommandBufferResetFlags::empty()).unwrap();
         }
         self.descriptor_manager.reset(frame);
     }

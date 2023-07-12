@@ -439,18 +439,6 @@ impl Adapter<VkBackend> for VkAdapter {
 
             if self
                 .extensions
-                .intersects(VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2)
-                && self
-                    .extensions
-                    .intersects(VkAdapterExtensionSupport::DEDICATED_ALLOCATION)
-            {
-                extension_names.push(GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME);
-                extension_names.push(DEDICATED_ALLOCATION_EXT_NAME);
-                features |= VkFeatures::DEDICATED_ALLOCATION;
-            }
-
-            if self
-                .extensions
                 .intersects(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE)
             {
                 extension_names.push(DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME);

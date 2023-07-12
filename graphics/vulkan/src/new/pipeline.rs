@@ -777,7 +777,7 @@ impl PartialEq for VkPipeline {
 
 const SHADER_ENTRY_POINT_NAME: &str = "main";
 
-pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
+pub(crate) fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
     match shader_type {
         ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
         ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
@@ -791,7 +791,7 @@ pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
     }
 }
 
-pub fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
+pub(crate) fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
     match samples {
         SampleCount::Samples1 => vk::SampleCountFlags::TYPE_1,
         SampleCount::Samples2 => vk::SampleCountFlags::TYPE_2,
@@ -800,7 +800,7 @@ pub fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
     }
 }
 
-pub fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
+pub(crate) fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
     match compare_func {
         CompareFunc::Always => vk::CompareOp::ALWAYS,
         CompareFunc::NotEqual => vk::CompareOp::NOT_EQUAL,
@@ -813,7 +813,7 @@ pub fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
     }
 }
 
-pub fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
+pub(crate) fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
     match stencil_op {
         StencilOp::Decrease => vk::StencilOp::DECREMENT_AND_WRAP,
         StencilOp::Increase => vk::StencilOp::INCREMENT_AND_WRAP,
@@ -826,7 +826,7 @@ pub fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
     }
 }
 
-pub fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
+pub(crate) fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
     match logic_op {
         LogicOp::And => vk::LogicOp::AND,
         LogicOp::AndInverted => vk::LogicOp::AND_INVERTED,
@@ -847,7 +847,7 @@ pub fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
     }
 }
 
-pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
+pub(crate) fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
     match blend_factor {
         BlendFactor::ConstantColor => vk::BlendFactor::CONSTANT_COLOR,
         BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
@@ -869,7 +869,7 @@ pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
     }
 }
 
-pub fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
+pub(crate) fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
     match blend_op {
         BlendOp::Add => vk::BlendOp::ADD,
         BlendOp::Max => vk::BlendOp::MAX,
@@ -879,7 +879,7 @@ pub fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
     }
 }
 
-pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
+pub(crate) fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
     let components_bits = color_components.bits() as u32;
     let mut colors = 0u32;
     colors |= components_bits.rotate_left(

@@ -1,9 +1,10 @@
-use std::sync::{
+use std::{sync::{
     atomic::AtomicU64,
     Arc,
-};
+}, ffi::c_void};
 
 use ash::vk;
+use smallvec::SmallVec;
 use sourcerenderer_core::gpu::*;
 
 use super::*;
@@ -19,7 +20,7 @@ pub struct VkDevice {
 }
 
 impl VkDevice {
-    pub fn new(
+    pub unsafe fn new(
         device: ash::Device,
         instance: &Arc<RawVkInstance>,
         physical_device: vk::PhysicalDevice,
@@ -29,16 +30,6 @@ impl VkDevice {
         features: VkFeatures,
         max_surface_image_count: u32,
     ) -> Self {
-        let mut vma_flags = vma_sys::VmaAllocatorCreateFlags::default();
-        if features.intersects(VkFeatures::DEDICATED_ALLOCATION) {
-            vma_flags |= vma_sys::VmaAllocatorCreateFlagBits_VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT as u32;
-        }
-        if features.intersects(VkFeatures::RAY_TRACING) {
-            vma_flags |=
-                vma_sys::VmaAllocatorCreateFlagBits_VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT
-                    as u32;
-        }
-
         let allocator = unsafe {
             unsafe extern "system" fn get_instance_proc_addr_stub(
                 _instance: ash::vk::Instance,
@@ -98,7 +89,7 @@ impl VkDevice {
             };
 
             let vma_create_info = vma_sys::VmaAllocatorCreateInfo {
-                flags: vma_flags,
+                flags:  vma_sys::VmaAllocatorCreateFlags::default(),
                 physicalDevice: physical_device,
                 device: device.handle(),
                 preferredLargeHeapBlockSize: 0,
@@ -186,16 +177,68 @@ impl VkDevice {
     pub fn transfer_queue(&self) -> Option<&VkQueue> {
         self.transfer_queue.as_ref()
     }
+
+    unsafe fn update_memory_infos(instance: &RawVkInstance, physical_device: vk::PhysicalDevice, memory_infos: &mut Vec<MemoryInfo>, memory_type_infos: &mut Vec<MemoryTypeInfo>, supports_ext_budget: bool) {
+        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
+        let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
+        if supports_ext_budget {
+            memory_properties.p_next = &mut budget as *mut vk::PhysicalDeviceMemoryBudgetPropertiesEXT as *mut c_void;
+        }
+        instance.get_physical_device_memory_properties2(physical_device, &mut memory_properties);
+
+        let heap_count = memory_properties.memory_properties.memory_heap_count as usize;
+        let memory_type_count = memory_properties.memory_properties.memory_type_count as usize;
+        let heaps = &memory_properties.memory_properties.memory_heaps[.. heap_count];
+        let memory_types = &memory_properties.memory_properties.memory_types[.. memory_type_count];
+
+        memory_infos.clear();
+        for i in 0..heap_count {
+            let heap = &heaps[i];
+            let heap_budget = budget.heap_budget[i];
+            let heap_usage = budget.heap_usage[i];
+
+            let kind: MemoryKind = if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
+                MemoryKind::VRAM
+            } else {
+                MemoryKind::RAM
+            };
+
+            let info = MemoryInfo {
+                available: if supports_ext_budget { heap_budget - heap_usage } else { heap.size },
+                total: if supports_ext_budget { heap_budget } else { heap.size },
+                memory_kind: kind
+            };
+            memory_infos.push(info);
+        }
+
+        for i in 0..memory_type_count {
+            let memory_type = &memory_types[i];
+
+            let kind: MemoryKind = if memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                MemoryKind::VRAM
+            } else {
+                MemoryKind::RAM
+            };
+            let is_cpu_accessible = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+            let is_cached = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED);
+
+            let info = MemoryTypeInfo {
+                memory_index: memory_type.heap_index,
+                memory_kind: kind, is_cached, is_cpu_accessible
+            };
+            memory_type_infos.push(info);
+        }
+    }
 }
 
 impl Device<VkBackend> for VkDevice {
     unsafe fn create_buffer(
         &self,
         info: &BufferInfo,
-        memory_usage: MemoryUsage,
+        memory_type_index: u32,
         name: Option<&str>,
-    ) -> VkBuffer {
-        VkBuffer::new(&self.device, memory_usage, info, None, name)
+    ) -> Result<VkBuffer, OutOfMemoryError> {
+        VkBuffer::new(&self.device, ResourceMemory::Dedicated { memory_type_index }, info, name)
     }
 
     unsafe fn create_shader(
@@ -207,8 +250,8 @@ impl Device<VkBackend> for VkDevice {
         VkShader::new(&self.device, shader_type, bytecode, name)
     }
 
-    unsafe fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> VkTexture {
-        VkTexture::new(&self.device, info, name)
+    unsafe fn create_texture(&self, info: &TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<VkTexture, OutOfMemoryError> {
+        VkTexture::new(&self.device, info, ResourceMemory::Dedicated { memory_type_index }, name)
     }
 
     unsafe fn create_texture_view(
@@ -337,6 +380,209 @@ impl Device<VkBackend> for VkDevice {
     fn supports_barycentrics(&self) -> bool {
         self.device.features.contains(VkFeatures::BARYCENTRICS)
     }
+
+    unsafe fn memory_infos(&self) -> Vec<MemoryInfo> {
+        let mut memory_infos = Vec::<MemoryInfo>::new();
+
+        let supports_ext_budget = self.device.features.contains(VkFeatures::MEMORY_BUDGET);
+
+        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
+        let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
+        if supports_ext_budget {
+            memory_properties.p_next = &mut budget as *mut vk::PhysicalDeviceMemoryBudgetPropertiesEXT as *mut c_void;
+        }
+        self.device.instance.get_physical_device_memory_properties2(self.device.physical_device, &mut memory_properties);
+
+        let heap_count = memory_properties.memory_properties.memory_heap_count as usize;
+        let heaps = &memory_properties.memory_properties.memory_heaps[.. heap_count];
+
+        for i in 0..heap_count {
+            let heap = &heaps[i];
+            let heap_budget = budget.heap_budget[i];
+            let heap_usage = budget.heap_usage[i];
+
+            let kind: MemoryKind = if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
+                MemoryKind::VRAM
+            } else {
+                MemoryKind::RAM
+            };
+
+            let info = MemoryInfo {
+                available: if supports_ext_budget { heap_budget - heap_usage } else { heap.size },
+                total: if supports_ext_budget { heap_budget } else { heap.size },
+                memory_kind: kind
+            };
+            memory_infos.push(info);
+        }
+        memory_infos
+    }
+
+    unsafe fn memory_type_infos(&self) -> Vec<MemoryTypeInfo> {
+        let mut memory_type_infos = Vec::<MemoryTypeInfo>::new();
+
+        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
+        self.device.instance.get_physical_device_memory_properties2(self.device.physical_device, &mut memory_properties);
+
+        let memory_type_count = memory_properties.memory_properties.memory_type_count as usize;
+        let memory_types = &memory_properties.memory_properties.memory_types[.. memory_type_count];
+
+        for i in 0..memory_type_count {
+            let memory_type = &memory_types[i];
+
+            let kind: MemoryKind = if memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                MemoryKind::VRAM
+            } else {
+                MemoryKind::RAM
+            };
+            let is_cpu_accessible = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+            let is_cached = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED);
+
+            let info = MemoryTypeInfo {
+                memory_index: memory_type.heap_index,
+                memory_kind: kind, is_cached, is_cpu_accessible
+            };
+            memory_type_infos.push(info);
+        }
+        memory_type_infos
+    }
+
+    unsafe fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<VkMemoryHeap, OutOfMemoryError> {
+        VkMemoryHeap::new(&self.device, memory_type_index, size)
+    }
+
+    unsafe fn get_buffer_heap_info(&self, info: &BufferInfo) -> ResourceHeapInfo {
+        let mut queue_families = SmallVec::<[u32; 3]>::new();
+        let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
+        if info.sharing_mode == QueueSharingMode::Concurrent && (self.device.transfer_queue_info.is_some() || self.device.compute_queue_info.is_some()) {
+            sharing_mode = vk::SharingMode::CONCURRENT;
+            queue_families.push(self.device.graphics_queue_info.queue_family_index as u32);
+            if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                queue_families.push(info.queue_family_index as u32);
+            }
+            if let Some(info) = self.device.compute_queue_info.as_ref() {
+                queue_families.push(info.queue_family_index as u32);
+            }
+        }
+
+        let buffer_info = vk::BufferCreateInfo {
+            size: info.size as u64,
+            usage: buffer_usage_to_vk(
+                info.usage,
+                self.device.features.contains(VkFeatures::RAY_TRACING),
+            ),
+            sharing_mode,
+            p_queue_family_indices: queue_families.as_ptr(),
+            queue_family_index_count: queue_families.len() as u32,
+            ..Default::default()
+        };
+
+        let mut requirements = vk::MemoryRequirements2::default();
+        let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
+        requirements.p_next = &mut dedicated_requirements as *mut vk::MemoryDedicatedRequirements as *mut c_void;
+        if self.device.features.contains(VkFeatures::MAINTENANCE4) {
+            let buffer_requirements_info = vk::DeviceBufferMemoryRequirements {
+                p_create_info: &buffer_info as *const vk::BufferCreateInfo,
+                ..Default::default()
+            };
+            self.device.get_device_buffer_memory_requirements(&buffer_requirements_info, &mut requirements);
+        } else {
+            let buffer = self.device.create_buffer(&buffer_info, None).unwrap();
+            let buffer_requirements_info = vk::BufferMemoryRequirementsInfo2 {
+                buffer,
+                ..Default::default()
+            };
+            self.device.get_buffer_memory_requirements2(&buffer_requirements_info, &mut requirements);
+            self.device.destroy_buffer(buffer, None);
+        }
+
+        ResourceHeapInfo {
+            prefer_dedicated_allocation: dedicated_requirements.prefers_dedicated_allocation == vk::TRUE || dedicated_requirements.requires_dedicated_allocation == vk::TRUE,
+            memory_type_mask: requirements.memory_requirements.memory_type_bits,
+            alignment: requirements.memory_requirements.alignment,
+            size: requirements.memory_requirements.size
+        }
+    }
+
+    unsafe fn get_texture_heap_info(&self, info: &TextureInfo) -> ResourceHeapInfo {
+        let mut image_info = vk::ImageCreateInfo {
+            flags: vk::ImageCreateFlags::empty(),
+            tiling: vk::ImageTiling::OPTIMAL,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            usage: texture_usage_to_vk(info.usage),
+            image_type: match info.dimension {
+                TextureDimension::Dim1DArray | TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
+                TextureDimension::Dim2DArray | TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
+                TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
+            },
+            extent: vk::Extent3D {
+                width: info.width.max(1),
+                height: info.height.max(1),
+                depth: info.depth.max(1),
+            },
+            format: format_to_vk(info.format, self.device.supports_d24),
+            mip_levels: info.mip_levels,
+            array_layers: info.array_length,
+            samples: samples_to_vk(info.samples),
+            ..Default::default()
+        };
+
+        debug_assert!(
+            info.array_length == 1
+                || (info.dimension == TextureDimension::Dim1DArray
+                    || info.dimension == TextureDimension::Dim2DArray)
+        );
+        debug_assert!(info.depth == 1 || info.dimension == TextureDimension::Dim3D);
+        debug_assert!(
+            info.height == 1
+                || (info.dimension == TextureDimension::Dim2D
+                    || info.dimension == TextureDimension::Dim2DArray
+                    || info.dimension == TextureDimension::Dim3D)
+        );
+
+        let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
+        compatible_formats.push(image_info.format);
+        let mut format_list = vk::ImageFormatListCreateInfo {
+            view_format_count: compatible_formats.len() as u32,
+            p_view_formats: compatible_formats.as_ptr(),
+            ..Default::default()
+        };
+        if info.supports_srgb {
+            image_info.flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
+            if self.device.features.contains(VkFeatures::IMAGE_FORMAT_LIST) {
+                format_list.p_next = std::mem::replace(
+                    &mut image_info.p_next,
+                    &format_list as *const vk::ImageFormatListCreateInfo as *const c_void,
+                );
+            }
+        }
+
+        let mut requirements = vk::MemoryRequirements2::default();
+        let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
+        requirements.p_next = &mut dedicated_requirements as *mut vk::MemoryDedicatedRequirements as *mut c_void;
+        if self.device.features.contains(VkFeatures::MAINTENANCE4) {
+            let image_requirements_info = vk::DeviceImageMemoryRequirements {
+                p_create_info: &image_info as *const vk::ImageCreateInfo,
+                ..Default::default()
+            };
+            self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
+        } else {
+            let image = self.device.create_image(&image_info, None).unwrap();
+            let image_requirements_info = vk::ImageMemoryRequirementsInfo2 {
+                image,
+                ..Default::default()
+            };
+            self.device.get_image_memory_requirements2(&image_requirements_info, &mut requirements);
+            self.device.destroy_image(image, None);
+        }
+
+        ResourceHeapInfo {
+            prefer_dedicated_allocation: dedicated_requirements.prefers_dedicated_allocation == vk::TRUE || dedicated_requirements.requires_dedicated_allocation == vk::TRUE,
+            memory_type_mask: requirements.memory_requirements.memory_type_bits,
+            alignment: requirements.memory_requirements.alignment,
+            size: requirements.memory_requirements.size
+        }
+    }
 }
 
 impl Drop for VkDevice {
@@ -351,26 +597,4 @@ impl Drop for VkDevice {
 pub(crate) struct VulkanMemoryFlags {
     pub(crate) preferred: vk::MemoryPropertyFlags,
     pub(crate) required: vk::MemoryPropertyFlags,
-}
-
-pub(crate) fn memory_usage_to_vma(memory_usage: MemoryUsage) -> VulkanMemoryFlags {
-    use vk::MemoryPropertyFlags as VkMem;
-    match memory_usage {
-        MemoryUsage::CachedRAM => VulkanMemoryFlags {
-            preferred: VkMem::HOST_COHERENT,
-            required: VkMem::HOST_VISIBLE | VkMem::HOST_CACHED,
-        },
-        MemoryUsage::VRAM => VulkanMemoryFlags {
-            preferred: VkMem::DEVICE_LOCAL,
-            required: VkMem::empty(),
-        },
-        MemoryUsage::UncachedRAM => VulkanMemoryFlags {
-            preferred: VkMem::HOST_COHERENT,
-            required: VkMem::HOST_VISIBLE,
-        },
-        MemoryUsage::MappableVRAM => VulkanMemoryFlags {
-            preferred: VkMem::DEVICE_LOCAL | VkMem::HOST_COHERENT, // Fall back to uncached RAM
-            required: VkMem::HOST_VISIBLE,
-        },
-    }
 }

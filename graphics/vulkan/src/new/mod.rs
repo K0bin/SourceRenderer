@@ -19,6 +19,7 @@ pub use self::{
     swapchain::*,
     sync::*,
     texture::*,
+    heap::*,
 };
 pub use crate::raw::*;
 
@@ -41,3 +42,4 @@ mod surface;
 mod swapchain;
 mod sync;
 mod texture;
+mod heap;

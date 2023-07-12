@@ -17,13 +17,14 @@ bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct VkFeatures : u32 {
     const DESCRIPTOR_INDEXING        = 0b1;
-    const DEDICATED_ALLOCATION       = 0b10;
+    const MEMORY_BUDGET              = 0b10;
     const DESCRIPTOR_TEMPLATE        = 0b100;
     const RAY_TRACING                = 0b1000;
     const ADVANCED_INDIRECT          = 0b10000;
     const MIN_MAX_FILTER             = 0b100000;
     const BARYCENTRICS               = 0b1000000;
     const IMAGE_FORMAT_LIST          = 0b10000000;
+    const MAINTENANCE4               = 0b100000000;
   }
 }
 
