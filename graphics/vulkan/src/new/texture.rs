@@ -129,9 +129,14 @@ impl VkTexture {
                 device.get_image_memory_requirements2(&requirements_info, &mut requirements);
                 assert!((requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)) != 0);
 
+                let dedicated_alloc = vk::MemoryDedicatedAllocateInfo {
+                    image: image,
+                    ..Default::default()
+                };
                 let memory_info = vk::MemoryAllocateInfo {
                     allocation_size: requirements.memory_requirements.size,
                     memory_type_index,
+                    p_next: &dedicated_alloc as *const vk::MemoryDedicatedAllocateInfo as *const c_void,
                     ..Default::default()
                 };
                 let memory_result: Result<vk::DeviceMemory, vk::Result> = device.allocate_memory(&memory_info, None);
