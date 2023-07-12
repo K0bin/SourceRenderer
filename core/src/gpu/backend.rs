@@ -21,6 +21,7 @@ pub trait GPUBackend: 'static + Sized {
   type RayTracingPipeline: Send + Sync;
   type Fence : Fence + Send + Sync;
   type Queue : Queue<Self> + Send + Sync;
+  type Heap : Heap<Self>;
   //type QueryRange : Send + Sync;
   //type AccelerationStructure : AccelerationStructure + Send + Sync;
   type WSIFence : WSIFence + Send + Sync;

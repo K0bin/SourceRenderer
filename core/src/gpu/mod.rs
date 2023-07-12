@@ -14,6 +14,7 @@ pub use self::texture::*;
 pub use self::descriptor_heap::*;
 pub use self::queue::*;
 pub use self::backend::*;
+pub use self::heap::*;
 
 mod device;
 mod instance;
@@ -26,6 +27,7 @@ mod texture;
 mod renderpass;
 mod backend;
 mod sync;
+mod heap;
 //mod rt;
 mod descriptor_heap;
 mod queue;

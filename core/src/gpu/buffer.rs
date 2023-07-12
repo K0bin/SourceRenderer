@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{hash::Hash, ffi::c_void};
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -33,6 +33,6 @@ pub struct BufferInfo {
 pub trait Buffer : Hash + PartialEq + Eq + Send + Sync {
   fn info(&self) -> &BufferInfo;
 
-  unsafe fn map_unsafe(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut u8>;
+  unsafe fn map_unsafe(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void>;
   unsafe fn unmap_unsafe(&self, offset: u64, length: u64, flush: bool);
 }
