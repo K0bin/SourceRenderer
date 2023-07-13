@@ -33,6 +33,6 @@ pub struct BufferInfo {
 pub trait Buffer : Hash + PartialEq + Eq + Send + Sync {
   fn info(&self) -> &BufferInfo;
 
-  unsafe fn map_unsafe(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void>;
-  unsafe fn unmap_unsafe(&self, offset: u64, length: u64, flush: bool);
+  unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void>;
+  unsafe fn unmap(&self, offset: u64, length: u64, flush: bool);
 }
