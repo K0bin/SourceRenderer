@@ -16,14 +16,6 @@ pub trait Adapter<B: GPUBackend> {
 
 pub const WHOLE_BUFFER: u64 = u64::MAX;
 
-pub enum TextureMemory<'a, B: GPUBackend> {
-  Dedicated,
-  Heap {
-    heap: &'a B::Heap,
-    offset: u64
-  }
-}
-
 pub trait Device<B: GPUBackend> {
   unsafe fn create_buffer(&self, info: &BufferInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Buffer, OutOfMemoryError>;
   unsafe fn create_texture(&self, info: &TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Texture, OutOfMemoryError>;
