@@ -17,6 +17,7 @@ pub struct VkDevice {
     transfer_queue: Option<VkQueue>,
     shared: Arc<VkShared>,
     query_count: AtomicU64,
+    memory_type_infos: Vec<MemoryTypeInfo>
 }
 
 impl VkDevice {
@@ -148,6 +149,32 @@ impl VkDevice {
         let transfer_queue = transfer_queue_info
             .map(|info| VkQueue::new(info, VkQueueType::Transfer, &raw, &shared));
 
+        // Memory types
+        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
+        instance.get_physical_device_memory_properties2(physical_device, &mut memory_properties);
+
+        let memory_type_count = memory_properties.memory_properties.memory_type_count as usize;
+        let memory_types = &memory_properties.memory_properties.memory_types[.. memory_type_count];
+
+        let mut memory_type_infos = Vec::<MemoryTypeInfo>::new();
+        for memory_type in memory_types {
+            let kind: MemoryKind = if memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                MemoryKind::VRAM
+            } else {
+                MemoryKind::RAM
+            };
+            let is_cpu_accessible = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+            let is_cached = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_CACHED);
+            let is_coherent = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT);
+
+            let info = MemoryTypeInfo {
+                memory_index: memory_type.heap_index,
+                memory_kind: kind, is_cached, is_cpu_accessible,
+                is_coherent
+            };
+            memory_type_infos.push(info);
+        }
+
         VkDevice {
             device: raw,
             graphics_queue,
@@ -155,6 +182,7 @@ impl VkDevice {
             transfer_queue,
             shared,
             query_count: AtomicU64::new(0),
+            memory_type_infos
         }
     }
 
@@ -176,58 +204,6 @@ impl VkDevice {
     #[inline]
     pub fn transfer_queue(&self) -> Option<&VkQueue> {
         self.transfer_queue.as_ref()
-    }
-
-    unsafe fn update_memory_infos(instance: &RawVkInstance, physical_device: vk::PhysicalDevice, memory_infos: &mut Vec<MemoryInfo>, memory_type_infos: &mut Vec<MemoryTypeInfo>, supports_ext_budget: bool) {
-        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
-        let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
-        if supports_ext_budget {
-            memory_properties.p_next = &mut budget as *mut vk::PhysicalDeviceMemoryBudgetPropertiesEXT as *mut c_void;
-        }
-        instance.get_physical_device_memory_properties2(physical_device, &mut memory_properties);
-
-        let heap_count = memory_properties.memory_properties.memory_heap_count as usize;
-        let memory_type_count = memory_properties.memory_properties.memory_type_count as usize;
-        let heaps = &memory_properties.memory_properties.memory_heaps[.. heap_count];
-        let memory_types = &memory_properties.memory_properties.memory_types[.. memory_type_count];
-
-        memory_infos.clear();
-        for i in 0..heap_count {
-            let heap = &heaps[i];
-            let heap_budget = budget.heap_budget[i];
-            let heap_usage = budget.heap_usage[i];
-
-            let kind: MemoryKind = if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
-                MemoryKind::VRAM
-            } else {
-                MemoryKind::RAM
-            };
-
-            let info = MemoryInfo {
-                available: if supports_ext_budget { heap_budget - heap_usage } else { heap.size },
-                total: if supports_ext_budget { heap_budget } else { heap.size },
-                memory_kind: kind
-            };
-            memory_infos.push(info);
-        }
-
-        for i in 0..memory_type_count {
-            let memory_type = &memory_types[i];
-
-            let kind: MemoryKind = if memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
-                MemoryKind::VRAM
-            } else {
-                MemoryKind::RAM
-            };
-            let is_cpu_accessible = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
-            let is_cached = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED);
-
-            let info = MemoryTypeInfo {
-                memory_index: memory_type.heap_index,
-                memory_kind: kind, is_cached, is_cpu_accessible
-            };
-            memory_type_infos.push(info);
-        }
     }
 }
 
@@ -417,33 +393,8 @@ impl Device<VkBackend> for VkDevice {
         memory_infos
     }
 
-    unsafe fn memory_type_infos(&self) -> Vec<MemoryTypeInfo> {
-        let mut memory_type_infos = Vec::<MemoryTypeInfo>::new();
-
-        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
-        self.device.instance.get_physical_device_memory_properties2(self.device.physical_device, &mut memory_properties);
-
-        let memory_type_count = memory_properties.memory_properties.memory_type_count as usize;
-        let memory_types = &memory_properties.memory_properties.memory_types[.. memory_type_count];
-
-        for i in 0..memory_type_count {
-            let memory_type = &memory_types[i];
-
-            let kind: MemoryKind = if memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
-                MemoryKind::VRAM
-            } else {
-                MemoryKind::RAM
-            };
-            let is_cpu_accessible = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
-            let is_cached = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED);
-
-            let info = MemoryTypeInfo {
-                memory_index: memory_type.heap_index,
-                memory_kind: kind, is_cached, is_cpu_accessible
-            };
-            memory_type_infos.push(info);
-        }
-        memory_type_infos
+    unsafe fn memory_type_infos(&self) -> &[MemoryTypeInfo] {
+        &self.memory_type_infos
     }
 
     unsafe fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<VkMemoryHeap, OutOfMemoryError> {
