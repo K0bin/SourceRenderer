@@ -6,6 +6,7 @@ use super::*;
 
 struct GPUDevice<B: GPUBackend> {
     device: Arc<B::Device>,
+    allocator: Arc<MemoryAllocator<B>>,
     destroyer: Arc<DeferredDestroyer<B>>,
     prerendered_frames: u32,
     has_context: AtomicBool
@@ -17,7 +18,7 @@ impl<B: GPUBackend> GPUDevice<B> {
         GraphicsContext::new(&self.device, &self.destroyer, self.prerendered_frames)
     }
 
-    pub fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> super::Texture<B> {
-        super::Texture::new(&self.device, &self.destroyer, info, name)
+    pub fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Result<super::Texture<B>, OutOfMemoryError> {
+        super::Texture::new(&self.device, &self.allocator, &self.destroyer, info, name)
     }
 }

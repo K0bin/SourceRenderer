@@ -4,21 +4,40 @@ use sourcerenderer_core::gpu::*;
 
 use super::*;
 
-pub struct BufferSlice<B: GPUBackend> {
-  pub(crate) buffer: Arc<B::Buffer>,
-  pub offset: u64,
-  pub length: u64
+pub struct BufferAndAllocation<B: GPUBackend> {
+    pub(super) buffer: B::Buffer,
+    pub(super) allocation: Option<MemoryAllocation<B::Heap>>
 }
+
+pub struct BufferSlice<B: GPUBackend>(Allocation<BufferAndAllocation<B>>);
 
 impl<B: GPUBackend> Debug for BufferSlice<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "(Buffer Slice: {}-{} (length: {}))",
-            self.offset,
-            self.offset + self.length,
-            self.length
+            self.0.offset,
+            self.0.offset + self.0.length,
+            self.0.length
         )
+    }
+}
+
+impl<B: GPUBackend> BufferSlice<B> {
+    pub fn offset(&self) -> u64 {
+        self.0.offset
+    }
+
+    pub fn length(&self) -> u64 {
+        self.0.length
+    }
+
+    pub(super) fn inner_arc(&self) -> &Arc<BufferAndAllocation<B>> {
+        &self.0.data_arc()
+    }
+
+    pub(super) fn handle(&self) -> &B::Buffer {
+        &self.0.data().buffer
     }
 }
 
@@ -35,27 +54,10 @@ struct BufferKey {
     buffer_usage: BufferUsage,
 }
 
-struct BufferSliceCollection<B: GPUBackend> {
-    free_slices: Vec<Arc<BufferSlice<B>>>,
-    used_slices: Vec<Arc<BufferSlice<B>>>,
-    destroyer: Arc<DeferredDestroyer<B>>
-}
-
-impl<B: GPUBackend> Drop for BufferSliceCollection<B> {
-    fn drop(&mut self) {
-        for slice in self.free_slices.drain(..) {
-            self.destroyer.destroy_buffer_slice_reference(slice);
-        }
-        for slice in self.used_slices.drain(..) {
-            self.destroyer.destroy_buffer_slice_reference(slice);
-        }
-    }
-}
-
 pub struct BufferAllocator<B: GPUBackend> {
     device: Arc<B::Device>,
-    destroyer: Arc<DeferredDestroyer<B>>,
-    buffers: Mutex<HashMap<BufferKey, BufferSliceCollection<B>>>,
+    allocator: Arc<MemoryAllocator<B>>,
+    buffers: Mutex<HashMap<BufferKey, Vec<Chunk<BufferAndAllocation<B>>>>>,
 }
 
 impl<B: GPUBackend> BufferAllocator<B> {
@@ -65,120 +67,103 @@ impl<B: GPUBackend> BufferAllocator<B> {
       info: &BufferInfo,
       memory_usage: MemoryUsage,
       name: Option<&str>,
-    ) -> Arc<BufferSlice<B>> {
+    ) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
+        let mut alignment: u64 = 256; // TODO
 
         if info.size > BIG_BUFFER_SLAB_SIZE {
             // Don't do one-off buffers for command lists
-            let buffer = unsafe {
-                Arc::new(self.device.create_buffer(info, memory_usage, name))
-            };
-            return Arc::new(BufferSlice {
-                buffer: buffer,
-                offset: 0,
-                length: info.size
-            });
+            let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, name)?;
+            let chunk = Chunk::new(buffer_and_allocation, info.size);
+            let suballocation = chunk.allocate(info.size, alignment).unwrap();
+            return Ok(Arc::new(BufferSlice(suballocation)));
         }
-
-        let mut info = info.clone();
-        let mut alignment: u64 = 256; // TODO
 
         let key = BufferKey {
             memory_usage,
             buffer_usage: info.usage,
         };
         let mut guard = self.buffers.lock().unwrap();
-        let matching_buffers = guard.entry(key).or_insert_with(|| BufferSliceCollection {
-            free_slices: Vec::new(),
-            used_slices: Vec::new(),
-            destroyer: self.destroyer.clone()
-        });
+        let matching_chunks = guard.entry(key).or_insert(Vec::new());
 
-        let mut found_slice_index: Option<usize> = None;
-        for (index, slice) in matching_buffers.free_slices.iter().enumerate() {
-            if slice.length >= info.size && slice.offset % alignment == 0 {
-                found_slice_index = Some(index);
-                break;
+        for chunk in matching_chunks.iter() {
+            if let Some(allocation) = chunk.allocate(info.size, alignment) {
+                return Ok(Arc::new(BufferSlice(allocation)));
             }
         }
-        if let Some(index) = found_slice_index {
-            return matching_buffers.free_slices.remove(index);
-        }
 
-        let mut slice_opt: Option<BufferSlice<B>> = None;
-        let mut refilled_buffer_slice: Option<usize> = None;
-        if !matching_buffers.used_slices.is_empty() {
-            // This is awful. Completely rewrite this with drain_filter once that's stabilized.
-            // Right now cleaner alternatives would likely need to do more copying and allocations.
-            let length = matching_buffers.used_slices.len();
-            for i in (0..length).rev() {
-                let refcount = {
-                    let slice = &matching_buffers.used_slices[i];
-                    Arc::strong_count(slice)
-                };
-                if refcount == 1 {
-                    matching_buffers
-                        .free_slices
-                        .push(matching_buffers.used_slices.remove(i));
+        let mut sliced_buffer_info = info.clone();
+        sliced_buffer_info.size = SLICED_BUFFER_SIZE.max(info.size);
+
+        let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, &sliced_buffer_info, memory_usage, None)?;
+        let chunk = Chunk::new(buffer_and_allocation, sliced_buffer_info.size);
+        let allocation = chunk.allocate(info.size, alignment).unwrap();
+        matching_chunks.push(chunk);
+        return Ok(Arc::new(BufferSlice(allocation)));
+    }
+
+    pub(super) fn create_buffer(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Result<BufferAndAllocation<B>, OutOfMemoryError> {
+        let heap_info = unsafe { device.get_buffer_heap_info(info) };
+        if heap_info.prefer_dedicated_allocation {
+            let memory_types = unsafe { device.memory_type_infos() };
+            let mut buffer: Result<B::Buffer, OutOfMemoryError> = Err(OutOfMemoryError {});
+            let mut mask = 0u32;
+
+            if memory_usage != MemoryUsage::GPUMemory {
+                mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::ForceCoherent) & heap_info.memory_type_mask;
+                for i in 0..memory_types.len() as u32 {
+                    if (mask & i) == 0 {
+                        continue;
+                    }
+                    buffer = unsafe { device.create_buffer(info, i, name) };
+                    if buffer.is_ok() {
+                        break;
+                    }
                 }
             }
-            matching_buffers.free_slices.sort_by_key(|b| b.length);
-            
-            found_slice_index = None;
-            for (index, slice) in matching_buffers.free_slices.iter().enumerate() {
-                if slice.length >= info.size && slice.offset % alignment == 0 {
-                    found_slice_index = Some(index);
-                    break;
+
+            if buffer.is_err() {
+                mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
+                for i in 0..memory_types.len() as u32 {
+                    if (mask & i) == 0 {
+                        continue;
+                    }
+                    buffer = unsafe { device.create_buffer(info, i, name) };
+                    if buffer.is_ok() {
+                        break;
+                    }
                 }
             }
-            if let Some(index) = found_slice_index {
-                return matching_buffers.free_slices.remove(index);
+
+            if buffer.is_err() {
+                mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
+                for i in 0..memory_types.len() as u32 {
+                    if (mask & i) == 0 {
+                        continue;
+                    }
+                    buffer = unsafe { device.create_buffer(info, i, name) };
+                    if buffer.is_ok() {
+                        break;
+                    }
+                }
             }
-        }
 
-        let mut slice_size = align_up_64(info.size, alignment);
-        slice_size = if slice_size <= TINY_BUFFER_SLAB_SIZE {
-            TINY_BUFFER_SLAB_SIZE
-        } else if info.size <= SMALL_BUFFER_SLAB_SIZE {
-            SMALL_BUFFER_SLAB_SIZE
-        } else if info.size <= BUFFER_SLAB_SIZE {
-            BUFFER_SLAB_SIZE
-        } else if info.size <= BIG_BUFFER_SLAB_SIZE {
-            BIG_BUFFER_SLAB_SIZE
+            Ok(BufferAndAllocation {
+                buffer: buffer?,
+                allocation: None
+            })
         } else {
-            info.size
-        };
-        let slices = if slice_size <= BIG_BUFFER_SLAB_SIZE {
-            info.size = SLICED_BUFFER_SIZE;
-            SLICED_BUFFER_SIZE / slice_size
-        } else {
-            1
-        };
-
-        let buffer = unsafe {
-            Arc::new(self.device.create_buffer(&info, memory_usage, None))
-        };
-
-        for i in 0..(slices - 1) {
-            let slice = Arc::new(BufferSlice::<B> {
-                buffer: buffer.clone(),
-                offset: i * slice_size,
-                length: slice_size
-            });
-            matching_buffers.free_slices.push(slice);
+            let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
+            let buffer = unsafe { allocation.data().create_buffer(info, allocation.offset, name) }?;
+            Ok(BufferAndAllocation {
+                buffer,
+                allocation: Some(allocation)
+            })
         }
-
-        let slice = Arc::new(BufferSlice::<B> {
-            buffer,
-            offset: (slices - 1) * slice_size,
-            length: slice_size
-        });
-        matching_buffers.used_slices.push(slice.clone());
-        slice
     }
 }
 
 
-pub(crate) fn align_up(value: usize, alignment: usize) -> usize {
+pub(super) fn align_up(value: usize, alignment: usize) -> usize {
   if alignment == 0 {
       return value;
   }
@@ -188,14 +173,14 @@ pub(crate) fn align_up(value: usize, alignment: usize) -> usize {
   (value + alignment - 1) & !(alignment - 1)
 }
 
-pub(crate) fn align_down(value: usize, alignment: usize) -> usize {
+pub(super) fn align_down(value: usize, alignment: usize) -> usize {
   if alignment == 0 {
       return value;
   }
   (value / alignment) * alignment
 }
 
-pub(crate) fn align_up_32(value: u32, alignment: u32) -> u32 {
+pub(super) fn align_up_32(value: u32, alignment: u32) -> u32 {
   if alignment == 0 {
       return value;
   }
@@ -205,21 +190,21 @@ pub(crate) fn align_up_32(value: u32, alignment: u32) -> u32 {
   (value + alignment - 1) & !(alignment - 1)
 }
 
-pub(crate) fn align_down_32(value: u32, alignment: u32) -> u32 {
+pub(super) fn align_down_32(value: u32, alignment: u32) -> u32 {
   if alignment == 0 {
       return value;
   }
   (value / alignment) * alignment
 }
 
-pub(crate) fn align_up_64(value: u64, alignment: u64) -> u64 {
+pub(super) fn align_up_64(value: u64, alignment: u64) -> u64 {
   if alignment == 0 {
       return value;
   }
   (value + alignment - 1) & !(alignment - 1)
 }
 
-pub(crate) fn align_down_64(value: u64, alignment: u64) -> u64 {
+pub(super) fn align_down_64(value: u64, alignment: u64) -> u64 {
   if alignment == 0 {
       return value;
   }

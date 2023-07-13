@@ -7,6 +7,7 @@ use super::*;
 pub struct Texture<B: GPUBackend> {
     device: Arc<B::Device>,
     texture: ManuallyDrop<B::Texture>,
+    allocation: Option<MemoryAllocation<B::Heap>>,
     destroyer: Arc<DeferredDestroyer<B>>
 }
 
@@ -14,17 +15,53 @@ impl<B: GPUBackend> Drop for Texture<B> {
     fn drop(&mut self) {
         let texture = unsafe { ManuallyDrop::take(&mut self.texture) };
         self.destroyer.destroy_texture(texture);
+        if let Some(allocation) = self.allocation.take() {
+            self.destroyer.destroy_allocation(allocation);
+        }
     }
 }
 
 impl<B: GPUBackend> Texture<B> {
-    pub(crate) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, name: Option<&str>) -> Self {
-        let texture = unsafe { device.create_texture(info, name) };
-        Self {
+    pub(super) fn new(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
+        let heap_info = unsafe { device.get_texture_heap_info(info) };
+        let (texture, allocation) = if heap_info.prefer_dedicated_allocation {
+            let memory_types = unsafe { device.memory_type_infos() };
+            let mut mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
+            let mut texture: Result<B::Texture, OutOfMemoryError> = Err(OutOfMemoryError {});
+            for i in 0..memory_types.len() as u32 {
+                if (mask & i) == 0 {
+                    continue;
+                }
+                texture = unsafe { device.create_texture(info, i, name) };
+                if texture.is_ok() {
+                    break;
+                }
+            }
+
+            if texture.is_err() {
+                mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
+                for i in 0..memory_types.len() as u32 {
+                    if (mask & i) == 0 {
+                        continue;
+                    }
+                    texture = unsafe { device.create_texture(info, i, name) };
+                    if texture.is_ok() {
+                        break;
+                    }
+                }
+            }
+            (texture?, None)
+        } else {
+            let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
+            let texture = unsafe { allocation.data().create_texture(info, allocation.offset, name) }?;
+            (texture, Some(allocation))
+        };
+        Ok(Self {
             device: device.clone(),
             texture: ManuallyDrop::new(texture),
+            allocation,
             destroyer: destroyer.clone()
-        }
+        })
     }
 
     pub(crate) fn handle(&self) -> &B::Texture {
@@ -47,7 +84,7 @@ impl<B: GPUBackend> Drop for TextureView<B> {
 }
 
 impl<B: GPUBackend> TextureView<B> {
-    pub(crate) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &Arc<Texture<B>>, info: &TextureViewInfo, name: Option<&str>) -> Self {
+    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &Arc<Texture<B>>, info: &TextureViewInfo, name: Option<&str>) -> Self {
         let texture_view = unsafe { device.create_texture_view(texture.handle(), info, name) };
         Self {
             device: device.clone(),

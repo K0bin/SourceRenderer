@@ -38,6 +38,7 @@ struct TransientBuffer<B: GPUBackend> {
     size: u64,
     offset: u64,
     buffer: ManuallyDrop<B::Buffer>,
+    allocation: Option<MemoryAllocation<B::Heap>>,
     destroyer: Arc<DeferredDestroyer<B>>
 }
 
@@ -45,6 +46,9 @@ impl<B: GPUBackend> Drop for TransientBuffer<B> {
     fn drop(&mut self) {
         let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
         self.destroyer.destroy_buffer(buffer);
+        if let Some(allocation) = self.allocation.take() {
+            self.destroyer.destroy_allocation(allocation);
+        }
     }
 }
 
@@ -56,6 +60,7 @@ impl<B: GPUBackend> TransientBuffer<B> {
 
 struct TransientBufferAllocator<B: GPUBackend> {
     device: Arc<B::Device>,
+    allocator: Arc<MemoryAllocator<B>>,
     destroyer: Arc<DeferredDestroyer<B>>,
     buffers: HashMap<BufferKey, Vec<TransientBuffer<B>>>,
 }
@@ -67,7 +72,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
       info: &BufferInfo,
       memory_usage: MemoryUsage,
       _name: Option<&str>,
-    ) -> TransientBufferSlice<B> {
+    ) -> Result<TransientBufferSlice<B>, OutOfMemoryError> {
         let mut alignment: u64 = 256; // TODO
 
         let key = BufferKey {
@@ -104,20 +109,19 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             matching_buffers.push(buffer);
         }
         if let Some(slice) = slice_opt {
-            return slice;
+            return Ok(slice);
         }
 
         let mut new_buffer_info = info.clone();
         new_buffer_info.size = BUFFER_SIZE.max(info.size);
 
-        let buffer = unsafe {
-            self.device.create_buffer(&new_buffer_info, memory_usage, None)
-        };
+        let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
 
         let mut sliced_buffer = TransientBuffer::<B> {
             size: new_buffer_info.size,
             offset: info.size,
             buffer: ManuallyDrop::new(buffer),
+            allocation,
             destroyer: self.destroyer.clone()
         };
         sliced_buffer.reset();
@@ -127,7 +131,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             length: info.size
         };
         matching_buffers.push(sliced_buffer);
-        slice
+        Ok(slice)
     }
 
     pub fn reset(&mut self) {
