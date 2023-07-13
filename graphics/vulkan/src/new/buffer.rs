@@ -252,7 +252,7 @@ impl Buffer for VkBuffer {
         &self.info
     }
 
-    unsafe fn map_unsafe(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
+    unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
         assert!(self.map_ptr.is_some());
         if invalidate && !self.is_coherent {
             self.device.invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
@@ -265,7 +265,7 @@ impl Buffer for VkBuffer {
         self.map_ptr.map(|ptr| ptr.add(offset as usize))
     }
 
-    unsafe fn unmap_unsafe(&self, offset: u64, length: u64, flush: bool) {
+    unsafe fn unmap(&self, offset: u64, length: u64, flush: bool) {
         assert!(self.map_ptr.is_some());
         if !flush || self.is_coherent {
             return;
