@@ -22,7 +22,7 @@ impl<B: GPUBackend> Drop for Texture<B> {
 }
 
 impl<B: GPUBackend> Texture<B> {
-    pub(super) fn new(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
+    pub(super) fn new(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, name: Option<&str>) -> Result<Arc<Self>, OutOfMemoryError> {
         let heap_info = unsafe { device.get_texture_heap_info(info) };
         let (texture, allocation) = if heap_info.prefer_dedicated_allocation {
             let memory_types = unsafe { device.memory_type_infos() };
@@ -56,12 +56,12 @@ impl<B: GPUBackend> Texture<B> {
             let texture = unsafe { allocation.data().create_texture(info, allocation.offset, name) }?;
             (texture, Some(allocation))
         };
-        Ok(Self {
+        Ok(Arc::new(Self {
             device: device.clone(),
             texture: ManuallyDrop::new(texture),
             allocation,
             destroyer: destroyer.clone()
-        })
+        }))
     }
 
     pub(crate) fn handle(&self) -> &B::Texture {

@@ -12,7 +12,7 @@ pub(super) struct DeferredDestroyer<B: GPUBackend> {
     current_counter: u64,
     allocations: Vec<(u64, MemoryAllocation<B::Heap>)>,
     textures: Vec<(u64, B::Texture)>,
-    texture_refs: Vec<(u64, Arc<B::Texture>)>,
+    texture_refs: Vec<(u64, Arc<super::Texture<B>>)>,
     texture_views: Vec<(u64, B::TextureView)>,
     buffers: Vec<(u64, B::Buffer)>,
     buffer_refs: Vec<(u64, Arc<B::Buffer>)>,
@@ -49,7 +49,7 @@ pub(super) struct DeferredDestroyer<B: GPUBackend> {
           guard.textures.push((frame, texture));
       }
 
-      pub fn destroy_texture_reference(&self, texture: Arc<B::Texture>) {
+      pub fn destroy_texture_reference(&self, texture: Arc<super::Texture<B>>) {
           let mut guard = self.inner.lock().unwrap();
           let frame = guard.current_counter;
           guard.texture_refs.push((frame, texture));

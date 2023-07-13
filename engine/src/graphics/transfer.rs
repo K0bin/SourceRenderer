@@ -17,7 +17,7 @@ pub enum OwnedBarrier<B: GPUBackend> {
     new_layout: TextureLayout,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    texture: Arc<B::Texture>,
+    texture: Arc<super::Texture<B>>,
     range: BarrierTextureRange,
     queue_ownership: Option<QueueOwnershipTransfer>
   },
@@ -36,7 +36,7 @@ pub enum OwnedBarrier<B: GPUBackend> {
 enum TransferCopy<B: GPUBackend> {
   BufferToImage {
       src: Arc<BufferAndAllocation<B>>,
-      dst: Arc<B::Texture>,
+      dst: Arc<super::Texture<B>>,
       region: BufferTextureCopyRegion
   },
   BufferToBuffer {
@@ -114,7 +114,7 @@ impl<B: GPUBackend> Transfer<B> {
 
     pub fn init_texture(
       &self,
-      texture: &Arc<B::Texture>,
+      texture: &Arc<super::Texture<B>>,
       src_buffer: &Arc<BufferSlice<B>>,
       mip_level: u32,
       array_layer: u32,
@@ -154,7 +154,7 @@ impl<B: GPUBackend> Transfer<B> {
                   array_layer, mip_level
                 },
                 texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
-                texture_extent: Vec3UI::new(texture.info().width, texture.info().height, texture.info().depth),
+                texture_extent: Vec3UI::new(texture.handle().info().width, texture.handle().info().height, texture.handle().info().depth),
             }
           }
       );
@@ -228,7 +228,7 @@ impl<B: GPUBackend> Transfer<B> {
 
     pub fn init_texture_async(
       &self,
-      texture: &Arc<B::Texture>,
+      texture: &Arc<super::Texture<B>>,
       src_buffer: &Arc<BufferSlice<B>>,
       mip_level: u32,
       array_layer: u32,
@@ -282,7 +282,7 @@ impl<B: GPUBackend> Transfer<B> {
                       array_layer, mip_level
                     },
                     texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
-                    texture_extent: Vec3UI::new(texture.info().width, texture.info().height, texture.info().depth),
+                    texture_extent: Vec3UI::new(texture.handle().info().width, texture.handle().info().height, texture.handle().info().depth),
                 }
               }
           );
@@ -448,7 +448,7 @@ impl<B: GPUBackend> Transfer<B> {
                       new_access: *new_access,
                       old_layout: *old_layout,
                       new_layout: *new_layout,
-                      texture: texture.as_ref(),
+                      texture: texture.handle(),
                       range: range.clone(),
                       queue_ownership: queue_ownership.clone()
                   }
@@ -480,7 +480,7 @@ impl<B: GPUBackend> Transfer<B> {
                     region
                 } => {
                     unsafe  {
-                        cmd_buffer.cmd_buffer.copy_buffer_to_texture(&src.buffer, &dst, &region);
+                        cmd_buffer.cmd_buffer.copy_buffer_to_texture(&src.buffer, dst.handle(), &region);
                     }
                 }
             }
@@ -536,7 +536,7 @@ impl<B: GPUBackend> Transfer<B> {
                         new_access: *new_access,
                         old_layout: *old_layout,
                         new_layout: *new_layout,
-                        texture: texture.as_ref(),
+                        texture: texture.handle(),
                         range: range.clone(),
                         queue_ownership: queue_ownership.clone()
                     }

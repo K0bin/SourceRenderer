@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, mem::ManuallyDrop};
+use std::{sync::{Arc, Mutex}, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, ffi::c_void};
 
 use sourcerenderer_core::gpu::*;
 
@@ -39,14 +39,18 @@ impl<B: GPUBackend> BufferSlice<B> {
     pub(super) fn handle(&self) -> &B::Buffer {
         &self.0.data().buffer
     }
+
+    pub(super) fn map(&self, invalidate: bool) -> Option<*mut c_void> {
+        unsafe { self.handle().map(self.0.offset, self.0.length, invalidate) }
+    }
+
+    pub(super) fn unmap(&self, flush: bool) {
+        unsafe { self.handle().unmap(self.0.offset, self.0.length, flush) }
+    }
 }
 
 const SLICED_BUFFER_SIZE: u64 = 16384;
-const BIG_BUFFER_SLAB_SIZE: u64 = 4096;
-const BUFFER_SLAB_SIZE: u64 = 1024;
-const SMALL_BUFFER_SLAB_SIZE: u64 = 512;
-const TINY_BUFFER_SLAB_SIZE: u64 = 256;
-const STAGING_BUFFER_POOL_SIZE: u64 = 16 << 20;
+const UNIQUE_ALLOCATION_THRESHOLD: u64 = 4096;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 struct BufferKey {
@@ -70,7 +74,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
     ) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
         let mut alignment: u64 = 256; // TODO
 
-        if info.size > BIG_BUFFER_SLAB_SIZE {
+        if info.size > UNIQUE_ALLOCATION_THRESHOLD {
             // Don't do one-off buffers for command lists
             let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, name)?;
             let chunk = Chunk::new(buffer_and_allocation, info.size);

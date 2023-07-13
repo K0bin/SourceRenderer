@@ -1,4 +1,4 @@
-use std::{sync::Arc, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, mem::ManuallyDrop};
+use std::{sync::Arc, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, mem::ManuallyDrop, ffi::c_void};
 
 use sourcerenderer_core::gpu::*;
 
@@ -22,6 +22,28 @@ impl<B: GPUBackend> Debug for TransientBufferSlice<B> {
             self.offset + self.length,
             self.length
         )
+    }
+}
+
+impl<B: GPUBackend> TransientBufferSlice<B> {
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    pub fn length(&self) -> u64 {
+        self.length
+    }
+
+    pub(super) fn handle(&self) -> &B::Buffer {
+        unsafe { &*self.buffer }
+    }
+
+    pub(super) fn map(&self, invalidate: bool) -> Option<*mut c_void> {
+        unsafe { self.handle().map(self.offset, self.length, invalidate) }
+    }
+
+    pub(super) fn unmap(&self, flush: bool) {
+        unsafe { self.handle().unmap(self.offset, self.length, flush) }
     }
 }
 
@@ -58,7 +80,7 @@ impl<B: GPUBackend> TransientBuffer<B> {
     }
 }
 
-struct TransientBufferAllocator<B: GPUBackend> {
+pub(super) struct TransientBufferAllocator<B: GPUBackend> {
     device: Arc<B::Device>,
     allocator: Arc<MemoryAllocator<B>>,
     destroyer: Arc<DeferredDestroyer<B>>,
@@ -66,6 +88,18 @@ struct TransientBufferAllocator<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> TransientBufferAllocator<B> {
+    pub(super) fn new(
+        device: &Arc<B::Device>,
+        allocator: &Arc<MemoryAllocator<B>>,
+        destroyer: &Arc<DeferredDestroyer<B>>
+    ) -> Self {
+        Self {
+            device: device.clone(),
+            allocator: allocator.clone(),
+            destroyer: destroyer.clone(),
+            buffers: HashMap::new()
+        }
+    }
 
     pub fn get_slice(
       &mut self,
