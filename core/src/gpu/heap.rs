@@ -1,5 +1,6 @@
 use super::*;
 
+#[derive(Debug)]
 pub struct ResourceHeapInfo {
     pub prefer_dedicated_allocation: bool,
     pub memory_type_mask: u32,
@@ -7,28 +8,29 @@ pub struct ResourceHeapInfo {
     pub size: u64
 }
 
+#[derive(Debug)]
 pub struct MemoryTypeInfo {
     pub memory_index: u32,
     pub memory_kind: MemoryKind,
     pub is_cached: bool,
-    pub is_cpu_accessible: bool
+    pub is_cpu_accessible: bool,
+    pub is_coherent: bool
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum MemoryKind {
     VRAM,
     RAM
 }
 
+#[derive(Debug)]
 pub struct MemoryInfo {
     pub available: u64,
     pub total: u64,
     pub memory_kind: MemoryKind
 }
 
-pub struct HeapInfo {
-    pub usage_type: MemoryUsage
-}
-
+#[derive(Debug)]
 pub struct OutOfMemoryError {}
 
 pub trait Heap<B: GPUBackend> : Send + Sync {

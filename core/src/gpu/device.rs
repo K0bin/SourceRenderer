@@ -9,14 +9,6 @@ pub enum AdapterType {
   Other
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum MemoryUsage {
-  VRAM,
-  MappableVRAM,
-  WriteCombinedRAM,
-  CachedRAM
-}
-
 pub trait Adapter<B: GPUBackend> {
   fn adapter_type(&self) -> AdapterType;
   fn create_device(&self, surface: &B::Surface) -> B::Device;
@@ -43,7 +35,7 @@ pub trait Device<B: GPUBackend> {
   unsafe fn wait_for_idle(&self);
   unsafe fn create_fence(&self) -> B::Fence;
   unsafe fn memory_infos(&self) -> Vec<MemoryInfo>;
-  unsafe fn memory_type_infos(&self) -> Vec<MemoryTypeInfo>;
+  unsafe fn memory_type_infos(&self) -> &[MemoryTypeInfo];
   unsafe fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<B::Heap, OutOfMemoryError>;
   unsafe fn get_buffer_heap_info(&self, info: &BufferInfo) -> ResourceHeapInfo;
   unsafe fn get_texture_heap_info(&self, info: &TextureInfo) -> ResourceHeapInfo;
