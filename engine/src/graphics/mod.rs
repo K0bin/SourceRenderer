@@ -7,6 +7,10 @@ pub use transient_buffer::*;
 pub use allocator::*;
 pub use memory::*;
 pub use destroyer::*;
+pub use command::*;
+pub use sampler::*;
+pub use queue::*;
+pub use sync::*;
 
 mod device;
 mod context;
@@ -17,3 +21,7 @@ mod transfer;
 mod allocator;
 mod memory;
 mod destroyer;
+mod command;
+mod sampler;
+mod queue;
+mod sync;

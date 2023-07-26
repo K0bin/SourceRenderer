@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, mem::ManuallyDrop};
+use std::{sync::Arc, mem::ManuallyDrop};
 
 use smallvec::SmallVec;
 use thread_local::ThreadLocal;
@@ -53,9 +53,11 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
   }
 
-  pub fn get_command_buffer(&self, command_buffer_type: CommandBufferType) {
+  pub fn get_command_buffer(&self, command_buffer_type: CommandBufferType) -> CommandBufferRecorder<B> {
     let thread_context = self.get_thread_context();
     let frame_context = thread_context.get_frame(self.current_frame);
+
+    unimplemented!()
   }
 
   fn get_thread_context(&self) -> &ThreadContext<B> {

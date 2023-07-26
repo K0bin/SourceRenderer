@@ -58,23 +58,26 @@ struct TransferCommands<B: GPUBackend> {
   used_cmd_buffers: VecDeque<Box<TransferCommandBuffer<B>>>,
   pool: B::CommandPool,
   fence_value: SharedFenceValuePair<B>,
-  destroyer: DeferredDestroyer<B>
+  used_buffers_slices: Vec<Arc<BufferSlice<B>>>,
+  used_textures: Vec<Arc<super::Texture<B>>>
 }
 
 pub struct TransferCommandBuffer<B: GPUBackend> {
   cmd_buffer: B::CommandBuffer,
   device: Arc<B::Device>,
   fence_value: SharedFenceValuePair<B>,
-  is_used: bool
+  is_used: bool,
+  used_buffers_slices: Vec<Arc<BufferSlice<B>>>,
+  used_textures: Vec<Arc<super::Texture<B>>>
 }
 
 impl<B: GPUBackend> Transfer<B> {
-    pub fn new(device: &Arc<B::Device>) -> Self {
-        let graphics_fence = unsafe { device.create_fence() };
+    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>) -> Self {
+        let graphics_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
         let graphics_pool = unsafe { device.graphics_queue().create_command_pool(CommandPoolType::CommandBuffers, CommandPoolFlags::INDIVIDUAL_RESET) };
 
         let transfer_commands = device.transfer_queue().map(|transfer_queue| {
-            let transfer_fence = unsafe { device.create_fence() };
+            let transfer_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
             let transfer_pool = unsafe { transfer_queue.create_command_pool(CommandPoolType::CommandBuffers, CommandPoolFlags::INDIVIDUAL_RESET) };
             TransferCommands::<B> {
                 pre_barriers: Vec::new(),
@@ -83,10 +86,12 @@ impl<B: GPUBackend> Transfer<B> {
                 used_cmd_buffers: VecDeque::new(),
                 pool: transfer_pool,
                 fence_value: SharedFenceValuePair {
-                  fence: Arc::new(transfer_fence),
-                  value: 1u64
+                  fence: transfer_fence,
+                  value: 1u64,
+                  sync_before: BarrierSync::COPY
                 },
-                destroyer: DeferredDestroyer::new()
+                used_buffers_slices: Vec::new(),
+                used_textures: Vec::new()
             }
         });
 
@@ -97,10 +102,12 @@ impl<B: GPUBackend> Transfer<B> {
             used_cmd_buffers: VecDeque::new(),
             pool: graphics_pool,
             fence_value: SharedFenceValuePair {
-              fence: Arc::new(graphics_fence),
-              value: 1u64
+              fence: graphics_fence,
+              value: 1u64,
+              sync_before: BarrierSync::COPY
             },
-            destroyer: DeferredDestroyer::new()
+            used_buffers_slices: Vec::new(),
+            used_textures: Vec::new()
         };
 
         Self {
@@ -179,9 +186,8 @@ impl<B: GPUBackend> Transfer<B> {
           queue_ownership: None
       }));
 
-      guard.graphics.destroyer.set_counter(guard.graphics.fence_value.value);
-      guard.graphics.destroyer.destroy_buffer_slice_reference(src_buffer.clone());
-      guard.graphics.destroyer.destroy_texture_reference(texture.clone());
+      guard.graphics.used_buffers_slices.push(src_buffer.clone());
+      guard.graphics.used_textures.push(texture.clone());
     }
 
     pub fn init_buffer(
@@ -221,9 +227,8 @@ impl<B: GPUBackend> Transfer<B> {
           queue_ownership: None
       }));
 
-      guard.graphics.destroyer.set_counter(guard.graphics.fence_value.value);
-      guard.graphics.destroyer.destroy_buffer_slice_reference(src_buffer.clone());
-      guard.graphics.destroyer.destroy_buffer_slice_reference(dst_buffer.clone());
+      guard.graphics.used_buffers_slices.push(src_buffer.clone());
+      guard.graphics.used_buffers_slices.push(dst_buffer.clone());
     }
 
     pub fn init_texture_async(
@@ -243,9 +248,8 @@ impl<B: GPUBackend> Transfer<B> {
 
       let fence_value_pair = {
         let transfer = guard.transfer.as_mut().unwrap();
-        transfer.destroyer.set_counter(transfer.fence_value.value);
-        transfer.destroyer.destroy_buffer_slice_reference(src_buffer.clone());
-        transfer.destroyer.destroy_texture_reference(texture.clone());
+        transfer.used_buffers_slices.push(src_buffer.clone());
+        transfer.used_textures.push(texture.clone());
 
         unsafe {
             debug_assert!(!transfer.fence_value.is_signalled());
@@ -336,8 +340,7 @@ impl<B: GPUBackend> Transfer<B> {
             })
           }
       ));
-      guard.graphics.destroyer.set_counter(guard.graphics.fence_value.value);
-      guard.graphics.destroyer.destroy_texture_reference(texture.clone());
+      guard.graphics.used_textures.push(texture.clone());
 
       Some(fence_value_pair)
     }
@@ -353,7 +356,6 @@ impl<B: GPUBackend> Transfer<B> {
                 }
             }
         }
-        guard.graphics.destroyer.destroy_unused(signalled_counter);
         if let Some(transfer) = guard.transfer.as_mut() {
             signalled_counter = 0u64;
             for cmd_buffer in &mut transfer.used_cmd_buffers {
@@ -364,7 +366,6 @@ impl<B: GPUBackend> Transfer<B> {
                     }
                 }
             }
-            transfer.destroyer.destroy_unused(signalled_counter);
         }
     }
 
@@ -401,6 +402,9 @@ impl<B: GPUBackend> Transfer<B> {
             })
         };
         debug_assert!(!cmd_buffer.is_used());
+
+        cmd_buffer.used_buffers_slices.extend(commands.used_buffers_slices.drain(..));
+        cmd_buffer.used_textures.extend(commands.used_textures.drain(..));
 
         unsafe {
           cmd_buffer.cmd_buffer.begin(None, 0u64);
@@ -573,7 +577,9 @@ impl<B: GPUBackend> Transfer<B> {
                         .submit(&mut [Submission {
                             command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
                             wait_fences: &[],
-                            signal_fences: &[]
+                            signal_fences: &[],
+                            acquire_swapchain: None,
+                            release_swapchain: None
                         }]);
                 }
                 transfer.used_cmd_buffers.push_back(cmd_buffer);
@@ -586,7 +592,9 @@ impl<B: GPUBackend> Transfer<B> {
                 self.device.graphics_queue().submit(&mut [Submission {
                     command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
                     signal_fences: &[],
-                    wait_fences: &[]
+                    wait_fences: &[],
+                    acquire_swapchain: None,
+                    release_swapchain: None
                 }]);
             }
             guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
@@ -606,7 +614,9 @@ impl<B: GPUBackend> TransferCommandBuffer<B> {
             cmd_buffer,
             device: device.clone(),
             fence_value: fence_value.clone(),
-            is_used: false
+            is_used: false,
+            used_buffers_slices: Vec::new(),
+            used_textures: Vec::new()
         }
     }
 
@@ -628,6 +638,8 @@ impl<B: GPUBackend> TransferCommandBuffer<B> {
             self.cmd_buffer.reset(0u64);
         }
         self.is_used = false;
+        self.used_buffers_slices.clear();
+        self.used_textures.clear();
     }
 }
 

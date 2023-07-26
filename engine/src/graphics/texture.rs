@@ -93,4 +93,8 @@ impl<B: GPUBackend> TextureView<B> {
             destroyer: destroyer.clone()
         }
     }
+
+    pub(super) fn handle(&self) -> &B::TextureView {
+        &*self.texture_view
+    }
 }
