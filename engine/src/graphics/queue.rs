@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, mem::ManuallyDrop, collections::VecDeque};
+use std::{sync::{Arc, Mutex}, mem::ManuallyDrop, collections::VecDeque, ops::Range};
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
@@ -65,28 +65,167 @@ impl<B: GPUBackend> Queue<B> {
             QueueType::Transfer => self.device.transfer_queue().unwrap(),
         };
 
-        let mut command_buffers: SmallVec<[&mut B::CommandBuffer; 16]> = SmallVec::new();
-        let mut submissions: SmallVec<[Submission<B>; 4]> = SmallVec::new();
-
         for submission in guard.virtual_queue.iter_mut() {
             match submission {
-                StoredQueueSubmission::CommandBuffer { command_buffer, return_sender } => {
-                    submissions.push(Submission {
-                        command_buffers: &mut [command_buffer.handle_mut()],
-                        wait_fences: todo!(),
-                        signal_fences: todo!(),
-                    });
+                StoredQueueSubmission::CommandBuffer {
+                    command_buffer,
+                    return_sender,
+                    signal_fences,
+                    signal_swapchain,
+                    wait_fences,
+                    wait_swapchain
+                } => {
+
                 },
                 StoredQueueSubmission::TransferCommandBuffer { command_buffer, return_sender } => todo!(),
             }
         }
 
+        const COMMAND_BUFFER_CAPACITY: usize = 16;
+        const SUBMISSION_CAPACITY: usize = 16;
+        const FENCE_CAPACITY: usize = 16;
+
+        struct SubmissionHolder<'a, B: GPUBackend> {
+            queue: &'a B::Queue,
+            command_buffers: SmallVec<[&'a B::CommandBuffer; COMMAND_BUFFER_CAPACITY]>,
+            cmd_buffer_range: Range<usize>,
+            submissions: SmallVec<[Submission<'a, B>; SUBMISSION_CAPACITY]>,
+            fences: SmallVec<[sourcerenderer_core::gpu::FenceValuePairRef<'a, B>; FENCE_CAPACITY]>,
+        }
+
+        fn flush_command_buffers<'a, B: GPUBackend>(holder: &mut SubmissionHolder<'a, B>) {
+            if holder.command_buffers.is_empty() || holder.cmd_buffer_range.len() == 0 {
+                return;
+            }
+
+            if holder.submissions.len() == SUBMISSION_CAPACITY {
+                flush_submissions(holder);
+            }
+
+            holder.submissions.push(Submission::<'a, B> {
+                command_buffers: unsafe { std::slice::from_raw_parts(holder.command_buffers.as_ptr().add(holder.cmd_buffer_range.start), holder.cmd_buffer_range.end - holder.cmd_buffer_range.start) },
+                wait_fences: &[],
+                signal_fences: &[],
+                acquire_swapchain: None,
+                release_swapchain: None
+            });
+
+            holder.cmd_buffer_range.start = holder.cmd_buffer_range.end;
+        }
+
+        fn flush_submissions<'a, B: GPUBackend>(holder: &mut SubmissionHolder<'a, B>) {
+            if holder.submissions.is_empty() {
+                return;
+            }
+            unsafe {
+                holder.queue.submit(&holder.submissions[..]);
+            }
+            holder.submissions.clear();
+            holder.command_buffers.clear();
+            holder.cmd_buffer_range.start = 0;
+            holder.cmd_buffer_range.end = 0;
+        }
+
+        fn push_command_buffer<'a, B: GPUBackend>(holder: &mut SubmissionHolder<'a, B>, command_buffer: &'a B::CommandBuffer) {
+            if holder.command_buffers.len() == COMMAND_BUFFER_CAPACITY {
+                flush_command_buffers(holder);
+            }
+            holder.command_buffers.push(command_buffer);
+            holder.cmd_buffer_range.end += 1;
+        }
+
+        fn push_submission<'a, B: GPUBackend>(
+            holder: &mut SubmissionHolder<'a, B>,
+            command_buffer: &'a B::CommandBuffer,
+            wait_fences: &'a [SharedFenceValuePair<B>],
+            signal_fences: &'a [SharedFenceValuePair<B>],
+            acquire_swapchain: Option<&'a Arc<B::Swapchain>>,
+            release_swapchain: Option<&'a Arc<B::Swapchain>>,
+        ) {
+            if !holder.command_buffers.is_empty() {
+                flush_command_buffers(holder);
+            }
+            if holder.submissions.len() == SUBMISSION_CAPACITY || FENCE_CAPACITY - holder.fences.len() < wait_fences.len() + signal_fences.len() || holder.command_buffers.len() == COMMAND_BUFFER_CAPACITY {
+                flush_submissions(holder);
+            }
+            let wait_fences_start = holder.fences.len();
+            for fence in wait_fences {
+                holder.fences.push(sourcerenderer_core::gpu::FenceValuePairRef::<'static, B> {
+                    fence: unsafe { std::mem::transmute(fence.fence.handle()) },
+                    value: fence.value,
+                    sync_before: fence.sync_before
+                });
+            }
+            let signal_fences_start = holder.fences.len();
+            for fence in signal_fences {
+                holder.fences.push(sourcerenderer_core::gpu::FenceValuePairRef::<'a, B> {
+                    fence: fence.fence.handle(),
+                    value: fence.value,
+                    sync_before: fence.sync_before
+                });
+            }
+            holder.command_buffers.push(command_buffer);
+            holder.submissions.push(Submission::<'a, B> {
+                command_buffers: unsafe { std::slice::from_raw_parts(holder.command_buffers.as_ptr().add(holder.command_buffers.len() - 1), 1) },
+                wait_fences: unsafe { std::slice::from_raw_parts(holder.fences.as_ptr().add(wait_fences_start), wait_fences.len()) },
+                signal_fences: unsafe { std::slice::from_raw_parts(holder.fences.as_ptr().add(signal_fences_start), signal_fences.len()) },
+                acquire_swapchain: acquire_swapchain.map(|s|s.as_ref()),
+                release_swapchain: release_swapchain.map(|s|s.as_ref())
+            });
+        }
+
+        let mut holder = SubmissionHolder::<B> {
+            queue,
+            command_buffers: SmallVec::new(),
+            cmd_buffer_range: 0..0,
+            submissions: SmallVec::new(),
+            fences: SmallVec::new(),
+        };
+
+        for submission in guard.virtual_queue.iter() {
+            match submission {
+                StoredQueueSubmission::CommandBuffer {
+                    command_buffer,
+                    return_sender: _,
+                    signal_fences,
+                    signal_swapchain,
+                    wait_fences,
+                    wait_swapchain
+                } => {
+                    if wait_fences.is_empty() && signal_fences.is_empty() && wait_swapchain.is_none() && signal_swapchain.is_none() {
+                        push_command_buffer(&mut holder, command_buffer.handle());
+                    } else {
+                        push_submission(&mut holder, command_buffer.handle(), wait_fences, signal_fences, wait_swapchain.as_ref(), signal_swapchain.as_ref());
+                    }
+                },
+                StoredQueueSubmission::TransferCommandBuffer { command_buffer, return_sender: _ } => {
+                    push_submission(&mut holder,
+                        command_buffer.handle(),
+                        &[],
+                        unsafe { std::slice::from_raw_parts(command_buffer.fence_value() as *const SharedFenceValuePair<B>, 1) },
+                        None, None
+                    );
+                },
+            }
+        }
+
+        if !holder.cmd_buffer_range.is_empty() {
+            flush_command_buffers(&mut holder);
+        }
+
+        if !holder.submissions.is_empty() {
+            flush_submissions(&mut holder);
+        }
+        std::mem::drop(holder);
+
         for submission in guard.virtual_queue.drain(..) {
             match submission {
-                StoredQueueSubmission::CommandBuffer { command_buffer, return_sender } => {
+                StoredQueueSubmission::CommandBuffer { command_buffer, return_sender, .. } => {
                     return_sender.send(command_buffer).unwrap();
                 },
-                StoredQueueSubmission::TransferCommandBuffer { command_buffer, return_sender } => todo!(),
+                StoredQueueSubmission::TransferCommandBuffer { mut command_buffer, return_sender } => {
+                    return_sender.send(unsafe { ManuallyDrop::take(&mut command_buffer) }).unwrap();
+                },
             }
         }
     }

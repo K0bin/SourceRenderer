@@ -641,6 +641,14 @@ impl<B: GPUBackend> TransferCommandBuffer<B> {
         self.used_buffers_slices.clear();
         self.used_textures.clear();
     }
+
+    pub(super) fn handle(&self) -> &B::CommandBuffer {
+        &self.cmd_buffer
+    }
+
+    pub(super) fn fence_value(&self) -> &SharedFenceValuePair<B> {
+        &self.fence_value
+    }
 }
 
 impl<B: GPUBackend> Drop for TransferCommandBuffer<B> {

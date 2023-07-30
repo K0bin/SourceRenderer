@@ -34,6 +34,10 @@ impl<B: GPUBackend> Fence<B> {
             self.fence.await_value(value);
         }
     }
+
+    pub(super) fn handle(&self) -> &B::Fence {
+        &self.fence
+    }
 }
 
 pub struct SharedFenceValuePairRef<'a, B: GPUBackend> {
