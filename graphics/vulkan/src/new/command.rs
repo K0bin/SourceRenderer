@@ -6,6 +6,7 @@ use std::{
 };
 
 use ash::vk;
+use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::*;
 
@@ -77,6 +78,7 @@ impl CommandPool<VkBackend> for VkCommandPool {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[repr(u32)]
 pub enum VkCommandBufferState {
     Ready,
     Recording,
@@ -100,7 +102,7 @@ pub struct VkCommandBuffer {
     buffer: vk::CommandBuffer,
     pool: Arc<RawVkCommandPool>,
     device: Arc<RawVkDevice>,
-    state: VkCommandBufferState,
+    state: AtomicCell<VkCommandBufferState>,
     command_buffer_type: CommandBufferType,
     shared: Arc<VkShared>,
     render_pass: Option<Arc<VkRenderPass>>,
@@ -142,7 +144,7 @@ impl VkCommandBuffer {
             pipeline: None,
             sub_pass: 0u32,
             shared: shared.clone(),
-            state: VkCommandBufferState::Ready,
+            state: AtomicCell::new(VkCommandBufferState::Ready),
             queue_family_index,
             descriptor_manager: VkBindingManager::new(device),
             inheritance: None,
@@ -159,9 +161,8 @@ impl VkCommandBuffer {
         self.command_buffer_type
     }
 
-    pub(crate) fn mark_submitted(&mut self) {
-        assert_eq!(self.state, VkCommandBufferState::Finished);
-        self.state = VkCommandBufferState::Submitted;
+    pub(crate) fn mark_submitted(&self) {
+        assert_eq!(self.state.swap(VkCommandBufferState::Submitted), VkCommandBufferState::Finished);
     }
 
     pub(crate) fn command_buffer_type(&self) -> CommandBufferType {
@@ -171,7 +172,7 @@ impl VkCommandBuffer {
 
 impl Drop for VkCommandBuffer {
     fn drop(&mut self) {
-        if self.state == VkCommandBufferState::Submitted {
+        if self.state.load() == VkCommandBufferState::Submitted {
             self.device.wait_for_idle();
         }
     }
@@ -181,7 +182,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     type CommandBufferInheritance = VkInnerCommandBufferInfo;
 
     unsafe fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
 
         match &pipeline {
             PipelineBinding::Graphics(graphics_pipeline) => {
@@ -264,7 +265,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn end_render_pass(&mut self) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
@@ -275,7 +276,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn advance_subpass(&mut self) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(
             self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
         );
@@ -287,7 +288,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &VkBuffer, offset: u64) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
             self.device.cmd_bind_vertex_buffers(
                 self.buffer,
@@ -304,7 +305,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         offset: u64,
         format: IndexFormat,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
             self.device.cmd_bind_index_buffer(
                 self.buffer,
@@ -316,7 +317,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn set_viewports(&mut self, viewports: &[Viewport]) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
             for (i, viewport) in viewports.iter().enumerate() {
                 self.device.cmd_set_viewport(
@@ -336,7 +337,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn set_scissors(&mut self, scissors: &[Scissor]) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
             let vk_scissors: Vec<vk::Rect2D> = scissors
                 .iter()
@@ -356,7 +357,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn draw(&mut self, vertices: u32, offset: u32) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
         debug_assert!(
             self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS
@@ -377,7 +378,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         first_index: u32,
         vertex_offset: i32,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
         debug_assert!(
             self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS
@@ -403,7 +404,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         binding: u32,
         texture: &VkTextureView,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
@@ -418,7 +419,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         texture: &VkTextureView,
         sampler: &VkSampler,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
@@ -434,7 +435,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         offset: u64,
         length: u64,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert_ne!(length, 0);
         self.descriptor_manager.bind(
             frequency,
@@ -459,7 +460,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         offset: u64,
         length: u64,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert_ne!(length, 0);
         self.descriptor_manager.bind(
             frequency,
@@ -482,7 +483,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         binding: u32,
         texture: &VkTextureView,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
@@ -496,7 +497,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         binding: u32,
         sampler: &VkSampler,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
@@ -505,7 +506,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn finish_binding(&mut self) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
 
         let mut offsets = SmallVec::<[u32; PER_SET_BINDINGS]>::new();
@@ -584,7 +585,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn begin_label(&mut self, label: &str) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let label_cstring = CString::new(label).unwrap();
         if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
             debug_utils.debug_utils_loader.cmd_begin_debug_utils_label(
@@ -599,7 +600,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn end_label(&mut self) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
             debug_utils
                 .debug_utils_loader
@@ -608,7 +609,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn execute_inner(&mut self, submissions: &mut [VkCommandBuffer]) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         if submissions.is_empty() {
             return;
         }
@@ -631,7 +632,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         debug_assert!(self.pipeline.is_some());
         debug_assert!(self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::COMPUTE);
@@ -650,7 +651,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         dst_array_layer: u32,
         dst_mip_level: u32,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         let src_info = src_texture.info();
         let dst_info = dst_texture.info();
@@ -996,7 +997,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         renderpass_begin_info: &RenderPassBeginInfo<VkBackend>,
         recording_mode: RenderpassRecordingMode,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
 
         let mut attachment_infos = SmallVec::<[VkAttachmentInfo; 16]>::with_capacity(
@@ -1101,7 +1102,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         target_buffer: &VkBuffer,
         scratch_buffer: &VkBuffer,
     ) -> VkAccelerationStructure {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         let acceleration_structure = Arc::new(VkAccelerationStructure::new_bottom_level(
             &self.device,
@@ -1129,7 +1130,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         target_buffer: &VkBuffer,
         scratch_buffer: &VkBuffer,
     ) -> VkAccelerationStructure {
-        /*debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        /*debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         for instance in info.instances {
             self.trackers
@@ -1148,7 +1149,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
         debug_assert!(
             self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::RAY_TRACING_KHR
@@ -1176,7 +1177,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         binding: u32,
         acceleration_structure: &VkAccelerationStructure,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         self.descriptor_manager.bind(
             frequency,
             binding,
@@ -1190,7 +1191,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         binding: u32,
         textures_and_samplers: &[(&VkTextureView, &VkSampler)],
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let handles: SmallVec<[(vk::ImageView, vk::Sampler); 8]> = textures_and_samplers
             .iter()
             .map(|(tv, s)| (tv.view_handle(), s.handle()))
@@ -1208,7 +1209,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         binding: u32,
         textures: &[&VkTextureView],
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let handles: SmallVec<[vk::ImageView; 8]> =
             textures.iter().map(|tv| tv.view_handle()).collect();
         self.descriptor_manager.bind(
@@ -1227,7 +1228,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         max_draw_count: u32,
         stride: u32,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
         debug_assert!(
             self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS
@@ -1261,7 +1262,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         max_draw_count: u32,
         stride: u32,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
         debug_assert!(
             self.pipeline.as_ref().unwrap().bind_point == vk::PipelineBindPoint::GRAPHICS
@@ -1290,7 +1291,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     where
         T: 'static + Send + Sync + Sized + Clone,
     {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
         let pipeline_layout = &pipeline.pipeline_layout;
         let range = pipeline_layout
@@ -1318,7 +1319,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         mip_level: u32,
         values: [u32; 4],
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
 
         let format = texture.info().format;
@@ -1374,7 +1375,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         length_in_u32s: u64,
         value: u32,
     ) {
-        debug_assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
 
         let actual_length_in_u32s = if length_in_u32s == WHOLE_BUFFER {
@@ -1457,11 +1458,11 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn begin(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>, frame: u64) {
-        assert_eq!(self.state, VkCommandBufferState::Ready);
+        assert_eq!(self.state.load(), VkCommandBufferState::Ready);
         assert!(self.frame < frame);
         self.frame = frame;
 
-        self.state = VkCommandBufferState::Recording;
+        self.state.store(VkCommandBufferState::Recording);
 
         let (flags, inhertiance_info) = if let Some(inner_info) = inner_info {
             (
@@ -1497,7 +1498,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn copy_buffer(&mut self, src: &VkBuffer, dst: &VkBuffer, region: &BufferCopyRegion) {
-        assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let copy = vk::BufferCopy {
             src_offset: region.src_offset,
             dst_offset: region.dst_offset,
@@ -1509,7 +1510,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn copy_buffer_to_texture(&mut self, src: &VkBuffer, dst: &VkTexture, region: &BufferTextureCopyRegion) {
-        assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let format = dst.info().format;
         let texels_width = if region.buffer_row_pitch != 0 {
             (region.buffer_row_pitch as u32) * format.block_size().x / format.element_size()
@@ -1542,12 +1543,12 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn finish(&mut self) {
-        assert_eq!(self.state, VkCommandBufferState::Recording);
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         if self.render_pass.is_some() {
             self.end_render_pass();
         }
 
-        self.state = VkCommandBufferState::Finished;
+        self.state.store(VkCommandBufferState::Finished);
         self.device.end_command_buffer(self.buffer).unwrap();
     }
 
@@ -1559,7 +1560,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 }
 
-fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags2 {
+pub(super) fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags2 {
     let mut stages = vk::PipelineStageFlags2::NONE;
     if sync.contains(BarrierSync::COMPUTE_SHADER) {
         stages |= vk::PipelineStageFlags2::COMPUTE_SHADER;

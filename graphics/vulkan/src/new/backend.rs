@@ -26,5 +26,4 @@ impl GPUBackend for VkBackend {
     type Heap = VkMemoryHeap;
     //type QueryRange = VkQueryRange;
     //type AccelerationStructure = VkAccelerationStructure;
-    type WSIFence = VkBinarySemaphore;
 }

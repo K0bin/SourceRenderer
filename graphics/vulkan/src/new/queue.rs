@@ -71,7 +71,7 @@ impl VkQueue {
 }
 
 impl Queue<VkBackend> for VkQueue {
-    unsafe fn submit(&self, submissions: &mut [Submission<VkBackend>]) {
+    unsafe fn submit(&self, submissions: &[Submission<VkBackend>]) {
         let guard = self.lock_queue();
 
         let mut command_buffers =
@@ -79,8 +79,8 @@ impl Queue<VkBackend> for VkQueue {
         let mut semaphores =
             SmallVec::<[vk::SemaphoreSubmitInfo; 2]>::with_capacity(submissions.len());
 
-        for submission in submissions.iter_mut() {
-            for cmd_buffer in submission.command_buffers.iter_mut() {
+        for submission in submissions.iter() {
+            for cmd_buffer in submission.command_buffers.iter() {
                 cmd_buffer.mark_submitted();
                 command_buffers.push(vk::CommandBufferSubmitInfo {
                     command_buffer: cmd_buffer.handle(),
@@ -89,48 +89,43 @@ impl Queue<VkBackend> for VkQueue {
                 });
             }
             for fence in submission.wait_fences {
-                match fence {
-                    FenceRef::Fence(fence_value_pair) => {
-                        semaphores.push(vk::SemaphoreSubmitInfo {
-                            semaphore: fence_value_pair.fence.handle(),
-                            value: fence_value_pair.value,
-                            stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-                            device_index: 0u32,
-                            ..Default::default()
-                        });
-                    }
-                    FenceRef::WSIFence(fence) => {
-                        semaphores.push(vk::SemaphoreSubmitInfo {
-                            semaphore: fence.handle(),
-                            value: 0u64,
-                            stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-                            device_index: 0u32,
-                            ..Default::default()
-                        });
-                    }
-                }
+                semaphores.push(vk::SemaphoreSubmitInfo {
+                    semaphore: fence.fence.handle(),
+                    value: fence.value,
+                    stage_mask: barrier_sync_to_stage(fence.sync_before),
+                    device_index: 0u32,
+                    ..Default::default()
+                });
             }
+
             for fence in submission.signal_fences {
-                match fence {
-                    FenceRef::Fence(fence_value_pair) => {
-                        semaphores.push(vk::SemaphoreSubmitInfo {
-                            semaphore: fence_value_pair.fence.handle(),
-                            value: fence_value_pair.value,
-                            stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-                            device_index: 0u32,
-                            ..Default::default()
-                        });
-                    }
-                    FenceRef::WSIFence(fence) => {
-                        semaphores.push(vk::SemaphoreSubmitInfo {
-                            semaphore: fence.handle(),
-                            value: 0u64,
-                            stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
-                            device_index: 0u32,
-                            ..Default::default()
-                        });
-                    }
-                }
+                semaphores.push(vk::SemaphoreSubmitInfo {
+                    semaphore: fence.fence.handle(),
+                    value: fence.value,
+                    stage_mask: barrier_sync_to_stage(fence.sync_before),
+                    device_index: 0u32,
+                    ..Default::default()
+                });
+            }
+
+            if let Some(swapchain) = submission.acquire_swapchain {
+                semaphores.push(vk::SemaphoreSubmitInfo {
+                    semaphore: swapchain.acquire_semaphore().handle(),
+                    value: 0u64,
+                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                    device_index: 0u32,
+                    ..Default::default()
+                });
+            }
+
+            if let Some(swapchain) = submission.release_swapchain {
+                semaphores.push(vk::SemaphoreSubmitInfo {
+                    semaphore: swapchain.present_semaphore().handle(),
+                    value: 0u64,
+                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                    device_index: 0u32,
+                    ..Default::default()
+                });
             }
         }
 
@@ -142,9 +137,9 @@ impl Queue<VkBackend> for VkQueue {
                 let submission_cmd_buffer_ptr = cmd_buffer_ptr;
                 cmd_buffer_ptr = cmd_buffer_ptr.add(submission.command_buffers.len());
                 let submission_wait_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(submission.wait_fences.len());
+                semaphore_ptr = semaphore_ptr.add(submission.wait_fences.len() + submission.acquire_swapchain.map_or(0, |_| 1));
                 let submission_signal_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(submission.signal_fences.len());
+                semaphore_ptr = semaphore_ptr.add(submission.signal_fences.len() + submission.release_swapchain.map_or(0, |_| 1));
 
                 vk::SubmitInfo2 {
                     flags: vk::SubmitFlags::empty(),
@@ -164,7 +159,7 @@ impl Queue<VkBackend> for VkQueue {
             .unwrap();
     }
 
-    unsafe fn present(&self, swapchain: &VkSwapchain, wait_fence: &VkBinarySemaphore) {
+    unsafe fn present(&self, swapchain: &VkSwapchain) {
         //swapchain.loader().qu
     }
 

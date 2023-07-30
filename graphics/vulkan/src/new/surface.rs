@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 use ash::{
     extensions::khr::Surface as SurfaceLoader,
@@ -13,7 +13,7 @@ pub struct VkSurface {
     surface: vk::SurfaceKHR,
     surface_loader: SurfaceLoader,
     instance: Arc<RawVkInstance>,
-    is_lost: bool,
+    is_lost: AtomicBool,
 }
 
 impl VkSurface {
@@ -26,7 +26,7 @@ impl VkSurface {
             surface: surface,
             surface_loader,
             instance: instance.clone(),
-            is_lost: false,
+            is_lost: AtomicBool::new(false),
         }
     }
 
@@ -74,11 +74,11 @@ impl VkSurface {
     }
 
     pub fn is_lost(&self) -> bool {
-        self.is_lost
+        self.is_lost.load(Ordering::Acquire)
     }
 
-    pub fn mark_lost(&mut self) {
-        self.is_lost = true
+    pub fn mark_lost(&self) {
+        self.is_lost.store(true, Ordering::Release);
     }
 }
 

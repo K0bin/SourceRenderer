@@ -30,6 +30,7 @@ use sourcerenderer_core::{
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(u32)]
 pub enum VkSwapchainState {
     Okay,
     Suboptimal,
@@ -42,16 +43,15 @@ pub struct VkSwapchain {
     views: SmallVec<[VkTextureView; 5]>,
     acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     present_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
-    semaphore_index: u32,
     swapchain: vk::SwapchainKHR,
     swapchain_loader: SwapchainLoader,
     instance: Arc<RawVkInstance>,
     surface: Option<VkSurface>,
     device: Arc<RawVkDevice>,
     vsync: bool,
-    state: VkSwapchainState,
-    acquired_image: u32,
-    presented_image: u32,
+    state: AtomicCell<VkSwapchainState>,
+    semaphore_index: AtomicU64,
+    image_index: AtomicU32,
     transform_matrix: Matrix4,
 }
 
@@ -273,16 +273,15 @@ impl VkSwapchain {
                 views: swapchain_image_views,
                 acquire_semaphores,
                 present_semaphores,
-                semaphore_index: 0,
+                semaphore_index: AtomicU64::new(0),
+                image_index: AtomicU32::new(0),
                 swapchain: swapchain,
                 swapchain_loader,
                 instance: device.instance.clone(),
                 surface: Some(surface),
                 device: device.clone(),
                 vsync,
-                state: VkSwapchainState::Okay,
-                presented_image: 0,
-                acquired_image: 0,
+                state: AtomicCell::new(VkSwapchainState::Okay),
                 transform_matrix: matrix,
             })
         }
@@ -394,12 +393,10 @@ impl VkSwapchain {
     }
 
     #[allow(clippy::logic_bug)]
-    pub unsafe fn acquire_back_buffer(&mut self) -> VkResult<(u32, bool)> {
-        let index = self.semaphore_index as usize % self.acquire_semaphores.len();
-        self.semaphore_index += 1;
+    pub unsafe fn acquire_back_buffer(&self) -> VkResult<(u32, bool)> {
+        let index = (self.semaphore_index.fetch_add(1, Ordering::AcqRel) % self.acquire_semaphores.len() as u64) as usize;
         let semaphore = &self.acquire_semaphores[index];
 
-        while self.presented_image != self.acquired_image {}
         let result = {
             let swapchain_handle = self.handle();
             self.swapchain_loader.acquire_next_image(
@@ -413,11 +410,11 @@ impl VkSwapchain {
             if !is_optimal && false {
                 self.set_state(VkSwapchainState::Suboptimal);
             }
-            self.acquired_image = image;
+            self.image_index.store(image, Ordering::Release);
         } else {
             match result.err().unwrap() {
                 vk::Result::ERROR_SURFACE_LOST_KHR => {
-                    if let Some(surface) = self.surface.as_mut() {
+                    if let Some(surface) = self.surface.as_ref() {
                         surface.mark_lost();
                     }
                     self.set_state(VkSwapchainState::Retired);
@@ -442,20 +439,22 @@ impl VkSwapchain {
         result
     }
 
-    pub(crate) fn set_presented_image(&mut self, presented_image_index: u32) {
-        self.presented_image = presented_image_index
+    pub(super) fn set_state(&self, state: VkSwapchainState) {
+        self.state.store(state);
     }
 
-    pub fn set_state(&mut self, state: VkSwapchainState) {
-        self.state = state;
+    pub(super) fn state(&self) -> VkSwapchainState {
+        self.state.load()
     }
 
-    pub fn state(&self) -> VkSwapchainState {
-        self.state
+    pub(super) fn acquire_semaphore(&self) -> &VkBinarySemaphore {
+        let index = (self.semaphore_index.load(Ordering::Acquire) % self.acquire_semaphores.len() as u64) as usize;
+        &self.acquire_semaphores[index]
     }
 
-    pub fn acquired_image(&self) -> u32 {
-        self.acquired_image
+    pub(super) fn present_semaphore(&self) -> &VkBinarySemaphore {
+        let index = (self.semaphore_index.load(Ordering::Acquire) % self.acquire_semaphores.len() as u64) as usize;
+        &self.present_semaphores[index]
     }
 }
 
@@ -533,18 +532,18 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.transform_matrix
     }
 
-    unsafe fn prepare_back_buffer(&mut self) -> Option<PreparedBackBuffer<'_, VkBackend>> {
-        let res: Result<(u32, bool), vk::Result> = self.acquire_back_buffer();
-        res.ok()
-            .and_then(move |(img_index, _optimal)| // TODO: handle optimal
-        //optimal.then(||
-        Some(
-            PreparedBackBuffer {
-                texture_view: self.views.get(img_index as usize).unwrap(),
-                prepare_fence: &self.acquire_semaphores[img_index as usize],
-                present_fence: &self.present_semaphores[img_index as usize],
-            }
-        ))
+    unsafe fn backbuffer(&self) -> &VkTextureView {
+        &self.views[self.image_index.load(Ordering::Acquire) as usize]
+    }
+
+    unsafe fn next_backbuffer(&self) -> Result<(), SwapchainError> {
+        let _ = self.acquire_back_buffer()
+            .map_err(|e| match e {
+                vk::Result::ERROR_OUT_OF_DATE_KHR => SwapchainError::Other,
+                vk::Result::ERROR_SURFACE_LOST_KHR => SwapchainError::SurfaceLost,
+                _ => SwapchainError::Other
+            })?;
+        Ok(())
     }
 
     fn width(&self) -> u32 {
@@ -613,5 +612,3 @@ impl Drop for VkBinarySemaphore {
         }
     }
 }
-
-impl WSIFence for VkBinarySemaphore {}
