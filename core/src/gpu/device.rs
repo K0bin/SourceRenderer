@@ -31,6 +31,7 @@ pub trait Device<B: GPUBackend> {
   unsafe fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<B::Heap, OutOfMemoryError>;
   unsafe fn get_buffer_heap_info(&self, info: &BufferInfo) -> ResourceHeapInfo;
   unsafe fn get_texture_heap_info(&self, info: &TextureInfo) -> ResourceHeapInfo;
+  unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &B::TextureView);
   fn graphics_queue(&self) -> &B::Queue;
   fn compute_queue(&self) -> Option<&B::Queue>;
   fn transfer_queue(&self) -> Option<&B::Queue>;
