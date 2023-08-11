@@ -9,6 +9,7 @@ struct GPUDevice<B: GPUBackend> {
     allocator: ManuallyDrop<Arc<MemoryAllocator<B>>>,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
     buffer_allocator: ManuallyDrop<BufferAllocator<B>>,
+    bindless_slot_allocator: BindlessSlotAllocator,
     transfer: ManuallyDrop<Transfer<B>>,
     prerendered_frames: u32,
     has_context: AtomicBool
@@ -48,7 +49,7 @@ impl<B: GPUBackend> GPUDevice<B> {
         }, memory_usage, None)?;
 
         unsafe {
-            let ptr = slice.map(false).unwrap();
+            let ptr: *mut std::ffi::c_void = slice.map(false).unwrap();
             std::ptr::copy(data.as_ptr(), ptr as *mut T, data.len());
             slice.unmap(true);
 
@@ -105,12 +106,16 @@ impl<B: GPUBackend> GPUDevice<B> {
         self.transfer.init_texture_async(dst, src, mip_level, array_layer, buffer_offset)
     }
 
-    fn flush_transfers(&self) {
+    pub fn flush_transfers(&self) {
         self.transfer.flush();
     }
 
-    fn free_completed_transfers(&self) {
+    pub fn free_completed_transfers(&self) {
         self.transfer.try_free_unused_buffers();
+    }
+
+    pub fn insert_texture_into_bindless_heap(&self, texture: &Arc<super::TextureView<B>>) -> Option<BindlessSlot<B>> {
+        self.bindless_slot_allocator.get_slot(texture)
     }
 }
 

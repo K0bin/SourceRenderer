@@ -84,7 +84,7 @@ impl<T> Chunk<T>
                 break;
             }
 
-            if let Some((best_index, best_range)) = best.clone() {
+            if let Some((_best_index, best_range)) = best.clone() {
                 if range.length < best_range.length {
                     best = Some((index, range.clone()));
                 }
