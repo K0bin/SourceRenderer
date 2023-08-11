@@ -17,7 +17,8 @@ pub struct VkDevice {
     transfer_queue: Option<VkQueue>,
     shared: Arc<VkShared>,
     query_count: AtomicU64,
-    memory_type_infos: Vec<MemoryTypeInfo>
+    memory_type_infos: Vec<MemoryTypeInfo>,
+    bindless_heap: VkBindlessDescriptorSet
 }
 
 impl VkDevice {
@@ -175,6 +176,8 @@ impl VkDevice {
             memory_type_infos.push(info);
         }
 
+        let bindless_set = VkBindlessDescriptorSet::new(&raw);
+
         VkDevice {
             device: raw,
             graphics_queue,
@@ -182,7 +185,8 @@ impl VkDevice {
             transfer_queue,
             shared,
             query_count: AtomicU64::new(0),
-            memory_type_infos
+            memory_type_infos,
+            bindless_heap: bindless_set
         }
     }
 
@@ -352,6 +356,10 @@ impl Device<VkBackend> for VkDevice {
             &self.shared,
         )
     }*/
+
+    unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &VkTextureView) {
+        self.bindless_heap.write_texture_descriptor(slot, texture)
+    }
 
     fn supports_barycentrics(&self) -> bool {
         self.device.features.contains(VkFeatures::BARYCENTRICS)

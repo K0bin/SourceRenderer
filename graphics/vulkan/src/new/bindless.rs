@@ -8,14 +8,9 @@ use ash::vk::{
     self,
     Handle,
 };
+use smallvec::SmallVec;
 
-use crate::descriptor::{
-    VkDescriptorSetEntryInfo,
-    VkDescriptorSetLayout,
-};
-use crate::raw::RawVkDevice;
-use crate::shared::VkDescriptorSetLayoutKey;
-use crate::texture::VkTextureView;
+use super::*;
 
 pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
 pub(crate) const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
@@ -24,7 +19,6 @@ pub struct VkBindlessDescriptorSet {
     device: Arc<RawVkDevice>,
     inner: Mutex<VkBindlessInner>,
     descriptor_count: u32,
-    descriptor_type: vk::DescriptorType,
     layout: Arc<VkDescriptorSetLayout>,
     key: VkDescriptorSetLayoutKey,
 }
@@ -32,33 +26,33 @@ pub struct VkBindlessDescriptorSet {
 pub struct VkBindlessInner {
     descriptor_pool: vk::DescriptorPool,
     descriptor_set: vk::DescriptorSet,
-    next_free_index: u32,
-    free_indices: Vec<u32>,
 }
 
 impl VkBindlessDescriptorSet {
-    pub fn new(device: &Arc<RawVkDevice>, descriptor_type: vk::DescriptorType) -> Self {
+    pub fn new(device: &Arc<RawVkDevice>) -> Self {
+        let mut bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
+        bindings.push(VkDescriptorSetEntryInfo {
+            name: "bindless_textures".to_string(),
+            shader_stage: vk::ShaderStageFlags::VERTEX
+                | vk::ShaderStageFlags::FRAGMENT
+                | vk::ShaderStageFlags::COMPUTE,
+            index: 0,
+            descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+            count: BINDLESS_TEXTURE_COUNT,
+            writable: false,
+            flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
+                | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
+                | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
+        });
+
         let key = VkDescriptorSetLayoutKey {
-            bindings: vec![VkDescriptorSetEntryInfo {
-                name: "bindless_textures".to_string(),
-                shader_stage: vk::ShaderStageFlags::VERTEX
-                    | vk::ShaderStageFlags::FRAGMENT
-                    | vk::ShaderStageFlags::COMPUTE,
-                index: 0,
-                descriptor_type,
-                count: BINDLESS_TEXTURE_COUNT,
-                writable: descriptor_type != vk::DescriptorType::SAMPLED_IMAGE
-                    && descriptor_type != vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-            }],
+            bindings,
             flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
         };
         let layout = Arc::new(VkDescriptorSetLayout::new(&key.bindings, key.flags, device));
 
         let pool_sizes = [vk::DescriptorPoolSize {
-            ty: descriptor_type,
+            ty: vk::DescriptorType::SAMPLED_IMAGE,
             descriptor_count: BINDLESS_TEXTURE_COUNT,
         }];
         let descriptor_pool = unsafe {
@@ -99,7 +93,7 @@ impl VkBindlessDescriptorSet {
                 .allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo {
                     descriptor_pool,
                     descriptor_set_count: 1,
-                    p_set_layouts: layout.handle(),
+                    p_set_layouts: &layout.handle() as *const vk::DescriptorSetLayout,
                     ..Default::default()
                 })
                 .unwrap()
@@ -128,12 +122,9 @@ impl VkBindlessDescriptorSet {
         Self {
             device: device.clone(),
             descriptor_count: BINDLESS_TEXTURE_COUNT,
-            descriptor_type,
             inner: Mutex::new(VkBindlessInner {
                 descriptor_pool,
                 descriptor_set,
-                next_free_index: 0,
-                free_indices: Vec::new(),
             }),
             layout,
             key,
@@ -149,19 +140,12 @@ impl VkBindlessDescriptorSet {
         lock.descriptor_set
     }
 
-    pub fn write_texture_descriptor(&self, texture: &Arc<VkTextureView>) -> u32 {
-        assert_eq!(self.descriptor_type, vk::DescriptorType::SAMPLED_IMAGE);
+    pub fn write_texture_descriptor(&self, slot: u32, texture: &VkTextureView) {
+        let lock = self.inner.lock().unwrap();
 
-        let mut lock = self.inner.lock().unwrap();
-        let index = if let Some(idx) = lock.free_indices.pop() {
-            idx
-        } else {
-            lock.next_free_index += 1;
-            lock.next_free_index - 1
-        };
         let image_info = vk::DescriptorImageInfo {
             sampler: vk::Sampler::null(),
-            image_view: *texture.view_handle(),
+            image_view: texture.view_handle(),
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         };
         unsafe {
@@ -169,7 +153,7 @@ impl VkBindlessDescriptorSet {
                 &[vk::WriteDescriptorSet {
                     dst_set: lock.descriptor_set,
                     dst_binding: 0,
-                    dst_array_element: index,
+                    dst_array_element: slot,
                     descriptor_count: 1,
                     descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
                     p_image_info: &image_info as *const vk::DescriptorImageInfo,
@@ -180,21 +164,13 @@ impl VkBindlessDescriptorSet {
                 &[],
             );
         }
-        index
-    }
-
-    pub fn free_slot(&self, slot: u32) {
-        // Mark slot as free. Only necessary for the index allocator.
-        // The descriptor set itself is fine with dead entries.
-        let mut lock = self.inner.lock().unwrap();
-        lock.free_indices.push(slot);
     }
 }
 
 impl Drop for VkBindlessDescriptorSet {
     fn drop(&mut self) {
-        let lock = self.inner.lock().unwrap();
         unsafe {
+            let lock = self.inner.lock().unwrap();
             self.device
                 .destroy_descriptor_pool(lock.descriptor_pool, None);
         }

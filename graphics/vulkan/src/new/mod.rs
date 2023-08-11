@@ -20,12 +20,13 @@ pub use self::{
     sync::*,
     texture::*,
     heap::*,
+    bindless::*,
 };
 pub use crate::raw::*;
 
 mod adapter;
 mod backend;
-//mod bindless; // NEEDS REDESIGN
+mod bindless; // NEEDS REDESIGN
 mod buffer;
 mod command;
 mod descriptor;
