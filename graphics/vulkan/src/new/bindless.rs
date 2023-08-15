@@ -12,8 +12,8 @@ use smallvec::SmallVec;
 
 use super::*;
 
-pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
-pub(crate) const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
+pub(super) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
+pub(super) const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
 pub struct VkBindlessDescriptorSet {
     device: Arc<RawVkDevice>,
@@ -131,7 +131,7 @@ impl VkBindlessDescriptorSet {
         }
     }
 
-    pub(crate) fn layout(&self) -> (&VkDescriptorSetLayoutKey, &Arc<VkDescriptorSetLayout>) {
+    pub(super) fn layout(&self) -> (&VkDescriptorSetLayoutKey, &Arc<VkDescriptorSetLayout>) {
         (&self.key, &self.layout)
     }
 

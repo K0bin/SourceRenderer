@@ -1539,7 +1539,7 @@ impl VkBindingManager {
         self.dirty
     }
 
-    pub fn finish(
+    pub(super) fn finish(
         &mut self,
         frame: u64,
         pipeline_layout: &VkPipelineLayout,

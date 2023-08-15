@@ -21,12 +21,13 @@ pub use self::{
     texture::*,
     heap::*,
     bindless::*,
+    rt::*,
 };
 pub use crate::raw::*;
 
 mod adapter;
 mod backend;
-mod bindless; // NEEDS REDESIGN
+mod bindless;
 mod buffer;
 mod command;
 mod descriptor;
@@ -37,7 +38,7 @@ mod pipeline;
 //mod query; // NEEDS REDESIGN
 mod queue;
 mod renderpass;
-//mod rt; // NEEDS REDESIGN
+mod rt;
 mod shared;
 mod surface;
 mod swapchain;

@@ -330,33 +330,6 @@ impl Device<VkBackend> for VkDevice {
         self.device.features.contains(VkFeatures::MIN_MAX_FILTER)
     }
 
-    /*unsafe fn get_bottom_level_acceleration_structure_size(
-        &self,
-        info: &BottomLevelAccelerationStructureInfo<VkBackend>,
-    ) -> AccelerationStructureSizes {
-        unimplemented!()
-        //VkAccelerationStructure::bottom_level_size(&self.device, info)
-    }
-
-    unsafe fn get_top_level_acceleration_structure_size(
-        &self,
-        info: &TopLevelAccelerationStructureInfo<VkBackend>,
-    ) -> AccelerationStructureSizes {
-        unimplemented!()
-        //VkAccelerationStructure::top_level_size(&self.device, info)
-    }
-
-    unsafe fn create_raytracing_pipeline(
-        &self,
-        info: &RayTracingPipelineInfo<VkBackend>,
-    ) -> VkPipeline {
-        VkPipeline::new_ray_tracing(
-            &self.device,
-            info,
-            &self.shared,
-        )
-    }*/
-
     unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &VkTextureView) {
         self.bindless_heap.write_texture_descriptor(slot, texture)
     }
@@ -541,6 +514,22 @@ impl Device<VkBackend> for VkDevice {
             alignment: requirements.memory_requirements.alignment,
             size: requirements.memory_requirements.size
         }
+    }
+
+    unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
+        VkAccelerationStructure::bottom_level_size(&self.device, info)
+    }
+
+    unsafe fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
+        VkAccelerationStructure::top_level_size(&self.device, info)
+    }
+
+    unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &RayTracingPipelineInfo<VkBackend>) -> u64 {
+        VkPipeline::ray_tracing_buffer_size(&self.device, info, &self.shared)
+    }
+
+    unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<VkBackend>, sbt_buffer: &VkBuffer, sbt_buffer_offset: u64) -> VkPipeline {
+        VkPipeline::new_ray_tracing(&self.device, info, &self.shared, sbt_buffer, sbt_buffer_offset)
     }
 }
 

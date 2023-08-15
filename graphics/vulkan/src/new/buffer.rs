@@ -213,6 +213,11 @@ impl VkBuffer {
         self.va
     }
 
+    pub fn va_offset(&self, offset: u64) -> Option<vk::DeviceAddress> {
+        self.va
+            .map(|va| va + offset as vk::DeviceSize)
+    }
+
     pub(crate) fn info(&self) -> &BufferInfo {
         &self.info
     }

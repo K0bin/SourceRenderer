@@ -27,18 +27,18 @@ pub struct VkShared {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
-pub(crate) struct VkDescriptorSetLayoutKey {
-    pub(crate) bindings: SmallVec<[VkDescriptorSetEntryInfo; 16]>,
-    pub(crate) flags: vk::DescriptorSetLayoutCreateFlags,
+pub(super) struct VkDescriptorSetLayoutKey {
+    pub(super) bindings: SmallVec<[VkDescriptorSetEntryInfo; 16]>,
+    pub(super) flags: vk::DescriptorSetLayoutCreateFlags,
 }
 
 const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub(crate) struct VkPipelineLayoutKey {
-    pub(crate) descriptor_set_layouts:
+pub(super) struct VkPipelineLayoutKey {
+    pub(super) descriptor_set_layouts:
         [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
-    pub(crate) push_constant_ranges: [Option<VkConstantRange>; 3],
+    pub(super) push_constant_ranges: [Option<VkConstantRange>; 3],
 }
 
 impl VkShared {
@@ -81,11 +81,11 @@ impl VkShared {
     }
 
     #[inline]
-    pub(crate) fn get_clear_buffer_meta_pipeline(&self) -> &VkPipeline {
+    pub(super) fn get_clear_buffer_meta_pipeline(&self) -> &VkPipeline {
         &self.clear_buffer_meta_pipeline
     }
 
-    pub(crate) fn get_descriptor_set_layout(
+    pub(super) fn get_descriptor_set_layout(
         &self,
         layout_key: &VkDescriptorSetLayoutKey,
     ) -> Arc<VkDescriptorSetLayout> {
@@ -107,7 +107,7 @@ impl VkShared {
     }
 
     #[inline]
-    pub(crate) fn get_pipeline_layout(
+    pub(super) fn get_pipeline_layout(
         &self,
         layout_key: &VkPipelineLayoutKey,
     ) -> Arc<VkPipelineLayout> {
@@ -134,7 +134,7 @@ impl VkShared {
         pipeline_layout
     }
 
-    pub(crate) fn get_render_pass(&self, info: VkRenderPassInfo) -> Arc<VkRenderPass> {
+    pub(super) fn get_render_pass(&self, info: VkRenderPassInfo) -> Arc<VkRenderPass> {
         {
             let cache = self.render_passes.read().unwrap();
             if let Some(renderpass) = cache.get(&info) {
@@ -147,7 +147,7 @@ impl VkShared {
         renderpass
     }
 
-    pub(crate) fn get_framebuffer(
+    pub(super) fn get_framebuffer(
         &self,
         render_pass: &Arc<VkRenderPass>,
         attachments: &[&VkTextureView],
@@ -181,7 +181,7 @@ impl VkShared {
     }
 
     /*#[inline]
-    pub(crate) fn bindless_texture_descriptor_set(&self) -> Option<&Arc<VkBindlessDescriptorSet>> {
+    pub(super) fn bindless_texture_descriptor_set(&self) -> Option<&Arc<VkBindlessDescriptorSet>> {
         self.bindless_texture_descriptor_set.as_ref()
     }*/
 }
