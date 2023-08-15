@@ -83,7 +83,7 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: &B::Buffer, offset: u64, length: u64);
   unsafe fn bind_storage_texture(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView);
   unsafe fn bind_sampler(&mut self, frequency: BindingFrequency, binding: u32, sampler: &B::Sampler);
-  //unsafe fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &B::AccelerationStructure);
+  unsafe fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &B::AccelerationStructure);
   unsafe fn finish_binding(&mut self);
   unsafe fn begin_label(&mut self, label: &str);
   unsafe fn end_label(&mut self);
@@ -111,10 +111,34 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn reset(&mut self, frame: u64);
 
   // RT
-  /*unsafe fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, size: u64, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
-  unsafe fn upload_top_level_instances(&mut self, instances: &[AccelerationStructureInstance<B>]) -> B::Buffer;
-  unsafe fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>, size: u64, target_buffer: &B::Buffer, scratch_buffer: &B::Buffer) -> B::AccelerationStructure;
-  unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32);*/
+  unsafe fn create_bottom_level_acceleration_structure(
+    &mut self,
+    info: &BottomLevelAccelerationStructureInfo<B>,
+    size: u64,
+    target_buffer: &B::Buffer,
+    target_buffer_offset: u64,
+    scratch_buffer: &B::Buffer,
+    scratch_buffer_offset: u64
+  ) -> B::AccelerationStructure;
+
+  unsafe fn upload_top_level_instances(
+    &mut self,
+    instances: &[AccelerationStructureInstance<B>],
+    target_buffer: &B::Buffer,
+    target_buffer_offset: u64
+  );
+
+  unsafe fn create_top_level_acceleration_structure(
+    &mut self,
+    info: &TopLevelAccelerationStructureInfo<B>,
+    size: u64,
+    target_buffer: &B::Buffer,
+    target_buffer_offset: u64,
+    scratch_buffer: &B::Buffer,
+    scratch_buffer_offset: u64
+  ) -> B::AccelerationStructure;
+
+  unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32);
 }
 
 pub enum RenderPassAttachmentView<'a, B: GPUBackend> {

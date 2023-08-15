@@ -10,7 +10,7 @@ pub use self::renderpass::*;
 pub use self::sync::*;
 pub use self::swapchain::*;
 pub use self::texture::*;
-//pub use self::rt::*;
+pub use self::rt::*;
 pub use self::descriptor_heap::*;
 pub use self::queue::*;
 pub use self::backend::*;
@@ -28,7 +28,7 @@ mod renderpass;
 mod backend;
 mod sync;
 mod heap;
-//mod rt;
+mod rt;
 mod descriptor_heap;
 mod queue;
 
