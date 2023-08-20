@@ -5,9 +5,10 @@ use sourcerenderer_core::{gpu::*, atomic_refcell::{AtomicRefCell, AtomicRefMut}}
 use super::*;
 
 pub struct TransientBufferSlice<B: GPUBackend> {
-  buffer: *const B::Buffer,
-  offset: u64,
-  length: u64
+    owned_buffer: Option<TransientBuffer<B>>,
+    buffer: *const B::Buffer,
+    offset: u64,
+    length: u64
 }
 
 unsafe impl<B: GPUBackend> Send for TransientBufferSlice<B> {}
@@ -49,6 +50,7 @@ impl<B: GPUBackend> TransientBufferSlice<B> {
 
 const BUFFER_SIZE: u64 = 16384;
 const REORDER_THRESHOLD: u64 = 128;
+const UNIQUE_ALLOCATION_THRESHOLD: u64 = 4096;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 struct BufferKey {
@@ -84,20 +86,33 @@ pub(super) struct TransientBufferAllocator<B: GPUBackend> {
     device: Arc<B::Device>,
     allocator: Arc<MemoryAllocator<B>>,
     destroyer: Arc<DeferredDestroyer<B>>,
-    buffers: AtomicRefCell<HashMap<BufferKey, Vec<TransientBuffer<B>>>>,
+    inner: AtomicRefCell<TransientBufferAllocatorInner<B>>,
+    is_uma: bool
+}
+
+struct TransientBufferAllocatorInner<B: GPUBackend> {
+    buffers: HashMap<BufferKey, Vec<TransientBuffer<B>>>,
+    retained_size_host_memory: Option<u64>,
+    retained_size_gpu_memory: Option<u64>,
 }
 
 impl<B: GPUBackend> TransientBufferAllocator<B> {
     pub(super) fn new(
         device: &Arc<B::Device>,
         allocator: &Arc<MemoryAllocator<B>>,
-        destroyer: &Arc<DeferredDestroyer<B>>
+        destroyer: &Arc<DeferredDestroyer<B>>,
+        is_uma: bool
     ) -> Self {
         Self {
             device: device.clone(),
             allocator: allocator.clone(),
             destroyer: destroyer.clone(),
-            buffers: AtomicRefCell::new(HashMap::new())
+            inner: AtomicRefCell::new(TransientBufferAllocatorInner {
+                buffers: HashMap::new(),
+                retained_size_host_memory: None,
+                retained_size_gpu_memory: None
+            }),
+            is_uma
         }
     }
 
@@ -109,7 +124,27 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
     ) -> Result<TransientBufferSlice<B>, OutOfMemoryError> {
         let mut alignment: u64 = 256; // TODO
 
-        let mut buffers: AtomicRefMut<'_, HashMap<BufferKey, Vec<TransientBuffer<B>>>> = self.buffers.borrow_mut();
+        if info.size > UNIQUE_ALLOCATION_THRESHOLD {
+            // Don't do one-off buffers for command lists
+            let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
+            let mut slice = TransientBufferSlice {
+                owned_buffer: Some(TransientBuffer {
+                    size: info.size,
+                    offset: 0,
+                    buffer: ManuallyDrop::new(buffer),
+                    allocation,
+                    destroyer: self.destroyer.clone()
+                }),
+                buffer: std::ptr::null(),
+                offset: 0,
+                length: info.size
+            };
+            slice.buffer = &*slice.owned_buffer.as_ref().unwrap().buffer as *const B::Buffer;
+            return Ok(slice);
+        }
+
+        let mut inner: AtomicRefMut<'_, TransientBufferAllocatorInner<B>> = self.inner.borrow_mut();
+        let buffers = &mut inner.buffers;
 
         let key = BufferKey {
             memory_usage,
@@ -128,6 +163,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             sliced_buffer.offset = aligned_offset + info.size;
 
             slice_opt = Some(TransientBufferSlice {
+                owned_buffer: None,
                 buffer: &*sliced_buffer.buffer as *const B::Buffer,
                 offset: aligned_offset,
                 length: info.size
@@ -162,6 +198,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         };
         sliced_buffer.reset();
         let slice: TransientBufferSlice<B> = TransientBufferSlice {
+            owned_buffer: None,
             buffer: &*sliced_buffer.buffer as *const B::Buffer,
             offset: 0,
             length: info.size
@@ -170,13 +207,46 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         Ok(slice)
     }
 
-    pub fn reset(&mut self) {
-        let mut buffers: AtomicRefMut<'_, HashMap<BufferKey, Vec<TransientBuffer<B>>>> = self.buffers.borrow_mut();
-        for (_key, buffers) in buffers.iter_mut() {
+    pub fn reset(&self) {
+        let mut inner: AtomicRefMut<'_, TransientBufferAllocatorInner<B>> = self.inner.borrow_mut();
+        let retained_gpu_memory = inner.retained_size_gpu_memory.unwrap_or(u64::MAX);
+        let retained_host_memory = inner.retained_size_host_memory.unwrap_or(u64::MAX);
+        let mut counted_gpu_memory = 0u64;
+        let mut counted_host_memory = 0u64;
+
+        if retained_gpu_memory != u64::MAX || retained_host_memory != u64::MAX {
+            for (key, buffers) in &mut inner.buffers {
+                if key.buffer_usage.contains(BufferUsage::CONSTANT) {
+                    // Keep constant buffers around.
+                    continue;
+                }
+
+                let (counted_memory, limit) = if self.is_uma {
+                    (&mut counted_host_memory, retained_host_memory)
+                } else if key.memory_usage == MemoryUsage::GPUMemory || key.memory_usage == MemoryUsage::MappableGPUMemory {
+                    (&mut counted_gpu_memory, retained_gpu_memory)
+                } else {
+                    (&mut counted_host_memory, retained_host_memory)
+                };
+
+                buffers.retain(|buffer| {
+                    *counted_memory += buffer.buffer.info().size;
+                    *counted_memory < limit
+                });
+            }
+        }
+
+        for (_key, buffers) in inner.buffers.iter_mut() {
             for sliced_buffer in buffers.iter_mut() {
                 sliced_buffer.reset();
             }
             buffers.sort_unstable_by_key(|a| a.size);
         }
+    }
+
+    pub fn set_retained_size(&mut self, host_size: Option<u64>, gpu_size: Option<u64>) {
+        let mut inner: AtomicRefMut<'_, TransientBufferAllocatorInner<B>> = self.inner.borrow_mut();
+        inner.retained_size_host_memory = host_size;
+        inner.retained_size_gpu_memory = gpu_size;
     }
 }

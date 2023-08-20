@@ -140,4 +140,8 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         }
         return mask;
     }
+
+    pub(super) fn is_uma(&self) -> bool {
+        self.is_uma
+    }
 }

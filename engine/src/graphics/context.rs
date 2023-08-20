@@ -4,6 +4,7 @@ use smallvec::SmallVec;
 use thread_local::ThreadLocal;
 
 use sourcerenderer_core::gpu::*;
+use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 
 use super::*;
 
@@ -19,13 +20,14 @@ pub struct GraphicsContext<B: GPUBackend> {
 
 pub struct ThreadContext<B: GPUBackend> {
   device: Arc<B::Device>,
-  frames: SmallVec<[FrameContext<B>; 5]>
+  frames: AtomicRefCell<SmallVec<[FrameContext<B>; 5]>>
 }
 
 pub struct FrameContext<B: GPUBackend> {
   device: Arc<B::Device>,
   command_pool: B::CommandPool,
-  buffer_allocator: TransientBufferAllocator<B>
+  buffer_allocator: TransientBufferAllocator<B>,
+  last_used_frame: u64
 }
 
 impl<B: GPUBackend> GraphicsContext<B> {
@@ -53,9 +55,15 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
   }
 
-  pub fn get_command_buffer(&self, command_buffer_type: CommandBufferType) -> CommandBufferRecorder<B> {
+  pub fn get_command_buffer(&mut self, command_buffer_type: CommandBufferType) -> CommandBufferRecorder<B> {
     let thread_context = self.get_thread_context();
-    let frame_context = thread_context.get_frame(self.current_frame);
+    let mut frame_context = thread_context.get_frame(self.current_frame);
+
+    if frame_context.last_used_frame != self.current_frame {
+        unsafe { frame_context.command_pool.reset(); }
+        frame_context.buffer_allocator.reset();
+        frame_context.last_used_frame = self.current_frame;
+    }
 
     unimplemented!()
   }
@@ -86,23 +94,28 @@ impl<B: GPUBackend> ThreadContext<B> {
 
     Self {
       device: device.clone(),
-      frames,
+      frames: AtomicRefCell::new(frames),
     }
   }
 
-  pub fn get_frame(&self, frame_counter: u64) -> &FrameContext<B> {
-    &self.frames[(frame_counter as usize) % self.frames.len()]
+  pub fn get_frame(&self, frame_counter: u64) -> AtomicRefMut<FrameContext<B>> {
+    let frames = self.frames.borrow_mut();
+    AtomicRefMut::map(frames, |f| {
+        let len = f.len();
+        &mut f[(frame_counter as usize) % len]
+    })
   }
 }
 
 impl<B: GPUBackend> FrameContext<B> {
   fn new(device: &Arc<B::Device>, memory_allocator: &Arc<MemoryAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>) -> Self {
     let command_pool = unsafe { device.graphics_queue().create_command_pool(CommandPoolType::CommandBuffers, CommandPoolFlags::empty()) };
-    let buffer_allocator = TransientBufferAllocator::new(device, memory_allocator, destroyer);
+    let buffer_allocator = TransientBufferAllocator::new(device, memory_allocator, destroyer, memory_allocator.is_uma());
     Self {
       device: device.clone(),
       command_pool,
       buffer_allocator,
+      last_used_frame: 0u64
     }
   }
 }

@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 nalgebra = "0.32.2"
 num_cpus = "1.13.1"
+atomic_refcell = "0.1.11"
 sourcerenderer_core = { path = "../core" }
 image = "0.24.3"
 crossbeam-channel = "0.5.6"

@@ -26,13 +26,43 @@ pub use sourcerenderer_core::gpu::{
     BindingFrequency
 };
 
+pub enum Barrier<'a, B: GPUBackend> {
+  TextureBarrier {
+    old_sync: BarrierSync,
+    new_sync: BarrierSync,
+    old_layout: TextureLayout,
+    new_layout: TextureLayout,
+    old_access: BarrierAccess,
+    new_access: BarrierAccess,
+    texture: &'a super::Texture<B>,
+    range: BarrierTextureRange,
+    queue_ownership: Option<QueueOwnershipTransfer>
+  },
+  BufferBarrier {
+    old_sync: BarrierSync,
+    new_sync: BarrierSync,
+    old_access: BarrierAccess,
+    new_access: BarrierAccess,
+    buffer: BufferRef<'a, B>,
+    queue_ownership: Option<QueueOwnershipTransfer>
+  },
+  GlobalBarrier {
+    old_sync: BarrierSync,
+    new_sync: BarrierSync,
+    old_access: BarrierAccess,
+    new_access: BarrierAccess,
+  }
+}
+
 pub struct CommandBuffer<B: GPUBackend> {
     cmd_buffer: B::CommandBuffer,
     buffer_refs: Vec<Arc<BufferSlice<B>>>,
     device: Arc<B::Device>,
     global_buffer_allocator: Arc<BufferAllocator<B>>,
     transient_buffer_allocator: Arc<TransientBufferAllocator<B>>,
-    destroyer: Arc<DeferredDestroyer<B>>
+    destroyer: Arc<DeferredDestroyer<B>>,
+    acceleration_structure_scratch: Option<TransientBufferSlice<B>>,
+    acceleration_structure_scratch_offset: u64,
 }
 
 pub struct CommandBufferRecorder<B: GPUBackend> {
@@ -282,6 +312,8 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     pub fn reset(&mut self, frame: u64) {
         unsafe { self.inner.cmd_buffer.reset(frame); }
         self.inner.buffer_refs.clear();
+        self.inner.acceleration_structure_scratch = None;
+        self.inner.acceleration_structure_scratch_offset = 0;
     }
 
 
@@ -315,7 +347,87 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
-    pub fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>) -> Option<AccelerationStructure<B>> {
+    pub fn barrier(&mut self, barriers: &[Barrier<B>]) {
+        let core_barriers: SmallVec::<[gpu::Barrier<B>; 4]> = barriers.iter().map(|b| {
+            match b {
+                Barrier::TextureBarrier {
+                    old_sync,
+                    new_sync,
+                    old_layout,
+                    new_layout,
+                    old_access,
+                    new_access,
+                    texture,
+                    range,
+                    queue_ownership
+                } => gpu::Barrier::TextureBarrier {
+                    old_sync: *old_sync,
+                    new_sync: *new_sync,
+                    old_layout: *old_layout,
+                    new_layout: *new_layout,
+                    old_access: *old_access,
+                    new_access: *new_access,
+                    texture: texture.handle(),
+                    range: range.clone(),
+                    queue_ownership: queue_ownership.clone()
+                },
+                Barrier::BufferBarrier {
+                    old_sync,
+                    new_sync,
+                    old_access,
+                    new_access,
+                    buffer,
+                    queue_ownership
+                } => {
+                    let (buffer_handle, buffer_offset, buffer_length) = match buffer {
+                        BufferRef::Regular(b) => (b.handle(), b.offset(), b.length()),
+                        BufferRef::Transient(b) => (b.handle(), b.offset(), b.length())
+                    };
+
+                    gpu::Barrier::BufferBarrier {
+                        old_sync: *old_sync,
+                        new_sync: *new_sync,
+                        old_access: *old_access,
+                        new_access: *new_access,
+                        buffer: buffer_handle,
+                        offset: buffer_offset,
+                        length: buffer_length,
+                        queue_ownership: queue_ownership.clone()
+                    }
+                }
+                Barrier::GlobalBarrier {
+                    old_sync,
+                    new_sync,
+                    old_access,
+                    new_access
+                } => gpu::Barrier::GlobalBarrier {
+                    old_sync: *old_sync,
+                    new_sync: *new_sync,
+                    old_access: *old_access,
+                    new_access: *new_access,
+                }
+            }
+        }).collect();
+
+        unsafe {
+            self.inner.cmd_buffer.barrier(&core_barriers);
+        }
+    }
+
+    pub fn preallocate_acceleration_structure_scratch_memory(&mut self, scratch_size: u64) {
+        let scratch_result = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
+            size: scratch_size,
+            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+            sharing_mode: QueueSharingMode::Exclusive
+        }, MemoryUsage::GPUMemory, None);
+
+        if let Ok(scratch) = scratch_result {
+            self.inner.acceleration_structure_scratch = Some(scratch);
+            self.inner.acceleration_structure_scratch_offset = 0;
+        }
+    }
+
+    pub fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, mut use_preallocated_scratch: bool) -> Option<AccelerationStructure<B>> {
         let core_info = gpu::BottomLevelAccelerationStructureInfo {
             index_format: info.index_format,
             vertex_position_offset: info.vertex_position_offset,
@@ -341,11 +453,45 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             None
         ).ok()?;
 
-        let scratch = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
-            size: size.build_scratch_size,
-            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
-            sharing_mode: QueueSharingMode::Exclusive
-        }, MemoryUsage::GPUMemory, None).ok()?;
+        if let Some(preallocated_scratch) = self.inner.acceleration_structure_scratch.as_ref() {
+            use_preallocated_scratch = use_preallocated_scratch && preallocated_scratch.handle().info().size >= size.build_scratch_size;
+        } else {
+            use_preallocated_scratch = false;
+        }
+
+        let mut _owned_scratch = Option::<TransientBufferSlice<B>>::None;
+
+        let (scratch, scratch_offset) = if use_preallocated_scratch {
+            let preallocated_scratch = self.inner.acceleration_structure_scratch.as_ref().unwrap();
+            let remaining_scratch: u64 = preallocated_scratch.handle().info().size - self.inner.acceleration_structure_scratch_offset;
+            if remaining_scratch < size.build_scratch_size {
+                unsafe {
+                    self.inner.cmd_buffer.barrier(&[
+                        gpu::Barrier::BufferBarrier {
+                            old_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+                            new_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+                            old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
+                            new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
+                            buffer: preallocated_scratch.handle(),
+                            offset: preallocated_scratch.offset(),
+                            length: preallocated_scratch.length(),
+                            queue_ownership: None
+                        }
+                    ]);
+                }
+                self.inner.acceleration_structure_scratch_offset = 0;
+            }
+            let offset = self.inner.acceleration_structure_scratch_offset;
+            self.inner.acceleration_structure_scratch_offset += size.build_scratch_size;
+            (preallocated_scratch, offset)
+        } else {
+            _owned_scratch = Some(self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
+                size: size.build_scratch_size,
+                usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+                sharing_mode: QueueSharingMode::Exclusive
+            }, MemoryUsage::GPUMemory, None).ok()?);
+            (_owned_scratch.as_ref().unwrap(), 0)
+        };
 
         let acceleration_structure = unsafe { self.inner.cmd_buffer.create_bottom_level_acceleration_structure(
             &core_info,
@@ -353,13 +499,13 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             buffer.handle(),
             buffer.offset(),
             scratch.handle(),
-            scratch.offset()
+            scratch.offset() + scratch_offset
         )};
 
         Some(AccelerationStructure::new(acceleration_structure, buffer, &self.inner.destroyer))
     }
 
-    pub fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>) -> Option<AccelerationStructure<B>> {
+    pub fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>, mut use_preallocated_scratch: bool) -> Option<AccelerationStructure<B>> {
         let core_instances: SmallVec::<[gpu::AccelerationStructureInstance<B>; 16]> = info.instances.iter().map(|i| gpu::AccelerationStructureInstance {
             acceleration_structure: i.acceleration_structure.handle(),
             transform: i.transform.clone(),
@@ -393,11 +539,45 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             None
         ).ok()?;
 
-        let scratch = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
-            size: size.build_scratch_size,
-            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
-            sharing_mode: QueueSharingMode::Exclusive
-        }, MemoryUsage::GPUMemory, None).ok()?;
+        if let Some(preallocated_scratch) = self.inner.acceleration_structure_scratch.as_ref() {
+            use_preallocated_scratch = use_preallocated_scratch && preallocated_scratch.handle().info().size >= size.build_scratch_size;
+        } else {
+            use_preallocated_scratch = false;
+        }
+
+        let mut _owned_scratch = Option::<TransientBufferSlice<B>>::None;
+
+        let (scratch, scratch_offset) = if use_preallocated_scratch {
+            let preallocated_scratch = self.inner.acceleration_structure_scratch.as_ref().unwrap();
+            let remaining_scratch: u64 = preallocated_scratch.handle().info().size - self.inner.acceleration_structure_scratch_offset;
+            if remaining_scratch < size.build_scratch_size {
+                unsafe {
+                    self.inner.cmd_buffer.barrier(&[
+                        gpu::Barrier::BufferBarrier {
+                            old_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+                            new_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
+                            old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
+                            new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
+                            buffer: preallocated_scratch.handle(),
+                            offset: preallocated_scratch.offset(),
+                            length: preallocated_scratch.length(),
+                            queue_ownership: None
+                        }
+                    ]);
+                }
+                self.inner.acceleration_structure_scratch_offset = 0;
+            }
+            let offset = self.inner.acceleration_structure_scratch_offset;
+            self.inner.acceleration_structure_scratch_offset += size.build_scratch_size;
+            (preallocated_scratch, offset)
+        } else {
+            _owned_scratch = Some(self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
+                size: size.build_scratch_size,
+                usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+                sharing_mode: QueueSharingMode::Exclusive
+            }, MemoryUsage::GPUMemory, None).ok()?);
+            (_owned_scratch.as_ref().unwrap(), 0)
+        };
 
         let acceleration_structure = unsafe { self.inner.cmd_buffer.create_top_level_acceleration_structure(
             &core_info,
@@ -405,7 +585,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             buffer.handle(),
             buffer.offset(),
             scratch.handle(),
-            scratch.offset()
+            scratch.offset() + scratch_offset
         )};
 
         Some(AccelerationStructure::new(acceleration_structure, buffer, &self.inner.destroyer))

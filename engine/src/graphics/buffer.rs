@@ -78,7 +78,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             // Don't do one-off buffers for command lists
             let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, name)?;
             let chunk = Chunk::new(buffer_and_allocation, info.size);
-            let suballocation = chunk.allocate(info.size, alignment).unwrap();
+            let suballocation = chunk.allocate(info.size, alignment).ok_or(OutOfMemoryError {})?;
             return Ok(Arc::new(BufferSlice(suballocation)));
         }
 

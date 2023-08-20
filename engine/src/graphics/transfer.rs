@@ -1,6 +1,7 @@
 use std::{sync::{Mutex, Arc}, collections::VecDeque};
 
 use sourcerenderer_core::{gpu::*, Vec3UI};
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -411,7 +412,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
 
         // commit pre barriers
-        let mut barriers = Vec::<Barrier<B>>::with_capacity(commands.pre_barriers.len());
+        let mut barriers = Vec::<gpu::Barrier<B>>::with_capacity(commands.pre_barriers.len());
         for barrier in commands.pre_barriers.iter() {
             barriers.push(
                 match barrier {
@@ -424,7 +425,7 @@ impl<B: GPUBackend> Transfer<B> {
                         offset,
                         length,
                         queue_ownership
-                    } => Barrier::BufferBarrier {
+                    } => gpu::Barrier::BufferBarrier {
                         old_sync: *old_sync,
                         new_sync: *new_sync,
                         old_access: *old_access,
@@ -445,7 +446,7 @@ impl<B: GPUBackend> Transfer<B> {
                       texture,
                       range,
                       queue_ownership
-                  } => Barrier::TextureBarrier {
+                  } => gpu::Barrier::TextureBarrier {
                       old_sync: *old_sync,
                       new_sync: *new_sync,
                       old_access: *old_access,
@@ -491,7 +492,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
 
         // commit post barriers
-        let mut barriers = Vec::<Barrier<B>>::with_capacity(commands.pre_barriers.len());
+        let mut barriers = Vec::<gpu::Barrier<B>>::with_capacity(commands.pre_barriers.len());
         for (fence_opt, barrier) in commands.post_barriers.iter() {
             if let Some(fence) = fence_opt {
                 unsafe {
@@ -512,7 +513,7 @@ impl<B: GPUBackend> Transfer<B> {
                         offset,
                         length,
                         queue_ownership
-                    } => Barrier::BufferBarrier {
+                    } => gpu::Barrier::BufferBarrier {
                         old_sync: *old_sync,
                         new_sync: *new_sync,
                         old_access: *old_access,
@@ -533,7 +534,7 @@ impl<B: GPUBackend> Transfer<B> {
                         texture,
                         range,
                         queue_ownership
-                    } => Barrier::TextureBarrier {
+                    } => gpu::Barrier::TextureBarrier {
                         old_sync: *old_sync,
                         new_sync: *new_sync,
                         old_access: *old_access,
