@@ -102,7 +102,7 @@ impl VkAccelerationStructure {
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &build_info,
-                    &[info.instances.len() as u32],
+                    &[info.instances_count],
                 )
         };
         AccelerationStructureSizes {
@@ -153,7 +153,7 @@ impl VkAccelerationStructure {
         let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
             array_of_pointers: vk::FALSE,
             data: DeviceOrHostAddressConstKHR {
-                device_address: info.instances_buffer.va().unwrap(),
+                device_address: info.instances_buffer.va_offset(info.instances_buffer_offset).unwrap(),
             },
             ..Default::default()
         };
@@ -176,7 +176,7 @@ impl VkAccelerationStructure {
             p_geometries: &geometry as *const vk::AccelerationStructureGeometryKHR,
             pp_geometries: std::ptr::null(),
             scratch_data: vk::DeviceOrHostAddressKHR {
-                device_address: scratch_buffer.va().unwrap(),
+                device_address: scratch_buffer.va_offset(scratch_buffer_offset).unwrap(),
             },
             ..Default::default()
         };
@@ -186,7 +186,7 @@ impl VkAccelerationStructure {
                 *cmd_buffer,
                 &[build_info],
                 &[&[vk::AccelerationStructureBuildRangeInfoKHR {
-                    primitive_count: info.instances.len() as u32,
+                    primitive_count: info.instances_count,
                     primitive_offset: 0,
                     first_vertex: 0,
                     transform_offset: 0,

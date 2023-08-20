@@ -531,6 +531,10 @@ impl Device<VkBackend> for VkDevice {
     unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<VkBackend>, sbt_buffer: &VkBuffer, sbt_buffer_offset: u64) -> VkPipeline {
         VkPipeline::new_ray_tracing(&self.device, info, &self.shared, sbt_buffer, sbt_buffer_offset)
     }
+
+    fn get_top_level_instances_buffer_size(&self, instances: &[AccelerationStructureInstance<VkBackend>]) -> u64 {
+        (std::mem::size_of::<vk::AccelerationStructureInstanceKHR>() * instances.len()) as u64
+    }
 }
 
 impl Drop for VkDevice {
