@@ -29,7 +29,8 @@ pub struct AccelerationStructureMeshRange {
 
 pub struct TopLevelAccelerationStructureInfo<'a, B: GPUBackend> {
   pub instances_buffer: &'a B::Buffer,
-  pub instances: &'a [AccelerationStructureInstance<'a, B>],
+  pub instances_buffer_offset: u64,
+  pub instances_count: u32
 }
 
 pub struct AccelerationStructureInstance<'a, B: GPUBackend> {
