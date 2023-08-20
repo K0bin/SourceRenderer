@@ -8,7 +8,7 @@ struct GPUDevice<B: GPUBackend> {
     device: Arc<B::Device>,
     allocator: ManuallyDrop<Arc<MemoryAllocator<B>>>,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
-    buffer_allocator: ManuallyDrop<BufferAllocator<B>>,
+    buffer_allocator: ManuallyDrop<Arc<BufferAllocator<B>>>,
     bindless_slot_allocator: BindlessSlotAllocator,
     transfer: ManuallyDrop<Transfer<B>>,
     prerendered_frames: u32,

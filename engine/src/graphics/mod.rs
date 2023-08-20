@@ -12,6 +12,7 @@ pub use sampler::*;
 pub use queue::*;
 pub use sync::*;
 pub(super) use bindless::*;
+pub use rt::*;
 
 mod device;
 mod context;
@@ -27,3 +28,4 @@ mod sampler;
 mod queue;
 mod sync;
 mod bindless;
+mod rt;

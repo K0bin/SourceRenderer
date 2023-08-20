@@ -2,9 +2,13 @@ use std::{marker::PhantomData, sync::Arc};
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-use sourcerenderer_core::{gpu::{*, CommandBuffer as GPUCommandBuffer}};
+use sourcerenderer_core::gpu::{*, CommandBuffer as GPUCommandBuffer};
+
+use sourcerenderer_core::gpu;
 
 use super::*;
+
+use super::{BottomLevelAccelerationStructureInfo, AccelerationStructure, TopLevelAccelerationStructureInfo};
 
 pub use sourcerenderer_core::gpu::{
     SubpassInfo,
@@ -24,7 +28,11 @@ pub use sourcerenderer_core::gpu::{
 
 pub struct CommandBuffer<B: GPUBackend> {
     cmd_buffer: B::CommandBuffer,
-    buffer_refs: Vec<Arc<BufferSlice<B>>>
+    buffer_refs: Vec<Arc<BufferSlice<B>>>,
+    device: Arc<B::Device>,
+    global_buffer_allocator: Arc<BufferAllocator<B>>,
+    transient_buffer_allocator: Arc<TransientBufferAllocator<B>>,
+    destroyer: Arc<DeferredDestroyer<B>>
 }
 
 pub struct CommandBufferRecorder<B: GPUBackend> {
@@ -305,6 +313,102 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         unsafe {
             self.inner.cmd_buffer.clear_storage_buffer(buffer_handle, offset + buffer_offset, length_in_u32s.min((buffer_length - offset) / 4), value);
         }
+    }
+
+    pub fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>) -> Option<AccelerationStructure<B>> {
+        let core_info = gpu::BottomLevelAccelerationStructureInfo {
+            index_format: info.index_format,
+            vertex_position_offset: info.vertex_position_offset,
+            vertex_buffer: info.vertex_buffer.handle(),
+            vertex_buffer_offset: info.vertex_buffer.offset(),
+            vertex_stride: info.vertex_stride,
+            vertex_format: info.vertex_format,
+            index_buffer: info.index_buffer.handle(),
+            index_buffer_offset: info.index_buffer.offset(),
+            opaque: info.opaque,
+            mesh_parts: info.mesh_parts,
+            max_vertex: info.max_vertex
+        };
+
+        let size = unsafe { self.inner.device.get_bottom_level_acceleration_structure_size(&core_info) };
+        let buffer = self.inner.global_buffer_allocator.get_slice(
+            &BufferInfo {
+                size: size.size,
+                usage: BufferUsage::ACCELERATION_STRUCTURE,
+                sharing_mode: QueueSharingMode::Exclusive
+            },
+            MemoryUsage::GPUMemory,
+            None
+        ).ok()?;
+
+        let scratch = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
+            size: size.build_scratch_size,
+            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+            sharing_mode: QueueSharingMode::Exclusive
+        }, MemoryUsage::GPUMemory, None).ok()?;
+
+        let acceleration_structure = unsafe { self.inner.cmd_buffer.create_bottom_level_acceleration_structure(
+            &core_info,
+            size.size,
+            buffer.handle(),
+            buffer.offset(),
+            scratch.handle(),
+            scratch.offset()
+        )};
+
+        Some(AccelerationStructure::new(acceleration_structure, buffer, &self.inner.destroyer))
+    }
+
+    pub fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>) -> Option<AccelerationStructure<B>> {
+        let core_instances: SmallVec::<[gpu::AccelerationStructureInstance<B>; 16]> = info.instances.iter().map(|i| gpu::AccelerationStructureInstance {
+            acceleration_structure: i.acceleration_structure.handle(),
+            transform: i.transform.clone(),
+            front_face: i.front_face
+        }).collect();
+
+        let instances_buffer_size = self.inner.device.get_top_level_instances_buffer_size(&core_instances);
+
+        let instances_buffer = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
+            size: instances_buffer_size,
+            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+            sharing_mode: QueueSharingMode::Exclusive
+        }, MemoryUsage::GPUMemory, None).ok()?;
+
+        unsafe { self.inner.cmd_buffer.upload_top_level_instances(&core_instances, instances_buffer.handle(), instances_buffer.offset()); }
+
+        let core_info = gpu::TopLevelAccelerationStructureInfo {
+            instances_buffer: instances_buffer.handle(),
+            instances_buffer_offset: instances_buffer.offset(),
+            instances_count: info.instances.len() as u32,
+        };
+
+        let size = unsafe { self.inner.device.get_top_level_acceleration_structure_size(&core_info) };
+        let buffer = self.inner.global_buffer_allocator.get_slice(
+            &BufferInfo {
+                size: size.size,
+                usage: BufferUsage::ACCELERATION_STRUCTURE,
+                sharing_mode: QueueSharingMode::Exclusive
+            },
+            MemoryUsage::GPUMemory,
+            None
+        ).ok()?;
+
+        let scratch = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
+            size: size.build_scratch_size,
+            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+            sharing_mode: QueueSharingMode::Exclusive
+        }, MemoryUsage::GPUMemory, None).ok()?;
+
+        let acceleration_structure = unsafe { self.inner.cmd_buffer.create_top_level_acceleration_structure(
+            &core_info,
+            size.size,
+            buffer.handle(),
+            buffer.offset(),
+            scratch.handle(),
+            scratch.offset()
+        )};
+
+        Some(AccelerationStructure::new(acceleration_structure, buffer, &self.inner.destroyer))
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{sync::Arc, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, mem::ManuallyDrop, ffi::c_void};
 
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::{gpu::*, atomic_refcell::{AtomicRefCell, AtomicRefMut}};
 
 use super::*;
 
@@ -84,7 +84,7 @@ pub(super) struct TransientBufferAllocator<B: GPUBackend> {
     device: Arc<B::Device>,
     allocator: Arc<MemoryAllocator<B>>,
     destroyer: Arc<DeferredDestroyer<B>>,
-    buffers: HashMap<BufferKey, Vec<TransientBuffer<B>>>,
+    buffers: AtomicRefCell<HashMap<BufferKey, Vec<TransientBuffer<B>>>>,
 }
 
 impl<B: GPUBackend> TransientBufferAllocator<B> {
@@ -97,23 +97,25 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             device: device.clone(),
             allocator: allocator.clone(),
             destroyer: destroyer.clone(),
-            buffers: HashMap::new()
+            buffers: AtomicRefCell::new(HashMap::new())
         }
     }
 
     pub fn get_slice(
-      &mut self,
+      &self,
       info: &BufferInfo,
       memory_usage: MemoryUsage,
       _name: Option<&str>,
     ) -> Result<TransientBufferSlice<B>, OutOfMemoryError> {
         let mut alignment: u64 = 256; // TODO
 
+        let mut buffers: AtomicRefMut<'_, HashMap<BufferKey, Vec<TransientBuffer<B>>>> = self.buffers.borrow_mut();
+
         let key = BufferKey {
             memory_usage,
             buffer_usage: info.usage,
         };
-        let matching_buffers = self.buffers.entry(key).or_insert(Vec::new());
+        let matching_buffers = buffers.entry(key).or_insert(Vec::new());
 
         let mut slice_opt: Option<TransientBufferSlice<B>> = None;
         let mut used_up_buffer_index: Option<usize> = None;
@@ -169,7 +171,8 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
     }
 
     pub fn reset(&mut self) {
-        for (_key, buffers) in self.buffers.iter_mut() {
+        let mut buffers: AtomicRefMut<'_, HashMap<BufferKey, Vec<TransientBuffer<B>>>> = self.buffers.borrow_mut();
+        for (_key, buffers) in buffers.iter_mut() {
             for sliced_buffer in buffers.iter_mut() {
                 sliced_buffer.reset();
             }

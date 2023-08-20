@@ -9,13 +9,15 @@ pub(super) struct DeferredDestroyer<B: GPUBackend> {
 }
 
 struct DeferredDestroyerInner<B: GPUBackend> {
-current_counter: u64,
-allocations: Vec<(u64, MemoryAllocation<B::Heap>)>,
-textures: Vec<(u64, B::Texture)>,
-texture_views: Vec<(u64, B::TextureView)>,
-buffers: Vec<(u64, B::Buffer)>,
-samplers: Vec<(u64, B::Sampler)>,
-fences: Vec<(u64, B::Fence)>
+    current_counter: u64,
+    allocations: Vec<(u64, MemoryAllocation<B::Heap>)>,
+    textures: Vec<(u64, B::Texture)>,
+    texture_views: Vec<(u64, B::TextureView)>,
+    buffers: Vec<(u64, B::Buffer)>,
+    samplers: Vec<(u64, B::Sampler)>,
+    fences: Vec<(u64, B::Fence)>,
+    acceleration_structures: Vec<(u64, B::AccelerationStructure)>,
+    buffer_slice_refs: Vec<(u64, Arc<BufferSlice<B>>)>
 }
 
 impl<B: GPUBackend> DeferredDestroyer<B> {
@@ -29,7 +31,9 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
                     texture_views: Vec::new(),
                     buffers: Vec::new(),
                     samplers: Vec::new(),
-                    fences: Vec::new()
+                    fences: Vec::new(),
+                    acceleration_structures: Vec::new(),
+                    buffer_slice_refs: Vec::new()
                 }
             )
         }
@@ -71,6 +75,18 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
         guard.fences.push((frame, fence));
     }
 
+    pub fn destroy_acceleration_structure(&self, acceleration_structure: B::AccelerationStructure) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.acceleration_structures.push((frame, acceleration_structure));
+    }
+
+    pub fn destroy_buffer_slice_ref(&self, buffer_slice_ref: Arc<BufferSlice<B>>) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.buffer_slice_refs.push((frame, buffer_slice_ref));
+    }
+
     pub fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         guard.current_counter = counter;
@@ -78,6 +94,8 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
 
     pub fn destroy_unused(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
+        guard.acceleration_structures.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard.buffer_slice_refs.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.textures.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.texture_views.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.buffers.retain(|(resource_counter, _)| *resource_counter > counter);
@@ -90,6 +108,8 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
 impl<B: GPUBackend> Drop for DeferredDestroyer<B> {
     fn drop(&mut self) {
         let guard = self.inner.lock().unwrap();
+        assert!(guard.acceleration_structures.is_empty());
+        assert!(guard.buffer_slice_refs.is_empty());
         assert!(guard.textures.is_empty());
         assert!(guard.texture_views.is_empty());
         assert!(guard.buffers.is_empty());
