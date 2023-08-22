@@ -49,11 +49,9 @@ impl VkCommandPool {
 
 impl CommandPool<VkBackend> for VkCommandPool {
     unsafe fn create_command_buffer(
-        &mut self,
-        inner_info: Option<&VkInnerCommandBufferInfo>,
-        frame: u64,
+        &mut self
     ) -> VkCommandBuffer {
-        let mut buffer = VkCommandBuffer::new(
+        let buffer = VkCommandBuffer::new(
             &self.raw.device,
             &self.raw,
             if inner_info.is_none() {
@@ -65,7 +63,6 @@ impl CommandPool<VkBackend> for VkCommandPool {
             self.flags.contains(CommandPoolFlags::INDIVIDUAL_RESET),
             &self.shared
         );
-        buffer.begin(None, frame);
         buffer
     }
 
