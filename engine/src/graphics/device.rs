@@ -18,7 +18,7 @@ struct GPUDevice<B: GPUBackend> {
 impl<B: GPUBackend> GPUDevice<B> {
     pub fn create_context(&self) -> GraphicsContext<B> {
         assert!(!self.has_context.swap(true, Ordering::AcqRel));
-        GraphicsContext::new(&self.device, &self.allocator, &self.destroyer, self.prerendered_frames)
+        GraphicsContext::new(&self.device, &self.allocator, &self.buffer_allocator, &self.destroyer, self.prerendered_frames)
     }
 
     pub fn create_texture(&self, info: &TextureInfo, name: Option<&str>) -> Result<Arc<super::Texture<B>>, OutOfMemoryError> {

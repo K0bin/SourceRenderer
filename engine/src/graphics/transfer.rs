@@ -609,7 +609,7 @@ impl<B: GPUBackend> TransferCommandBuffer<B> {
         pool: &mut B::CommandPool,
         fence_value: &SharedFenceValuePair<B>
     ) -> Self {
-        let cmd_buffer = unsafe { pool.create_command_buffer(None, 0u64) };
+        let cmd_buffer = unsafe { pool.create_command_buffer() };
 
         Self {
             cmd_buffer,

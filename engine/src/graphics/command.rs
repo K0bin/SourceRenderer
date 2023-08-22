@@ -82,6 +82,17 @@ pub enum BufferRef<'a, B: GPUBackend> {
 }
 
 impl<B: GPUBackend> CommandBufferRecorder<B> {
+    pub(super) fn new(
+        cmd_buffer: Box<CommandBuffer<B>>,
+        sender: Sender<Box<CommandBuffer<B>>>,
+        ) -> Self {
+        Self {
+            inner: cmd_buffer,
+            sender,
+            no_send_sync: PhantomData
+        }
+    }
+
     pub fn set_vertex_buffer(&mut self, buffer: BufferRef<B>, offset: u64) {
         let buffer_handle: &B::Buffer;
         let buffer_offset: u64;
@@ -347,6 +358,22 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
+    pub fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Result<TransientBufferSlice<B>, OutOfMemoryError>
+    where T: 'static + Send + Sync + Sized + Clone {
+        let buffer = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
+            size: std::mem::size_of_val(data) as u64,
+            usage,
+            sharing_mode: QueueSharingMode::Exclusive
+        }, MemoryUsage::MappableGPUMemory, None)?;
+
+        unsafe {
+           let ptr = buffer.map(false).unwrap() as *mut T;
+            ptr.copy_from(data.as_ptr(), data.len());
+            buffer.unmap(true);
+        }
+        Ok(buffer)
+    }
+
     pub fn barrier(&mut self, barriers: &[Barrier<B>]) {
         let core_barriers: SmallVec::<[gpu::Barrier<B>; 4]> = barriers.iter().map(|b| {
             match b {
@@ -590,9 +617,34 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
 
         Some(AccelerationStructure::new(acceleration_structure, buffer, &self.inner.destroyer))
     }
+
+    pub fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
+        unsafe {
+            self.inner.cmd_buffer.trace_ray(width, height, depth);
+        }
+    }
 }
 
 impl<B: GPUBackend> CommandBuffer<B> {
+    pub(super) fn new(
+        cmd_buffer: B::CommandBuffer,
+        device: &Arc<B::Device>,
+        transient_buffer_allocator: &Arc<TransientBufferAllocator<B>>,
+        global_buffer_allocator: &Arc<BufferAllocator<B>>,
+        destroyer: &Arc<DeferredDestroyer<B>>,
+        ) -> Self {
+        Self {
+            cmd_buffer,
+            buffer_refs: Vec::new(),
+            device: device.clone(),
+            global_buffer_allocator: global_buffer_allocator.clone(),
+            transient_buffer_allocator: transient_buffer_allocator.clone(),
+            destroyer: destroyer.clone(),
+            acceleration_structure_scratch: None,
+            acceleration_structure_scratch_offset: 0u64
+        }
+    }
+
     pub(super) fn handle(&self) -> &B::CommandBuffer {
         &self.cmd_buffer
     }
