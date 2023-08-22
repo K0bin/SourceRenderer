@@ -59,7 +59,7 @@ pub struct BufferCopyRegion {
 }
 
 pub trait CommandPool<B: GPUBackend> : Send {
-  unsafe fn create_command_buffer(&mut self, inner_info: Option<&<B::CommandBuffer as CommandBuffer<B>>::CommandBufferInheritance>, frame: u64) -> B::CommandBuffer;
+  unsafe fn create_command_buffer(&mut self) -> B::CommandBuffer;
   unsafe fn reset(&mut self);
 }
 
