@@ -163,12 +163,13 @@ impl Queue<VkBackend> for VkQueue {
         //swapchain.loader().qu
     }
 
-    unsafe fn create_command_pool(&self, _command_pool_type: CommandPoolType, flags: CommandPoolFlags) -> VkCommandPool {
+    unsafe fn create_command_pool(&self, command_pool_type: CommandPoolType, flags: CommandPoolFlags) -> VkCommandPool {
         VkCommandPool::new(
             &self.device,
             self.info.queue_family_index as u32,
             flags,
-            &self.shared
+            &self.shared,
+            command_pool_type
         )
     }
 }

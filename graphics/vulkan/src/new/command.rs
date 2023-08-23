@@ -20,10 +20,11 @@ pub struct VkCommandPool {
     shared: Arc<VkShared>,
     flags: CommandPoolFlags,
     queue_family_index: u32,
+    command_pool_type: CommandPoolType
 }
 
 impl VkCommandPool {
-    pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, flags: CommandPoolFlags, shared: &Arc<VkShared>) -> Self {
+    pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, flags: CommandPoolFlags, shared: &Arc<VkShared>, command_pool_type: CommandPoolType) -> Self {
         let mut vk_flags = vk::CommandPoolCreateFlags::empty();
         if flags.contains(CommandPoolFlags::INDIVIDUAL_RESET) {
             vk_flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
@@ -43,6 +44,7 @@ impl VkCommandPool {
             shared: shared.clone(),
             flags,
             queue_family_index,
+            command_pool_type
         }
     }
 }
@@ -54,8 +56,8 @@ impl CommandPool<VkBackend> for VkCommandPool {
         let buffer = VkCommandBuffer::new(
             &self.raw.device,
             &self.raw,
-            if inner_info.is_none() {
-                CommandBufferType::Primary
+            if self.command_pool_type == CommandPoolType::InnerCommandBuffers {
+                CommandBufferType::Secondary
             } else {
                 CommandBufferType::Primary
             },
