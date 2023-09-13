@@ -54,8 +54,8 @@ const UNIQUE_ALLOCATION_THRESHOLD: u64 = 4096;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 struct BufferKey {
-    memory_usage: MemoryUsage,
     buffer_usage: BufferUsage,
+    memory_usage: MemoryUsage,
 }
 
 struct TransientBuffer<B: GPUBackend> {
@@ -90,8 +90,22 @@ pub(super) struct TransientBufferAllocator<B: GPUBackend> {
     is_uma: bool
 }
 
+struct BufferCollection<B: GPUBackend> {
+    buffers: Vec<TransientBuffer<B>>,
+    first_free_index: usize
+}
+
+impl<B: GPUBackend> Default for BufferCollection<B> {
+    fn default() -> Self {
+        Self {
+            buffers: Vec::new(),
+            first_free_index: 0
+        }
+    }
+}
+
 struct TransientBufferAllocatorInner<B: GPUBackend> {
-    buffers: HashMap<BufferKey, Vec<TransientBuffer<B>>>,
+    buffer_collections: HashMap<BufferKey, BufferCollection<B>>,
     retained_size_host_memory: Option<u64>,
     retained_size_gpu_memory: Option<u64>,
 }
@@ -108,7 +122,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             allocator: allocator.clone(),
             destroyer: destroyer.clone(),
             inner: AtomicRefCell::new(TransientBufferAllocatorInner {
-                buffers: HashMap::new(),
+                buffer_collections: HashMap::new(),
                 retained_size_host_memory: None,
                 retained_size_gpu_memory: None
             }),
@@ -144,17 +158,16 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         }
 
         let mut inner: AtomicRefMut<'_, TransientBufferAllocatorInner<B>> = self.inner.borrow_mut();
-        let buffers = &mut inner.buffers;
+        let buffers = &mut inner.buffer_collections;
 
         let key = BufferKey {
             memory_usage,
             buffer_usage: info.usage,
         };
-        let matching_buffers = buffers.entry(key).or_insert(Vec::new());
+        let matching_buffers = buffers.entry(key).or_default();
 
         let mut slice_opt: Option<TransientBufferSlice<B>> = None;
-        let mut used_up_buffer_index: Option<usize> = None;
-        for (index, sliced_buffer) in matching_buffers.iter_mut().enumerate() {
+        for (index, sliced_buffer) in (&mut matching_buffers.buffers[matching_buffers.first_free_index..]).iter_mut().enumerate() {
             let aligned_offset = align_up_64(sliced_buffer.offset, alignment);
             if sliced_buffer.size - aligned_offset < info.size {
                 continue;
@@ -170,15 +183,10 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             });
 
             let used_up = sliced_buffer.size - sliced_buffer.offset <= REORDER_THRESHOLD;
-            if used_up && index != matching_buffers.len() - 1 {
-                used_up_buffer_index = Some(index);
+            if used_up && index != matching_buffers.buffers.len() - 1 {
+                matching_buffers.first_free_index = index + 1;
             }
             break;
-        }
-        if let Some(index) = used_up_buffer_index {
-            // Move now used up buffer to the end of the vector, so we don't have to iterate over it in the future
-            let buffer = matching_buffers.remove(index);
-            matching_buffers.push(buffer);
         }
         if let Some(slice) = slice_opt {
             return Ok(slice);
@@ -203,7 +211,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             offset: 0,
             length: info.size
         };
-        matching_buffers.push(sliced_buffer);
+        matching_buffers.buffers.push(sliced_buffer);
         Ok(slice)
     }
 
@@ -215,7 +223,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         let mut counted_host_memory = 0u64;
 
         if retained_gpu_memory != u64::MAX || retained_host_memory != u64::MAX {
-            for (key, buffers) in &mut inner.buffers {
+            for (key, buffer_collections) in &mut inner.buffer_collections {
                 if key.buffer_usage.contains(BufferUsage::CONSTANT) {
                     // Keep constant buffers around.
                     continue;
@@ -229,18 +237,19 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
                     (&mut counted_host_memory, retained_host_memory)
                 };
 
-                buffers.retain(|buffer| {
+                buffer_collections.buffers.retain(|buffer| {
                     *counted_memory += buffer.buffer.info().size;
                     *counted_memory < limit
                 });
             }
         }
 
-        for (_key, buffers) in inner.buffers.iter_mut() {
-            for sliced_buffer in buffers.iter_mut() {
+        for (_key, buffer_collection) in inner.buffer_collections.iter_mut() {
+            for sliced_buffer in buffer_collection.buffers.iter_mut() {
                 sliced_buffer.reset();
             }
-            buffers.sort_unstable_by_key(|a| a.size);
+            buffer_collection.buffers.sort_unstable_by_key(|a| a.size);
+            buffer_collection.first_free_index = 0;
         }
     }
 
