@@ -1,16 +1,16 @@
 use std::{sync::Arc, io::Read};
 
-use sourcerenderer_core::{Vec2, Platform, graphics::*, platform::IO};
+use sourcerenderer_core::{Vec2, Platform, graphics::*, platform::IO, gpu::GPUBackend};
 
 use crate::{renderer::{renderer_resources::HistoryResourceEntry, render_path::RenderPassParameters}, ui::UIDrawData};
 
 pub struct UIPass<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    pipeline: Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline>,
+    device: Arc<<P::GPUBackend as GPUBackend>::Device>,
+    pipeline: Arc<<P::GPUBackend as GPUBackend>::GraphicsPipeline>,
 }
 
 impl<P: Platform> UIPass<P> {
-    pub fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
+    pub fn new(device: &Arc<<P::GPUBackend as GPUBackend>::Device>) -> Self {
         let vs = {
             let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.vert.spv").unwrap();
             let mut bytes: Vec<u8> = Vec::new();
@@ -112,10 +112,10 @@ impl<P: Platform> UIPass<P> {
 
     pub fn execute(
         &mut self,
-        command_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        command_buffer: &mut <P::GPUBackend as GPUBackend>::CommandBuffer,
         pass_params: &RenderPassParameters<'_, P>,
         output_texture_name: &str,
-        draw: &UIDrawData<P::GraphicsBackend>
+        draw: &UIDrawData<P::GPUBackend>
     ) {
         let rtv = pass_params.resources.access_view(
             command_buffer,

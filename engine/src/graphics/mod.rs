@@ -13,6 +13,8 @@ pub use queue::*;
 pub use sync::*;
 pub(super) use bindless::*;
 pub use rt::*;
+pub use swapchain::*;
+pub use instance::*;
 
 mod device;
 mod context;
@@ -29,3 +31,6 @@ mod queue;
 mod sync;
 mod bindless;
 mod rt;
+mod pipeline;
+mod swapchain;
+mod instance;

@@ -1,9 +1,9 @@
 use legion::Entity;
-use sourcerenderer_core::{Matrix4, graphics::Backend};
+use sourcerenderer_core::{Matrix4, gpu::GPUBackend};
 
 use crate::ui::UIDrawData;
 
-pub enum RendererCommand<B: Backend> {
+pub enum RendererCommand<B: GPUBackend> {
     RegisterStatic {
         entity: Entity,
         transform: Matrix4,

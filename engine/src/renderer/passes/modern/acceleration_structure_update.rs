@@ -28,15 +28,15 @@ use crate::renderer::renderer_assets::{
 };
 
 pub struct AccelerationStructureUpdatePass<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
     blas_map: HashMap<ModelHandle, Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>>,
     acceleration_structure: Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>,
 }
 
 impl<P: Platform> AccelerationStructureUpdatePass<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        init_cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
     ) -> Self {
         let instances_buffer = init_cmd_buffer.upload_top_level_instances(&[]);
         let info = TopLevelAccelerationStructureInfo {
@@ -75,7 +75,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         // We never reuse handles, so this works.
@@ -183,14 +183,14 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
             cmd_buffer.flush_barriers();
         }
 
-        let mut instances = Vec::<AccelerationStructureInstance<P::GraphicsBackend>>::with_capacity(
+        let mut instances = Vec::<AccelerationStructureInstance<P::GPUBackend>>::with_capacity(
             static_drawables.len(),
         );
         for (bl, drawable) in bl_acceleration_structures
             .iter()
             .zip(static_drawables.iter())
         {
-            instances.push(AccelerationStructureInstance::<P::GraphicsBackend> {
+            instances.push(AccelerationStructureInstance::<P::GPUBackend> {
                 acceleration_structure: bl,
                 transform: drawable.transform,
                 front_face: FrontFace::Clockwise,

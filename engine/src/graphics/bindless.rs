@@ -32,6 +32,6 @@ impl BindlessSlotAllocator {
 
 impl<B: GPUBackend> BindlessSlot<B> {
     pub fn slot(&self) -> u32 {
-        self.alloc.offset as u32
+        self.alloc.range.offset as u32
     }
 }

@@ -44,6 +44,7 @@ use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
 use super::PointLight;
 use crate::asset::AssetManager;
+use crate::graphics::GraphicsContext;
 use crate::math::{
     BoundingBox,
     Frustum,
@@ -65,14 +66,15 @@ use crate::renderer::{
 use crate::transform::interpolation::deconstruct_transform;
 
 pub(super) struct RendererInternal<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
+    swapchain: Arc<crate::graphics::Swapchain<P::GPUBackend>>,
+    context: GraphicsContext<P::GPUBackend>,
     render_path: Box<dyn RenderPath<P>>,
     asset_manager: Arc<AssetManager<P>>,
-    scene: RendererScene<P::GraphicsBackend>,
+    scene: RendererScene<P::GPUBackend>,
     views: Vec<View>,
-    sender: Sender<RendererCommand<P::GraphicsBackend>>,
-    receiver: Receiver<RendererCommand<P::GraphicsBackend>>,
+    sender: Sender<RendererCommand<P::GPUBackend>>,
+    receiver: Receiver<RendererCommand<P::GPUBackend>>,
     window_event_receiver: Receiver<Event<P>>,
     last_frame: Instant,
     frame: u64,
@@ -83,12 +85,12 @@ pub(super) struct RendererInternal<P: Platform> {
 
 impl<P: Platform> RendererInternal<P> {
     pub(super) fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
         asset_manager: &Arc<AssetManager<P>>,
-        sender: Sender<RendererCommand<P::GraphicsBackend>>,
+        sender: Sender<RendererCommand<P::GPUBackend>>,
         window_event_receiver: Receiver<Event<P>>,
-        receiver: Receiver<RendererCommand<P::GraphicsBackend>>,
+        receiver: Receiver<RendererCommand<P::GPUBackend>>,
         console: &Arc<Console>,
     ) -> Self {
         let assets = RendererAssets::new(device);
@@ -123,6 +125,7 @@ impl<P: Platform> RendererInternal<P> {
         Self {
             device: device.clone(),
             render_path: path,
+            context: device.create_context(),
             swapchain: swapchain.clone(),
             scene,
             asset_manager: asset_manager.clone(),
@@ -243,11 +246,11 @@ impl<P: Platform> RendererInternal<P> {
         while message_opt.is_some() {
             let message = message_opt.take().unwrap();
             match message {
-                RendererCommand::<P::GraphicsBackend>::EndFrame => {
+                RendererCommand::<P::GPUBackend>::EndFrame => {
                     return true;
                 }
 
-                RendererCommand::<P::GraphicsBackend>::UpdateCameraTransform {
+                RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
                     camera_transform_mat,
                     fov,
                 } => {
@@ -266,14 +269,14 @@ impl<P: Platform> RendererInternal<P> {
                     )
                 }
 
-                RendererCommand::<P::GraphicsBackend>::UpdateTransform {
+                RendererCommand::<P::GPUBackend>::UpdateTransform {
                     entity,
                     transform_mat,
                 } => {
                     self.scene.update_transform(&entity, transform_mat);
                 }
 
-                RendererCommand::<P::GraphicsBackend>::RegisterStatic {
+                RendererCommand::<P::GPUBackend>::RegisterStatic {
                     model_path,
                     entity,
                     transform,
@@ -295,11 +298,11 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GraphicsBackend>::UnregisterStatic(entity) => {
+                RendererCommand::<P::GPUBackend>::UnregisterStatic(entity) => {
                     self.scene.remove_static_drawable(&entity);
                 }
 
-                RendererCommand::<P::GraphicsBackend>::RegisterPointLight {
+                RendererCommand::<P::GPUBackend>::RegisterPointLight {
                     entity,
                     transform,
                     intensity,
@@ -312,11 +315,11 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GraphicsBackend>::UnregisterPointLight(entity) => {
+                RendererCommand::<P::GPUBackend>::UnregisterPointLight(entity) => {
                     self.scene.remove_point_light(&entity);
                 }
 
-                RendererCommand::<P::GraphicsBackend>::RegisterDirectionalLight {
+                RendererCommand::<P::GPUBackend>::RegisterDirectionalLight {
                     entity,
                     transform,
                     intensity,
@@ -332,10 +335,10 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GraphicsBackend>::UnregisterDirectionalLight(entity) => {
+                RendererCommand::<P::GPUBackend>::UnregisterDirectionalLight(entity) => {
                     self.scene.remove_directional_light(&entity);
                 }
-                RendererCommand::<P::GraphicsBackend>::SetLightmap(path) => {
+                RendererCommand::<P::GPUBackend>::SetLightmap(path) => {
                     let handle = self.assets.get_or_create_texture_handle(&path);
                     self.scene.set_lightmap(Some(handle));
                 }
@@ -382,7 +385,7 @@ impl<P: Platform> RendererInternal<P> {
                 zero_texture_view_black: &self.assets.placeholder_black().view,
             };
 
-            let lightmap: &RendererTexture<P::GraphicsBackend> =
+            let lightmap: &RendererTexture<P::GPUBackend> =
                 if let Some(lightmap_handle) = self.scene.lightmap() {
                     self.assets.get_texture(lightmap_handle)
                 } else {
@@ -398,6 +401,7 @@ impl<P: Platform> RendererInternal<P> {
             };
 
             self.render_path.render(
+                &mut self.context,
                 &scene_info,
                 &zero_textures,
                 renderer.late_latching(),
@@ -465,7 +469,7 @@ impl<P: Platform> RendererInternal<P> {
                         zero_texture_view_black: &self.assets.placeholder_black().view,
                     };
 
-                    let lightmap: &RendererTexture<P::GraphicsBackend> =
+                    let lightmap: &RendererTexture<P::GPUBackend> =
                         if let Some(lightmap_handle) = self.scene.lightmap() {
                             self.assets.get_texture(lightmap_handle)
                         } else {
@@ -482,6 +486,7 @@ impl<P: Platform> RendererInternal<P> {
 
                     self.render_path
                         .render(
+                            &mut self.context,
                             &scene_info,
                             &zero_textures,
                             renderer.late_latching(),

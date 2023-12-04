@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
+use sourcerenderer_core::gpu::{
     AddressMode,
-    Backend,
     BarrierAccess,
     BarrierSync,
     BindingFrequency,
@@ -14,14 +13,13 @@ use sourcerenderer_core::graphics::{
     Device,
     Filter,
     Format,
-    MemoryUsage,
     PipelineBinding,
     SamplerInfo,
     ShaderType,
     TextureLayout,
     TextureUsage,
     TextureViewInfo,
-    WHOLE_BUFFER,
+    WHOLE_BUFFER, QueueSharingMode,
 };
 use sourcerenderer_core::Platform;
 
@@ -38,8 +36,8 @@ use crate::renderer::shader_manager::{
 pub struct HierarchicalZPass<P: Platform> {
     ffx_pipeline: ComputePipelineHandle,
     copy_pipeline: ComputePipelineHandle,
-    sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
+    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
 }
 
 impl<P: Platform> HierarchicalZPass<P> {
@@ -47,10 +45,10 @@ impl<P: Platform> HierarchicalZPass<P> {
     const FFX_COUNTER_BUFFER_NAME: &'static str = "FFX Downscaling Counter Buffer";
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
-        init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        init_cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         depth_name: &str,
     ) -> Self {
         let mut texture_info = resources.texture_info(depth_name).clone();
@@ -90,6 +88,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             &BufferInfo {
                 size: 4,
                 usage: BufferUsage::STORAGE,
+                sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::VRAM,
             false,
@@ -118,7 +117,7 @@ impl<P: Platform> HierarchicalZPass<P> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
     ) {

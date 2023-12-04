@@ -106,7 +106,7 @@ impl Prepass {
     const DRAWABLE_LABELS: bool = false;
 
     pub fn new<P: Platform>(
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
         resolution: Vec2UI,
     ) -> Self {

@@ -204,7 +204,7 @@ impl VkInstance {
 }
 
 impl Instance<VkBackend> for VkInstance {
-    unsafe fn list_adapters(&self) -> &[VkAdapter] {
+    fn list_adapters(&self) -> &[VkAdapter] {
         &self.adapters
     }
 }

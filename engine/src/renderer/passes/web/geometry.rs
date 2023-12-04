@@ -5,6 +5,7 @@ use gltf::texture::{
     MinFilter,
 };
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     AddressMode,
     AttachmentBlendInfo,
@@ -86,17 +87,17 @@ use crate::renderer::shader_manager::{
 
 pub struct GeometryPass<P: Platform> {
     pipeline: GraphicsPipelineHandle,
-    sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
+    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
 }
 
 impl<P: Platform> GeometryPass<P> {
     pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
 
     pub(super) fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-        _init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
+        _init_cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let sampler = device.create_sampler(&SamplerInfo {
@@ -247,12 +248,12 @@ impl<P: Platform> GeometryPass<P> {
 
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        scene: &RendererScene<P::GraphicsBackend>,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        scene: &RendererScene<P::GPUBackend>,
         view: &View,
-        camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        resources: &RendererResources<P::GraphicsBackend>,
-        backbuffer: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
+        camera_buffer: &Arc<crate::graphics::BufferSlice<P::GPUBackend>>,
+        resources: &RendererResources<P::GPUBackend>,
+        backbuffer: &Arc<crate::graphics::TextureView<P::GPUBackend>>,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) {

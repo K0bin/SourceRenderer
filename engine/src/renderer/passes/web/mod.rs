@@ -10,6 +10,7 @@ use sourcerenderer_core::graphics::{
 };
 use sourcerenderer_core::Platform;
 
+use crate::graphics::GraphicsContext;
 use crate::input::Input;
 use crate::renderer::render_path::{
     FrameInfo,
@@ -27,19 +28,19 @@ mod geometry;
 use self::geometry::GeometryPass;
 
 pub struct WebRenderer<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
+    swapchain: Arc<crate::graphics::Swapchain<P::GPUBackend>>,
     geometry: GeometryPass<P>,
-    resources: RendererResources<P::GraphicsBackend>,
+    resources: RendererResources<P::GPUBackend>,
 }
 
 impl<P: Platform> WebRenderer<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let mut resources = RendererResources::<P::GraphicsBackend>::new(device);
+        let mut resources = RendererResources::<P::GPUBackend>::new(device);
         let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
         let geometry_pass = GeometryPass::<P>::new(
             device,
@@ -72,15 +73,16 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        _swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        _swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
     ) {
     }
 
     fn render(
         &mut self,
-        scene: &SceneInfo<P::GraphicsBackend>,
-        _zero_textures: &ZeroTextures<P::GraphicsBackend>,
-        late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
+        context: &mut GraphicsContext<P::GPUBackend>,
+        scene: &SceneInfo<P::GPUBackend>,
+        _zero_textures: &ZeroTextures<P::GPUBackend>,
+        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
         input: &Input,
         _frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
@@ -128,7 +130,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         Ok(())
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GraphicsBackend>) {
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
         todo!()
     }
 }

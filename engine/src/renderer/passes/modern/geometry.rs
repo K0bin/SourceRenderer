@@ -110,9 +110,9 @@ impl<P: Platform> GeometryPass<P> {
     pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-        barriers: &mut RendererResources<P::GraphicsBackend>,
+        barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let texture_info = TextureInfo {
@@ -258,16 +258,16 @@ impl<P: Platform> GeometryPass<P> {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        barriers: &RendererResources<P::GraphicsBackend>,
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        barriers: &RendererResources<P::GPUBackend>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         depth_name: &str,
-        scene: &RendererScene<P::GraphicsBackend>,
+        scene: &RendererScene<P::GPUBackend>,
         view: &View,
         gpu_scene: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
         _zero_texture_view_black: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
-        lightmap: &Arc<RendererTexture<P::GraphicsBackend>>,
+        lightmap: &Arc<RendererTexture<P::GPUBackend>>,
         swapchain_transform: Matrix4,
         frame: u64,
         camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,

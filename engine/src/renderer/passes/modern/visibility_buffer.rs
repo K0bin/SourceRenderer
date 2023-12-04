@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     AttachmentBlendInfo,
     AttachmentInfo,
@@ -76,7 +77,7 @@ impl VisibilityBufferPass {
 
     pub fn new<P: Platform>(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let barycentrics_texture_info = TextureInfo {
@@ -225,7 +226,7 @@ impl VisibilityBufferPass {
     #[profiling::function]
     pub(super) fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         params: &RenderPassParameters<'_, P>
     ) {
         cmd_buffer.begin_label("Visibility Buffer pass");

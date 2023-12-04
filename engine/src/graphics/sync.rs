@@ -73,11 +73,11 @@ impl<B: GPUBackend> Clone for SharedFenceValuePair<B> {
 }
 
 impl<B: GPUBackend> SharedFenceValuePair<B> {
-    pub unsafe fn is_signalled(&self) -> bool {
+    pub fn is_signalled(&self) -> bool {
         self.fence.value() == self.value
     }
 
-    pub unsafe fn await_signal(&self) {
+    pub fn await_signal(&self) {
         self.fence.await_value(self.value);
     }
 }

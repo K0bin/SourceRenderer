@@ -48,7 +48,7 @@ impl ClusteringPass {
     pub const CLUSTERS_BUFFER_NAME: &'static str = "clusters";
 
     pub fn new<P: Platform>(
-        barriers: &mut RendererResources<P::GraphicsBackend>,
+        barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline("shaders/clustering.comp.spv");

@@ -34,6 +34,7 @@ use log::{
     trace,
     warn,
 };
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::TextureInfo;
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{
@@ -202,7 +203,7 @@ pub enum Asset {
 }
 
 pub struct AssetManager<P: Platform> {
-    device: Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
     inner: Mutex<AssetManagerInner>,
     containers: RwLock<Vec<Box<dyn AssetContainer>>>,
     loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
@@ -223,7 +224,7 @@ struct AssetManagerInner {
 impl<P: Platform> AssetManager<P> {
     pub fn new(
         platform: &P,
-        device: &Arc<<P::GraphicsBackend as graphics::Backend>::Device>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
     ) -> Arc<Self> {
         let (renderer_sender, renderer_receiver) = unbounded();
 
@@ -257,7 +258,7 @@ impl<P: Platform> AssetManager<P> {
         manager
     }
 
-    pub fn graphics_device(&self) -> &Arc<<P::GraphicsBackend as graphics::Backend>::Device> {
+    pub fn graphics_device(&self) -> &Arc<crate::graphics::Device<P::GPUBackend>> {
         &self.device
     }
 

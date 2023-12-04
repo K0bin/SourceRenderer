@@ -15,6 +15,7 @@ use sourcerenderer_core::atomic_refcell::{
     AtomicRefCell,
     AtomicRefMut,
 };
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     Backend,
     Barrier,
@@ -63,21 +64,21 @@ use crate::renderer::renderer_resources::{
 };
 
 pub struct Fsr2Pass<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
     context: FfxFsr2Context,
-    scratch_context: Arc<AtomicRefCell<ScratchContext<P::GraphicsBackend>>>,
+    scratch_context: Arc<AtomicRefCell<ScratchContext<P::GPUBackend>>>,
 }
 
 impl<P: Platform> Fsr2Pass<P> {
     pub const UPSCALED_TEXTURE_NAME: &'static str = "FSR2Upscaled";
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        resources: &mut RendererResources<P::GPUBackend>,
         _resolution: Vec2UI,
         swapchain: &<P::GraphicsBackend as Backend>::Swapchain,
     ) -> Self {
-        let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<P::GraphicsBackend> {
+        let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<P::GPUBackend> {
             resources: HashMap::new(),
             next_resource_id: 1,
             dynamic_resources: Vec::new(),
@@ -90,18 +91,18 @@ impl<P: Platform> Fsr2Pass<P> {
         let context_size = std::mem::size_of_val(&scratch_context);
 
         let interface = FfxFsr2Interface {
-            fpCreateBackendContext: Some(create_backend_context::<P::GraphicsBackend>),
-            fpDestroyBackendContext: Some(destroy_backend_context::<P::GraphicsBackend>),
-            fpGetDeviceCapabilities: Some(get_device_capabilities::<P::GraphicsBackend>),
-            fpCreateResource: Some(create_resource::<P::GraphicsBackend>),
-            fpRegisterResource: Some(register_resource::<P::GraphicsBackend>),
-            fpUnregisterResources: Some(unregister_resources::<P::GraphicsBackend>),
-            fpGetResourceDescription: Some(get_resource_description::<P::GraphicsBackend>),
-            fpDestroyResource: Some(destroy_resource::<P::GraphicsBackend>),
+            fpCreateBackendContext: Some(create_backend_context::<P::GPUBackend>),
+            fpDestroyBackendContext: Some(destroy_backend_context::<P::GPUBackend>),
+            fpGetDeviceCapabilities: Some(get_device_capabilities::<P::GPUBackend>),
+            fpCreateResource: Some(create_resource::<P::GPUBackend>),
+            fpRegisterResource: Some(register_resource::<P::GPUBackend>),
+            fpUnregisterResources: Some(unregister_resources::<P::GPUBackend>),
+            fpGetResourceDescription: Some(get_resource_description::<P::GPUBackend>),
+            fpDestroyResource: Some(destroy_resource::<P::GPUBackend>),
             fpCreatePipeline: Some(create_pipeline::<P>),
-            fpDestroyPipeline: Some(destroy_pipeline::<P::GraphicsBackend>),
-            fpScheduleGpuJob: Some(schedule_render_job::<P::GraphicsBackend>),
-            fpExecuteGpuJobs: Some(execute_render_jobs::<P::GraphicsBackend>),
+            fpDestroyPipeline: Some(destroy_pipeline::<P::GPUBackend>),
+            fpScheduleGpuJob: Some(schedule_render_job::<P::GPUBackend>),
+            fpExecuteGpuJobs: Some(execute_render_jobs::<P::GPUBackend>),
             scratchBuffer: Arc::into_raw(scratch_context.clone()) as *mut c_void,
             scratchBufferSize: context_size as usize,
         };
@@ -161,7 +162,7 @@ impl<P: Platform> Fsr2Pass<P> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,
@@ -260,14 +261,14 @@ impl<P: Platform> Fsr2Pass<P> {
 
         unsafe {
             let desc = FfxFsr2DispatchDescription {
-                commandList: command_buffer_into_ffx::<P::GraphicsBackend>(cmd_buffer),
-                color: texture_into_ffx::<P::GraphicsBackend>(&color_texture, false, &color_view),
-                depth: texture_into_ffx::<P::GraphicsBackend>(&depth_texture, false, &depth_view),
+                commandList: command_buffer_into_ffx::<P::GPUBackend>(cmd_buffer),
+                color: texture_into_ffx::<P::GPUBackend>(&color_texture, false, &color_view),
+                depth: texture_into_ffx::<P::GPUBackend>(&depth_texture, false, &depth_view),
                 exposure: NULL_RESOURCE,
-                motionVectors: texture_into_ffx::<P::GraphicsBackend>(&motion_texture, false, &motion_view),
+                motionVectors: texture_into_ffx::<P::GPUBackend>(&motion_texture, false, &motion_view),
                 reactive: NULL_RESOURCE,
                 transparencyAndComposition: NULL_RESOURCE,
-                output: texture_into_ffx::<P::GraphicsBackend>(&output_texture, true, &output_view),
+                output: texture_into_ffx::<P::GPUBackend>(&output_texture, true, &output_view),
                 renderSize: FfxDimensions2D {
                     width: color_texture.info().width,
                     height: color_texture.info().height,
@@ -439,32 +440,32 @@ impl Default for TextureSubresourceState {
     }
 }
 
-enum Resource<B: Backend> {
+enum Resource<B: GPUBackend> {
     Texture {
-        texture: Arc<B::Texture>,
+        texture: Arc<crate::graphics::Texture<B>>,
         sampling_view: Arc<B::TextureView>,
-        storage_views: SmallVec<[Arc<B::TextureView>; 8]>,
+        storage_views: SmallVec<[Arc<crate::graphics::TextureView<B>>; 8]>,
         states: SmallVec<[TextureSubresourceState; 8]>,
     },
     Buffer {
-        buffer: Arc<B::Buffer>,
+        buffer: Arc<crate::graphics::BufferSlice<B>>,
         sync: BarrierSync,
         access: BarrierAccess,
     },
 }
 
-struct ScratchContext<B: Backend> {
+struct ScratchContext<B: GPUBackend> {
     resources: HashMap<u32, Resource<B>>,
     dynamic_resources: Vec<u32>,
     next_resource_id: u32,
     free_ids: VecDeque<u32>,
     jobs: Vec<FfxGpuJobDescription>,
     device: Arc<B::Device>,
-    point_sampler: Arc<B::Sampler>,
-    linear_sampler: Arc<B::Sampler>,
+    point_sampler: Arc<crate::graphics::Sampler<B>>,
+    linear_sampler: Arc<crate::graphics::Sampler<B>>,
 }
 
-impl<B: Backend> ScratchContext<B> {
+impl<B: GPUBackend> ScratchContext<B> {
     unsafe fn from_interface(
         backend_interface: *mut FfxFsr2Interface,
     ) -> AtomicRefMut<'static, Self> {
@@ -887,7 +888,7 @@ unsafe extern "C" fn execute_render_jobs<B: Backend>(
     FFX_OK
 }
 
-unsafe fn execute_clear_job<B: Backend>(
+unsafe fn execute_clear_job<B: GPUBackend>(
     job: &FfxClearFloatJobDescription,
     context: &mut ScratchContext<B>,
     cmd_buf: &mut B::CommandBuffer,
@@ -917,7 +918,7 @@ unsafe fn execute_clear_job<B: Backend>(
     }
 }
 
-unsafe fn execute_dispatch_job<B: Backend>(
+unsafe fn execute_dispatch_job<B: GPUBackend>(
     job: &FfxComputeJobDescription,
     context: &mut ScratchContext<B>,
     cmd_buf: &mut B::CommandBuffer,
@@ -1063,7 +1064,7 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
     _pipeline_description: *const FfxPipelineDescription,
     out_pipeline: *mut FfxPipelineState,
 ) -> FfxErrorCode {
-    let context = ScratchContext::<P::GraphicsBackend>::from_interface(backend_interface);
+    let context = ScratchContext::<P::GPUBackend>::from_interface(backend_interface);
 
     let mut path: PathBuf = PathBuf::from("shaders");
     let name: String;

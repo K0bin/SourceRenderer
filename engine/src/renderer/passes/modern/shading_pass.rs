@@ -42,8 +42,8 @@ use crate::renderer::shader_manager::{
 };
 
 pub struct ShadingPass<P: Platform> {
-    sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
-    shadow_sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
+    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
+    shadow_sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
     pipeline: ComputePipelineHandle,
 }
 
@@ -51,11 +51,11 @@ impl<P: Platform> ShadingPass<P> {
     pub const SHADING_TEXTURE_NAME: &'static str = "Shading";
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
-        _init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        _init_cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline("shaders/shading.comp.spv");
 
@@ -110,7 +110,7 @@ impl<P: Platform> ShadingPass<P> {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         let (width, height) = {

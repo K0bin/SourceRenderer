@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     Backend,
     Barrier,
@@ -39,6 +40,7 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
+use crate::graphics::GraphicsContext;
 use crate::input::Input;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::compositing::CompositingPass;
@@ -63,17 +65,17 @@ use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
 pub struct ModernRenderer<P: Platform> {
-    swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    barriers: RendererResources<P::GraphicsBackend>,
-    ui_data: UIDrawData<P::GraphicsBackend>,
+    swapchain: Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
+    device: Arc<<P::GPUBackend as GPUBackend>::Device>,
+    barriers: RendererResources<P::GPUBackend>,
+    ui_data: UIDrawData<P::GPUBackend>,
 
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     geometry_draw_prep: DrawPrepPass,
     ssao: SsaoPass<P>,
     rt_passes: Option<RTPasses<P>>,
-    blue_noise: BlueNoise<P::GraphicsBackend>,
+    blue_noise: BlueNoise<P::GPUBackend>,
     hi_z_pass: HierarchicalZPass<P>,
     ssr_pass: SsrPass,
     visibility_buffer: VisibilityBufferPass,
@@ -99,8 +101,8 @@ impl<P: Platform> ModernRenderer<P> {
     const USE_FSR2: bool = true;
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        device: &Arc<<P::GPUBackend as GPUBackend>::Device>,
+        swapchain: &Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
@@ -110,7 +112,7 @@ impl<P: Platform> ModernRenderer<P> {
             Vec2UI::new(swapchain.width(), swapchain.height())
         };
 
-        let mut barriers = RendererResources::<P::GraphicsBackend>::new(device);
+        let mut barriers = RendererResources::<P::GPUBackend>::new(device);
 
         let blue_noise = BlueNoise::new::<P>(device);
 
@@ -175,7 +177,7 @@ impl<P: Platform> ModernRenderer<P> {
             swapchain: swapchain.clone(),
             device: device.clone(),
             barriers,
-            ui_data: UIDrawData::<P::GraphicsBackend>::default(),
+            ui_data: UIDrawData::<P::GPUBackend>::default(),
             clustering_pass: clustering,
             light_binning_pass: light_binning,
             geometry_draw_prep: draw_prep,
@@ -196,12 +198,12 @@ impl<P: Platform> ModernRenderer<P> {
 
     fn setup_frame(
         &self,
-        cmd_buf: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        scene: &SceneInfo<P::GraphicsBackend>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-        gpu_scene_buffers: SceneBuffers<P::GraphicsBackend>,
-        camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+        cmd_buf: &mut <P::GPUBackend as GPUBackend>::CommandBuffer,
+        scene: &SceneInfo<P::GPUBackend>,
+        swapchain: &Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
+        gpu_scene_buffers: SceneBuffers<P::GPUBackend>,
+        camera_buffer: &Arc<<P::GPUBackend as GPUBackend>::Buffer>,
+        camera_history_buffer: &Arc<<P::GPUBackend as GPUBackend>::Buffer>,
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) {
@@ -343,7 +345,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        swapchain: &std::sync::Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        swapchain: &std::sync::Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
     ) {
         // TODO: resize render targets
         self.swapchain = swapchain.clone();
@@ -352,9 +354,10 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
     #[profiling::function]
     fn render(
         &mut self,
-        scene: &SceneInfo<P::GraphicsBackend>,
-        zero_textures: &ZeroTextures<P::GraphicsBackend>,
-        late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
+        context: &mut GraphicsContext<P::GPUBackend>,
+        scene: &SceneInfo<P::GPUBackend>,
+        zero_textures: &ZeroTextures<P::GPUBackend>,
+        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
         input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
@@ -576,7 +579,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         Ok(())
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GraphicsBackend>) {
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
         self.ui_data = data;
     }
 }

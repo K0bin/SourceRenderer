@@ -1,6 +1,7 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     Backend as GraphicsBackend,
     BarrierAccess,
@@ -43,7 +44,7 @@ impl SsrPass {
 
     pub fn new<P: Platform>(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
         _visibility_buffer: bool,
     ) -> Self {
@@ -71,7 +72,7 @@ impl SsrPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut <P::GPUBackend as GPUBackend>::CommandBuffer,
         params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,

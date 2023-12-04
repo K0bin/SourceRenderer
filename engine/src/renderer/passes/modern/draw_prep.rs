@@ -24,7 +24,7 @@ impl DrawPrepPass {
     pub const INDIRECT_DRAW_BUFFER: &'static str = "IndirectDraws";
 
     pub fn new<P: Platform>(
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let culling_pipeline = shader_manager.request_compute_pipeline("shaders/culling.comp.spv");
@@ -56,7 +56,7 @@ impl DrawPrepPass {
 
     pub fn execute<P: Platform>(
         &self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         {

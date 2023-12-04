@@ -102,7 +102,7 @@ pub struct OcclusionPass<P: Platform> {
 
 impl<P: Platform> OcclusionPass<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let buffer_info = BufferInfo {
@@ -245,7 +245,7 @@ impl<P: Platform> OcclusionPass<P> {
 
     pub fn execute(
         &mut self,
-        command_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        command_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         frame: u64,
         camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,

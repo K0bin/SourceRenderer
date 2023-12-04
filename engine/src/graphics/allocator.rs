@@ -2,54 +2,55 @@ use std::{sync::Arc, sync::Mutex};
 
 use smallvec::SmallVec;
 
+// TODO: Implement Two Level Seggregate Fit allocator
+
 pub(super) struct Chunk<T>
     where T : Send + Sync
 {
-    inner: Arc<Mutex<ChunkInner>>,
-    data: Arc<T>
+    inner: Arc<ChunkInner<T>>,
 }
 
-struct ChunkInner
-{
-    free_list: SmallVec<[Range; 16]>,
+struct ChunkInner<T>
+where T : Send + Sync {
+    free_list: Mutex<SmallVec<[Range; 16]>>,
+    data: T
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Range {
-    offset: u64,
-    length: u64
+pub struct Range {
+    pub offset: u64,
+    pub length: u64
 }
 
 pub(super) struct Allocation<T>
     where T : Send + Sync
 {
-    inner: Arc<Mutex<ChunkInner>>,
-    data: Arc<T>,
-    pub offset: u64,
-    pub length: u64
+    inner: Arc<ChunkInner<T>>,
+    data_ptr: *const T,
+    pub range: Range,
 }
+
+unsafe impl<T> Send for Allocation<T> where T : Send + Sync {}
+unsafe impl<T> Sync for Allocation<T> where T : Send + Sync {}
 
 impl<T> Allocation<T>
     where T : Send + Sync
 {
     #[inline(always)]
     pub fn offset(&self) -> u64 {
-        self.offset
+        self.range.offset
     }
 
     #[inline(always)]
     pub fn length(&self) -> u64 {
-        self.length
+        self.range.length
     }
 
     #[inline(always)]
     pub fn data(&self) -> &T {
-        &*self.data
-    }
-
-    #[inline(always)]
-    pub fn data_arc(&self) -> &Arc<T> {
-        &self.data
+        unsafe {
+            &*self.data_ptr
+        }
     }
 }
 
@@ -63,18 +64,18 @@ impl<T> Chunk<T>
             length: chunk_size
         });
         Self {
-            inner: Arc::new(Mutex::new(ChunkInner {
-                free_list
-            })),
-            data: Arc::new(data),
+            inner: Arc::new(ChunkInner {
+                free_list: Mutex::new(free_list),
+                data
+            }),
         }
     }
 
     pub fn allocate(&self, size: u64, alignment: u64) -> Option<Allocation<T>> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut free_list = self.inner.free_list.lock().unwrap();
 
         let mut best = Option::<(usize, Range)>::None;
-        for (index, range) in inner.free_list.iter().enumerate() {
+        for (index, range) in free_list.iter().enumerate() {
             if (range.offset % alignment) != 0 || range.length < size {
                 continue;
             }
@@ -95,17 +96,19 @@ impl<T> Chunk<T>
 
         best.map(|(free_index, range)| {
             if range.length == size {
-                inner.free_list.remove(free_index);
+                free_list.remove(free_index);
             } else {
-                let existing_range = &mut inner.free_list[free_index];
+                let existing_range = &mut free_list[free_index];
                 existing_range.offset += size;
                 existing_range.length -= size;
             }
             Allocation {
                 inner: self.inner.clone(),
-                data: self.data.clone(),
-                offset: range.offset,
-                length: size
+                data_ptr: &self.inner.data as *const T,
+                range: Range {
+                    offset: range.offset,
+                    length: size
+                }
             }
         })
     }
@@ -115,34 +118,31 @@ impl<T> Drop for Allocation<T>
     where T : Send + Sync
 {
     fn drop(&mut self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut free_list = self.inner.free_list.lock().unwrap();
 
         let mut i = 0usize;
-        while i < inner.free_list.len() {
+        while i < free_list.len() {
             let drop_i = {
-                let range = &inner.free_list[i];
+                let range = &free_list[i];
 
-                if range.offset == self.offset + self.length {
-                    self.length += range.length;
+                if range.offset == self.range.offset + self.range.length {
+                    self.range.length += range.length;
                     true
-                } else if range.offset + range.length == self.offset {
-                    self.offset = range.offset;
-                    self.length += range.length;
+                } else if range.offset + range.length == self.range.offset {
+                    self.range.offset = range.offset;
+                    self.range.length += range.length;
                     true
                 } else {
                     false
                 }
             };
             if drop_i {
-                inner.free_list.remove(i);
+                free_list.remove(i);
             } else {
                 i += 1;
             }
         }
 
-        inner.free_list.push(Range {
-            offset: self.offset,
-            length: self.length
-        });
+        free_list.push(self.range.clone());
     }
 }

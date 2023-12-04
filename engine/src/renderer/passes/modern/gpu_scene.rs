@@ -5,6 +5,7 @@ use std::sync::Arc;
 use field_offset::offset_of;
 use legion::Entity;
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{Backend, BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, MemoryUsage};
 use sourcerenderer_core::{
     Matrix4,
@@ -128,8 +129,8 @@ pub struct BufferBinding {
     pub length: usize
 }
 
-pub struct SceneBuffers<B: Backend> {
-    pub buffer: Arc<B::Buffer>,
+pub struct SceneBuffers<B: GPUBackend> {
+    pub buffer: Arc<crate::graphics::BufferSlice<B>>,
     pub scene_buffer: BufferBinding,
     pub draws_buffer: BufferBinding,
     pub meshes_buffer: BufferBinding,
@@ -141,11 +142,11 @@ pub struct SceneBuffers<B: Backend> {
 
 #[profiling::function]
 pub fn upload<P: Platform>(
-    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-    scene: &RendererScene<P::GraphicsBackend>,
+    cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+    scene: &RendererScene<P::GPUBackend>,
     zero_view_index: u32,
     assets: &RendererAssets<P>,
-) -> SceneBuffers<P::GraphicsBackend> {
+) -> SceneBuffers<P::GPUBackend> {
     let mut local = GPUScene {
         drawable_count: 0,
         draw_count: 0,

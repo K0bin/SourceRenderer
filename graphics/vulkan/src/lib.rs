@@ -68,4 +68,4 @@ mod texture;
 mod thread_manager;
 mod transfer;
 
-mod new;
+pub mod new;

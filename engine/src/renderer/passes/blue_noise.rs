@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use image::io::Reader as ImageReader;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     AddressMode,
     Backend,
@@ -24,13 +25,13 @@ use sourcerenderer_core::graphics::{
 use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::Platform;
 
-pub struct BlueNoise<B: Backend> {
+pub struct BlueNoise<B: GPUBackend> {
     frames: [Arc<B::TextureView>; 8],
     sampler: Arc<B::Sampler>,
 }
 
-impl<B: Backend> BlueNoise<B> {
-    pub fn new<P: Platform>(device: &Arc<B::Device>) -> Self {
+impl<B: GPUBackend> BlueNoise<B> {
+    pub fn new<P: Platform>(device: &Arc<crate::graphics::Device<B>>) -> Self {
         Self {
             frames: [
                 Self::load_frame::<P>(device, 0),
@@ -58,7 +59,7 @@ impl<B: Backend> BlueNoise<B> {
         }
     }
 
-    fn load_frame<P: Platform>(device: &Arc<B::Device>, index: u32) -> Arc<B::TextureView> {
+    fn load_frame<P: Platform>(device: &Arc<crate::graphics::Device<B>>, index: u32) -> Arc<crate::graphics::TextureView<B>> {
         let path = Path::new("assets")
             .join(Path::new("bn"))
             .join(Path::new(&format!("LDR_RGB1_{}.png", index)));
@@ -92,7 +93,7 @@ impl<B: Backend> BlueNoise<B> {
             MemoryUsage::UncachedRAM,
             BufferUsage::COPY_SRC,
         );
-        device.init_texture(&texture, &buffer, 0, 0, 0);
+        device.init_texture(&texture, &buffer, 0, 0);
 
         device.create_texture_view(
             &texture,
@@ -101,11 +102,11 @@ impl<B: Backend> BlueNoise<B> {
         )
     }
 
-    pub fn frame(&self, index: u64) -> &Arc<B::TextureView> {
+    pub fn frame(&self, index: u64) -> &Arc<crate::graphics::TextureView<B>> {
         &self.frames[(index % (self.frames.len() as u64)) as usize]
     }
 
-    pub fn sampler(&self) -> &Arc<B::Sampler> {
+    pub fn sampler(&self) -> &Arc<crate::graphics::Sampler<B>> {
         &self.sampler
     }
 }

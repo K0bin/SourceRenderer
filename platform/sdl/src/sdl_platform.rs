@@ -53,6 +53,8 @@ use sourcerenderer_vulkan::{
     VkSwapchain,
 };
 
+use sourcerenderer_vulkan::new;
+
 lazy_static! {
     pub static ref SCANCODE_TO_KEY: HashMap<Scancode, Key> = {
         let mut key_to_scancode: HashMap<Scancode, Key> = HashMap::new();
@@ -219,6 +221,7 @@ impl SDLWindow {
 impl Platform for SDLPlatform {
     type Window = SDLWindow;
     type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
+    type GPUBackend = sourcerenderer_vulkan::new::VkBackend;
     type IO = StdIO;
     type ThreadHandle = StdThreadHandle;
 
@@ -229,6 +232,11 @@ impl Platform for SDLPlatform {
     fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
         let extensions = self.window.vulkan_instance_extensions().unwrap();
         Ok(Arc::new(VkInstance::new(&extensions, debug_layers)))
+    }
+
+    fn create_graphics_new(&self, debug_layers: bool) -> Result<Arc<new::VkInstance>, Box<dyn Error>> {
+        let extensions = self.window.vulkan_instance_extensions().unwrap();
+        Ok(Arc::new(new::VkInstance::new(&extensions, debug_layers)))
     }
 
     fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
@@ -270,7 +278,51 @@ impl Window<SDLPlatform> for SDLWindow {
     ) -> Arc<VkSwapchain> {
         let device_inner = device.inner();
         let (width, height) = self.window.drawable_size();
-        VkSwapchain::new(vsync, width, height, device_inner, surface).unwrap()
+        VkSwapchain::new(
+            vsync,
+            width,
+            height,
+            device_inner,
+            surface,
+            device.graphics_queue(),
+            device.compute_queue(),
+            device.transfer_queue(),
+        )
+        .unwrap()
+    }
+
+    fn create_surface_new(&self, graphics_instance: &Arc<<P::GPUBackend as GPUBackend>::Instance>) -> <P::GPUBackend as GPUBackend>::Surface {
+        let instance_raw = graphics_instance.raw();
+        let surface = self
+            .window
+            .vulkan_create_surface(
+                instance_raw.instance.handle().as_raw() as sdl2::video::VkInstance
+            )
+            .unwrap();
+        let surface_loader = SurfaceLoader::new(&instance_raw.entry, &instance_raw.instance);
+        sourcerenderer_vulkan::new::VkSurface::new(
+            graphics_instance,
+            SurfaceKHR::from_raw(surface),
+            surface_loader
+        )
+    }
+
+    fn create_swapchain_new(
+        &self,
+        vsync: bool,
+        device: &<P::GPUBackend as GPUBackend>::Device,
+        surface: <P::GPUBackend as GPUBackend>::Surface
+     ) -> <P::GPUBackend as GPUBackend>::Swapchain {
+        let device_inner = device.inner();
+        let (width, height) = self.window.drawable_size();
+        sourcerenderer_vulkan::new::VkSwapchain::new(
+            vsync,
+            width,
+            height,
+            device_inner,
+            surface
+        )
+        .unwrap()
     }
 
     fn width(&self) -> u32 {

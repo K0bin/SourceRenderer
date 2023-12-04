@@ -16,24 +16,20 @@ impl<B: GPUBackend> Debug for BufferSlice<B> {
         write!(
             f,
             "(Buffer Slice: {}-{} (length: {}))",
-            self.0.offset,
-            self.0.offset + self.0.length,
-            self.0.length
+            self.0.range.offset,
+            self.0.range.offset + self.0.range.length,
+            self.0.range.length
         )
     }
 }
 
 impl<B: GPUBackend> BufferSlice<B> {
     pub fn offset(&self) -> u64 {
-        self.0.offset
+        self.0.range.offset
     }
 
     pub fn length(&self) -> u64 {
-        self.0.length
-    }
-
-    pub(super) fn inner_arc(&self) -> &Arc<BufferAndAllocation<B>> {
-        &self.0.data_arc()
+        self.0.range.length
     }
 
     pub(super) fn handle(&self) -> &B::Buffer {
@@ -41,11 +37,11 @@ impl<B: GPUBackend> BufferSlice<B> {
     }
 
     pub(super) fn map(&self, invalidate: bool) -> Option<*mut c_void> {
-        unsafe { self.handle().map(self.0.offset, self.0.length, invalidate) }
+        unsafe { self.handle().map(self.0.range.offset, self.0.range.length, invalidate) }
     }
 
     pub(super) fn unmap(&self, flush: bool) {
-        unsafe { self.handle().unmap(self.0.offset, self.0.length, flush) }
+        unsafe { self.handle().unmap(self.0.range.offset, self.0.range.length, flush) }
     }
 }
 
@@ -65,6 +61,13 @@ pub struct BufferAllocator<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> BufferAllocator<B> {
+    pub(super) fn new(device: &Arc<B::Device>, memory_allocator: &Arc<MemoryAllocator<B>>) -> Self {
+        Self {
+            device: device.clone(),
+            allocator: memory_allocator.clone(),
+            buffers: Mutex::new(HashMap::new())
+        }
+    }
 
     pub fn get_slice(
       &self,
@@ -157,7 +160,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             })
         } else {
             let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
-            let buffer = unsafe { allocation.data().create_buffer(info, allocation.offset, name) }?;
+            let buffer = unsafe { allocation.data().create_buffer(info, allocation.range.offset, name) }?;
             Ok(BufferAndAllocation {
                 buffer,
                 allocation: Some(allocation)

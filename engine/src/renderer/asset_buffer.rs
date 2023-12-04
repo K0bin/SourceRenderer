@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     Backend,
     BufferInfo,
@@ -12,17 +13,17 @@ use sourcerenderer_core::graphics::{
 
 /// We suballocate all mesh buffers from a large buffer
 /// to be able use indirect rendering.
-pub struct AssetBuffer<B: Backend> {
+pub struct AssetBuffer<B: GPUBackend> {
     internal: Arc<AssetBufferInternal<B>>,
 }
 
-struct AssetBufferInternal<B: Backend> {
+struct AssetBufferInternal<B: GPUBackend> {
     buffer: Arc<B::Buffer>,
     free_ranges: AtomicRefCell<Vec<BufferRange>>,
     reuse_ranges: AtomicRefCell<Vec<(BufferRange, u32)>>,
 }
 
-pub struct AssetBufferSlice<B: Backend> {
+pub struct AssetBufferSlice<B: GPUBackend> {
     buffer: Arc<AssetBufferInternal<B>>,
     range: BufferRange,
 }
@@ -34,7 +35,7 @@ struct BufferRange {
     length: u32,
 }
 
-impl<B: Backend> AssetBuffer<B> {
+impl<B: GPUBackend> AssetBuffer<B> {
     pub const SIZE_BIG: u32 = 256 << 20;
     pub const SIZE_SMALL: u32 = 64 << 20;
     pub fn new(device: &Arc<B::Device>, size: u32, usage: BufferUsage) -> Self {
@@ -115,7 +116,7 @@ impl<B: Backend> AssetBuffer<B> {
     }
 }
 
-impl<B: Backend> AssetBufferInternal<B> {
+impl<B: GPUBackend> AssetBufferInternal<B> {
     pub fn queue_for_reuse(&self, range: &BufferRange) {
         let mut reuse_ranges = self.reuse_ranges.borrow_mut();
         reuse_ranges.push((range.clone(), 0));
@@ -146,7 +147,7 @@ impl<B: Backend> AssetBufferInternal<B> {
     }
 }
 
-impl<B: Backend> AssetBufferSlice<B> {
+impl<B: GPUBackend> AssetBufferSlice<B> {
     pub fn buffer(&self) -> &Arc<B::Buffer> {
         &self.buffer.buffer
     }
@@ -160,7 +161,7 @@ impl<B: Backend> AssetBufferSlice<B> {
     }
 }
 
-impl<B: Backend> Drop for AssetBufferSlice<B> {
+impl<B: GPUBackend> Drop for AssetBufferSlice<B> {
     fn drop(&mut self) {
         self.buffer.queue_for_reuse(&self.range);
     }

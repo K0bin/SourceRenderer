@@ -55,7 +55,7 @@ impl LightBinningPass {
     pub const LIGHT_BINNING_BUFFER_NAME: &'static str = "binned_lights";
 
     pub fn new<P: Platform>(
-        barriers: &mut RendererResources<P::GraphicsBackend>,
+        barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline("shaders/light_binning.comp.spv");

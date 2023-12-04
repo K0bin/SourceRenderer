@@ -52,7 +52,7 @@ pub trait RendererInterface<P: Platform> {
     fn is_saturated(&self) -> bool;
     fn wait_until_available(&self, timeout: Duration);
     fn is_running(&self) -> bool;
-    fn update_ui(&self, ui_data: UIDrawData<P::GraphicsBackend>);
+    fn update_ui(&self, ui_data: UIDrawData<P::GPUBackend>);
 }
 
 #[derive(Clone, Debug, PartialEq)]

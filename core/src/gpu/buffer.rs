@@ -2,7 +2,7 @@ use std::{hash::Hash, ffi::c_void};
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-  pub struct BufferUsage: u32 {
+  pub struct BufferUsage: u16 {
     const VERTEX                             = 0b1;
     const INDEX                              = 0b10;
     const STORAGE                            = 0b100;

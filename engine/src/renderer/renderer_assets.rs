@@ -2,18 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    Backend,
-    BufferUsage,
-    Device,
-    Format,
-    MemoryUsage,
-    SampleCount,
-    TextureDimension,
-    TextureInfo,
-    TextureUsage,
-    TextureViewInfo, FenceValuePair,
-};
+use sourcerenderer_core::gpu::{GPUBackend, FenceValuePairRef, BufferUsage, TextureDimension, Format, SampleCount, TextureUsage, TextureViewInfo};
+
+use sourcerenderer_core::graphics::TextureInfo;
 use sourcerenderer_core::{
     Platform,
     Vec4,
@@ -35,6 +26,7 @@ use crate::asset::{
     Model,
     Texture,
 };
+use crate::graphics::{SharedFenceValuePair, MemoryUsage};
 use crate::math::BoundingBox;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -75,17 +67,17 @@ impl IndexHandle for ModelHandle {
     }
 }
 
-pub struct RendererTexture<B: Backend> {
+pub struct RendererTexture<B: GPUBackend> {
     pub(super) view: Arc<B::TextureView>,
     pub(super) bindless_index: Option<u32>,
 }
 
-impl<B: Backend> PartialEq for RendererTexture<B> {
+impl<B: GPUBackend> PartialEq for RendererTexture<B> {
     fn eq(&self, other: &Self) -> bool {
         self.view == other.view
     }
 }
-impl<B: Backend> Eq for RendererTexture<B> {}
+impl<B: GPUBackend> Eq for RendererTexture<B> {}
 
 pub struct RendererMaterial {
     pub(super) properties: HashMap<String, RendererMaterialValue>,
@@ -274,7 +266,7 @@ impl RendererModel {
     }
 }
 
-pub struct RendererMesh<B: Backend> {
+pub struct RendererMesh<B: GPUBackend> {
     pub vertices: AssetBufferSlice<B>,
     pub indices: Option<AssetBufferSlice<B>>,
     pub parts: Box<[MeshRange]>,
@@ -282,12 +274,12 @@ pub struct RendererMesh<B: Backend> {
     pub vertex_count: u32,
 }
 
-struct DelayedAsset<B: Backend> {
-    fence: FenceValuePair<B>,
+struct DelayedAsset<B: GPUBackend> {
+    fence: SharedFenceValuePair<B>,
     path: String,
     asset: DelayedAssetType<B>,
 }
-enum DelayedAssetType<B: Backend> {
+enum DelayedAssetType<B: GPUBackend> {
     TextureView(Arc<B::TextureView>),
 }
 
@@ -372,21 +364,21 @@ where
 }
 
 pub struct RendererAssets<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
     models: HandleMap<ModelHandle, RendererModel>,
-    meshes: HandleMap<MeshHandle, RendererMesh<P::GraphicsBackend>>,
+    meshes: HandleMap<MeshHandle, RendererMesh<P::GPUBackend>>,
     materials: HandleMap<MaterialHandle, RendererMaterial>,
-    textures: HandleMap<TextureHandle, RendererTexture<P::GraphicsBackend>>,
-    zero_texture: RendererTexture<P::GraphicsBackend>,
-    zero_texture_black: RendererTexture<P::GraphicsBackend>,
+    textures: HandleMap<TextureHandle, RendererTexture<P::GPUBackend>>,
+    zero_texture: RendererTexture<P::GPUBackend>,
+    zero_texture_black: RendererTexture<P::GPUBackend>,
     placeholder_material: RendererMaterial,
-    delayed_assets: Vec<DelayedAsset<P::GraphicsBackend>>,
-    vertex_buffer: AssetBuffer<P::GraphicsBackend>,
-    index_buffer: AssetBuffer<P::GraphicsBackend>,
+    delayed_assets: Vec<DelayedAsset<P::GPUBackend>>,
+    vertex_buffer: AssetBuffer<P::GPUBackend>,
+    index_buffer: AssetBuffer<P::GPUBackend>,
 }
 
 impl<P: Platform> RendererAssets<P> {
-    pub(super) fn new(device: &Arc<<P::GraphicsBackend as Backend>::Device>) -> Self {
+    pub(super) fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> Self {
         let zero_data = [255u8; 16];
         let zero_buffer =
             device.upload_data(&zero_data, MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
@@ -405,7 +397,7 @@ impl<P: Platform> RendererAssets<P> {
             },
             Some("AssetManagerZeroTexture"),
         );
-        device.init_texture(&zero_texture, &zero_buffer, 0, 0, 0);
+        device.init_texture(&zero_texture, &zero_buffer, 0, 0);
         let zero_view = device.create_texture_view(
             &zero_texture,
             &TextureViewInfo::default(),
@@ -444,7 +436,7 @@ impl<P: Platform> RendererAssets<P> {
             },
             Some("AssetManagerZeroTextureBlack"),
         );
-        device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0, 0);
+        device.init_texture(&zero_texture_black, &zero_buffer_black, 0, 0);
         let zero_view_black = device.create_texture_view(
             &zero_texture_black,
             &TextureViewInfo::default(),
@@ -462,14 +454,14 @@ impl<P: Platform> RendererAssets<P> {
         let placeholder_material =
             RendererMaterial::new_pbr_color(Vec4::new(1f32, 1f32, 1f32, 1f32));
 
-        let vertex_buffer = AssetBuffer::<P::GraphicsBackend>::new(
+        let vertex_buffer = AssetBuffer::<P::GPUBackend>::new(
             device,
-            AssetBuffer::<P::GraphicsBackend>::SIZE_BIG,
+            AssetBuffer::<P::GPUBackend>::SIZE_BIG,
             BufferUsage::VERTEX | BufferUsage::COPY_DST | BufferUsage::STORAGE,
         );
-        let index_buffer = AssetBuffer::<P::GraphicsBackend>::new(
+        let index_buffer = AssetBuffer::<P::GPUBackend>::new(
             device,
-            AssetBuffer::<P::GraphicsBackend>::SIZE_SMALL,
+            AssetBuffer::<P::GPUBackend>::SIZE_SMALL,
             BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE,
         );
 
@@ -493,7 +485,7 @@ impl<P: Platform> RendererAssets<P> {
     pub fn integrate_texture(
         &mut self,
         texture_path: &str,
-        texture: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
+        texture: &Arc<<P::GPUBackend as GPUBackend>::TextureView>,
     ) -> TextureHandle {
         let bindless_index = if self.device.supports_bindless() {
             if texture == &self.zero_texture.view {
@@ -506,7 +498,7 @@ impl<P: Platform> RendererAssets<P> {
         } else {
             None
         };
-        let renderer_texture = RendererTexture {
+        let renderer_texture: RendererTexture<<P as Platform>::GPUBackend> = RendererTexture {
             view: texture.clone(),
             bindless_index,
         };
@@ -526,11 +518,9 @@ impl<P: Platform> RendererAssets<P> {
             BufferUsage::COPY_SRC,
         );
         self.device.init_buffer(
-            &temp_vertex_buffer,
-            vertex_buffer.buffer(),
-            0,
-            vertex_buffer.offset() as usize,
-            vertex_buffer.size() as usize,
+            &mesh.vertices[..],
+            &vertex_buffer,
+            vertex_buffer.offset()
         );
 
         let index_buffer = mesh.indices.map(|indices| {
@@ -538,17 +528,10 @@ impl<P: Platform> RendererAssets<P> {
                 std::mem::size_of_val(&indices[..]),
                 std::mem::size_of::<u32>(),
             );
-            let temp_buffer = self.device.upload_data(
-                &indices[..],
-                MemoryUsage::UncachedRAM,
-                BufferUsage::COPY_SRC,
-            );
             self.device.init_buffer(
-                &temp_buffer,
+                &indices,
                 buffer.buffer(),
-                0,
-                buffer.offset() as usize,
-                buffer.size() as usize,
+                buffer.offset(),
             );
             buffer
         });
@@ -569,14 +552,14 @@ impl<P: Platform> RendererAssets<P> {
         texture: Texture,
         do_async: bool,
     ) -> (
-        Arc<<P::GraphicsBackend as Backend>::TextureView>,
-        Option<FenceValuePair<P::GraphicsBackend>>
+        Arc<<P::GPUBackend as GPUBackend>::TextureView>,
+        Option<SharedFenceValuePair<P::GPUBackend>>
     ) {
         let gpu_texture = self
             .device
             .create_texture(&texture.info, Some(texture_path));
         let subresources = texture.info.array_length * texture.info.mip_levels;
-        let mut fence = Option::<FenceValuePair<P::GraphicsBackend>>::None;
+        let mut fence = Option::<SharedFenceValuePair<P::GPUBackend>>::None;
         for subresource in 0..subresources {
             let mip_level = subresource % texture.info.mip_levels;
             let array_index = subresource / texture.info.mip_levels;
@@ -590,12 +573,11 @@ impl<P: Platform> RendererAssets<P> {
                     &gpu_texture,
                     &init_buffer,
                     mip_level,
-                    array_index,
-                    0,
+                    array_index
                 );
             } else {
                 self.device
-                    .init_texture(&gpu_texture, &init_buffer, mip_level, array_index, 0);
+                    .init_texture(&gpu_texture, &init_buffer, mip_level, array_index);
             }
         }
         let view = self.device.create_texture_view(
@@ -671,7 +653,7 @@ impl<P: Platform> RendererAssets<P> {
         self.models.contains(handle)
     }
 
-    pub fn get_mesh(&self, handle: MeshHandle) -> Option<&RendererMesh<P::GraphicsBackend>> {
+    pub fn get_mesh(&self, handle: MeshHandle) -> Option<&RendererMesh<P::GPUBackend>> {
         self.meshes.get_value(handle)
     }
 
@@ -685,17 +667,17 @@ impl<P: Platform> RendererAssets<P> {
             .unwrap_or(&self.placeholder_material)
     }
 
-    pub fn get_texture(&self, handle: TextureHandle) -> &RendererTexture<P::GraphicsBackend> {
+    pub fn get_texture(&self, handle: TextureHandle) -> &RendererTexture<P::GPUBackend> {
         self.textures
             .get_value(handle)
             .unwrap_or_else(|| &self.zero_texture)
     }
 
-    pub fn placeholder_texture(&self) -> &RendererTexture<P::GraphicsBackend> {
+    pub fn placeholder_texture(&self) -> &RendererTexture<P::GPUBackend> {
         &self.zero_texture
     }
 
-    pub fn placeholder_black(&self) -> &RendererTexture<P::GraphicsBackend> {
+    pub fn placeholder_black(&self) -> &RendererTexture<P::GPUBackend> {
         &self.zero_texture_black
     }
 
@@ -711,8 +693,8 @@ impl<P: Platform> RendererAssets<P> {
         asset_manager: &AssetManager<P>,
         shader_manager: &mut ShaderManager<P>,
     ) {
-        let mut retained_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
-        let mut ready_delayed_assets = Vec::<DelayedAsset<P::GraphicsBackend>>::new();
+        let mut retained_delayed_assets = Vec::<DelayedAsset<P::GPUBackend>>::new();
+        let mut ready_delayed_assets = Vec::<DelayedAsset<P::GPUBackend>>::new();
         for delayed_asset in self.delayed_assets.drain(..) {
             if delayed_asset.fence.is_signalled() {
                 ready_delayed_assets.push(delayed_asset);
@@ -774,11 +756,11 @@ impl<P: Platform> RendererAssets<P> {
         self.index_buffer.bump_frame(&self.device);
     }
 
-    pub fn vertex_buffer(&self) -> &Arc<<P::GraphicsBackend as Backend>::Buffer> {
+    pub fn vertex_buffer(&self) -> &Arc<<P::GPUBackend as GPUBackend>::Buffer> {
         self.vertex_buffer.buffer()
     }
 
-    pub fn index_buffer(&self) -> &Arc<<P::GraphicsBackend as Backend>::Buffer> {
+    pub fn index_buffer(&self) -> &Arc<<P::GPUBackend as GPUBackend>::Buffer> {
         self.index_buffer.buffer()
     }
 }

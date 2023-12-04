@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::usize;
 
 use legion::Entity;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::Backend;
 use sourcerenderer_core::{
     Matrix4,
@@ -19,7 +20,7 @@ use super::{
     RendererStaticDrawable,
 };
 
-pub struct RendererScene<B: Backend> {
+pub struct RendererScene<B: GPUBackend> {
     static_meshes: Vec<RendererStaticDrawable>,
     point_lights: Vec<RendererPointLight<B>>,
     directional_lights: Vec<RendererDirectionalLight<B>>,
@@ -29,7 +30,7 @@ pub struct RendererScene<B: Backend> {
     lightmap: Option<TextureHandle>,
 }
 
-impl<B: Backend> RendererScene<B> {
+impl<B: GPUBackend> RendererScene<B> {
     pub fn new() -> Self {
         Self {
             static_meshes: Vec::new(),

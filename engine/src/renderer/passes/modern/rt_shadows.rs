@@ -42,7 +42,7 @@ impl RTShadowPass {
 
     pub fn new<P: Platform>(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         resources.create_texture(
@@ -73,12 +73,12 @@ impl RTShadowPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
         acceleration_structure: &Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>,
         blue_noise: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
-        blue_noise_sampler: &Arc<<P::GraphicsBackend as Backend>::Sampler>,
+        blue_noise_sampler: &Arc<crate::graphics::Sampler<P::GPUBackend>>,
     ) {
         let texture_uav = pass_params.resources.access_view(
             cmd_buffer,

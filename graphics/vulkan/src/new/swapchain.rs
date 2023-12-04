@@ -40,7 +40,6 @@ pub enum VkSwapchainState {
 
 pub struct VkSwapchain {
     textures: SmallVec<[VkTexture; 5]>,
-    views: SmallVec<[VkTextureView; 5]>,
     acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     present_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     swapchain: vk::SwapchainKHR,
@@ -247,19 +246,6 @@ impl VkSwapchain {
                 })
                 .collect();
 
-            let swapchain_image_views: SmallVec<[VkTextureView; 5]> = textures
-                .iter()
-                .enumerate()
-                .map(|(index, texture)| {
-                    VkTextureView::new(
-                        device,
-                        texture,
-                        &TextureViewInfo::default(),
-                        Some(&format!("Backbuffer view {}", index)),
-                    )
-                })
-                .collect();
-
             let acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]> = (0..textures.len())
                 .map(|_i| VkBinarySemaphore::new(device))
                 .collect();
@@ -270,7 +256,6 @@ impl VkSwapchain {
 
             Ok(VkSwapchain {
                 textures,
-                views: swapchain_image_views,
                 acquire_semaphores,
                 present_semaphores,
                 semaphore_index: AtomicU64::new(0),
@@ -394,7 +379,7 @@ impl VkSwapchain {
 
     #[allow(clippy::logic_bug)]
     pub unsafe fn acquire_back_buffer(&self) -> VkResult<(u32, bool)> {
-        let index = (self.semaphore_index.fetch_add(1, Ordering::AcqRel) % self.acquire_semaphores.len() as u64) as usize;
+        let index: usize = (self.semaphore_index.fetch_add(1, Ordering::AcqRel) % self.acquire_semaphores.len() as u64) as usize;
         let semaphore = &self.acquire_semaphores[index];
 
         let result = {
@@ -532,8 +517,16 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.transform_matrix
     }
 
-    unsafe fn backbuffer(&self) -> &VkTextureView {
-        &self.views[self.image_index.load(Ordering::Acquire) as usize]
+    fn backbuffer(&self, index: u32) -> &VkTexture {
+        &self.textures[index as usize]
+    }
+
+    fn backbuffer_index(&self) -> u32 {
+        self.image_index.load(Ordering::Acquire)
+    }
+
+    fn backbuffer_count(&self) -> u32 {
+        self.textures.len() as u32
     }
 
     unsafe fn next_backbuffer(&self) -> Result<(), SwapchainError> {

@@ -39,7 +39,7 @@ impl MotionVectorPass {
     pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
 
     pub fn new<P: Platform>(
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         renderer_resolution: Vec2UI,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
@@ -67,7 +67,7 @@ impl MotionVectorPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);

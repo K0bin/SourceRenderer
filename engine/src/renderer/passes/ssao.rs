@@ -2,6 +2,7 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use rand::random;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     Backend as GraphicsBackend,
     BarrierAccess,
@@ -42,7 +43,7 @@ use crate::renderer::shader_manager::{
 
 pub struct SsaoPass<P: Platform> {
     pipeline: ComputePipelineHandle,
-    kernel: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    kernel: Arc<<P::GPUBackend as GPUBackend>::Buffer>,
     blur_pipeline: ComputePipelineHandle,
 }
 
@@ -55,9 +56,9 @@ impl<P: Platform> SsaoPass<P> {
     pub const SSAO_TEXTURE_NAME: &'static str = "SSAOBlurred";
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
+        device: &Arc<<P::GPUBackend as GPUBackend>::Device>,
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
         visibility_buffer: bool,
     ) -> Self {

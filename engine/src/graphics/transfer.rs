@@ -27,7 +27,7 @@ pub enum OwnedBarrier<B: GPUBackend> {
     new_sync: BarrierSync,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    buffer: Arc<BufferAndAllocation<B>>,
+    buffer: Arc<BufferSlice<B>>,
     offset: u64,
     length: u64,
     queue_ownership: Option<QueueOwnershipTransfer>
@@ -36,13 +36,13 @@ pub enum OwnedBarrier<B: GPUBackend> {
 
 enum TransferCopy<B: GPUBackend> {
   BufferToImage {
-      src: Arc<BufferAndAllocation<B>>,
+      src: Arc<BufferSlice<B>>,
       dst: Arc<super::Texture<B>>,
       region: BufferTextureCopyRegion
   },
   BufferToBuffer {
-      src: Arc<BufferAndAllocation<B>>,
-      dst: Arc<BufferAndAllocation<B>>,
+      src: Arc<BufferSlice<B>>,
+      dst: Arc<BufferSlice<B>>,
       region: BufferCopyRegion
   },
 }
@@ -151,7 +151,7 @@ impl<B: GPUBackend> Transfer<B> {
 
       guard.graphics.copies.push(
         TransferCopy::BufferToImage {
-          src: src_buffer.inner_arc().clone(),
+          src: src_buffer.clone(),
           dst: texture.clone(),
           region:
             BufferTextureCopyRegion {
@@ -205,8 +205,8 @@ impl<B: GPUBackend> Transfer<B> {
 
       let mut guard = self.inner.lock().unwrap();
       guard.graphics.copies.push(TransferCopy::BufferToBuffer {
-        src: src_buffer.inner_arc().clone(),
-        dst: dst_buffer.inner_arc().clone(),
+        src: src_buffer.clone(),
+        dst: dst_buffer.clone(),
         region: BufferCopyRegion {
           src_offset,
           dst_offset,
@@ -222,7 +222,7 @@ impl<B: GPUBackend> Transfer<B> {
           new_sync: BarrierSync::all(),
           old_access: BarrierAccess::COPY_WRITE,
           new_access: BarrierAccess::SHADER_READ,
-          buffer: dst_buffer.inner_arc().clone(),
+          buffer: dst_buffer.clone(),
           offset: dst_offset + dst_buffer.offset(),
           length: actual_length,
           queue_ownership: None
@@ -276,7 +276,7 @@ impl<B: GPUBackend> Transfer<B> {
 
           transfer.copies.push(
             TransferCopy::BufferToImage {
-              src: src_buffer.inner_arc().clone(),
+              src: src_buffer.clone(),
               dst: texture.clone(),
               region:
                 BufferTextureCopyRegion {
@@ -430,7 +430,7 @@ impl<B: GPUBackend> Transfer<B> {
                         new_sync: *new_sync,
                         old_access: *old_access,
                         new_access: *new_access,
-                        buffer: &buffer.buffer,
+                        buffer: buffer.handle(),
                         offset: *offset,
                         length: *length,
                         queue_ownership: queue_ownership.clone()
@@ -475,7 +475,7 @@ impl<B: GPUBackend> Transfer<B> {
                     region
                 } => {
                     unsafe {
-                        cmd_buffer.cmd_buffer.copy_buffer(&src.buffer, &dst.buffer, &region);
+                        cmd_buffer.cmd_buffer.copy_buffer(src.handle(), dst.handle(), &region);
                     }
                 }
 
@@ -485,7 +485,7 @@ impl<B: GPUBackend> Transfer<B> {
                     region
                 } => {
                     unsafe  {
-                        cmd_buffer.cmd_buffer.copy_buffer_to_texture(&src.buffer, dst.handle(), &region);
+                        cmd_buffer.cmd_buffer.copy_buffer_to_texture(src.handle(), dst.handle(), &region);
                     }
                 }
             }
@@ -518,7 +518,7 @@ impl<B: GPUBackend> Transfer<B> {
                         new_sync: *new_sync,
                         old_access: *old_access,
                         new_access: *new_access,
-                        buffer: &buffer.buffer,
+                        buffer: buffer.handle(),
                         offset: *offset,
                         length: *length,
                         queue_ownership: queue_ownership.clone()

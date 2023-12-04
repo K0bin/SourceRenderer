@@ -1,10 +1,12 @@
 use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, mem::ManuallyDrop};
 
 use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu::Device as GPUDevice;
+use sourcerenderer_core::gpu::RayTracingPipelineInfo;
 
 use super::*;
 
-struct GPUDevice<B: GPUBackend> {
+pub struct Device<B: GPUBackend> {
     device: Arc<B::Device>,
     allocator: ManuallyDrop<Arc<MemoryAllocator<B>>>,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
@@ -15,7 +17,31 @@ struct GPUDevice<B: GPUBackend> {
     has_context: AtomicBool
 }
 
-impl<B: GPUBackend> GPUDevice<B> {
+impl<B: GPUBackend> Device<B> {
+    pub fn new(device: B::Device) -> Self {
+        let device = Arc::new(device);
+        let memory_allocator = ManuallyDrop::new(Arc::new(MemoryAllocator::new(&device)));
+        let destroyer = ManuallyDrop::new(Arc::new(DeferredDestroyer::new()));
+        Self {
+            device: device.clone(),
+            allocator: memory_allocator.clone(),
+            destroyer: destroyer.clone(),
+            buffer_allocator: ManuallyDrop::new(Arc::new(BufferAllocator::new(&device, &memory_allocator))),
+            bindless_slot_allocator: BindlessSlotAllocator::new(500_000),
+            transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer)),
+            prerendered_frames: 3,
+            has_context: AtomicBool::new(false)
+        }
+    }
+
+    pub(super) fn handle(&self) -> &Arc<B::Device> {
+        &self.device
+    }
+
+    pub(super) fn destroyer(&self) -> &Arc<DeferredDestroyer<B>> {
+        &self.destroyer
+    }
+
     pub fn create_context(&self) -> GraphicsContext<B> {
         assert!(!self.has_context.swap(true, Ordering::AcqRel));
         GraphicsContext::new(&self.device, &self.allocator, &self.buffer_allocator, &self.destroyer, self.prerendered_frames)
@@ -41,6 +67,33 @@ impl<B: GPUBackend> GPUDevice<B> {
         super::Sampler::new(&self.device, &self.destroyer, info)
     }
 
+    pub fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<B::GraphicsPipeline> {
+        // TODO: Create pipeline wrapper to defer destruction
+        unsafe {
+            Arc::new(self.device.create_graphics_pipeline(info, renderpass_info, subpass, name))
+        }
+    }
+
+    pub fn create_compute_pipeline(&self, shader: &B::Shader, name: Option<&str>) -> Arc<B::ComputePipeline> {
+        // TODO: Create pipeline wrapper to defer destruction
+        unsafe {
+            Arc::new(self.device.create_compute_pipeline(shader, name))
+        }
+    }
+
+    pub fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<B>, name: Option<&str>) -> Result<Arc<B::RayTracingPipeline>, OutOfMemoryError> {
+        // TODO: Create pipeline wrapper to defer destruction & hold reference to buffer slice!
+        unsafe {
+            let sbt_buffer_size = self.device.get_raytracing_pipeline_sbt_buffer_size(info);
+            let sbt_buffer_slice = self.buffer_allocator.get_slice(&BufferInfo {
+                size: sbt_buffer_size,
+                usage: BufferUsage::SHADER_BINDING_TABLE,
+                sharing_mode: QueueSharingMode::Exclusive
+            }, MemoryUsage::GPUMemory, name)?;
+            Ok(Arc::new(self.device.create_raytracing_pipeline(info, sbt_buffer_slice.handle(), sbt_buffer_slice.offset())))
+        }
+    }
+
     pub fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
         let slice = self.buffer_allocator.get_slice(&BufferInfo {
             size: std::mem::size_of_val(data) as u64,
@@ -57,9 +110,9 @@ impl<B: GPUBackend> GPUDevice<B> {
         Ok(slice)
     }
 
-    pub fn init_buffer<T>(&self, data: &[T], dst: &Arc<BufferSlice<B>>) -> Result<(), OutOfMemoryError> {
+    pub fn init_buffer<T>(&self, data: &[T], dst: &Arc<BufferSlice<B>>, dst_offset: u32) -> Result<(), OutOfMemoryError> {
         let slice = self.upload_data(data, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
-        self.transfer.init_buffer(&slice, dst, 0, 0, WHOLE_BUFFER);
+        self.transfer.init_buffer(&slice, dst, 0, dst_offset, WHOLE_BUFFER);
         Ok(())
     }
 
@@ -119,7 +172,7 @@ impl<B: GPUBackend> GPUDevice<B> {
     }
 }
 
-impl<B: GPUBackend> Drop for GPUDevice<B> {
+impl<B: GPUBackend> Drop for Device<B> {
     fn drop(&mut self) {
         unsafe {
             ManuallyDrop::drop(&mut self.buffer_allocator);

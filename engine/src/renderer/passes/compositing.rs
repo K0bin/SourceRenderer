@@ -1,3 +1,4 @@
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     Backend as GraphicsBackend,
     BarrierAccess,
@@ -43,7 +44,7 @@ impl CompositingPass {
 
     pub fn new<P: Platform>(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline("shaders/compositing.comp.spv");
@@ -70,7 +71,7 @@ impl CompositingPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut <P::GPUBackend as GPUBackend>::CommandBuffer,
         params: &RenderPassParameters<'_, P>,
         input_name: &str,
     ) {

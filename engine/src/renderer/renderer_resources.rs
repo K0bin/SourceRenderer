@@ -5,6 +5,7 @@ use std::cell::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::graphics::{
     AddressMode,
     Backend,
@@ -47,16 +48,16 @@ impl Default for TrackedTextureSubresource {
     }
 }
 
-struct TrackedTexture<B: Backend> {
+struct TrackedTexture<B: GPUBackend> {
     subresources: Vec<TrackedTextureSubresource>,
-    texture: Arc<B::Texture>,
-    views: HashMap<TextureViewInfo, Arc<B::TextureView>>,
+    texture: Arc<crate::graphics::Texture<B>>,
+    views: HashMap<TextureViewInfo, Arc<crate::graphics::TextureView<B>>>,
 }
 
-struct TrackedBuffer<B: Backend> {
+struct TrackedBuffer<B: GPUBackend> {
     stages: BarrierSync,
     access: BarrierAccess,
-    buffer: Arc<B::Buffer>,
+    buffer: Arc<crate::graphics::BufferSlice<B>>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -90,8 +91,8 @@ fn calculate_subresource(mip_level: u32, mip_length: u32, array_layer: u32) -> u
     array_layer * mip_length + mip_level
 }
 
-pub struct RendererResources<B: Backend> {
-    device: Arc<B::Device>,
+pub struct RendererResources<B: GPUBackend> {
+    device: Arc<crate::graphics::Device<B>>,
     textures: HashMap<String, AB<RefCell<TrackedTexture<B>>>>,
     buffers: HashMap<String, AB<RefCell<TrackedBuffer<B>>>>,
     nearest_sampler: Arc<B::Sampler>,
@@ -100,8 +101,8 @@ pub struct RendererResources<B: Backend> {
     global: RefCell<GlobalMemoryBarrier>,
 }
 
-impl<B: Backend> RendererResources<B> {
-    pub fn new(device: &Arc<B::Device>) -> Self {
+impl<B: GPUBackend> RendererResources<B> {
+    pub fn new(device: &Arc<crate::graphics::Device<B>>) -> Self {
         let nearest_sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Nearest,
             min_filter: Filter::Nearest,
@@ -377,7 +378,7 @@ impl<B: Backend> RendererResources<B> {
         discard: bool,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<B::TextureView>> {
+    ) -> Ref<Arc<crate::graphics::TextureView<B>>> {
         self.access_texture_internal(
             cmd_buffer,
             name,
@@ -396,7 +397,7 @@ impl<B: Backend> RendererResources<B> {
         name: &str,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<<B as Backend>::TextureView>> {
+    ) -> Ref<Arc<crate::graphics::TextureView<B>>> {
         let texture_ab = self
             .textures
             .get(name)

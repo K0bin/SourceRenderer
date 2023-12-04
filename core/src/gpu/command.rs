@@ -38,6 +38,7 @@ pub enum IndexFormat {
   U32
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum CommandPoolType {
   CommandBuffers,
   InnerCommandBuffers

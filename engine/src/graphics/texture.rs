@@ -53,7 +53,7 @@ impl<B: GPUBackend> Texture<B> {
             (texture?, None)
         } else {
             let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
-            let texture = unsafe { allocation.data().create_texture(info, allocation.offset, name) }?;
+            let texture = unsafe { allocation.data().create_texture(info, allocation.range.offset, name) }?;
             (texture, Some(allocation))
         };
         Ok(Arc::new(Self {
@@ -71,7 +71,7 @@ impl<B: GPUBackend> Texture<B> {
 
 pub struct TextureView<B: GPUBackend> {
     device: Arc<B::Device>,
-    texture: Arc<Texture<B>>,
+    texture: Option<Arc<Texture<B>>>,
     texture_view: ManuallyDrop<B::TextureView>,
     destroyer: Arc<DeferredDestroyer<B>>
 }
@@ -88,7 +88,17 @@ impl<B: GPUBackend> TextureView<B> {
         let texture_view = unsafe { device.create_texture_view(texture.handle(), info, name) };
         Self {
             device: device.clone(),
-            texture: texture.clone(),
+            texture: Some(texture.clone()),
+            texture_view: ManuallyDrop::new(texture_view),
+            destroyer: destroyer.clone()
+        }
+    }
+
+    pub(super) unsafe fn new_from_texture_handle(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &B::Texture, info: &TextureViewInfo, name: Option<&str>) -> Self {
+        let texture_view = unsafe { device.create_texture_view(texture, info, name) };
+        Self {
+            device: device.clone(),
+            texture: None,
             texture_view: ManuallyDrop::new(texture_view),
             destroyer: destroyer.clone()
         }
