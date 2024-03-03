@@ -1,18 +1,13 @@
 use std::io::BufReader;
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{
-    Format,
-    SampleCount,
-    TextureDimension,
-    TextureInfo,
-    TextureUsage,
-};
 use sourcerenderer_core::Platform;
 use sourcerenderer_vtf::{
     ImageFormat as VTFTextureFormat,
     VtfTexture,
 };
+
+use crate::graphics::*;
 
 use crate::asset::asset_manager::{
     AssetFile,
@@ -85,10 +80,10 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
 
 fn convert_vtf_texture_format(texture_format: VTFTextureFormat) -> Format {
     match texture_format {
-        VTFTextureFormat::DXT1 => Format::DXT1,
-        VTFTextureFormat::DXT1OneBitAlpha => Format::DXT1Alpha,
-        VTFTextureFormat::DXT3 => Format::DXT3,
-        VTFTextureFormat::DXT5 => Format::DXT5,
+        VTFTextureFormat::DXT1 => Format::BC1,
+        VTFTextureFormat::DXT1OneBitAlpha => Format::BC1Alpha,
+        VTFTextureFormat::DXT3 => Format::BC2,
+        VTFTextureFormat::DXT5 => Format::BC3,
         VTFTextureFormat::RGBA8888 => Format::RGBA8UNorm,
         _ => panic!("VTF format {:?} is not supported", texture_format),
     }

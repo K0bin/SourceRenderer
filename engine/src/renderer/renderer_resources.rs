@@ -5,26 +5,7 @@ use std::cell::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    AddressMode,
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    Buffer,
-    BufferInfo,
-    CommandBuffer,
-    Device,
-    Filter,
-    MemoryUsage,
-    SamplerInfo,
-    Texture,
-    TextureInfo,
-    TextureLayout,
-    TextureViewInfo,
-};
+use crate::graphics::*;
 
 struct AB<T> {
     a: T,
@@ -50,14 +31,14 @@ impl Default for TrackedTextureSubresource {
 
 struct TrackedTexture<B: GPUBackend> {
     subresources: Vec<TrackedTextureSubresource>,
-    texture: Arc<crate::graphics::Texture<B>>,
-    views: HashMap<TextureViewInfo, Arc<crate::graphics::TextureView<B>>>,
+    texture: Arc<Texture<B>>,
+    views: HashMap<TextureViewInfo, Arc<TextureView<B>>>,
 }
 
 struct TrackedBuffer<B: GPUBackend> {
     stages: BarrierSync,
     access: BarrierAccess,
-    buffer: Arc<crate::graphics::BufferSlice<B>>,
+    buffer: Arc<BufferSlice<B>>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -92,18 +73,18 @@ fn calculate_subresource(mip_level: u32, mip_length: u32, array_layer: u32) -> u
 }
 
 pub struct RendererResources<B: GPUBackend> {
-    device: Arc<crate::graphics::Device<B>>,
+    device: Arc<Device<B>>,
     textures: HashMap<String, AB<RefCell<TrackedTexture<B>>>>,
     buffers: HashMap<String, AB<RefCell<TrackedBuffer<B>>>>,
-    nearest_sampler: Arc<B::Sampler>,
-    linear_sampler: Arc<B::Sampler>,
+    nearest_sampler: Arc<Sampler<B>>,
+    linear_sampler: Arc<Sampler<B>>,
     current_pass: ABEntry,
     global: RefCell<GlobalMemoryBarrier>,
 }
 
 impl<B: GPUBackend> RendererResources<B> {
-    pub fn new(device: &Arc<crate::graphics::Device<B>>) -> Self {
-        let nearest_sampler = device.create_sampler(&SamplerInfo {
+    pub fn new(device: &Arc<Device<B>>) -> Self {
+        let nearest_sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Nearest,
             min_filter: Filter::Nearest,
             mip_filter: Filter::Nearest,
@@ -115,8 +96,8 @@ impl<B: GPUBackend> RendererResources<B> {
             compare_op: None,
             min_lod: 0f32,
             max_lod: None,
-        });
-        let linear_sampler = device.create_sampler(&SamplerInfo {
+        }));
+        let linear_sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
             min_filter: Filter::Linear,
             mip_filter: Filter::Linear,
@@ -128,7 +109,7 @@ impl<B: GPUBackend> RendererResources<B> {
             compare_op: None,
             min_lod: 0f32,
             max_lod: None,
-        });
+        }));
 
         Self {
             device: device.clone(),
@@ -151,11 +132,11 @@ impl<B: GPUBackend> RendererResources<B> {
         };
     }
 
-    pub fn nearest_sampler(&self) -> &Arc<B::Sampler> {
+    pub fn nearest_sampler(&self) -> &Arc<Sampler<B>> {
         &self.nearest_sampler
     }
 
-    pub fn linear_sampler(&self) -> &Arc<B::Sampler> {
+    pub fn linear_sampler(&self) -> &Arc<Sampler<B>> {
         &self.linear_sampler
     }
 
@@ -171,7 +152,7 @@ impl<B: GPUBackend> RendererResources<B> {
             AB {
                 a: RefCell::new(TrackedTexture {
                     subresources: subresources.clone(),
-                    texture: self.device.create_texture(info, Some(name)),
+                    texture: self.device.create_texture(info, Some(name)).unwrap(),
                     views: HashMap::new(),
                 }),
                 b: has_history.then(|| {
@@ -179,7 +160,7 @@ impl<B: GPUBackend> RendererResources<B> {
                         subresources,
                         texture: self
                             .device
-                            .create_texture(info, Some(&(name.to_string() + "_b"))),
+                            .create_texture(info, Some(&(name.to_string() + "_b"))).unwrap(),
                         views: HashMap::new(),
                     })
                 }),
@@ -200,7 +181,7 @@ impl<B: GPUBackend> RendererResources<B> {
                 a: RefCell::new(TrackedBuffer {
                     stages: BarrierSync::empty(),
                     access: BarrierAccess::empty(),
-                    buffer: self.device.create_buffer(info, memory_usage, Some(name)),
+                    buffer: self.device.create_buffer(info, memory_usage, Some(name)).unwrap(),
                 }),
                 b: has_history.then(|| {
                     RefCell::new(TrackedBuffer {
@@ -210,7 +191,7 @@ impl<B: GPUBackend> RendererResources<B> {
                             info,
                             memory_usage,
                             Some(&(name.to_string() + "_b")),
-                        ),
+                        ).unwrap(),
                     })
                 }),
             },
@@ -231,7 +212,7 @@ impl<B: GPUBackend> RendererResources<B> {
 
     fn access_texture_internal(
         &self,
-        cmd_buffer: &mut B::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<B>,
         name: &str,
         mut stages: BarrierSync,
         range: &BarrierTextureRange,
@@ -321,6 +302,7 @@ impl<B: GPUBackend> RendererResources<B> {
                             base_mip_level: mip_index,
                             mip_level_length: 1,
                         },
+                        queue_ownership: None
                     }]);
                     if access.is_write()
                         || subresource_clone.access.is_write()
@@ -340,7 +322,7 @@ impl<B: GPUBackend> RendererResources<B> {
 
     pub fn access_texture(
         &self,
-        cmd_buffer: &mut B::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<B>,
         name: &str,
         range: &BarrierTextureRange,
         stages: BarrierSync,
@@ -348,7 +330,7 @@ impl<B: GPUBackend> RendererResources<B> {
         layout: TextureLayout,
         discard: bool,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<B::Texture>> {
+    ) -> Ref<Arc<Texture<B>>> {
         self.access_texture_internal(
             cmd_buffer, name, stages, range, access, layout, discard, history,
         );
@@ -370,7 +352,7 @@ impl<B: GPUBackend> RendererResources<B> {
 
     pub fn access_view(
         &self,
-        cmd_buffer: &mut B::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<B>,
         name: &str,
         stages: BarrierSync,
         access: BarrierAccess,
@@ -378,7 +360,7 @@ impl<B: GPUBackend> RendererResources<B> {
         discard: bool,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<crate::graphics::TextureView<B>>> {
+    ) -> Ref<Arc<TextureView<B>>> {
         self.access_texture_internal(
             cmd_buffer,
             name,
@@ -397,7 +379,7 @@ impl<B: GPUBackend> RendererResources<B> {
         name: &str,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<crate::graphics::TextureView<B>>> {
+    ) -> Ref<Arc<TextureView<B>>> {
         let texture_ab = self
             .textures
             .get(name)
@@ -443,12 +425,12 @@ impl<B: GPUBackend> RendererResources<B> {
 
     pub fn access_buffer(
         &self,
-        cmd_buffer: &mut B::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<B>,
         name: &str,
         mut stages: BarrierSync,
         mut access: BarrierAccess,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<B::Buffer>> {
+    ) -> Ref<Arc<BufferSlice<B>>> {
         debug_assert_eq!(
             access
                 & !(BarrierAccess::VERTEX_INPUT_READ
@@ -535,7 +517,8 @@ impl<B: GPUBackend> RendererResources<B> {
                     new_sync: stages,
                     old_access: buffer_mut.access & BarrierAccess::write_mask(),
                     new_access: access,
-                    buffer: &buffer_mut.buffer,
+                    buffer: BufferRef::Regular(&buffer_mut.buffer),
+                    queue_ownership: None
                 }]);
                 if access.is_write() || buffer_mut.access.is_write() {
                     buffer_mut.access = access;

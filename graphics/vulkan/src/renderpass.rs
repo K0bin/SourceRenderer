@@ -1,29 +1,19 @@
-use std::cmp::max;
-use std::collections::HashMap;
-use std::hash::{
-    Hash,
-    Hasher,
+use std::{
+    cmp::max,
+    collections::HashMap,
+    hash::{
+        Hash,
+        Hasher,
+    },
+    sync::Arc,
+    usize,
 };
-use std::sync::Arc;
-use std::usize;
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    AttachmentRef,
-    DepthStencilAttachmentRef,
-    Format,
-    LoadOp,
-    OutputAttachmentRef,
-    RenderPassPipelineStage,
-    SampleCount,
-    StoreOp,
-};
+use sourcerenderer_core::gpu::*;
 
-use crate::format::format_to_vk;
-use crate::pipeline::samples_to_vk;
-use crate::raw::RawVkDevice;
-use crate::texture::VkTextureView;
+use super::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub(crate) struct VkAttachmentInfo {
@@ -340,8 +330,8 @@ impl VkRenderPass {
         }
     }
 
-    pub fn handle(&self) -> &vk::RenderPass {
-        &self.render_pass
+    pub fn handle(&self) -> vk::RenderPass {
+        self.render_pass
     }
 }
 
@@ -373,7 +363,6 @@ pub struct VkFrameBuffer {
     width: u32,
     height: u32,
     render_pass: Arc<VkRenderPass>,
-    attachments: SmallVec<[Arc<VkTextureView>; 8]>,
 }
 
 impl VkFrameBuffer {
@@ -382,13 +371,11 @@ impl VkFrameBuffer {
         width: u32,
         height: u32,
         render_pass: &Arc<VkRenderPass>,
-        attachments: &[&Arc<VkTextureView>],
+        attachments: &[&VkTextureView],
     ) -> Self {
         let mut vk_attachments = SmallVec::<[vk::ImageView; 8]>::new();
-        let mut attachment_refs = SmallVec::<[Arc<VkTextureView>; 8]>::new();
         for attachment in attachments {
-            vk_attachments.push(*attachment.view_handle());
-            attachment_refs.push((*attachment).clone());
+            vk_attachments.push(attachment.view_handle());
         }
 
         Self {
@@ -398,7 +385,7 @@ impl VkFrameBuffer {
                     .create_framebuffer(
                         &vk::FramebufferCreateInfo {
                             flags: vk::FramebufferCreateFlags::empty(),
-                            render_pass: *render_pass.handle(),
+                            render_pass: render_pass.handle(),
                             attachment_count: vk_attachments.len() as u32,
                             p_attachments: vk_attachments.as_ptr(),
                             width,
@@ -412,13 +399,12 @@ impl VkFrameBuffer {
             },
             width,
             height,
-            attachments: attachment_refs,
             render_pass: render_pass.clone(),
         }
     }
 
-    pub(crate) fn handle(&self) -> &vk::Framebuffer {
-        &self.frame_buffer
+    pub(crate) fn handle(&self) -> vk::Framebuffer {
+        self.frame_buffer
     }
 
     pub(crate) fn width(&self) -> u32 {

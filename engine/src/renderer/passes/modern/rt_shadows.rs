@@ -1,22 +1,5 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{
-    Backend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    CommandBuffer,
-    Format,
-    PipelineBinding,
-    SampleCount,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
@@ -32,6 +15,7 @@ use crate::renderer::shader_manager::{
     RayTracingPipelineInfo,
     ShaderManager,
 };
+use crate::graphics::*;
 
 pub struct RTShadowPass {
     pipeline: RayTracingPipelineHandle,
@@ -73,12 +57,12 @@ impl RTShadowPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
-        acceleration_structure: &Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>,
-        blue_noise: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
-        blue_noise_sampler: &Arc<crate::graphics::Sampler<P::GPUBackend>>,
+        acceleration_structure: &Arc<AccelerationStructure<P::GPUBackend>>,
+        blue_noise: &Arc<TextureView<P::GPUBackend>>,
+        blue_noise_sampler: &Arc<Sampler<P::GPUBackend>>,
     ) {
         let texture_uav = pass_params.resources.access_view(
             cmd_buffer,
@@ -122,7 +106,7 @@ impl RTShadowPass {
             blue_noise,
             blue_noise_sampler,
         );
-        let info = texture_uav.texture().info();
+        let info = texture_uav.texture().unwrap().info();
 
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();

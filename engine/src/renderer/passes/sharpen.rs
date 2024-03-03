@@ -1,21 +1,3 @@
-use sourcerenderer_core::graphics::{
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BufferUsage,
-    CommandBuffer,
-    Format,
-    PipelineBinding,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
@@ -31,6 +13,7 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
+use crate::graphics::*;
 
 const USE_CAS: bool = true;
 
@@ -62,7 +45,7 @@ impl SharpenPass {
                 depth: 1,
                 mip_levels: 1,
                 array_length: 1,
-                samples: sourcerenderer_core::graphics::SampleCount::Samples1,
+                samples: SampleCount::Samples1,
                 usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC,
                 supports_srgb: false,
             },
@@ -74,7 +57,7 @@ impl SharpenPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         let input_image_uav = pass_params.resources.access_view(
@@ -103,11 +86,11 @@ impl SharpenPass {
 
         let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-        let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT);
+        let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT).unwrap();
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             2,
-            &sharpen_setup_ubo,
+            BufferRef::Transient(&sharpen_setup_ubo),
             0,
             WHOLE_BUFFER,
         );
@@ -115,7 +98,7 @@ impl SharpenPass {
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sharpen_uav);
         cmd_buffer.finish_binding();
 
-        let info = sharpen_uav.texture().info();
+        let info = sharpen_uav.texture().unwrap().info();
         cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
         cmd_buffer.end_label();
     }

@@ -1,19 +1,6 @@
 use std::sync::Arc;
 
 use nalgebra::Vector3;
-use sourcerenderer_core::graphics::{
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    Buffer,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    MemoryUsage,
-    PipelineBinding,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
@@ -30,6 +17,7 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
+use crate::graphics::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -56,10 +44,11 @@ impl ClusteringPass {
         barriers.create_buffer(
             Self::CLUSTERS_BUFFER_NAME,
             &BufferInfo {
-                size: std::mem::size_of::<Vec4>() * 2 * 16 * 9 * 24,
+                size: (std::mem::size_of::<Vec4>() * 2 * 16 * 9 * 24) as u64,
                 usage: BufferUsage::STORAGE,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             false,
         );
 
@@ -68,10 +57,10 @@ impl ClusteringPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        command_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         rt_size: Vec2UI,
-        camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>
+        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>
     ) {
         command_buffer.begin_label("Clustering pass");
 
@@ -89,7 +78,7 @@ impl ClusteringPass {
         };
 
         let screen_to_view_cbuffer =
-            command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE);
+            command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE).unwrap();
         let clusters_buffer = pass_params.resources.access_buffer(
             command_buffer,
             Self::CLUSTERS_BUFFER_NAME,
@@ -113,21 +102,21 @@ impl ClusteringPass {
         command_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            &*clusters_buffer,
+            BufferRef::Regular(&*clusters_buffer),
             0,
             WHOLE_BUFFER,
         );
         command_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             1,
-            &screen_to_view_cbuffer,
+            BufferRef::Transient(&screen_to_view_cbuffer),
             0,
             WHOLE_BUFFER,
         );
         command_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             2,
-            camera_buffer,
+            BufferRef::Regular(camera_buffer),
             0,
             WHOLE_BUFFER,
         );

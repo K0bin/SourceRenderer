@@ -29,6 +29,7 @@ const CHUNK_SIZE: u64 = 256 << 20;
 
 pub(super) type MemoryAllocation<H> = Allocation<H>;
 
+#[derive(Debug)]
 pub(super) enum MemoryTypeMatchingStrictness {
     ForceCoherent,
     Normal,
@@ -57,7 +58,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
             return Ok(allocation);
         }
 
-        let heap = unsafe { self.device.create_heap(memory_type_index, size) };
+        let heap = unsafe { self.device.create_heap(memory_type_index, CHUNK_SIZE) };
         if heap.is_err() {
             return Err(OutOfMemoryError {  });
         }
@@ -98,7 +99,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         }
 
         for i in 0..memory_types.len() {
-            if (i as u32 & memory_type_mask) == 0 {
+            if ((1u32 << i as u32) & memory_type_mask) == 0 {
                 continue;
             }
 
@@ -136,7 +137,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
                     }
                 }
             }
-            mask |= i as u32;
+            mask |= 1 << i as u32;
         }
         return mask;
     }

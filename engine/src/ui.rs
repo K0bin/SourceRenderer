@@ -1,21 +1,22 @@
 use std::{sync::Arc, collections::HashMap};
 
 use imgui::{Context, sys::ImDrawCmd, internal::RawWrapper, FontSource, TextureId};
-use sourcerenderer_core::{graphics::{Backend, Device, MemoryUsage, BufferUsage, Scissor, Viewport, SampleCount, TextureUsage, Format, TextureDimension, TextureInfo, TextureViewInfo}, Vec2, Vec2UI, Vec2I, Platform, gpu::GPUBackend};
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
+use crate::graphics::*;
 
 pub struct UI<P: Platform> {
     imgui: Context,
-    texture_map: HashMap<imgui::TextureId, Arc<<P::GraphicsBackend as Backend>::TextureView>>,
+    texture_map: HashMap<imgui::TextureId, Arc<TextureView<P::GPUBackend>>>,
     window_size: Vec2UI
 }
 
 impl<P: Platform> UI<P> {
-    pub fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>, window_size: Vec2UI) -> Self {
+    pub fn new(device: &Arc<Device<P::GPUBackend>>, window_size: Vec2UI) -> Self {
         let mut imgui = imgui::Context::create();
         imgui.set_platform_name(Some("Dreieck".to_string()));
         imgui.style_mut().use_dark_colors();
 
-        let mut texture_map: HashMap<imgui::TextureId, Arc<<P::GraphicsBackend as Backend>::TextureView>> = HashMap::new();
+        let mut texture_map: HashMap<imgui::TextureId, Arc<TextureView<P::GPUBackend>>> = HashMap::new();
 
         const FONT_TEXTURE_ID: usize = 1;
 
@@ -32,9 +33,8 @@ impl<P: Platform> UI<P> {
             samples: SampleCount::Samples1,
             usage: TextureUsage::COPY_DST | TextureUsage::SAMPLED,
             supports_srgb: false,
-        }, Some("DearImguiFontMap"));
-        let font_data = device.upload_data(font_tex_data.data, MemoryUsage::UncachedRAM, BufferUsage::COPY_SRC);
-        device.init_texture(&font_texture, &font_data, 0, 0);
+        }, Some("DearImguiFontMap")).unwrap();
+        device.init_texture(font_tex_data.data, &font_texture, 0, 0).unwrap();
         device.flush_transfers();
         let font_texture_view = device.create_texture_view(&font_texture, &TextureViewInfo::default(), Some("DearImguiFontMapView"));
 
@@ -87,8 +87,8 @@ impl<P: Platform> UI<P> {
         };
 
         for list in draw.draw_lists() {
-            let vertex_buffer = device.upload_data(list.vtx_buffer(), MemoryUsage::MappableVRAM, BufferUsage::VERTEX);
-            let index_buffer = device.upload_data(list.idx_buffer(), MemoryUsage::MappableVRAM, BufferUsage::INDEX);
+            let vertex_buffer = device.upload_data(list.vtx_buffer(), MemoryUsage::MappableGPUMemory, BufferUsage::VERTEX).unwrap();
+            let index_buffer = device.upload_data(list.idx_buffer(), MemoryUsage::MappableGPUMemory, BufferUsage::INDEX).unwrap();
             let mut draws = Vec::<UIDraw<P::GPUBackend>>::new();
 
             for cmd in list.commands() {
@@ -142,13 +142,13 @@ pub struct UIDrawData<B: GPUBackend> {
 }
 
 pub struct UICmdList<B: GPUBackend> {
-    pub vertex_buffer: Arc<B::Buffer>,
-    pub index_buffer: Arc<B::Buffer>,
+    pub vertex_buffer: Arc<BufferSlice<B>>,
+    pub index_buffer: Arc<BufferSlice<B>>,
     pub draws: Vec<UIDraw<B>>
 }
 
 pub struct UIDraw<B: GPUBackend> {
-    pub texture: Option<Arc<B::TextureView>>,
+    pub texture: Option<Arc<TextureView<B>>>,
     pub vertex_offset: u32,
     pub first_index: u32,
     pub index_count: u32,

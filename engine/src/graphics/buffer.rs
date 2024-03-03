@@ -36,12 +36,29 @@ impl<B: GPUBackend> BufferSlice<B> {
         &self.0.data().buffer
     }
 
-    pub(super) fn map(&self, invalidate: bool) -> Option<*mut c_void> {
-        unsafe { self.handle().map(self.0.range.offset, self.0.range.length, invalidate) }
+    pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
+        self.handle().map(self.0.range.offset, self.0.range.length, invalidate)
     }
 
-    pub(super) fn unmap(&self, flush: bool) {
-        unsafe { self.handle().unmap(self.0.range.offset, self.0.range.length, flush) }
+    pub unsafe fn unmap(&self, flush: bool) {
+        self.handle().unmap(self.0.range.offset, self.0.range.length, flush);
+    }
+
+    pub fn write<T: Clone>(&self, src: &T) -> Option<()> {
+        unsafe {
+            let ptr_opt = self.map(false);
+            if ptr_opt.is_none() {
+                return None;
+            }
+            let ptr = ptr_opt.unwrap();
+            std::ptr::copy(src, std::mem::transmute(ptr), 1);
+            self.unmap(true);
+            return Some(());
+        }
+    }
+
+    pub fn info(&self) -> &BufferInfo {
+        self.0.data().buffer.info()
     }
 }
 
@@ -118,7 +135,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             if memory_usage != MemoryUsage::GPUMemory {
                 mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::ForceCoherent) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
-                    if (mask & i) == 0 {
+                    if (mask & (1 << i)) == 0 {
                         continue;
                     }
                     buffer = unsafe { device.create_buffer(info, i, name) };
@@ -131,7 +148,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             if buffer.is_err() {
                 mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
-                    if (mask & i) == 0 {
+                    if (mask & (1 << i)) == 0 {
                         continue;
                     }
                     buffer = unsafe { device.create_buffer(info, i, name) };
@@ -144,7 +161,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             if buffer.is_err() {
                 mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
-                    if (mask & i) == 0 {
+                    if (mask & (1 << i)) == 0 {
                         continue;
                     }
                     buffer = unsafe { device.create_buffer(info, i, name) };
@@ -159,7 +176,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
                 allocation: None
             })
         } else {
-            let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
+            let allocation = allocator.allocate(memory_usage, &heap_info)?;
             let buffer = unsafe { allocation.data().create_buffer(info, allocation.range.offset, name) }?;
             Ok(BufferAndAllocation {
                 buffer,

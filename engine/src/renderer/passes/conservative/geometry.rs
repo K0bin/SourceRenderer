@@ -389,7 +389,7 @@ impl<P: Platform> GeometryPass<P> {
 
                     setup_frame::<P::GPUBackend>(&mut command_buffer, bindings);
 
-                    command_buffer.upload_dynamic_data_inline(
+                    command_buffer.set_push_constant_data(
                         &[drawable.transform],
                         ShaderType::VertexShader,
                     );

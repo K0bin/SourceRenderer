@@ -17,8 +17,13 @@ struct DeferredDestroyerInner<B: GPUBackend> {
     samplers: Vec<(u64, B::Sampler)>,
     fences: Vec<(u64, B::Fence)>,
     acceleration_structures: Vec<(u64, B::AccelerationStructure)>,
-    buffer_slice_refs: Vec<(u64, Arc<BufferSlice<B>>)>
+    buffer_slice_refs: Vec<(u64, Arc<BufferSlice<B>>)>,
+    graphics_pipelines: Vec<(u64, B::GraphicsPipeline)>,
+    compute_pipelines: Vec<(u64, B::ComputePipeline)>,
+    raytracing_pipelines: Vec<(u64, B::RayTracingPipeline)>,
 }
+
+// TODO: Turn into a union to save memory
 
 impl<B: GPUBackend> DeferredDestroyer<B> {
     pub(crate) fn new() -> Self {
@@ -33,7 +38,10 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
                     samplers: Vec::new(),
                     fences: Vec::new(),
                     acceleration_structures: Vec::new(),
-                    buffer_slice_refs: Vec::new()
+                    buffer_slice_refs: Vec::new(),
+                    graphics_pipelines: Vec::new(),
+                    compute_pipelines: Vec::new(),
+                    raytracing_pipelines: Vec::new()
                 }
             )
         }
@@ -87,6 +95,24 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
         guard.buffer_slice_refs.push((frame, buffer_slice_ref));
     }
 
+    pub fn destroy_graphics_pipeline(&self, pipeline: B::GraphicsPipeline) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.graphics_pipelines.push((frame, pipeline));
+    }
+
+    pub fn destroy_compute_pipeline(&self, pipeline: B::ComputePipeline) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.compute_pipelines.push((frame, pipeline));
+    }
+
+    pub fn destroy_raytracing_pipeline(&self, pipeline: B::RayTracingPipeline) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.raytracing_pipelines.push((frame, pipeline));
+    }
+
     pub fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         guard.current_counter = counter;
@@ -102,6 +128,9 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
         guard.samplers.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.fences.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.allocations.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard.graphics_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard.compute_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard.raytracing_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
     }
 }
 
@@ -116,5 +145,8 @@ impl<B: GPUBackend> Drop for DeferredDestroyer<B> {
         assert!(guard.samplers.is_empty());
         assert!(guard.fences.is_empty());
         assert!(guard.allocations.is_empty());
+        assert!(guard.graphics_pipelines.is_empty());
+        assert!(guard.compute_pipelines.is_empty());
+        assert!(guard.raytracing_pipelines.is_empty());
     }
 }

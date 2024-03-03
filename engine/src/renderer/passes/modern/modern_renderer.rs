@@ -2,24 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    BindingFrequency,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    Queue,
-    Swapchain,
-    SwapchainError,
-    TextureLayout,
-    TextureView,
-    WHOLE_BUFFER, FenceRef,
-};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, CommandBuffer, TextureInfo, Device, Swapchain, TextureLayout, TextureView, WHOLE_BUFFER, SwapchainError, QueueSubmission, QueueType, FinishedCommandBuffer, SharedFenceValuePairRef};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -40,7 +23,7 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
-use crate::graphics::GraphicsContext;
+use crate::graphics::{GraphicsContext, CommandBufferRecorder};
 use crate::input::Input;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::compositing::CompositingPass;
@@ -65,8 +48,7 @@ use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
 pub struct ModernRenderer<P: Platform> {
-    swapchain: Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
-    device: Arc<<P::GPUBackend as GPUBackend>::Device>,
+    device: Arc<Device<P::GPUBackend>>,
     barriers: RendererResources<P::GPUBackend>,
     ui_data: UIDrawData<P::GPUBackend>,
 
@@ -101,11 +83,12 @@ impl<P: Platform> ModernRenderer<P> {
     const USE_FSR2: bool = true;
 
     pub fn new(
-        device: &Arc<<P::GPUBackend as GPUBackend>::Device>,
-        swapchain: &Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
+        context: &mut GraphicsContext<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
+        let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = if Self::USE_FSR2 {
             Vec2UI::new(swapchain.width() / 4 * 3, swapchain.height() / 4 * 3)
         } else {
@@ -169,12 +152,17 @@ impl<P: Platform> ModernRenderer<P> {
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
-        let c_graphics_queue = device.graphics_queue().clone();
-        c_graphics_queue.submit(init_cmd_buffer.finish(), &[], &[], true);
-        rayon::spawn(move || c_graphics_queue.process_submissions());
+        device.submit(QueueType::Graphics, QueueSubmission {
+            command_buffer: init_cmd_buffer.finish(),
+            wait_fences: &[],
+            signal_fences: &[],
+            acquire_swapchain: None,
+            release_swapchain: None
+        });
+        let c_device = device.clone();
+        rayon::spawn(move || c_device.flush(QueueType::Graphics));
 
         Self {
-            swapchain: swapchain.clone(),
             device: device.clone(),
             barriers,
             ui_data: UIDrawData::<P::GPUBackend>::default(),
@@ -198,30 +186,30 @@ impl<P: Platform> ModernRenderer<P> {
 
     fn setup_frame(
         &self,
-        cmd_buf: &mut <P::GPUBackend as GPUBackend>::CommandBuffer,
+        cmd_buf: &mut CommandBufferRecorder<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
-        swapchain: &Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
+        swapchain: &Swapchain<P::GPUBackend>,
         gpu_scene_buffers: SceneBuffers<P::GPUBackend>,
-        camera_buffer: &Arc<<P::GPUBackend as GPUBackend>::Buffer>,
-        camera_history_buffer: &Arc<<P::GPUBackend as GPUBackend>::Buffer>,
+        camera_buffer: BufferRef<P::GPUBackend>,
+        camera_history_buffer: BufferRef<P::GPUBackend>,
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) {
         let view = &scene.views[scene.active_view_index];
 
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, &gpu_scene_buffers.buffer, gpu_scene_buffers.scene_buffer.offset, gpu_scene_buffers.scene_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 1, &gpu_scene_buffers.buffer, gpu_scene_buffers.draws_buffer.offset, gpu_scene_buffers.draws_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 2, &gpu_scene_buffers.buffer, gpu_scene_buffers.meshes_buffer.offset, gpu_scene_buffers.meshes_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, &gpu_scene_buffers.buffer, gpu_scene_buffers.drawables_buffer.offset, gpu_scene_buffers.drawables_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, &gpu_scene_buffers.buffer, gpu_scene_buffers.parts_buffer.offset, gpu_scene_buffers.parts_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 5, &gpu_scene_buffers.buffer, gpu_scene_buffers.materials_buffer.offset, gpu_scene_buffers.materials_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 6, &gpu_scene_buffers.buffer, gpu_scene_buffers.lights_buffer.offset, gpu_scene_buffers.lights_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.scene_buffer.offset, gpu_scene_buffers.scene_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 1, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.draws_buffer.offset, gpu_scene_buffers.draws_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 2, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.meshes_buffer.offset, gpu_scene_buffers.meshes_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.drawables_buffer.offset, gpu_scene_buffers.drawables_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.parts_buffer.offset, gpu_scene_buffers.parts_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 5, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.materials_buffer.offset, gpu_scene_buffers.materials_buffer.length);
+        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 6, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.lights_buffer.offset, gpu_scene_buffers.lights_buffer.length);
 
-        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, &camera_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, camera_buffer, 0, WHOLE_BUFFER);
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
             8,
-            &camera_history_buffer,
+            camera_history_buffer,
             0,
             WHOLE_BUFFER,
         );
@@ -286,8 +274,8 @@ impl<P: Platform> ModernRenderer<P> {
                 cascades: gpu_cascade_data,
             }],
             BufferUsage::CONSTANT,
-        );
-        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 11, &setup_buffer, 0, WHOLE_BUFFER);
+        ).unwrap();
+        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 11, BufferRef::Transient(&setup_buffer), 0, WHOLE_BUFFER);
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct PointLight {
@@ -302,11 +290,11 @@ impl<P: Platform> ModernRenderer<P> {
                 intensity: l.intensity,
             })
             .collect();
-        let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT);
+        let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT).unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
             12,
-            &point_lights_buffer,
+            BufferRef::Transient(&point_lights_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -325,11 +313,11 @@ impl<P: Platform> ModernRenderer<P> {
             })
             .collect();
         let directional_lights_buffer =
-            cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT);
+            cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT).unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
             13,
-            &directional_lights_buffer,
+            BufferRef::Transient(&directional_lights_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -345,16 +333,16 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        swapchain: &std::sync::Arc<<P::GPUBackend as GPUBackend>::Swapchain>,
+        swapchain: &Swapchain<P::GPUBackend>,
     ) {
         // TODO: resize render targets
-        self.swapchain = swapchain.clone();
     }
 
     #[profiling::function]
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
+        swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
         late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
@@ -363,8 +351,10 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) -> Result<(), SwapchainError> {
-        let graphics_queue = self.device.graphics_queue();
-        let mut cmd_buf = graphics_queue.create_command_buffer();
+        //let graphics_queue = self.device.graphics_queue();
+        //let mut cmd_buf = graphics_queue.create_command_buffer();
+
+        let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.views[scene.active_view_index];
 
@@ -378,16 +368,16 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         self.setup_frame(
             &mut cmd_buf,
             scene,
-            &self.swapchain,
+            swapchain,
             scene_buffers,
-            &camera_buffer,
-            &camera_history_buffer,
-            &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
+            BufferRef::Regular(&camera_buffer),
+            BufferRef::Regular(&camera_history_buffer),
+            &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame
         );
 
         let resolution = {
-            let info: std::cell::Ref<'_, sourcerenderer_core::graphics::TextureInfo> = self
+            let info: std::cell::Ref<'_, TextureInfo> = self
                 .barriers
                 .texture_info(VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME);
             Vec2UI::new(info.width, info.height)
@@ -524,25 +514,24 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             HistoryResourceEntry::Current,
         );
 
-        let back_buffer_res = self.swapchain.prepare_back_buffer();
-        if back_buffer_res.is_none() {
+        if swapchain.next_backbuffer().is_err() {
             return Err(SwapchainError::Other);
         }
+        let back_buffer = swapchain.backbuffer();
 
-        let back_buffer = back_buffer_res.unwrap();
-
-        cmd_buf.barrier(&[Barrier::TextureBarrier {
+        cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
             new_sync: BarrierSync::COPY,
             old_access: BarrierAccess::empty(),
             new_access: BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::CopyDst,
-            texture: back_buffer.texture_view.texture(),
+            texture: swapchain.backbuffer_handle(),
             range: BarrierTextureRange::default(),
+            queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        cmd_buf.blit(&*output_texture, 0, 0, back_buffer.texture_view.texture(), 0, 0);
+        cmd_buf.blit(&*output_texture, 0, 0, back_buffer.texture().unwrap(), 0, 0);
         cmd_buf.barrier(&[Barrier::TextureBarrier {
             old_sync: BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
@@ -550,8 +539,9 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: back_buffer.texture_view.texture(),
+            texture: back_buffer.texture().unwrap(),
             range: BarrierTextureRange::default(),
+            queue_ownership: None
         }]);
         std::mem::drop(output_texture);
 
@@ -561,16 +551,21 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             let input_state = input.poll();
             late_latching.before_submit(&input_state, main_view);
         }
-        graphics_queue.submit(
-            cmd_buf.finish(),
-            &[FenceRef::WSIFence(back_buffer.prepare_fence)],
-            &[FenceRef::WSIFence(back_buffer.present_fence)],
-            true,
-        );
-        graphics_queue.present(&self.swapchain, back_buffer.present_fence, true);
 
-        let c_graphics_queue = graphics_queue.clone();
-        rayon::spawn(move || c_graphics_queue.process_submissions());
+        self.device.submit(
+            QueueType::Graphics,
+            QueueSubmission {
+                command_buffer: cmd_buf.finish(),
+                wait_fences: &[],
+                signal_fences: &[],
+                acquire_swapchain: Some(&swapchain),
+                release_swapchain: Some(&swapchain)
+            }
+        );
+        self.device.present(QueueType::Graphics, &swapchain);
+
+        let c_device = self.device.clone();
+        rayon::spawn(move || c_device.flush(QueueType::Graphics));
 
         if let Some(late_latching) = late_latching {
             late_latching.after_submit(&self.device);

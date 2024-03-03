@@ -1,16 +1,17 @@
 use std::{sync::Arc, io::Read};
 
-use sourcerenderer_core::{Vec2, Platform, graphics::*, platform::IO, gpu::GPUBackend};
+use sourcerenderer_core::{Vec2, Platform, platform::IO};
 
 use crate::{renderer::{renderer_resources::HistoryResourceEntry, render_path::RenderPassParameters}, ui::UIDrawData};
+use crate::graphics::*;
 
 pub struct UIPass<P: Platform> {
-    device: Arc<<P::GPUBackend as GPUBackend>::Device>,
-    pipeline: Arc<<P::GPUBackend as GPUBackend>::GraphicsPipeline>,
+    device: Arc<Device<P::GPUBackend>>,
+    pipeline: Arc<GraphicsPipeline<P::GPUBackend>>,
 }
 
 impl<P: Platform> UIPass<P> {
-    pub fn new(device: &Arc<<P::GPUBackend as GPUBackend>::Device>) -> Self {
+    pub fn new(device: &Arc<Device<P::GPUBackend>>) -> Self {
         let vs = {
             let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.vert.spv").unwrap();
             let mut bytes: Vec<u8> = Vec::new();
@@ -112,7 +113,7 @@ impl<P: Platform> UIPass<P> {
 
     pub fn execute(
         &mut self,
-        command_buffer: &mut <P::GPUBackend as GPUBackend>::CommandBuffer,
+        command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         output_texture_name: &str,
         draw: &UIDrawData<P::GPUBackend>
@@ -142,7 +143,7 @@ impl<P: Platform> UIPass<P> {
             scale: Vec2,
             translate: Vec2
         }
-        command_buffer.upload_dynamic_data_inline(&[ImguiPushConstants {
+        command_buffer.set_push_constant_data(&[ImguiPushConstants {
             scale: draw.scale,
             translate: draw.translate,
         }], ShaderType::VertexShader);
@@ -169,8 +170,8 @@ impl<P: Platform> UIPass<P> {
         }, RenderpassRecordingMode::Commands);
 
         for list in &draw.draw_lists {
-            command_buffer.set_index_buffer(&list.index_buffer, 0, if std::mem::size_of::<imgui::DrawIdx>() == 2 { IndexFormat::U16 } else { IndexFormat::U32 });
-            command_buffer.set_vertex_buffer(&list.vertex_buffer, 0);
+            command_buffer.set_index_buffer(BufferRef::Regular(&list.index_buffer), 0, if std::mem::size_of::<imgui::DrawIdx>() == 2 { IndexFormat::U16 } else { IndexFormat::U32 });
+            command_buffer.set_vertex_buffer(BufferRef::Regular(&list.vertex_buffer), 0);
 
             for draw in &list.draws {
                 command_buffer.set_scissors(&[

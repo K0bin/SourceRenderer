@@ -35,7 +35,6 @@ use log::{
     warn,
 };
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::TextureInfo;
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{
     graphics,
@@ -43,6 +42,7 @@ use sourcerenderer_core::{
 };
 
 use crate::math::BoundingBox;
+use crate::graphics::TextureInfo;
 
 struct AssetLoadRequest {
     path: String,

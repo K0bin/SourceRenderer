@@ -1,6 +1,6 @@
 use std::{mem::ManuallyDrop, sync::Arc};
 
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu::{*, Texture as GPUTexture, TextureView as _};
 
 use super::*;
 
@@ -29,7 +29,7 @@ impl<B: GPUBackend> Texture<B> {
             let mut mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
             let mut texture: Result<B::Texture, OutOfMemoryError> = Err(OutOfMemoryError {});
             for i in 0..memory_types.len() as u32 {
-                if (mask & i) == 0 {
+                if (mask & (1 << i)) == 0 {
                     continue;
                 }
                 texture = unsafe { device.create_texture(info, i, name) };
@@ -41,7 +41,48 @@ impl<B: GPUBackend> Texture<B> {
             if texture.is_err() {
                 mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
-                    if (mask & i) == 0 {
+                    if (mask & (1 <<i)) == 0 {
+                        continue;
+                    }
+                    texture = unsafe { device.create_texture(info, i, name) };
+                    if texture.is_ok() {
+                        break;
+                    }
+                }
+            }
+            (texture?, None)
+        } else {
+            let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
+            let texture = unsafe { allocation.data().create_texture(info, allocation.range.offset, name) }?;
+            (texture, Some(allocation))
+        };
+        Ok(Arc::new(Self {
+            device: device.clone(),
+            texture: ManuallyDrop::new(texture),
+            allocation,
+            destroyer: destroyer.clone()
+        }))
+    }
+    pub(super) fn new_from_handle(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, handle: B::Texture, name: Option<&str>) -> Result<Arc<Self>, OutOfMemoryError> {
+        let heap_info = unsafe { device.get_texture_heap_info(info) };
+        let (texture, allocation) = if heap_info.prefer_dedicated_allocation {
+            let memory_types = unsafe { device.memory_type_infos() };
+            let mut mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
+            let mut texture: Result<B::Texture, OutOfMemoryError> = Err(OutOfMemoryError {});
+            for i in 0..memory_types.len() as u32 {
+                if (mask & (1 << i)) == 0 {
+                    continue;
+                }
+                texture = unsafe { device.create_texture(info, i, name) };
+                if texture.is_ok() {
+                    break;
+                }
+            }
+
+            if texture.is_err() {
+                mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
+                for i in 0..memory_types.len() as u32 {
+                    if (mask & (1 <<i)) == 0 {
                         continue;
                     }
                     texture = unsafe { device.create_texture(info, i, name) };
@@ -67,6 +108,16 @@ impl<B: GPUBackend> Texture<B> {
     pub(crate) fn handle(&self) -> &B::Texture {
         &self.texture
     }
+
+    pub fn info(&self) -> &TextureInfo {
+        self.texture.info()
+    }
+}
+
+impl<B: GPUBackend> PartialEq<Texture<B>> for Texture<B> {
+    fn eq(&self, other: &Texture<B>) -> bool {
+        self.texture == other.texture
+    }
 }
 
 pub struct TextureView<B: GPUBackend> {
@@ -84,14 +135,14 @@ impl<B: GPUBackend> Drop for TextureView<B> {
 }
 
 impl<B: GPUBackend> TextureView<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &Arc<Texture<B>>, info: &TextureViewInfo, name: Option<&str>) -> Self {
+    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &Arc<Texture<B>>, info: &TextureViewInfo, name: Option<&str>) -> Arc<Self> {
         let texture_view = unsafe { device.create_texture_view(texture.handle(), info, name) };
-        Self {
+        Arc::new(Self {
             device: device.clone(),
             texture: Some(texture.clone()),
             texture_view: ManuallyDrop::new(texture_view),
             destroyer: destroyer.clone()
-        }
+        })
     }
 
     pub(super) unsafe fn new_from_texture_handle(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, texture: &B::Texture, info: &TextureViewInfo, name: Option<&str>) -> Self {
@@ -106,5 +157,15 @@ impl<B: GPUBackend> TextureView<B> {
 
     pub(super) fn handle(&self) -> &B::TextureView {
         &*self.texture_view
+    }
+
+    pub fn texture(&self) -> Option<&Arc<Texture<B>>> {
+        self.texture.as_ref()
+    }
+}
+
+impl<B: GPUBackend> PartialEq<TextureView<B>> for TextureView<B> {
+    fn eq(&self, other: &TextureView<B>) -> bool {
+        self.handle().info() == other.handle().info()
     }
 }

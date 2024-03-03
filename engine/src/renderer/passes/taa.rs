@@ -1,23 +1,6 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    CommandBuffer,
-    Format,
-    PipelineBinding,
-    SampleCount,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2,
@@ -33,6 +16,7 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
+use crate::graphics::*;
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
     let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -103,7 +87,7 @@ impl TAAPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buf: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buf: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,
@@ -146,11 +130,11 @@ impl TAAPass {
         );
 
         let mut motion_srv =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
         let mut id_view =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
         let mut barycentrics_view =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buf,
@@ -234,7 +218,7 @@ impl TAAPass {
         }
         cmd_buf.finish_binding();
 
-        let info = taa_uav.texture().info();
+        let info = taa_uav.texture().unwrap().info();
         cmd_buf.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
         cmd_buf.end_label();
     }

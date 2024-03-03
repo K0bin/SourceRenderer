@@ -7,39 +7,25 @@ use ash::vk::{
     DeviceOrHostAddressConstKHR,
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    AccelerationStructure,
-    AccelerationStructureInstance,
-    AccelerationStructureSizes,
-    BottomLevelAccelerationStructureInfo,
-    BufferUsage,
-    FrontFace,
-    IndexFormat,
-    TopLevelAccelerationStructureInfo,
-};
 
-use crate::buffer::VkBufferSlice;
-use crate::command::{
-    index_format_to_vk,
-    VkCommandBuffer,
-};
-use crate::format::format_to_vk;
-use crate::raw::RawVkDevice;
-use crate::VkBackend;
+use sourcerenderer_core::gpu::*;
+
+use super::*;
 
 pub struct VkAccelerationStructure {
     device: Arc<RawVkDevice>,
-    buffer: Arc<VkBufferSlice>,
+    buffer: vk::Buffer,
     acceleration_structure: vk::AccelerationStructureKHR,
     va: vk::DeviceAddress,
 }
 
 impl VkAccelerationStructure {
-    pub fn upload_top_level_instances(
-        command_buffer: &mut VkCommandBuffer,
+    pub unsafe fn upload_top_level_instances(
+        target_buffer: &VkBuffer,
+        target_buffer_offset: u64,
         instances: &[AccelerationStructureInstance<VkBackend>],
-    ) -> Arc<VkBufferSlice> {
-        let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances
+    ) {
+        /*let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances
             .iter()
             .map(|instance| {
                 let mut transform_data = [0f32; 12];
@@ -65,12 +51,14 @@ impl VkAccelerationStructure {
                     },
                 }
             })
-            .collect();
+            .collect();*/
 
-        command_buffer.upload_dynamic_data(
-            &instances[..],
-            BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
-        )
+        let instances = Vec::<vk::AccelerationStructureInstanceKHR>::new();
+
+        let size: u64 = std::mem::size_of_val(&instances) as u64;
+        let ptr = target_buffer.map(target_buffer_offset, size, false).expect("Failed to map buffer.") as *mut vk::AccelerationStructureInstanceKHR;
+        ptr.copy_from(instances.as_ptr(), instances.len());
+        target_buffer.unmap(target_buffer_offset, size, true);
     }
 
     pub fn top_level_size(
@@ -115,7 +103,7 @@ impl VkAccelerationStructure {
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &build_info,
-                    &[info.instances.len() as u32],
+                    &[info.instances_count],
                 )
         };
         AccelerationStructureSizes {
@@ -128,9 +116,11 @@ impl VkAccelerationStructure {
     pub fn new_top_level(
         device: &Arc<RawVkDevice>,
         info: &TopLevelAccelerationStructureInfo<VkBackend>,
-        size: usize,
-        target_buffer: &Arc<VkBufferSlice>,
-        scratch_buffer: &Arc<VkBufferSlice>,
+        size: u64,
+        target_buffer: &VkBuffer,
+        target_buffer_offset: u64,
+        scratch_buffer: &VkBuffer,
+        scratch_buffer_offset: u64,
         cmd_buffer: &vk::CommandBuffer,
     ) -> Self {
         let rt = device.rt.as_ref().unwrap();
@@ -139,8 +129,8 @@ impl VkAccelerationStructure {
             rt.acceleration_structure.create_acceleration_structure(
                 &vk::AccelerationStructureCreateInfoKHR {
                     create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
-                    buffer: *target_buffer.buffer().handle(),
-                    offset: target_buffer.offset() as vk::DeviceSize,
+                    buffer: target_buffer.handle(),
+                    offset: target_buffer_offset as vk::DeviceSize,
                     size: size as vk::DeviceSize,
                     ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
                     device_address: 0,
@@ -164,7 +154,7 @@ impl VkAccelerationStructure {
         let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
             array_of_pointers: vk::FALSE,
             data: DeviceOrHostAddressConstKHR {
-                device_address: info.instances_buffer.va().unwrap(),
+                device_address: info.instances_buffer.va_offset(info.instances_buffer_offset).unwrap(),
             },
             ..Default::default()
         };
@@ -187,7 +177,7 @@ impl VkAccelerationStructure {
             p_geometries: &geometry as *const vk::AccelerationStructureGeometryKHR,
             pp_geometries: std::ptr::null(),
             scratch_data: vk::DeviceOrHostAddressKHR {
-                device_address: scratch_buffer.va().unwrap(),
+                device_address: scratch_buffer.va_offset(scratch_buffer_offset).unwrap(),
             },
             ..Default::default()
         };
@@ -197,7 +187,7 @@ impl VkAccelerationStructure {
                 *cmd_buffer,
                 &[build_info],
                 &[&[vk::AccelerationStructureBuildRangeInfoKHR {
-                    primitive_count: info.instances.len() as u32,
+                    primitive_count: info.instances_count,
                     primitive_offset: 0,
                     first_vertex: 0,
                     transform_offset: 0,
@@ -206,7 +196,7 @@ impl VkAccelerationStructure {
         }
 
         Self {
-            buffer: target_buffer.clone(),
+            buffer: target_buffer.handle(),
             device: device.clone(),
             acceleration_structure,
             va,
@@ -310,9 +300,11 @@ impl VkAccelerationStructure {
     pub fn new_bottom_level(
         device: &Arc<RawVkDevice>,
         info: &BottomLevelAccelerationStructureInfo<VkBackend>,
-        size: usize,
-        target_buffer: &Arc<VkBufferSlice>,
-        scratch_buffer: &Arc<VkBufferSlice>,
+        size: u64,
+        target_buffer: &VkBuffer,
+        target_buffer_offset: u64,
+        scratch_buffer: &VkBuffer,
+        scratch_buffer_offset: u64,
         cmd_buffer: &vk::CommandBuffer,
     ) -> Self {
         let rt = device.rt.as_ref().unwrap();
@@ -321,8 +313,8 @@ impl VkAccelerationStructure {
             rt.acceleration_structure.create_acceleration_structure(
                 &vk::AccelerationStructureCreateInfoKHR {
                     create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
-                    buffer: *target_buffer.buffer().handle(),
-                    offset: target_buffer.offset() as vk::DeviceSize,
+                    buffer: target_buffer.handle(),
+                    offset: target_buffer_offset as vk::DeviceSize,
                     size: size as vk::DeviceSize,
                     ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
                     device_address: 0,
@@ -353,7 +345,7 @@ impl VkAccelerationStructure {
                     + info.vertex_position_offset as vk::DeviceSize,
             },
             vertex_stride: info.vertex_stride as vk::DeviceSize,
-            max_vertex: info.vertex_buffer.length() as u32 / info.vertex_stride,
+            max_vertex: info.max_vertex,
             index_type: index_format_to_vk(info.index_format),
             index_data: vk::DeviceOrHostAddressConstKHR {
                 device_address: info
@@ -415,7 +407,7 @@ impl VkAccelerationStructure {
             p_geometries: std::ptr::null(),
             pp_geometries: geometries.as_ptr(),
             scratch_data: vk::DeviceOrHostAddressKHR {
-                device_address: scratch_buffer.va().unwrap(),
+                device_address: scratch_buffer.va_offset(scratch_buffer_offset as u64).unwrap(),
             },
             ..Default::default()
         };
@@ -428,7 +420,7 @@ impl VkAccelerationStructure {
             );
         }
         Self {
-            buffer: target_buffer.clone(),
+            buffer: target_buffer.handle(),
             device: device.clone(),
             acceleration_structure,
             va,
@@ -439,8 +431,8 @@ impl VkAccelerationStructure {
         self.va
     }
 
-    pub(crate) fn handle(&self) -> &vk::AccelerationStructureKHR {
-        &self.acceleration_structure
+    pub(crate) fn handle(&self) -> vk::AccelerationStructureKHR {
+        self.acceleration_structure
     }
 }
 

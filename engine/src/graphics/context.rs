@@ -67,7 +67,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
   }
 
-  pub fn get_command_buffer(&mut self) -> CommandBufferRecorder<B> {
+  pub fn get_command_buffer(&mut self, queue_type: QueueType) -> CommandBufferRecorder<B> {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
@@ -87,11 +87,11 @@ impl<B: GPUBackend> GraphicsContext<B> {
         &self.destroyer
     )));
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.command_pool.sender.clone());
-    recorder.begin(None, self.current_frame);
+    recorder.begin(None);
     recorder
   }
 
-  pub fn get_inner_command_buffer(&mut self, inheritance: &<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance) -> CommandBufferRecorder<B> {
+  pub fn get_inner_command_buffer(&self, inheritance: &<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance) -> CommandBufferRecorder<B> {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
@@ -111,19 +111,25 @@ impl<B: GPUBackend> GraphicsContext<B> {
         &self.destroyer
     )));
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.secondary_command_pool.sender.clone());
-    recorder.begin(Some(inheritance), self.current_frame);
+    recorder.begin(Some(inheritance));
     recorder
   }
 
   fn get_thread_context(&self) -> &ThreadContext<B> {
     self.thread_contexts.get_or(|| ThreadContext::new(&self.device, &self.allocator, &self.destroyer, self.prerendered_frames))
   }
+
+  pub fn prerendered_frames(&self) -> u32 {
+    self.prerendered_frames
+  }
 }
 
 impl<B: GPUBackend> Drop for GraphicsContext<B> {
     fn drop(&mut self) {
-        unsafe {
-            self.fence.await_value(self.current_frame - 1);
+        if self.current_frame > 0 {
+            unsafe {
+                self.fence.await_value(self.current_frame - 1);
+            }
         }
 
         unsafe { ManuallyDrop::drop(&mut self.thread_contexts) };

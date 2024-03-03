@@ -92,6 +92,11 @@ impl<B: GPUBackend> Swapchain<B> {
         &self.views[idx as usize]
     }
 
+    pub fn backbuffer_handle(&self) -> &B::Texture {
+        let idx = self.swapchain.backbuffer_index();
+        self.swapchain.backbuffer(idx)
+    }
+
     pub fn transform(&self) -> Matrix4 {
         self.swapchain.transform()
     }
@@ -102,5 +107,9 @@ impl<B: GPUBackend> Swapchain<B> {
 
     pub fn height(&self) -> u32 {
         self.swapchain.height()
+    }
+
+    pub fn handle(&self) -> &B::Swapchain {
+        &self.swapchain
     }
 }

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::Backend;
 use sourcerenderer_core::Vec3;
+
+use crate::graphics::*;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -26,11 +26,11 @@ pub struct CullingPointLight {
     pub radius: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RendererDirectionalLight<B: GPUBackend> {
     pub direction: Vec3,
     pub intensity: f32,
-    pub shadow_map: AtomicRefCell<Option<Arc<crate::graphics::Texture<B>>>>,
+    pub shadow_map: AtomicRefCell<Option<Arc<Texture<B>>>>,
 }
 
 impl<B: GPUBackend> RendererDirectionalLight<B> {
@@ -43,11 +43,11 @@ impl<B: GPUBackend> RendererDirectionalLight<B> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RendererPointLight<B: GPUBackend> {
     pub position: Vec3,
     pub intensity: f32,
-    pub shadow_map: AtomicRefCell<Option<Arc<crate::graphics::Texture<B>>>>,
+    pub shadow_map: AtomicRefCell<Option<Arc<Texture<B>>>>,
 }
 
 impl<B: GPUBackend> RendererPointLight<B> {

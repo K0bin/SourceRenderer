@@ -12,37 +12,32 @@ extern crate rayon;
 extern crate smallvec;
 extern crate thread_local;
 
+mod raw;
+
+// pub use self::bindless::*;
+//pub use self::query::*;
+pub use self::queue::*;
 pub use self::{
-    adapter::{
-        VkAdapter,
-        VkAdapterExtensionSupport,
-    },
-    backend::VkBackend,
-    buffer::VkBuffer,
-    command::{
-        VkCommandBufferRecorder,
-        VkCommandBufferSubmission,
-        VkCommandPool,
-    },
-    device::VkDevice,
-    instance::VkInstance,
-    pipeline::VkPipeline,
-    queue::VkQueue,
-    renderpass::{
-        VkFrameBuffer,
-        VkRenderPass,
-    },
-    surface::VkSurface,
-    swapchain::VkSwapchain,
-    sync::VkTimelineSemaphore,
-    texture::VkTexture,
+    adapter::*,
+    backend::*,
+    buffer::*,
+    command::*,
+    descriptor::*,
+    device::*,
+    format::*,
+    instance::*,
+    pipeline::*,
+    renderpass::*,
+    shared::*,
+    surface::*,
+    swapchain::*,
+    sync::*,
+    texture::*,
+    heap::*,
+    bindless::*,
+    rt::*,
 };
-pub(crate) use self::{
-    lifetime_tracker::VkLifetimeTrackers,
-    query::*,
-    shared::VkShared,
-    thread_manager::VkThreadManager,
-};
+pub(crate) use crate::raw::*;
 
 mod adapter;
 mod backend;
@@ -53,11 +48,9 @@ mod descriptor;
 mod device;
 mod format;
 mod instance;
-mod lifetime_tracker;
 mod pipeline;
-mod query;
+//mod query; // NEEDS REDESIGN
 mod queue;
-mod raw;
 mod renderpass;
 mod rt;
 mod shared;
@@ -65,7 +58,4 @@ mod surface;
 mod swapchain;
 mod sync;
 mod texture;
-mod thread_manager;
-mod transfer;
-
-pub mod new;
+mod heap;

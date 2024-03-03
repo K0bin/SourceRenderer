@@ -1,24 +1,6 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    CommandBuffer,
-    Format,
-    PipelineBinding,
-    SampleCount,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
@@ -34,6 +16,8 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
+
+use crate::graphics::*;
 
 pub struct SsrPass {
     pipeline: ComputePipelineHandle,
@@ -72,7 +56,7 @@ impl SsrPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GPUBackend as GPUBackend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,
@@ -115,9 +99,9 @@ impl SsrPass {
         );
 
         let mut ids =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
         let mut barycentrics =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
 
         if visibility_buffer {
             ids = Some(params.resources.access_view(
@@ -173,7 +157,7 @@ impl SsrPass {
             );
         }
         cmd_buffer.finish_binding();
-        let ssr_info = ssr_uav.texture().info();
+        let ssr_info = ssr_uav.texture().unwrap().info();
         cmd_buffer.dispatch(
             (ssr_info.width + 7) / 8,
             (ssr_info.height + 7) / 8,

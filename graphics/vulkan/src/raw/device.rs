@@ -10,7 +10,7 @@ use parking_lot::{
     ReentrantMutexGuard,
 };
 
-use crate::queue::VkQueueInfo;
+use crate::VkQueueInfo;
 use crate::raw::RawVkInstance;
 
 bitflags! {
@@ -46,6 +46,7 @@ pub struct RawVkDevice {
     pub supports_d24: bool,
     pub timeline_semaphores: ash::extensions::khr::TimelineSemaphore,
     pub synchronization2: ash::extensions::khr::Synchronization2,
+    pub maintenance4: Option<ash::extensions::khr::Maintenance4>,
     pub properties: vk::PhysicalDeviceProperties,
 }
 
@@ -122,6 +123,12 @@ impl RawVkDevice {
         let timeline_semaphores = ash::extensions::khr::TimelineSemaphore::new(&instance, &device);
         let synchronization2 = ash::extensions::khr::Synchronization2::new(&instance, &device);
 
+        let maintenance4 = if features.intersects(VkFeatures::MAINTENANCE4) {
+            Some(ash::extensions::khr::Maintenance4::new(&instance, &device))
+        } else {
+            None
+        };
+
         Self {
             device,
             allocator,
@@ -141,6 +148,7 @@ impl RawVkDevice {
             timeline_semaphores,
             synchronization2,
             properties: properties.properties,
+            maintenance4
         }
     }
 

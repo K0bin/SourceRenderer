@@ -4,18 +4,13 @@ use std::sync::{
 };
 
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Buffer,
-    BufferInfo,
-    BufferUsage,
-    Device,
-    MemoryUsage,
-};
+
 use sourcerenderer_core::{
     Matrix4,
     Vec4,
 };
+
+use crate::graphics::*;
 
 use super::drawable::{
     make_camera_proj,
@@ -45,23 +40,23 @@ struct LateLatchCamerabuffer {
     fov: f32,
 }
 
-pub struct LateLatchCamera<B: Backend> {
+pub struct LateLatchCamera<B: GPUBackend> {
     fps_camera: Mutex<FPSCamera>,
-    buffer: AtomicRefCell<Arc<B::Buffer>>,
-    history_buffer: AtomicRefCell<Arc<B::Buffer>>,
+    buffer: AtomicRefCell<Arc<BufferSlice<B>>>,
+    history_buffer: AtomicRefCell<Arc<BufferSlice<B>>>,
     aspect_ratio: f32,
     fov: f32,
     z_near: f32,
     z_far: f32,
 }
 
-impl<B: Backend> LateLatching<B> for LateLatchCamera<B> {
-    fn buffer(&self) -> Arc<B::Buffer> {
+impl<B: GPUBackend> LateLatching<B> for LateLatchCamera<B> {
+    fn buffer(&self) -> Arc<BufferSlice<B>> {
         let buffer_ref = self.buffer.borrow();
         buffer_ref.clone()
     }
 
-    fn history_buffer(&self) -> Option<Arc<B::Buffer>> {
+    fn history_buffer(&self) -> Option<Arc<BufferSlice<B>>> {
         let history_buffer_ref = self.history_buffer.borrow();
         Some(history_buffer_ref.clone())
     }
@@ -76,36 +71,38 @@ impl<B: Backend> LateLatching<B> for LateLatchCamera<B> {
         let view = make_camera_view(position, rotation);
         let proj = make_camera_proj(self.fov, self.aspect_ratio, self.z_near, self.z_far);
 
-        let buffer_mut = self.buffer.borrow_mut();
-        let mut buffer_data = buffer_mut
-            .map_mut::<LateLatchCamerabuffer>()
-            .expect("Failed to map camera buffer");
-        buffer_data.view = view;
-        buffer_data.proj = proj;
-        buffer_data.inv_view = view.try_inverse().unwrap();
-        buffer_data.inv_proj = proj.try_inverse().unwrap();
-        buffer_data.view_proj = proj * view;
-        buffer_data.position = Vec4::new(position.x, position.y, position.z, 1f32);
-        buffer_data.inv_proj_view = view.try_inverse().unwrap() * proj.try_inverse().unwrap();
-        buffer_data.z_near = self.z_near;
-        buffer_data.z_far = self.z_far;
-        buffer_data.aspect_ratio = self.aspect_ratio;
-        buffer_data.fov = self.fov;
+        let buffer_mut = self.buffer.borrow();
+
+        let buffer_data = LateLatchCamerabuffer {
+            view: view,
+            proj: proj,
+            inv_view: view.try_inverse().unwrap(),
+            inv_proj: proj.try_inverse().unwrap(),
+            view_proj: proj * view,
+            position: Vec4::new(position.x, position.y, position.z, 1f32),
+            inv_proj_view: view.try_inverse().unwrap() * proj.try_inverse().unwrap(),
+            z_near: self.z_near,
+            z_far: self.z_far,
+            aspect_ratio: self.aspect_ratio,
+            fov: self.fov
+        };
+        buffer_mut.write(&buffer_data);
+
     }
 
-    fn after_submit(&self, device: &B::Device) {
+    fn after_submit(&self, device: &crate::graphics::Device<B>) {
         let mut buffer_mut = self.buffer.borrow_mut();
         let mut history_buffer_mut = self.history_buffer.borrow_mut();
-        *history_buffer_mut = std::mem::replace(&mut buffer_mut, Self::create_buffer(device));
+        *history_buffer_mut = std::mem::replace(&mut buffer_mut, Self::create_buffer(device).expect("Failed to allocate camera buffer"));
     }
 }
 
-impl<B: Backend> LateLatchCamera<B> {
-    pub fn new(device: &B::Device, aspect_ratio: f32, fov: f32) -> Self {
+impl<B: GPUBackend> LateLatchCamera<B> {
+    pub fn new(device: &Device<B>, aspect_ratio: f32, fov: f32) -> Self {
         Self {
             fps_camera: Mutex::new(FPSCamera::new()),
-            buffer: AtomicRefCell::new(Self::create_buffer(device)),
-            history_buffer: AtomicRefCell::new(Self::create_buffer(device)),
+            buffer: AtomicRefCell::new(Self::create_buffer(device).expect("Failed to allocate camera buffer")),
+            history_buffer: AtomicRefCell::new(Self::create_buffer(device).expect("Failed to allocate camera buffer")),
             aspect_ratio,
             fov,
             z_near: 0.1f32,
@@ -113,13 +110,14 @@ impl<B: Backend> LateLatchCamera<B> {
         }
     }
 
-    fn create_buffer(device: &B::Device) -> Arc<B::Buffer> {
+    fn create_buffer(device: &Device<B>) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
         device.create_buffer(
             &BufferInfo {
-                size: std::mem::size_of::<LateLatchCamerabuffer>(),
+                size: std::mem::size_of::<LateLatchCamerabuffer>() as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
+                sharing_mode: QueueSharingMode::Concurrent
             },
-            MemoryUsage::UncachedRAM,
+            MemoryUsage::MainMemoryWriteCombined,
             None,
         )
     }

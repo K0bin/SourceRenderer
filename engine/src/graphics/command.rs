@@ -1,4 +1,5 @@
 use std::{marker::PhantomData, sync::Arc};
+use std::hash::Hash;
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
@@ -27,6 +28,17 @@ pub use sourcerenderer_core::gpu::{
 };
 
 pub enum Barrier<'a, B: GPUBackend> {
+  RawTextureBarrier {
+    old_sync: BarrierSync,
+    new_sync: BarrierSync,
+    old_layout: TextureLayout,
+    new_layout: TextureLayout,
+    old_access: BarrierAccess,
+    new_access: BarrierAccess,
+    texture: &'a B::Texture,
+    range: BarrierTextureRange,
+    queue_ownership: Option<QueueOwnershipTransfer>
+  },
   TextureBarrier {
     old_sync: BarrierSync,
     new_sync: BarrierSync,
@@ -52,6 +64,13 @@ pub enum Barrier<'a, B: GPUBackend> {
     old_access: BarrierAccess,
     new_access: BarrierAccess,
   }
+}
+
+#[derive(Clone)]
+pub enum PipelineBinding<'a, B: GPUBackend> {
+    Graphics(&'a super::GraphicsPipeline<B>),
+    Compute(&'a super::ComputePipeline<B>),
+    RayTracing(&'a super::RayTracingPipeline<B>),
 }
 
 pub struct CommandBuffer<B: GPUBackend> {
@@ -80,6 +99,17 @@ pub enum BufferRef<'a, B: GPUBackend> {
     Transient(&'a TransientBufferSlice<B>),
     Regular(&'a Arc<BufferSlice<B>>)
 }
+
+impl<'a, B: GPUBackend> Clone for BufferRef<'a, B> {
+    fn clone(&self) -> Self {
+        match self {
+            BufferRef::Regular(b) => BufferRef::Regular(b),
+            BufferRef::Transient(t) => BufferRef::Transient(t)
+        }
+    }
+}
+
+impl<'a, B: GPUBackend> Copy for BufferRef<'a, B> {}
 
 impl<B: GPUBackend> CommandBufferRecorder<B> {
     pub(super) fn new(
@@ -135,7 +165,12 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
 
     pub fn set_pipeline(&mut self, pipeline: PipelineBinding<B>) {
         unsafe {
-            self.inner.cmd_buffer.set_pipeline(pipeline);
+            let gpu_pipeline_binding = match pipeline {
+                PipelineBinding::Graphics(p) => gpu::PipelineBinding::Graphics(p.handle()),
+                PipelineBinding::Compute(p) => gpu::PipelineBinding::Compute(p.handle()),
+                PipelineBinding::RayTracing(p) => gpu::PipelineBinding::RayTracing(p.handle())
+            };
+            self.inner.cmd_buffer.set_pipeline(gpu_pipeline_binding);
         }
     }
 
@@ -171,15 +206,31 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
-    pub fn draw_indexed_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u32, count_buffer: &B::Buffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    pub fn draw_indexed_indirect(&mut self, draw_buffer: BufferRef<B>, draw_buffer_offset: u32, count_buffer: BufferRef<B>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
         unsafe {
-            self.inner.cmd_buffer.draw_indexed_indirect(draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
+            let draw_buffer_handle = match draw_buffer {
+                BufferRef::Regular(b) => b.handle(),
+                BufferRef::Transient(b) => b.handle()
+            };
+            let count_buffer_handle = match count_buffer {
+                BufferRef::Regular(b) => b.handle(),
+                BufferRef::Transient(b) => b.handle()
+            };
+            self.inner.cmd_buffer.draw_indexed_indirect(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
         }
     }
 
-    pub fn draw_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u32, count_buffer: &B::Buffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    pub fn draw_indirect(&mut self, draw_buffer: BufferRef<B>, draw_buffer_offset: u32, count_buffer: BufferRef<B>, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
         unsafe {
-            self.inner.cmd_buffer.draw_indirect(draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
+            let draw_buffer_handle = match draw_buffer {
+                BufferRef::Regular(b) => b.handle(),
+                BufferRef::Transient(b) => b.handle()
+            };
+            let count_buffer_handle = match count_buffer {
+                BufferRef::Regular(b) => b.handle(),
+                BufferRef::Transient(b) => b.handle()
+            };
+            self.inner.cmd_buffer.draw_indirect(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
         }
     }
 
@@ -275,6 +326,12 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
+    pub fn bind_acceleration_structure(&mut self, frequency: BindingFrequency, binding: u32, acceleration_structure: &AccelerationStructure<B>) {
+        unsafe {
+            self.inner.cmd_buffer.bind_acceleration_structure(frequency, binding, acceleration_structure.handle());
+        }
+    }
+
     pub fn finish_binding(&mut self) {
         unsafe {
             self.inner.cmd_buffer.finish_binding();
@@ -305,9 +362,15 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
-    pub fn begin(&mut self, inheritance: Option<&<B::CommandBuffer as sourcerenderer_core::gpu::CommandBuffer<B>>::CommandBufferInheritance>, frame: u64) {
+    pub fn begin(&mut self, inheritance: Option<&<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance>) {
         unsafe {
-            self.inner.cmd_buffer.begin(inheritance, frame)
+            self.inner.cmd_buffer.begin(inheritance)
+        }
+    }
+
+    pub fn inheritance(&self) -> &<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance {
+        unsafe {
+            self.inner.cmd_buffer.inheritance()
         }
     }
 
@@ -360,18 +423,34 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
 
     pub fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Result<TransientBufferSlice<B>, OutOfMemoryError>
     where T: 'static + Send + Sync + Sized + Clone {
+        let required_size = std::mem::size_of_val(data) as u64;
+        let size = align_up_64(required_size.max(64), 64);
+
         let buffer = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
-            size: std::mem::size_of_val(data) as u64,
+            size: size,
             usage,
             sharing_mode: QueueSharingMode::Exclusive
         }, MemoryUsage::MappableGPUMemory, None)?;
 
         unsafe {
-           let ptr = buffer.map(false).unwrap() as *mut T;
-            ptr.copy_from(data.as_ptr(), data.len());
+            let ptr_void = buffer.map(false).unwrap();
+
+            if required_size < size {
+                let ptr_u8 = (ptr_void as *mut u8).offset(size as isize);
+                std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
+            }
+
+            if required_size != 0 {
+                let ptr = ptr_void as *mut T;
+                ptr.copy_from(data.as_ptr(), data.len());
+            }
             buffer.unmap(true);
         }
         Ok(buffer)
+    }
+
+    pub fn create_temporary_buffer(&mut self, info: &BufferInfo, usage: MemoryUsage) -> Result<TransientBufferSlice<B>, OutOfMemoryError> {
+        self.inner.transient_buffer_allocator.get_slice(info, usage, None)
     }
 
     pub fn barrier(&mut self, barriers: &[Barrier<B>]) {
@@ -432,12 +511,67 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
                     new_sync: *new_sync,
                     old_access: *old_access,
                     new_access: *new_access,
-                }
+                },
+                Barrier::RawTextureBarrier {
+                    old_sync,
+                    new_sync,
+                    old_layout,
+                    new_layout,
+                    old_access,
+                    new_access,
+                    texture,
+                    range,
+                    queue_ownership
+                } => gpu::Barrier::TextureBarrier {
+                    old_sync: *old_sync,
+                    new_sync: *new_sync,
+                    old_layout: *old_layout,
+                    new_layout: *new_layout,
+                    old_access: *old_access,
+                    new_access: *new_access,
+                    texture: *texture,
+                    range: range.clone(),
+                    queue_ownership: queue_ownership.clone()
+                },
             }
         }).collect();
 
         unsafe {
             self.inner.cmd_buffer.barrier(&core_barriers);
+        }
+    }
+
+    pub fn flush_barriers(&mut self) {
+        // TODO batch barriers
+    }
+
+    pub fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode) {
+        let attachments: SmallVec<[gpu::RenderPassAttachment<B>; 5]> = renderpass_info.attachments.iter().map(|a| gpu::RenderPassAttachment {
+            view: match a.view {
+                RenderPassAttachmentView::RenderTarget(rt) => gpu::RenderPassAttachmentView::RenderTarget(rt.handle()),
+                RenderPassAttachmentView::DepthStencil(ds) => gpu::RenderPassAttachmentView::DepthStencil(ds.handle()),
+            },
+            load_op: a.load_op,
+            store_op: a.store_op
+        }).collect();
+
+        unsafe {
+            self.inner.cmd_buffer.begin_render_pass(&gpu::RenderPassBeginInfo {
+                attachments: &attachments,
+                subpasses: renderpass_info.subpasses
+            }, recording_mode);
+        }
+    }
+
+    pub fn advance_subpass(&mut self) {
+        unsafe {
+            self.inner.cmd_buffer.advance_subpass();
+        }
+    }
+
+    pub fn end_render_pass(&mut self) {
+        unsafe {
+            self.inner.cmd_buffer.end_render_pass();
         }
     }
 
@@ -532,22 +666,32 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         Some(AccelerationStructure::new(acceleration_structure, buffer, &self.inner.destroyer))
     }
 
-    pub fn create_top_level_acceleration_structure(&mut self, info: &TopLevelAccelerationStructureInfo<B>, mut use_preallocated_scratch: bool) -> Option<AccelerationStructure<B>> {
+    pub fn create_top_level_acceleration_structure(&mut self, info: &super::rt::TopLevelAccelerationStructureInfo<B>, mut use_preallocated_scratch: bool) -> Option<AccelerationStructure<B>> {
         let core_instances: SmallVec::<[gpu::AccelerationStructureInstance<B>; 16]> = info.instances.iter().map(|i| gpu::AccelerationStructureInstance {
             acceleration_structure: i.acceleration_structure.handle(),
             transform: i.transform.clone(),
             front_face: i.front_face
         }).collect();
 
-        let instances_buffer_size = self.inner.device.get_top_level_instances_buffer_size(&core_instances);
+        let required_instances_buffer_size = self.inner.device.get_top_level_instances_buffer_size(&core_instances);
+        let instances_buffer_size = required_instances_buffer_size.max(16);
 
         let instances_buffer = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
             size: instances_buffer_size,
             usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
             sharing_mode: QueueSharingMode::Exclusive
-        }, MemoryUsage::GPUMemory, None).ok()?;
+        }, MemoryUsage::MappableGPUMemory, None).ok()?;
+        if required_instances_buffer_size < instances_buffer_size {
+            unsafe {
+                let ptr = instances_buffer.map(false).unwrap();
+                std::ptr::write_bytes(ptr as *mut u8, 0u8, (instances_buffer_size - required_instances_buffer_size) as usize);
+                instances_buffer.unmap(true);
+            }
+        }
 
-        unsafe { self.inner.cmd_buffer.upload_top_level_instances(&core_instances, instances_buffer.handle(), instances_buffer.offset()); }
+        if required_instances_buffer_size != 0 {
+            unsafe { self.inner.cmd_buffer.upload_top_level_instances(&core_instances, instances_buffer.handle(),  instances_buffer.offset()); }
+        }
 
         let core_info = gpu::TopLevelAccelerationStructureInfo {
             instances_buffer: instances_buffer.handle(),
@@ -600,7 +744,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         } else {
             _owned_scratch = Some(self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
                 size: size.build_scratch_size,
-                usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+                usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
                 sharing_mode: QueueSharingMode::Exclusive
             }, MemoryUsage::GPUMemory, None).ok()?);
             (_owned_scratch.as_ref().unwrap(), 0)
@@ -621,6 +765,21 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     pub fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
         unsafe {
             self.inner.cmd_buffer.trace_ray(width, height, depth);
+        }
+    }
+
+    pub fn execute_inner(&mut self, mut submission: Vec<FinishedCommandBuffer<B>>) {
+        let raw_submissions: SmallVec<[&B::CommandBuffer; 16]> = submission.iter()
+            .map(|c| c.inner.handle())
+            .collect();
+        unsafe {
+            self.inner.cmd_buffer.execute_inner(&raw_submissions[..]);
+        }
+        std::mem::drop(raw_submissions);
+
+        for s in submission.drain(..) {
+            let FinishedCommandBuffer { inner, sender } = s;
+            sender.send(inner).expect("Failed to reuse inner command buffer");
         }
     }
 }

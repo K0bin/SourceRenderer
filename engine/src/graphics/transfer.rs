@@ -1,6 +1,6 @@
 use std::{sync::{Mutex, Arc}, collections::VecDeque};
 
-use sourcerenderer_core::{gpu::*, Vec3UI};
+use sourcerenderer_core::{gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _}, Vec3UI};
 use sourcerenderer_core::gpu;
 
 use super::*;
@@ -18,7 +18,7 @@ pub enum OwnedBarrier<B: GPUBackend> {
     new_layout: TextureLayout,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    texture: Arc<super::Texture<B>>,
+    texture: Arc<Texture<B>>,
     range: BarrierTextureRange,
     queue_ownership: Option<QueueOwnershipTransfer>
   },
@@ -37,13 +37,13 @@ pub enum OwnedBarrier<B: GPUBackend> {
 enum TransferCopy<B: GPUBackend> {
   BufferToImage {
       src: Arc<BufferSlice<B>>,
-      dst: Arc<super::Texture<B>>,
-      region: BufferTextureCopyRegion
+      dst: Arc<Texture<B>>,
+      region: gpu::BufferTextureCopyRegion
   },
   BufferToBuffer {
       src: Arc<BufferSlice<B>>,
       dst: Arc<BufferSlice<B>>,
-      region: BufferCopyRegion
+      region: gpu::BufferCopyRegion
   },
 }
 
@@ -75,11 +75,11 @@ pub struct TransferCommandBuffer<B: GPUBackend> {
 impl<B: GPUBackend> Transfer<B> {
     pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>) -> Self {
         let graphics_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
-        let graphics_pool = unsafe { device.graphics_queue().create_command_pool(CommandPoolType::CommandBuffers, CommandPoolFlags::INDIVIDUAL_RESET) };
+        let graphics_pool = unsafe { device.graphics_queue().create_command_pool(gpu::CommandPoolType::CommandBuffers, gpu::CommandPoolFlags::INDIVIDUAL_RESET) };
 
         let transfer_commands = device.transfer_queue().map(|transfer_queue| {
             let transfer_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
-            let transfer_pool = unsafe { transfer_queue.create_command_pool(CommandPoolType::CommandBuffers, CommandPoolFlags::INDIVIDUAL_RESET) };
+            let transfer_pool = unsafe { transfer_queue.create_command_pool(gpu::CommandPoolType::CommandBuffers, gpu::CommandPoolFlags::INDIVIDUAL_RESET) };
             TransferCommands::<B> {
                 pre_barriers: Vec::new(),
                 copies: Vec::new(),
@@ -122,7 +122,7 @@ impl<B: GPUBackend> Transfer<B> {
 
     pub fn init_texture(
       &self,
-      texture: &Arc<super::Texture<B>>,
+      texture: &Arc<Texture<B>>,
       src_buffer: &Arc<BufferSlice<B>>,
       mip_level: u32,
       array_layer: u32,
@@ -154,11 +154,11 @@ impl<B: GPUBackend> Transfer<B> {
           src: src_buffer.clone(),
           dst: texture.clone(),
           region:
-            BufferTextureCopyRegion {
+          gpu::BufferTextureCopyRegion {
                 buffer_offset: buffer_offset + src_buffer.offset(),
                 buffer_row_pitch: 0u64,
                 buffer_slice_pitch: 0u64,
-                texture_subresource: TextureSubresource {
+                texture_subresource: gpu::TextureSubresource {
                   array_layer, mip_level
                 },
                 texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
@@ -207,7 +207,7 @@ impl<B: GPUBackend> Transfer<B> {
       guard.graphics.copies.push(TransferCopy::BufferToBuffer {
         src: src_buffer.clone(),
         dst: dst_buffer.clone(),
-        region: BufferCopyRegion {
+        region: gpu::BufferCopyRegion {
           src_offset,
           dst_offset,
           size: actual_length
@@ -279,11 +279,11 @@ impl<B: GPUBackend> Transfer<B> {
               src: src_buffer.clone(),
               dst: texture.clone(),
               region:
-                BufferTextureCopyRegion {
+                gpu::BufferTextureCopyRegion {
                     buffer_offset: buffer_offset + src_buffer.offset(),
                     buffer_row_pitch: 0u64,
                     buffer_slice_pitch: 0u64,
-                    texture_subresource: TextureSubresource {
+                    texture_subresource: gpu::TextureSubresource {
                       array_layer, mip_level
                     },
                     texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
@@ -408,7 +408,7 @@ impl<B: GPUBackend> Transfer<B> {
         cmd_buffer.used_textures.extend(commands.used_textures.drain(..));
 
         unsafe {
-          cmd_buffer.cmd_buffer.begin(None, 0u64);
+          cmd_buffer.cmd_buffer.begin(None);
         }
 
         // commit pre barriers
@@ -575,7 +575,7 @@ impl<B: GPUBackend> Transfer<B> {
                     self.device.transfer_queue()
                         .as_ref()
                         .unwrap()
-                        .submit(&mut [Submission {
+                        .submit(&mut [gpu::Submission {
                             command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
                             wait_fences: &[],
                             signal_fences: &[],
@@ -590,7 +590,7 @@ impl<B: GPUBackend> Transfer<B> {
         let cmd_buffer_opt = self.flush_commands(&mut guard.graphics);
         if let Some(mut cmd_buffer) = cmd_buffer_opt {
             unsafe {
-                self.device.graphics_queue().submit(&mut [Submission {
+                self.device.graphics_queue().submit(&mut [gpu::Submission {
                     command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
                     signal_fences: &[],
                     wait_fences: &[],

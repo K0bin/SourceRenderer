@@ -1,7 +1,3 @@
-use sourcerenderer_core::graphics::{
-    Backend, BarrierAccess, BarrierSync, BindingFrequency, BufferInfo, BufferUsage, CommandBuffer,
-    MemoryUsage, PipelineBinding, TextureLayout, TextureViewInfo, WHOLE_BUFFER,
-};
 use sourcerenderer_core::{Platform, Vec4};
 
 use crate::math::Frustum;
@@ -9,10 +5,10 @@ use crate::renderer::drawable::View;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::{ComputePipelineHandle, ShaderManager};
+
+use crate::graphics::*;
 
 pub struct DrawPrepPass {
     culling_pipeline: ComputePipelineHandle,
@@ -32,20 +28,22 @@ impl DrawPrepPass {
         resources.create_buffer(
             Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,
             &BufferInfo {
-                size: (DRAWABLE_CAPACITY as usize + std::mem::size_of::<u32>() - 1)
-                    / std::mem::size_of::<u32>(),
+                size: (DRAWABLE_CAPACITY as u64 + std::mem::size_of::<u32>() as u64 - 1)
+                    / std::mem::size_of::<u32>() as u64,
                 usage: BufferUsage::STORAGE,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             false,
         );
         resources.create_buffer(
             Self::INDIRECT_DRAW_BUFFER,
             &BufferInfo {
-                size: 4 + 20 * PART_CAPACITY as usize,
+                size: 4 + 20 * PART_CAPACITY as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             false,
         );
         Self {
@@ -56,7 +54,7 @@ impl DrawPrepPass {
 
     pub fn execute<P: Platform>(
         &self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         {
@@ -112,7 +110,7 @@ impl DrawPrepPass {
             cmd_buffer.bind_storage_buffer(
                 BindingFrequency::VeryFrequent,
                 0,
-                &*buffer,
+                BufferRef::Regular(&*buffer),
                 0,
                 WHOLE_BUFFER,
             );
@@ -125,11 +123,11 @@ impl DrawPrepPass {
                     planes: Vec4::new(frustum_x.x, frustum_x.z, frustum_y.y, frustum_y.z),
                 }],
                 BufferUsage::CONSTANT,
-            );
+            ).unwrap();
             cmd_buffer.bind_uniform_buffer(
                 BindingFrequency::VeryFrequent,
                 1,
-                &frustum_buffer,
+                BufferRef::Transient(&frustum_buffer),
                 0,
                 WHOLE_BUFFER,
             );
@@ -157,7 +155,7 @@ impl DrawPrepPass {
                 HistoryResourceEntry::Current,
             );
             cmd_buffer.flush_barriers();
-            cmd_buffer.clear_storage_buffer(&draw_buffer, 0, 4, 0);
+            cmd_buffer.clear_storage_buffer(BufferRef::Regular(&draw_buffer), 0, 4, 0);
         }
 
         assert!(pass_params.scene.scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
@@ -191,14 +189,14 @@ impl DrawPrepPass {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            &*visibility_buffer,
+            BufferRef::Regular(&*visibility_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             1,
-            &*draw_buffer,
+            BufferRef::Regular(&*draw_buffer),
             0,
             WHOLE_BUFFER,
         );

@@ -16,6 +16,7 @@ mod sdl_platform;
 
 fn main() {
     simple_logger::SimpleLogger::new().init().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(20));
 
     Engine::<SDLPlatform>::initialize_global();
     let mut platform = SDLPlatform::new(GraphicsApi::Vulkan);

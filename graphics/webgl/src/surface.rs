@@ -113,7 +113,7 @@ impl WebGLSwapchain {
 
     let c_sync = self.sync.clone();
     let backbuffer_handle = self.backbuffer_view.texture().handle();
-    let info = self.backbuffer_view.texture().info();
+    let info = self.backbuffer_view.texture().unwrap().info();
     let width = info.width as i32;
     let height = info.height as i32;
     self.sender.send(Box::new(move |device| {

@@ -1,20 +1,3 @@
-use sourcerenderer_core::graphics::{
-    Backend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    CommandBuffer,
-    Format,
-    PipelineBinding,
-    SampleCount,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
@@ -30,6 +13,7 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
+use crate::graphics::*;
 
 pub struct MotionVectorPass {
     pipeline: ComputePipelineHandle,
@@ -67,7 +51,7 @@ impl MotionVectorPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
@@ -86,7 +70,7 @@ impl MotionVectorPass {
         );
 
         let (width, height) = {
-            let info = output_srv.texture().info();
+            let info = output_srv.texture().unwrap().info();
             (info.width, info.height)
         };
 

@@ -22,11 +22,6 @@ use legion::{
 };
 use log::trace;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Swapchain,
-};
 use sourcerenderer_core::platform::{
     Event,
     Platform,
@@ -52,6 +47,7 @@ use crate::renderer::command::RendererCommand;
 use crate::renderer::RendererInternal;
 use crate::transform::interpolation::InterpolatedTransform;
 use crate::ui::UIDrawData;
+use crate::graphics::*;
 
 enum RendererImpl<P: Platform> {
     MultiThreaded(P::ThreadHandle),
@@ -65,8 +61,8 @@ unsafe impl<P: Platform> Sync for RendererImpl<P> {}
 pub struct Renderer<P: Platform> {
     sender: Sender<RendererCommand<P::GPUBackend>>,
     window_event_sender: Sender<Event<P>>,
-    instance: Arc<crate::graphics::Instance<P::GPUBackend>>,
-    device: Arc<crate::graphics::Device<P::GPUBackend>>,
+    instance: Arc<Instance<P::GPUBackend>>,
+    device: Arc<Device<P::GPUBackend>>,
     queued_frames_counter: Mutex<u32>,
     is_running: AtomicBool,
     input: Arc<Input>,
@@ -79,8 +75,8 @@ impl<P: Platform> Renderer<P> {
     fn new(
         sender: Sender<RendererCommand<P::GPUBackend>>,
         window_event_sender: Sender<Event<P>>,
-        instance: &Arc<crate::graphics::Instance<P::GPUBackend>>,
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        instance: &Arc<Instance<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
         input: &Arc<Input>,
         late_latching: Option<&Arc<dyn LateLatching<P::GPUBackend>>>,
     ) -> Self {
@@ -100,9 +96,9 @@ impl<P: Platform> Renderer<P> {
 
     pub fn run(
         platform: &P,
-        instance: &Arc<crate::graphics::Instance<P::GPUBackend>>,
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
+        instance: &Arc<Instance<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
+        swapchain: Swapchain<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
         input: &Arc<Input>,
         late_latching: Option<&Arc<dyn LateLatching<P::GPUBackend>>>,
@@ -121,7 +117,6 @@ impl<P: Platform> Renderer<P> {
 
         let c_device = device.clone();
         let c_renderer = renderer.clone();
-        let c_swapchain = swapchain.clone();
         let c_asset_manager = asset_manager.clone();
         let c_console = console.clone();
 
@@ -130,7 +125,7 @@ impl<P: Platform> Renderer<P> {
                 trace!("Started renderer thread");
                 let mut internal = RendererInternal::new(
                     &c_device,
-                    &c_swapchain,
+                    swapchain,
                     &c_asset_manager,
                     sender,
                     window_event_receiver,
@@ -152,7 +147,7 @@ impl<P: Platform> Renderer<P> {
         } else {
             let internal = RendererInternal::new(
                 &c_device,
-                &c_swapchain,
+                swapchain,
                 &c_asset_manager,
                 sender,
                 window_event_receiver,
@@ -181,7 +176,7 @@ impl<P: Platform> Renderer<P> {
         self.cond_var.notify_all();
     }
 
-    pub(crate) fn instance(&self) -> &Arc<<P::GPUBackend as GPUBackend>::Instance> {
+    pub(crate) fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {
         &self.instance
     }
 
@@ -237,7 +232,7 @@ impl<P: Platform> Renderer<P> {
         &self.input
     }
 
-    pub fn device(&self) -> &Arc<<P::GPUBackend as GPUBackend>::Device> {
+    pub fn device(&self) -> &Arc<Device<P::GPUBackend>> {
         &self.device
     }
 

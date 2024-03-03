@@ -250,7 +250,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
 
   fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &Arc<WebGLTextureView>, sampler: &Arc<WebGLSampler>) {
     let handle = texture.texture().handle();
-    let info = texture.texture().info();
+    let info = texture.texture().unwrap().info();
     let is_cubemap = info.array_length == 6;
     let target = if is_cubemap { WebGlRenderingContext::TEXTURE_CUBE_MAP } else { WebGlRenderingContext::TEXTURE_2D };
     let pipeline = self.pipeline.as_ref().expect("Can't bind texture without active pipeline.");
@@ -356,7 +356,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
       let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
       match &attachment.view {
         sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(ds) => {
-          ds_format = ds.texture().info().format;
+          ds_format = ds.texture().unwrap().info().format;
           let info = ds.info();
           depth_attachment = Some(WebGLTextureHandleView {
             texture: ds.texture().handle(),

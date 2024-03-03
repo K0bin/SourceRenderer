@@ -1,13 +1,5 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{
-    Backend,
-    CommandBuffer,
-    Device,
-    Queue,
-    Swapchain,
-    SwapchainError, FenceRef,
-};
 use sourcerenderer_core::Platform;
 
 use crate::graphics::GraphicsContext;
@@ -23,21 +15,23 @@ use crate::renderer::renderer_resources::RendererResources;
 use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::LateLatching;
 
+use crate::graphics::*;
+
 mod geometry;
 
 use self::geometry::GeometryPass;
 
 pub struct WebRenderer<P: Platform> {
-    device: Arc<crate::graphics::Device<P::GPUBackend>>,
-    swapchain: Arc<crate::graphics::Swapchain<P::GPUBackend>>,
+    device: Arc<Device<P::GPUBackend>>,
+    swapchain: Arc<Swapchain<P::GPUBackend>>,
     geometry: GeometryPass<P>,
     resources: RendererResources<P::GPUBackend>,
 }
 
 impl<P: Platform> WebRenderer<P> {
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
+        swapchain: &Arc<Swapchain<P::GPUBackend>>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let mut resources = RendererResources::<P::GPUBackend>::new(device);
@@ -73,7 +67,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        _swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
+        _swapchain: &Arc<Swapchain<P::GPUBackend>>,
     ) {
     }
 

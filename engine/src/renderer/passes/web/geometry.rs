@@ -6,61 +6,6 @@ use gltf::texture::{
 };
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    AddressMode,
-    AttachmentBlendInfo,
-    AttachmentInfo,
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    BindingFrequency,
-    BlendInfo,
-    CommandBuffer,
-    CompareFunc,
-    CullMode,
-    DepthStencilAttachmentRef,
-    DepthStencilInfo,
-    Device,
-    FillMode,
-    Filter,
-    Format,
-    FrontFace,
-    IndexFormat,
-    InputAssemblerElement,
-    InputRate,
-    LoadOp,
-    LogicOp,
-    OutputAttachmentRef,
-    PipelineBinding,
-    PrimitiveType,
-    RasterizerInfo,
-    RenderPassAttachment,
-    RenderPassAttachmentView,
-    RenderPassBeginInfo,
-    RenderPassInfo,
-    RenderpassRecordingMode,
-    SampleCount,
-    SamplerInfo,
-    Scissor,
-    ShaderInputElement,
-    ShaderType,
-    StencilInfo,
-    StoreOp,
-    SubpassInfo,
-    Swapchain,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    VertexLayoutInfo,
-    Viewport,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2,
@@ -84,6 +29,8 @@ use crate::renderer::shader_manager::{
     GraphicsPipelineInfo,
     ShaderManager,
 };
+
+use crate::graphics::*;
 
 pub struct GeometryPass<P: Platform> {
     pipeline: GraphicsPipelineHandle,
@@ -243,17 +190,17 @@ impl<P: Platform> GeometryPass<P> {
             0,
         );
 
-        Self { pipeline, sampler }
+        Self { pipeline, sampler: Arc::new(sampler) }
     }
 
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         scene: &RendererScene<P::GPUBackend>,
         view: &View,
-        camera_buffer: &Arc<crate::graphics::BufferSlice<P::GPUBackend>>,
+        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
         resources: &RendererResources<P::GPUBackend>,
-        backbuffer: &Arc<crate::graphics::TextureView<P::GPUBackend>>,
+        backbuffer: &Arc<TextureView<P::GPUBackend>>,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) {
@@ -264,8 +211,9 @@ impl<P: Platform> GeometryPass<P> {
             new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::RenderTarget,
-            texture: backbuffer.texture(),
+            texture: backbuffer.texture().unwrap(),
             range: BarrierTextureRange::default(),
+            queue_ownership: None
         }]);
 
         let dsv = resources.access_view(
@@ -309,7 +257,7 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::Commands,
         );
 
-        let rtv_info = backbuffer.texture().info();
+        let rtv_info = backbuffer.texture().unwrap().info();
 
         let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
@@ -325,13 +273,13 @@ impl<P: Platform> GeometryPass<P> {
         }]);
 
         //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
-        cmd_buffer.bind_uniform_buffer(BindingFrequency::Frame, 0, camera_buffer, 0, WHOLE_BUFFER);
+        cmd_buffer.bind_uniform_buffer(BindingFrequency::Frame, 0, BufferRef::Regular(camera_buffer), 0, WHOLE_BUFFER);
 
         let drawables = scene.static_drawables();
         let parts = &view.drawable_parts;
         for part in parts {
             let drawable = &drawables[part.drawable_index];
-            cmd_buffer.upload_dynamic_data_inline(&[drawable.transform], ShaderType::VertexShader);
+            cmd_buffer.set_push_constant_data(&[drawable.transform], ShaderType::VertexShader);
             let model = assets.get_model(drawable.model);
             if model.is_none() {
                 log::info!("Skipping draw because of missing model");
@@ -367,11 +315,11 @@ impl<P: Platform> GeometryPass<P> {
             }
             cmd_buffer.finish_binding();
 
-            cmd_buffer.set_vertex_buffer(mesh.vertices.buffer(), mesh.vertices.offset() as usize);
+            cmd_buffer.set_vertex_buffer(BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
             if let Some(indices) = mesh.indices.as_ref() {
                 cmd_buffer.set_index_buffer(
-                    indices.buffer(),
-                    indices.offset() as usize,
+                    BufferRef::Regular(indices.buffer()),
+                    indices.offset() as u64,
                     IndexFormat::U32,
                 );
                 cmd_buffer.draw_indexed(1, 0, range.count, range.start, 0);
@@ -388,7 +336,8 @@ impl<P: Platform> GeometryPass<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::RenderTarget,
             new_layout: TextureLayout::Present,
-            texture: backbuffer.texture(),
+            texture: backbuffer.texture().unwrap(),
+            queue_ownership: None,
             range: BarrierTextureRange::default(),
         }]);
     }

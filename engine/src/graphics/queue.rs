@@ -1,8 +1,8 @@
-use std::{sync::{Arc, Mutex}, mem::ManuallyDrop, collections::VecDeque, ops::Range};
+use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::{atomic::{AtomicBool, Ordering}, Arc, Condvar, Mutex}};
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{*, Queue as GPUQueue};
+use sourcerenderer_core::gpu::{self, Queue as GPUQueue};
 
 use super::*;
 
@@ -10,38 +10,54 @@ enum StoredQueueSubmission<B: GPUBackend> {
     CommandBuffer {
         command_buffer: Box<super::CommandBuffer<B>>,
         return_sender: Sender<Box<super::CommandBuffer<B>>>,
-        signal_swapchain: Option<Arc<B::Swapchain>>,
-        wait_swapchain: Option<Arc<B::Swapchain>>,
+        signal_swapchain: Option<Arc<super::Swapchain<B>>>,
+        wait_swapchain: Option<Arc<super::Swapchain<B>>>,
         signal_fences: SmallVec<[SharedFenceValuePair<B>; 4]>,
         wait_fences: SmallVec<[SharedFenceValuePair<B>; 4]>,
     },
     TransferCommandBuffer {
         command_buffer: ManuallyDrop<Box<TransferCommandBuffer<B>>>,
         return_sender: Sender<Box<TransferCommandBuffer<B>>>
+    },
+    Present {
+        swapchain: Arc<super::Swapchain<B>>
     }
 }
 
 pub struct QueueSubmission<'a, B: GPUBackend> {
-    command_buffer: FinishedCommandBuffer<B>,
-    wait_fences: &'a [SharedFenceValuePairRef<'a, B>],
-    signal_fences: &'a [SharedFenceValuePairRef<'a, B>],
-    acquire_swapchain: Option<&'a Arc<B::Swapchain>>,
-    release_swapchain: Option<&'a Arc<B::Swapchain>>,
+    pub command_buffer: FinishedCommandBuffer<B>,
+    pub wait_fences: &'a [SharedFenceValuePairRef<'a, B>],
+    pub signal_fences: &'a [SharedFenceValuePairRef<'a, B>],
+    pub acquire_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
+    pub release_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
 }
 
 struct QueueInner<B: GPUBackend> {
-    virtual_queue: VecDeque<StoredQueueSubmission<B>>
+    virtual_queue: VecDeque<StoredQueueSubmission<B>>,
+    is_idle: bool
 }
 
-pub struct Queue<B: GPUBackend> {
-    device: Arc<B::Device>,
+pub(super) struct Queue<B: GPUBackend> {
     inner: Mutex<QueueInner<B>>,
-    queue_type: QueueType
+    queue_type: QueueType,
+    idle_condvar: Condvar
 }
 
 impl<B: GPUBackend> Queue<B> {
-    pub fn submit(&self, submission: QueueSubmission<B>) {
+    pub(super) fn new(queue_type: QueueType) -> Self {
+        Self {
+            inner: Mutex::new(QueueInner {
+                virtual_queue: VecDeque::new(),
+                is_idle: true
+            }),
+            queue_type,
+            idle_condvar: Condvar::new()
+        }
+    }
+
+    pub(super) fn submit(&self, submission: QueueSubmission<B>) {
         let mut guard = self.inner.lock().unwrap();
+        guard.is_idle = false;
 
         let QueueSubmission { command_buffer: finished_cmd_buffer, wait_fences, signal_fences, acquire_swapchain, release_swapchain } = submission;
         let FinishedCommandBuffer { inner, sender } = finished_cmd_buffer;
@@ -50,36 +66,20 @@ impl<B: GPUBackend> Queue<B> {
             command_buffer: inner,
             return_sender: sender,
             signal_fences: signal_fences.iter().map(|fence_ref| SharedFenceValuePair::<B>::from(fence_ref)).collect(),
-            wait_fences: signal_fences.iter().map(|fence_ref| SharedFenceValuePair::<B>::from(fence_ref)).collect(),
+            wait_fences: wait_fences.iter().map(|fence_ref| SharedFenceValuePair::<B>::from(fence_ref)).collect(),
             signal_swapchain: release_swapchain.cloned(),
             wait_swapchain: acquire_swapchain.cloned()
         });
     }
 
-    pub fn process_submissions(&self) {
+    pub(super) fn present(&self, swapchain: &Arc<super::Swapchain<B>>) {
         let mut guard = self.inner.lock().unwrap();
+        guard.is_idle = false;
+        guard.virtual_queue.push_back(StoredQueueSubmission::Present { swapchain: swapchain.clone() });
+    }
 
-        let queue = match self.queue_type {
-            QueueType::Graphics => self.device.graphics_queue(),
-            QueueType::Compute => self.device.compute_queue().unwrap(),
-            QueueType::Transfer => self.device.transfer_queue().unwrap(),
-        };
-
-        for submission in guard.virtual_queue.iter_mut() {
-            match submission {
-                StoredQueueSubmission::CommandBuffer {
-                    command_buffer,
-                    return_sender,
-                    signal_fences,
-                    signal_swapchain,
-                    wait_fences,
-                    wait_swapchain
-                } => {
-
-                },
-                StoredQueueSubmission::TransferCommandBuffer { command_buffer, return_sender } => todo!(),
-            }
-        }
+    pub(super) fn flush(&self, queue: &B::Queue) {
+        let mut guard = self.inner.lock().unwrap();
 
         const COMMAND_BUFFER_CAPACITY: usize = 16;
         const SUBMISSION_CAPACITY: usize = 16;
@@ -89,8 +89,8 @@ impl<B: GPUBackend> Queue<B> {
             queue: &'a B::Queue,
             command_buffers: SmallVec<[&'a B::CommandBuffer; COMMAND_BUFFER_CAPACITY]>,
             cmd_buffer_range: Range<usize>,
-            submissions: SmallVec<[Submission<'a, B>; SUBMISSION_CAPACITY]>,
-            fences: SmallVec<[sourcerenderer_core::gpu::FenceValuePairRef<'a, B>; FENCE_CAPACITY]>,
+            submissions: SmallVec<[gpu::Submission<'a, B>; SUBMISSION_CAPACITY]>,
+            fences: SmallVec<[gpu::FenceValuePairRef<'a, B>; FENCE_CAPACITY]>,
         }
 
         fn flush_command_buffers<'a, B: GPUBackend>(holder: &mut SubmissionHolder<'a, B>) {
@@ -102,7 +102,7 @@ impl<B: GPUBackend> Queue<B> {
                 flush_submissions(holder);
             }
 
-            holder.submissions.push(Submission::<'a, B> {
+            holder.submissions.push(gpu::Submission::<'a, B> {
                 command_buffers: unsafe { std::slice::from_raw_parts(holder.command_buffers.as_ptr().add(holder.cmd_buffer_range.start), holder.cmd_buffer_range.end - holder.cmd_buffer_range.start) },
                 wait_fences: &[],
                 signal_fences: &[],
@@ -139,8 +139,8 @@ impl<B: GPUBackend> Queue<B> {
             command_buffer: &'a B::CommandBuffer,
             wait_fences: &'a [SharedFenceValuePair<B>],
             signal_fences: &'a [SharedFenceValuePair<B>],
-            acquire_swapchain: Option<&'a Arc<B::Swapchain>>,
-            release_swapchain: Option<&'a Arc<B::Swapchain>>,
+            acquire_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
+            release_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
         ) {
             if !holder.command_buffers.is_empty() {
                 flush_command_buffers(holder);
@@ -165,12 +165,12 @@ impl<B: GPUBackend> Queue<B> {
                 });
             }
             holder.command_buffers.push(command_buffer);
-            holder.submissions.push(Submission::<'a, B> {
+            holder.submissions.push(gpu::Submission::<'a, B> {
                 command_buffers: unsafe { std::slice::from_raw_parts(holder.command_buffers.as_ptr().add(holder.command_buffers.len() - 1), 1) },
                 wait_fences: unsafe { std::slice::from_raw_parts(holder.fences.as_ptr().add(wait_fences_start), wait_fences.len()) },
                 signal_fences: unsafe { std::slice::from_raw_parts(holder.fences.as_ptr().add(signal_fences_start), signal_fences.len()) },
-                acquire_swapchain: acquire_swapchain.map(|s|s.as_ref()),
-                release_swapchain: release_swapchain.map(|s|s.as_ref())
+                acquire_swapchain: acquire_swapchain.map(|s|s.handle()),
+                release_swapchain: release_swapchain.map(|s|s.handle())
             });
         }
 
@@ -206,6 +206,11 @@ impl<B: GPUBackend> Queue<B> {
                         None, None
                     );
                 },
+                StoredQueueSubmission::Present { swapchain } => {
+                    unsafe {
+                        queue.present(swapchain.handle())
+                    }
+                }
             }
         }
 
@@ -226,7 +231,18 @@ impl<B: GPUBackend> Queue<B> {
                 StoredQueueSubmission::TransferCommandBuffer { mut command_buffer, return_sender } => {
                     return_sender.send(unsafe { ManuallyDrop::take(&mut command_buffer) }).unwrap();
                 },
+                StoredQueueSubmission::Present { swapchain: _ } => {}
             }
         }
+
+        guard.is_idle = guard.virtual_queue.is_empty();
+        if guard.is_idle {
+            self.idle_condvar.notify_all();
+        }
+    }
+
+    pub(super) fn wait_for_idle(&self) {
+        let guard = self.inner.lock().unwrap();
+        let _new_guard = self.idle_condvar.wait_while(guard, |g| !g.is_idle).unwrap();
     }
 }

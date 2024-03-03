@@ -5,7 +5,7 @@ use sourcerenderer_core::{gpu::*, atomic_refcell::{AtomicRefCell, AtomicRefMut}}
 use super::*;
 
 pub struct TransientBufferSlice<B: GPUBackend> {
-    owned_buffer: Option<TransientBuffer<B>>,
+    owned_buffer: Option<Box<TransientBuffer<B>>>,
     buffer: *const B::Buffer,
     offset: u64,
     length: u64
@@ -39,12 +39,12 @@ impl<B: GPUBackend> TransientBufferSlice<B> {
         unsafe { &*self.buffer }
     }
 
-    pub(super) fn map(&self, invalidate: bool) -> Option<*mut c_void> {
-        unsafe { self.handle().map(self.offset, self.length, invalidate) }
+    pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
+        self.handle().map(self.offset, self.length, invalidate)
     }
 
-    pub(super) fn unmap(&self, flush: bool) {
-        unsafe { self.handle().unmap(self.offset, self.length, flush) }
+    pub unsafe fn unmap(&self, flush: bool) {
+        self.handle().unmap(self.offset, self.length, flush)
     }
 }
 
@@ -91,7 +91,7 @@ pub(super) struct TransientBufferAllocator<B: GPUBackend> {
 }
 
 struct BufferCollection<B: GPUBackend> {
-    buffers: Vec<TransientBuffer<B>>,
+    buffers: Vec<Box<TransientBuffer<B>>>,
     first_free_index: usize
 }
 
@@ -142,13 +142,13 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             // Don't do one-off buffers for command lists
             let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
             let mut slice = TransientBufferSlice {
-                owned_buffer: Some(TransientBuffer {
+                owned_buffer: Some(Box::new(TransientBuffer {
                     size: info.size,
                     offset: 0,
                     buffer: ManuallyDrop::new(buffer),
                     allocation,
                     destroyer: self.destroyer.clone()
-                }),
+                })),
                 buffer: std::ptr::null(),
                 offset: 0,
                 length: info.size
@@ -197,13 +197,13 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
 
         let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
 
-        let mut sliced_buffer = TransientBuffer::<B> {
+        let mut sliced_buffer = Box::new(TransientBuffer::<B> {
             size: new_buffer_info.size,
             offset: info.size,
             buffer: ManuallyDrop::new(buffer),
             allocation,
             destroyer: self.destroyer.clone()
-        };
+        });
         sliced_buffer.reset();
         let slice: TransientBufferSlice<B> = TransientBufferSlice {
             owned_buffer: None,

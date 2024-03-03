@@ -16,35 +16,6 @@ use sourcerenderer_core::atomic_refcell::{
     AtomicRefMut,
 };
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    BindingFrequency,
-    BindingType,
-    Buffer,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    ComputePipeline,
-    Device,
-    Format,
-    MemoryUsage,
-    PipelineBinding,
-    SampleCount,
-    ShaderType,
-    Swapchain,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::{
     Platform,
@@ -62,9 +33,10 @@ use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
+use crate::graphics::*;
 
 pub struct Fsr2Pass<P: Platform> {
-    device: Arc<crate::graphics::Device<P::GPUBackend>>,
+    device: Arc<Device<P::GPUBackend>>,
     context: FfxFsr2Context,
     scratch_context: Arc<AtomicRefCell<ScratchContext<P::GPUBackend>>>,
 }
@@ -73,10 +45,10 @@ impl<P: Platform> Fsr2Pass<P> {
     pub const UPSCALED_TEXTURE_NAME: &'static str = "FSR2Upscaled";
 
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
         resources: &mut RendererResources<P::GPUBackend>,
         _resolution: Vec2UI,
-        swapchain: &<P::GraphicsBackend as Backend>::Swapchain,
+        swapchain: &Swapchain<P::GPUBackend>,
     ) -> Self {
         let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<P::GPUBackend> {
             resources: HashMap::new(),
@@ -124,7 +96,7 @@ impl<P: Platform> Fsr2Pass<P> {
             false,
         );
 
-        let fsr_device: *mut <P::GraphicsBackend as Backend>::Device = unsafe { std::mem::transmute(device.as_ref()) };
+        let fsr_device: *mut Device<P::GPUBackend> = unsafe { std::mem::transmute(device.as_ref()) };
         let context_desc = FfxFsr2ContextDescription {
             flags: (FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_AUTO_EXPOSURE
                 | FfxFsr2InitializationFlagBits_FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE)
@@ -162,7 +134,7 @@ impl<P: Platform> Fsr2Pass<P> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         input_name: &str,
         depth_name: &str,
@@ -351,31 +323,31 @@ impl<P: Platform> Drop for Fsr2Pass<P> {
     }
 }
 
-unsafe fn device_from_ffx<B: Backend>(device: FfxDevice) -> &'static B::Device {
-    std::mem::transmute(&*((device as *mut B::Device) as *const B::Device))
+unsafe fn device_from_ffx<B: GPUBackend>(device: FfxDevice) -> &'static Device<B> {
+    std::mem::transmute(&*((device as *mut Device<B>) as *const Device<B>))
 }
 
-unsafe fn command_buffer_from_ffx<B: Backend>(
+unsafe fn command_buffer_from_ffx<B: GPUBackend>(
     command_list: FfxCommandList,
-) -> &'static mut B::CommandBuffer {
-    std::mem::transmute(&mut *(command_list as *mut B::CommandBuffer))
+) -> &'static mut CommandBufferRecorder<B> {
+    std::mem::transmute(&mut *(command_list as *mut CommandBufferRecorder<B>))
 }
 
-unsafe fn command_buffer_into_ffx<B: Backend>(
-    command_buffer: &mut B::CommandBuffer,
+unsafe fn command_buffer_into_ffx<B: GPUBackend>(
+    command_buffer: &mut CommandBufferRecorder<B>,
 ) -> FfxCommandList {
-    (command_buffer as *mut B::CommandBuffer) as FfxCommandList
+    (command_buffer as *mut CommandBufferRecorder<B>) as FfxCommandList
 }
 
-struct Fsr2TextureViews<B: Backend> {
-    sampling_view: Arc<B::TextureView>,
-    storage_view: Option<Arc<B::TextureView>>,
+struct Fsr2TextureViews<B: GPUBackend> {
+    sampling_view: Arc<TextureView<B>>,
+    storage_view: Option<Arc<TextureView<B>>>,
 }
 
-unsafe fn texture_into_ffx<B: Backend>(
-    texture: &Arc<B::Texture>,
+unsafe fn texture_into_ffx<B: GPUBackend>(
+    texture: &Arc<Texture<B>>,
     is_uav: bool,
-    view: &Arc<B::TextureView>,
+    view: &Arc<TextureView<B>>,
 ) -> FfxResource {
     let texture_ptr = Arc::into_raw(texture.clone());
     let info = texture.info();
@@ -442,13 +414,13 @@ impl Default for TextureSubresourceState {
 
 enum Resource<B: GPUBackend> {
     Texture {
-        texture: Arc<crate::graphics::Texture<B>>,
-        sampling_view: Arc<B::TextureView>,
-        storage_views: SmallVec<[Arc<crate::graphics::TextureView<B>>; 8]>,
+        texture: Arc<Texture<B>>,
+        sampling_view: Arc<TextureView<B>>,
+        storage_views: SmallVec<[Arc<TextureView<B>>; 8]>,
         states: SmallVec<[TextureSubresourceState; 8]>,
     },
     Buffer {
-        buffer: Arc<crate::graphics::BufferSlice<B>>,
+        buffer: Arc<BufferSlice<B>>,
         sync: BarrierSync,
         access: BarrierAccess,
     },
@@ -460,9 +432,9 @@ struct ScratchContext<B: GPUBackend> {
     next_resource_id: u32,
     free_ids: VecDeque<u32>,
     jobs: Vec<FfxGpuJobDescription>,
-    device: Arc<B::Device>,
-    point_sampler: Arc<crate::graphics::Sampler<B>>,
-    linear_sampler: Arc<crate::graphics::Sampler<B>>,
+    device: Arc<Device<B>>,
+    point_sampler: Arc<Sampler<B>>,
+    linear_sampler: Arc<Sampler<B>>,
 }
 
 impl<B: GPUBackend> ScratchContext<B> {
@@ -483,7 +455,7 @@ impl<B: GPUBackend> ScratchContext<B> {
     }
 }
 
-extern "C" fn create_backend_context<B: Backend>(
+extern "C" fn create_backend_context<B: GPUBackend>(
     _backend_interface: *mut FfxFsr2Interface,
     _out_device: FfxDevice,
 ) -> FfxErrorCode {
@@ -493,7 +465,7 @@ extern "C" fn create_backend_context<B: Backend>(
     return FFX_OK;
 }
 
-unsafe extern "C" fn create_resource<B: Backend>(
+unsafe extern "C" fn create_resource<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
     desc: *const FfxCreateResourceDescription,
     out_resource: *mut FfxResourceInternal,
@@ -525,15 +497,16 @@ unsafe extern "C" fn create_resource<B: Backend>(
             buffer_usage |= BufferUsage::COPY_SRC | BufferUsage::COPY_DST;
         }
         let memory_usage = if desc.heapType == FfxHeapType_FFX_HEAP_TYPE_DEFAULT {
-            MemoryUsage::VRAM
+            MemoryUsage::GPUMemory
         } else {
-            MemoryUsage::MappableVRAM
+            MemoryUsage::MappableGPUMemory
         };
 
         let buffer = device.create_buffer(
             &BufferInfo {
-                size: resource_desc.width as usize,
+                size: resource_desc.width as u64,
                 usage: buffer_usage,
+                sharing_mode: QueueSharingMode::Exclusive
             },
             memory_usage,
             if let Some(name) = name.as_ref() {
@@ -541,18 +514,16 @@ unsafe extern "C" fn create_resource<B: Backend>(
             } else {
                 None
             },
-        );
+        ).unwrap();
 
-        if memory_usage != MemoryUsage::VRAM && desc.initData != std::ptr::null_mut() {
-            let dst = buffer.map_unsafe(false).unwrap();
-            std::ptr::copy(desc.initData as *mut u8, dst, desc.initDataSize as usize);
-            buffer.unmap_unsafe(true);
+        if memory_usage != MemoryUsage::GPUMemory && desc.initData != std::ptr::null_mut() {
+            let dst = buffer.map(false).unwrap();
+            std::ptr::copy(desc.initData as *mut u8, dst as *mut u8, desc.initDataSize as usize);
+            buffer.unmap(true);
         } else {
             let init_data =
                 std::slice::from_raw_parts(desc.initData as *const u8, desc.initDataSize as usize);
-            let src_buffer =
-                device.upload_data(init_data, MemoryUsage::MappableVRAM, BufferUsage::COPY_SRC);
-            device.init_buffer(&src_buffer, &buffer, 0, 0, desc.initDataSize as usize);
+            device.init_buffer(init_data, &buffer, 0).unwrap();
         }
 
         context.resources.insert(
@@ -605,14 +576,12 @@ unsafe extern "C" fn create_resource<B: Backend>(
             } else {
                 None
             },
-        );
+        ).unwrap();
 
         if desc.initData != std::ptr::null_mut() {
             let init_data =
                 std::slice::from_raw_parts(desc.initData as *const u8, desc.initDataSize as usize);
-            let src_buffer =
-                device.upload_data(init_data, MemoryUsage::MappableVRAM, BufferUsage::COPY_SRC);
-            device.init_texture(&texture, &src_buffer, 0, 0, 0);
+            device.init_texture(init_data, &texture, 0, 0).unwrap();
         }
 
         let sampling_name = name
@@ -632,7 +601,7 @@ unsafe extern "C" fn create_resource<B: Backend>(
         );
 
         let mut storage_views =
-            SmallVec::<[Arc<B::TextureView>; 8]>::with_capacity(mip_count as usize);
+            SmallVec::<[Arc<TextureView<B>>; 8]>::with_capacity(mip_count as usize);
         let mut states =
             SmallVec::<[TextureSubresourceState; 8]>::with_capacity(mip_count as usize);
         for i in 0..mip_count {
@@ -674,7 +643,7 @@ unsafe extern "C" fn create_resource<B: Backend>(
     return FFX_OK;
 }
 
-unsafe extern "C" fn register_resource<B: Backend>(
+unsafe extern "C" fn register_resource<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
     in_resource: *const FfxResource,
     out_resource: *mut FfxResourceInternal,
@@ -719,14 +688,14 @@ unsafe extern "C" fn register_resource<B: Backend>(
 
     let type_ = resource_desc.type_;
     if type_ != FfxResourceType_FFX_RESOURCE_TYPE_BUFFER {
-        let texture = Arc::<B::Texture>::from_raw((*in_resource).resource as *mut B::Texture);
-        let ptr: *const B::TextureView = std::mem::transmute((*in_resource).descriptorData);
+        let texture = Arc::<Texture<B>>::from_raw((*in_resource).resource as *mut Texture<B>);
+        let ptr: *const TextureView<B> = std::mem::transmute((*in_resource).descriptorData);
         let view = Arc::from_raw(ptr);
 
-        let mut storage_views = SmallVec::<[Arc<B::TextureView>; 8]>::new();
+        let mut storage_views = SmallVec::<[Arc<TextureView<B>>; 8]>::new();
         let mut states = SmallVec::<[TextureSubresourceState; 8]>::new();
 
-        let texture_info = view.texture().info();
+        let texture_info = view.texture().unwrap().info();
         if texture_info.usage.contains(TextureUsage::STORAGE) {
             storage_views.push(view.clone());
         }
@@ -753,7 +722,7 @@ unsafe extern "C" fn register_resource<B: Backend>(
     FFX_OK
 }
 
-unsafe extern "C" fn destroy_backend_context<B: Backend>(
+unsafe extern "C" fn destroy_backend_context<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
 ) -> FfxErrorCode {
     let ptr = (*backend_interface).scratchBuffer as *mut AtomicRefCell<ScratchContext<B>>;
@@ -762,7 +731,7 @@ unsafe extern "C" fn destroy_backend_context<B: Backend>(
     FFX_OK
 }
 
-unsafe extern "C" fn destroy_resource<B: Backend>(
+unsafe extern "C" fn destroy_resource<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
     resource: FfxResourceInternal,
 ) -> FfxErrorCode {
@@ -780,7 +749,7 @@ unsafe extern "C" fn destroy_resource<B: Backend>(
     };
 }
 
-unsafe extern "C" fn unregister_resources<B: Backend>(
+unsafe extern "C" fn unregister_resources<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
 ) -> FfxErrorCode {
     let mut context = ScratchContext::<B>::from_interface(backend_interface);
@@ -798,7 +767,7 @@ unsafe extern "C" fn unregister_resources<B: Backend>(
     FFX_OK
 }
 
-unsafe extern "C" fn get_resource_description<B: Backend>(
+unsafe extern "C" fn get_resource_description<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
     resource: FfxResourceInternal,
 ) -> FfxResourceDescription {
@@ -837,7 +806,7 @@ unsafe extern "C" fn get_resource_description<B: Backend>(
     }
 }
 
-unsafe extern "C" fn get_device_capabilities<B: Backend>(
+unsafe extern "C" fn get_device_capabilities<B: GPUBackend>(
     _backend_interface: *mut FfxFsr2Interface,
     capabilities: *mut FfxDeviceCapabilities,
     device: FfxDevice,
@@ -851,7 +820,7 @@ unsafe extern "C" fn get_device_capabilities<B: Backend>(
     FFX_OK
 }
 
-unsafe extern "C" fn schedule_render_job<B: Backend>(
+unsafe extern "C" fn schedule_render_job<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
     job: *const FfxGpuJobDescription,
 ) -> FfxErrorCode {
@@ -860,7 +829,7 @@ unsafe extern "C" fn schedule_render_job<B: Backend>(
     FFX_OK
 }
 
-unsafe extern "C" fn execute_render_jobs<B: Backend>(
+unsafe extern "C" fn execute_render_jobs<B: GPUBackend>(
     backend_interface: *mut FfxFsr2Interface,
     command_list: FfxCommandList,
 ) -> FfxErrorCode {
@@ -891,7 +860,7 @@ unsafe extern "C" fn execute_render_jobs<B: Backend>(
 unsafe fn execute_clear_job<B: GPUBackend>(
     job: &FfxClearFloatJobDescription,
     context: &mut ScratchContext<B>,
-    cmd_buf: &mut B::CommandBuffer,
+    cmd_buf: &mut CommandBufferRecorder<B>
 ) {
     let resource = context
         .resources
@@ -921,9 +890,9 @@ unsafe fn execute_clear_job<B: GPUBackend>(
 unsafe fn execute_dispatch_job<B: GPUBackend>(
     job: &FfxComputeJobDescription,
     context: &mut ScratchContext<B>,
-    cmd_buf: &mut B::CommandBuffer,
+    cmd_buf: &mut CommandBufferRecorder<B>
 ) {
-    let p_pipeline = job.pipeline.pipeline as *const B::ComputePipeline;
+    let p_pipeline = job.pipeline.pipeline as *const ComputePipeline<B>;
     let pipeline = Arc::from_raw(p_pipeline);
     cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
     std::mem::forget(pipeline);
@@ -999,19 +968,20 @@ unsafe fn execute_dispatch_job<B: GPUBackend>(
 
         let buffer = cmd_buf.create_temporary_buffer(
             &BufferInfo {
-                size: cb.uint32Size as usize * std::mem::size_of::<u32>(),
+                size: cb.uint32Size as u64 * std::mem::size_of::<u32>() as u64,
                 usage: BufferUsage::CONSTANT,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::MappableVRAM,
-        );
+            MemoryUsage::MappableGPUMemory,
+        ).unwrap();
 
-        let ptr = buffer.map_unsafe(false).unwrap();
+        let ptr = buffer.map(false).unwrap();
         std::ptr::copy(cb.data.as_ptr(), ptr as *mut u32, cb.uint32Size as usize);
-        buffer.unmap_unsafe(true);
+        buffer.unmap(true);
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frequent,
             job.pipeline.cbResourceBindings[i].slotIndex,
-            &buffer,
+            BufferRef::Transient(&buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -1025,9 +995,9 @@ unsafe fn execute_dispatch_job<B: GPUBackend>(
     cmd_buf.dispatch(job.dimensions[0], job.dimensions[1], job.dimensions[2]);
 }
 
-fn add_texture_barrier<B: Backend>(
-    cmd_buffer: &mut B::CommandBuffer,
-    texture: &Arc<B::Texture>,
+fn add_texture_barrier<B: GPUBackend>(
+    cmd_buffer: &mut CommandBufferRecorder<B>,
+    texture: &Arc<Texture<B>>,
     mip: u32,
     mip_count: u32,
     states: &mut [TextureSubresourceState],
@@ -1039,12 +1009,13 @@ fn add_texture_barrier<B: Backend>(
         let state = &mut states[i as usize];
         cmd_buffer.barrier(&[Barrier::TextureBarrier {
             old_sync: state.sync,
-            new_sync: new_sync,
+            new_sync,
             old_layout: state.layout,
-            new_layout: new_layout,
+            new_layout,
             old_access: state.access,
-            new_access: new_access,
-            texture: texture,
+            new_access,
+            texture,
+            queue_ownership: None,
             range: BarrierTextureRange {
                 base_mip_level: i,
                 mip_level_length: 1,
@@ -1148,11 +1119,11 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
     FFX_OK
 }
 
-unsafe extern "C" fn destroy_pipeline<B: Backend>(
+unsafe extern "C" fn destroy_pipeline<B: GPUBackend>(
     _backend_interface: *mut FfxFsr2Interface,
     pipeline: *mut FfxPipelineState,
 ) -> FfxErrorCode {
-    Arc::<B::ComputePipeline>::from_raw((*pipeline).pipeline as *mut B::ComputePipeline);
+    Arc::<ComputePipeline<B>>::from_raw((*pipeline).pipeline as *mut ComputePipeline<B>);
     FFX_OK
 }
 

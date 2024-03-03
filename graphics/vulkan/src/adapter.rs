@@ -1,32 +1,25 @@
-use std::f32;
-use std::ffi::{
-    c_void,
-    CStr,
-    CString,
-};
-use std::os::raw::c_char;
-use std::sync::Arc;
-
-use ash::extensions::khr::Surface as KhrSurface;
-use ash::vk;
-use sourcerenderer_core::graphics::{
-    Adapter,
-    AdapterType,
+use std::{
+    f32,
+    ffi::{
+        c_void,
+        CStr,
+        CString,
+    },
+    os::raw::c_char,
+    sync::Arc,
 };
 
-use crate::bindless::BINDLESS_TEXTURE_COUNT;
-use crate::queue::VkQueueInfo;
-use crate::raw::*;
-use crate::{
-    VkBackend,
-    VkDevice,
-    VkSurface,
+use ash::{
+    extensions::khr::Surface as KhrSurface,
+    vk,
 };
+use sourcerenderer_core::gpu::*;
+
+use super::*;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
-const GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME: &str = "VK_KHR_get_memory_requirements2";
-const DEDICATED_ALLOCATION_EXT_NAME: &str = "VK_KHR_dedicated_allocation";
-const DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME: &str = "VK_KHR_descriptor_update_template";
+const MAINTENANCE4_EXT_NAME: &str = "VK_KHR_maintenance4";
+const MEMORY_BUDGET_EXT_NAME: &str = "VK_EXT_memory_budget";
 const SHADER_NON_SEMANTIC_INFO_EXT_NAME: &str = "VK_KHR_shader_non_semantic_info";
 const DESCRIPTOR_INDEXING_EXT_NAME: &str = "VK_EXT_descriptor_indexing";
 const ACCELERATION_STRUCTURE_EXT_NAME: &str = "VK_KHR_acceleration_structure";
@@ -49,8 +42,8 @@ bitflags! {
   pub struct VkAdapterExtensionSupport: u32 {
     const NONE                       = 0b0;
     const SWAPCHAIN                  = 0b1;
-    const DEDICATED_ALLOCATION       = 0b10;
-    const GET_MEMORY_PROPERTIES2     = 0b100;
+    const MEMORY_BUDGET              = 0b10;
+    const MAINTENANCE4               = 0b100;
     const DESCRIPTOR_UPDATE_TEMPLATE = 0b1000;
     const SHADER_NON_SEMANTIC_INFO   = 0b10000;
     const DESCRIPTOR_INDEXING        = 0b100000;
@@ -97,7 +90,7 @@ pub struct VkAdapter {
 }
 
 impl VkAdapter {
-    pub fn new(instance: Arc<RawVkInstance>, physical_device: vk::PhysicalDevice) -> Self {
+    pub fn new(instance: &Arc<RawVkInstance>, physical_device: vk::PhysicalDevice) -> Self {
         let properties = unsafe {
             instance
                 .instance
@@ -119,13 +112,7 @@ impl VkAdapter {
             let name = name_res.unwrap();
             extensions |= match name {
                 SWAPCHAIN_EXT_NAME => VkAdapterExtensionSupport::SWAPCHAIN,
-                DEDICATED_ALLOCATION_EXT_NAME => VkAdapterExtensionSupport::DEDICATED_ALLOCATION,
-                GET_DEDICATED_MEMORY_REQUIREMENTS2_EXT_NAME => {
-                    VkAdapterExtensionSupport::GET_MEMORY_PROPERTIES2
-                }
-                DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME => {
-                    VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE
-                }
+                MEMORY_BUDGET_EXT_NAME => VkAdapterExtensionSupport::MEMORY_BUDGET,
                 SHADER_NON_SEMANTIC_INFO_EXT_NAME => {
                     VkAdapterExtensionSupport::SHADER_NON_SEMANTIC_INFO
                 }
@@ -148,20 +135,21 @@ impl VkAdapter {
                 SAMPLER_FILTER_MINMAX_EXT_NAME => VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX,
                 BARYCENTRICS_EXT_NAME => VkAdapterExtensionSupport::BARYCENTRICS,
                 IMAGE_FORMAT_LIST_EXT_NAME => VkAdapterExtensionSupport::IMAGE_FORMAT_LIST,
+                MAINTENANCE4_EXT_NAME => VkAdapterExtensionSupport::MAINTENANCE4,
                 _ => VkAdapterExtensionSupport::NONE,
             };
         }
 
         VkAdapter {
-            instance,
+            instance: instance.clone(),
             physical_device,
             properties,
             extensions,
         }
     }
 
-    pub fn physical_device_handle(&self) -> &vk::PhysicalDevice {
-        &self.physical_device
+    pub fn physical_device_handle(&self) -> vk::PhysicalDevice {
+        self.physical_device
     }
 
     pub fn raw_instance(&self) -> &Arc<RawVkInstance> {
@@ -171,8 +159,10 @@ impl VkAdapter {
 
 // Vulkan physical devices are implicitly freed with the instance
 
+pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
+
 impl Adapter<VkBackend> for VkAdapter {
-    fn create_device(&self, surface: &Arc<VkSurface>) -> VkDevice {
+    fn create_device(&self, surface: &VkSurface) -> VkDevice {
         return unsafe {
             let surface_loader = KhrSurface::new(&self.instance.entry, &self.instance.instance);
             let queue_properties = self
@@ -223,7 +213,7 @@ impl Adapter<VkBackend> for VkAdapter {
                     .get_physical_device_surface_support(
                         self.physical_device,
                         graphics_queue_family_props.0 as u32,
-                        *surface.surface_handle(),
+                        surface.surface_handle(),
                     )
                     .unwrap_or(false),
             };
@@ -237,7 +227,7 @@ impl Adapter<VkBackend> for VkAdapter {
                         .get_physical_device_surface_support(
                             self.physical_device,
                             index as u32,
-                            *surface.surface_handle(),
+                            surface.surface_handle(),
                         )
                         .unwrap_or(false),
                 }
@@ -252,7 +242,7 @@ impl Adapter<VkBackend> for VkAdapter {
                         .get_physical_device_surface_support(
                             self.physical_device,
                             index as u32,
-                            *surface.surface_handle(),
+                            surface.surface_handle(),
                         )
                         .unwrap_or(false),
                 }
@@ -306,12 +296,14 @@ impl Adapter<VkBackend> for VkAdapter {
                 vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
             let mut supported_barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
-            let mut supported_16bit_features =
-                vk::PhysicalDevice16BitStorageFeatures::default();
+            let mut supported_16bit_features = vk::PhysicalDevice16BitStorageFeatures::default();
+            let mut supported_maintenance4_features = vk::PhysicalDeviceMaintenance4Features::default();
 
-            supported_16bit_features.p_next = std::mem::replace(&mut supported_features.p_next,
-             &mut supported_16bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
-                as *mut c_void);
+            supported_16bit_features.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_16bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
+                    as *mut c_void,
+            );
 
             if self
                 .extensions
@@ -408,6 +400,18 @@ impl Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
 
+            if self
+                .extensions
+                .intersects(VkAdapterExtensionSupport::MAINTENANCE4)
+            {
+                supported_maintenance4_features.p_next = std::mem::replace(
+                    &mut supported_features.p_next,
+                    &mut supported_maintenance4_features
+                        as *mut vk::PhysicalDeviceMaintenance4Features
+                        as *mut c_void,
+                );
+            }
+
             self.instance
                 .get_physical_device_features2(self.physical_device, &mut supported_features);
             self.instance
@@ -428,21 +432,24 @@ impl Adapter<VkBackend> for VkAdapter {
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
             let mut sixteen_bit_features = vk::PhysicalDevice16BitStorageFeatures::default();
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
+            let mut maintenance4_features = vk::PhysicalDeviceMaintenance4Features::default();
             let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
             enabled_features.shader_storage_image_write_without_format = vk::TRUE;
 
-            if supported_features.features.shader_int16 == vk::TRUE && supported_16bit_features.storage_buffer16_bit_access == vk::TRUE {
+            if supported_features.features.shader_int16 == vk::TRUE
+                && supported_16bit_features.storage_buffer16_bit_access == vk::TRUE
+            {
                 sixteen_bit_features.storage_buffer16_bit_access = vk::TRUE;
                 enabled_features.shader_int16 = vk::TRUE;
             }
 
             if self
                 .extensions
-                .intersects(VkAdapterExtensionSupport::DESCRIPTOR_UPDATE_TEMPLATE)
+                .intersects(VkAdapterExtensionSupport::MEMORY_BUDGET)
             {
-                extension_names.push(DESCRIPTOR_UPDATE_TEMPLATE_EXT_NAME);
-                features |= VkFeatures::DESCRIPTOR_TEMPLATE;
+                extension_names.push(MEMORY_BUDGET_EXT_NAME);
+                features |= VkFeatures::MEMORY_BUDGET;
             }
 
             if self.instance.debug_utils.is_some()
@@ -617,8 +624,11 @@ impl Adapter<VkBackend> for VkAdapter {
                 enabled_features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
             }
 
-            sixteen_bit_features.p_next = std::mem::replace(&mut device_creation_pnext,
-              &mut sixteen_bit_features as *mut vk::PhysicalDevice16BitStorageFeatures as *mut c_void);
+            sixteen_bit_features.p_next = std::mem::replace(
+                &mut device_creation_pnext,
+                &mut sixteen_bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
+                    as *mut c_void,
+            );
 
             if self
                 .extensions
@@ -626,6 +636,18 @@ impl Adapter<VkBackend> for VkAdapter {
             {
                 extension_names.push(IMAGE_FORMAT_LIST_EXT_NAME);
                 features |= VkFeatures::IMAGE_FORMAT_LIST;
+            }
+
+            if supported_maintenance4_features.maintenance4 == vk::TRUE {
+                maintenance4_features.maintenance4 = vk::TRUE;
+                maintenance4_features.p_next = std::mem::replace(
+                    &mut device_creation_pnext,
+                    &mut maintenance4_features as *mut vk::PhysicalDeviceMaintenance4Features
+                        as *mut c_void,
+                );
+
+                extension_names.push(MAINTENANCE4_EXT_NAME);
+                features |= VkFeatures::MAINTENANCE4;
             }
 
             let extension_names_c: Vec<CString> = extension_names

@@ -2,14 +2,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    Backend,
-    BufferInfo,
-    BufferUsage,
-    Device,
-    MemoryUsage,
-};
+use crate::graphics::*;
 
 /// We suballocate all mesh buffers from a large buffer
 /// to be able use indirect rendering.
@@ -18,7 +11,7 @@ pub struct AssetBuffer<B: GPUBackend> {
 }
 
 struct AssetBufferInternal<B: GPUBackend> {
-    buffer: Arc<B::Buffer>,
+    buffer: Arc<BufferSlice<B>>,
     free_ranges: AtomicRefCell<Vec<BufferRange>>,
     reuse_ranges: AtomicRefCell<Vec<(BufferRange, u32)>>,
 }
@@ -38,15 +31,16 @@ struct BufferRange {
 impl<B: GPUBackend> AssetBuffer<B> {
     pub const SIZE_BIG: u32 = 256 << 20;
     pub const SIZE_SMALL: u32 = 64 << 20;
-    pub fn new(device: &Arc<B::Device>, size: u32, usage: BufferUsage) -> Self {
+    pub fn new(device: &Arc<Device<B>>, size: u32, usage: BufferUsage) -> Self {
         let buffer = device.create_buffer(
             &BufferInfo {
-                size: size as usize,
+                size: size as u64,
                 usage: usage,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             Some("AssetBuffer"),
-        );
+        ).expect("Failed to allocate geometry buffer.");
         let free_range = BufferRange {
             offset: 0,
             aligned_offset: 0,
@@ -100,18 +94,18 @@ impl<B: GPUBackend> AssetBuffer<B> {
         }
     }
 
-    pub fn bump_frame(&self, device: &Arc<B::Device>) {
+    pub fn bump_frame(&self, context: &GraphicsContext<B>) {
         let mut reuse_ranges = self.internal.reuse_ranges.borrow_mut();
         for (range, frames) in reuse_ranges.iter_mut() {
             *frames += 1;
-            if *frames > device.prerendered_frames() + 1 {
+            if *frames > context.prerendered_frames() + 1 {
                 self.internal.reuse_range(&range);
             }
         }
-        reuse_ranges.retain(|(_r, frames)| *frames <= device.prerendered_frames() + 1);
+        reuse_ranges.retain(|(_r, frames)| *frames <= context.prerendered_frames() + 1);
     }
 
-    pub fn buffer(&self) -> &Arc<B::Buffer> {
+    pub fn buffer(&self) -> &Arc<BufferSlice<B>> {
         &self.internal.buffer
     }
 }
@@ -148,7 +142,7 @@ impl<B: GPUBackend> AssetBufferInternal<B> {
 }
 
 impl<B: GPUBackend> AssetBufferSlice<B> {
-    pub fn buffer(&self) -> &Arc<B::Buffer> {
+    pub fn buffer(&self) -> &Arc<BufferSlice<B>> {
         &self.buffer.buffer
     }
 

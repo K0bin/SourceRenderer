@@ -2,25 +2,6 @@ use std::sync::Arc;
 
 use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{
-    AddressMode,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    Filter,
-    Format,
-    PipelineBinding,
-    SamplerInfo,
-    ShaderType,
-    TextureLayout,
-    TextureUsage,
-    TextureViewInfo,
-    WHOLE_BUFFER, QueueSharingMode,
-};
 use sourcerenderer_core::Platform;
 
 use crate::renderer::render_path::RenderPassParameters;
@@ -32,6 +13,7 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
+use crate::graphics::*;
 
 pub struct HierarchicalZPass<P: Platform> {
     ffx_pipeline: ComputePipelineHandle,
@@ -45,10 +27,10 @@ impl<P: Platform> HierarchicalZPass<P> {
     const FFX_COUNTER_BUFFER_NAME: &'static str = "FFX Downscaling Counter Buffer";
 
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
         resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
-        init_cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         depth_name: &str,
     ) -> Self {
         let mut texture_info = resources.texture_info(depth_name).clone();
@@ -66,7 +48,7 @@ impl<P: Platform> HierarchicalZPass<P> {
         let copy_pipeline = shader_manager.request_compute_pipeline("shaders/hi_z_copy.comp.spv");
 
         let sampler = if device.supports_min_max_filter() {
-            device.create_sampler(&SamplerInfo {
+            Arc::new(device.create_sampler(&SamplerInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Max,
                 mip_filter: Filter::Linear,
@@ -78,7 +60,7 @@ impl<P: Platform> HierarchicalZPass<P> {
                 compare_op: None,
                 min_lod: 0f32,
                 max_lod: None,
-            })
+            }))
         } else {
             resources.nearest_sampler().clone()
         };
@@ -90,7 +72,7 @@ impl<P: Platform> HierarchicalZPass<P> {
                 usage: BufferUsage::STORAGE,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             false,
         );
 
@@ -104,7 +86,7 @@ impl<P: Platform> HierarchicalZPass<P> {
                 HistoryResourceEntry::Current,
             );
             init_cmd_buffer.flush_barriers();
-            init_cmd_buffer.clear_storage_buffer(&counter_buffer, 0, 4, 0);
+            init_cmd_buffer.clear_storage_buffer(BufferRef::Regular(&counter_buffer), 0, 4, 0);
         }
 
         Self {
@@ -117,7 +99,7 @@ impl<P: Platform> HierarchicalZPass<P> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
     ) {
@@ -172,7 +154,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             HistoryResourceEntry::Current,
         );
         let mut dst_texture_views =
-            SmallVec::<[Arc<<P::GraphicsBackend as Backend>::TextureView>; 12]>::new();
+            SmallVec::<[Arc<TextureView<P::GPUBackend>>; 12]>::new();
         for i in 1..mips {
             dst_texture_views.push(
                 pass_params.resources
@@ -196,7 +178,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             );
         }
         let mut texture_refs =
-            SmallVec::<[&Arc<<P::GraphicsBackend as Backend>::TextureView>; 12]>::new();
+            SmallVec::<[&TextureView<P::GPUBackend>; 12]>::new();
         for i in 0..(mips - 1) as usize {
             texture_refs.push(&dst_texture_views[i]);
         }
@@ -216,7 +198,7 @@ impl<P: Platform> HierarchicalZPass<P> {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             2,
-            &counter_buffer,
+            BufferRef::Regular(&counter_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -230,7 +212,7 @@ impl<P: Platform> HierarchicalZPass<P> {
         }
         let work_groups_x = (width + 63) >> 6;
         let work_groups_y = (height + 63) >> 6;
-        cmd_buffer.upload_dynamic_data_inline(
+        cmd_buffer.set_push_constant_data(
             &[SpdConstants {
                 mips: mips - 1,
                 num_work_groups: work_groups_x * work_groups_y,

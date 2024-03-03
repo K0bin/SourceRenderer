@@ -1,51 +1,36 @@
-use std::cmp::{
-    max,
-    min,
-};
-use std::sync::atomic::{
-    AtomicU32,
-    Ordering, AtomicU64,
-};
-use std::sync::{
-    Arc,
-    Mutex,
-    MutexGuard,
+use std::{
+    cmp::{
+        max,
+        min,
+    },
+    sync::{
+        atomic::{
+            AtomicU32,
+            AtomicU64,
+            Ordering,
+        },
+        Arc,
+    },
 };
 
-use ash::extensions::khr::Swapchain as SwapchainLoader;
-use ash::prelude::VkResult;
-use ash::vk;
-use ash::vk::SurfaceTransformFlagsKHR;
+use ash::{
+    extensions::khr::Swapchain as SwapchainLoader,
+    prelude::VkResult,
+    vk,
+    vk::SurfaceTransformFlagsKHR,
+};
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    Format,
-    SampleCount,
-    Swapchain,
-    SwapchainError,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureUsage,
-    TextureViewInfo, WSIFence, PreparedBackBuffer,
-};
 use sourcerenderer_core::{
+    gpu::*,
     Matrix4,
     Vec3,
 };
 
-use crate::raw::{
-    RawVkDevice,
-    RawVkInstance,
-};
-use crate::texture::VkTextureView;
-use crate::{
-    VkBackend,
-    VkSurface,
-    VkTexture, VkQueue,
-};
+use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(u32)]
 pub enum VkSwapchainState {
     Okay,
     Suboptimal,
@@ -54,24 +39,19 @@ pub enum VkSwapchainState {
 }
 
 pub struct VkSwapchain {
-    textures: SmallVec<[Arc<VkTexture>; 5]>,
-    views: SmallVec<[Arc<VkTextureView>; 5]>,
+    textures: SmallVec<[VkTexture; 5]>,
     acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     present_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
-    semaphore_index: AtomicU64,
-    swapchain: Mutex<vk::SwapchainKHR>,
+    swapchain: vk::SwapchainKHR,
     swapchain_loader: SwapchainLoader,
     instance: Arc<RawVkInstance>,
-    surface: Arc<VkSurface>,
+    surface: Option<VkSurface>,
     device: Arc<RawVkDevice>,
     vsync: bool,
     state: AtomicCell<VkSwapchainState>,
-    acquired_image: AtomicU32,
-    presented_image: AtomicU32,
+    semaphore_index: AtomicU64,
+    image_index: AtomicU32,
     transform_matrix: Matrix4,
-    graphics_queue: Arc<VkQueue>,
-    compute_queue: Option<Arc<VkQueue>>,
-    transfer_queue: Option<Arc<VkQueue>>
 }
 
 impl VkSwapchain {
@@ -80,12 +60,9 @@ impl VkSwapchain {
         width: u32,
         height: u32,
         device: &Arc<RawVkDevice>,
-        surface: &Arc<VkSurface>,
-        old_swapchain: Option<&Self>,
-        graphics_queue: &Arc<VkQueue>,
-        compute_queue: Option<&Arc<VkQueue>>,
-        transfer_queue: Option<&Arc<VkQueue>>
-    ) -> Result<Arc<Self>, SwapchainError> {
+        mut surface: VkSurface,
+        old_swapchain: Option<vk::SwapchainKHR>,
+    ) -> Result<Self, SwapchainError> {
         if surface.is_lost() {
             return Err(SwapchainError::SurfaceLost);
         }
@@ -135,7 +112,6 @@ impl VkSwapchain {
                 },
             };
             let format = VkSwapchain::pick_format(&formats);
-            println!("format: {:?}", format);
 
             let (width, height) = VkSwapchain::pick_extent(&capabilities, width, height);
             let extent = vk::Extent2D { width, height };
@@ -200,15 +176,10 @@ impl VkSwapchain {
             let image_count = VkSwapchain::pick_image_count(&capabilities, 3);
 
             let swapchain = {
-                let old_guard = old_swapchain.map(|sc| {
-                    sc.set_state(VkSwapchainState::Retired);
-                    sc.handle()
-                });
-
                 let surface_handle = surface.surface_handle();
 
                 let swapchain_create_info = vk::SwapchainCreateInfoKHR {
-                    surface: *surface_handle,
+                    surface: surface_handle,
                     min_image_count: image_count,
                     image_format: format.format,
                     image_color_space: format.color_space,
@@ -229,9 +200,7 @@ impl VkSwapchain {
                         vk::CompositeAlphaFlagsKHR::INHERIT
                     },
                     clipped: vk::TRUE,
-                    old_swapchain: old_guard
-                        .as_ref()
-                        .map_or(vk::SwapchainKHR::null(), |old_guard| **old_guard),
+                    old_swapchain: old_swapchain.unwrap_or(vk::SwapchainKHR::default()),
                     ..Default::default()
                 };
 
@@ -252,10 +221,10 @@ impl VkSwapchain {
             };
 
             let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
-            let textures: SmallVec<[Arc<VkTexture>; 5]> = swapchain_images
+            let textures: SmallVec<[VkTexture; 5]> = swapchain_images
                 .iter()
                 .map(|image| {
-                    Arc::new(VkTexture::from_image(
+                    VkTexture::from_image(
                         device,
                         *image,
                         TextureInfo {
@@ -272,20 +241,7 @@ impl VkSwapchain {
                                 | TextureUsage::BLIT_DST,
                             supports_srgb: false,
                         },
-                    ))
-                })
-                .collect();
-
-            let swapchain_image_views: SmallVec<[Arc<VkTextureView>; 5]> = textures
-                .iter()
-                .enumerate()
-                .map(|(index, texture)| {
-                    Arc::new(VkTextureView::new(
-                        device,
-                        texture,
-                        &TextureViewInfo::default(),
-                        Some(&format!("Backbuffer view {}", index)),
-                    ))
+                    )
                 })
                 .collect();
 
@@ -297,26 +253,21 @@ impl VkSwapchain {
                 .map(|_i| VkBinarySemaphore::new(device))
                 .collect();
 
-            Ok(Arc::new(VkSwapchain {
+            Ok(VkSwapchain {
                 textures,
-                views: swapchain_image_views,
                 acquire_semaphores,
                 present_semaphores,
-                semaphore_index: AtomicU64::new(0u64),
-                swapchain: Mutex::new(swapchain),
+                semaphore_index: AtomicU64::new(0),
+                image_index: AtomicU32::new(0),
+                swapchain: swapchain,
                 swapchain_loader,
                 instance: device.instance.clone(),
-                surface: surface.clone(),
+                surface: Some(surface),
                 device: device.clone(),
                 vsync,
                 state: AtomicCell::new(VkSwapchainState::Okay),
-                presented_image: AtomicU32::new(0),
-                acquired_image: AtomicU32::new(0),
                 transform_matrix: matrix,
-                graphics_queue: graphics_queue.clone(),
-                compute_queue: compute_queue.cloned(),
-                transfer_queue: transfer_queue.cloned()
-            }))
+            })
         }
     }
 
@@ -325,12 +276,9 @@ impl VkSwapchain {
         width: u32,
         height: u32,
         device: &Arc<RawVkDevice>,
-        surface: &Arc<VkSurface>,
-        graphics_queue: &Arc<VkQueue>,
-        compute_queue: Option<&Arc<VkQueue>>,
-        transfer_queue: Option<&Arc<VkQueue>>
-    ) -> Result<Arc<Self>, SwapchainError> {
-        VkSwapchain::new_internal(vsync, width, height, device, surface, None, graphics_queue, compute_queue, transfer_queue)
+        surface: VkSurface,
+    ) -> Result<Self, SwapchainError> {
+        VkSwapchain::new_internal(vsync, width, height, device, surface, None)
     }
 
     pub fn pick_extent(
@@ -416,16 +364,8 @@ impl VkSwapchain {
         &self.swapchain_loader
     }
 
-    pub fn handle(&self) -> MutexGuard<vk::SwapchainKHR> {
-        self.swapchain.lock().unwrap()
-    }
-
-    pub fn textures(&self) -> &[Arc<VkTexture>] {
-        &self.textures
-    }
-
-    pub fn views(&self) -> &[Arc<VkTextureView>] {
-        &self.views[..]
+    pub fn handle(&self) -> vk::SwapchainKHR {
+        self.swapchain
     }
 
     pub fn width(&self) -> u32 {
@@ -437,30 +377,30 @@ impl VkSwapchain {
     }
 
     #[allow(clippy::logic_bug)]
-    pub fn acquire_back_buffer(&self, semaphore: &VkBinarySemaphore) -> VkResult<(u32, bool)> {
-        while self.presented_image.load(Ordering::SeqCst)
-            != self.acquired_image.load(Ordering::SeqCst)
-        {}
+    pub unsafe fn acquire_back_buffer(&self) -> VkResult<(u32, bool)> {
+        let index: usize = (self.semaphore_index.fetch_add(1, Ordering::AcqRel) % self.acquire_semaphores.len() as u64) as usize;
+        let semaphore = &self.acquire_semaphores[index];
+
         let result = {
             let swapchain_handle = self.handle();
-            unsafe {
-                self.swapchain_loader.acquire_next_image(
-                    *swapchain_handle,
-                    std::u64::MAX,
-                    *semaphore.handle(),
-                    vk::Fence::null(),
-                )
-            }
+            self.swapchain_loader.acquire_next_image(
+                swapchain_handle,
+                std::u64::MAX,
+                semaphore.handle(),
+                vk::Fence::null(),
+            )
         };
         if let Ok((image, is_optimal)) = result {
             if !is_optimal && false {
                 self.set_state(VkSwapchainState::Suboptimal);
             }
-            self.acquired_image.store(image, Ordering::SeqCst);
+            self.image_index.store(image, Ordering::Release);
         } else {
             match result.err().unwrap() {
                 vk::Result::ERROR_SURFACE_LOST_KHR => {
-                    self.surface.mark_lost();
+                    if let Some(surface) = self.surface.as_ref() {
+                        surface.mark_lost();
+                    }
                     self.set_state(VkSwapchainState::Retired);
                 }
                 vk::Result::ERROR_OUT_OF_DATE_KHR => {
@@ -483,66 +423,68 @@ impl VkSwapchain {
         result
     }
 
-    pub(crate) fn set_presented_image(&self, presented_image_index: u32) {
-        self.presented_image
-            .store(presented_image_index, Ordering::SeqCst);
-    }
-
-    pub fn set_state(&self, state: VkSwapchainState) {
+    pub(super) fn set_state(&self, state: VkSwapchainState) {
         self.state.store(state);
     }
 
-    pub fn state(&self) -> VkSwapchainState {
+    pub(super) fn state(&self) -> VkSwapchainState {
         self.state.load()
     }
 
-    pub fn acquired_image(&self) -> u32 {
-        self.acquired_image.load(Ordering::SeqCst)
+    pub(super) fn acquire_semaphore(&self) -> &VkBinarySemaphore {
+        let index = (self.semaphore_index.load(Ordering::Acquire) % self.acquire_semaphores.len() as u64) as usize;
+        &self.acquire_semaphores[index]
+    }
+
+    pub(super) fn present_semaphore(&self) -> &VkBinarySemaphore {
+        let index = (self.semaphore_index.load(Ordering::Acquire) % self.present_semaphores.len() as u64) as usize;
+        &self.present_semaphores[index]
     }
 }
 
 impl Drop for VkSwapchain {
     fn drop(&mut self) {
-        self.graphics_queue.wait_for_idle();
-        if let Some(queue) = self.compute_queue.as_ref() {
-            queue.wait_for_idle();
-        }
-        if let Some(queue) = self.transfer_queue.as_ref() {
-            queue.wait_for_idle();
-        }
-
         self.device.wait_for_idle();
-        let swapchain = self.swapchain.lock().unwrap();
-        unsafe { self.swapchain_loader.destroy_swapchain(*swapchain, None) }
+        unsafe {
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None)
+        }
     }
 }
 
 impl Swapchain<VkBackend> for VkSwapchain {
-    fn recreate(old: &Self, width: u32, height: u32) -> Result<Arc<Self>, SwapchainError> {
+    unsafe fn recreate(mut old: Self, width: u32, height: u32) -> Result<Self, SwapchainError> {
+        let state = old.state();
+        let old_sc_handle = old.handle();
+        let surface = std::mem::replace(&mut old.surface, None).unwrap();
+        old.set_state(VkSwapchainState::Retired);
+
         println!("Recreating swapchain");
         VkSwapchain::new_internal(
             old.vsync,
             width,
             height,
             &old.device,
-            &old.surface,
+            surface,
             if old.state() == VkSwapchainState::Retired {
                 None
             } else {
-                Some(old)
+                Some(old_sc_handle)
             },
-            &old.graphics_queue,
-            old.compute_queue.as_ref(),
-            old.transfer_queue.as_ref()
         )
     }
 
-    fn recreate_on_surface(
-        old: &Self,
-        surface: &Arc<VkSurface>,
+    unsafe fn recreate_on_surface(
+        mut old: Self,
+        surface: VkSurface,
         width: u32,
         height: u32,
-    ) -> Result<Arc<Self>, SwapchainError> {
+    ) -> Result<Self, SwapchainError> {
+        let state = old.state();
+        let old_sc_handle = old.handle();
+        old.set_state(VkSwapchainState::Retired);
+        let surface = std::mem::replace(&mut old.surface, None).unwrap();
+
         println!("Recreating swapchain on new surface");
         VkSwapchain::new_internal(
             old.vsync,
@@ -553,11 +495,8 @@ impl Swapchain<VkBackend> for VkSwapchain {
             if old.state() == VkSwapchainState::Retired {
                 None
             } else {
-                Some(old)
+                Some(old_sc_handle)
             },
-            &old.graphics_queue,
-            old.compute_queue.as_ref(),
-            old.transfer_queue.as_ref()
         )
     }
 
@@ -569,30 +508,34 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.textures.first().unwrap().info().format
     }
 
-    fn surface(&self) -> &Arc<VkSurface> {
-        &self.surface
+    fn surface(&self) -> &VkSurface {
+        self.surface.as_ref().unwrap()
     }
 
     fn transform(&self) -> sourcerenderer_core::Matrix4 {
         self.transform_matrix
     }
 
-    fn prepare_back_buffer(&self) -> Option<PreparedBackBuffer<'_, VkBackend>> {
-        let res = self.acquire_back_buffer(&self.acquire_semaphores[self.semaphore_index.load(Ordering::Acquire) as usize % self.acquire_semaphores.len()]);
-        let prepared_back_buffer = res.ok()
-            .and_then(|(img_index, _optimal)| // TODO: handle optimal
-        //optimal.then(||
-        Some(
-            PreparedBackBuffer {
-                texture_view: self.views.get(img_index as usize).unwrap(),
-                prepare_fence: &self.acquire_semaphores[img_index as usize],
-                present_fence: &self.present_semaphores[img_index as usize],
-            }
-        ));
-        if prepared_back_buffer.is_some() {
-            self.semaphore_index.fetch_add(1, Ordering::AcqRel);
-        }
-        prepared_back_buffer
+    fn backbuffer(&self, index: u32) -> &VkTexture {
+        &self.textures[index as usize]
+    }
+
+    fn backbuffer_index(&self) -> u32 {
+        self.image_index.load(Ordering::Acquire)
+    }
+
+    fn backbuffer_count(&self) -> u32 {
+        self.textures.len() as u32
+    }
+
+    unsafe fn next_backbuffer(&self) -> Result<(), SwapchainError> {
+        let _ = self.acquire_back_buffer()
+            .map_err(|e| match e {
+                vk::Result::ERROR_OUT_OF_DATE_KHR => SwapchainError::Other,
+                vk::Result::ERROR_SURFACE_LOST_KHR => SwapchainError::SurfaceLost,
+                _ => SwapchainError::Other
+            })?;
+        Ok(())
     }
 
     fn width(&self) -> u32 {
@@ -625,7 +568,6 @@ fn surface_vk_format_to_core(format: vk::Format) -> Format {
     }
 }
 
-
 pub struct VkBinarySemaphore {
     device: Arc<RawVkDevice>,
     semaphore: vk::Semaphore,
@@ -650,8 +592,8 @@ impl VkBinarySemaphore {
         }
     }
 
-    pub fn handle(&self) -> &vk::Semaphore {
-        &self.semaphore
+    pub fn handle(&self) -> vk::Semaphore {
+        self.semaphore
     }
 }
 
@@ -662,5 +604,3 @@ impl Drop for VkBinarySemaphore {
         }
     }
 }
-
-impl WSIFence for VkBinarySemaphore {}

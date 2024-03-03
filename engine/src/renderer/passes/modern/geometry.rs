@@ -3,60 +3,6 @@ use std::sync::Arc;
 
 use nalgebra::Vector2;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    AddressMode,
-    AttachmentBlendInfo,
-    AttachmentInfo,
-    Backend as GraphicsBackend,
-    Backend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BlendInfo,
-    BufferUsage,
-    CommandBuffer,
-    CompareFunc,
-    CullMode,
-    DepthStencilAttachmentRef,
-    DepthStencilInfo,
-    Device,
-    FillMode,
-    Filter,
-    Format,
-    FrontFace,
-    IndexFormat,
-    InputAssemblerElement,
-    InputRate,
-    LoadOp,
-    LogicOp,
-    OutputAttachmentRef,
-    PipelineBinding,
-    PrimitiveType,
-    RasterizerInfo,
-    RenderPassAttachment,
-    RenderPassAttachmentView,
-    RenderPassBeginInfo,
-    RenderPassInfo,
-    RenderpassRecordingMode,
-    SampleCount,
-    SamplerInfo,
-    Scissor,
-    ShaderInputElement,
-    StencilInfo,
-    StoreOp,
-    SubpassInfo,
-    Swapchain,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    VertexLayoutInfo,
-    Viewport,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -86,6 +32,8 @@ use crate::renderer::shader_manager::{
 };
 use crate::renderer::PointLight;
 
+use crate::graphics::*;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct FrameData {
@@ -102,7 +50,7 @@ struct FrameData {
 }
 
 pub struct GeometryPass<P: Platform> {
-    sampler: Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
+    sampler: Arc<Sampler<P::GPUBackend>>,
     pipeline: GraphicsPipelineHandle,
 }
 
@@ -110,8 +58,8 @@ impl<P: Platform> GeometryPass<P> {
     pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
 
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        device: &Arc<Device<P::GPUBackend>>,
+        swapchain: &Arc<Swapchain<P::GPUBackend>>,
         barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
@@ -132,7 +80,7 @@ impl<P: Platform> GeometryPass<P> {
         };
         barriers.create_texture(Self::GEOMETRY_PASS_TEXTURE_NAME, &texture_info, false);
 
-        let sampler = device.create_sampler(&SamplerInfo {
+        let sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
             min_filter: Filter::Linear,
             mip_filter: Filter::Linear,
@@ -144,7 +92,7 @@ impl<P: Platform> GeometryPass<P> {
             compare_op: None,
             min_lod: 0.0,
             max_lod: None,
-        });
+        }));
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: "shaders/geometry_bindless.vert.spv",
@@ -258,21 +206,21 @@ impl<P: Platform> GeometryPass<P> {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         barriers: &RendererResources<P::GPUBackend>,
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         depth_name: &str,
         scene: &RendererScene<P::GPUBackend>,
         view: &View,
-        gpu_scene: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        zero_texture_view: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
-        _zero_texture_view_black: &Arc<<P::GraphicsBackend as Backend>::TextureView>,
+        gpu_scene: &TransientBufferSlice<P::GPUBackend>,
+        zero_texture_view: &Arc<TextureView<P::GPUBackend>>,
+        _zero_texture_view_black: &Arc<TextureView<P::GPUBackend>>,
         lightmap: &Arc<RendererTexture<P::GPUBackend>>,
         swapchain_transform: Matrix4,
         frame: u64,
-        camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        vertex_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        index_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
+        vertex_buffer: &Arc<BufferSlice<P::GPUBackend>>,
+        index_buffer: &Arc<BufferSlice<P::GPUBackend>>,
         shader_manager: &ShaderManager<P>,
     ) {
         cmd_buffer.begin_label("Geometry pass");
@@ -329,7 +277,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-        let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureView>>;
+        let rt_shadows: Ref<Arc<TextureView<P::GPUBackend>>>;
         let shadows = if device.supports_ray_tracing() {
             rt_shadows = barriers.access_view(
                 cmd_buffer,
@@ -375,7 +323,7 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::Commands,
         );
 
-        let rtv_info = rtv.texture().info();
+        let rtv_info = rtv.texture().unwrap().info();
         let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
         let near = view.near_plane;
         let far = view.far_plane;
@@ -407,16 +355,16 @@ impl<P: Platform> GeometryPass<P> {
                 intensity: directional_light.intensity,
             });
         }
-        let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
+        let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT).unwrap();
         let point_light_buffer =
-            cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE);
+            cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE).unwrap();
         let directional_light_buffer =
-            cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE);
+            cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE).unwrap();
 
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::Frequent,
             3,
-            &per_frame_buffer,
+            BufferRef::Transient(&per_frame_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -438,21 +386,21 @@ impl<P: Platform> GeometryPass<P> {
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::Frequent,
             0,
-            camera_buffer,
+            BufferRef::Regular(camera_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             1,
-            &point_light_buffer,
+            BufferRef::Transient(&point_light_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             2,
-            &light_bitmask_buffer,
+            BufferRef::Regular(light_bitmask_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -465,7 +413,7 @@ impl<P: Platform> GeometryPass<P> {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             5,
-            &directional_light_buffer,
+            BufferRef::Transient(&directional_light_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -482,13 +430,13 @@ impl<P: Platform> GeometryPass<P> {
             &shadows,
             &self.sampler,
         );
-        cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 9, gpu_scene, 0, WHOLE_BUFFER);
+        cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 9, BufferRef::Transient(gpu_scene), 0, WHOLE_BUFFER);
 
-        cmd_buffer.set_vertex_buffer(vertex_buffer, 0);
-        cmd_buffer.set_index_buffer(index_buffer, 0, IndexFormat::U32);
+        cmd_buffer.set_vertex_buffer(BufferRef::Regular(vertex_buffer), 0);
+        cmd_buffer.set_index_buffer(BufferRef::Regular(index_buffer), 0, IndexFormat::U32);
 
         cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);
+        cmd_buffer.draw_indexed_indirect(BufferRef::Regular(&draw_buffer), 4, BufferRef::Regular(&draw_buffer), 0, DRAW_CAPACITY, 20);
 
         cmd_buffer.end_render_pass();
         cmd_buffer.end_label();

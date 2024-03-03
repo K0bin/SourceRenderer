@@ -15,6 +15,9 @@ pub(super) use bindless::*;
 pub use rt::*;
 pub use swapchain::*;
 pub use instance::*;
+pub use pipeline::*;
+
+pub use command::PipelineBinding; // why is this necessary?
 
 mod device;
 mod context;
@@ -34,3 +37,68 @@ mod rt;
 mod pipeline;
 mod swapchain;
 mod instance;
+
+pub use sourcerenderer_core::gpu::{
+    SubpassInfo,
+    AttachmentRef,
+    DepthStencilAttachmentRef,
+    OutputAttachmentRef,
+    LoadOp,
+    StoreOp,
+    BarrierSync,
+    BarrierAccess,
+    IndexFormat,
+    ShaderType,
+    Viewport,
+    Scissor,
+    BindingFrequency,
+    TextureInfo,
+    TextureViewInfo,
+    BufferInfo,
+    Instance as CoreInstance,
+    Adapter as CoreAdapter,
+    Swapchain as CoreSwapchain,
+    Device as CoreDevice,
+    GPUBackend,
+    RayTracingPipelineInfo,
+    GraphicsPipelineInfo,
+    TextureUsage,
+    SampleCount,
+    Format,
+    TextureDimension,
+    QueueSharingMode,
+    QueueType,
+    BufferUsage,
+    TextureLayout,
+    WHOLE_BUFFER,
+    ShaderInputElement,
+    LogicOp,
+    AttachmentBlendInfo,
+    BlendInfo,
+    BlendFactor,
+    BlendOp,
+    InputAssemblerElement,
+    VertexLayoutInfo,
+    StencilInfo,
+    RasterizerInfo,
+    DepthStencilInfo,
+    PrimitiveType,
+    AttachmentInfo,
+    RenderPassInfo,
+    Filter,
+    AddressMode,
+    SamplerInfo,
+    BarrierTextureRange,
+    SwapchainError,
+    InputRate,
+    FillMode,
+    CullMode,
+    FrontFace,
+    CompareFunc,
+    RenderpassRecordingMode,
+    ColorComponents,
+    BindingType,
+    OutOfMemoryError,
+    QueueOwnershipTransfer,
+    BindingInfo
+};
