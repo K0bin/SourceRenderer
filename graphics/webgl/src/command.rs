@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use sourcerenderer_core::graphics::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureView, Format};
+use sourcerenderer_core::gpu::{BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, LoadOp, MemoryUsage, PipelineBinding, Queue, Scissor, ShaderType, Viewport, IndexFormat, WHOLE_BUFFER, Texture, RenderpassRecordingMode, TextureView, Format};
 use wasm_bindgen::JsValue;
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlRenderingContext};
 
@@ -328,7 +328,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support storage textures")
   }
 
-  fn begin_render_pass(&mut self, renderpass_info: &sourcerenderer_core::graphics::RenderPassBeginInfo<WebGLBackend>, recording_mode: RenderpassRecordingMode) {
+  fn begin_render_pass(&mut self, renderpass_info: &sourcerenderer_core::gpu::RenderPassBeginInfo<WebGLBackend>, recording_mode: RenderpassRecordingMode) {
     debug_assert_eq!(recording_mode, RenderpassRecordingMode::Commands);
     let mut color_attachments: [Option<WebGLTextureHandleView>; 8] = Default::default();
     let mut color_attachment_load_ops: [Option<LoadOp>; 8] = Default::default();
@@ -336,7 +336,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     for (index, attachment_ref) in subpass.output_color_attachments.iter().enumerate() {
       let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
       match &attachment.view {
-        sourcerenderer_core::graphics::RenderPassAttachmentView::RenderTarget(rt) => {
+        sourcerenderer_core::gpu::RenderPassAttachmentView::RenderTarget(rt) => {
           let info = rt.info();
           color_attachments[index] = Some(WebGLTextureHandleView {
             texture: rt.texture().handle(),
@@ -355,7 +355,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     if let Some(attachment_ref) = subpass.depth_stencil_attachment.as_ref() {
       let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
       match &attachment.view {
-        sourcerenderer_core::graphics::RenderPassAttachmentView::DepthStencil(ds) => {
+        sourcerenderer_core::gpu::RenderPassAttachmentView::DepthStencil(ds) => {
           ds_format = ds.texture().unwrap().info().format;
           let info = ds.info();
           depth_attachment = Some(WebGLTextureHandleView {
@@ -424,7 +424,7 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
   fn end_render_pass(&mut self) {
   }
 
-  fn barrier<'a>(&mut self, _barriers: &[sourcerenderer_core::graphics::Barrier<WebGLBackend>]) {
+  fn barrier<'a>(&mut self, _barriers: &[sourcerenderer_core::gpu::Barrier<WebGLBackend>]) {
     // nop
   }
 
@@ -470,15 +470,15 @@ impl CommandBuffer<WebGLBackend> for WebGLCommandBuffer {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn create_bottom_level_acceleration_structure(&mut self, _info: &sourcerenderer_core::graphics::BottomLevelAccelerationStructureInfo<WebGLBackend>, _size: usize, _target_buffer: &Arc<WebGLBuffer>, _scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
+  fn create_bottom_level_acceleration_structure(&mut self, _info: &sourcerenderer_core::gpu::BottomLevelAccelerationStructureInfo<WebGLBackend>, _size: usize, _target_buffer: &Arc<WebGLBuffer>, _scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn upload_top_level_instances(&mut self, _instances: &[sourcerenderer_core::graphics::AccelerationStructureInstance<WebGLBackend>]) -> Arc<WebGLBuffer> {
+  fn upload_top_level_instances(&mut self, _instances: &[sourcerenderer_core::gpu::AccelerationStructureInstance<WebGLBackend>]) -> Arc<WebGLBuffer> {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn create_top_level_acceleration_structure(&mut self, _info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<WebGLBackend>, _size: usize, _target_buffer: &Arc<WebGLBuffer>, _scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
+  fn create_top_level_acceleration_structure(&mut self, _info: &sourcerenderer_core::gpu::TopLevelAccelerationStructureInfo<WebGLBackend>, _size: usize, _target_buffer: &Arc<WebGLBuffer>, _scratch_buffer: &Arc<WebGLBuffer>) -> Arc<WebGLAccelerationStructureStub> {
     panic!("WebGL does not support ray tracing")
   }
 

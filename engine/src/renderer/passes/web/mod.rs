@@ -81,7 +81,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         _frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
-    ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
+    ) -> Result<(), sourcerenderer_core::gpu::SwapchainError> {
         let back_buffer_res = self.swapchain.prepare_back_buffer();
         if back_buffer_res.is_none() {
             return Err(SwapchainError::Other);

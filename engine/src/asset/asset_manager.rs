@@ -36,10 +36,7 @@ use log::{
 };
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::platform::Platform;
-use sourcerenderer_core::{
-    graphics,
-    Vec4,
-};
+use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;

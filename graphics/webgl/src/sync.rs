@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::Fence;
+use sourcerenderer_core::gpu::Fence;
 
 pub struct WebGLFence {
 

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use nalgebra::Vector2;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::{
     Matrix4,
     Platform,

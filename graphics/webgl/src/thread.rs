@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::{HashMap, VecDeque}, hash::Hash, ops::Deref, rc::Rc, sync::Arc};
 
 use log::warn;
-use sourcerenderer_core::graphics::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo, SamplerInfo, Format};
+use sourcerenderer_core::gpu::{BindingFrequency, BufferInfo, BufferUsage, GraphicsPipelineInfo, InputRate, MemoryUsage, PrimitiveType, ShaderType, TextureInfo, InputAssemblerElement, ShaderInputElement, RasterizerInfo, DepthStencilInfo, LogicOp, AttachmentBlendInfo, SamplerInfo, Format};
 
 use web_sys::{Document, WebGl2RenderingContext, WebGlBuffer as WebGLBufferHandle, WebGlFramebuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture, WebGlVertexArrayObject, WebGlUniformLocation, WebGlSampler};
 
@@ -592,14 +592,14 @@ impl WebGLThreadDevice {
     };
 
     let gl_front_face = match info.rasterizer.front_face {
-      sourcerenderer_core::graphics::FrontFace::CounterClockwise => WebGl2RenderingContext::CCW,
-      sourcerenderer_core::graphics::FrontFace::Clockwise => WebGl2RenderingContext::CW,
+      sourcerenderer_core::gpu::FrontFace::CounterClockwise => WebGl2RenderingContext::CCW,
+      sourcerenderer_core::gpu::FrontFace::Clockwise => WebGl2RenderingContext::CW,
     };
 
     let gl_cull_face = match info.rasterizer.cull_mode {
-      sourcerenderer_core::graphics::CullMode::None => 0,
-      sourcerenderer_core::graphics::CullMode::Front => WebGl2RenderingContext::FRONT,
-      sourcerenderer_core::graphics::CullMode::Back => WebGl2RenderingContext::BACK,
+      sourcerenderer_core::gpu::CullMode::None => 0,
+      sourcerenderer_core::gpu::CullMode::Front => WebGl2RenderingContext::FRONT,
+      sourcerenderer_core::gpu::CullMode::Back => WebGl2RenderingContext::BACK,
     };
 
     assert!(self.pipelines.insert(id, Rc::new(WebGLThreadPipeline {

@@ -1,4 +1,4 @@
-use sourcerenderer_core::graphics::AccelerationStructure;
+use sourcerenderer_core::gpu::AccelerationStructure;
 
 pub struct WebGLAccelerationStructureStub {}
 

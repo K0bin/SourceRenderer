@@ -1,7 +1,6 @@
 use std::{cell::UnsafeCell, sync::Mutex};
 
 use log::trace;
-use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, MappedBuffer, MemoryUsage, MutMappedBuffer};
 
 use web_sys::{WebGlRenderingContext, WebGl2RenderingContext};
 

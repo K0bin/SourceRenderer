@@ -3,25 +3,6 @@ use std::sync::Arc;
 use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    BindingFrequency,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    MemoryUsage,
-    Queue,
-    Swapchain,
-    SwapchainError,
-    TextureLayout,
-    TextureView,
-    WHOLE_BUFFER, FenceRef,
-};
 use sourcerenderer_core::{
     Matrix4,
     Platform,

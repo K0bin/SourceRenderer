@@ -3,7 +3,6 @@ use std::usize;
 
 use legion::Entity;
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::graphics::Backend;
 use sourcerenderer_core::{
     Matrix4,
     Vec4,
