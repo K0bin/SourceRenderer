@@ -95,17 +95,20 @@ pub(super) enum BoundPipeline {
     Graphics {
         pipeline: vk::Pipeline,
         pipeline_layout: Arc<VkPipelineLayout>,
+        uses_bindless: bool
     },
     Compute {
         pipeline: vk::Pipeline,
         pipeline_layout: Arc<VkPipelineLayout>,
+        uses_bindless: bool
     },
     RayTracing {
         pipeline: vk::Pipeline,
         pipeline_layout: Arc<VkPipelineLayout>,
         raygen_sbt_region: vk::StridedDeviceAddressRegionKHR,
         closest_hit_sbt_region: vk::StridedDeviceAddressRegionKHR,
-        miss_sbt_region: vk::StridedDeviceAddressRegionKHR
+        miss_sbt_region: vk::StridedDeviceAddressRegionKHR,
+        uses_bindless: bool
     }
 }
 
@@ -209,16 +212,17 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                 self.pipeline = Some(BoundPipeline::Graphics {
                     pipeline: vk_pipeline,
                     pipeline_layout: graphics_pipeline.layout().clone(),
+                    uses_bindless: graphics_pipeline.uses_bindless_texture_set()
                 });
 
-                /*if graphics_pipeline.uses_bindless_texture_set()
+                if graphics_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
                         .features
                         .contains(VkFeatures::DESCRIPTOR_INDEXING)
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
-                }*/
+                }
             }
             PipelineBinding::Compute(compute_pipeline) => {
                 let vk_pipeline = compute_pipeline.handle();
@@ -233,16 +237,17 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                 self.pipeline = Some(BoundPipeline::Compute {
                     pipeline: vk_pipeline,
                     pipeline_layout: compute_pipeline.layout().clone(),
+                    uses_bindless: compute_pipeline.uses_bindless_texture_set()
                 });
 
-                /*if compute_pipeline.uses_bindless_texture_set()
+                if compute_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
                         .features
                         .contains(VkFeatures::DESCRIPTOR_INDEXING)
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
-                }*/
+                }
             }
             PipelineBinding::RayTracing(rt_pipeline) => {
                 let vk_pipeline = rt_pipeline.handle();
@@ -259,17 +264,18 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     pipeline_layout: rt_pipeline.layout().clone(),
                     miss_sbt_region: rt_pipeline.miss_sbt_region().clone(),
                     closest_hit_sbt_region: rt_pipeline.closest_hit_sbt_region().clone(),
-                    raygen_sbt_region: rt_pipeline.raygen_sbt_region().clone()
+                    raygen_sbt_region: rt_pipeline.raygen_sbt_region().clone(),
+                    uses_bindless: rt_pipeline.uses_bindless_texture_set()
                 });
 
-                /*if rt_pipeline.uses_bindless_texture_set()
+                if rt_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
                         .features
                         .contains(VkFeatures::DESCRIPTOR_INDEXING)
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
-                }*/
+                }
             }
         };
         self.descriptor_manager.mark_all_dirty();
@@ -526,10 +532,10 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         let mut base_index = 0;
 
         let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-        let (pipeline_layout, bind_point) = match pipeline {
-            BoundPipeline::Graphics { pipeline_layout, .. } => (pipeline_layout, vk::PipelineBindPoint::GRAPHICS),
-            BoundPipeline::Compute { pipeline_layout, .. } => (pipeline_layout, vk::PipelineBindPoint::COMPUTE),
-            BoundPipeline::RayTracing { pipeline_layout, .. } => (pipeline_layout, vk::PipelineBindPoint::RAY_TRACING_KHR),
+        let (pipeline_layout, bind_point, uses_bindless) = match pipeline {
+            BoundPipeline::Graphics { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::GRAPHICS, *uses_bindless),
+            BoundPipeline::Compute { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::COMPUTE, *uses_bindless),
+            BoundPipeline::RayTracing { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::RAY_TRACING_KHR, *uses_bindless),
         };
 
         let finished_sets = self.descriptor_manager.finish(0, pipeline_layout);
@@ -579,11 +585,11 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             base_index = BINDLESS_TEXTURE_SET_INDEX;
         }
 
-        /*if pipeline.uses_bindless_texture_set() {
+        if uses_bindless {
             let bindless_texture_descriptor_set =
-                self.shared.bindless_texture_descriptor_set().unwrap();
+                self.shared.bindless_texture_descriptor_set().expect("Shader requires support for bindless resources which device does not support.");
             descriptor_sets.push(bindless_texture_descriptor_set.descriptor_set_handle());
-        }*/
+        }
 
         if !descriptor_sets.is_empty() {
             unsafe {

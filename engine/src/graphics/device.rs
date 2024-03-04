@@ -176,7 +176,17 @@ impl<B: GPUBackend> Device<B> {
     }
 
     pub fn insert_texture_into_bindless_heap(&self, texture: &Arc<super::TextureView<B>>) -> Option<BindlessSlot<B>> {
-        self.bindless_slot_allocator.get_slot(texture)
+        if !self.supports_bindless() {
+            return None;
+        }
+        let slot = self.bindless_slot_allocator.get_slot(texture);
+        if let Some(slot) = slot.as_ref() {
+            unsafe {
+                self.device.insert_texture_into_bindless_heap(slot.slot(), slot.texture_view().handle());
+            }
+        }
+
+        slot
     }
 
     pub fn supports_indirect(&self) -> bool {

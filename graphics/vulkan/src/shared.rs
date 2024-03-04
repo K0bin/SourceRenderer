@@ -22,7 +22,7 @@ pub struct VkShared {
     pipeline_layouts: RwLock<HashMap<VkPipelineLayoutKey, Arc<VkPipelineLayout>>>,
     render_passes: RwLock<HashMap<VkRenderPassInfo, Arc<VkRenderPass>>>,
     frame_buffers: RwLock<HashMap<SmallVec<[u64; 8]>, Arc<VkFrameBuffer>>>,
-    //bindless_texture_descriptor_set: Option<Arc<VkBindlessDescriptorSet>>,
+    bindless_texture_descriptor_set: Option<VkBindlessDescriptorSet>,
     clear_buffer_meta_pipeline: VkPipeline,
 }
 
@@ -46,18 +46,15 @@ impl VkShared {
         let mut descriptor_set_layouts =
             HashMap::<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>::new();
 
-        /*let bindless_texture_descriptor_set =
+        let bindless_texture_descriptor_set =
         if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
-            let bindless_set = Arc::new(VkBindlessDescriptorSet::new(
-                device,
-                vk::DescriptorType::SAMPLED_IMAGE,
-            ));
+            let bindless_set = VkBindlessDescriptorSet::new(device);
             let (layout_key, descriptor_layout) = bindless_set.layout();
             descriptor_set_layouts.insert(layout_key.clone(), descriptor_layout.clone());
             Some(bindless_set)
         } else {
             None
-        };*/
+        };
 
         let shader_bytes = include_bytes!("../meta_shaders/clear_buffer.comp.spv");
         let shader = Arc::new(VkShader::new(
@@ -75,7 +72,7 @@ impl VkShared {
             pipeline_layouts: RwLock::new(HashMap::new()),
             render_passes: RwLock::new(HashMap::new()),
             frame_buffers: RwLock::new(HashMap::new()),
-            //bindless_texture_descriptor_set,
+            bindless_texture_descriptor_set,
             clear_buffer_meta_pipeline,
         }
     }
@@ -180,8 +177,8 @@ impl VkShared {
         frame_buffer
     }
 
-    /*#[inline]
-    pub(super) fn bindless_texture_descriptor_set(&self) -> Option<&Arc<VkBindlessDescriptorSet>> {
+    #[inline]
+    pub(super) fn bindless_texture_descriptor_set(&self) -> Option<&VkBindlessDescriptorSet> {
         self.bindless_texture_descriptor_set.as_ref()
-    }*/
+    }
 }

@@ -34,4 +34,8 @@ impl<B: GPUBackend> BindlessSlot<B> {
     pub fn slot(&self) -> u32 {
         self.alloc.range.offset as u32
     }
+
+    pub fn texture_view(&self) -> &Arc<TextureView<B>> {
+        &self.texture
+    }
 }
