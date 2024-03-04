@@ -159,7 +159,35 @@ impl Queue<VkBackend> for VkQueue {
     }
 
     unsafe fn present(&self, swapchain: &VkSwapchain) {
-        //swapchain.loader().qu
+        let guard = self.lock_queue();
+        let present_info = vk::PresentInfoKHR {
+            wait_semaphore_count: 1,
+            p_wait_semaphores: &swapchain.acquire_semaphore().handle() as *const vk::Semaphore,
+            swapchain_count: 1,
+            p_swapchains: &swapchain.handle() as *const vk::SwapchainKHR,
+            p_image_indices: &swapchain.backbuffer_index() as *const u32,
+            p_results: std::ptr::null_mut(),
+            ..Default::default()
+        };
+        let result = swapchain.loader().queue_present(*guard, &present_info);
+        match result {
+            Ok(suboptimal) => {
+                if suboptimal {
+                    swapchain.set_state(VkSwapchainState::Suboptimal);
+                }
+            }
+            Err(err) => match err {
+                vk::Result::ERROR_OUT_OF_DATE_KHR => {
+                    swapchain.set_state(VkSwapchainState::OutOfDate);
+                }
+                vk::Result::ERROR_SURFACE_LOST_KHR => {
+                    swapchain.surface().mark_lost();
+                }
+                _ => {
+                    panic!("Present failed: {:?}", err);
+                }
+            }
+        }
     }
 
     unsafe fn create_command_pool(&self, command_pool_type: CommandPoolType, flags: CommandPoolFlags) -> VkCommandPool {

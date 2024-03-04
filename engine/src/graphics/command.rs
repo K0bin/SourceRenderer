@@ -362,6 +362,12 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
+    pub fn blit_to_handle(&mut self, src_texture: &super::Texture<B>, src_array_layer: u32, src_mip_level: u32, dst_texture_handle: &B::Texture, dst_array_layer: u32, dst_mip_level: u32) {
+        unsafe {
+            self.inner.cmd_buffer.blit(src_texture.handle(), src_array_layer, src_mip_level, dst_texture_handle, dst_array_layer, dst_mip_level);
+        }
+    }
+
     pub fn begin(&mut self, inheritance: Option<&<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance>) {
         unsafe {
             self.inner.cmd_buffer.begin(inheritance)
@@ -382,14 +388,6 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         let CommandBufferRecorder { inner, sender, no_send_sync: _ } = self;
         FinishedCommandBuffer { inner, sender }
     }
-
-    pub fn reset(&mut self, frame: u64) {
-        unsafe { self.inner.cmd_buffer.reset(frame); }
-        self.inner.buffer_refs.clear();
-        self.inner.acceleration_structure_scratch = None;
-        self.inner.acceleration_structure_scratch_offset = 0;
-    }
-
 
     pub fn clear_storage_texture(&mut self, view: &super::Texture<B>, array_layer: u32, mip_level: u32, values: [u32; 4]) {
         unsafe {
@@ -436,7 +434,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             let ptr_void = buffer.map(false).unwrap();
 
             if required_size < size {
-                let ptr_u8 = (ptr_void as *mut u8).offset(size as isize);
+                let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
                 std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
             }
 
@@ -809,6 +807,14 @@ impl<B: GPUBackend> CommandBuffer<B> {
     }
     pub(super) fn handle_mut(&mut self) -> &mut B::CommandBuffer {
         &mut self.cmd_buffer
+    }
+
+
+    pub fn reset(&mut self, frame: u64) {
+        unsafe { self.cmd_buffer.reset(frame); }
+        self.buffer_refs.clear();
+        self.acceleration_structure_scratch = None;
+        self.acceleration_structure_scratch_offset = 0;
     }
 }
 

@@ -351,9 +351,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) -> Result<(), SwapchainError> {
-        //let graphics_queue = self.device.graphics_queue();
-        //let mut cmd_buf = graphics_queue.create_command_buffer();
-
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.views[scene.active_view_index];
@@ -517,7 +514,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         if swapchain.next_backbuffer().is_err() {
             return Err(SwapchainError::Other);
         }
-        let back_buffer = swapchain.backbuffer();
 
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -531,15 +527,15 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        cmd_buf.blit(&*output_texture, 0, 0, back_buffer.texture().unwrap(), 0, 0);
-        cmd_buf.barrier(&[Barrier::TextureBarrier {
+        cmd_buf.blit_to_handle(&*output_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
+        cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
             old_access: BarrierAccess::COPY_WRITE,
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: back_buffer.texture().unwrap(),
+            texture: swapchain.backbuffer_handle(),
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
@@ -552,12 +548,14 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             late_latching.before_submit(&input_state, main_view);
         }
 
+        let frame_end_signal = context.get_frame_end_fence_signal();
+
         self.device.submit(
             QueueType::Graphics,
             QueueSubmission {
                 command_buffer: cmd_buf.finish(),
                 wait_fences: &[],
-                signal_fences: &[],
+                signal_fences: &[frame_end_signal],
                 acquire_swapchain: Some(&swapchain),
                 release_swapchain: Some(&swapchain)
             }

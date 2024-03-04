@@ -1585,6 +1585,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             self.device.reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::empty()).unwrap();
         }
         self.descriptor_manager.reset(frame);
+        self.state.store(VkCommandBufferState::Ready);
     }
 }
 

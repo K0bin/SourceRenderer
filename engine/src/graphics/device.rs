@@ -105,7 +105,7 @@ impl<B: GPUBackend> Device<B> {
             let ptr_void = slice.map(false).unwrap();
 
             if required_size < size {
-                let ptr_u8 = (ptr_void as *mut u8).offset(size as isize);
+                let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
                 std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
             }
 

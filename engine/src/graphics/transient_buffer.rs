@@ -195,11 +195,11 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         let mut new_buffer_info = info.clone();
         new_buffer_info.size = BUFFER_SIZE.max(info.size);
 
-        let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
+        let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, &new_buffer_info, memory_usage, None)?;
 
         let mut sliced_buffer = Box::new(TransientBuffer::<B> {
             size: new_buffer_info.size,
-            offset: info.size,
+            offset: 0,
             buffer: ManuallyDrop::new(buffer),
             allocation,
             destroyer: self.destroyer.clone()

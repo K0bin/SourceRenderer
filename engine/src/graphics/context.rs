@@ -14,7 +14,7 @@ use super::CommandBuffer;
 pub struct GraphicsContext<B: GPUBackend> {
   device: Arc<B::Device>,
   allocator: Arc<MemoryAllocator<B>>,
-  fence: B::Fence,
+  fence: Arc<super::Fence<B>>,
   current_frame: u64,
   thread_contexts: ManuallyDrop<ThreadLocal<ThreadContext<B>>>,
   prerendered_frames: u32,
@@ -47,7 +47,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
       device: device.clone(),
       allocator: allocator.clone(),
       destroyer: ManuallyDrop::new(destroyer.clone()),
-      fence: unsafe { device.create_fence() },
+      fence: Arc::new(super::Fence::<B>::new(device, destroyer)),
       current_frame: 0u64,
       thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
       prerendered_frames,
@@ -64,6 +64,14 @@ impl<B: GPUBackend> GraphicsContext<B> {
       let recycled_frame = new_frame - self.prerendered_frames as u64;
       unsafe { self.fence.await_value(recycled_frame); }
       self.destroyer.destroy_unused(recycled_frame);
+    }
+  }
+
+  pub fn get_frame_end_fence_signal(&self) -> SharedFenceValuePairRef<B> {
+    SharedFenceValuePairRef {
+        fence: &self.fence,
+        value: self.current_frame,
+        sync_before: BarrierSync::all()
     }
   }
 
@@ -103,13 +111,19 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
 
     let existing_cmd_buffer = frame_context.secondary_command_pool.receiver.try_recv();
-    let cmd_buffer = existing_cmd_buffer.unwrap_or_else(|e| Box::new(CommandBuffer::new(
-        unsafe { frame_context.secondary_command_pool.command_pool.create_command_buffer() },
-        &self.device,
-        &frame_context.buffer_allocator,
-        &self.global_buffer_allocator,
-        &self.destroyer
-    )));
+    let cmd_buffer = if let Ok(mut existing) = existing_cmd_buffer {
+        existing.reset(self.current_frame);
+        existing
+    } else {
+        Box::new(CommandBuffer::new(
+            unsafe { frame_context.secondary_command_pool.command_pool.create_command_buffer() },
+            &self.device,
+            &frame_context.buffer_allocator,
+            &self.global_buffer_allocator,
+            &self.destroyer
+        ))
+    };
+
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.secondary_command_pool.sender.clone());
     recorder.begin(Some(inheritance));
     recorder
