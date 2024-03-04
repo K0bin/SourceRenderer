@@ -210,6 +210,7 @@ impl<B: GPUBackend> Device<B> {
     }
 
     pub fn wait_for_idle(&self) {
+        self.flush_transfers();
         self.graphics_queue.flush(self.device.graphics_queue());
         self.graphics_queue.wait_for_idle();
         if let Some(queue) = self.compute_queue.as_ref() {

@@ -378,7 +378,7 @@ impl VkSwapchain {
 
     #[allow(clippy::logic_bug)]
     pub unsafe fn acquire_back_buffer(&self) -> VkResult<(u32, bool)> {
-        let index: usize = (self.semaphore_index.fetch_add(1, Ordering::AcqRel) % self.acquire_semaphores.len() as u64) as usize;
+        let index: usize = ((self.semaphore_index.fetch_add(1, Ordering::AcqRel) + 1) % self.acquire_semaphores.len() as u64) as usize;
         let semaphore = &self.acquire_semaphores[index];
 
         let result = {

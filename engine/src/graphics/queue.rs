@@ -207,6 +207,12 @@ impl<B: GPUBackend> Queue<B> {
                     );
                 },
                 StoredQueueSubmission::Present { swapchain } => {
+                    if !holder.command_buffers.is_empty() {
+                        flush_command_buffers(&mut holder);
+                    }
+                    if !holder.submissions.is_empty() {
+                        flush_submissions(&mut holder);
+                    }
                     unsafe {
                         queue.present(swapchain.handle())
                     }

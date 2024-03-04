@@ -91,17 +91,7 @@ impl Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: fence.fence.handle(),
                     value: fence.value,
-                    stage_mask: barrier_sync_to_stage(fence.sync_before),
-                    device_index: 0u32,
-                    ..Default::default()
-                });
-            }
-
-            for fence in submission.signal_fences {
-                semaphores.push(vk::SemaphoreSubmitInfo {
-                    semaphore: fence.fence.handle(),
-                    value: fence.value,
-                    stage_mask: barrier_sync_to_stage(fence.sync_before),
+                    stage_mask: barrier_sync_to_stage(fence.sync_before) & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -111,7 +101,17 @@ impl Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: swapchain.acquire_semaphore().handle(),
                     value: 0u64,
-                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS & !vk::PipelineStageFlags2::HOST,
+                    device_index: 0u32,
+                    ..Default::default()
+                });
+            }
+
+            for fence in submission.signal_fences {
+                semaphores.push(vk::SemaphoreSubmitInfo {
+                    semaphore: fence.fence.handle(),
+                    value: fence.value,
+                    stage_mask: barrier_sync_to_stage(fence.sync_before) & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -121,7 +121,7 @@ impl Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: swapchain.present_semaphore().handle(),
                     value: 0u64,
-                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -142,11 +142,11 @@ impl Queue<VkBackend> for VkQueue {
 
                 vk::SubmitInfo2 {
                     flags: vk::SubmitFlags::empty(),
-                    wait_semaphore_info_count: submission.wait_fences.len() as u32,
+                    wait_semaphore_info_count: submission.wait_fences.len() as u32 + submission.acquire_swapchain.map_or(0, |_| 1),
                     p_wait_semaphore_infos: submission_wait_semaphores_ptr,
                     command_buffer_info_count: submission.command_buffers.len() as u32,
                     p_command_buffer_infos: submission_cmd_buffer_ptr,
-                    signal_semaphore_info_count: submission.signal_fences.len() as u32,
+                    signal_semaphore_info_count: submission.signal_fences.len() as u32 + submission.release_swapchain.map_or(0, |_| 1),
                     p_signal_semaphore_infos: submission_signal_semaphores_ptr,
                     ..Default::default()
                 }
@@ -162,7 +162,7 @@ impl Queue<VkBackend> for VkQueue {
         let guard = self.lock_queue();
         let present_info = vk::PresentInfoKHR {
             wait_semaphore_count: 1,
-            p_wait_semaphores: &swapchain.acquire_semaphore().handle() as *const vk::Semaphore,
+            p_wait_semaphores: &swapchain.present_semaphore().handle() as *const vk::Semaphore,
             swapchain_count: 1,
             p_swapchains: &swapchain.handle() as *const vk::SwapchainKHR,
             p_image_indices: &swapchain.backbuffer_index() as *const u32,

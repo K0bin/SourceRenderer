@@ -578,7 +578,7 @@ impl<B: GPUBackend> Transfer<B> {
                         .submit(&mut [gpu::Submission {
                             command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
                             wait_fences: &[],
-                            signal_fences: &[],
+                            signal_fences: &[cmd_buffer.fence_value.as_handle_ref()],
                             acquire_swapchain: None,
                             release_swapchain: None
                         }]);
@@ -592,7 +592,7 @@ impl<B: GPUBackend> Transfer<B> {
             unsafe {
                 self.device.graphics_queue().submit(&mut [gpu::Submission {
                     command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
-                    signal_fences: &[],
+                    signal_fences: &[cmd_buffer.fence_value.as_handle_ref()],
                     wait_fences: &[],
                     acquire_swapchain: None,
                     release_swapchain: None

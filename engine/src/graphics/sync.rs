@@ -80,6 +80,22 @@ impl<B: GPUBackend> SharedFenceValuePair<B> {
     pub fn await_signal(&self) {
         self.fence.await_value(self.value);
     }
+
+    pub fn as_ref(&self) -> SharedFenceValuePairRef<B> {
+        SharedFenceValuePairRef {
+            fence: &self.fence,
+            value: self.value,
+            sync_before: self.sync_before
+        }
+    }
+
+    pub fn as_handle_ref(&self) -> sourcerenderer_core::gpu::FenceValuePairRef<B> {
+        sourcerenderer_core::gpu::FenceValuePairRef {
+            fence: self.fence.handle(),
+            value: self.value,
+            sync_before: self.sync_before
+        }
+    }
 }
 
 impl<'a, B: GPUBackend> From<&SharedFenceValuePairRef<'a, B>> for SharedFenceValuePair<B> {

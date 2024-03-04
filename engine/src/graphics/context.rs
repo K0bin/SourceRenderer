@@ -62,7 +62,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
 
     if new_frame > self.prerendered_frames as u64 {
       let recycled_frame = new_frame - self.prerendered_frames as u64;
-      unsafe { self.fence.await_value(recycled_frame); }
+      self.fence.await_value(recycled_frame);
       self.destroyer.destroy_unused(recycled_frame);
     }
   }
@@ -87,13 +87,18 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
 
     let existing_cmd_buffer = frame_context.command_pool.receiver.try_recv();
-    let cmd_buffer = existing_cmd_buffer.unwrap_or_else(|e| Box::new(CommandBuffer::new(
-        unsafe { frame_context.command_pool.command_pool.create_command_buffer() },
-        &self.device,
-        &frame_context.buffer_allocator,
-        &self.global_buffer_allocator,
-        &self.destroyer
-    )));
+    let cmd_buffer = if let Ok(mut existing) = existing_cmd_buffer {
+        existing.reset(self.current_frame);
+        existing
+    } else {
+        Box::new(CommandBuffer::new(
+            unsafe { frame_context.command_pool.command_pool.create_command_buffer() },
+            &self.device,
+            &frame_context.buffer_allocator,
+            &self.global_buffer_allocator,
+            &self.destroyer
+        ))
+    };
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.command_pool.sender.clone());
     recorder.begin(None);
     recorder
