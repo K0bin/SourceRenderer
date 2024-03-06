@@ -2,6 +2,7 @@ use crate::Matrix4;
 
 use super::*;
 
+#[derive(Debug)]
 pub struct AccelerationStructureSizes {
   pub size: u64,
   pub build_scratch_size: u64,

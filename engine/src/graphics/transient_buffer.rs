@@ -138,6 +138,8 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
     ) -> Result<TransientBufferSlice<B>, OutOfMemoryError> {
         let mut alignment: u64 = 256; // TODO
 
+        debug_assert!(UNIQUE_ALLOCATION_THRESHOLD <= BUFFER_SIZE);
+
         if info.size > UNIQUE_ALLOCATION_THRESHOLD {
             // Don't do one-off buffers for command lists
             let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
@@ -168,6 +170,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
 
         let mut slice_opt: Option<TransientBufferSlice<B>> = None;
         for (index, sliced_buffer) in (&mut matching_buffers.buffers[matching_buffers.first_free_index..]).iter_mut().enumerate() {
+            let actual_index = index + matching_buffers.first_free_index;
             let aligned_offset = align_up_64(sliced_buffer.offset, alignment);
             if sliced_buffer.size - aligned_offset < info.size {
                 continue;
@@ -183,8 +186,8 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             });
 
             let used_up = sliced_buffer.size - sliced_buffer.offset <= REORDER_THRESHOLD;
-            if used_up && index != matching_buffers.buffers.len() - 1 {
-                matching_buffers.first_free_index = index + 1;
+            if used_up && actual_index != matching_buffers.buffers.len() - 1 {
+                matching_buffers.first_free_index = actual_index + 1;
             }
             break;
         }
@@ -211,6 +214,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
             offset: 0,
             length: info.size
         };
+        sliced_buffer.offset += info.size;
         matching_buffers.buffers.push(sliced_buffer);
         Ok(slice)
     }

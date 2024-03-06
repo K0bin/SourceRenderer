@@ -576,7 +576,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     pub fn preallocate_acceleration_structure_scratch_memory(&mut self, scratch_size: u64) {
         let scratch_result = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
             size: scratch_size,
-            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+            usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
             sharing_mode: QueueSharingMode::Exclusive
         }, MemoryUsage::GPUMemory, None);
 
@@ -622,7 +622,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
 
         let (scratch, scratch_offset) = if use_preallocated_scratch {
             let preallocated_scratch = self.inner.acceleration_structure_scratch.as_ref().unwrap();
-            let remaining_scratch: u64 = preallocated_scratch.handle().info().size - self.inner.acceleration_structure_scratch_offset;
+            let remaining_scratch: u64 = preallocated_scratch.handle().info().size - align_up_64(self.inner.acceleration_structure_scratch_offset, 256);
             if remaining_scratch < size.build_scratch_size {
                 unsafe {
                     self.inner.cmd_buffer.barrier(&[
@@ -640,13 +640,13 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
                 }
                 self.inner.acceleration_structure_scratch_offset = 0;
             }
-            let offset = self.inner.acceleration_structure_scratch_offset;
-            self.inner.acceleration_structure_scratch_offset += size.build_scratch_size;
+            let offset = align_up_64(self.inner.acceleration_structure_scratch_offset, 256);
+            self.inner.acceleration_structure_scratch_offset = offset + size.build_scratch_size;
             (preallocated_scratch, offset)
         } else {
             _owned_scratch = Some(self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
                 size: size.build_scratch_size,
-                usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
+                usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
                 sharing_mode: QueueSharingMode::Exclusive
             }, MemoryUsage::GPUMemory, None).ok()?);
             (_owned_scratch.as_ref().unwrap(), 0)

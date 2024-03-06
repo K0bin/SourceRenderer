@@ -8,8 +8,7 @@ use std::{
             AtomicU32,
             AtomicU64,
             Ordering,
-        },
-        Arc,
+        }, Arc, Mutex, MutexGuard
     },
 };
 
@@ -42,7 +41,7 @@ pub struct VkSwapchain {
     textures: SmallVec<[VkTexture; 5]>,
     acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     present_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
-    swapchain: vk::SwapchainKHR,
+    swapchain: Mutex<vk::SwapchainKHR>,
     swapchain_loader: SwapchainLoader,
     instance: Arc<RawVkInstance>,
     surface: Option<VkSurface>,
@@ -259,7 +258,7 @@ impl VkSwapchain {
                 present_semaphores,
                 semaphore_index: AtomicU64::new(0),
                 image_index: AtomicU32::new(0),
-                swapchain: swapchain,
+                swapchain: Mutex::new(swapchain),
                 swapchain_loader,
                 instance: device.instance.clone(),
                 surface: Some(surface),
@@ -364,8 +363,8 @@ impl VkSwapchain {
         &self.swapchain_loader
     }
 
-    pub fn handle(&self) -> vk::SwapchainKHR {
-        self.swapchain
+    pub fn handle(&self) -> MutexGuard<vk::SwapchainKHR> {
+        self.swapchain.lock().unwrap()
     }
 
     pub fn width(&self) -> u32 {
@@ -384,7 +383,7 @@ impl VkSwapchain {
         let result = {
             let swapchain_handle = self.handle();
             self.swapchain_loader.acquire_next_image(
-                swapchain_handle,
+                *swapchain_handle,
                 std::u64::MAX,
                 semaphore.handle(),
                 vk::Fence::null(),
@@ -447,7 +446,7 @@ impl Drop for VkSwapchain {
         self.device.wait_for_idle();
         unsafe {
             self.swapchain_loader
-                .destroy_swapchain(self.swapchain, None)
+                .destroy_swapchain(*self.handle(), None)
         }
     }
 }
@@ -455,7 +454,7 @@ impl Drop for VkSwapchain {
 impl Swapchain<VkBackend> for VkSwapchain {
     unsafe fn recreate(mut old: Self, width: u32, height: u32) -> Result<Self, SwapchainError> {
         let state = old.state();
-        let old_sc_handle = old.handle();
+        let old_sc_handle = *old.handle();
         let surface = std::mem::replace(&mut old.surface, None).unwrap();
         old.set_state(VkSwapchainState::Retired);
 
@@ -481,7 +480,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
         height: u32,
     ) -> Result<Self, SwapchainError> {
         let state = old.state();
-        let old_sc_handle = old.handle();
+        let old_sc_handle = *old.handle();
         old.set_state(VkSwapchainState::Retired);
         let surface = std::mem::replace(&mut old.surface, None).unwrap();
 

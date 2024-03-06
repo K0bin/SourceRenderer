@@ -63,7 +63,6 @@ use crate::transform::interpolation::deconstruct_transform;
 pub(super) struct RendererInternal<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
     swapchain: Option<Arc<Swapchain<P::GPUBackend>>>,
-    context: GraphicsContext<P::GPUBackend>,
     render_path: Box<dyn RenderPath<P>>,
     asset_manager: Arc<AssetManager<P>>,
     scene: RendererScene<P::GPUBackend>,
@@ -76,6 +75,7 @@ pub(super) struct RendererInternal<P: Platform> {
     assets: RendererAssets<P>,
     console: Arc<Console>,
     shader_manager: ShaderManager<P>,
+    context: GraphicsContext<P::GPUBackend>,
 }
 
 impl<P: Platform> RendererInternal<P> {

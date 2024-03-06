@@ -146,9 +146,8 @@ impl<B: GPUBackend> GraphicsContext<B> {
 impl<B: GPUBackend> Drop for GraphicsContext<B> {
     fn drop(&mut self) {
         if self.current_frame > 0 {
-            unsafe {
-                self.fence.await_value(self.current_frame - 1);
-            }
+            self.fence.await_value(self.current_frame - 1);
+            self.destroyer.destroy_unused(self.current_frame - 1);
         }
 
         unsafe { ManuallyDrop::drop(&mut self.thread_contexts) };

@@ -98,7 +98,7 @@ impl Fence for VkTimelineSemaphore {
                 p_values: &value as *const u64,
                 ..Default::default()
             };
-            self.device.timeline_semaphores.wait_semaphores(&wait_info, !0u64).unwrap();
+            self.device.timeline_semaphores.wait_semaphores(&wait_info, std::u64::MAX).unwrap();
         }
     }
 }

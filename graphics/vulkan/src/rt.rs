@@ -25,7 +25,7 @@ impl VkAccelerationStructure {
         target_buffer_offset: u64,
         instances: &[AccelerationStructureInstance<VkBackend>],
     ) {
-        /*let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances
+        let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances
             .iter()
             .map(|instance| {
                 let mut transform_data = [0f32; 12];
@@ -51,9 +51,7 @@ impl VkAccelerationStructure {
                     },
                 }
             })
-            .collect();*/
-
-        let instances = Vec::<vk::AccelerationStructureInstanceKHR>::new();
+            .collect();
 
         let size: u64 = std::mem::size_of_val(&instances) as u64;
         let ptr = target_buffer.map(target_buffer_offset, size, false).expect("Failed to map buffer.") as *mut vk::AccelerationStructureInstanceKHR;

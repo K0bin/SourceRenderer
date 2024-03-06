@@ -184,7 +184,12 @@ impl VkInstance {
             return vk::FALSE;
         }
 
-        if false && message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
+        if (callback_data.message_id_number == 688222058) {
+            // False positive about setting the viewport & scissor for ray tracing pipelines
+            //return vk::FALSE;
+        }
+
+        if false && (message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)) {
             panic!(
                 "VK: {:?} - {:?}: {:?}",
                 message_severity,

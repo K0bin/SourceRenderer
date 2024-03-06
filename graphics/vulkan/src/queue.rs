@@ -160,11 +160,13 @@ impl Queue<VkBackend> for VkQueue {
 
     unsafe fn present(&self, swapchain: &VkSwapchain) {
         let guard = self.lock_queue();
+        let sc_handle_guard = swapchain.handle();
+        let sc_handle = *sc_handle_guard;
         let present_info = vk::PresentInfoKHR {
             wait_semaphore_count: 1,
             p_wait_semaphores: &swapchain.present_semaphore().handle() as *const vk::Semaphore,
             swapchain_count: 1,
-            p_swapchains: &swapchain.handle() as *const vk::SwapchainKHR,
+            p_swapchains: &sc_handle as *const vk::SwapchainKHR,
             p_image_indices: &swapchain.backbuffer_index() as *const u32,
             p_results: std::ptr::null_mut(),
             ..Default::default()

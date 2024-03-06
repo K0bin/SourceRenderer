@@ -96,6 +96,10 @@ impl VkMemoryHeap {
 }
 
 impl Heap<VkBackend> for VkMemoryHeap {
+    fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
+    }
+
     unsafe fn create_buffer(&self, info: &BufferInfo, offset: u64, name: Option<&str>) -> Result<VkBuffer, OutOfMemoryError> {
         VkBuffer::new(&self.device, ResourceMemory::Suballocated { memory: self, offset }, info, name)
     }

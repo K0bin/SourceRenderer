@@ -48,7 +48,7 @@ pub struct SharedFenceValuePairRef<'a, B: GPUBackend> {
 
 impl<'a, B: GPUBackend> SharedFenceValuePairRef<'a, B> {
     pub unsafe fn is_signalled(&self) -> bool {
-        self.fence.value() == self.value
+        self.fence.value() >= self.value
     }
 
     pub unsafe fn await_signal(&self) {
@@ -74,7 +74,7 @@ impl<B: GPUBackend> Clone for SharedFenceValuePair<B> {
 
 impl<B: GPUBackend> SharedFenceValuePair<B> {
     pub fn is_signalled(&self) -> bool {
-        self.fence.value() == self.value
+        self.fence.value() >= self.value
     }
 
     pub fn await_signal(&self) {
