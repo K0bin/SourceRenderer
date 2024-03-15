@@ -1,5 +1,6 @@
 use std::{sync::{Mutex, Arc}, collections::HashMap};
 
+use log::trace;
 use sourcerenderer_core::gpu::*;
 
 use super::*;
@@ -144,5 +145,23 @@ impl<B: GPUBackend> MemoryAllocator<B> {
 
     pub(super) fn is_uma(&self) -> bool {
         self.is_uma
+    }
+
+    pub fn cleanup_unused(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        for (memory_type, chunks) in guard.chunks.iter_mut() {
+            let mut retained_empty = 0u32;
+            let chunks_count_before = chunks.len();
+            chunks.retain(|b| {
+                if !b.is_empty() {
+                    return true;
+                }
+                retained_empty += 1;
+                retained_empty < 2
+            });
+            if chunks.len() != chunks_count_before {
+                trace!("Freed {} memory chunks in memory_type {}", chunks_count_before - chunks.len(), memory_type);
+            }
+        }
     }
 }

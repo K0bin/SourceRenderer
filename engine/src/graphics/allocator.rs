@@ -8,12 +8,14 @@ pub(super) struct Chunk<T>
     where T : Send + Sync
 {
     inner: Arc<ChunkInner<T>>,
+    size: u64
 }
 
 struct ChunkInner<T>
 where T : Send + Sync {
     free_list: Mutex<SmallVec<[Range; 16]>>,
-    data: T
+    data: T,
+    free_callback: Option<Box<dyn Fn(&[Range]) + Send + Sync>>
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,8 +68,27 @@ impl<T> Chunk<T>
         Self {
             inner: Arc::new(ChunkInner {
                 free_list: Mutex::new(free_list),
-                data
+                data,
+                free_callback: None
             }),
+            size: chunk_size
+        }
+    }
+
+    pub fn with_callback<F>(data: T, chunk_size: u64, free_callback: F) -> Self
+    where F: Fn(&[Range]) + Send + Sync + 'static {
+        let mut free_list = SmallVec::<[Range; 16]>::new();
+        free_list.push(Range {
+            offset: 0u64,
+            length: chunk_size
+        });
+        Self {
+            inner: Arc::new(ChunkInner {
+                free_list: Mutex::new(free_list),
+                data,
+                free_callback: Some(Box::new(free_callback))
+            }),
+            size: chunk_size
         }
     }
 
@@ -112,6 +133,15 @@ impl<T> Chunk<T>
             }
         })
     }
+
+    pub fn is_empty(&self) -> bool {
+        let free_list = self.inner.free_list.lock().unwrap();
+        if free_list.len() != 1 {
+            return false;
+        }
+        let first = free_list.first().unwrap();
+        first.offset == 0 && first.length == self.size
+    }
 }
 
 impl<T> Drop for Allocation<T>
@@ -144,5 +174,8 @@ impl<T> Drop for Allocation<T>
         }
 
         free_list.push(self.range.clone());
+        if let Some(callback) = self.inner.free_callback.as_ref() {
+            callback(&free_list[..]);
+        }
     }
 }

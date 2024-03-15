@@ -20,6 +20,7 @@ pub struct GraphicsContext<B: GPUBackend> {
   prerendered_frames: u32,
   destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
   global_buffer_allocator: Arc<BufferAllocator<B>>,
+  memory_allocator: Arc<MemoryAllocator<B>>
 }
 
 pub struct ThreadContext<B: GPUBackend> {
@@ -42,7 +43,7 @@ struct FrameContextCommandPool<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> GraphicsContext<B> {
-  pub(super) fn new(device: &Arc<B::Device>, allocator: &Arc<MemoryAllocator<B>>, buffer_allocator: &Arc<BufferAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>, prerendered_frames: u32) -> Self {
+  pub(super) fn new(device: &Arc<B::Device>, allocator: &Arc<MemoryAllocator<B>>, buffer_allocator: &Arc<BufferAllocator<B>>, memory_allocator: &Arc<MemoryAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>, prerendered_frames: u32) -> Self {
     Self {
       device: device.clone(),
       allocator: allocator.clone(),
@@ -51,7 +52,8 @@ impl<B: GPUBackend> GraphicsContext<B> {
       current_frame: 0u64,
       thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
       prerendered_frames,
-      global_buffer_allocator: buffer_allocator.clone()
+      global_buffer_allocator: buffer_allocator.clone(),
+      memory_allocator: memory_allocator.clone()
     }
   }
 
@@ -64,6 +66,8 @@ impl<B: GPUBackend> GraphicsContext<B> {
       let recycled_frame = new_frame - self.prerendered_frames as u64;
       self.fence.await_value(recycled_frame);
       self.destroyer.destroy_unused(recycled_frame);
+      self.global_buffer_allocator.cleanup_unused();
+      self.memory_allocator.cleanup_unused();
     }
   }
 
@@ -151,7 +155,6 @@ impl<B: GPUBackend> Drop for GraphicsContext<B> {
         }
 
         unsafe { ManuallyDrop::drop(&mut self.thread_contexts) };
-        assert_eq!(Arc::strong_count(&self.destroyer), 1);
         unsafe { ManuallyDrop::drop(&mut self.destroyer) };
     }
 }

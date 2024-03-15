@@ -1,5 +1,6 @@
 use std::{sync::{Arc, Mutex}, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, ffi::c_void};
 
+use log::trace;
 use sourcerenderer_core::gpu::*;
 
 use super::*;
@@ -181,6 +182,24 @@ impl<B: GPUBackend> BufferAllocator<B> {
                 buffer,
                 allocation: Some(allocation)
             })
+        }
+    }
+
+    pub fn cleanup_unused(&self) {
+        let mut guard = self.buffers.lock().unwrap();
+        for (buffer_key, buffers) in guard.iter_mut() {
+            let mut retained_empty = 0u32;
+            let buffer_count_before = buffers.len();
+            buffers.retain(|b| {
+                if !b.is_empty() {
+                    return true;
+                }
+                retained_empty += 1;
+                retained_empty < 2
+            });
+            if buffers.len() != buffer_count_before {
+                trace!("Freed {} buffers in buffer type {:?}", buffer_count_before - buffers.len(), buffer_key);
+            }
         }
     }
 }
