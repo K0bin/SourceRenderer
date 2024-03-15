@@ -1,7 +1,6 @@
 use std::error::Error;
-use std::sync::Arc;
 
-use crate::{Vec2, Vec2I, Vec2UI, gpu, gpu::GPUBackend};
+use crate::{Vec2, Vec2I, Vec2UI, gpu::GPUBackend};
 use crate::input::Key;
 
 mod io;

@@ -1409,7 +1409,7 @@ impl VkBindingManager {
                 {
                     match binding {
                         VkBoundResource::UniformBuffer(VkBufferBindingInfo {
-                            buffer,
+                            buffer: _,
                             offset,
                             length: _,
                         }) => {
@@ -1418,7 +1418,7 @@ impl VkBindingManager {
                             set_binding.dynamic_offset_count += 1;
                         }
                         VkBoundResource::StorageBuffer(VkBufferBindingInfo {
-                            buffer,
+                            buffer: _,
                             offset,
                             length: _,
                         }) => {
@@ -1428,7 +1428,7 @@ impl VkBindingManager {
                         }
                         VkBoundResource::StorageBufferArray(buffers) => {
                             for VkBufferBindingInfo {
-                                buffer,
+                                buffer: _,
                                 offset,
                                 length: _,
                             } in buffers
@@ -1440,7 +1440,7 @@ impl VkBindingManager {
                         }
                         VkBoundResource::UniformBufferArray(buffers) => {
                             for VkBufferBindingInfo {
-                                buffer,
+                                buffer: _,
                                 offset,
                                 length: _,
                             } in buffers

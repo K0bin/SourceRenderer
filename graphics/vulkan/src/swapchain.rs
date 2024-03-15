@@ -59,7 +59,7 @@ impl VkSwapchain {
         width: u32,
         height: u32,
         device: &Arc<RawVkDevice>,
-        mut surface: VkSurface,
+        surface: VkSurface,
         old_swapchain: Option<vk::SwapchainKHR>,
     ) -> Result<Self, SwapchainError> {
         if surface.is_lost() {
@@ -453,7 +453,6 @@ impl Drop for VkSwapchain {
 
 impl Swapchain<VkBackend> for VkSwapchain {
     unsafe fn recreate(mut old: Self, width: u32, height: u32) -> Result<Self, SwapchainError> {
-        let state = old.state();
         let old_sc_handle = *old.handle();
         let surface = std::mem::replace(&mut old.surface, None).unwrap();
         old.set_state(VkSwapchainState::Retired);
@@ -474,15 +473,13 @@ impl Swapchain<VkBackend> for VkSwapchain {
     }
 
     unsafe fn recreate_on_surface(
-        mut old: Self,
+        old: Self,
         surface: VkSurface,
         width: u32,
         height: u32,
     ) -> Result<Self, SwapchainError> {
-        let state = old.state();
         let old_sc_handle = *old.handle();
         old.set_state(VkSwapchainState::Retired);
-        let surface = std::mem::replace(&mut old.surface, None).unwrap();
 
         println!("Recreating swapchain on new surface");
         VkSwapchain::new_internal(

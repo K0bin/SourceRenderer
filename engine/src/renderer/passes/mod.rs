@@ -15,6 +15,5 @@ pub(crate) mod taa;
 pub(crate) mod ui;
 
 use modern::{
-    acceleration_structure_update,
     rt_shadows,
 };

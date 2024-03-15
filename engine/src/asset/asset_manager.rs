@@ -34,7 +34,6 @@ use log::{
     trace,
     warn,
 };
-use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
 

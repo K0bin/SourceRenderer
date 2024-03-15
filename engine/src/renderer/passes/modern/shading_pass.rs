@@ -2,8 +2,7 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use sourcerenderer_core::{
-    Platform,
-    Vec2UI, Matrix4,
+    Platform, Vec2UI
 };
 
 use super::rt_shadows::RTShadowPass;

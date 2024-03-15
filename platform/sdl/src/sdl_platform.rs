@@ -5,7 +5,6 @@ use std::path::{
     Path,
     PathBuf,
 };
-use std::sync::Arc;
 
 use ash::extensions::khr::Surface as SurfaceLoader;
 use ash::vk::{
@@ -171,10 +170,10 @@ impl SDLPlatform {
 
     pub(crate) fn update_mouse_lock(&self, is_locked: bool) {
         let mouse_util = self.sdl_context.mouse();
-        //mouse_util.set_relative_mouse_mode(is_locked);
+        mouse_util.set_relative_mouse_mode(is_locked);
         if is_locked {
             let (width, height) = self.window.window.drawable_size();
-            //mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
+            mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
         }
     }
 }

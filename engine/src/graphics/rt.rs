@@ -28,7 +28,6 @@ pub struct AccelerationStructureInstance<'a, B: GPUBackend> {
     pub front_face: FrontFace,
 }
 
-pub use sourcerenderer_core::gpu::AccelerationStructureSizes;
 pub use sourcerenderer_core::gpu::AccelerationStructureMeshRange;
 
 pub struct RayTracingPipelineInfo<'a, B: GPUBackend> {

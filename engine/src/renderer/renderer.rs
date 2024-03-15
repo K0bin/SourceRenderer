@@ -5,8 +5,7 @@ use std::sync::atomic::{
 use std::sync::{
     Arc,
     Condvar,
-    Mutex,
-    MutexGuard,
+    Mutex
 };
 
 use crossbeam_channel::{

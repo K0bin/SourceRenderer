@@ -929,7 +929,7 @@ impl VkPipeline {
         let mut dynamic_uniform_buffers = [0; 4];
 
         {
-            let shader = info.info.vs.clone();
+            let shader = info.info.vs;
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
@@ -1628,7 +1628,8 @@ impl VkPipeline {
         info: &RayTracingPipelineInfo<VkBackend>,
         shared: &VkShared,
         buffer: &VkBuffer,
-        buffer_offset: u64
+        buffer_offset: u64,
+        name: Option<&str>
     ) -> Self {
         let rt = device.rt.as_ref().unwrap();
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
@@ -1944,6 +1945,26 @@ impl VkPipeline {
         .unwrap()
         .pop()
         .unwrap();
+
+        if let Some(name) = name {
+            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+                let name_cstring = CString::new(name).unwrap();
+                unsafe {
+                    debug_utils
+                        .debug_utils_loader
+                        .set_debug_utils_object_name(
+                            device.handle(),
+                            &vk::DebugUtilsObjectNameInfoEXT {
+                                object_type: vk::ObjectType::PIPELINE,
+                                object_handle: pipeline.as_raw(),
+                                p_object_name: name_cstring.as_ptr(),
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap();
+                }
+            }
+        }
 
         // SBT
         let handle_size = rt.rt_pipeline_properties.shader_group_handle_size;

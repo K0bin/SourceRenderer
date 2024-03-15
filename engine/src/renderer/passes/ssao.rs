@@ -124,7 +124,7 @@ impl<P: Platform> SsaoPass<P> {
             Some("SSAOKernel"),
         ).unwrap();
 
-        device.init_buffer(&ssao_kernel[..], &buffer, 0);
+        device.init_buffer(&ssao_kernel[..], &buffer, 0).unwrap();
         buffer
     }
 

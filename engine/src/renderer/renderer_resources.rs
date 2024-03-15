@@ -267,7 +267,6 @@ impl<B: GPUBackend> RendererResources<B> {
                     || !subresource_mut.stages.contains(stages);
                 if needs_barrier {
                     let mut subresource_clone = subresource_mut.clone();
-                    std::mem::forget(subresource_mut);
 
                     if WARN_ABOUT_READ_TO_READ_BARRIERS
                         && !access.is_write()

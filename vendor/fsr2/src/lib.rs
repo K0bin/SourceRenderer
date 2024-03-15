@@ -4,7 +4,7 @@
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-#[repr(align(8))]
+#[repr(C, align(8))]
 pub struct FfxFsr2Context {
     pub data: [u32; FFX_FSR2_CONTEXT_SIZE as usize]
 }

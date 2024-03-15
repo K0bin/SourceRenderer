@@ -568,8 +568,6 @@ impl Adapter<VkBackend> for VkAdapter {
                 pp_enabled_extension_names: extension_names_ptr.as_ptr(),
                 enabled_extension_count: extension_names_c.len() as u32,
                 p_next: device_creation_pnext,
-                pp_enabled_layer_names: std::ptr::null(),
-                enabled_layer_count: 0,
                 ..Default::default()
             };
             let vk_device = self
@@ -578,12 +576,6 @@ impl Adapter<VkBackend> for VkAdapter {
                 .create_device(self.physical_device, &device_create_info, None)
                 .unwrap();
 
-            let capabilities = surface.get_capabilities(&self.physical_device).unwrap();
-            let mut max_image_count = capabilities.max_image_count;
-            if max_image_count == 0 {
-                max_image_count = 99; // whatever
-            }
-
             VkDevice::new(
                 vk_device,
                 &self.instance,
@@ -591,8 +583,7 @@ impl Adapter<VkBackend> for VkAdapter {
                 graphics_queue_info,
                 compute_queue_info,
                 transfer_queue_info,
-                features,
-                max_image_count,
+                features
             )
         };
     }

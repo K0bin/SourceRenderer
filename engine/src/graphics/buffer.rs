@@ -130,10 +130,9 @@ impl<B: GPUBackend> BufferAllocator<B> {
         if heap_info.prefer_dedicated_allocation {
             let memory_types = unsafe { device.memory_type_infos() };
             let mut buffer: Result<B::Buffer, OutOfMemoryError> = Err(OutOfMemoryError {});
-            let mut mask = 0u32;
 
             if memory_usage != MemoryUsage::GPUMemory {
-                mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::ForceCoherent) & heap_info.memory_type_mask;
+                let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::ForceCoherent) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
                     if (mask & (1 << i)) == 0 {
                         continue;
@@ -146,7 +145,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             }
 
             if buffer.is_err() {
-                mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
+                let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
                     if (mask & (1 << i)) == 0 {
                         continue;
@@ -159,7 +158,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             }
 
             if buffer.is_err() {
-                mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
+                let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
                     if (mask & (1 << i)) == 0 {
                         continue;

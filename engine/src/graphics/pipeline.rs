@@ -81,7 +81,7 @@ impl<B: GPUBackend> RayTracingPipeline<B> {
         // TODO: Handle systems without rebar
 
         let pipeline = unsafe {
-            device.create_raytracing_pipeline(info, sbt.handle(), sbt.offset())
+            device.create_raytracing_pipeline(info, sbt.handle(), sbt.offset(), name)
         };
         Ok(Self {
             pipeline: ManuallyDrop::new(pipeline),

@@ -7,7 +7,6 @@ use sourcerenderer_core::{
     Vec4,
 };
 
-use crate::renderer::drawable::View;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,

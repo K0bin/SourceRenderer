@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use sourcerenderer_core::gpu::GPUBackend;
 
-use crate::graphics::{BufferSlice, GraphicsContext};
+use crate::graphics::BufferSlice;
 
 use super::drawable::View;
 use crate::input::InputState;

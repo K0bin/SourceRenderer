@@ -16,7 +16,6 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
-use crate::renderer::RendererScene;
 
 use crate::graphics::*;
 

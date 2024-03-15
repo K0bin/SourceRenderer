@@ -72,7 +72,7 @@ impl<P: Platform> GameInternal<P> {
         let mut resources = Resources::default();
         let tick_duration = Duration::new(0, 1_000_000_000 / tick_rate);
 
-        let mut level = World::new(legion::WorldOptions::default());
+        //let level = World::new(legion::WorldOptions::default());
 
         //asset_manager.add_container(Box::new(GltfContainer::load::<P>("/home/robin/Projekte/SourceRenderer/MetalRoughSpheresNoTextures.glb").unwrap()));
         //c_asset_manager.add_container(Box::new(GltfContainer::load::<P>("MetalRoughSpheresNoTextures.glb").unwrap()));

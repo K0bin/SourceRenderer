@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use sourcerenderer_core::{
     Platform,
     Vec2,

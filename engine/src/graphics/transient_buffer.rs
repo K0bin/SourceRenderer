@@ -136,7 +136,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
       memory_usage: MemoryUsage,
       _name: Option<&str>,
     ) -> Result<TransientBufferSlice<B>, OutOfMemoryError> {
-        let mut alignment: u64 = 256; // TODO
+        let alignment: u64 = 256; // TODO
 
         debug_assert!(UNIQUE_ALLOCATION_THRESHOLD <= BUFFER_SIZE);
 

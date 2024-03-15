@@ -1,5 +1,4 @@
 use std::{marker::PhantomData, sync::Arc};
-use std::hash::Hash;
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
@@ -9,13 +8,10 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
-use super::{BottomLevelAccelerationStructureInfo, AccelerationStructure, TopLevelAccelerationStructureInfo};
+use super::{BottomLevelAccelerationStructureInfo, AccelerationStructure};
 
 pub use sourcerenderer_core::gpu::{
     SubpassInfo,
-    AttachmentRef,
-    DepthStencilAttachmentRef,
-    OutputAttachmentRef,
     LoadOp,
     StoreOp,
     BarrierSync,

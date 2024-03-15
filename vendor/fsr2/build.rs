@@ -56,7 +56,7 @@ fn main() {
         .allowlist_file("FidelityFX-FSR2/src/ffx-fsr2-api/ffx_types.h")
         .allowlist_file("FidelityFX-FSR2/src/ffx-fsr2-api/ffx_error.h")
         .allowlist_file("FidelityFX-FSR2/src/ffx-fsr2-api/ffx_fsr2_interface.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .clang_arg("-x")
         .clang_arg("c++")
         .clang_arg("-Wno-missing-field-initializers")

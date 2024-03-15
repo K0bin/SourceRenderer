@@ -143,8 +143,8 @@ fn physics_tick(
 
             // Add to ColliderSet and RigidBodySet
             let rigid_body = match rigidbody.body_type {
-                RigidBodyType::Static => RigidBodyBuilder::new_static(),
-                RigidBodyType::Kinematic => RigidBodyBuilder::new_kinematic_position_based(),
+                RigidBodyType::Static => RigidBodyBuilder::fixed(),
+                RigidBodyType::Kinematic => RigidBodyBuilder::kinematic_position_based(),
                 RigidBodyType::Dynamic => RigidBodyBuilder::dynamic(),
             }
             .translation(transform.position)

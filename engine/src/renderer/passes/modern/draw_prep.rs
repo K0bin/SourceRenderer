@@ -1,7 +1,6 @@
 use sourcerenderer_core::{Platform, Vec4};
 
 use crate::math::Frustum;
-use crate::renderer::drawable::View;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::render_path::RenderPassParameters;

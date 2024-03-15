@@ -27,8 +27,7 @@ impl VkDevice {
         graphics_queue_info: VkQueueInfo,
         compute_queue_info: Option<VkQueueInfo>,
         transfer_queue_info: Option<VkQueueInfo>,
-        features: VkFeatures,
-        max_surface_image_count: u32,
+        features: VkFeatures
     ) -> Self {
         let allocator = unsafe {
             unsafe extern "system" fn get_instance_proc_addr_stub(
@@ -502,8 +501,8 @@ impl Device<VkBackend> for VkDevice {
         VkPipeline::ray_tracing_buffer_size(&self.device, info, &self.shared)
     }
 
-    unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<VkBackend>, sbt_buffer: &VkBuffer, sbt_buffer_offset: u64) -> VkPipeline {
-        VkPipeline::new_ray_tracing(&self.device, info, &self.shared, sbt_buffer, sbt_buffer_offset)
+    unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<VkBackend>, sbt_buffer: &VkBuffer, sbt_buffer_offset: u64, name: Option<&str>) -> VkPipeline {
+        VkPipeline::new_ray_tracing(&self.device, info, &self.shared, sbt_buffer, sbt_buffer_offset, name)
     }
 
     fn get_top_level_instances_buffer_size(&self, instances: &[AccelerationStructureInstance<VkBackend>]) -> u64 {

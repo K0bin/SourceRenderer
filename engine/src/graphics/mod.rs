@@ -6,7 +6,7 @@ pub use transfer::*;
 pub use transient_buffer::*;
 pub use allocator::*;
 pub use memory::*;
-pub use destroyer::*;
+use destroyer::*;
 pub use command::*;
 pub use sampler::*;
 pub use queue::*;

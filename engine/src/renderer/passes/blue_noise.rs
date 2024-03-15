@@ -31,7 +31,7 @@ impl<B: GPUBackend> BlueNoise<B> {
                 Self::load_frame::<P>(device, 6),
                 Self::load_frame::<P>(device, 7),
             ],
-            sampler: Arc::new(unsafe { device.create_sampler(&SamplerInfo {
+            sampler: Arc::new(device.create_sampler(&SamplerInfo {
                 mag_filter: Filter::Nearest,
                 min_filter: Filter::Nearest,
                 mip_filter: Filter::Nearest,
@@ -43,7 +43,7 @@ impl<B: GPUBackend> BlueNoise<B> {
                 compare_op: None,
                 min_lod: 0f32,
                 max_lod: None,
-            }) } ),
+            })),
         }
     }
 
@@ -61,7 +61,7 @@ impl<B: GPUBackend> BlueNoise<B> {
             .unwrap();
         let rgba_data = img.into_rgba8().to_vec();
 
-        let dev = (device.as_ref() as &crate::graphics::Device<B>);
+        let dev = device.as_ref() as &crate::graphics::Device<B>;
 
         let texture = dev.create_texture(
             &TextureInfo {

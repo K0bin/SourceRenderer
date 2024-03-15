@@ -4,7 +4,6 @@ use std::{
         Hash,
         Hasher,
     },
-    mem::MaybeUninit,
     sync::Arc,
 };
 
@@ -188,7 +187,7 @@ impl VkBuffer {
             .usage
             .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
         {
-            device.rt.as_ref().map(|rt| unsafe {
+            device.rt.as_ref().map(|_rt| unsafe {
                 device.get_buffer_device_address(&BufferDeviceAddressInfo {
                     buffer,
                     ..Default::default()

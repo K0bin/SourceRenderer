@@ -63,44 +63,11 @@ impl<B: GPUBackend> Texture<B> {
             destroyer: destroyer.clone()
         }))
     }
-    pub(super) fn new_from_handle(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, handle: B::Texture, name: Option<&str>) -> Result<Arc<Self>, OutOfMemoryError> {
-        let heap_info = unsafe { device.get_texture_heap_info(info) };
-        let (texture, allocation) = if heap_info.prefer_dedicated_allocation {
-            let memory_types = unsafe { device.memory_type_infos() };
-            let mut mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
-            let mut texture: Result<B::Texture, OutOfMemoryError> = Err(OutOfMemoryError {});
-            for i in 0..memory_types.len() as u32 {
-                if (mask & (1 << i)) == 0 {
-                    continue;
-                }
-                texture = unsafe { device.create_texture(info, i, name) };
-                if texture.is_ok() {
-                    break;
-                }
-            }
-
-            if texture.is_err() {
-                mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
-                for i in 0..memory_types.len() as u32 {
-                    if (mask & (1 <<i)) == 0 {
-                        continue;
-                    }
-                    texture = unsafe { device.create_texture(info, i, name) };
-                    if texture.is_ok() {
-                        break;
-                    }
-                }
-            }
-            (texture?, None)
-        } else {
-            let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
-            let texture = unsafe { allocation.data().create_texture(info, allocation.range.offset, name) }?;
-            (texture, Some(allocation))
-        };
+    pub(super) fn new_from_handle(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, handle: B::Texture) -> Result<Arc<Self>, OutOfMemoryError> {
         Ok(Arc::new(Self {
             device: device.clone(),
-            texture: ManuallyDrop::new(texture),
-            allocation,
+            texture: ManuallyDrop::new(handle),
+            allocation: None,
             destroyer: destroyer.clone()
         }))
     }

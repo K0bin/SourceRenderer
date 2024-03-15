@@ -10,10 +10,8 @@ use sourcerenderer_core::{
 };
 use crate::graphics::CommandBufferRecorder;
 
-use crate::renderer::drawable::View;
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -23,7 +21,6 @@ use crate::renderer::shader_manager::{
     GraphicsPipelineInfo,
     ShaderManager,
 };
-use crate::renderer::RendererScene;
 use crate::graphics::*;
 
 #[derive(Clone, Copy)]
@@ -296,7 +293,6 @@ impl Prepass {
         );
 
         let assets = pass_params.assets;
-        let device = pass_params.device;
 
         let info = motion.texture().unwrap().info();
         let per_frame = FrameData {

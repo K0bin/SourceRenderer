@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, CommandBuffer, TextureInfo, Device, Swapchain, TextureLayout, TextureView, WHOLE_BUFFER, SwapchainError, QueueSubmission, QueueType, FinishedCommandBuffer, SharedFenceValuePairRef};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, TextureInfo, Device, Swapchain, TextureLayout, WHOLE_BUFFER, SwapchainError, QueueSubmission, QueueType};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -223,7 +223,7 @@ impl<P: Platform> ModernRenderer<P> {
         let cascades = self.shadow_map_pass.cascades();
         let mut gpu_cascade_data: [ShadowCascade; 5] = Default::default();
         for i in 0..cascades.len() {
-            let mut gpu_cascade = &mut gpu_cascade_data[i];
+            let gpu_cascade = &mut gpu_cascade_data[i];
             let cascade = &cascades[i];
             gpu_cascade.light_mat = cascade.view_proj;
             gpu_cascade.z_max = cascade.z_max;

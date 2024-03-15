@@ -252,9 +252,7 @@ impl<B: GPUBackend> Transfer<B> {
         transfer.used_buffers_slices.push(src_buffer.clone());
         transfer.used_textures.push(texture.clone());
 
-        unsafe {
-            debug_assert!(!transfer.fence_value.is_signalled());
-        }
+        debug_assert!(!transfer.fence_value.is_signalled());
         transfer
           .pre_barriers
           .push(OwnedBarrier::TextureBarrier {
@@ -350,21 +348,17 @@ impl<B: GPUBackend> Transfer<B> {
         let mut guard = self.inner.lock().unwrap();
         let mut signalled_counter: u64 = 0u64;
         for cmd_buffer in &mut guard.graphics.used_cmd_buffers {
-            unsafe {
-                if cmd_buffer.fence_value.is_signalled() {
-                    signalled_counter = signalled_counter.max(cmd_buffer.fence_value.value);
-                    cmd_buffer.reset();
-                }
+            if cmd_buffer.fence_value.is_signalled() {
+                signalled_counter = signalled_counter.max(cmd_buffer.fence_value.value);
+                cmd_buffer.reset();
             }
         }
         if let Some(transfer) = guard.transfer.as_mut() {
             signalled_counter = 0u64;
             for cmd_buffer in &mut transfer.used_cmd_buffers {
-                unsafe {
-                    if cmd_buffer.fence_value.is_signalled() {
-                        signalled_counter = signalled_counter.max(cmd_buffer.fence_value.value);
-                        cmd_buffer.reset();
-                    }
+                if cmd_buffer.fence_value.is_signalled() {
+                    signalled_counter = signalled_counter.max(cmd_buffer.fence_value.value);
+                    cmd_buffer.reset();
                 }
             }
         }
@@ -379,7 +373,7 @@ impl<B: GPUBackend> Transfer<B> {
                     || commands
                         .post_barriers
                         .iter()
-                        .all(|(fence, _)| fence.as_ref().map_or(false, |f| unsafe { !f.is_signalled() })))
+                        .all(|(fence, _)| fence.as_ref().map_or(false, |f| !f.is_signalled())))
             {
                 return None;
             }
@@ -387,7 +381,7 @@ impl<B: GPUBackend> Transfer<B> {
         let reuse_first_graphics_buffer = commands
             .used_cmd_buffers
             .front()
-            .map(|cmd_buffer| unsafe { cmd_buffer.fence_value.is_signalled() })
+            .map(|cmd_buffer| cmd_buffer.fence_value.is_signalled())
             .unwrap_or(false);
         let mut cmd_buffer = if reuse_first_graphics_buffer {
             let mut cmd_buffer = commands.used_cmd_buffers.pop_front().unwrap();
@@ -495,10 +489,8 @@ impl<B: GPUBackend> Transfer<B> {
         let mut barriers = Vec::<gpu::Barrier<B>>::with_capacity(commands.pre_barriers.len());
         for (fence_opt, barrier) in commands.post_barriers.iter() {
             if let Some(fence) = fence_opt {
-                unsafe {
-                    if !fence.is_signalled() {
-                        continue;
-                    }
+                if !fence.is_signalled() {
+                    continue;
                 }
             }
 
@@ -551,7 +543,7 @@ impl<B: GPUBackend> Transfer<B> {
         unsafe {
             cmd_buffer.cmd_buffer.barrier(&barriers);
         }
-        commands.post_barriers.retain(|(fence_opt, _barrier)| fence_opt.as_ref().map_or(false, |f| unsafe { !f.is_signalled() }));
+        commands.post_barriers.retain(|(fence_opt, _barrier)| fence_opt.as_ref().map_or(false, |f| !f.is_signalled()));
 
         unsafe {
             cmd_buffer.cmd_buffer.finish();

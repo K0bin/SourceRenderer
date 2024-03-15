@@ -1,9 +1,4 @@
 use std::collections::HashMap;
-use std::mem::MaybeUninit;
-use std::sync::Arc;
-
-use field_offset::offset_of;
-use legion::Entity;
 use smallvec::SmallVec;
 use sourcerenderer_core::{
     Matrix4,
@@ -166,7 +161,7 @@ pub fn upload<P: Platform>(
     {
         profiling::scope!("CollectingSceneData");
         for drawable in scene.static_drawables() {
-            let mut model_entry = if let Some(model_entry) = model_map.get(&drawable.model) {
+            let model_entry = if let Some(model_entry) = model_map.get(&drawable.model) {
                 model_entry
             } else {
                 let model = assets.get_model(drawable.model);
@@ -209,7 +204,6 @@ pub fn upload<P: Platform>(
                         match albedo_value {
                             RendererMaterialValue::Texture(handle) => {
                                 let texture = assets.get_texture(*handle);
-                                let albedo_view = &texture.view;
                                 gpu_material.albedo_texture_index = texture.bindless_index.as_ref().map(|b| b.slot()).unwrap_or(zero_view_index)
                             }
                             RendererMaterialValue::Vec4(val) => gpu_material.albedo = *val,
@@ -242,7 +236,6 @@ pub fn upload<P: Platform>(
                         material_index
                     };
 
-                    let part_index = parts.len();
                     let indices = mesh
                         .indices
                         .as_ref()

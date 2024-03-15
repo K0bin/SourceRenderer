@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::{atomic::{AtomicBool, Ordering}, Arc, Condvar, Mutex}};
+use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::{Arc, Condvar, Mutex}};
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;

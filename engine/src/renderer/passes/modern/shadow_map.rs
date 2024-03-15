@@ -1,17 +1,13 @@
 use std::marker::PhantomData;
 use std::{path::Path, sync::Arc};
 
-use legion::world;
 use nalgebra::Point3;
-use nalgebra_glm::proj;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
-use crate::renderer::drawable::View;
-use crate::renderer::light::{DirectionalLight, RendererDirectionalLight};
+use crate::renderer::light::RendererDirectionalLight;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
 use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
-use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::shader_manager::{
     ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager,
 };

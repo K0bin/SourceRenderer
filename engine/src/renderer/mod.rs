@@ -39,5 +39,4 @@ pub use self::light::PointLight;
 pub use self::renderer::Renderer;
 #[cfg(feature = "threading")]
 use self::renderer_internal::RendererInternal;
-use self::renderer_scene::RendererScene;
 pub use self::vertex::Vertex;

@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc,
-    MutexGuard,
-};
+use std::sync::Arc;
 
 use log::trace;
 use sourcerenderer_core::platform::{
@@ -63,7 +60,7 @@ impl<P: Platform> Engine<P> {
         let console = Arc::new(Console::new());
 
         let input = Arc::new(Input::new());
-        let mut adapters = instance.list_adapters();
+        let adapters = instance.list_adapters();
         let device = adapters.first().expect("No suitable GPU found").create_device(&surface);
         let core_swapchain = platform.window().create_swapchain(true, device.handle(), surface);
         let swapchain = Swapchain::new(core_swapchain, &device);

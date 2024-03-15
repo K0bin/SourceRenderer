@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use ash::vk::{self, PipelineBindPoint};
+use ash::vk;
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::*;
@@ -1186,7 +1186,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         };
 
         let rt = self.device.rt.as_ref().unwrap();
-        let rt_pipeline = self.pipeline.as_ref().unwrap();
         unsafe {
             rt.rt_pipelines.cmd_trace_rays(
                 self.cmd_buffer,
@@ -1316,7 +1315,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         T: 'static + Send + Sync + Sized + Clone,
     {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
         let pipeline_layout = match self.pipeline.as_ref().unwrap() {
             BoundPipeline::Graphics { pipeline_layout, .. } => pipeline_layout,
             BoundPipeline::Compute { pipeline_layout, .. } => pipeline_layout,
@@ -1425,7 +1423,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             value: value,
         };
 
-        let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline().clone();
+        let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline();
         let mut bindings = <[VkBoundResourceRef; PER_SET_BINDINGS]>::default();
         let binding_offsets = [offset as u32];
         let is_dynamic_binding = meta_pipeline
