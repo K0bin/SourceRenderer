@@ -1,9 +1,12 @@
-use std::ffi::c_void;
-use std::sync::Arc;
+use std::{
+    ffi::c_void,
+    sync::Arc,
+};
 
 use ash::vk;
-use sourcerenderer_core::graphics::Fence;
-use crate::raw::RawVkDevice;
+use sourcerenderer_core::gpu::*;
+
+use super::*;
 
 pub struct VkTimelineSemaphore {
     device: Arc<RawVkDevice>,
@@ -36,11 +39,11 @@ impl VkTimelineSemaphore {
         }
     }
 
-    pub fn handle(&self) -> &vk::Semaphore {
-        &self.semaphore
+    pub fn handle(&self) -> vk::Semaphore {
+        self.semaphore
     }
 
-    pub fn await_value(&self, value: u64) {
+    pub unsafe fn await_value(&self, value: u64) {
         unsafe {
             self.device
                 .timeline_semaphores
@@ -48,7 +51,7 @@ impl VkTimelineSemaphore {
                     &vk::SemaphoreWaitInfo {
                         flags: vk::SemaphoreWaitFlags::empty(),
                         semaphore_count: 1,
-                        p_semaphores: self.handle() as *const vk::Semaphore,
+                        p_semaphores: &self.handle() as *const vk::Semaphore,
                         p_values: &[value] as *const u64,
                         ..Default::default()
                     },
@@ -58,7 +61,7 @@ impl VkTimelineSemaphore {
         }
     }
 
-    pub fn value(&self) -> u64 {
+    pub unsafe fn value(&self) -> u64 {
         unsafe {
             self.device
                 .timeline_semaphores
@@ -77,13 +80,16 @@ impl Drop for VkTimelineSemaphore {
 }
 
 impl Fence for VkTimelineSemaphore {
-    fn value(&self) -> u64 {
+    unsafe fn value(&self) -> u64 {
         unsafe {
-            self.device.get_semaphore_counter_value(self.semaphore).unwrap()
+            self.device
+                .timeline_semaphores
+                .get_semaphore_counter_value(self.semaphore)
+                .unwrap()
         }
     }
 
-    fn await_value(&self, value: u64) {
+    unsafe fn await_value(&self, value: u64) {
         unsafe {
             let wait_info = vk::SemaphoreWaitInfo {
                 flags: vk::SemaphoreWaitFlags::ANY,
@@ -92,7 +98,7 @@ impl Fence for VkTimelineSemaphore {
                 p_values: &value as *const u64,
                 ..Default::default()
             };
-            self.device.wait_semaphores(&wait_info, !0u64).unwrap();
+            self.device.timeline_semaphores.wait_semaphores(&wait_info, std::u64::MAX).unwrap();
         }
     }
 }

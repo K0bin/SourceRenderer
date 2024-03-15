@@ -1,19 +1,6 @@
 use std::sync::Arc;
 
 use nalgebra::Vector3;
-use sourcerenderer_core::graphics::{
-    Backend as GraphicsBackend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    MemoryUsage,
-    PipelineBinding,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Platform,
     Vec3,
@@ -30,6 +17,8 @@ use crate::renderer::shader_manager::{
     ShaderManager,
 };
 use crate::renderer::RendererScene;
+
+use crate::graphics::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -55,7 +44,7 @@ impl LightBinningPass {
     pub const LIGHT_BINNING_BUFFER_NAME: &'static str = "binned_lights";
 
     pub fn new<P: Platform>(
-        barriers: &mut RendererResources<P::GraphicsBackend>,
+        barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline("shaders/light_binning.comp.spv");
@@ -63,10 +52,11 @@ impl LightBinningPass {
         barriers.create_buffer(
             Self::LIGHT_BINNING_BUFFER_NAME,
             &BufferInfo {
-                size: std::mem::size_of::<u32>() * 16 * 9 * 24,
+                size: (std::mem::size_of::<u32>() * 16 * 9 * 24) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             false,
         );
 
@@ -77,9 +67,9 @@ impl LightBinningPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
-        camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>
+        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>
     ) {
         cmd_buffer.begin_label("Light binning");
         let cluster_count = Vector3::<u32>::new(16, 9, 24);
@@ -96,9 +86,9 @@ impl LightBinningPass {
             })
             .collect();
 
-        let light_info_buffer = cmd_buffer.upload_dynamic_data(&[setup_info], BufferUsage::STORAGE);
+        let light_info_buffer = cmd_buffer.upload_dynamic_data(&[setup_info], BufferUsage::STORAGE).unwrap();
         let point_lights_buffer =
-            cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE);
+            cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE).unwrap();
 
         cmd_buffer.barrier(&[Barrier::BufferBarrier {
             old_sync: BarrierSync::COMPUTE_SHADER,
@@ -107,7 +97,8 @@ impl LightBinningPass {
                 | BarrierSync::FRAGMENT_SHADER,
             old_access: BarrierAccess::STORAGE_WRITE,
             new_access: BarrierAccess::CONSTANT_READ | BarrierAccess::STORAGE_READ,
-            buffer: camera_buffer,
+            buffer: BufferRef::Regular(camera_buffer),
+            queue_ownership: None
         }]);
 
         let light_bitmask_buffer = pass_params.resources.access_buffer(
@@ -130,35 +121,35 @@ impl LightBinningPass {
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            camera_buffer,
+            BufferRef::Regular(camera_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             1,
-            &*clusters_buffer,
+            BufferRef::Regular(&*clusters_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             2,
-            &light_info_buffer,
+            BufferRef::Transient(&light_info_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             3,
-            &point_lights_buffer,
+            BufferRef::Transient(&point_lights_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             4,
-            &*light_bitmask_buffer,
+            BufferRef::Regular(&*light_bitmask_buffer),
             0,
             WHOLE_BUFFER,
         );

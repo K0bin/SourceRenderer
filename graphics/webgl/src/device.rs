@@ -1,5 +1,5 @@
 use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}};
-use sourcerenderer_core::graphics::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureViewInfo, WHOLE_BUFFER};
+use sourcerenderer_core::gpu::{Buffer, BufferInfo, BufferUsage, Device, GraphicsPipelineInfo, MemoryUsage, RenderPassInfo, SamplerInfo, TextureViewInfo, WHOLE_BUFFER};
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext};
 use crate::{GLThreadSender, WebGLBackend, WebGLBuffer, WebGLComputePipeline, WebGLFence, WebGLGraphicsPipeline, WebGLShader, WebGLSurface, WebGLTexture, WebGLTextureView, command::WebGLQueue, sync::WebGLSemaphore, texture::{WebGLSampler, format_to_gl, format_to_type}, thread::{BufferHandle, PipelineHandle, ShaderHandle, TextureHandle, WebGLThreadQueue, SamplerHandle}};
 
@@ -79,7 +79,7 @@ impl Device<WebGLBackend> for WebGLDevice {
     Arc::new(WebGLBuffer::new(id, info, memory_usage, &self.thread_queue))
   }
 
-  fn upload_data<T>(&self, data: &[T], memory_usage: sourcerenderer_core::graphics::MemoryUsage, usage: sourcerenderer_core::graphics::BufferUsage) -> Arc<WebGLBuffer> where T: 'static + Send + Sync + Sized + Clone {
+  fn upload_data<T>(&self, data: &[T], memory_usage: sourcerenderer_core::gpu::MemoryUsage, usage: sourcerenderer_core::gpu::BufferUsage) -> Arc<WebGLBuffer> where T: 'static + Send + Sync + Sized + Clone {
     let data = data.clone();
     let id = self.handles.new_buffer_handle();
     let buffer = Arc::new(WebGLBuffer::new(id, &BufferInfo { size: std::mem::size_of_val(data), usage }, memory_usage, &self.thread_queue));
@@ -91,12 +91,12 @@ impl Device<WebGLBackend> for WebGLDevice {
     buffer
   }
 
-  fn create_shader(&self, shader_type: sourcerenderer_core::graphics::ShaderType, bytecode: &[u8], _name: Option<&str>) -> Arc<WebGLShader> {
+  fn create_shader(&self, shader_type: sourcerenderer_core::gpu::ShaderType, bytecode: &[u8], _name: Option<&str>) -> Arc<WebGLShader> {
     let id = self.handles.new_shader_handle();
     Arc::new(WebGLShader::new(id, shader_type, bytecode, &self.thread_queue))
   }
 
-  fn create_texture(&self, info: &sourcerenderer_core::graphics::TextureInfo, _name: Option<&str>) -> Arc<WebGLTexture> {
+  fn create_texture(&self, info: &sourcerenderer_core::gpu::TextureInfo, _name: Option<&str>) -> Arc<WebGLTexture> {
     let id = self.handles.new_texture_handle();
     Arc::new(WebGLTexture::new(id, info, &self.thread_queue))
   }
@@ -221,15 +221,15 @@ impl Device<WebGLBackend> for WebGLDevice {
     panic!("WebGL does not support bindless resources")
   }
 
-  fn get_bottom_level_acceleration_structure_size(&self, _info: &sourcerenderer_core::graphics::BottomLevelAccelerationStructureInfo<WebGLBackend>) -> sourcerenderer_core::graphics::AccelerationStructureSizes {
+  fn get_bottom_level_acceleration_structure_size(&self, _info: &sourcerenderer_core::gpu::BottomLevelAccelerationStructureInfo<WebGLBackend>) -> sourcerenderer_core::gpu::AccelerationStructureSizes {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn get_top_level_acceleration_structure_size(&self, _info: &sourcerenderer_core::graphics::TopLevelAccelerationStructureInfo<WebGLBackend>) -> sourcerenderer_core::graphics::AccelerationStructureSizes {
+  fn get_top_level_acceleration_structure_size(&self, _info: &sourcerenderer_core::gpu::TopLevelAccelerationStructureInfo<WebGLBackend>) -> sourcerenderer_core::gpu::AccelerationStructureSizes {
     panic!("WebGL does not support ray tracing")
   }
 
-  fn create_raytracing_pipeline(&self, _info: &sourcerenderer_core::graphics::RayTracingPipelineInfo<WebGLBackend>) -> Arc<<WebGLBackend as sourcerenderer_core::graphics::Backend>::RayTracingPipeline> {
+  fn create_raytracing_pipeline(&self, _info: &sourcerenderer_core::gpu::RayTracingPipelineInfo<WebGLBackend>) -> Arc<<WebGLBackend as sourcerenderer_core::gpu::Backend>::RayTracingPipeline> {
     panic!("WebGL does not support ray tracing")
   }
 

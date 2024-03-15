@@ -1,80 +1,35 @@
-use std::collections::HashMap;
-use std::ffi::{
-    CStr,
-    CString,
+use std::{
+    collections::HashMap,
+    ffi::{
+        CStr,
+        CString,
+    },
+    hash::{
+        Hash,
+        Hasher,
+    },
+    os::raw::c_char,
+    sync::Arc,
 };
-use std::hash::{
-    Hash,
-    Hasher,
-};
-use std::os::raw::c_char;
-use std::sync::Arc;
 
-use ash::vk;
-use ash::vk::{
-    Handle,
-    PipelineRasterizationStateCreateFlags,
+use ash::{
+    vk,
+    vk::{
+        Handle,
+        PipelineRasterizationStateCreateFlags,
+    },
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    BindingFrequency,
-    BindingInfo,
-    BindingType,
-    BlendFactor,
-    BlendOp,
-    Buffer,
-    BufferInfo,
-    BufferUsage,
-    ColorComponents,
-    CompareFunc,
-    ComputePipeline,
-    CullMode,
-    FillMode,
-    FrontFace,
-    GraphicsPipelineInfo,
-    InputRate,
-    LogicOp,
-    MemoryUsage,
-    PrimitiveType,
-    RayTracingPipelineInfo,
-    SampleCount,
-    Shader,
-    ShaderType,
-    StencilOp,
-};
+use sourcerenderer_core::gpu::*;
 use spirv_cross_sys;
 
-use crate::bindless::{
-    BINDLESS_TEXTURE_COUNT,
-    BINDLESS_TEXTURE_SET_INDEX,
-};
-use crate::buffer::{
-    align_up_32,
-    align_up_64,
-    VkBufferSlice,
-};
-use crate::descriptor::{
-    VkConstantRange,
-    VkDescriptorSetEntryInfo,
-    VkDescriptorSetLayout,
-};
-use crate::format::format_to_vk;
-use crate::raw::{
-    RawVkDevice,
-    VkFeatures,
-};
-use crate::shared::{
-    VkDescriptorSetLayoutKey,
-    VkPipelineLayoutKey,
-};
-use crate::{
-    VkBackend,
-    VkRenderPass,
-    VkShared,
-};
+use super::*;
+use crate::adapter::BINDLESS_TEXTURE_COUNT;
+
+const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
 #[inline]
-pub(crate) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
+pub(super) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
     match input_rate {
         InputRate::PerVertex => vk::VertexInputRate::VERTEX,
         InputRate::PerInstance => vk::VertexInputRate::INSTANCE,
@@ -173,38 +128,42 @@ impl VkShader {
             std::slice::from_raw_parts(resources_list, resources_count as usize)
         };
         let push_constant_resource = push_constant_buffers.first();
-        let push_constants_range = push_constant_resource
-            .map(|resource| unsafe {
-                let type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                assert_ne!(type_handle, std::ptr::null());
-                let mut size = 0u64;
-                assert_eq!(
-                    spirv_cross_sys::spvc_compiler_get_declared_struct_size(compiler, type_handle, &mut size as *mut u64),
-                    spirv_cross_sys::spvc_result_SPVC_SUCCESS
+        let push_constants_range = push_constant_resource.map(|resource| unsafe {
+            let type_handle =
+                spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
+            assert_ne!(type_handle, std::ptr::null());
+            let mut size = 0u64;
+            assert_eq!(
+                spirv_cross_sys::spvc_compiler_get_declared_struct_size(
+                    compiler,
+                    type_handle,
+                    &mut size as *mut u64
+                ),
+                spirv_cross_sys::spvc_result_SPVC_SUCCESS
+            );
+            let push_constant_range = vk::PushConstantRange {
+                stage_flags: match shader_type {
+                    ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
+                    ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
+                    ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+                    ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+                    ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
+                    ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                    _ => unimplemented!(),
+                },
+                offset: 0u32,
+                size: size as u32,
+            };
+
+            if push_constant_range.size > 128 {
+                panic!(
+                    "Shader push constants exceed the size limit of 128 bytes, name: {:?}",
+                    name
                 );
-                let push_constant_range = vk::PushConstantRange {
-                    stage_flags: match shader_type {
-                        ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
-                        ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
-                        ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
-                        ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
-                        ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
-                        ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-                        _ => unimplemented!(),
-                    },
-                    offset: 0u32,
-                    size: size as u32,
-                };
+            }
 
-                if push_constant_range.size > 128 {
-                    panic!(
-                        "Shader push constants exceed the size limit of 128 bytes, name: {:?}",
-                        name
-                    );
-                }
-
-                push_constant_range
-            });
+            push_constant_range
+        });
 
         let separate_images = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
@@ -805,7 +764,8 @@ pub struct VkPipeline {
 }
 
 struct VkShaderBindingTables {
-    buffer: Arc<VkBufferSlice>,
+    buffer: vk::Buffer,
+    buffer_offset: u64,
     raygen_region: vk::StridedDeviceAddressRegionKHR,
     closest_hit_region: vk::StridedDeviceAddressRegionKHR,
     miss_region: vk::StridedDeviceAddressRegionKHR,
@@ -819,7 +779,7 @@ impl PartialEq for VkPipeline {
 
 const SHADER_ENTRY_POINT_NAME: &str = "main";
 
-pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
+pub(super) fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
     match shader_type {
         ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
         ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
@@ -833,7 +793,7 @@ pub fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
     }
 }
 
-pub fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
+pub(super) fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
     match samples {
         SampleCount::Samples1 => vk::SampleCountFlags::TYPE_1,
         SampleCount::Samples2 => vk::SampleCountFlags::TYPE_2,
@@ -842,7 +802,7 @@ pub fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
     }
 }
 
-pub fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
+pub(super) fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
     match compare_func {
         CompareFunc::Always => vk::CompareOp::ALWAYS,
         CompareFunc::NotEqual => vk::CompareOp::NOT_EQUAL,
@@ -855,7 +815,7 @@ pub fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
     }
 }
 
-pub fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
+pub(super) fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
     match stencil_op {
         StencilOp::Decrease => vk::StencilOp::DECREMENT_AND_WRAP,
         StencilOp::Increase => vk::StencilOp::INCREMENT_AND_WRAP,
@@ -868,7 +828,7 @@ pub fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
     }
 }
 
-pub fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
+pub(super) fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
     match logic_op {
         LogicOp::And => vk::LogicOp::AND,
         LogicOp::AndInverted => vk::LogicOp::AND_INVERTED,
@@ -889,7 +849,7 @@ pub fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
     }
 }
 
-pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
+pub(super) fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
     match blend_factor {
         BlendFactor::ConstantColor => vk::BlendFactor::CONSTANT_COLOR,
         BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
@@ -911,7 +871,7 @@ pub fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
     }
 }
 
-pub fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
+pub(super) fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
     match blend_op {
         BlendOp::Add => vk::BlendOp::ADD,
         BlendOp::Max => vk::BlendOp::MAX,
@@ -921,7 +881,7 @@ pub fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
     }
 }
 
-pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
+pub(super) fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
     let components_bits = color_components.bits() as u32;
     let mut colors = 0u32;
     colors |= components_bits.rotate_left(
@@ -946,7 +906,7 @@ pub fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorCom
 #[derive(Hash, Eq, PartialEq)]
 pub struct VkGraphicsPipelineInfo<'a> {
     pub info: &'a GraphicsPipelineInfo<'a, VkBackend>,
-    pub render_pass: &'a Arc<VkRenderPass>,
+    pub render_pass: &'a VkRenderPass,
     pub sub_pass: u32,
 }
 
@@ -1240,21 +1200,24 @@ impl VkPipeline {
                 panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", name);
             }
 
+            let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
+            bindless_bindings.push(VkDescriptorSetEntryInfo {
+                name: "bindless_textures".to_string(),
+                shader_stage: vk::ShaderStageFlags::VERTEX
+                    | vk::ShaderStageFlags::FRAGMENT
+                    | vk::ShaderStageFlags::COMPUTE,
+                index: 0,
+                descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+                count: BINDLESS_TEXTURE_COUNT,
+                writable: false,
+                flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
+                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
+                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
+            });
+
             descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
                 VkDescriptorSetLayoutKey {
-                    bindings: vec![VkDescriptorSetEntryInfo {
-                        name: "bindless_textures".to_string(),
-                        shader_stage: vk::ShaderStageFlags::VERTEX
-                            | vk::ShaderStageFlags::FRAGMENT
-                            | vk::ShaderStageFlags::COMPUTE,
-                        index: 0,
-                        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                        count: BINDLESS_TEXTURE_COUNT,
-                        writable: false,
-                        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                            | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                            | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-                    }],
+                    bindings: bindless_bindings,
                     flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
                 };
         }
@@ -1315,8 +1278,8 @@ impl VkPipeline {
             p_viewport_state: &viewport_info,
             p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
             p_dynamic_state: &dynamic_state_create_info,
-            layout: *layout.handle(),
-            render_pass: *info.render_pass.handle(),
+            layout: layout.handle(),
+            render_pass: info.render_pass.handle(),
             subpass: info.sub_pass,
             base_pipeline_handle: vk::Pipeline::null(),
             base_pipeline_index: 0i32,
@@ -1361,7 +1324,7 @@ impl VkPipeline {
 
     pub fn new_compute(
         device: &Arc<RawVkDevice>,
-        shader: &Arc<VkShader>,
+        shader: &VkShader,
         shared: &VkShared,
         name: Option<&str>,
     ) -> Self {
@@ -1426,21 +1389,28 @@ impl VkPipeline {
         }
 
         if shader.uses_bindless_texture_set {
+            if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+                panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", name);
+            }
+
+            let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
+            bindless_bindings.push(VkDescriptorSetEntryInfo {
+                name: "bindless_textures".to_string(),
+                shader_stage: vk::ShaderStageFlags::VERTEX
+                    | vk::ShaderStageFlags::FRAGMENT
+                    | vk::ShaderStageFlags::COMPUTE,
+                index: 0,
+                descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+                count: BINDLESS_TEXTURE_COUNT,
+                writable: false,
+                flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
+                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
+                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
+            });
+
             descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
                 VkDescriptorSetLayoutKey {
-                    bindings: vec![VkDescriptorSetEntryInfo {
-                        name: "bindless_textures".to_string(),
-                        shader_stage: vk::ShaderStageFlags::VERTEX
-                            | vk::ShaderStageFlags::FRAGMENT
-                            | vk::ShaderStageFlags::COMPUTE,
-                        index: 0,
-                        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                        count: BINDLESS_TEXTURE_COUNT,
-                        writable: false,
-                        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                            | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                            | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-                    }],
+                    bindings: bindless_bindings,
                     flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
                 };
         }
@@ -1462,7 +1432,7 @@ impl VkPipeline {
         let pipeline_create_info = vk::ComputePipelineCreateInfo {
             flags: vk::PipelineCreateFlags::empty(),
             stage: shader_stage,
-            layout: *layout.handle(),
+            layout: layout.handle(),
             base_pipeline_handle: vk::Pipeline::null(),
             base_pipeline_index: 0,
             ..Default::default()
@@ -1505,7 +1475,7 @@ impl VkPipeline {
 
     pub fn new_compute_meta(
         device: &Arc<RawVkDevice>,
-        shader: &Arc<VkShader>,
+        shader: &VkShader,
         name: Option<&str>,
     ) -> Self {
         let mut descriptor_set_layout_keys: [VkDescriptorSetLayoutKey;
@@ -1596,7 +1566,7 @@ impl VkPipeline {
         let pipeline_create_info = vk::ComputePipelineCreateInfo {
             flags: vk::PipelineCreateFlags::empty(),
             stage: shader_stage,
-            layout: *layout.handle(),
+            layout: layout.handle(),
             base_pipeline_handle: vk::Pipeline::null(),
             base_pipeline_index: 0,
             ..Default::default()
@@ -1637,10 +1607,28 @@ impl VkPipeline {
         }
     }
 
+    pub fn ray_tracing_buffer_size(
+        device: &Arc<RawVkDevice>,
+        info: &RayTracingPipelineInfo<VkBackend>,
+        _shared: &VkShared
+    ) -> u64 {
+        let shader_count = 1 + info.closest_hit_shaders.len() + info.miss_shaders.len();
+
+        let rt = device.rt.as_ref().unwrap();
+        let handle_size = rt.rt_pipeline_properties.shader_group_handle_size;
+        let handle_alignment = rt.rt_pipeline_properties.shader_group_handle_alignment;
+        let handle_stride = align_up_32(handle_size, handle_alignment);
+        let group_alignment = rt.rt_pipeline_properties.shader_group_base_alignment as u64;
+
+        align_up_32(handle_stride, group_alignment as u32) as u64 * shader_count as u64
+    }
+
     pub fn new_ray_tracing(
         device: &Arc<RawVkDevice>,
         info: &RayTracingPipelineInfo<VkBackend>,
         shared: &VkShared,
+        buffer: &VkBuffer,
+        buffer_offset: u64
     ) -> Self {
         let rt = device.rt.as_ref().unwrap();
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
@@ -1909,24 +1897,20 @@ impl VkPipeline {
             if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
                 panic!("RT Pipeline is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.");
             }
-
-            descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
-                VkDescriptorSetLayoutKey {
-                    bindings: vec![VkDescriptorSetEntryInfo {
-                        name: "bindless_textures".to_string(),
-                        shader_stage: vk::ShaderStageFlags::VERTEX
-                            | vk::ShaderStageFlags::FRAGMENT
-                            | vk::ShaderStageFlags::COMPUTE,
-                        index: 0,
-                        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                        count: BINDLESS_TEXTURE_COUNT,
-                        writable: false,
-                        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                            | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                            | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-                    }],
-                    flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
-                };
+            let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
+            bindless_bindings.push(VkDescriptorSetEntryInfo {
+                name: "bindless_textures".to_string(),
+                shader_stage: vk::ShaderStageFlags::VERTEX
+                    | vk::ShaderStageFlags::FRAGMENT
+                    | vk::ShaderStageFlags::COMPUTE,
+                index: 0,
+                descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+                count: BINDLESS_TEXTURE_COUNT,
+                writable: false,
+                flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
+                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
+                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
+            });
         }
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
@@ -1944,7 +1928,7 @@ impl VkPipeline {
             p_library_info: std::ptr::null(),
             p_library_interface: std::ptr::null(),
             p_dynamic_state: std::ptr::null(),
-            layout: *layout.handle(),
+            layout: layout.handle(),
             base_pipeline_handle: vk::Pipeline::null(),
             base_pipeline_index: 0,
             ..Default::default()
@@ -1967,6 +1951,9 @@ impl VkPipeline {
         let handle_stride = align_up_32(handle_size, handle_alignment);
         let group_alignment = rt.rt_pipeline_properties.shader_group_base_alignment as u64;
 
+        let size = Self::ray_tracing_buffer_size(device, info, shared);
+        assert!(buffer.info().size - buffer_offset > size);
+
         let handles = unsafe {
             rt.rt_pipelines.get_ray_tracing_shader_group_handles(
                 pipeline,
@@ -1977,20 +1964,13 @@ impl VkPipeline {
         }
         .unwrap();
 
-        let sbt = shared.buffer_allocator().get_slice(
-            &BufferInfo {
-                size: align_up_32(handle_stride, group_alignment as u32) as usize * groups.len(),
-                usage: BufferUsage::SHADER_BINDING_TABLE,
-            },
-            MemoryUsage::UncachedRAM,
-            None,
-        );
-        let map = unsafe { sbt.map_unsafe(false).unwrap() };
+        let sbt = buffer;
+        let map = unsafe { sbt.map(buffer_offset, size, false).unwrap() as *mut u8 };
 
         let mut src_offset = 0u64;
         let mut dst_offset = 0u64;
         let raygen_region = vk::StridedDeviceAddressRegionKHR {
-            device_address: sbt.va().unwrap(),
+            device_address: sbt.va_offset(buffer_offset).unwrap(),
             stride: align_up_64(handle_stride as u64, group_alignment),
             size: align_up_64(handle_stride as u64, group_alignment),
         };
@@ -2006,7 +1986,7 @@ impl VkPipeline {
 
         dst_offset = align_up_64(dst_offset as u64, group_alignment);
         let closest_hit_region = vk::StridedDeviceAddressRegionKHR {
-            device_address: sbt.va().unwrap() + dst_offset,
+            device_address: sbt.va_offset(buffer_offset).unwrap() + dst_offset,
             stride: handle_stride as u64,
             size: align_up_64(
                 info.closest_hit_shaders.len() as u64 * handle_stride as u64,
@@ -2027,7 +2007,7 @@ impl VkPipeline {
 
         dst_offset = align_up_64(dst_offset as u64, group_alignment);
         let miss_region = vk::StridedDeviceAddressRegionKHR {
-            device_address: sbt.va().unwrap() + dst_offset,
+            device_address: sbt.va_offset(buffer_offset).unwrap() + dst_offset,
             stride: handle_stride as u64,
             size: align_up_64(
                 info.miss_shaders.len() as u64 * handle_stride as u64,
@@ -2047,7 +2027,7 @@ impl VkPipeline {
         }
 
         unsafe {
-            sbt.unmap_unsafe(true);
+            sbt.unmap(buffer_offset, size, true);
         }
 
         Self {
@@ -2057,7 +2037,8 @@ impl VkPipeline {
             pipeline_type: VkPipelineType::RayTracing,
             uses_bindless_texture_set,
             sbt: Some(VkShaderBindingTables {
-                buffer: sbt,
+                buffer: sbt.handle(),
+                buffer_offset,
                 raygen_region,
                 closest_hit_region,
                 miss_region,
@@ -2066,41 +2047,46 @@ impl VkPipeline {
     }
 
     #[inline]
-    pub(crate) fn handle(&self) -> &vk::Pipeline {
-        &self.pipeline
+    pub(super) fn handle(&self) -> vk::Pipeline {
+        self.pipeline
     }
 
     #[inline]
-    pub(crate) fn layout(&self) -> &VkPipelineLayout {
+    pub(super) fn layout(&self) -> &Arc<VkPipelineLayout> {
         &self.layout
     }
 
-    pub(crate) fn pipeline_type(&self) -> VkPipelineType {
+    pub(super) fn pipeline_type(&self) -> VkPipelineType {
         self.pipeline_type
     }
 
     #[inline]
-    pub(crate) fn uses_bindless_texture_set(&self) -> bool {
+    pub(super) fn uses_bindless_texture_set(&self) -> bool {
         self.uses_bindless_texture_set
     }
 
     #[inline]
-    pub(crate) fn sbt_buffer(&self) -> &Arc<VkBufferSlice> {
-        &self.sbt.as_ref().unwrap().buffer
+    pub(super) fn sbt_buffer_handle(&self) -> vk::Buffer {
+        self.sbt.as_ref().unwrap().buffer
     }
 
     #[inline]
-    pub(crate) fn raygen_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
+    pub(super) fn sbt_buffer_offset(&self) -> vk::Buffer {
+        self.sbt.as_ref().unwrap().buffer
+    }
+
+    #[inline]
+    pub(super) fn raygen_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
         &self.sbt.as_ref().unwrap().raygen_region
     }
 
     #[inline]
-    pub(crate) fn closest_hit_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
+    pub(super) fn closest_hit_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
         &self.sbt.as_ref().unwrap().closest_hit_region
     }
 
     #[inline]
-    pub(crate) fn miss_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
+    pub(super) fn miss_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
         &self.sbt.as_ref().unwrap().miss_region
     }
 }
@@ -2139,7 +2125,7 @@ impl ComputePipeline for VkPipeline {
     }
 }
 
-pub(crate) struct VkPipelineLayout {
+pub(super) struct VkPipelineLayout {
     device: Arc<RawVkDevice>,
     layout: vk::PipelineLayout,
     descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 5],
@@ -2155,7 +2141,7 @@ impl VkPipelineLayout {
         let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts
             .iter()
             .filter(|descriptor_set_layout| descriptor_set_layout.is_some())
-            .map(|descriptor_set_layout| *descriptor_set_layout.as_ref().unwrap().handle())
+            .map(|descriptor_set_layout| descriptor_set_layout.as_ref().unwrap().handle())
             .collect();
 
         let ranges: Vec<vk::PushConstantRange> = push_constant_ranges
@@ -2195,16 +2181,16 @@ impl VkPipelineLayout {
     }
 
     #[inline]
-    pub(crate) fn handle(&self) -> &vk::PipelineLayout {
-        &self.layout
+    pub(super) fn handle(&self) -> vk::PipelineLayout {
+        self.layout
     }
 
     #[inline]
-    pub(crate) fn descriptor_set_layout(&self, index: u32) -> Option<&Arc<VkDescriptorSetLayout>> {
+    pub(super) fn descriptor_set_layout(&self, index: u32) -> Option<&Arc<VkDescriptorSetLayout>> {
         self.descriptor_set_layouts[index as usize].as_ref()
     }
 
-    pub(crate) fn push_constant_range(&self, shader_type: ShaderType) -> Option<&VkConstantRange> {
+    pub(super) fn push_constant_range(&self, shader_type: ShaderType) -> Option<&VkConstantRange> {
         match shader_type {
             ShaderType::VertexShader => self.push_constant_ranges[0].as_ref(),
             ShaderType::FragmentShader => self.push_constant_ranges[1].as_ref(),

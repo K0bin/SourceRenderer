@@ -14,12 +14,6 @@ use instant::Instant;
 use log::trace;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Device,
-    Swapchain,
-    SwapchainError,
-};
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
     Console,
@@ -35,22 +29,24 @@ use super::drawable::{
     make_camera_view,
 };
 use super::light::DirectionalLight;
-#[cfg(not(target_arch = "wasm32"))]
-use super::passes::conservative::desktop_renderer::ConservativeRenderer;
-#[cfg(not(target_arch = "wasm32"))]
 use super::passes::modern::ModernRenderer;
+//#[cfg(not(target_arch = "wasm32"))]
+//use super::passes::conservative::desktop_renderer::ConservativeRenderer;
+//#[cfg(not(target_arch = "wasm32"))]
+//use super::passes::modern::ModernRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
 use super::PointLight;
 use crate::asset::AssetManager;
+use crate::graphics::*;
 use crate::math::{
     BoundingBox,
     Frustum,
 };
 use crate::renderer::command::RendererCommand;
 use crate::renderer::drawable::DrawablePart;
-use crate::renderer::passes::web::WebRenderer;
+//use crate::renderer::passes::web::WebRenderer;
 use crate::renderer::render_path::{
     FrameInfo,
     SceneInfo,
@@ -65,30 +61,31 @@ use crate::renderer::{
 use crate::transform::interpolation::deconstruct_transform;
 
 pub(super) struct RendererInternal<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    device: Arc<Device<P::GPUBackend>>,
+    swapchain: Option<Arc<Swapchain<P::GPUBackend>>>,
     render_path: Box<dyn RenderPath<P>>,
     asset_manager: Arc<AssetManager<P>>,
-    scene: RendererScene<P::GraphicsBackend>,
+    scene: RendererScene<P::GPUBackend>,
     views: Vec<View>,
-    sender: Sender<RendererCommand<P::GraphicsBackend>>,
-    receiver: Receiver<RendererCommand<P::GraphicsBackend>>,
+    sender: Sender<RendererCommand<P::GPUBackend>>,
+    receiver: Receiver<RendererCommand<P::GPUBackend>>,
     window_event_receiver: Receiver<Event<P>>,
     last_frame: Instant,
     frame: u64,
     assets: RendererAssets<P>,
     console: Arc<Console>,
     shader_manager: ShaderManager<P>,
+    context: GraphicsContext<P::GPUBackend>,
 }
 
 impl<P: Platform> RendererInternal<P> {
     pub(super) fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        device: &Arc<Device<P::GPUBackend>>,
+        swapchain: Swapchain<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
-        sender: Sender<RendererCommand<P::GraphicsBackend>>,
+        sender: Sender<RendererCommand<P::GPUBackend>>,
         window_event_receiver: Receiver<Event<P>>,
-        receiver: Receiver<RendererCommand<P::GraphicsBackend>>,
+        receiver: Receiver<RendererCommand<P::GPUBackend>>,
         console: &Arc<Console>,
     ) -> Self {
         let assets = RendererAssets::new(device);
@@ -99,31 +96,36 @@ impl<P: Platform> RendererInternal<P> {
         let view = View::default();
         let views = vec![view];
 
+        let mut context = device.create_context();
+
         #[cfg(target_arch = "wasm32")]
         let path = Box::new(WebRenderer::new(device, swapchain, &mut shader_manager));
 
         #[cfg(not(target_arch = "wasm32"))]
         let path: Box<dyn RenderPath<P>> = if cfg!(target_family = "wasm") {
-            Box::new(WebRenderer::new(device, swapchain, &mut shader_manager))
+            unimplemented!("Web renderer not yet updated")
+            //Box::new(WebRenderer::new(device, swapchain, &mut shader_manager))
         } else {
             if device.supports_indirect()
                 && device.supports_bindless()
                 && device.supports_barycentrics()
             {
-                Box::new(ModernRenderer::new(device, swapchain, &mut shader_manager))
+                Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager))
             } else {
-                Box::new(ConservativeRenderer::new(
+                unimplemented!("Conservative renderer not yet updated")
+                /*Box::new(ConservativeRenderer::new(
                     device,
                     swapchain,
                     &mut shader_manager,
-                ))
+                ))*/
             }
         };
 
         Self {
             device: device.clone(),
             render_path: path,
-            swapchain: swapchain.clone(),
+            context,
+            swapchain: Some(Arc::new(swapchain)),
             scene,
             asset_manager: asset_manager.clone(),
             views,
@@ -141,7 +143,7 @@ impl<P: Platform> RendererInternal<P> {
     fn receive_window_events(&mut self) -> bool {
         let mut window_message_res = self.window_event_receiver.try_recv();
 
-        let mut new_surface = Option::<Arc<<P::GraphicsBackend as Backend>::Surface>>::None;
+        let mut new_surface = Option::<<P::GPUBackend as GPUBackend>::Surface>::None;
         let mut new_size = Option::<Vec2UI>::None;
 
         while window_message_res.is_ok() {
@@ -168,28 +170,51 @@ impl<P: Platform> RendererInternal<P> {
             }
         }
 
-        if new_surface.is_some() || new_size.is_some() {
+        if let Some(surface) = new_surface {
             // We need to recreate the swapchain
+            let old_swapchain_arc = self.swapchain.take().unwrap();
+            let old_swapchain = Arc::try_unwrap(old_swapchain_arc).ok().expect("Swapchain was still in use");
+
             let size = new_size
-                .unwrap_or_else(|| Vec2UI::new(self.swapchain.width(), self.swapchain.height()));
-            let surface = new_surface.unwrap_or_else(|| self.swapchain.surface().clone());
+                .unwrap_or_else(|| Vec2UI::new(old_swapchain.width(), old_swapchain.height()));
 
             self.device.wait_for_idle();
+
             let new_swapchain_result =
-                <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(
-                    &self.swapchain,
-                    &surface,
+                Swapchain::<P::GPUBackend>::recreate_on_surface(
+                    old_swapchain,
+                    surface,
                     size.x,
                     size.y,
                 );
             if let Result::Err(error) = new_swapchain_result {
                 trace!("Swapchain recreation failed: {:?}", error);
             } else {
-                self.swapchain = new_swapchain_result.unwrap();
+                self.swapchain = Some(Arc::new(new_swapchain_result.unwrap()));
             }
-            self.render_path.on_swapchain_changed(&self.swapchain);
+            self.render_path.on_swapchain_changed(self.swapchain.as_ref().unwrap());
             true
-        } else {
+        } else if let Some(size) = new_size {
+            // We need to recreate the swapchain
+            let old_swapchain_arc = self.swapchain.take().unwrap();
+            let old_swapchain = Arc::try_unwrap(old_swapchain_arc).ok().expect("Swapchain was still in use");
+
+            self.device.wait_for_idle();
+
+            let new_swapchain_result =
+                Swapchain::<P::GPUBackend>::recreate(
+                    old_swapchain,
+                    size.x,
+                    size.y,
+                );
+            if let Result::Err(error) = new_swapchain_result {
+                trace!("Swapchain recreation failed: {:?}", error);
+            } else {
+                self.swapchain = Some(Arc::new(new_swapchain_result.unwrap()));
+            }
+            self.render_path.on_swapchain_changed(self.swapchain.as_ref().unwrap());
+            true
+       } else {
             false
         }
     }
@@ -243,11 +268,11 @@ impl<P: Platform> RendererInternal<P> {
         while message_opt.is_some() {
             let message = message_opt.take().unwrap();
             match message {
-                RendererCommand::<P::GraphicsBackend>::EndFrame => {
+                RendererCommand::<P::GPUBackend>::EndFrame => {
                     return true;
                 }
 
-                RendererCommand::<P::GraphicsBackend>::UpdateCameraTransform {
+                RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
                     camera_transform_mat,
                     fov,
                 } => {
@@ -266,14 +291,14 @@ impl<P: Platform> RendererInternal<P> {
                     )
                 }
 
-                RendererCommand::<P::GraphicsBackend>::UpdateTransform {
+                RendererCommand::<P::GPUBackend>::UpdateTransform {
                     entity,
                     transform_mat,
                 } => {
                     self.scene.update_transform(&entity, transform_mat);
                 }
 
-                RendererCommand::<P::GraphicsBackend>::RegisterStatic {
+                RendererCommand::<P::GPUBackend>::RegisterStatic {
                     model_path,
                     entity,
                     transform,
@@ -295,11 +320,11 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GraphicsBackend>::UnregisterStatic(entity) => {
+                RendererCommand::<P::GPUBackend>::UnregisterStatic(entity) => {
                     self.scene.remove_static_drawable(&entity);
                 }
 
-                RendererCommand::<P::GraphicsBackend>::RegisterPointLight {
+                RendererCommand::<P::GPUBackend>::RegisterPointLight {
                     entity,
                     transform,
                     intensity,
@@ -312,11 +337,11 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GraphicsBackend>::UnregisterPointLight(entity) => {
+                RendererCommand::<P::GPUBackend>::UnregisterPointLight(entity) => {
                     self.scene.remove_point_light(&entity);
                 }
 
-                RendererCommand::<P::GraphicsBackend>::RegisterDirectionalLight {
+                RendererCommand::<P::GPUBackend>::RegisterDirectionalLight {
                     entity,
                     transform,
                     intensity,
@@ -332,10 +357,10 @@ impl<P: Platform> RendererInternal<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GraphicsBackend>::UnregisterDirectionalLight(entity) => {
+                RendererCommand::<P::GPUBackend>::UnregisterDirectionalLight(entity) => {
                     self.scene.remove_directional_light(&entity);
                 }
-                RendererCommand::<P::GraphicsBackend>::SetLightmap(path) => {
+                RendererCommand::<P::GPUBackend>::SetLightmap(path) => {
                     let handle = self.assets.get_or_create_texture_handle(&path);
                     self.scene.set_lightmap(Some(handle));
                 }
@@ -363,13 +388,14 @@ impl<P: Platform> RendererInternal<P> {
         let delta = Instant::now().duration_since(self.last_frame);
         self.last_frame = Instant::now();
 
+        let swapchain = self.swapchain.as_ref().unwrap();
         self.views[0].aspect_ratio =
-            (self.swapchain.width() as f32) / (self.swapchain.height() as f32);
+            (swapchain.width() as f32) / (swapchain.height() as f32);
 
         self.update_visibility();
         self.reorder();
 
-        self.device.begin_frame();
+        self.context.begin_frame();
 
         let render_result = {
             let frame_info = FrameInfo {
@@ -382,7 +408,7 @@ impl<P: Platform> RendererInternal<P> {
                 zero_texture_view_black: &self.assets.placeholder_black().view,
             };
 
-            let lightmap: &RendererTexture<P::GraphicsBackend> =
+            let lightmap: &RendererTexture<P::GPUBackend> =
                 if let Some(lightmap_handle) = self.scene.lightmap() {
                     self.assets.get_texture(lightmap_handle)
                 } else {
@@ -392,12 +418,14 @@ impl<P: Platform> RendererInternal<P> {
                 scene: &self.scene,
                 views: &self.views,
                 active_view_index: 0,
-                vertex_buffer: self.assets.vertex_buffer(),
-                index_buffer: self.assets.index_buffer(),
+                vertex_buffer: BufferRef::Regular(self.assets.vertex_buffer()),
+                index_buffer: BufferRef::Regular(self.assets.index_buffer()),
                 lightmap: Some(lightmap),
             };
 
             self.render_path.render(
+                &mut self.context,
+                self.swapchain.as_ref().expect("No swapchain"),
                 &scene_info,
                 &zero_textures,
                 renderer.late_latching(),
@@ -414,34 +442,16 @@ impl<P: Platform> RendererInternal<P> {
             // Recheck window events
             if !self.receive_window_events() {
                 let new_swapchain = if swapchain_error == SwapchainError::SurfaceLost {
-                    // No point in trying to recreate with the old surface
-                    let renderer_surface = renderer.surface();
-                    if &*renderer_surface != self.swapchain.surface() {
-                        trace!("Recreating swapchain on a different surface");
-                        let new_swapchain_result =
-                            <P::GraphicsBackend as Backend>::Swapchain::recreate_on_surface(
-                                &self.swapchain,
-                                &*renderer_surface,
-                                self.swapchain.width(),
-                                self.swapchain.height(),
-                            );
-                        if new_swapchain_result.is_err() {
-                            trace!(
-                                "Swapchain recreation failed: {:?}",
-                                new_swapchain_result.err().unwrap()
-                            );
-                            return;
-                        }
-                        new_swapchain_result.unwrap()
-                    } else {
-                        return;
-                    }
+                    unimplemented!()
                 } else {
                     trace!("Recreating swapchain");
-                    let new_swapchain_result = <P::GraphicsBackend as Backend>::Swapchain::recreate(
-                        &self.swapchain,
-                        self.swapchain.width(),
-                        self.swapchain.height(),
+                    let old_swapchain_arc = self.swapchain.take().unwrap();
+                    let old_swapchain = Arc::try_unwrap(old_swapchain_arc).ok().expect("Old swapchain is still being used.");
+                    let size = Vec2UI::new(old_swapchain.width(), old_swapchain.height());
+                    let new_swapchain_result = Swapchain::recreate(
+                        old_swapchain,
+                        size.x,
+                        size.y
                     );
                     if new_swapchain_result.is_err() {
                         trace!(
@@ -450,7 +460,7 @@ impl<P: Platform> RendererInternal<P> {
                         );
                         return;
                     }
-                    new_swapchain_result.unwrap()
+                    Arc::new(new_swapchain_result.unwrap())
                 };
                 self.render_path.on_swapchain_changed(&new_swapchain);
 
@@ -465,7 +475,7 @@ impl<P: Platform> RendererInternal<P> {
                         zero_texture_view_black: &self.assets.placeholder_black().view,
                     };
 
-                    let lightmap: &RendererTexture<P::GraphicsBackend> =
+                    let lightmap: &RendererTexture<P::GPUBackend> =
                         if let Some(lightmap_handle) = self.scene.lightmap() {
                             self.assets.get_texture(lightmap_handle)
                         } else {
@@ -475,13 +485,15 @@ impl<P: Platform> RendererInternal<P> {
                         scene: &self.scene,
                         views: &self.views,
                         active_view_index: 0,
-                        vertex_buffer: self.assets.vertex_buffer(),
-                        index_buffer: self.assets.index_buffer(),
+                        vertex_buffer: BufferRef::Regular(self.assets.vertex_buffer()),
+                        index_buffer: BufferRef::Regular(self.assets.index_buffer()),
                         lightmap: Some(lightmap),
                     };
 
                     self.render_path
                         .render(
+                            &mut self.context,
+                            &new_swapchain,
                             &scene_info,
                             &zero_textures,
                             renderer.late_latching(),
@@ -492,7 +504,7 @@ impl<P: Platform> RendererInternal<P> {
                         )
                         .expect("Rendering still fails after recreating swapchain.");
                 }
-                self.swapchain = new_swapchain;
+                self.swapchain = Some(new_swapchain);
             }
         }
         self.frame += 1;

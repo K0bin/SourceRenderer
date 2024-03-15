@@ -1,57 +1,6 @@
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use sourcerenderer_core::graphics::{
-    AttachmentBlendInfo,
-    AttachmentInfo,
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BlendInfo,
-    BufferUsage,
-    CommandBuffer,
-    CompareFunc,
-    CullMode,
-    DepthStencilAttachmentRef,
-    DepthStencilInfo,
-    Device,
-    FillMode,
-    Format,
-    FrontFace,
-    IndexFormat,
-    InputAssemblerElement,
-    InputRate,
-    LoadOp,
-    LogicOp,
-    OutputAttachmentRef,
-    PipelineBinding,
-    PrimitiveType,
-    Queue,
-    RasterizerInfo,
-    RenderPassAttachment,
-    RenderPassAttachmentView,
-    RenderPassBeginInfo,
-    RenderPassInfo,
-    RenderpassRecordingMode,
-    SampleCount,
-    Scissor,
-    ShaderInputElement,
-    ShaderType,
-    StencilInfo,
-    StoreOp,
-    SubpassInfo,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    VertexLayoutInfo,
-    Viewport,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -59,6 +8,7 @@ use sourcerenderer_core::{
     Vec2I,
     Vec2UI,
 };
+use crate::graphics::CommandBufferRecorder;
 
 use crate::renderer::drawable::View;
 use crate::renderer::passes::taa::scaled_halton_point;
@@ -74,6 +24,7 @@ use crate::renderer::shader_manager::{
     ShaderManager,
 };
 use crate::renderer::RendererScene;
+use crate::graphics::*;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -106,7 +57,7 @@ impl Prepass {
     const DRAWABLE_LABELS: bool = false;
 
     pub fn new<P: Platform>(
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
         resolution: Vec2UI,
     ) -> Self {
@@ -258,12 +209,13 @@ impl Prepass {
     #[profiling::function]
     pub(super) fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        graphics_context: &GraphicsContext<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         swapchain_transform: Matrix4,
         frame: u64,
-        camera_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        camera_history_buffer: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>
+        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
+        camera_history_buffer: &Arc<BufferSlice<P::GPUBackend>>
     ) {
         let view = &pass_params.scene.views[pass_params.scene.active_view_index];
 
@@ -346,27 +298,23 @@ impl Prepass {
         let assets = pass_params.assets;
         let device = pass_params.device;
 
-        let info = motion.texture().info();
+        let info = motion.texture().unwrap().info();
         let per_frame = FrameData {
             swapchain_transform,
             halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32 + 1),
         };
         let transform_constant_buffer =
-            cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT);
+            cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT).unwrap();
 
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
         let chunks = view.drawable_parts.par_chunks(CHUNK_SIZE);
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
-        let inner_cmd_buffers: Vec<
-            <P::GraphicsBackend as GraphicsBackend>::CommandBufferSubmission,
-        > = chunks
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = chunks
             .map(|chunk| {
-                let mut command_buffer = device
-                    .graphics_queue()
-                    .create_inner_command_buffer(inheritance);
+                let mut command_buffer = graphics_context.get_inner_command_buffer(inheritance);
 
-                command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+                command_buffer.set_pipeline(crate::graphics::PipelineBinding::Graphics(&pipeline));
                 command_buffer.set_viewports(&[Viewport {
                     position: Vec2::new(0.0f32, 0.0f32),
                     extent: Vec2::new(info.width as f32, info.height as f32),
@@ -380,7 +328,7 @@ impl Prepass {
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,
                     2,
-                    &transform_constant_buffer,
+                    BufferRef::Transient(&transform_constant_buffer),
                     0,
                     WHOLE_BUFFER,
                 );
@@ -388,14 +336,14 @@ impl Prepass {
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,
                     0,
-                    camera_buffer,
+                    BufferRef::Regular(camera_buffer),
                     0,
                     WHOLE_BUFFER,
                 );
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,
                     1,
-                    camera_history_buffer,
+                    BufferRef::Regular(camera_history_buffer),
                     0,
                     WHOLE_BUFFER,
                 );
@@ -407,7 +355,7 @@ impl Prepass {
                         command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
                     }
 
-                    command_buffer.upload_dynamic_data_inline(
+                    command_buffer.set_push_constant_data(
                         &[PrepassModelCB {
                             model: drawable.transform,
                             old_model: drawable.old_transform,
@@ -429,11 +377,11 @@ impl Prepass {
                     let mesh = mesh.unwrap();
 
                     command_buffer
-                        .set_vertex_buffer(mesh.vertices.buffer(), mesh.vertices.offset() as usize);
+                        .set_vertex_buffer(BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
                     if let Some(indices) = mesh.indices.as_ref() {
                         command_buffer.set_index_buffer(
-                            indices.buffer(),
-                            indices.offset() as usize,
+                            BufferRef::Regular(indices.buffer()),
+                            indices.offset() as u64,
                             IndexFormat::U32,
                         );
                     }

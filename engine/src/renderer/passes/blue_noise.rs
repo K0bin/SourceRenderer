@@ -6,31 +6,20 @@ use std::path::Path;
 use std::sync::Arc;
 
 use image::io::Reader as ImageReader;
-use sourcerenderer_core::graphics::{
-    AddressMode,
-    Backend,
-    BufferUsage,
-    Device,
-    Filter,
-    Format,
-    MemoryUsage,
-    SampleCount,
-    SamplerInfo,
-    TextureDimension,
-    TextureInfo,
-    TextureUsage,
-    TextureViewInfo,
-};
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::Platform;
 
-pub struct BlueNoise<B: Backend> {
-    frames: [Arc<B::TextureView>; 8],
-    sampler: Arc<B::Sampler>,
+use crate::graphics::*;
+use crate::graphics::{Device, SamplerInfo, TextureInfo};
+
+pub struct BlueNoise<B: GPUBackend> {
+    frames: [Arc<TextureView<B>>; 8],
+    sampler: Arc<Sampler<B>>,
 }
 
-impl<B: Backend> BlueNoise<B> {
-    pub fn new<P: Platform>(device: &Arc<B::Device>) -> Self {
+impl<B: GPUBackend> BlueNoise<B> {
+    pub fn new<P: Platform>(device: &Arc<Device<B>>) -> Self {
         Self {
             frames: [
                 Self::load_frame::<P>(device, 0),
@@ -42,7 +31,7 @@ impl<B: Backend> BlueNoise<B> {
                 Self::load_frame::<P>(device, 6),
                 Self::load_frame::<P>(device, 7),
             ],
-            sampler: device.create_sampler(&SamplerInfo {
+            sampler: Arc::new(unsafe { device.create_sampler(&SamplerInfo {
                 mag_filter: Filter::Nearest,
                 min_filter: Filter::Nearest,
                 mip_filter: Filter::Nearest,
@@ -54,11 +43,11 @@ impl<B: Backend> BlueNoise<B> {
                 compare_op: None,
                 min_lod: 0f32,
                 max_lod: None,
-            }),
+            }) } ),
         }
     }
 
-    fn load_frame<P: Platform>(device: &Arc<B::Device>, index: u32) -> Arc<B::TextureView> {
+    fn load_frame<P: Platform>(device: &Arc<Device<B>>, index: u32) -> Arc<TextureView<B>> {
         let path = Path::new("assets")
             .join(Path::new("bn"))
             .join(Path::new(&format!("LDR_RGB1_{}.png", index)));
@@ -72,7 +61,9 @@ impl<B: Backend> BlueNoise<B> {
             .unwrap();
         let rgba_data = img.into_rgba8().to_vec();
 
-        let texture = device.create_texture(
+        let dev = (device.as_ref() as &crate::graphics::Device<B>);
+
+        let texture = dev.create_texture(
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
                 format: Format::RGBA8UNorm,
@@ -86,26 +77,22 @@ impl<B: Backend> BlueNoise<B> {
                 supports_srgb: false,
             },
             Some(&format!("STBlueNoise{}", index)),
-        );
-        let buffer = device.upload_data(
-            &rgba_data[..],
-            MemoryUsage::UncachedRAM,
-            BufferUsage::COPY_SRC,
-        );
-        device.init_texture(&texture, &buffer, 0, 0, 0);
+        ).unwrap();
 
-        device.create_texture_view(
+        dev.init_texture(&rgba_data[..], &texture, 0, 0).unwrap();
+
+        dev.create_texture_view(
             &texture,
             &TextureViewInfo::default(),
             Some(&format!("STBlueNoiseUAV{}", index)),
         )
     }
 
-    pub fn frame(&self, index: u64) -> &Arc<B::TextureView> {
+    pub fn frame(&self, index: u64) -> &Arc<crate::graphics::TextureView<B>> {
         &self.frames[(index % (self.frames.len() as u64)) as usize]
     }
 
-    pub fn sampler(&self) -> &Arc<B::Sampler> {
+    pub fn sampler(&self) -> &Arc<crate::graphics::Sampler<B>> {
         &self.sampler
     }
 }

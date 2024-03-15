@@ -1,26 +1,6 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{
-    AddressMode,
-    Backend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    CommandBuffer,
-    Device,
-    Filter,
-    Format,
-    PipelineBinding,
-    SampleCount,
-    SamplerInfo,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureViewInfo,
-    WHOLE_BUFFER, ShaderType, CompareFunc,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2UI, Matrix4,
@@ -31,7 +11,6 @@ use super::shadow_map::ShadowMapPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_assets::RendererTexture;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -40,10 +19,11 @@ use crate::renderer::shader_manager::{
     ComputePipelineHandle,
     ShaderManager,
 };
+use crate::graphics::*;
 
 pub struct ShadingPass<P: Platform> {
-    sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
-    shadow_sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
+    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
+    shadow_sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
     pipeline: ComputePipelineHandle,
 }
 
@@ -51,15 +31,15 @@ impl<P: Platform> ShadingPass<P> {
     pub const SHADING_TEXTURE_NAME: &'static str = "Shading";
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
-        _init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline("shaders/shading.comp.spv");
 
-        let sampler = device.create_sampler(&SamplerInfo {
+        let sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
             min_filter: Filter::Linear,
             mip_filter: Filter::Linear,
@@ -71,7 +51,7 @@ impl<P: Platform> ShadingPass<P> {
             compare_op: None,
             min_lod: 0.0,
             max_lod: None,
-        });
+        }));
 
         resources.create_texture(
             Self::SHADING_TEXTURE_NAME,
@@ -90,7 +70,7 @@ impl<P: Platform> ShadingPass<P> {
             false,
         );
 
-        let shadow_sampler = device.create_sampler(&SamplerInfo {
+        let shadow_sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
             min_filter: Filter::Linear,
             mip_filter: Filter::Linear,
@@ -102,7 +82,7 @@ impl<P: Platform> ShadingPass<P> {
             compare_op: Some(CompareFunc::Less),
             min_lod: 0f32,
             max_lod: None,
-        });
+        }));
 
         Self { sampler, shadow_sampler, pipeline }
     }
@@ -110,7 +90,7 @@ impl<P: Platform> ShadingPass<P> {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         let (width, height) = {
@@ -172,7 +152,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureView>>;
+        let rt_shadows: Ref<Arc<TextureView<P::GPUBackend>>>;
         let shadows = if pass_params.device.supports_ray_tracing() {
             rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
@@ -220,7 +200,7 @@ impl<P: Platform> ShadingPass<P> {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             5,
-            &light_bitmask_buffer,
+            BufferRef::Regular(&light_bitmask_buffer),
             0,
             WHOLE_BUFFER,
         );

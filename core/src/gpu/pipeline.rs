@@ -1,12 +1,7 @@
-use std::sync::Arc;
+use super::*;
 
-use crate::graphics::Format;
-
-use crate::graphics::Backend;
 use std::hash::Hasher;
 use std::hash::Hash;
-
-use super::BindingFrequency;
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub enum InputRate {
@@ -339,9 +334,9 @@ pub trait Shader {
 }
 
 #[derive(Hash, Eq, PartialEq)]
-pub struct GraphicsPipelineInfo<'a, B: Backend> {
-  pub vs: &'a Arc<B::Shader>,
-  pub fs: Option<&'a Arc<B::Shader>>,
+pub struct GraphicsPipelineInfo<'a, B: GPUBackend> {
+  pub vs: &'a B::Shader,
+  pub fs: Option<&'a B::Shader>,
   pub vertex_layout: VertexLayoutInfo<'a>,
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
@@ -349,7 +344,7 @@ pub struct GraphicsPipelineInfo<'a, B: Backend> {
   pub primitive_type: PrimitiveType
 }
 
-impl<B: Backend> Clone for GraphicsPipelineInfo<'_, B> {
+impl<B: GPUBackend> Clone for GraphicsPipelineInfo<'_, B> {
   fn clone(&self) -> Self {
     Self {
       vs: self.vs,

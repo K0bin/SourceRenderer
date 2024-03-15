@@ -2,80 +2,40 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    AccelerationStructureInstance,
-    AccelerationStructureMeshRange,
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BottomLevelAccelerationStructureInfo,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    Format,
-    FrontFace,
-    IndexFormat,
-    MemoryUsage,
-    TopLevelAccelerationStructureInfo,
-};
 use sourcerenderer_core::Platform;
 
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_assets::{
-    ModelHandle
-};
+use crate::renderer::renderer_assets::ModelHandle;
+use crate::graphics::*;
 
 pub struct AccelerationStructureUpdatePass<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    blas_map: HashMap<ModelHandle, Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>>,
-    acceleration_structure: Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>,
+    device: Arc<Device<P::GPUBackend>>,
+    blas_map: HashMap<ModelHandle, Arc<AccelerationStructure<P::GPUBackend>>>,
+    acceleration_structure: Arc<AccelerationStructure<P::GPUBackend>>,
 }
 
 impl<P: Platform> AccelerationStructureUpdatePass<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        device: &Arc<Device<P::GPUBackend>>,
+        init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>
     ) -> Self {
-        let instances_buffer = init_cmd_buffer.upload_top_level_instances(&[]);
         let info = TopLevelAccelerationStructureInfo {
-            instances_buffer: &instances_buffer,
-            instances: &[],
+            instances: &[]
         };
-        let sizes = device.get_top_level_acceleration_structure_size(&info);
-        let scratch_buffer = init_cmd_buffer.create_temporary_buffer(
-            &BufferInfo {
-                size: sizes.build_scratch_size as usize,
-                usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-            },
-            MemoryUsage::VRAM,
-        );
-        let buffer = device.create_buffer(
-            &BufferInfo {
-                size: sizes.size as usize,
-                usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-            },
-            MemoryUsage::VRAM,
-            Some("AccelerationStructure"),
-        );
         let acceleration_structure = init_cmd_buffer.create_top_level_acceleration_structure(
-            &info,
-            sizes.size as usize,
-            &buffer,
-            &scratch_buffer,
-        );
+            &info, true
+        ).unwrap();
 
         Self {
             device: device.clone(),
             blas_map: HashMap::new(),
-            acceleration_structure,
+            acceleration_structure: Arc::new(acceleration_structure),
         }
     }
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         // We never reuse handles, so this works.
@@ -93,7 +53,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
 
         let mut created_blas = false;
         let mut bl_acceleration_structures =
-            Vec::<Arc<<P::GraphicsBackend as Backend>::AccelerationStructure>>::new();
+            Vec::<Arc<AccelerationStructure<P::GPUBackend>>>::new();
 
         for drawable in static_drawables {
             let blas = self.blas_map.get(&drawable.model).cloned().or_else(|| {
@@ -136,31 +96,8 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
                         opaque: true,
                         max_vertex: mesh.vertex_count - 1,
                     };
-                    let sizes = self
-                        .device
-                        .get_bottom_level_acceleration_structure_size(&info);
 
-                    let scratch_buffer = cmd_buffer.create_temporary_buffer(
-                        &BufferInfo {
-                            size: sizes.build_scratch_size as usize,
-                            usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-                        },
-                        MemoryUsage::VRAM,
-                    );
-                    let buffer = self.device.create_buffer(
-                        &BufferInfo {
-                            size: sizes.size as usize,
-                            usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-                        },
-                        MemoryUsage::VRAM,
-                        Some("AccelerationStructure"),
-                    );
-                    cmd_buffer.create_bottom_level_acceleration_structure(
-                        &info,
-                        sizes.size as usize,
-                        &buffer,
-                        &scratch_buffer,
-                    )
+                    Arc::new(cmd_buffer.create_bottom_level_acceleration_structure(&info, true).unwrap())
                 };
                 self.blas_map.insert(drawable.model, blas.clone());
                 created_blas = true;
@@ -183,52 +120,27 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
             cmd_buffer.flush_barriers();
         }
 
-        let mut instances = Vec::<AccelerationStructureInstance<P::GraphicsBackend>>::with_capacity(
+        let mut instances = Vec::<AccelerationStructureInstance<P::GPUBackend>>::with_capacity(
             static_drawables.len(),
         );
         for (bl, drawable) in bl_acceleration_structures
             .iter()
             .zip(static_drawables.iter())
         {
-            instances.push(AccelerationStructureInstance::<P::GraphicsBackend> {
+            instances.push(AccelerationStructureInstance::<P::GPUBackend> {
                 acceleration_structure: bl,
                 transform: drawable.transform,
                 front_face: FrontFace::Clockwise,
             });
         }
 
-        let tl_instances_buffer = cmd_buffer.upload_top_level_instances(&instances[..]);
-
         let tl_info = TopLevelAccelerationStructureInfo {
-            instances_buffer: &tl_instances_buffer,
-            instances: &instances[..],
+            instances: &instances[..]
         };
 
-        let sizes = self
-            .device
-            .get_top_level_acceleration_structure_size(&tl_info);
-        let scratch_buffer = cmd_buffer.create_temporary_buffer(
-            &BufferInfo {
-                size: sizes.build_scratch_size as usize,
-                usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-            },
-            MemoryUsage::VRAM,
-        );
-        let buffer = self.device.create_buffer(
-            &BufferInfo {
-                size: sizes.size as usize,
-                usage: BufferUsage::ACCELERATION_STRUCTURE | BufferUsage::STORAGE,
-            },
-            MemoryUsage::VRAM,
-            Some("AccelerationStructure"),
-        );
-
-        self.acceleration_structure = cmd_buffer.create_top_level_acceleration_structure(
-            &tl_info,
-            sizes.size as usize,
-            &buffer,
-            &scratch_buffer,
-        );
+        self.acceleration_structure = Arc::new(cmd_buffer.create_top_level_acceleration_structure(
+            &tl_info, true
+        ).unwrap());
 
         cmd_buffer.barrier(&[Barrier::GlobalBarrier {
             old_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
@@ -240,7 +152,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
 
     pub fn acceleration_structure(
         &self,
-    ) -> &Arc<<P::GraphicsBackend as Backend>::AccelerationStructure> {
+    ) -> &Arc<AccelerationStructure<P::GPUBackend>> {
         &self.acceleration_structure
     }
 }

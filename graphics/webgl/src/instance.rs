@@ -1,6 +1,6 @@
 use std::{sync::{Arc, atomic::{AtomicU32, AtomicU64}}, vec};
 
-use sourcerenderer_core::graphics::{Adapter, AdapterType, Instance};
+use sourcerenderer_core::gpu::{Adapter, AdapterType, Instance};
 
 use crate::{WebGLBackend, WebGLDevice, WebGLSurface};
 pub struct WebGLInstance {

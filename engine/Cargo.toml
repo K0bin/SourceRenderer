@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 nalgebra = "0.32.2"
 num_cpus = "1.13.1"
+atomic_refcell = "0.1.11"
 sourcerenderer_core = { path = "../core" }
 image = "0.24.3"
 crossbeam-channel = "0.5.6"
@@ -36,6 +37,7 @@ field-offset = "0.3.4"
 widestring = "1.0.2"
 bitflags = "2.3.2"
 imgui = "0.11.0"
+thread_local = "1.1.7"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 fsr2 = { path = "../vendor/fsr2" }

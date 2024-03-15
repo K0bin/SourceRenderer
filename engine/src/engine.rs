@@ -4,7 +4,6 @@ use std::sync::{
 };
 
 use log::trace;
-use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::platform::{
     Event,
     Platform,
@@ -21,6 +20,7 @@ use crate::asset::loaders::{
 };
 use crate::asset::AssetManager;
 use crate::game::Game;
+use crate::graphics::*;
 use crate::input::Input;
 use crate::renderer::{
     LateLatchCamera,
@@ -36,7 +36,7 @@ pub struct Engine<P: Platform> {
     game: Arc<Game<P>>,
     asset_manager: Arc<AssetManager<P>>,
     input: Arc<Input>,
-    late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>,
+    late_latching: Option<Arc<dyn LateLatching<P::GPUBackend>>>,
     console: Arc<Console>,
 }
 
@@ -54,17 +54,19 @@ impl<P: Platform> Engine<P> {
     pub fn initialize_global() {}
 
     pub fn run(platform: &P) -> Self {
-        let instance = platform
+        let core_instance = platform
             .create_graphics(false)
             .expect("Failed to initialize graphics");
-        let surface = platform.window().create_surface(instance.clone());
+        let instance = Instance::new(core_instance);
+        let surface = platform.window().create_surface(&instance.handle());
 
         let console = Arc::new(Console::new());
 
         let input = Arc::new(Input::new());
-        let mut adapters = instance.clone().list_adapters();
-        let device = Arc::new(adapters.remove(0).create_device(&surface));
-        let swapchain = Arc::new(platform.window().create_swapchain(true, &device, &surface));
+        let mut adapters = instance.list_adapters();
+        let device = adapters.first().expect("No suitable GPU found").create_device(&surface);
+        let core_swapchain = platform.window().create_swapchain(true, device.handle(), surface);
+        let swapchain = Swapchain::new(core_swapchain, &device);
         let asset_manager = AssetManager::<P>::new(platform, &device);
         asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
         asset_manager.add_loader(Box::new(ShaderLoader::new()));
@@ -74,12 +76,12 @@ impl<P: Platform> Engine<P> {
             std::f32::consts::FRAC_PI_2,
         ));
         let late_latching_trait_obj =
-            late_latching.clone() as Arc<dyn LateLatching<P::GraphicsBackend>>;
+            late_latching.clone() as Arc<dyn LateLatching<P::GPUBackend>>;
         let renderer = Renderer::<P>::run(
             platform,
             &instance,
             &device,
-            &swapchain,
+            swapchain,
             &asset_manager,
             &input,
             Some(&late_latching_trait_obj),
@@ -124,7 +126,7 @@ impl<P: Platform> Engine<P> {
         }
     }
 
-    pub fn instance(&self) -> &Arc<<P::GraphicsBackend as Backend>::Instance> {
+    pub fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {
         self.renderer.instance()
     }
 
@@ -144,12 +146,8 @@ impl<P: Platform> Engine<P> {
         true
     }
 
-    pub fn device(&self) -> &Arc<<P::GraphicsBackend as Backend>::Device> {
+    pub fn device(&self) -> &Arc<Device<P::GPUBackend>> {
         self.renderer.device()
-    }
-
-    pub fn surface(&self) -> MutexGuard<Arc<<P::GraphicsBackend as Backend>::Surface>> {
-        self.renderer.surface()
     }
 
     pub fn frame(&self) {

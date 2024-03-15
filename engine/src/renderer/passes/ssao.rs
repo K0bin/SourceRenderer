@@ -2,28 +2,7 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use rand::random;
-use sourcerenderer_core::graphics::{
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    Format,
-    MemoryUsage,
-    PipelineBinding,
-    SampleCount,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    WHOLE_BUFFER,
-};
+use crate::graphics::*;
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
@@ -42,7 +21,7 @@ use crate::renderer::shader_manager::{
 
 pub struct SsaoPass<P: Platform> {
     pipeline: ComputePipelineHandle,
-    kernel: Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
+    kernel: Arc<BufferSlice<P::GPUBackend>>,
     blur_pipeline: ComputePipelineHandle,
 }
 
@@ -55,9 +34,9 @@ impl<P: Platform> SsaoPass<P> {
     pub const SSAO_TEXTURE_NAME: &'static str = "SSAOBlurred";
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
+        device: &Arc<Device<P::GPUBackend>>,
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
         visibility_buffer: bool,
     ) -> Self {
@@ -115,9 +94,9 @@ impl<P: Platform> SsaoPass<P> {
     }
 
     fn create_hemisphere(
-        device: &Arc<<P::GraphicsBackend as GraphicsBackend>::Device>,
+        device: &Arc<Device<P::GPUBackend>>,
         samples: u32,
-    ) -> Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer> {
+    ) -> Arc<BufferSlice<P::GPUBackend>> {
         let mut ssao_kernel = Vec::<Vec4>::with_capacity(samples as usize);
         const BIAS: f32 = 0.15f32;
         for i in 0..samples {
@@ -137,31 +116,27 @@ impl<P: Platform> SsaoPass<P> {
 
         let buffer = device.create_buffer(
             &BufferInfo {
-                size: std::mem::size_of_val(&ssao_kernel[..]),
+                size: std::mem::size_of_val(&ssao_kernel[..]) as u64,
                 usage: BufferUsage::COPY_DST | BufferUsage::CONSTANT,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             Some("SSAOKernel"),
-        );
+        ).unwrap();
 
-        let temp_buffer = device.upload_data(
-            &ssao_kernel[..],
-            MemoryUsage::UncachedRAM,
-            BufferUsage::COPY_SRC,
-        );
-        device.init_buffer(&temp_buffer, &buffer, 0, 0, WHOLE_BUFFER);
+        device.init_buffer(&ssao_kernel[..], &buffer, 0);
         buffer
     }
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
         motion_name: Option<&str>,
-        camera: &Arc<<P::GraphicsBackend as GraphicsBackend>::Buffer>,
-        blue_noise_view: &Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>,
-        blue_noise_sampler: &Arc<<P::GraphicsBackend as GraphicsBackend>::Sampler>,
+        camera: &Arc<BufferSlice<P::GPUBackend>>,
+        blue_noise_view: &Arc<TextureView<P::GPUBackend>>,
+        blue_noise_sampler: &Arc<Sampler<P::GPUBackend>>,
         visibility_buffer: bool,
     ) {
         let ssao_uav = pass_params.resources.access_view(
@@ -187,11 +162,11 @@ impl<P: Platform> SsaoPass<P> {
         );
 
         let mut motion_srv =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
         let mut id_view =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
         let mut barycentrics_view =
-            Option::<Ref<Arc<<P::GraphicsBackend as GraphicsBackend>::TextureView>>>::None;
+            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buffer,
@@ -233,7 +208,7 @@ impl<P: Platform> SsaoPass<P> {
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            &self.kernel,
+            BufferRef::Regular(&self.kernel),
             0,
             WHOLE_BUFFER,
         );
@@ -249,10 +224,10 @@ impl<P: Platform> SsaoPass<P> {
             &*depth_srv,
             pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, camera, 0, WHOLE_BUFFER);
+        cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, BufferRef::Regular(camera), 0, WHOLE_BUFFER);
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &*ssao_uav);
         cmd_buffer.finish_binding();
-        let ssao_info = ssao_uav.texture().info();
+        let ssao_info = ssao_uav.texture().unwrap().info();
         cmd_buffer.dispatch(
             (ssao_info.width + 7) / 8,
             (ssao_info.height + 7) / 8,
@@ -325,7 +300,7 @@ impl<P: Platform> SsaoPass<P> {
             );
         }
         cmd_buffer.finish_binding();
-        let blur_info = blurred_uav.texture().info();
+        let blur_info = blurred_uav.texture().unwrap().info();
         cmd_buffer.dispatch(
             (blur_info.width + 7) / 8,
             (blur_info.height + 7) / 8,

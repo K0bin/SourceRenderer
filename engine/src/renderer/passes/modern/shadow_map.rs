@@ -5,23 +5,7 @@ use legion::world;
 use nalgebra::Point3;
 use nalgebra_glm::proj;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Vec3, Vec4};
-use sourcerenderer_core::graphics::{
-    BindingFrequency, BufferInfo, BufferUsage, CommandBuffer, MemoryUsage, PipelineBinding,
-    RenderPassBeginInfo,  WHOLE_BUFFER,
-};
-use sourcerenderer_core::{
-    graphics::{
-        AttachmentInfo, Backend, BarrierAccess, BarrierSync, BlendInfo, Buffer, CompareFunc,
-        CullMode, DepthStencilAttachmentRef, DepthStencilInfo, FillMode, Format, FrontFace,
-        IndexFormat, InputAssemblerElement, InputRate, LoadOp, LogicOp,
-        PrimitiveType, RasterizerInfo, RenderPassAttachment, RenderPassAttachmentView,
-        RenderPassInfo, RenderpassRecordingMode, SampleCount, Scissor, ShaderInputElement,
-        ShaderType, StencilInfo, StoreOp, SubpassInfo, Texture, TextureDimension, TextureInfo,
-        TextureLayout, TextureUsage, TextureView, TextureViewInfo, VertexLayoutInfo, Viewport,
-    },
-    Platform, Vec2, Vec2I, Vec2UI,
-};
+use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
 use crate::renderer::drawable::View;
 use crate::renderer::light::{DirectionalLight, RendererDirectionalLight};
@@ -35,6 +19,8 @@ use crate::renderer::{
     renderer_resources::{HistoryResourceEntry, RendererResources},
     Vertex,
 };
+
+use crate::graphics::*;
 
 /*
 TODO:
@@ -67,9 +53,9 @@ impl<P: Platform> ShadowMapPass<P> {
     pub const DRAW_BUFFER_NAME: &'static str = "ShadowMapDraws";
     pub const VISIBLE_BITFIELD: &'static str = "ShadowMapVisibility";
     pub fn new(
-        _device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        resources: &mut RendererResources<P::GraphicsBackend>,
-        _init_cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        _device: &Arc<Device<P::GPUBackend>>,
+        resources: &mut RendererResources<P::GPUBackend>,
+        _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let shadow_map_res = 4096;
@@ -95,20 +81,22 @@ impl<P: Platform> ShadowMapPass<P> {
         resources.create_buffer(
             &Self::DRAW_BUFFER_NAME,
             &BufferInfo {
-                size: 4 + 20 * PART_CAPACITY as usize,
+                size: 4 + 20 * PART_CAPACITY as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             false,
         );
 
         resources.create_buffer(
             &Self::VISIBLE_BITFIELD,
             &BufferInfo {
-                size: ((DRAWABLE_CAPACITY as usize + 31) / 32) * 4,
+                size: ((DRAWABLE_CAPACITY as u64 + 31) / 32) * 4,
                 usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             false,
         );
 
@@ -188,7 +176,7 @@ impl<P: Platform> ShadowMapPass<P> {
         }
     }
 
-    pub fn calculate_cascades(&mut self, scene: &SceneInfo<'_, P::GraphicsBackend>) {
+    pub fn calculate_cascades(&mut self, scene: &SceneInfo<'_, P::GPUBackend>) {
         for cascade in &mut self.cascades {
             *cascade = Default::default();
         }
@@ -196,7 +184,7 @@ impl<P: Platform> ShadowMapPass<P> {
         if light.is_none() {
             return;
         }
-        let light: &RendererDirectionalLight<<P as Platform>::GraphicsBackend> = light.unwrap();
+        let light: &RendererDirectionalLight<<P as Platform>::GPUBackend> = light.unwrap();
 
         let view = &scene.views[scene.active_view_index];
         let z_min = view.near_plane;
@@ -221,7 +209,7 @@ impl<P: Platform> ShadowMapPass<P> {
 
     pub fn prepare(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         cmd_buffer.begin_label("Shadow map culling");
@@ -245,7 +233,7 @@ impl<P: Platform> ShadowMapPass<P> {
 
             cmd_buffer.flush_barriers();
             cmd_buffer.clear_storage_buffer(
-                &visibility_buffer,
+                BufferRef::Regular(&visibility_buffer),
                 0,
                 visibility_buffer.info().size / 4,
                 !0,
@@ -265,14 +253,14 @@ impl<P: Platform> ShadowMapPass<P> {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            &visibility_buffer,
+            BufferRef::Regular(&visibility_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             1,
-            &draws_buffer,
+            BufferRef::Regular(&draws_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -284,7 +272,7 @@ impl<P: Platform> ShadowMapPass<P> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
         cmd_buffer.begin_label("Shadow map");
@@ -342,7 +330,7 @@ impl<P: Platform> ShadowMapPass<P> {
                 RenderpassRecordingMode::Commands,
             );
 
-            let dsv_info = shadow_map.texture().info();
+            let dsv_info = shadow_map.texture().unwrap().info();
             let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
             cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
             cmd_buffer.set_viewports(&[Viewport {
@@ -359,10 +347,10 @@ impl<P: Platform> ShadowMapPass<P> {
             cmd_buffer.set_vertex_buffer(pass_params.scene.vertex_buffer, 0);
             cmd_buffer.set_index_buffer(pass_params.scene.index_buffer, 0, IndexFormat::U32);
 
-            cmd_buffer.upload_dynamic_data_inline(&[cascade.view_proj], ShaderType::VertexShader);
+            cmd_buffer.set_push_constant_data(&[cascade.view_proj], ShaderType::VertexShader);
 
             cmd_buffer.finish_binding();
-            cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);
+            cmd_buffer.draw_indexed_indirect(BufferRef::Regular(&draw_buffer), 4, BufferRef::Regular(&draw_buffer), 0, DRAW_CAPACITY, 20);
 
             cmd_buffer.end_render_pass();
 
@@ -371,7 +359,7 @@ impl<P: Platform> ShadowMapPass<P> {
         cmd_buffer.end_label();
     }
 
-    pub fn build_cascade(light: &RendererDirectionalLight<P::GraphicsBackend>, inv_camera_view_proj: Matrix4, cascade_z_start: f32, cascade_z_end: f32, z_min: f32, z_max: f32, shadow_map_res: u32) -> ShadowMapCascade {
+    pub fn build_cascade(light: &RendererDirectionalLight<P::GPUBackend>, inv_camera_view_proj: Matrix4, cascade_z_start: f32, cascade_z_end: f32, z_min: f32, z_max: f32, shadow_map_res: u32) -> ShadowMapCascade {
         // https://www.junkship.net/News/2020/11/22/shadow-of-a-doubt-part-2
         // https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Lights/Shadows/cascadedShadowGenerator.ts
         // https://alextardif.com/shadowmapping.html

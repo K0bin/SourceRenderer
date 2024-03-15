@@ -13,57 +13,6 @@ use rayon::iter::ParallelIterator;
 use rayon::slice::ParallelSlice;
 use smallvec::SmallVec;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::graphics::{
-    AttachmentBlendInfo,
-    AttachmentInfo,
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BlendInfo,
-    Buffer,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    CompareFunc,
-    CullMode,
-    DepthStencilAttachmentRef,
-    DepthStencilInfo,
-    Device,
-    FillMode,
-    Format,
-    FrontFace,
-    IndexFormat,
-    InputAssemblerElement,
-    InputRate,
-    LoadOp,
-    LogicOp,
-    MemoryUsage,
-    PipelineBinding,
-    PrimitiveType,
-    Queue,
-    RasterizerInfo,
-    RenderPassAttachment,
-    RenderPassAttachmentView,
-    RenderPassBeginInfo,
-    RenderPassInfo,
-    RenderpassRecordingMode,
-    SampleCount,
-    Scissor,
-    ShaderInputElement,
-    ShaderType,
-    StencilInfo,
-    StoreOp,
-    SubpassInfo,
-    Texture,
-    TextureLayout,
-    TextureView,
-    TextureViewInfo,
-    VertexLayoutInfo,
-    Viewport,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -85,15 +34,16 @@ use crate::renderer::shader_manager::{
     GraphicsPipelineInfo,
     ShaderManager,
 };
+use crate::graphics::*;
 
 const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;
 const QUERY_PING_PONG_FRAMES: u32 = 5;
 
 pub struct OcclusionPass<P: Platform> {
-    query_buffers: Vec<Arc<<P::GraphicsBackend as Backend>::Buffer>>,
-    occluder_vb: Arc<<P::GraphicsBackend as Backend>::Buffer>,
-    occluder_ib: Arc<<P::GraphicsBackend as Backend>::Buffer>,
+    query_buffers: Vec<Arc<BufferSlice<P::GPUBackend>>>,
+    occluder_vb: Arc<BufferSlice<P::GPUBackend>>,
+    occluder_ib: Arc<BufferSlice<P::GPUBackend>>,
     pipeline: GraphicsPipelineHandle,
     drawable_occluded_frames: AtomicRefCell<HashMap<u32, u32>>,
     occlusion_query_maps: Vec<HashMap<u32, u32>>,
@@ -102,12 +52,13 @@ pub struct OcclusionPass<P: Platform> {
 
 impl<P: Platform> OcclusionPass<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let buffer_info = BufferInfo {
-            size: std::mem::size_of::<u32>() * QUERY_COUNT,
+            size: (std::mem::size_of::<u32>() * QUERY_COUNT) as u64,
             usage: BufferUsage::COPY_DST,
+            sharing_mode: QueueSharingMode::Exclusive
         };
 
         let ring_size = device.prerendered_frames() as usize + 2;
@@ -115,7 +66,7 @@ impl<P: Platform> OcclusionPass<P> {
         let mut occlusion_query_maps = Vec::with_capacity(ring_size);
         for i in 0..ring_size {
             let name = format!("QueryBuffer{}", i);
-            let buffer = device.create_buffer(&buffer_info, MemoryUsage::CachedRAM, Some(&name));
+            let buffer = device.create_buffer(&buffer_info, MemoryUsage::GPUMemory, Some(&name)).unwrap();
             {
                 let mut map = buffer.map_mut::<[u32; QUERY_COUNT]>().unwrap();
                 *map = [!0u32; 16384];
@@ -126,48 +77,39 @@ impl<P: Platform> OcclusionPass<P> {
 
         let occluder_vb = device.create_buffer(
             &BufferInfo {
-                size: std::mem::size_of::<Vec4>() * 8,
+                size: (std::mem::size_of::<Vec4>() * 8) as u64,
                 usage: BufferUsage::COPY_DST | BufferUsage::VERTEX,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             Some("OccluderVB"),
-        );
+        ).unwrap();
 
         let occluder_ib = device.create_buffer(
             &BufferInfo {
-                size: std::mem::size_of::<u32>() * 36,
+                size: (std::mem::size_of::<u32>() * 36) as u64,
                 usage: BufferUsage::COPY_DST | BufferUsage::INDEX,
+                sharing_mode: QueueSharingMode::Exclusive
             },
-            MemoryUsage::VRAM,
+            MemoryUsage::GPUMemory,
             Some("OccluderIB"),
-        );
+        ).unwrap();
 
-        let occluder_vb_data = device.upload_data(
-            &[
-                Vec3::new(-0.5f32, -0.5f32, 0.5f32),
-                Vec3::new(0.5f32, -0.5f32, 0.5f32),
-                Vec3::new(0.5f32, 0.5f32, 0.5f32),
-                Vec3::new(-0.5f32, 0.5f32, 0.5f32),
-                Vec3::new(-0.5f32, -0.5f32, -0.5f32),
-                Vec3::new(0.5f32, -0.5f32, -0.5f32),
-                Vec3::new(0.5f32, 0.5f32, -0.5f32),
-                Vec3::new(-0.5f32, 0.5f32, -0.5f32),
-            ],
-            MemoryUsage::UncachedRAM,
-            BufferUsage::COPY_SRC,
-        );
-        let occluder_ib_data = device.upload_data(
-            &[
-                1u32, 2u32, 3u32, 3u32, 0u32, 1u32, 5u32, 6u32, 2u32, 2u32, 1u32, 5u32, 7u32, 3u32,
-                2u32, 2u32, 6u32, 7u32, 4u32, 5u32, 1u32, 1u32, 0u32, 4u32, 7u32, 4u32, 0u32, 0u32,
-                3u32, 7u32, 5u32, 4u32, 7u32, 7u32, 6u32, 5u32,
-            ],
-            MemoryUsage::UncachedRAM,
-            BufferUsage::COPY_SRC,
-        );
-
-        device.init_buffer(&occluder_vb_data, &occluder_vb, 0, 0, WHOLE_BUFFER);
-        device.init_buffer(&occluder_ib_data, &occluder_ib, 0, 0, WHOLE_BUFFER);
+        device.init_buffer(&[
+            Vec3::new(-0.5f32, -0.5f32, 0.5f32),
+            Vec3::new(0.5f32, -0.5f32, 0.5f32),
+            Vec3::new(0.5f32, 0.5f32, 0.5f32),
+            Vec3::new(-0.5f32, 0.5f32, 0.5f32),
+            Vec3::new(-0.5f32, -0.5f32, -0.5f32),
+            Vec3::new(0.5f32, -0.5f32, -0.5f32),
+            Vec3::new(0.5f32, 0.5f32, -0.5f32),
+            Vec3::new(-0.5f32, 0.5f32, -0.5f32),
+        ], &occluder_vb, 0).unwrap();
+        device.init_buffer(&[
+            1u32, 2u32, 3u32, 3u32, 0u32, 1u32, 5u32, 6u32, 2u32, 2u32, 1u32, 5u32, 7u32, 3u32,
+            2u32, 2u32, 6u32, 7u32, 4u32, 5u32, 1u32, 1u32, 0u32, 4u32, 7u32, 4u32, 0u32, 0u32,
+            3u32, 7u32, 5u32, 4u32, 7u32, 7u32, 6u32, 5u32,
+        ], &occluder_ib, 0).unwrap();
 
         let pipeline = shader_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
@@ -245,10 +187,11 @@ impl<P: Platform> OcclusionPass<P> {
 
     pub fn execute(
         &mut self,
-        command_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        context: &GraphicsContext<P::GPUBackend>,
+        command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         frame: u64,
-        camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
+        camera_history_buffer: &Arc<BufferSlice<P::GPUBackend>>,
         depth_name: &str
     ) {
         let history_depth_buffer_ref = pass_params.resources.access_view(
@@ -321,13 +264,11 @@ impl<P: Platform> OcclusionPass<P> {
         const CHUNK_SIZE: usize = 256;
         let chunks = self.visible_drawable_indices.par_chunks(CHUNK_SIZE);
         let inheritance = command_buffer.inheritance();
-        let inner_cmd_buffers: Vec<<P::GraphicsBackend as Backend>::CommandBufferSubmission> =
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> =
             chunks
                 .map(|chunk| {
                     let mut pairs: SmallVec<[(u32, u32); CHUNK_SIZE]> = SmallVec::new();
-                    let mut command_buffer = device
-                        .graphics_queue()
-                        .create_inner_command_buffer(inheritance);
+                    let mut command_buffer = context.get_inner_command_buffer(inheritance);
                     command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
                     command_buffer.set_scissors(&[Scissor {
                         position: Vec2I::new(0i32, 0i32),
@@ -336,18 +277,18 @@ impl<P: Platform> OcclusionPass<P> {
                     command_buffer.set_viewports(&[Viewport {
                         position: Vec2::new(0f32, 0f32),
                         extent: Vec2::new(
-                            history_depth_buffer.texture().info().width as f32,
-                            history_depth_buffer.texture().info().height as f32,
+                            history_depth_buffer.texture().unwrap().info().width as f32,
+                            history_depth_buffer.texture().unwrap().info().height as f32,
                         ),
                         min_depth: 0f32,
                         max_depth: 1f32,
                     }]);
-                    command_buffer.set_vertex_buffer(&self.occluder_vb, 0);
-                    command_buffer.set_index_buffer(&self.occluder_ib, 0, IndexFormat::U32);
+                    command_buffer.set_vertex_buffer(BufferRef::Regular(&self.occluder_vb), 0);
+                    command_buffer.set_index_buffer(BufferRef::Regular(&self.occluder_ib), 0, IndexFormat::U32);
                     command_buffer.bind_uniform_buffer(
                         BindingFrequency::VeryFrequent,
                         0,
-                        &camera_history_buffer,
+                        BufferRef::Regular(&camera_history_buffer),
                         0,
                         WHOLE_BUFFER,
                     );
@@ -388,7 +329,7 @@ impl<P: Platform> OcclusionPass<P> {
                         let bb_transform = Matrix4::new_translation(&bb_translation)
                             * Matrix4::new_nonuniform_scaling(&bb_scale);
 
-                        command_buffer.upload_dynamic_data_inline(
+                        command_buffer.set_push_constant_data(
                             &[drawable.old_transform * bb_transform],
                             ShaderType::VertexShader,
                         );
@@ -424,7 +365,8 @@ impl<P: Platform> OcclusionPass<P> {
                 new_sync: BarrierSync::COPY,
                 old_access: BarrierAccess::empty(),
                 new_access: BarrierAccess::empty(),
-                buffer: query_buffer,
+                buffer: BufferRef::Regular(query_buffer),
+                queue_ownership: None
             }]);
             command_buffer.flush_barriers();
             command_buffer.copy_query_results_to_buffer(

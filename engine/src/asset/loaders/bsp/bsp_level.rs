@@ -21,13 +21,6 @@ use sourcerenderer_bsp::{
     Map,
     SurfaceFlags,
 };
-use sourcerenderer_core::graphics::{
-    Format,
-    SampleCount,
-    TextureDimension,
-    TextureInfo,
-    TextureUsage,
-};
 use sourcerenderer_core::{
     Platform,
     Quaternion,
@@ -35,6 +28,8 @@ use sourcerenderer_core::{
     Vec3,
     Vec4,
 };
+
+use crate::graphics::*;
 
 use super::BspLumps;
 use crate::asset::asset_manager::{

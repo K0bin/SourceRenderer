@@ -1,4 +1,3 @@
-use sourcerenderer_core::graphics::Backend;
 use crate::{WebGLAdapter, WebGLBuffer, WebGLCommandBuffer, WebGLCommandSubmission, WebGLComputePipeline, WebGLDevice, WebGLFence, WebGLGraphicsPipeline, WebGLInstance, WebGLShader, WebGLSurface, WebGLSwapchain, WebGLTexture, WebGLTextureView, command::WebGLQueue, sync::WebGLSemaphore, texture::WebGLSampler, rt::WebGLAccelerationStructureStub};
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]

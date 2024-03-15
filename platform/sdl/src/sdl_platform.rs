@@ -218,7 +218,7 @@ impl SDLWindow {
 
 impl Platform for SDLPlatform {
     type Window = SDLWindow;
-    type GraphicsBackend = sourcerenderer_vulkan::VkBackend;
+    type GPUBackend = sourcerenderer_vulkan::VkBackend;
     type IO = StdIO;
     type ThreadHandle = StdThreadHandle;
 
@@ -226,9 +226,9 @@ impl Platform for SDLPlatform {
         &self.window
     }
 
-    fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
+    fn create_graphics(&self, debug_layers: bool) -> Result<VkInstance, Box<dyn Error>> {
         let extensions = self.window.vulkan_instance_extensions().unwrap();
-        Ok(Arc::new(VkInstance::new(&extensions, debug_layers)))
+        Ok(VkInstance::new(&extensions, debug_layers))
     }
 
     fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
@@ -246,7 +246,7 @@ impl Platform for SDLPlatform {
 }
 
 impl Window<SDLPlatform> for SDLWindow {
-    fn create_surface(&self, graphics_instance: Arc<VkInstance>) -> Arc<VkSurface> {
+    fn create_surface(&self, graphics_instance: &VkInstance) -> VkSurface {
         let instance_raw = graphics_instance.raw();
         let surface = self
             .window
@@ -255,22 +255,29 @@ impl Window<SDLPlatform> for SDLWindow {
             )
             .unwrap();
         let surface_loader = SurfaceLoader::new(&instance_raw.entry, &instance_raw.instance);
-        Arc::new(VkSurface::new(
-            instance_raw,
+        VkSurface::new(
+            graphics_instance.raw(),
             SurfaceKHR::from_raw(surface),
-            surface_loader,
-        ))
+            surface_loader
+        )
     }
 
     fn create_swapchain(
         &self,
         vsync: bool,
         device: &VkDevice,
-        surface: &Arc<VkSurface>,
-    ) -> Arc<VkSwapchain> {
+        surface: VkSurface
+     ) -> VkSwapchain {
         let device_inner = device.inner();
         let (width, height) = self.window.drawable_size();
-        VkSwapchain::new(vsync, width, height, device_inner, surface).unwrap()
+        VkSwapchain::new(
+            vsync,
+            width,
+            height,
+            device_inner,
+            surface
+        )
+        .unwrap()
     }
 
     fn width(&self) -> u32 {

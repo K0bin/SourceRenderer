@@ -5,7 +5,6 @@ use std::sync::Arc;
 use field_offset::offset_of;
 use legion::Entity;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{Backend, BindingFrequency, Buffer, BufferInfo, BufferUsage, CommandBuffer, MemoryUsage};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -14,6 +13,7 @@ use sourcerenderer_core::{
 };
 use bitflags::bitflags;
 
+use crate::graphics::*;
 use crate::renderer::renderer_assets::{MaterialHandle, MeshHandle, ModelHandle, RendererAssets, RendererMaterial, RendererMaterialValue};
 use crate::renderer::renderer_scene::RendererScene;
 
@@ -124,12 +124,12 @@ struct ModelEntry {
 }
 
 pub struct BufferBinding {
-    pub offset: usize,
-    pub length: usize
+    pub offset: u64,
+    pub length: u64
 }
 
-pub struct SceneBuffers<B: Backend> {
-    pub buffer: Arc<B::Buffer>,
+pub struct SceneBuffers<B: GPUBackend> {
+    pub buffer: TransientBufferSlice<B>,
     pub scene_buffer: BufferBinding,
     pub draws_buffer: BufferBinding,
     pub meshes_buffer: BufferBinding,
@@ -141,11 +141,11 @@ pub struct SceneBuffers<B: Backend> {
 
 #[profiling::function]
 pub fn upload<P: Platform>(
-    cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-    scene: &RendererScene<P::GraphicsBackend>,
+    cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
+    scene: &RendererScene<P::GPUBackend>,
     zero_view_index: u32,
     assets: &RendererAssets<P>,
-) -> SceneBuffers<P::GraphicsBackend> {
+) -> SceneBuffers<P::GPUBackend> {
     let mut local = GPUScene {
         drawable_count: 0,
         draw_count: 0,
@@ -210,8 +210,7 @@ pub fn upload<P: Platform>(
                             RendererMaterialValue::Texture(handle) => {
                                 let texture = assets.get_texture(*handle);
                                 let albedo_view = &texture.view;
-                                cmd_buffer.track_texture_view(albedo_view);
-                                gpu_material.albedo_texture_index = texture.bindless_index.unwrap();
+                                gpu_material.albedo_texture_index = texture.bindless_index.as_ref().map(|b| b.slot()).unwrap_or(zero_view_index)
                             }
                             RendererMaterialValue::Vec4(val) => gpu_material.albedo = *val,
                             RendererMaterialValue::Float(_) => unimplemented!(),
@@ -374,61 +373,62 @@ pub fn upload<P: Platform>(
     }
 
 
-    let scene_size = std::mem::size_of::<GPUScene>();
-    let drawables_size = drawables.len() * std::mem::size_of::<GPUDrawable>();
-    let draws_size = draws.len() * std::mem::size_of::<GPUDraw>();
-    let meshes_size = meshes.len() * std::mem::size_of::<GPUMesh>();
-    let parts_size = parts.len() * std::mem::size_of::<GPUMeshPart>();
-    let materials_size = materials.len() * std::mem::size_of::<GPUMaterial>();
-    let lights_size = lights.len() * std::mem::size_of::<GPULight>();
+    let scene_size = std::mem::size_of::<GPUScene>() as u64;
+    let drawables_size = (drawables.len() * std::mem::size_of::<GPUDrawable>()) as u64;
+    let draws_size = (draws.len() * std::mem::size_of::<GPUDraw>()) as u64;
+    let meshes_size = (meshes.len() * std::mem::size_of::<GPUMesh>()) as u64;
+    let parts_size = (parts.len() * std::mem::size_of::<GPUMeshPart>()) as u64;
+    let materials_size = (materials.len() * std::mem::size_of::<GPUMaterial>()) as u64;
+    let lights_size = (lights.len() * std::mem::size_of::<GPULight>()) as u64;
 
-    let scene_offset = 0;
-    let drawables_offset = align_up(scene_offset + scene_size, 256);
-    let draws_offset = align_up(drawables_offset + drawables_size, 256);
-    let meshes_offset = align_up(draws_offset + draws_size, 256);
-    let parts_offset = align_up(meshes_offset + meshes_size, 256);
-    let materials_offset = align_up(parts_offset + parts_size, 256);
-    let lights_offset = align_up(materials_offset + materials_size, 256);
-    let buffer_size = lights_offset + lights_size.max(std::mem::size_of::<GPULight>());
+    let scene_offset = 0u64;
+    let drawables_offset = (align_up(scene_offset + scene_size, 256)) as u64;
+    let draws_offset = (align_up(drawables_offset + drawables_size, 256)) as u64;
+    let meshes_offset = (align_up(draws_offset + draws_size, 256)) as u64;
+    let parts_offset = (align_up(meshes_offset + meshes_size, 256)) as u64;
+    let materials_offset = (align_up(parts_offset + parts_size, 256)) as u64;
+    let lights_offset = (align_up(materials_offset + materials_size, 256)) as u64;
+    let buffer_size = lights_offset + lights_size.max(std::mem::size_of::<GPULight>() as u64);
 
     let scene_buffer = cmd_buffer.create_temporary_buffer(
         &BufferInfo {
-            size: buffer_size,
+            size: buffer_size as u64,
             usage: BufferUsage::STORAGE,
+            sharing_mode: QueueSharingMode::Concurrent
         },
-        MemoryUsage::MappableVRAM,
-    );
+        MemoryUsage::MappableGPUMemory,
+    ).unwrap();
     unsafe {
         profiling::scope!("Copying scene data to VRAM");
 
-        let base_ptr = scene_buffer.map_unsafe(false).unwrap();
+        let base_ptr = scene_buffer.map(false).unwrap();
 
-        let mut ptr = base_ptr.add(scene_offset);
-        ptr.copy_from(std::mem::transmute(&local), scene_size);
+        let mut ptr = base_ptr.add(scene_offset as usize);
+        ptr.copy_from(std::mem::transmute(&local), scene_size as usize);
 
-        ptr = base_ptr.add(drawables_offset);
-        ptr.copy_from(std::mem::transmute(drawables.as_ptr()), drawables_size);
+        ptr = base_ptr.add(drawables_offset as usize);
+        ptr.copy_from(std::mem::transmute(drawables.as_ptr()), drawables_size as usize);
 
-        ptr = base_ptr.add(draws_offset);
-        ptr.copy_from(std::mem::transmute(draws.as_ptr()), draws_size);
+        ptr = base_ptr.add(draws_offset as usize);
+        ptr.copy_from(std::mem::transmute(draws.as_ptr()), draws_size as usize);
 
-        ptr = base_ptr.add(meshes_offset);
-        ptr.copy_from(std::mem::transmute(meshes.as_ptr()), meshes_size);
+        ptr = base_ptr.add(meshes_offset as usize);
+        ptr.copy_from(std::mem::transmute(meshes.as_ptr()), meshes_size as usize);
 
-        ptr = base_ptr.add(parts_offset);
-        ptr.copy_from(std::mem::transmute(parts.as_ptr()), parts_size);
+        ptr = base_ptr.add(parts_offset as usize);
+        ptr.copy_from(std::mem::transmute(parts.as_ptr()), parts_size as usize);
 
-        ptr = base_ptr.add(materials_offset);
-        ptr.copy_from(std::mem::transmute(materials.as_ptr()), materials_size);
+        ptr = base_ptr.add(materials_offset as usize);
+        ptr.copy_from(std::mem::transmute(materials.as_ptr()), materials_size as usize);
 
-        ptr = base_ptr.add(lights_offset);
-        ptr.copy_from(std::mem::transmute(lights.as_ptr()), lights_size);
+        ptr = base_ptr.add(lights_offset as usize);
+        ptr.copy_from(std::mem::transmute(lights.as_ptr()), lights_size as usize);
 
-        scene_buffer.unmap_unsafe(true);
+        scene_buffer.unmap(true);
     }
 
     SceneBuffers {
-        buffer: scene_buffer.clone(),
+        buffer: scene_buffer,
         scene_buffer: BufferBinding {
             offset: scene_offset,
             length: scene_size.max(16)
@@ -460,15 +460,15 @@ pub fn upload<P: Platform>(
     }
 }
 
-fn align_up_to_cache_line(value: usize) -> usize {
-    const CACHE_LINE: usize = 64;
+fn align_up_to_cache_line(value: u64) -> u64 {
+    const CACHE_LINE: u64 = 64;
     if value == 0 {
         return 0;
     }
     (value + CACHE_LINE - 1) & !(CACHE_LINE - 1)
 }
 
-fn align_up(value: usize, alignment: usize) -> usize {
+fn align_up(value: u64, alignment: u64) -> u64 {
     if value == 0 {
         return 0;
     }

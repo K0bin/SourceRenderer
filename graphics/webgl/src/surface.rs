@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}, Mutex, Condvar};
 
-use sourcerenderer_core::graphics::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureViewInfo, TextureUsage, TextureDimension};
+use sourcerenderer_core::gpu::{Format, SampleCount, Surface, Swapchain, Texture, TextureInfo, TextureViewInfo, TextureUsage, TextureDimension};
 use wasm_bindgen::JsCast;
 use web_sys::{Document, HtmlCanvasElement, WebGl2RenderingContext};
 
@@ -113,7 +113,7 @@ impl WebGLSwapchain {
 
     let c_sync = self.sync.clone();
     let backbuffer_handle = self.backbuffer_view.texture().handle();
-    let info = self.backbuffer_view.texture().info();
+    let info = self.backbuffer_view.texture().unwrap().info();
     let width = info.width as i32;
     let height = info.height as i32;
     self.sender.send(Box::new(move |device| {
@@ -135,23 +135,23 @@ impl WebGLSwapchain {
 }
 
 impl Swapchain<WebGLBackend> for WebGLSwapchain {
-  fn recreate(old: &Self, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
+  fn recreate(old: &Self, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::gpu::SwapchainError> {
     Ok(
       Arc::new(WebGLSwapchain::new(&old.surface, &old.sender, &old.allocator))
     )
   }
 
-  fn recreate_on_surface(old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::graphics::SwapchainError> {
+  fn recreate_on_surface(old: &Self, surface: &std::sync::Arc<WebGLSurface>, _width: u32, _height: u32) -> Result<std::sync::Arc<Self>, sourcerenderer_core::gpu::SwapchainError> {
     Ok(
       Arc::new(WebGLSwapchain::new(&surface, &old.sender, &old.allocator))
     )
   }
 
-  fn sample_count(&self) -> sourcerenderer_core::graphics::SampleCount {
+  fn sample_count(&self) -> sourcerenderer_core::gpu::SampleCount {
     SampleCount::Samples1
   }
 
-  fn format(&self) -> sourcerenderer_core::graphics::Format {
+  fn format(&self) -> sourcerenderer_core::gpu::Format {
     Format::Unknown
   }
 

@@ -1,50 +1,5 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{
-    AttachmentBlendInfo,
-    AttachmentInfo,
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BlendInfo,
-    CommandBuffer,
-    CompareFunc,
-    CullMode,
-    DepthStencilAttachmentRef,
-    DepthStencilInfo,
-    FillMode,
-    Format,
-    FrontFace,
-    IndexFormat,
-    InputAssemblerElement,
-    InputRate,
-    LoadOp,
-    LogicOp,
-    OutputAttachmentRef,
-    PipelineBinding,
-    PrimitiveType,
-    RasterizerInfo,
-    RenderPassAttachment,
-    RenderPassAttachmentView,
-    RenderPassBeginInfo,
-    RenderPassInfo,
-    RenderpassRecordingMode,
-    SampleCount,
-    Scissor,
-    ShaderInputElement,
-    StencilInfo,
-    StoreOp,
-    SubpassInfo,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    VertexLayoutInfo,
-    Viewport,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2,
@@ -65,6 +20,8 @@ use crate::renderer::shader_manager::{
     ShaderManager,
 };
 
+use crate::graphics::*;
+
 pub struct VisibilityBufferPass {
     pipeline: GraphicsPipelineHandle,
 }
@@ -76,7 +33,7 @@ impl VisibilityBufferPass {
 
     pub fn new<P: Platform>(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let barycentrics_texture_info = TextureInfo {
@@ -225,7 +182,7 @@ impl VisibilityBufferPass {
     #[profiling::function]
     pub(super) fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         params: &RenderPassParameters<'_, P>
     ) {
         cmd_buffer.begin_label("Visibility Buffer pass");
@@ -310,7 +267,7 @@ impl VisibilityBufferPass {
             RenderpassRecordingMode::Commands,
         );
 
-        let rtv_info = barycentrics_rtv.texture().info();
+        let rtv_info = barycentrics_rtv.texture().unwrap().info();
         let pipeline = params.shader_manager.get_graphics_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
@@ -328,7 +285,7 @@ impl VisibilityBufferPass {
         cmd_buffer.set_index_buffer(params.scene.index_buffer, 0, IndexFormat::U32);
 
         cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect(&draw_buffer, 4, &draw_buffer, 0, DRAW_CAPACITY, 20);
+        cmd_buffer.draw_indexed_indirect(BufferRef::Regular(&draw_buffer), 4, BufferRef::Regular(&draw_buffer), 0, DRAW_CAPACITY, 20);
 
         cmd_buffer.end_render_pass();
         cmd_buffer.end_label();

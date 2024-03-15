@@ -6,13 +6,9 @@ use image::{
     GenericImageView,
     ImageFormat,
 };
-use sourcerenderer_core::graphics::{
-    SampleCount,
-    TextureDimension,
-    TextureInfo,
-    TextureUsage,
-};
 use sourcerenderer_core::Platform;
+
+use crate::graphics::*;
 
 use crate::asset::asset_manager::{
     AssetFile,
@@ -64,11 +60,11 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
 
         let (format, data) = match img {
             image::DynamicImage::ImageRgba8(data) => (
-                sourcerenderer_core::graphics::Format::RGBA8UNorm,
+                Format::RGBA8UNorm,
                 data.as_raw().clone(),
             ),
             _ => (
-                sourcerenderer_core::graphics::Format::RGBA8UNorm,
+                Format::RGBA8UNorm,
                 img.into_rgba8().as_raw().clone(),
             ),
         };

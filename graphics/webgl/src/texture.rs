@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureView, TextureViewInfo, TextureInfo, CompareFunc};
+use sourcerenderer_core::gpu::{AddressMode, Filter, Format, SamplerInfo, Texture, TextureView, TextureViewInfo, TextureInfo, CompareFunc};
 
 use web_sys::{WebGl2RenderingContext, WebGlRenderingContext, WebglCompressedTextureS3tc};
 

@@ -1,27 +1,23 @@
-use std::ffi::{
-    CStr,
-    CString,
+use std::{
+    ffi::{
+        CStr,
+        CString,
+    },
+    os::raw::{
+        c_char,
+        c_void,
+    },
+    sync::Arc,
 };
-use std::os::raw::{
-    c_char,
-    c_void,
-};
-use std::sync::Arc;
 
 use ash::vk;
-use sourcerenderer_core::graphics::Instance;
+use sourcerenderer_core::gpu::*;
 
-use crate::raw::{
-    RawVkDebugUtils,
-    RawVkInstance,
-};
-use crate::{
-    VkAdapter,
-    VkBackend,
-};
+use super::*;
 
 pub struct VkInstance {
     raw: Arc<RawVkInstance>,
+    adapters: Vec<VkAdapter>,
 }
 
 impl VkInstance {
@@ -151,13 +147,20 @@ impl VkInstance {
                 None
             };
 
-            VkInstance {
-                raw: Arc::new(RawVkInstance {
-                    entry,
-                    instance,
-                    debug_utils,
-                }),
-            }
+            let raw = Arc::new(RawVkInstance {
+                entry,
+                instance,
+                debug_utils,
+            });
+
+            let physical_devices: Vec<vk::PhysicalDevice> =
+                raw.instance.enumerate_physical_devices().unwrap();
+            let adapters: Vec<VkAdapter> = physical_devices
+                .into_iter()
+                .map(|phys_dev| VkAdapter::new(&raw, phys_dev))
+                .collect();
+
+            VkInstance { raw, adapters }
         }
     }
 
@@ -181,7 +184,12 @@ impl VkInstance {
             return vk::FALSE;
         }
 
-        if message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
+        if (callback_data.message_id_number == 688222058) {
+            // False positive about setting the viewport & scissor for ray tracing pipelines
+            //return vk::FALSE;
+        }
+
+        if false && (message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)) {
             panic!(
                 "VK: {:?} - {:?}: {:?}",
                 message_severity,
@@ -201,17 +209,7 @@ impl VkInstance {
 }
 
 impl Instance<VkBackend> for VkInstance {
-    fn list_adapters(self: Arc<Self>) -> Vec<Arc<VkAdapter>> {
-        let physical_devices: Vec<vk::PhysicalDevice> =
-            unsafe { self.raw.instance.enumerate_physical_devices().unwrap() };
-        let instance_ref: &Arc<RawVkInstance> = &self.raw;
-        let adapters: Vec<Arc<VkAdapter>> = physical_devices
-            .into_iter()
-            .map(|phys_dev| {
-                Arc::new(VkAdapter::new(instance_ref.clone(), phys_dev)) as Arc<VkAdapter>
-            })
-            .collect();
-
-        adapters
+    fn list_adapters(&self) -> &[VkAdapter] {
+        &self.adapters
     }
 }

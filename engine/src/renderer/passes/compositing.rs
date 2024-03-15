@@ -1,21 +1,3 @@
-use sourcerenderer_core::graphics::{
-    Backend as GraphicsBackend,
-    BarrierAccess,
-    BarrierSync,
-    BindingFrequency,
-    BufferUsage,
-    CommandBuffer,
-    Format,
-    PipelineBinding,
-    Texture,
-    TextureDimension,
-    TextureInfo,
-    TextureLayout,
-    TextureUsage,
-    TextureView,
-    TextureViewInfo,
-    WHOLE_BUFFER,
-};
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
@@ -32,6 +14,8 @@ use crate::renderer::shader_manager::{
     ShaderManager,
 };
 
+use crate::graphics::*;
+
 const USE_CAS: bool = true;
 
 pub struct CompositingPass {
@@ -43,7 +27,7 @@ impl CompositingPass {
 
     pub fn new<P: Platform>(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GraphicsBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline("shaders/compositing.comp.spv");
@@ -58,7 +42,7 @@ impl CompositingPass {
                 depth: 1,
                 mip_levels: 1,
                 array_length: 1,
-                samples: sourcerenderer_core::graphics::SampleCount::Samples1,
+                samples: SampleCount::Samples1,
                 usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
                 supports_srgb: false,
             },
@@ -70,7 +54,7 @@ impl CompositingPass {
 
     pub fn execute<P: Platform>(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as GraphicsBackend>::CommandBuffer,
+        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         params: &RenderPassParameters<'_, P>,
         input_name: &str,
     ) {
@@ -96,7 +80,7 @@ impl CompositingPass {
             HistoryResourceEntry::Current,
         );
 
-        let output = params.resources.access_view(
+        let output: std::cell::Ref<'_, std::sync::Arc<TextureView<<P as Platform>::GPUBackend>>> = params.resources.access_view(
             cmd_buffer,
             Self::COMPOSITION_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -124,7 +108,7 @@ impl CompositingPass {
                 exposure: 0.01f32,
             }],
             BufferUsage::CONSTANT,
-        );
+        ).unwrap();
 
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &output);
         cmd_buffer.bind_sampling_view_and_sampler(
@@ -142,13 +126,13 @@ impl CompositingPass {
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             3,
-            &setup_ubo,
+            BufferRef::Transient(&setup_ubo),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.finish_binding();
 
-        let info = output.texture().info();
+        let info = output.texture().unwrap().info();
         cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
         cmd_buffer.end_label();
     }

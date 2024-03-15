@@ -22,10 +22,6 @@ use legion::{
 };
 use log::trace;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Swapchain,
-};
 use sourcerenderer_core::platform::{
     Event,
     Platform,
@@ -51,6 +47,7 @@ use crate::renderer::command::RendererCommand;
 use crate::renderer::RendererInternal;
 use crate::transform::interpolation::InterpolatedTransform;
 use crate::ui::UIDrawData;
+use crate::graphics::*;
 
 enum RendererImpl<P: Platform> {
     MultiThreaded(P::ThreadHandle),
@@ -62,35 +59,32 @@ unsafe impl<P: Platform> Send for RendererImpl<P> {}
 unsafe impl<P: Platform> Sync for RendererImpl<P> {}
 
 pub struct Renderer<P: Platform> {
-    sender: Sender<RendererCommand<P::GraphicsBackend>>,
+    sender: Sender<RendererCommand<P::GPUBackend>>,
     window_event_sender: Sender<Event<P>>,
-    instance: Arc<<P::GraphicsBackend as Backend>::Instance>,
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
+    instance: Arc<Instance<P::GPUBackend>>,
+    device: Arc<Device<P::GPUBackend>>,
     queued_frames_counter: Mutex<u32>,
-    surface: Mutex<Arc<<P::GraphicsBackend as Backend>::Surface>>,
     is_running: AtomicBool,
     input: Arc<Input>,
-    late_latching: Option<Arc<dyn LateLatching<P::GraphicsBackend>>>,
+    late_latching: Option<Arc<dyn LateLatching<P::GPUBackend>>>,
     cond_var: Condvar,
     renderer_impl: AtomicRefCell<RendererImpl<P>>,
 }
 
 impl<P: Platform> Renderer<P> {
     fn new(
-        sender: Sender<RendererCommand<P::GraphicsBackend>>,
+        sender: Sender<RendererCommand<P::GPUBackend>>,
         window_event_sender: Sender<Event<P>>,
-        instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        surface: &Arc<<P::GraphicsBackend as Backend>::Surface>,
+        instance: &Arc<Instance<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
         input: &Arc<Input>,
-        late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>,
+        late_latching: Option<&Arc<dyn LateLatching<P::GPUBackend>>>,
     ) -> Self {
         Self {
             sender,
             instance: instance.clone(),
             device: device.clone(),
             queued_frames_counter: Mutex::new(0),
-            surface: Mutex::new(surface.clone()),
             is_running: AtomicBool::new(true),
             window_event_sender,
             late_latching: late_latching.cloned(),
@@ -102,29 +96,27 @@ impl<P: Platform> Renderer<P> {
 
     pub fn run(
         platform: &P,
-        instance: &Arc<<P::GraphicsBackend as Backend>::Instance>,
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        instance: &Arc<Instance<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
+        swapchain: Swapchain<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
         input: &Arc<Input>,
-        late_latching: Option<&Arc<dyn LateLatching<P::GraphicsBackend>>>,
+        late_latching: Option<&Arc<dyn LateLatching<P::GPUBackend>>>,
         console: &Arc<Console>,
     ) -> Arc<Renderer<P>> {
-        let (sender, receiver) = unbounded::<RendererCommand<P::GraphicsBackend>>();
+        let (sender, receiver) = unbounded::<RendererCommand<P::GPUBackend>>();
         let (window_event_sender, window_event_receiver) = unbounded();
         let renderer = Arc::new(Renderer::new(
             sender.clone(),
             window_event_sender,
             instance,
             device,
-            swapchain.surface(),
             input,
             late_latching,
         ));
 
         let c_device = device.clone();
         let c_renderer = renderer.clone();
-        let c_swapchain = swapchain.clone();
         let c_asset_manager = asset_manager.clone();
         let c_console = console.clone();
 
@@ -133,7 +125,7 @@ impl<P: Platform> Renderer<P> {
                 trace!("Started renderer thread");
                 let mut internal = RendererInternal::new(
                     &c_device,
-                    &c_swapchain,
+                    swapchain,
                     &c_asset_manager,
                     sender,
                     window_event_receiver,
@@ -155,7 +147,7 @@ impl<P: Platform> Renderer<P> {
         } else {
             let internal = RendererInternal::new(
                 &c_device,
-                &c_swapchain,
+                swapchain,
                 &c_asset_manager,
                 sender,
                 window_event_receiver,
@@ -178,21 +170,13 @@ impl<P: Platform> Renderer<P> {
         crate::renderer::ecs::install::<P, Arc<Renderer<P>>>(systems, self.clone());
     }
 
-    pub(crate) fn change_surface(&self, surface: &Arc<<P::GraphicsBackend as Backend>::Surface>) {
-        let mut surface_guard = self.surface.lock().unwrap();
-        *surface_guard = surface.clone();
-    }
-    pub fn surface(&self) -> MutexGuard<Arc<<P::GraphicsBackend as Backend>::Surface>> {
-        self.surface.lock().unwrap()
-    }
-
     pub(super) fn dec_queued_frames_counter(&self) {
         let mut counter_guard = self.queued_frames_counter.lock().unwrap();
         *counter_guard -= 1;
         self.cond_var.notify_all();
     }
 
-    pub(crate) fn instance(&self) -> &Arc<<P::GraphicsBackend as Backend>::Instance> {
+    pub(crate) fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {
         &self.instance
     }
 
@@ -208,7 +192,7 @@ impl<P: Platform> Renderer<P> {
                 return;
             }
 
-            let end_frame_res = self.sender.send(RendererCommand::<P::GraphicsBackend>::EndFrame);
+            let end_frame_res = self.sender.send(RendererCommand::<P::GPUBackend>::EndFrame);
             if end_frame_res.is_err() {
                 log::error!("Render thread crashed.");
             }
@@ -240,7 +224,7 @@ impl<P: Platform> Renderer<P> {
         self.window_event_sender.send(event).unwrap();
     }
 
-    pub fn late_latching(&self) -> Option<&dyn LateLatching<P::GraphicsBackend>> {
+    pub fn late_latching(&self) -> Option<&dyn LateLatching<P::GPUBackend>> {
         self.late_latching.as_ref().map(|l| l.as_ref())
     }
 
@@ -248,7 +232,7 @@ impl<P: Platform> Renderer<P> {
         &self.input
     }
 
-    pub fn device(&self) -> &Arc<<P::GraphicsBackend as Backend>::Device> {
+    pub fn device(&self) -> &Arc<Device<P::GPUBackend>> {
         &self.device
     }
 
@@ -267,7 +251,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         transform: &InterpolatedTransform,
         renderable: &StaticRenderableComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::RegisterStatic {
+        let result = self.sender.send(RendererCommand::<P::GPUBackend>::RegisterStatic {
             entity,
             transform: transform.0,
             model_path: renderable.model_path.to_string(),
@@ -281,7 +265,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
     }
 
     fn unregister_static_renderable(&self, entity: Entity) {
-        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::UnregisterStatic(entity));
+        let result = self.sender.send(RendererCommand::<P::GPUBackend>::UnregisterStatic(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -293,7 +277,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         transform: &InterpolatedTransform,
         component: &PointLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::RegisterPointLight {
+        let result = self.sender.send(RendererCommand::<P::GPUBackend>::RegisterPointLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -318,7 +302,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         transform: &InterpolatedTransform,
         component: &DirectionalLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::RegisterDirectionalLight {
+        let result = self.sender.send(RendererCommand::<P::GPUBackend>::RegisterDirectionalLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -338,7 +322,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
     }
 
     fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
-        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::UpdateCameraTransform {
+        let result = self.sender.send(RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
             camera_transform_mat,
             fov,
         });
@@ -348,7 +332,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
     }
 
     fn update_transform(&self, entity: Entity, transform: Matrix4) {
-        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::UpdateTransform {
+        let result = self.sender.send(RendererCommand::<P::GPUBackend>::UpdateTransform {
             entity,
             transform_mat: transform,
         });
@@ -360,7 +344,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
     fn end_frame(&self) {
         let mut queued_guard = self.queued_frames_counter.lock().unwrap();
         *queued_guard += 1;
-        let result = self.sender.send(RendererCommand::<P::GraphicsBackend>::EndFrame);
+        let result = self.sender.send(RendererCommand::<P::GPUBackend>::EndFrame);
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -369,7 +353,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
     fn update_lightmap(&self, path: &str) {
         let result = self
             .sender
-            .send(RendererCommand::<P::GraphicsBackend>::SetLightmap(path.to_string()));
+            .send(RendererCommand::<P::GPUBackend>::SetLightmap(path.to_string()));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -400,7 +384,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         self.is_running.load(Ordering::SeqCst)
     }
 
-    fn update_ui(&self, ui_data: UIDrawData<P::GraphicsBackend>) {
+    fn update_ui(&self, ui_data: UIDrawData<P::GPUBackend>) {
         let result = self.sender.send(RendererCommand::RenderUI(ui_data));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);

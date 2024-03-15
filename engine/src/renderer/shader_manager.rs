@@ -8,28 +8,6 @@ use std::sync::{
 };
 
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    AttachmentBlendInfo,
-    AttachmentInfo,
-    AttachmentRef,
-    Backend,
-    BlendInfo,
-    DepthStencilAttachmentRef,
-    DepthStencilInfo,
-    Device,
-    GraphicsPipelineInfo as ActualGraphicsPipelineInfo,
-    InputAssemblerElement,
-    LogicOp,
-    OutputAttachmentRef,
-    PrimitiveType,
-    RasterizerInfo,
-    RayTracingPipelineInfo as ActualRayTracingPipelineInfo,
-    RenderPassInfo,
-    ShaderInputElement,
-    ShaderType,
-    SubpassInfo,
-    VertexLayoutInfo,
-};
 use sourcerenderer_core::Platform;
 
 use crate::asset::{
@@ -37,6 +15,9 @@ use crate::asset::{
     AssetManager,
     AssetType,
 };
+use crate::graphics::*;
+use crate::graphics::GraphicsPipelineInfo as ActualGraphicsPipelineInfo;
+use crate::graphics::RayTracingPipelineInfo as ActualRayTracingPipelineInfo;
 
 //
 // COMMON
@@ -51,22 +32,22 @@ trait PipelineCompileTask<P: Platform>: Send + Sync {
     fn request_remaining_shaders(
         &self,
         loaded_shader_path: &str,
-        shaders: &HashMap<String, Arc<<P::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
         asset_manager: &Arc<AssetManager<P>>,
     );
     fn can_compile(
         &self,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<P::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool;
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<P::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
     ) -> Self::TShaders;
     fn compile(
         &self,
         shaders: Self::TShaders,
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<Device<P::GPUBackend>>,
     ) -> Arc<Self::TPipeline>;
     fn is_async(&self) -> bool;
 }
@@ -149,7 +130,7 @@ pub struct GraphicsPipelineInfo<'a> {
     pub primitive_type: PrimitiveType,
 }
 
-struct StoredGraphicsPipeline<B: Backend> {
+struct StoredGraphicsPipeline<B: GPUBackend> {
     info: StoredGraphicsPipelineInfo,
     pipeline: Arc<B::GraphicsPipeline>,
 }
@@ -173,22 +154,22 @@ struct GraphicsCompileTask<P: Platform> {
     renderpass: StoredRenderPassInfo,
     subpass: u32,
     is_async: bool,
-    _p: PhantomData<<P::GraphicsBackend as Backend>::Device>,
+    _p: PhantomData<<P::GPUBackend as GPUBackend>::Device>,
 }
 
 struct GraphicsPipeline<P: Platform> {
     task: GraphicsCompileTask<P>,
-    pipeline: Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline>,
+    pipeline: Arc<<P::GPUBackend as GPUBackend>::GraphicsPipeline>,
 }
 
-struct GraphicsShaders<B: Backend> {
+struct GraphicsShaders<B: GPUBackend> {
     vs: Arc<B::Shader>,
     fs: Option<Arc<B::Shader>>,
 }
 
 impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
-    type TShaders = GraphicsShaders<P::GraphicsBackend>;
-    type TPipeline = <P::GraphicsBackend as Backend>::GraphicsPipeline;
+    type TShaders = GraphicsShaders<P::GPUBackend>;
+    type TPipeline = crate::graphics::GraphicsPipeline<P::GPUBackend>;
 
     fn contains_shader(&self, loaded_shader_path: &str) -> Option<ShaderType> {
         if &self.info.vs == loaded_shader_path {
@@ -209,7 +190,7 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
     fn can_compile(
         &self,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool {
         (loaded_shader_path.map_or(false, |s| s == &self.info.vs) || shaders.contains_key(&self.info.vs))
             && self
@@ -230,7 +211,7 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
     fn request_remaining_shaders(
         &self,
         loaded_shader_path: &str,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
         asset_manager: &Arc<AssetManager<P>>,
     ) {
         if &self.info.vs != loaded_shader_path && !shaders.contains_key(&self.info.vs) {
@@ -245,7 +226,7 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
 
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<P::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
     ) -> Self::TShaders {
         GraphicsShaders {
             vs: shaders.get(&self.info.vs).cloned().unwrap(),
@@ -260,7 +241,7 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
     fn compile(
         &self,
         shaders: Self::TShaders,
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<Device<P::GPUBackend>>,
     ) -> Arc<Self::TPipeline> {
         let subpasses: SmallVec<[SubpassInfo; 4]> = self
             .renderpass
@@ -292,8 +273,8 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
         };
 
         let info = ActualGraphicsPipelineInfo {
-            vs: &shaders.vs,
-            fs: shaders.fs.as_ref(),
+            vs: shaders.vs.as_ref(),
+            fs: shaders.fs.as_ref().map(|s| s.as_ref()),
             vertex_layout: input_layout,
             rasterizer: self.info.rasterizer.clone(),
             depth_stencil: self.info.depth_stencil.clone(),
@@ -313,7 +294,7 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
 // COMPUTE
 //
 
-struct ComputePipeline<B: Backend> {
+struct ComputePipeline<B: GPUBackend> {
     path: String,
     pipeline: Arc<B::ComputePipeline>,
 }
@@ -321,7 +302,7 @@ struct ComputePipeline<B: Backend> {
 struct ComputeCompileTask<P: Platform> {
     path: String,
     is_async: bool,
-    _p: PhantomData<<P::GraphicsBackend as Backend>::Device>,
+    _p: PhantomData<<P::GPUBackend as GPUBackend>::Device>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -336,8 +317,8 @@ impl IndexHandle for ComputePipelineHandle {
 }
 
 impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
-    type TShaders = Arc<<P::GraphicsBackend as Backend>::Shader>;
-    type TPipeline = <P::GraphicsBackend as Backend>::ComputePipeline;
+    type TShaders = Arc<<P::GPUBackend as GPUBackend>::Shader>;
+    type TPipeline = crate::graphics::ComputePipeline<P::GPUBackend>;
 
     fn contains_shader(&self, loaded_shader_path: &str) -> Option<ShaderType> {
         if self.path == loaded_shader_path {
@@ -354,7 +335,7 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
     fn request_remaining_shaders(
         &self,
         _loaded_shader_path: &str,
-        _shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        _shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
         _asset_manager: &Arc<AssetManager<P>>,
     ) {
     }
@@ -362,14 +343,14 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
     fn can_compile(
         &self,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool {
         loaded_shader_path.map_or(false, |s| s == &self.path) || shaders.contains_key(&self.path)
     }
 
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> Self::TShaders {
         shaders.get(&self.path).cloned().unwrap()
     }
@@ -377,7 +358,7 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
     fn compile(
         &self,
         shader: Self::TShaders,
-        device: &Arc<<<P as Platform>::GraphicsBackend as Backend>::Device>,
+        device: &Arc<Device<P::GPUBackend>>,
     ) -> Arc<Self::TPipeline> {
         device.create_compute_pipeline(&shader, None)
     }
@@ -393,7 +374,7 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
 
 struct RayTracingPipeline<P: Platform> {
     task: StoredRayTracingPipelineInfo<P>,
-    pipeline: Arc<<P::GraphicsBackend as Backend>::RayTracingPipeline>,
+    pipeline: Arc<crate::graphics::RayTracingPipeline<P::GPUBackend>>,
 }
 
 #[derive(Debug, Clone)]
@@ -409,7 +390,7 @@ struct StoredRayTracingPipelineInfo<P: Platform> {
     closest_hit_shaders: SmallVec<[String; 4]>,
     miss_shaders: SmallVec<[String; 1]>,
     is_async: bool,
-    _p: PhantomData<<P::GraphicsBackend as Backend>::Device>,
+    _p: PhantomData<<P::GPUBackend as GPUBackend>::Device>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -423,15 +404,15 @@ impl IndexHandle for RayTracingPipelineHandle {
     }
 }
 
-struct RayTracingShaders<B: Backend> {
+struct RayTracingShaders<B: GPUBackend> {
     pub ray_gen_shader: Arc<B::Shader>,
     pub closest_hit_shaders: SmallVec<[Arc<B::Shader>; 4]>,
     pub miss_shaders: SmallVec<[Arc<B::Shader>; 4]>,
 }
 
 impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
-    type TShaders = RayTracingShaders<P::GraphicsBackend>;
-    type TPipeline = <P::GraphicsBackend as Backend>::RayTracingPipeline;
+    type TShaders = RayTracingShaders<P::GPUBackend>;
+    type TPipeline = crate::graphics::RayTracingPipeline<P::GPUBackend>;
 
     fn contains_shader(&self, loaded_shader_path: &str) -> Option<ShaderType> {
         if &self.ray_gen_shader == loaded_shader_path {
@@ -467,7 +448,7 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
     fn request_remaining_shaders(
         &self,
         loaded_shader_path: &str,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
         asset_manager: &Arc<AssetManager<P>>,
     ) {
         if loaded_shader_path != &self.ray_gen_shader && !shaders.contains_key(&self.ray_gen_shader)
@@ -493,7 +474,7 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
     fn can_compile(
         &self,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool {
         if !loaded_shader_path.map_or(false, |s| s == &self.ray_gen_shader) && !shaders.contains_key(&self.ray_gen_shader)
         {
@@ -514,7 +495,7 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GraphicsBackend as Backend>::Shader>>,
+        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> Self::TShaders {
         Self::TShaders {
             ray_gen_shader: shaders.get(&self.ray_gen_shader).cloned().unwrap(),
@@ -534,18 +515,18 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
     fn compile(
         &self,
         shaders: Self::TShaders,
-        device: &Arc<<<P as Platform>::GraphicsBackend as Backend>::Device>,
+        device: &Arc<Device<P::GPUBackend>>,
     ) -> Arc<Self::TPipeline> {
-        let closest_hit_shader_refs: SmallVec<[&Arc<<P::GraphicsBackend as Backend>::Shader>; 4]> =
-            shaders.closest_hit_shaders.iter().map(|s| s).collect();
-        let miss_shaders_refs: SmallVec<[&Arc<<P::GraphicsBackend as Backend>::Shader>; 1]> =
-            shaders.miss_shaders.iter().map(|s| s).collect();
-        let info = ActualRayTracingPipelineInfo::<P::GraphicsBackend> {
+        let closest_hit_shader_refs: SmallVec<[&<P::GPUBackend as GPUBackend>::Shader; 4]> =
+            shaders.closest_hit_shaders.iter().map(|s| s.as_ref()).collect();
+        let miss_shaders_refs: SmallVec<[&<P::GPUBackend as GPUBackend>::Shader; 1]> =
+            shaders.miss_shaders.iter().map(|s| s.as_ref()).collect();
+        let info = ActualRayTracingPipelineInfo::<P::GPUBackend> {
             ray_gen_shader: &shaders.ray_gen_shader,
             closest_hit_shaders: &closest_hit_shader_refs[..],
             miss_shaders: &miss_shaders_refs[..],
         };
-        device.create_raytracing_pipeline(&info)
+        device.create_raytracing_pipeline(&info, None).unwrap()
     }
 
     fn is_async(&self) -> bool {
@@ -558,7 +539,7 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 //
 
 pub struct ShaderManager<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
+    device: Arc<Device<P::GPUBackend>>,
     asset_manager: Arc<AssetManager<P>>,
     graphics: Arc<PipelineTypeManager<P, GraphicsPipelineHandle, GraphicsCompileTask<P>>>,
     compute: Arc<PipelineTypeManager<P, ComputePipelineHandle, ComputeCompileTask<P>>>,
@@ -585,7 +566,7 @@ where
     T: PipelineCompileTask<P>,
 {
     next_handle_index: u64,
-    shaders: HashMap<String, Arc<<P::GraphicsBackend as Backend>::Shader>>,
+    shaders: HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
     compiled_pipelines: HashMap<THandle, CompiledPipeline<P, T>>,
     remaining_compilations: HashMap<THandle, T>,
 }
@@ -611,7 +592,7 @@ where
 
 impl<P: Platform> ShaderManager<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<Device<P::GPUBackend>>,
         asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         Self {
@@ -778,7 +759,7 @@ impl<P: Platform> ShaderManager<P> {
                     let shader =
                         self.device
                             .create_shader(shader_type, shader_bytecode, Some(path));
-                    inner.shaders.insert(path.to_string(), shader);
+                    inner.shaders.insert(path.to_string(), Arc::new(shader));
                 } else {
                     return false;
                 }
@@ -900,42 +881,42 @@ impl<P: Platform> ShaderManager<P> {
     pub fn try_get_graphics_pipeline(
         &self,
         handle: GraphicsPipelineHandle,
-    ) -> Option<Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline>> {
+    ) -> Option<Arc<crate::graphics::GraphicsPipeline<P::GPUBackend>>> {
         self.try_get_pipeline_internal(&self.graphics, handle)
     }
 
     pub fn get_graphics_pipeline(
         &self,
         handle: GraphicsPipelineHandle,
-    ) -> Arc<<P::GraphicsBackend as Backend>::GraphicsPipeline> {
+    ) -> Arc<crate::graphics::GraphicsPipeline<P::GPUBackend>> {
         self.get_pipeline_internal(&self.graphics, handle)
     }
 
     pub fn try_get_compute_pipeline(
         &self,
         handle: ComputePipelineHandle,
-    ) -> Option<Arc<<P::GraphicsBackend as Backend>::ComputePipeline>> {
+    ) -> Option<Arc<crate::graphics::ComputePipeline<P::GPUBackend>>> {
         self.try_get_pipeline_internal(&self.compute, handle)
     }
 
     pub fn get_compute_pipeline(
         &self,
         handle: ComputePipelineHandle,
-    ) -> Arc<<P::GraphicsBackend as Backend>::ComputePipeline> {
+    ) -> Arc<crate::graphics::ComputePipeline<P::GPUBackend>> {
         self.get_pipeline_internal(&self.compute, handle)
     }
 
     pub fn try_get_ray_tracing_pipeline(
         &self,
         handle: RayTracingPipelineHandle,
-    ) -> Option<Arc<<P::GraphicsBackend as Backend>::RayTracingPipeline>> {
+    ) -> Option<Arc<crate::graphics::RayTracingPipeline<P::GPUBackend>>> {
         self.try_get_pipeline_internal(&self.rt, handle)
     }
 
     pub fn get_ray_tracing_pipeline(
         &self,
         handle: RayTracingPipelineHandle,
-    ) -> Arc<<P::GraphicsBackend as Backend>::RayTracingPipeline> {
+    ) -> Arc<crate::graphics::RayTracingPipeline<P::GPUBackend>> {
         self.get_pipeline_internal(&self.rt, handle)
     }
 }

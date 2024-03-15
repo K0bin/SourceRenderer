@@ -10,20 +10,21 @@ use parking_lot::{
     ReentrantMutexGuard,
 };
 
-use crate::queue::VkQueueInfo;
+use crate::VkQueueInfo;
 use crate::raw::RawVkInstance;
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
   pub struct VkFeatures : u32 {
     const DESCRIPTOR_INDEXING        = 0b1;
-    const DEDICATED_ALLOCATION       = 0b10;
+    const MEMORY_BUDGET              = 0b10;
     const DESCRIPTOR_TEMPLATE        = 0b100;
     const RAY_TRACING                = 0b1000;
     const ADVANCED_INDIRECT          = 0b10000;
     const MIN_MAX_FILTER             = 0b100000;
     const BARYCENTRICS               = 0b1000000;
     const IMAGE_FORMAT_LIST          = 0b10000000;
+    const MAINTENANCE4               = 0b100000000;
   }
 }
 
@@ -45,6 +46,7 @@ pub struct RawVkDevice {
     pub supports_d24: bool,
     pub timeline_semaphores: ash::extensions::khr::TimelineSemaphore,
     pub synchronization2: ash::extensions::khr::Synchronization2,
+    pub maintenance4: Option<ash::extensions::khr::Maintenance4>,
     pub properties: vk::PhysicalDeviceProperties,
 }
 
@@ -121,6 +123,12 @@ impl RawVkDevice {
         let timeline_semaphores = ash::extensions::khr::TimelineSemaphore::new(&instance, &device);
         let synchronization2 = ash::extensions::khr::Synchronization2::new(&instance, &device);
 
+        let maintenance4 = if features.intersects(VkFeatures::MAINTENANCE4) {
+            Some(ash::extensions::khr::Maintenance4::new(&instance, &device))
+        } else {
+            None
+        };
+
         Self {
             device,
             allocator,
@@ -140,6 +148,7 @@ impl RawVkDevice {
             timeline_semaphores,
             synchronization2,
             properties: properties.properties,
+            maintenance4
         }
     }
 

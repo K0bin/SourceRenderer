@@ -1,8 +1,7 @@
-use crate::graphics::{Format, SampleCount, CompareFunc, Backend};
-use std::sync::Arc;
+use super::*;
 
 bitflags! {
-  #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+  #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
   pub struct TextureUsage: u32 {
     const SAMPLED       = 0b1;
     const RENDER_TARGET = 0b10;
@@ -17,7 +16,7 @@ bitflags! {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum TextureLayout {
   Undefined,
   General,
@@ -39,7 +38,7 @@ impl Default for TextureLayout {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum TextureDimension {
   Dim1D,
   Dim2D,
@@ -48,7 +47,7 @@ pub enum TextureDimension {
   Dim2DArray,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
   pub dimension: TextureDimension,
   pub format: Format,
@@ -62,10 +61,6 @@ pub struct TextureInfo {
   pub supports_srgb: bool
 }
 
-pub trait Texture {
-  fn info(&self) -> &TextureInfo;
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Filter {
   Linear,
@@ -74,7 +69,7 @@ pub enum Filter {
   Max,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum AddressMode {
   Repeat,
   MirroredRepeat,
@@ -82,7 +77,8 @@ pub enum AddressMode {
   ClampToBorder
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureViewInfo {
   pub base_mip_level: u32,
   pub mip_level_length: u32,
@@ -103,6 +99,13 @@ impl Default for TextureViewInfo {
   }
 }
 
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct TextureSubresource {
+  pub array_layer: u32,
+  pub mip_level: u32
+}
+
 #[derive(Clone)]
 pub struct SamplerInfo {
   pub mag_filter: Filter,
@@ -118,7 +121,15 @@ pub struct SamplerInfo {
   pub max_lod: Option<f32>,
 }
 
-pub trait TextureView<B: Backend> {
-  fn texture(&self) -> &Arc<B::Texture>;
+pub trait Texture : Send + Sync + PartialEq + Eq {
+  fn info(&self) -> &TextureInfo;
+}
+
+pub trait TextureView : Send + Sync + PartialEq + Eq {
+  fn texture_info(&self) -> &TextureInfo;
   fn info(&self) -> &TextureViewInfo;
+}
+
+pub trait Sampler : Send + Sync {
+  fn info(&self) -> &SamplerInfo;
 }

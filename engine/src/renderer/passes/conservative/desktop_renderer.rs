@@ -2,25 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::{
-    Backend,
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    BindingFrequency,
-    BufferInfo,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    MemoryUsage,
-    Queue,
-    Swapchain,
-    SwapchainError,
-    TextureLayout,
-    TextureView,
-    WHOLE_BUFFER, FenceRef,
-};
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -57,8 +39,8 @@ use crate::renderer::LateLatching;
 
 pub struct ConservativeRenderer<P: Platform> {
     swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    barriers: RendererResources<P::GraphicsBackend>,
+    device: Arc<crate::graphics::Device<P::GPUBackend>>,
+    barriers: RendererResources<P::GPUBackend>,
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     prepass: Prepass,
@@ -68,7 +50,7 @@ pub struct ConservativeRenderer<P: Platform> {
     ssao: SsaoPass<P>,
     occlusion: OcclusionPass<P>,
     rt_passes: Option<RTPasses<P>>,
-    blue_noise: BlueNoise<P::GraphicsBackend>,
+    blue_noise: BlueNoise<P::GPUBackend>,
 }
 
 pub struct RTPasses<P: Platform> {
@@ -76,27 +58,27 @@ pub struct RTPasses<P: Platform> {
     shadows: RTShadowPass,
 }
 
-pub struct FrameBindings<B: Backend> {
-    gpu_scene_buffer: Arc<B::Buffer>,
-    camera_buffer: Arc<B::Buffer>,
-    camera_history_buffer: Arc<B::Buffer>,
-    vertex_buffer: Arc<B::Buffer>,
-    index_buffer: Arc<B::Buffer>,
-    directional_lights: Arc<B::Buffer>,
-    point_lights: Arc<B::Buffer>,
-    setup_buffer: Arc<B::Buffer>,
+pub struct FrameBindings<B: GPUBackend> {
+    gpu_scene_buffer: Arc<crate::graphics::BufferSlice<B>>,
+    camera_buffer: Arc<crate::graphics::BufferSlice<B>>,
+    camera_history_buffer: Arc<crate::graphics::BufferSlice<B>>,
+    vertex_buffer: Arc<crate::graphics::BufferSlice<B>>,
+    index_buffer: Arc<crate::graphics::BufferSlice<B>>,
+    directional_lights: Arc<crate::graphics::BufferSlice<B>>,
+    point_lights: Arc<crate::graphics::BufferSlice<B>>,
+    setup_buffer: Arc<crate::graphics::BufferSlice<B>>,
 }
 
 impl<P: Platform> ConservativeRenderer<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
-        let mut barriers = RendererResources::<P::GraphicsBackend>::new(device);
+        let mut barriers = RendererResources::<P::GPUBackend>::new(device);
 
         let blue_noise = BlueNoise::new::<P>(device);
 
@@ -141,15 +123,15 @@ impl<P: Platform> ConservativeRenderer<P> {
 
     fn create_frame_bindings(
         &self,
-        cmd_buf: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
-        scene: &SceneInfo<P::GraphicsBackend>,
+        cmd_buf: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        scene: &SceneInfo<P::GPUBackend>,
         gpu_scene_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
         swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
         rendering_resolution: &Vec2UI,
         frame: u64,
-    ) -> FrameBindings<P::GraphicsBackend> {
+    ) -> FrameBindings<P::GPUBackend> {
         let view = &scene.views[scene.active_view_index];
 
         let cluster_count = self.clustering_pass.cluster_count();
@@ -252,9 +234,9 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     #[profiling::function]
     fn render(
         &mut self,
-        scene: &SceneInfo<P::GraphicsBackend>,
-        zero_textures: &ZeroTextures<P::GraphicsBackend>,
-        late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
+        scene: &SceneInfo<P::GPUBackend>,
+        zero_textures: &ZeroTextures<P::GPUBackend>,
+        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
         input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
@@ -286,7 +268,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
             frame_info.frame,
         );
-        setup_frame::<P::GraphicsBackend>(&mut cmd_buf, &frame_bindings);
+        setup_frame::<P::GPUBackend>(&mut cmd_buf, &frame_bindings);
 
         let params = RenderPassParameters {
             device: self.device.as_ref(),
@@ -434,12 +416,12 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         Ok(())
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GraphicsBackend>) {
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
         todo!()
     }
 }
 
-pub fn setup_frame<B: Backend>(cmd_buf: &mut B::CommandBuffer, frame_bindings: &FrameBindings<B>) {
+pub fn setup_frame<B: GPUBackend>(cmd_buf: &mut B::CommandBuffer, frame_bindings: &FrameBindings<B>) {
     for i in 0..6 {
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,

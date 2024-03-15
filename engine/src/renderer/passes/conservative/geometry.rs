@@ -4,7 +4,6 @@ use std::sync::Arc;
 use nalgebra::Vector2;
 use rayon::prelude::*;
 use smallvec::SmallVec;
-use sourcerenderer_core::graphics::*;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -49,7 +48,7 @@ struct FrameData {
 }
 
 pub struct GeometryPass<P: Platform> {
-    sampler: Arc<<P::GraphicsBackend as Backend>::Sampler>,
+    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
     pipeline: GraphicsPipelineHandle,
 }
 
@@ -59,9 +58,9 @@ impl<P: Platform> GeometryPass<P> {
     const DRAWABLE_LABELS: bool = false;
 
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
+        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         resolution: Vec2UI,
-        barriers: &mut RendererResources<P::GraphicsBackend>,
+        barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let texture_info = TextureInfo {
@@ -206,10 +205,10 @@ impl<P: Platform> GeometryPass<P> {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut <P::GraphicsBackend as Backend>::CommandBuffer,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
-        bindings: &FrameBindings<P::GraphicsBackend>,
+        bindings: &FrameBindings<P::GPUBackend>,
     ) {
         cmd_buffer.begin_label("Geometry pass");
         let static_drawables = pass_params.scene.scene.static_drawables();
@@ -283,7 +282,7 @@ impl<P: Platform> GeometryPass<P> {
 
         /*let clusters = barriers.access_buffer(
           cmd_buffer,
-          ClusteringPass::<P::GraphicsBackend>::CLUSTERS_BUFFER_NAME,
+          ClusteringPass::<P::GPUBackend>::CLUSTERS_BUFFER_NAME,
           BarrierSync::FRAGMENT_SHADER,
           BarrierAccess::STORAGE_READ,
           HistoryResourceEntry::Current
@@ -387,9 +386,9 @@ impl<P: Platform> GeometryPass<P> {
                         command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
                     }
 
-                    setup_frame::<P::GraphicsBackend>(&mut command_buffer, bindings);
+                    setup_frame::<P::GPUBackend>(&mut command_buffer, bindings);
 
-                    command_buffer.upload_dynamic_data_inline(
+                    command_buffer.set_push_constant_data(
                         &[drawable.transform],
                         ShaderType::VertexShader,
                     );

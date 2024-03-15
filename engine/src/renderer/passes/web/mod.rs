@@ -1,15 +1,8 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::graphics::{
-    Backend,
-    CommandBuffer,
-    Device,
-    Queue,
-    Swapchain,
-    SwapchainError, FenceRef,
-};
 use sourcerenderer_core::Platform;
 
+use crate::graphics::GraphicsContext;
 use crate::input::Input;
 use crate::renderer::render_path::{
     FrameInfo,
@@ -22,24 +15,26 @@ use crate::renderer::renderer_resources::RendererResources;
 use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::LateLatching;
 
+use crate::graphics::*;
+
 mod geometry;
 
 use self::geometry::GeometryPass;
 
 pub struct WebRenderer<P: Platform> {
-    device: Arc<<P::GraphicsBackend as Backend>::Device>,
-    swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    device: Arc<Device<P::GPUBackend>>,
+    swapchain: Arc<Swapchain<P::GPUBackend>>,
     geometry: GeometryPass<P>,
-    resources: RendererResources<P::GraphicsBackend>,
+    resources: RendererResources<P::GPUBackend>,
 }
 
 impl<P: Platform> WebRenderer<P> {
     pub fn new(
-        device: &Arc<<P::GraphicsBackend as Backend>::Device>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        device: &Arc<Device<P::GPUBackend>>,
+        swapchain: &Arc<Swapchain<P::GPUBackend>>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let mut resources = RendererResources::<P::GraphicsBackend>::new(device);
+        let mut resources = RendererResources::<P::GPUBackend>::new(device);
         let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
         let geometry_pass = GeometryPass::<P>::new(
             device,
@@ -72,20 +67,21 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        _swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        _swapchain: &Arc<Swapchain<P::GPUBackend>>,
     ) {
     }
 
     fn render(
         &mut self,
-        scene: &SceneInfo<P::GraphicsBackend>,
-        _zero_textures: &ZeroTextures<P::GraphicsBackend>,
-        late_latching: Option<&dyn LateLatching<P::GraphicsBackend>>,
+        context: &mut GraphicsContext<P::GPUBackend>,
+        scene: &SceneInfo<P::GPUBackend>,
+        _zero_textures: &ZeroTextures<P::GPUBackend>,
+        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
         input: &Input,
         _frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
-    ) -> Result<(), sourcerenderer_core::graphics::SwapchainError> {
+    ) -> Result<(), sourcerenderer_core::gpu::SwapchainError> {
         let back_buffer_res = self.swapchain.prepare_back_buffer();
         if back_buffer_res.is_none() {
             return Err(SwapchainError::Other);
@@ -128,7 +124,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         Ok(())
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GraphicsBackend>) {
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
         todo!()
     }
 }
