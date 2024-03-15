@@ -153,7 +153,7 @@ impl Queue<VkBackend> for VkQueue {
             })
             .collect();
 
-        self.device.synchronization2
+        self.device
             .queue_submit2(*guard, &vk_submissions, vk::Fence::null())
             .unwrap();
     }

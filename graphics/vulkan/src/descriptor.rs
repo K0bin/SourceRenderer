@@ -145,7 +145,6 @@ impl VkDescriptorSetLayout {
         let template = if !flags
             .contains(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT)
             && !vk_template_entries.is_empty()
-            && device.features.contains(VkFeatures::DESCRIPTOR_TEMPLATE)
         {
             Some(unsafe { device.create_descriptor_update_template(&template_info, None) }.unwrap())
         } else {

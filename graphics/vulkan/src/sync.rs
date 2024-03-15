@@ -46,7 +46,6 @@ impl VkTimelineSemaphore {
     pub unsafe fn await_value(&self, value: u64) {
         unsafe {
             self.device
-                .timeline_semaphores
                 .wait_semaphores(
                     &vk::SemaphoreWaitInfo {
                         flags: vk::SemaphoreWaitFlags::empty(),
@@ -64,7 +63,6 @@ impl VkTimelineSemaphore {
     pub unsafe fn value(&self) -> u64 {
         unsafe {
             self.device
-                .timeline_semaphores
                 .get_semaphore_counter_value(self.semaphore)
                 .unwrap()
         }
@@ -83,7 +81,6 @@ impl Fence for VkTimelineSemaphore {
     unsafe fn value(&self) -> u64 {
         unsafe {
             self.device
-                .timeline_semaphores
                 .get_semaphore_counter_value(self.semaphore)
                 .unwrap()
         }
@@ -98,7 +95,7 @@ impl Fence for VkTimelineSemaphore {
                 p_values: &value as *const u64,
                 ..Default::default()
             };
-            self.device.timeline_semaphores.wait_semaphores(&wait_info, std::u64::MAX).unwrap();
+            self.device.wait_semaphores(&wait_info, std::u64::MAX).unwrap();
         }
     }
 }

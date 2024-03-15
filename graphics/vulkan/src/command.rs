@@ -961,7 +961,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             };
             unsafe {
                 self.device
-                    .synchronization2
                     .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
             }
             pending_memory_barriers[0].src_stage_mask = vk::PipelineStageFlags2::empty();
@@ -1011,7 +1010,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         };
 
         self.device
-            .synchronization2
             .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
     }
 
@@ -1270,9 +1268,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         );
         unsafe {
             self.device
-                .indirect_count
-                .as_ref()
-                .unwrap()
                 .cmd_draw_indexed_indirect_count(
                     self.cmd_buffer,
                     draw_buffer.handle(),
@@ -1304,9 +1299,6 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         );
         unsafe {
             self.device
-                .indirect_count
-                .as_ref()
-                .unwrap()
                 .cmd_draw_indirect_count(
                     self.cmd_buffer,
                     draw_buffer.handle(),

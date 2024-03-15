@@ -27,16 +27,12 @@ impl VkInstance {
         let extensions = entry.enumerate_instance_extension_properties(None).unwrap();
         let layers = entry.enumerate_instance_layer_properties().unwrap();
         let mut supports_khronos_validation = false;
-        let mut supports_lunarg_validation = false;
         let mut supports_debug_utils = false;
         for layer in &layers {
             let name = unsafe { CStr::from_ptr(&layer.layer_name as *const c_char) };
             match name.to_str().unwrap() {
                 "VK_LAYER_KHRONOS_validation" => {
                     supports_khronos_validation = true;
-                }
-                "VK_LAYER_LUNARG_standard_validation" => {
-                    supports_lunarg_validation = true;
                 }
                 _ => {}
             }
@@ -49,9 +45,9 @@ impl VkInstance {
             }
         }
 
-        let app_name = CString::new("CS:GO").unwrap();
+        let app_name = CString::new("Dreieck").unwrap();
         let app_name_ptr = app_name.as_ptr();
-        let engine_name = CString::new("SourceRenderer").unwrap();
+        let engine_name = CString::new("Dreieck").unwrap();
         let engine_name_ptr = engine_name.as_ptr();
 
         let mut layer_names_c: Vec<CString> = Vec::new();
@@ -63,11 +59,6 @@ impl VkInstance {
         if debug_layers {
             if supports_khronos_validation {
                 layer_names_c.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
-            } else if supports_lunarg_validation {
-                println!(
-                    "Khronos validation layers not installed, falling back to old LunarG ones"
-                );
-                layer_names_c.push(CString::new("VK_LAYER_LUNARG_standard_validation").unwrap());
             } else {
                 println!("Validation layers not installed");
             }
@@ -99,7 +90,7 @@ impl VkInstance {
             .collect();
 
         let app_info = vk::ApplicationInfo {
-            api_version: vk::make_api_version(0, 1, 1, 126),
+            api_version: vk::make_api_version(0, 1, 3, 280),
             application_version: vk::make_api_version(0, 0, 0, 1),
             engine_version: vk::make_api_version(0, 0, 0, 1),
             p_application_name: app_name_ptr,
@@ -186,7 +177,7 @@ impl VkInstance {
 
         if callback_data.message_id_number == 688222058 {
             // False positive about setting the viewport & scissor for ray tracing pipelines
-            //return vk::FALSE;
+            return vk::FALSE;
         }
 
         if message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {

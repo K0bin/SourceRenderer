@@ -18,7 +18,6 @@ bitflags! {
   pub struct VkFeatures : u32 {
     const DESCRIPTOR_INDEXING        = 0b1;
     const MEMORY_BUDGET              = 0b10;
-    const DESCRIPTOR_TEMPLATE        = 0b100;
     const RAY_TRACING                = 0b1000;
     const ADVANCED_INDIRECT          = 0b10000;
     const MIN_MAX_FILTER             = 0b100000;
@@ -42,11 +41,7 @@ pub struct RawVkDevice {
     pub compute_queue: Option<ReentrantMutex<vk::Queue>>,
     pub transfer_queue: Option<ReentrantMutex<vk::Queue>>,
     pub rt: Option<RawVkRTEntries>,
-    pub indirect_count: Option<ash::extensions::khr::DrawIndirectCount>,
     pub supports_d24: bool,
-    pub timeline_semaphores: ash::extensions::khr::TimelineSemaphore,
-    pub synchronization2: ash::extensions::khr::Synchronization2,
-    pub maintenance4: Option<ash::extensions::khr::Maintenance4>,
     pub properties: vk::PhysicalDeviceProperties,
 }
 
@@ -57,7 +52,6 @@ pub struct RawVkRTEntries {
     pub acceleration_structure: khr::AccelerationStructure,
     pub rt_pipelines: khr::RayTracingPipeline,
     pub deferred_operations: khr::DeferredHostOperations,
-    pub bda: khr::BufferDeviceAddress,
     pub rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
 }
 
@@ -96,7 +90,6 @@ impl RawVkDevice {
                 acceleration_structure: khr::AccelerationStructure::new(&instance, &device),
                 rt_pipelines: khr::RayTracingPipeline::new(&instance, &device),
                 deferred_operations: khr::DeferredHostOperations::new(&instance, &device),
-                bda: khr::BufferDeviceAddress::new(&instance, &device),
                 rt_pipeline_properties,
             })
         } else {
@@ -116,19 +109,6 @@ impl RawVkDevice {
             .optimal_tiling_features
             .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT);
 
-        let indirect_count = features
-            .contains(VkFeatures::ADVANCED_INDIRECT)
-            .then(|| ash::extensions::khr::DrawIndirectCount::new(&instance, &device));
-
-        let timeline_semaphores = ash::extensions::khr::TimelineSemaphore::new(&instance, &device);
-        let synchronization2 = ash::extensions::khr::Synchronization2::new(&instance, &device);
-
-        let maintenance4 = if features.intersects(VkFeatures::MAINTENANCE4) {
-            Some(ash::extensions::khr::Maintenance4::new(&instance, &device))
-        } else {
-            None
-        };
-
         Self {
             device,
             allocator,
@@ -143,12 +123,8 @@ impl RawVkDevice {
             transfer_queue: transfer_queue.map(ReentrantMutex::new),
             is_alive: AtomicBool::new(true),
             rt,
-            indirect_count,
             supports_d24,
-            timeline_semaphores,
-            synchronization2,
             properties: properties.properties,
-            maintenance4
         }
     }
 

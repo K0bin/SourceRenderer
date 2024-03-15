@@ -407,21 +407,11 @@ impl Device<VkBackend> for VkDevice {
         let mut requirements = vk::MemoryRequirements2::default();
         let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
         requirements.p_next = &mut dedicated_requirements as *mut vk::MemoryDedicatedRequirements as *mut c_void;
-        if self.device.features.contains(VkFeatures::MAINTENANCE4) {
-            let buffer_requirements_info = vk::DeviceBufferMemoryRequirements {
-                p_create_info: &buffer_info as *const vk::BufferCreateInfo,
-                ..Default::default()
-            };
-            self.device.maintenance4.as_ref().unwrap().get_device_buffer_memory_requirements(&buffer_requirements_info, &mut requirements);
-        } else {
-            let buffer = self.device.create_buffer(&buffer_info, None).unwrap();
-            let buffer_requirements_info = vk::BufferMemoryRequirementsInfo2 {
-                buffer,
-                ..Default::default()
-            };
-            self.device.get_buffer_memory_requirements2(&buffer_requirements_info, &mut requirements);
-            self.device.destroy_buffer(buffer, None);
-        }
+        let buffer_requirements_info = vk::DeviceBufferMemoryRequirements {
+            p_create_info: &buffer_info as *const vk::BufferCreateInfo,
+            ..Default::default()
+        };
+        self.device.get_device_buffer_memory_requirements(&buffer_requirements_info, &mut requirements);
 
         ResourceHeapInfo {
             prefer_dedicated_allocation: dedicated_requirements.prefers_dedicated_allocation == vk::TRUE || dedicated_requirements.requires_dedicated_allocation == vk::TRUE,
@@ -477,32 +467,20 @@ impl Device<VkBackend> for VkDevice {
         };
         if info.supports_srgb {
             image_info.flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
-            if self.device.features.contains(VkFeatures::IMAGE_FORMAT_LIST) {
-                format_list.p_next = std::mem::replace(
-                    &mut image_info.p_next,
-                    &format_list as *const vk::ImageFormatListCreateInfo as *const c_void,
-                );
-            }
+            format_list.p_next = std::mem::replace(
+                &mut image_info.p_next,
+                &format_list as *const vk::ImageFormatListCreateInfo as *const c_void,
+            );
         }
 
         let mut requirements = vk::MemoryRequirements2::default();
         let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
         requirements.p_next = &mut dedicated_requirements as *mut vk::MemoryDedicatedRequirements as *mut c_void;
-        if self.device.features.contains(VkFeatures::MAINTENANCE4) {
-            let image_requirements_info = vk::DeviceImageMemoryRequirements {
-                p_create_info: &image_info as *const vk::ImageCreateInfo,
-                ..Default::default()
-            };
-            self.device.maintenance4.as_ref().unwrap().get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
-        } else {
-            let image = self.device.create_image(&image_info, None).unwrap();
-            let image_requirements_info = vk::ImageMemoryRequirementsInfo2 {
-                image,
-                ..Default::default()
-            };
-            self.device.get_image_memory_requirements2(&image_requirements_info, &mut requirements);
-            self.device.destroy_image(image, None);
-        }
+        let image_requirements_info = vk::DeviceImageMemoryRequirements {
+            p_create_info: &image_info as *const vk::ImageCreateInfo,
+            ..Default::default()
+        };
+        self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
 
         ResourceHeapInfo {
             prefer_dedicated_allocation: dedicated_requirements.prefers_dedicated_allocation == vk::TRUE || dedicated_requirements.requires_dedicated_allocation == vk::TRUE,

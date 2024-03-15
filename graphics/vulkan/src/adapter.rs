@@ -18,24 +18,13 @@ use sourcerenderer_core::gpu::*;
 use super::*;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
-const MAINTENANCE4_EXT_NAME: &str = "VK_KHR_maintenance4";
 const MEMORY_BUDGET_EXT_NAME: &str = "VK_EXT_memory_budget";
-const SHADER_NON_SEMANTIC_INFO_EXT_NAME: &str = "VK_KHR_shader_non_semantic_info";
-const DESCRIPTOR_INDEXING_EXT_NAME: &str = "VK_EXT_descriptor_indexing";
 const ACCELERATION_STRUCTURE_EXT_NAME: &str = "VK_KHR_acceleration_structure";
-const BUFFER_DEVICE_ADDRESS_EXT_NAME: &str = "VK_KHR_buffer_device_address";
 const DEFERRED_HOST_OPERATIONS_EXT_NAME: &str = "VK_KHR_deferred_host_operations";
 const RAY_TRACING_PIPELINE_EXT_NAME: &str = "VK_KHR_ray_tracing_pipeline";
 const RAY_QUERY_EXT_NAME: &str = "VK_KHR_ray_query";
 const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
-const SPIRV_1_4_EXT_NAME: &str = "VK_KHR_spirv_1_4";
-const SHADER_FLOAT_CONTROLS_EXT_NAME: &str = "VK_KHR_shader_float_controls";
-const DRAW_INDIRECT_COUNT_EXT_NAME: &str = "VK_KHR_draw_indirect_count";
-const TIMELINE_SEMAPHORE_EXT_NAME: &str = "VK_KHR_timeline_semaphore";
-const SYNCHRONIZATION2_EXT_NAME: &str = "VK_KHR_synchronization2";
-const SAMPLER_FILTER_MINMAX_EXT_NAME: &str = "VK_EXT_sampler_filter_minmax";
 const BARYCENTRICS_EXT_NAME: &str = "VK_NV_fragment_shader_barycentric"; // TODO: Use VK_KHR_fragment_shader_barycentric
-const IMAGE_FORMAT_LIST_EXT_NAME: &str = "VK_KHR_image_format_list";
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -43,24 +32,12 @@ bitflags! {
     const NONE                       = 0b0;
     const SWAPCHAIN                  = 0b1;
     const MEMORY_BUDGET              = 0b10;
-    const MAINTENANCE4               = 0b100;
-    const DESCRIPTOR_UPDATE_TEMPLATE = 0b1000;
-    const SHADER_NON_SEMANTIC_INFO   = 0b10000;
-    const DESCRIPTOR_INDEXING        = 0b100000;
     const ACCELERATION_STRUCTURE     = 0b1000000;
-    const BUFFER_DEVICE_ADDRESS      = 0b10000000;
     const DEFERRED_HOST_OPERATIONS   = 0b100000000;
     const RAY_TRACING_PIPELINE       = 0b1000000000;
     const RAY_QUERY                  = 0b10000000000;
     const PIPELINE_LIBRARY           = 0b100000000000;
-    const SPIRV_1_4                  = 0b1000000000000;
-    const SHADER_FLOAT_CONTROLS      = 0b10000000000000;
-    const DRAW_INDIRECT_COUNT        = 0b100000000000000;
-    const TIMELINE_SEMAPHORE         = 0b1000000000000000;
-    const SYNCHRONIZATION2           = 0b10000000000000000;
-    const SAMPLER_FILTER_MINMAX      = 0b100000000000000000;
     const BARYCENTRICS               = 0b1000000000000000000;
-    const IMAGE_FORMAT_LIST          = 0b10000000000000000000;
   }
 }
 
@@ -113,29 +90,16 @@ impl VkAdapter {
             extensions |= match name {
                 SWAPCHAIN_EXT_NAME => VkAdapterExtensionSupport::SWAPCHAIN,
                 MEMORY_BUDGET_EXT_NAME => VkAdapterExtensionSupport::MEMORY_BUDGET,
-                SHADER_NON_SEMANTIC_INFO_EXT_NAME => {
-                    VkAdapterExtensionSupport::SHADER_NON_SEMANTIC_INFO
-                }
-                DESCRIPTOR_INDEXING_EXT_NAME => VkAdapterExtensionSupport::DESCRIPTOR_INDEXING,
                 ACCELERATION_STRUCTURE_EXT_NAME => {
                     VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
                 }
                 PIPELINE_LIBRARY_EXT_NAME => VkAdapterExtensionSupport::PIPELINE_LIBRARY,
-                BUFFER_DEVICE_ADDRESS_EXT_NAME => VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS,
                 RAY_QUERY_EXT_NAME => VkAdapterExtensionSupport::RAY_QUERY,
                 RAY_TRACING_PIPELINE_EXT_NAME => VkAdapterExtensionSupport::RAY_TRACING_PIPELINE,
                 DEFERRED_HOST_OPERATIONS_EXT_NAME => {
                     VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS
                 }
-                SPIRV_1_4_EXT_NAME => VkAdapterExtensionSupport::SPIRV_1_4,
-                SHADER_FLOAT_CONTROLS_EXT_NAME => VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS,
-                DRAW_INDIRECT_COUNT_EXT_NAME => VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT,
-                TIMELINE_SEMAPHORE_EXT_NAME => VkAdapterExtensionSupport::TIMELINE_SEMAPHORE,
-                SYNCHRONIZATION2_EXT_NAME => VkAdapterExtensionSupport::SYNCHRONIZATION2,
-                SAMPLER_FILTER_MINMAX_EXT_NAME => VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX,
                 BARYCENTRICS_EXT_NAME => VkAdapterExtensionSupport::BARYCENTRICS,
-                IMAGE_FORMAT_LIST_EXT_NAME => VkAdapterExtensionSupport::IMAGE_FORMAT_LIST,
-                MAINTENANCE4_EXT_NAME => VkAdapterExtensionSupport::MAINTENANCE4,
                 _ => VkAdapterExtensionSupport::NONE,
             };
         }
@@ -305,23 +269,19 @@ impl Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
 
-            if self
-                .extensions
-                .intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING)
-            {
-                supported_descriptor_indexing_features.p_next = std::mem::replace(
-                    &mut supported_features.p_next,
-                    &mut supported_descriptor_indexing_features
-                        as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT
-                        as *mut c_void,
-                );
-                descriptor_indexing_properties.p_next = std::mem::replace(
-                    &mut properties.p_next,
-                    &mut descriptor_indexing_properties
-                        as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT
-                        as *mut c_void,
-                );
-            }
+
+            supported_descriptor_indexing_features.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_descriptor_indexing_features
+                    as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT
+                    as *mut c_void,
+            );
+            descriptor_indexing_properties.p_next = std::mem::replace(
+                &mut properties.p_next,
+                &mut descriptor_indexing_properties
+                    as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT
+                    as *mut c_void,
+            );
             if self
                 .extensions
                 .intersects(VkAdapterExtensionSupport::ACCELERATION_STRUCTURE)
@@ -344,29 +304,21 @@ impl Adapter<VkBackend> for VkAdapter {
                         as *mut c_void,
                 );
             }
-            if self
-                .extensions
-                .intersects(VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS)
-            {
-                supported_bda_features.p_next = std::mem::replace(
-                    &mut supported_features.p_next,
-                    &mut supported_bda_features
-                        as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR
-                        as *mut c_void,
-                );
-            }
 
-            if self
-                .extensions
-                .intersects(VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX)
-            {
-                filter_min_max_properties.p_next = std::mem::replace(
-                    &mut properties.p_next,
-                    &mut filter_min_max_properties
-                        as *mut vk::PhysicalDeviceSamplerFilterMinmaxProperties
-                        as *mut c_void,
-                );
-            }
+            supported_bda_features.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_bda_features
+                    as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR
+                    as *mut c_void,
+            );
+
+
+            filter_min_max_properties.p_next = std::mem::replace(
+                &mut properties.p_next,
+                &mut filter_min_max_properties
+                    as *mut vk::PhysicalDeviceSamplerFilterMinmaxProperties
+                    as *mut c_void,
+            );
 
             if !supported_features
                 .features
@@ -400,17 +352,12 @@ impl Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
 
-            if self
-                .extensions
-                .intersects(VkAdapterExtensionSupport::MAINTENANCE4)
-            {
-                supported_maintenance4_features.p_next = std::mem::replace(
-                    &mut supported_features.p_next,
-                    &mut supported_maintenance4_features
-                        as *mut vk::PhysicalDeviceMaintenance4Features
-                        as *mut c_void,
-                );
-            }
+            supported_maintenance4_features.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_maintenance4_features
+                    as *mut vk::PhysicalDeviceMaintenance4Features
+                    as *mut c_void,
+            );
 
             self.instance
                 .get_physical_device_features2(self.physical_device, &mut supported_features);
@@ -452,18 +399,7 @@ impl Adapter<VkBackend> for VkAdapter {
                 features |= VkFeatures::MEMORY_BUDGET;
             }
 
-            if self.instance.debug_utils.is_some()
-                && self
-                    .extensions
-                    .intersects(VkAdapterExtensionSupport::SHADER_NON_SEMANTIC_INFO)
-            {
-                extension_names.push(SHADER_NON_SEMANTIC_INFO_EXT_NAME);
-            }
-
-            let supports_descriptor_indexing = self
-                .extensions
-                .intersects(VkAdapterExtensionSupport::DESCRIPTOR_INDEXING)
-                && supported_descriptor_indexing_features
+            let supports_descriptor_indexing = supported_descriptor_indexing_features
                     .shader_sampled_image_array_non_uniform_indexing
                     == vk::TRUE
                 && supported_descriptor_indexing_features
@@ -485,15 +421,9 @@ impl Adapter<VkBackend> for VkAdapter {
                     .max_descriptor_set_update_after_bind_sampled_images
                     > BINDLESS_TEXTURE_COUNT;
 
-            let supports_bda = self
-                .extensions
-                .contains(VkAdapterExtensionSupport::BUFFER_DEVICE_ADDRESS)
-                && supported_bda_features.buffer_device_address == vk::TRUE;
+            let supports_bda = supported_bda_features.buffer_device_address == vk::TRUE;
 
-            let supports_indirect = self
-                .extensions
-                .contains(VkAdapterExtensionSupport::DRAW_INDIRECT_COUNT)
-                && supported_features.features.draw_indirect_first_instance == vk::TRUE
+            let supports_indirect = supported_features.features.draw_indirect_first_instance == vk::TRUE
                 && supported_features.features.multi_draw_indirect == vk::TRUE
                 && supports_bda;
 
@@ -501,9 +431,7 @@ impl Adapter<VkBackend> for VkAdapter {
                 && self.extensions.contains(
                     VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
                         | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
-                        | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS
-                        | VkAdapterExtensionSupport::SPIRV_1_4
-                        | VkAdapterExtensionSupport::SHADER_FLOAT_CONTROLS,
+                        | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS,
                 )
                 && supported_acceleration_structure_features.acceleration_structure == vk::TRUE
                 && supported_rt_pipeline_features.ray_tracing_pipeline == vk::TRUE
@@ -511,7 +439,6 @@ impl Adapter<VkBackend> for VkAdapter {
 
             if supports_descriptor_indexing {
                 println!("Bindless supported.");
-                extension_names.push(DESCRIPTOR_INDEXING_EXT_NAME);
                 descriptor_indexing_features.p_next = std::mem::replace(
                     &mut device_creation_pnext,
                     &mut descriptor_indexing_features
@@ -537,8 +464,6 @@ impl Adapter<VkBackend> for VkAdapter {
                 extension_names.push(ACCELERATION_STRUCTURE_EXT_NAME);
                 extension_names.push(RAY_TRACING_PIPELINE_EXT_NAME);
                 extension_names.push(PIPELINE_LIBRARY_EXT_NAME);
-                extension_names.push(SPIRV_1_4_EXT_NAME);
-                extension_names.push(SHADER_FLOAT_CONTROLS_EXT_NAME);
 
                 features |= VkFeatures::RAY_TRACING;
                 acceleration_structure_features.acceleration_structure = vk::TRUE;
@@ -559,14 +484,12 @@ impl Adapter<VkBackend> for VkAdapter {
 
             if supports_indirect {
                 println!("GPU driven rendering supported.");
-                extension_names.push(DRAW_INDIRECT_COUNT_EXT_NAME);
                 features |= VkFeatures::ADVANCED_INDIRECT;
                 enabled_features.draw_indirect_first_instance = vk::TRUE;
                 enabled_features.multi_draw_indirect = vk::TRUE;
             }
 
             if supports_bda && supports_rt {
-                extension_names.push(BUFFER_DEVICE_ADDRESS_EXT_NAME);
                 bda_features.buffer_device_address = vk::TRUE;
                 bda_features.p_next = std::mem::replace(
                     &mut device_creation_pnext,
@@ -575,28 +498,16 @@ impl Adapter<VkBackend> for VkAdapter {
                 );
             }
 
-            let supports_filter_min_max = self
-                .extensions
-                .contains(VkAdapterExtensionSupport::SAMPLER_FILTER_MINMAX)
-                && filter_min_max_properties.filter_minmax_single_component_formats == vk::TRUE;
+            let supports_filter_min_max = filter_min_max_properties.filter_minmax_single_component_formats == vk::TRUE;
             if supports_filter_min_max {
-                extension_names.push(SAMPLER_FILTER_MINMAX_EXT_NAME);
                 features |= VkFeatures::MIN_MAX_FILTER;
             }
 
-            if !self
-                .extensions
-                .contains(VkAdapterExtensionSupport::TIMELINE_SEMAPHORE)
-                || !self
-                    .extensions
-                    .contains(VkAdapterExtensionSupport::SYNCHRONIZATION2)
-                || supported_sync2_features.synchronization2 != vk::TRUE
+            if supported_sync2_features.synchronization2 != vk::TRUE
                 || supported_timeline_semaphore_features.timeline_semaphore != vk::TRUE
             {
                 panic!("Timeline semaphores or sync2 unsupported. Update your driver!");
             }
-            extension_names.push(TIMELINE_SEMAPHORE_EXT_NAME);
-            extension_names.push(SYNCHRONIZATION2_EXT_NAME);
             timeline_semaphore_features.timeline_semaphore = vk::TRUE;
             sync2_features.synchronization2 = vk::TRUE;
             timeline_semaphore_features.p_next = std::mem::replace(
@@ -630,14 +541,6 @@ impl Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
 
-            if self
-                .extensions
-                .contains(VkAdapterExtensionSupport::IMAGE_FORMAT_LIST)
-            {
-                extension_names.push(IMAGE_FORMAT_LIST_EXT_NAME);
-                features |= VkFeatures::IMAGE_FORMAT_LIST;
-            }
-
             if supported_maintenance4_features.maintenance4 == vk::TRUE {
                 maintenance4_features.maintenance4 = vk::TRUE;
                 maintenance4_features.p_next = std::mem::replace(
@@ -646,7 +549,6 @@ impl Adapter<VkBackend> for VkAdapter {
                         as *mut c_void,
                 );
 
-                extension_names.push(MAINTENANCE4_EXT_NAME);
                 features |= VkFeatures::MAINTENANCE4;
             }
 
