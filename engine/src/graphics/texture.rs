@@ -133,6 +133,6 @@ impl<B: GPUBackend> TextureView<B> {
 
 impl<B: GPUBackend> PartialEq<TextureView<B>> for TextureView<B> {
     fn eq(&self, other: &TextureView<B>) -> bool {
-        self.handle().info() == other.handle().info()
+        self.handle() == other.handle()
     }
 }

@@ -11,10 +11,10 @@ pub trait GPUBackend: 'static + Sized {
   type Swapchain: Swapchain<Self> + Send + Sync;
   type CommandPool: CommandPool<Self>;
   type CommandBuffer: CommandBuffer<Self>;
-  type Texture: Texture;
-  type TextureView: TextureView;
+  type Texture: Texture + PartialEq;
+  type TextureView: TextureView + PartialEq;
   type Sampler: Send + Sync;
-  type Buffer: Buffer + Send + Sync;
+  type Buffer: Buffer + Send + Sync + PartialEq;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
   type GraphicsPipeline: Send + Sync;
   type ComputePipeline: ComputePipeline + Send + Sync;

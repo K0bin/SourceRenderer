@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt::{Debug, Error, Formatter}, sync::Arc};
 
 use sourcerenderer_core::gpu::GPUBackend;
 
@@ -37,5 +37,11 @@ impl<B: GPUBackend> BindlessSlot<B> {
 
     pub fn texture_view(&self) -> &Arc<TextureView<B>> {
         &self.texture
+    }
+}
+
+impl<B: GPUBackend> Debug for BindlessSlot<B> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        f.write_fmt(format_args!("BindlessSlot {}", self.alloc.range.offset))
     }
 }
