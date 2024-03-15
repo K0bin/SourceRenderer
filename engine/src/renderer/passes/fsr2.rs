@@ -38,7 +38,7 @@ use crate::graphics::*;
 pub struct Fsr2Pass<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
     context: FfxFsr2Context,
-    scratch_context: Arc<AtomicRefCell<ScratchContext<P::GPUBackend>>>,
+    scratch_context: *mut AtomicRefCell<ScratchContext<P::GPUBackend>>
 }
 
 impl<P: Platform> Fsr2Pass<P> {
@@ -50,7 +50,7 @@ impl<P: Platform> Fsr2Pass<P> {
         _resolution: Vec2UI,
         swapchain: &Swapchain<P::GPUBackend>,
     ) -> Self {
-        let scratch_context = Arc::new(AtomicRefCell::new(ScratchContext::<P::GPUBackend> {
+        let scratch_context = Box::new(AtomicRefCell::new(ScratchContext::<P::GPUBackend> {
             resources: HashMap::new(),
             next_resource_id: 1,
             dynamic_resources: Vec::new(),
@@ -60,9 +60,10 @@ impl<P: Platform> Fsr2Pass<P> {
             point_sampler: resources.nearest_sampler().clone(),
             linear_sampler: resources.linear_sampler().clone(),
         }));
-        let context_size = std::mem::size_of_val(&scratch_context);
+        let context_size = std::mem::size_of::<ScratchContext<P::GPUBackend>>();
+        let context_ptr = Box::into_raw(scratch_context);
 
-        let interface = FfxFsr2Interface {
+        let interface: FfxFsr2Interface = FfxFsr2Interface {
             fpCreateBackendContext: Some(create_backend_context::<P::GPUBackend>),
             fpDestroyBackendContext: Some(destroy_backend_context::<P::GPUBackend>),
             fpGetDeviceCapabilities: Some(get_device_capabilities::<P::GPUBackend>),
@@ -75,7 +76,7 @@ impl<P: Platform> Fsr2Pass<P> {
             fpDestroyPipeline: Some(destroy_pipeline::<P::GPUBackend>),
             fpScheduleGpuJob: Some(schedule_render_job::<P::GPUBackend>),
             fpExecuteGpuJobs: Some(execute_render_jobs::<P::GPUBackend>),
-            scratchBuffer: Arc::into_raw(scratch_context.clone()) as *mut c_void,
+            scratchBuffer: context_ptr as *mut c_void,
             scratchBufferSize: context_size as usize,
         };
 
@@ -128,7 +129,7 @@ impl<P: Platform> Fsr2Pass<P> {
         Self {
             device: device.clone(),
             context,
-            scratch_context,
+            scratch_context: context_ptr
         }
     }
 
@@ -317,8 +318,7 @@ impl<P: Platform> Drop for Fsr2Pass<P> {
         unsafe {
             let result = ffxFsr2ContextDestroy(&mut self.context as *mut FfxFsr2Context);
             assert_eq!(result, FFX_OK);
-
-            Arc::from_raw(Arc::into_raw(self.scratch_context.clone()));
+            std::mem::drop(Box::from_raw(self.scratch_context));
         }
     }
 }
@@ -459,7 +459,6 @@ extern "C" fn create_backend_context<B: GPUBackend>(
     _backend_interface: *mut FfxFsr2Interface,
     _out_device: FfxDevice,
 ) -> FfxErrorCode {
-    //let context = unsafe { (*backend_interface).scratchBuffer as *mut FSR2Context<B> };
     // out_device is a void pointer. Not a pointer to a pointer.
     // No idea how thats supposed to work.
     return FFX_OK;

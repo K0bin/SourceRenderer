@@ -83,6 +83,7 @@ fn main() {
     }
 
     let bindings = bindings_builder
+        .blocklist_type("FfxFsr2Context")
         .generate()
         .expect("Unable to generate bindings");
 
