@@ -5,5 +5,5 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bitflags = "2.3.2"
-nalgebra = "0.32.2"
+bitflags = "2.4.2"
+nalgebra = "0.32.4"

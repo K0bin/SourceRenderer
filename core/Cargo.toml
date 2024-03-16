@@ -5,13 +5,13 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-nalgebra = "0.32.2"
-bitflags = "2.3.2"
+nalgebra = "0.32.4"
+bitflags = "2.4.2"
 bitset-core = "0.1.1"
-crossbeam-channel = "0.5.6"
-crossbeam-queue = "0.3.6"
-crossbeam-deque = "0.8.2"
-crossbeam-utils = "0.8.11"
-num_cpus = "1.13.0"
-rayon = "1.4.1"
-smallvec = { version = "1.8.0", features = [ "union", "const_generics", "const_new" ] }
+crossbeam-channel = "0.5.12"
+crossbeam-queue = "0.3.11"
+crossbeam-deque = "0.8.5"
+crossbeam-utils = "0.8.19"
+num_cpus = "1.16.0"
+rayon = "1.9.0"
+smallvec = { version = "1.13.1", features = [ "union", "const_generics", "const_new" ] }

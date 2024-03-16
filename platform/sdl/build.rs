@@ -89,7 +89,7 @@ fn main() {
     assets_dir.push("assets");
     copy_directory_rec(&assets_dir, &assets_dest_dir, &(|_| true));
 
-    // Copy SDL2.dll
+    // Copy SDL2.dll/SDL3.dll
     let target = env::var("TARGET").unwrap();
     if target.contains("pc-windows") {
         let mut lib_dir = manifest_dir.clone();

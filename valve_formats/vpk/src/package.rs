@@ -5,7 +5,7 @@ use archive_md5_section_entry::ArchiveMD5SectionEntry;
 use read_util::{PrimitiveRead, StringRead, StringReadError, RawDataRead};
 use crc::{self, Crc};
 use utilities::AsnKeyParser;
-use rsa::{BigUint, PublicKey, Pkcs1v15Encrypt};
+use rsa::{BigUint, Pkcs1v15Encrypt};
 use rand::rngs::OsRng;
 use std::sync::Mutex;
 
