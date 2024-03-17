@@ -111,6 +111,8 @@ impl<P: Platform> GameInternal<P> {
       let csgo_path = "content://com.android.externalstorage.documents/tree/primary%3Agames%2Fcsgo/document/primary%3Agames%2Fcsgo";
         #[cfg(target_arch = "wasm32")]
         let csgo_path = "";
+        #[cfg(target_os = "macos")]
+        let csgo_path = "";
 
         trace!("Csgo path: {:?}", csgo_path);
 
