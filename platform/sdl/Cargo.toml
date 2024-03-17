@@ -21,6 +21,7 @@ crossbeam-channel = "0.5.12"
 
 [build-dependencies]
 build-util = { path = "../../build_util" }
+pkg-config = "0.3.30"
 
 [profile.release]
 debug = true
