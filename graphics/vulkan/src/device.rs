@@ -29,86 +29,6 @@ impl VkDevice {
         transfer_queue_info: Option<VkQueueInfo>,
         features: VkFeatures
     ) -> Self {
-        let allocator = unsafe {
-            unsafe extern "system" fn get_instance_proc_addr_stub(
-                _instance: ash::vk::Instance,
-                _p_name: *const ::std::os::raw::c_char,
-            ) -> ash::vk::PFN_vkVoidFunction {
-                panic!("VMA_DYNAMIC_VULKAN_FUNCTIONS is unsupported")
-            }
-
-            unsafe extern "system" fn get_get_device_proc_stub(
-                _device: ash::vk::Device,
-                _p_name: *const ::std::os::raw::c_char,
-            ) -> ash::vk::PFN_vkVoidFunction {
-                panic!("VMA_DYNAMIC_VULKAN_FUNCTIONS is unsupported")
-            }
-
-            let routed_functions = vma_sys::VmaVulkanFunctions {
-                vkGetInstanceProcAddr: None,
-                vkGetDeviceProcAddr: None,
-                vkGetPhysicalDeviceProperties: Some(
-                    instance.fp_v1_0().get_physical_device_properties,
-                ),
-                vkGetPhysicalDeviceMemoryProperties: Some(
-                    instance.fp_v1_0().get_physical_device_memory_properties,
-                ),
-                vkAllocateMemory: Some(device.fp_v1_0().allocate_memory),
-                vkFreeMemory: Some(device.fp_v1_0().free_memory),
-                vkMapMemory: Some(device.fp_v1_0().map_memory),
-                vkUnmapMemory: Some(device.fp_v1_0().unmap_memory),
-                vkFlushMappedMemoryRanges: Some(device.fp_v1_0().flush_mapped_memory_ranges),
-                vkInvalidateMappedMemoryRanges: Some(
-                    device.fp_v1_0().invalidate_mapped_memory_ranges,
-                ),
-                vkBindBufferMemory: Some(device.fp_v1_0().bind_buffer_memory),
-                vkBindImageMemory: Some(device.fp_v1_0().bind_image_memory),
-                vkGetBufferMemoryRequirements: Some(
-                    device.fp_v1_0().get_buffer_memory_requirements,
-                ),
-                vkGetImageMemoryRequirements: Some(device.fp_v1_0().get_image_memory_requirements),
-                vkCreateBuffer: Some(device.fp_v1_0().create_buffer),
-                vkDestroyBuffer: Some(device.fp_v1_0().destroy_buffer),
-                vkCreateImage: Some(device.fp_v1_0().create_image),
-                vkDestroyImage: Some(device.fp_v1_0().destroy_image),
-                vkCmdCopyBuffer: Some(device.fp_v1_0().cmd_copy_buffer),
-                vkGetBufferMemoryRequirements2KHR: Some(
-                    device.fp_v1_1().get_buffer_memory_requirements2,
-                ),
-                vkGetImageMemoryRequirements2KHR: Some(
-                    device.fp_v1_1().get_image_memory_requirements2,
-                ),
-                vkBindBufferMemory2KHR: Some(device.fp_v1_1().bind_buffer_memory2),
-                vkBindImageMemory2KHR: Some(device.fp_v1_1().bind_image_memory2),
-                vkGetPhysicalDeviceMemoryProperties2KHR: Some(
-                    instance.fp_v1_1().get_physical_device_memory_properties2,
-                ),
-                vkGetDeviceBufferMemoryRequirements: None, // device.fp_v1_3().get_device_buffer_memory_requirements,
-                vkGetDeviceImageMemoryRequirements: None, // device.fp_v1_3().get_device_image_memory_requirements,
-            };
-
-            let vma_create_info = vma_sys::VmaAllocatorCreateInfo {
-                flags:  vma_sys::VmaAllocatorCreateFlags::default(),
-                physicalDevice: physical_device,
-                device: device.handle(),
-                preferredLargeHeapBlockSize: 0,
-                pAllocationCallbacks: std::ptr::null(),
-                pDeviceMemoryCallbacks: std::ptr::null(),
-                pHeapSizeLimit: std::ptr::null(),
-                pVulkanFunctions: &routed_functions,
-                instance: instance.handle(),
-                vulkanApiVersion: vk::API_VERSION_1_1,
-                pTypeExternalMemoryHandleTypes: std::ptr::null(),
-            };
-
-            let mut allocator: vma_sys::VmaAllocator = std::ptr::null_mut();
-            assert_eq!(
-                vma_sys::vmaCreateAllocator(&vma_create_info, &mut allocator),
-                vk::Result::SUCCESS
-            );
-            allocator
-        };
-
         let raw_graphics_queue = unsafe {
             device.get_device_queue(
                 graphics_queue_info.queue_family_index as u32,
@@ -124,7 +44,6 @@ impl VkDevice {
 
         let raw = Arc::new(RawVkDevice::new(
             device,
-            allocator,
             physical_device,
             instance.clone(),
             features,

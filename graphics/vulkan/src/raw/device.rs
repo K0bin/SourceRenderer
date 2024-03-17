@@ -29,7 +29,6 @@ bitflags! {
 
 pub struct RawVkDevice {
     pub device: ash::Device,
-    pub allocator: vma_sys::VmaAllocator,
     pub physical_device: vk::PhysicalDevice,
     pub instance: Arc<RawVkInstance>,
     pub features: VkFeatures,
@@ -61,7 +60,6 @@ unsafe impl Sync for RawVkRTEntries {}
 impl RawVkDevice {
     pub fn new(
         device: ash::Device,
-        allocator: vma_sys::VmaAllocator,
         physical_device: vk::PhysicalDevice,
         instance: Arc<RawVkInstance>,
         features: VkFeatures,
@@ -111,7 +109,6 @@ impl RawVkDevice {
 
         Self {
             device,
-            allocator,
             physical_device,
             instance,
             features,
@@ -161,7 +158,6 @@ impl Deref for RawVkDevice {
 impl Drop for RawVkDevice {
     fn drop(&mut self) {
         unsafe {
-            vma_sys::vmaDestroyAllocator(self.allocator);
             self.device.destroy_device(None);
         }
     }
