@@ -72,6 +72,10 @@ impl VkTexture {
 
         let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
         compatible_formats.push(create_info.format);
+        let srgb_format = info.format.srgb_format();
+        if let Some(srgb_format) = srgb_format {
+            compatible_formats.push(format_to_vk(srgb_format, false));
+        }
         let mut format_list = vk::ImageFormatListCreateInfo {
             view_format_count: compatible_formats.len() as u32,
             p_view_formats: compatible_formats.as_ptr(),
