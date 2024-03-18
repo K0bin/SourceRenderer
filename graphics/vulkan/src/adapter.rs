@@ -229,11 +229,12 @@ impl Adapter<VkBackend> for VkAdapter {
                 });
             }
 
+            let lower_priority = 0.1f32;
             if let Some(transfer_queue_info) = transfer_queue_info {
                 queue_create_descs.push(vk::DeviceQueueCreateInfo {
                     queue_family_index: transfer_queue_info.queue_family_index as u32,
                     queue_count: 1,
-                    p_queue_priorities: &priority as *const f32,
+                    p_queue_priorities: &lower_priority as *const f32,
                     ..Default::default()
                 });
             }
