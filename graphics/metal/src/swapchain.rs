@@ -15,13 +15,13 @@ pub struct MTLSurface {
 }
 
 impl MTLSurface {
-    pub fn new(instance: &MTLInstance, layer: &metal::MetalLayer) -> Self {
+    pub fn new(instance: &MTLInstance, layer: &metal::MetalLayerRef) -> Self {
         Self {
-            layer: layer.clone()
+            layer: layer.to_owned()
         }
     }
 
-    pub(crate) fn handle(&self) -> &metal::MetalLayer {
+    pub(crate) fn handle(&self) -> &metal::MetalLayerRef {
         &self.layer
     }
 }

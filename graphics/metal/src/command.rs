@@ -1,6 +1,6 @@
-use metal::{self, MTLSize};
+use metal;
 
-use sourcerenderer_core::gpu::{self, CommandBuffer};
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -9,9 +9,9 @@ pub struct MTLCommandPool {
 }
 
 impl MTLCommandPool {
-    pub(crate) fn new(queue: &metal::CommandQueue) -> Self {
+    pub(crate) fn new(queue: &metal::CommandQueueRef) -> Self {
         Self {
-            queue: queue.clone()
+            queue: queue.to_owned()
         }
     }
 }
@@ -39,22 +39,35 @@ pub struct MTLCommandBuffer {
     render_encoder: Option<metal::RenderCommandEncoder>,
     blit_encoder: Option<metal::BlitCommandEncoder>,
     compute_encoder: Option<metal::ComputeCommandEncoder>,
+    pre_event: metal::Event,
+    post_event: metal::Event,
     index_buffer: Option<IndexBufferBinding>
 }
 
 impl MTLCommandBuffer {
-    pub(crate) fn new(queue: &metal::CommandQueue, command_buffer: metal::CommandBuffer) -> Self {
+    pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer) -> Self {
         Self {
-            queue: queue.clone(),
+            queue: queue.to_owned(),
             command_buffer: command_buffer,
             render_encoder: None,
             blit_encoder: None,
-            compute_encoder: None
+            compute_encoder: None,
+            pre_event: queue.device().new_event(),
+            post_event: queue.device().new_event(),
+            index_buffer: None
         }
     }
 
-    pub(crate) fn handle(&self) -> &metal::CommandBuffer {
+    pub(crate) fn handle(&self) -> &metal::CommandBufferRef {
         &self.command_buffer
+    }
+
+    pub(crate) fn pre_event_handle(&self) -> &metal::EventRef {
+        &self.pre_event
+    }
+
+    pub(crate) fn post_event_handle(&self) -> &metal::EventRef {
+        &self.post_event
     }
 }
 
@@ -188,7 +201,9 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         todo!()
     }
 
-    unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>) {}
+    unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>) {
+        self.command_buffer.encode_wait_for_event(&self.pre_event, 1);
+    }
 
     unsafe fn finish(&mut self) {}
 

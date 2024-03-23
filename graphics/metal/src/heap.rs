@@ -8,7 +8,7 @@ use super::*;
 
 pub(crate) enum ResourceMemory<'a> {
     Dedicated {
-        device: &'a metal::Device,
+        device: &'a metal::DeviceRef,
         options: metal::MTLResourceOptions
     },
     Suballocated {
@@ -23,7 +23,7 @@ pub struct MTLHeap {
 }
 
 impl MTLHeap {
-    pub(crate) fn new(device: &metal::Device, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn new(device: &metal::DeviceRef, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind) -> Result<Self, gpu::OutOfMemoryError> {
         let mut descriptor = metal::HeapDescriptor::new();
         descriptor.set_size(size);
         unsafe {
@@ -50,7 +50,7 @@ impl MTLHeap {
         })
     }
 
-    pub(crate) fn handle(&self) -> &metal::Heap {
+    pub(crate) fn handle(&self) -> &metal::HeapRef {
         &self.heap
     }
 }
