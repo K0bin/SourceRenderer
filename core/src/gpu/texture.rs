@@ -13,6 +13,14 @@ bitflags! {
     const BLIT_SRC      = 0b10000000;
     const BLIT_DST      = 0b100000000;
     const DEPTH_STENCIL = 0b1000000000;
+
+    const GPU_WRITABLE = 0b10 | 0b1000000 | 0b100000000 | 0b1000000000;
+  }
+}
+
+impl TextureUsage {
+  pub fn gpu_writable(&self) -> bool {
+    self.contains(Self::GPU_WRITABLE)
   }
 }
 
