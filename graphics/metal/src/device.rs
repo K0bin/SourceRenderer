@@ -1,7 +1,7 @@
 use metal;
 use smallvec::{smallvec, SmallVec};
 
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, DedicatedAllocationPreference};
 
 use super::*;
 
@@ -143,7 +143,11 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         let is_apple_gpu = self.device.supports_family(metal::MTLGPUFamily::Apple7);
         let is_uma = self.device.has_unified_memory();
         gpu::ResourceHeapInfo {
-            prefer_dedicated_allocation: !is_apple_gpu,
+            dedicated_allocation_preference: if !is_apple_gpu || info.usage.gpu_writable() {
+                DedicatedAllocationPreference::RequireDedicated
+            } else {
+                DedicatedAllocationPreference::DontCare
+            },
             memory_type_mask: if !is_uma { 1 | 1 << 1 | 1 << 2 } else { 1 | 1 << 1 },
             alignment: size_and_align.align,
             size: size_and_align.size,
@@ -190,7 +194,26 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
     
     unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
-        todo!()
+        let descriptor = MTLTexture::descriptor(info);
+        let size_and_align = self.device.heap_texture_size_and_align(&descriptor);
+
+        /*
+        For devices with Apple silicon, you can create a heap with either the MTLStorageMode.private or the MTLStorageMode.shared storage mode.
+        However, you can only create heaps with private storage on macOS devices without Apple silicon.
+        */
+
+        let is_apple_gpu = self.device.supports_family(metal::MTLGPUFamily::Apple7);
+        let is_uma = self.device.has_unified_memory();
+        gpu::ResourceHeapInfo {
+            dedicated_allocation_preference: if !is_apple_gpu || info.usage.gpu_writable() {
+                DedicatedAllocationPreference::RequireDedicated
+            } else {
+                DedicatedAllocationPreference::DontCare
+            },
+            memory_type_mask: if !is_uma { 1 | 1 << 1 | 1 << 2 } else { 1 | 1 << 1 },
+            alignment: size_and_align.align,
+            size: size_and_align.size,
+        }
     }
     
     unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &MTLTextureView) {
