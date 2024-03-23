@@ -5,9 +5,9 @@ use super::*;
 pub enum D3D12Backend {}
 
 impl gpu::GPUBackend for D3D12Backend {
-    type Instance;
-    type Adapter;
-    type Device;
+    type Instance = D3D12Instance;
+    type Adapter = D3D12Adapter;
+    type Device = D3D12Device;
     type Surface;
     type Swapchain;
     type CommandPool;
@@ -15,13 +15,13 @@ impl gpu::GPUBackend for D3D12Backend {
     type Texture;
     type TextureView;
     type Sampler;
-    type Buffer;
+    type Buffer = D3D12Buffer;
     type Shader;
     type GraphicsPipeline;
     type ComputePipeline;
     type RayTracingPipeline;
     type Fence;
-    type Queue;
-    type Heap;
+    type Queue = D3D12Queue;
+    type Heap = D3D12Heap;
     type AccelerationStructure;
 }

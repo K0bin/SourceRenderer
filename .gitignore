@@ -21,3 +21,5 @@ Cargo.lock
 
 assets/
 graphics/wgpu/
+graphics/d3d12/agility/
+platform/**/agility/

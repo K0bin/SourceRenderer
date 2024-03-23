@@ -4,7 +4,9 @@ use std::hash::{Hash, Hasher};
 use windows::Win32::Graphics::Direct3D as D3D;
 use windows::Win32::Graphics::Dxgi;
 use windows::Win32::Graphics::Direct3D12 as D3D12;
-use windows::core::Interface;
+use windows::core::{Interface, PCWSTR};
+
+use widestring::U16CString;
 
 use sourcerenderer_core::gpu;
 
@@ -17,7 +19,7 @@ pub struct D3D12Buffer {
 }
 
 impl D3D12Buffer {
-    pub(crate) fn new(device: &D3D12::ID3D12Device12, memory: ResourceMemory, info: gpu::BufferInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn new(device: &D3D12::ID3D12Device12, memory: ResourceMemory, info: &gpu::BufferInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
         let mut flags = D3D12::D3D12_RESOURCE_FLAG_NONE;
         flags |= D3D12::D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
         if info.usage.contains(gpu::BufferUsage::STORAGE) {
@@ -54,7 +56,7 @@ impl D3D12Buffer {
                     VisibleNodeMask: 0,
                 };
 
-                let mut flags: D3D12::D3D12_HEAP_FLAGS = D3D12::D3D12_HEAP_FLAG_NONE;
+                let mut flags: D3D12::D3D12_HEAP_FLAGS = D3D12::D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
                 flags |= D3D12::D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
                 if heap_type == D3D12::D3D12_HEAP_TYPE_DEFAULT {
                     flags |= D3D12::D3D12_HEAP_FLAG_ALLOW_SHADER_ATOMICS;
@@ -68,7 +70,7 @@ impl D3D12Buffer {
                         &heap_properties as *const D3D12::D3D12_HEAP_PROPERTIES,
                         flags,
                         &desc as *const D3D12::D3D12_RESOURCE_DESC1,
-                        D3D12::D3D12_BARRIER_LAYOUT_COMMON,
+                        D3D12::D3D12_BARRIER_LAYOUT_UNDEFINED,
                         None,
                         protected,
                         None,
@@ -83,7 +85,7 @@ impl D3D12Buffer {
                     device.CreatePlacedResource2(
                         heap.handle(), offset,
                         &desc as *const D3D12::D3D12_RESOURCE_DESC1,
-                        D3D12::D3D12_BARRIER_LAYOUT_COMMON,
+                        D3D12::D3D12_BARRIER_LAYOUT_UNDEFINED,
                         None,
                         None,
                         &mut resource_opt as *mut Option<D3D12::ID3D12Resource2>
@@ -93,6 +95,14 @@ impl D3D12Buffer {
         }.map_err(|_e| gpu::OutOfMemoryError {})?;
 
         let resource = resource_opt.unwrap();
+        if let Some(name) = name {
+            let wstr = U16CString::from_str(name);
+            if let Ok(wstr) = wstr {
+                unsafe {
+                    resource.SetName(PCWSTR(wstr.as_ptr()));
+                }
+            }
+        }
 
         let ptr = if map {
             unsafe {

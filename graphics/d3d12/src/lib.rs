@@ -3,7 +3,9 @@ pub use self::{
     instance::*,
     device::*,
     buffer::*,
-    heap::*
+    heap::*,
+    queue::*,
+    texture::*
 };
 
 mod backend;
@@ -11,3 +13,5 @@ mod instance;
 mod device;
 mod buffer;
 mod heap;
+mod queue;
+mod texture;

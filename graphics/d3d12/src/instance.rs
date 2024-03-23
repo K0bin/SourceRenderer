@@ -41,6 +41,12 @@ impl D3D12Instance {
     }
 }
 
+impl gpu::Instance<D3D12Backend> for D3D12Instance {
+    fn list_adapters(&self) -> &[D3D12Adapter] {
+        &self.adapters
+    }
+}
+
 pub struct D3D12Adapter {
     adapter_type: gpu::AdapterType,
     adapter: Dxgi::IDXGIAdapter4

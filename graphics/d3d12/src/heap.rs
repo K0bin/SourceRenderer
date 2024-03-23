@@ -19,11 +19,14 @@ pub(crate) enum ResourceMemory<'a> {
 
 pub struct D3D12Heap {
     heap: D3D12::ID3D12Heap1,
+    device: D3D12::ID3D12Device12,
+    memory_type_index: u32,
     heap_type: D3D12::D3D12_HEAP_TYPE
 }
 
 impl D3D12Heap {
-    pub(crate) fn new(device: &D3D12::ID3D12Device12, heap_type: D3D12::D3D12_HEAP_TYPE, size: u64) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn new(device: &D3D12::ID3D12Device12, memory_type_index: u32, size: u64) -> Result<Self, gpu::OutOfMemoryError> {
+        let heap_type = memory_type_index_to_memory_heap(memory_type_index);
         let heap_properties = D3D12::D3D12_HEAP_PROPERTIES {
             Type: heap_type,
             CPUPageProperty: D3D12::D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
@@ -54,6 +57,8 @@ impl D3D12Heap {
         let heap = heap_opt.ok_or(gpu::OutOfMemoryError {})?;
         Ok(Self {
             heap,
+            device: device.clone(),
+            memory_type_index,
             heap_type
         })
     }
@@ -66,3 +71,18 @@ impl D3D12Heap {
         self.heap_type
     }
 }
+
+impl gpu::Heap<D3D12Backend> for D3D12Heap {
+    fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
+    }
+
+    unsafe fn create_buffer(&self, info: &gpu::BufferInfo, offset: u64, name: Option<&str>) -> Result<D3D12Buffer, gpu::OutOfMemoryError> {
+        D3D12Buffer::new(&self.device, ResourceMemory::Suballocated { memory: self, offset }, info, name)
+    }
+
+    unsafe fn create_texture(&self, info: &gpu::TextureInfo, offset: u64, name: Option<&str>) -> Result<D3D12Texture, gpu::OutOfMemoryError> {
+        todo!()
+    }
+}
+
