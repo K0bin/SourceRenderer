@@ -12,5 +12,9 @@ impl gpu::GPUBackend for MTLBackend {
     type Texture = MTLTexture;
     type Sampler = MTLSampler;
     type TextureView = MTLTextureView;
-    type Surface = MTLSurface;    
+    type Queue = MTLQueue;
+    type CommandPool = MTLCommandPool;
+    type CommandBuffer = MTLCommandBuffer;
+    type Surface = MTLSurface;
+    type Swapchain = MTLSwapchain;
 }

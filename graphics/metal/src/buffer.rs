@@ -17,6 +17,11 @@ impl MTLBuffer {
         let mut options = Self::resource_options(info);
         let buffer = match memory {
             ResourceMemory::Dedicated { device, options: memory_options } => {
+                if info.usage.gpu_writable() {
+                    options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
+                } else {
+                    options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+                }
                 let buffer = device.new_buffer(info.size, options | memory_options);
                 if buffer.as_ptr() == std::ptr::null_mut() {
                     return Err(gpu::OutOfMemoryError {});
@@ -24,6 +29,7 @@ impl MTLBuffer {
                 buffer
             },
             ResourceMemory::Suballocated { memory, offset } => {
+                options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
                 let buffer_opt = memory.handle().new_buffer_with_offset(info.size, options, offset);
                 if buffer_opt.is_none() {
                     return Err(gpu::OutOfMemoryError {});
@@ -44,7 +50,7 @@ impl MTLBuffer {
     }
 
     pub(crate) fn resource_options(_info: &gpu::BufferInfo) -> metal::MTLResourceOptions {
-        let options = metal::MTLResourceOptions::HazardTrackingModeUntracked;
+        let options = metal::MTLResourceOptions::empty();
         options
     }
 }

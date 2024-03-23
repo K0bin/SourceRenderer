@@ -7,7 +7,8 @@ pub use self::{
     heap::*,
     texture::*,
     format::*,
-    queue::*
+    queue::*,
+    command::*
 };
 
 mod backend;
@@ -19,3 +20,4 @@ mod heap;
 mod texture;
 mod format;
 mod queue;
+mod command;

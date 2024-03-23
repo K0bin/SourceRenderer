@@ -1,7 +1,7 @@
 use metal;
 use metal::foreign_types::ForeignType;
 
-use sourcerenderer_core::gpu::{self, SamplerInfo, TextureViewInfo};
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -57,11 +57,12 @@ fn compare_op_to_mtl(compare_op: gpu::CompareFunc) -> metal::MTLCompareFunction 
 
 pub struct MTLTexture {
     info: gpu::TextureInfo,
-    texture: metal::Texture
+    texture: metal::Texture,
+    is_texture_owned: bool
 }
 
 impl MTLTexture {
-    pub(crate) fn new(memory: ResourceMemory, info: &gpu::TextureInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn descriptor(info: &gpu::TextureInfo) -> metal::TextureDescriptor {
         let descriptor = metal::TextureDescriptor::new();
         descriptor.set_texture_type(texture_dimensions_to_mtl(info.dimension, info.samples));
         descriptor.set_sample_count(match info.samples {
@@ -92,15 +93,23 @@ impl MTLTexture {
             usage |= metal::MTLTextureUsage::PixelFormatView;
         }
         descriptor.set_usage(usage);
-        
         // We dont need to call the setters for storage mode, caching or hazardtracking, those are taken from the resource options
+        descriptor.set_resource_options(Self::resource_options(info));
+        descriptor
+    }
 
-        let mut options = Self::resource_options(info);
+    pub(crate) fn new(memory: ResourceMemory, info: &gpu::TextureInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+        let descriptor = Self::descriptor(info);
+        let mut options = descriptor.resource_options();
 
         let texture = match memory {
             ResourceMemory::Dedicated { device, options: memory_options } => {
-                options |= memory_options;
-                descriptor.set_resource_options(options);
+                if info.usage.gpu_writable() {
+                    options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
+                } else {
+                    options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+                }
+                descriptor.set_resource_options(options | memory_options);
                 let texture = device.new_texture(&descriptor);
                 if texture.as_ptr() == std::ptr::null_mut() {
                     return Err(gpu::OutOfMemoryError {});
@@ -108,6 +117,7 @@ impl MTLTexture {
                 texture
             }
             ResourceMemory::Suballocated { memory, offset } => {
+                options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
                 descriptor.set_resource_options(options);
                 let texture_opt = memory.handle().new_texture_with_offset(&descriptor, offset);
                 if texture_opt.is_none() {
@@ -123,17 +133,108 @@ impl MTLTexture {
 
         Ok(Self {
             info: info.clone(),
-            texture
+            texture,
+            is_texture_owned: true
         })
     }
 
+    pub(crate) fn from_mtl_texture(texture: &metal::TextureRef, take_reference: bool) -> Self {
+        let texture_owned = texture.to_owned();
+
+        // I want to use the nice wrapper
+        // but not always add to the reference count.
+        // So just create a new wrapper off of the same pointer
+        // and drop that to reduce the refcount by 1, counteracting
+        // taking the new owned wrapper.
+
+        if !take_reference {
+            unsafe {
+                let new_ref = metal::Texture::from_ptr(texture_owned.as_ptr());
+                std::mem::drop(new_ref);
+            }
+        }
+
+        let format = match texture.pixel_format() {
+            metal::MTLPixelFormat::RGBA8Unorm => gpu::Format::RGBA8UNorm,
+            metal::MTLPixelFormat::RGBA16Float => gpu::Format::RGBA16Float,
+            metal::MTLPixelFormat::BGRA8Unorm => gpu::Format::BGRA8UNorm,
+            metal::MTLPixelFormat::RGBA8Unorm_sRGB => gpu::Format::RGBA8Srgb,
+            _ => panic!("Unsupported texture format")
+        };
+
+        let mut usage = gpu::TextureUsage::empty();
+        let mtl_usage = texture.usage();
+        if mtl_usage.contains(metal::MTLTextureUsage::ShaderRead) {
+            usage |= gpu::TextureUsage::SAMPLED;
+        }
+        if mtl_usage.contains(metal::MTLTextureUsage::ShaderWrite) {
+            usage |= gpu::TextureUsage::STORAGE;
+        }
+        if mtl_usage.contains(metal::MTLTextureUsage::RenderTarget) {
+            if format.is_depth() || format.is_stencil() {
+                usage |= gpu::TextureUsage::DEPTH_STENCIL;
+            } else {
+                usage |= gpu::TextureUsage::RENDER_TARGET;
+            }
+        }
+        usage |= gpu::TextureUsage::COPY_DST | gpu::TextureUsage::COPY_SRC;
+
+        let info = gpu::TextureInfo {
+            width: texture.width() as u32,
+            height: texture.height() as u32,
+            depth: texture.depth() as u32,
+            dimension: match texture.texture_type() {
+                metal::MTLTextureType::D1 => gpu::TextureDimension::Dim1D,
+                metal::MTLTextureType::D1Array => gpu::TextureDimension::Dim1DArray,
+                metal::MTLTextureType::D2 => gpu::TextureDimension::Dim2D,
+                metal::MTLTextureType::D2Array => gpu::TextureDimension::Dim2DArray,
+                metal::MTLTextureType::D2Multisample => gpu::TextureDimension::Dim2D,
+                metal::MTLTextureType::Cube => gpu::TextureDimension::Dim2DArray,
+                metal::MTLTextureType::CubeArray => todo!(),
+                metal::MTLTextureType::D3 => gpu::TextureDimension::Dim3D,
+                metal::MTLTextureType::D2MultisampleArray => gpu::TextureDimension::Dim2DArray,
+            },
+            format,
+            mip_levels: texture.mipmap_level_count() as u32,
+            array_length: texture.array_length() as u32,
+            samples: match texture.sample_count() {
+                1 => gpu::SampleCount::Samples1,
+                2 => gpu::SampleCount::Samples2,
+                4 => gpu::SampleCount::Samples4,
+                8 => gpu::SampleCount::Samples8,
+                _ => panic!("Unsupported sample count")
+            },
+            usage,
+            supports_srgb: mtl_usage.contains(metal::MTLTextureUsage::PixelFormatView),
+        };
+
+        Self {
+            texture: texture_owned,
+            info: info.clone(),
+            is_texture_owned: take_reference
+        }
+    }
+
     pub(crate) fn resource_options(_info: &gpu::TextureInfo) -> metal::MTLResourceOptions {
-        let options = metal::MTLResourceOptions::HazardTrackingModeUntracked;
+        let options = metal::MTLResourceOptions::empty();
         options
     }
 
-    pub(crate) fn handle(&self) -> &metal::Texture {
+    pub(crate) fn handle(&self) -> &metal::TextureRef {
         &self.texture
+    }
+}
+
+impl Drop for MTLTexture {
+    fn drop(&mut self) {
+        if !self.is_texture_owned {
+            // Add 1 reference to counteract the upcoming drop reducing
+            // the refcount by 1
+            unsafe {
+                let new_ref = metal::Texture::from_ptr(self.texture.as_ptr());
+                std::mem::forget(new_ref);
+            }
+        }
     }
 }
 
@@ -158,14 +259,14 @@ pub struct MTLTextureView {
 }
 
 impl MTLTextureView {
-    pub(crate) fn new(texture: &MTLTexture, info: &TextureViewInfo, name: Option<&str>) -> Self {
+    pub(crate) fn new(texture: &MTLTexture, info: &gpu::TextureViewInfo, name: Option<&str>) -> Self {
         let entire_texture = info.array_layer_length == texture.info.array_length
             && info.base_array_layer == 0
             && info.mip_level_length == texture.info.mip_levels
             && info.base_mip_level == 0;
 
         let view = if entire_texture && info.format.is_none() {
-            texture.handle().clone()
+            texture.handle().to_owned()
         } else if entire_texture {
             texture.handle().new_texture_view(format_to_mtl(info.format.unwrap()))
         } else {
@@ -190,7 +291,7 @@ impl MTLTextureView {
 }
 
 impl gpu::TextureView for MTLTextureView {
-    fn info(&self) -> &TextureViewInfo {
+    fn info(&self) -> &gpu::TextureViewInfo {
         &self.info
     }
     fn texture_info(&self) -> &gpu::TextureInfo {
@@ -212,7 +313,7 @@ pub struct MTLSampler {
 }
 
 impl MTLSampler {
-    pub(crate) fn new(device: &metal::Device, info: &SamplerInfo) -> Self {
+    pub(crate) fn new(device: &metal::Device, info: &gpu::SamplerInfo) -> Self {
         let descriptor = metal::SamplerDescriptor::new();
         descriptor.set_address_mode_r(address_mode_to_mtl(info.address_mode_u));
         descriptor.set_address_mode_s(address_mode_to_mtl(info.address_mode_v));
@@ -239,7 +340,7 @@ impl MTLSampler {
 }
 
 impl gpu::Sampler for MTLSampler {
-    fn info(&self) -> &SamplerInfo {
+    fn info(&self) -> &gpu::SamplerInfo {
         &self.info
     }
 }

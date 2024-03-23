@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 metal = "0.27.0"
+objc = "0.2.7"
+block = "0.1.6"
 sourcerenderer_core = { path = "../../core" }
 bitflags = "2.4.2"
 smallvec = { version = "1.13.1", features = [ "union", "const_generics", "const_new" ] }
