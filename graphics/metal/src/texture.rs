@@ -313,7 +313,7 @@ pub struct MTLSampler {
 }
 
 impl MTLSampler {
-    pub(crate) fn new(device: &metal::Device, info: &gpu::SamplerInfo) -> Self {
+    pub(crate) fn new(device: &metal::DeviceRef, info: &gpu::SamplerInfo) -> Self {
         let descriptor = metal::SamplerDescriptor::new();
         descriptor.set_address_mode_r(address_mode_to_mtl(info.address_mode_u));
         descriptor.set_address_mode_s(address_mode_to_mtl(info.address_mode_v));

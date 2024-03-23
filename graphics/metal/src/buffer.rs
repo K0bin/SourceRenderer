@@ -53,6 +53,10 @@ impl MTLBuffer {
         let options = metal::MTLResourceOptions::empty();
         options
     }
+
+    pub(crate) fn handle(&self) -> &metal::BufferRef {
+        &self.buffer
+    }
 }
 
 impl gpu::Buffer for MTLBuffer {

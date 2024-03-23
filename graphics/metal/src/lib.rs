@@ -8,7 +8,8 @@ pub use self::{
     texture::*,
     format::*,
     queue::*,
-    command::*
+    command::*,
+    sync::*
 };
 
 mod backend;
@@ -21,3 +22,4 @@ mod texture;
 mod format;
 mod queue;
 mod command;
+mod sync;

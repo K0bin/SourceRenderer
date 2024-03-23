@@ -14,7 +14,7 @@ pub struct MTLDevice {
 }
 
 impl MTLDevice {
-    pub(crate) fn new(device: &metal::Device, surface: &MTLSurface) -> Self {
+    pub(crate) fn new(device: &metal::DeviceRef, surface: &MTLSurface) -> Self {
         let mut infos: SmallVec<[gpu::MemoryTypeInfo; 3]> = smallvec![
             gpu::MemoryTypeInfo {
                 is_cached: false,
@@ -45,7 +45,7 @@ impl MTLDevice {
         }
 
         Self {
-            device: device.clone(),
+            device: device.to_owned(),
             memory_type_infos: infos,
             graphics_queue: MTLQueue::new(device),
             compute_queue: MTLQueue::new(device),
@@ -189,8 +189,8 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         todo!()
     }
     
-    unsafe fn create_fence(&self) -> MTLFence {
-        todo!()
+    unsafe fn create_fence(&self, is_cpu_accessible: bool) -> MTLFence {
+        MTLFence::new(&self.device, is_cpu_accessible)
     }
     
     unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {

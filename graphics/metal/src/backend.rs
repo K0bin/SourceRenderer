@@ -17,4 +17,12 @@ impl gpu::GPUBackend for MTLBackend {
     type CommandBuffer = MTLCommandBuffer;
     type Surface = MTLSurface;
     type Swapchain = MTLSwapchain;
+    type Fence = MTLFence;
+    type Heap = MTLHeap;
+    
+    type Shader;    
+    type GraphicsPipeline;    
+    type ComputePipeline;    
+    type RayTracingPipeline;    
+    type AccelerationStructure;
 }
