@@ -56,7 +56,7 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
     	.header("SPIRV-Cross/spirv_cross_c.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings");
 

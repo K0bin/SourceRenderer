@@ -90,7 +90,7 @@ impl VkShader {
                 spirv_cross_sys::spvc_context_parse_spirv(
                     context,
                     bytecode.as_ptr() as *const u32,
-                    (bytecode.len() / std::mem::size_of::<u32>()) as u64,
+                    bytecode.len() / std::mem::size_of::<u32>(),
                     &mut ir
                 ),
                 spirv_cross_sys::spvc_result_SPVC_SUCCESS
@@ -115,7 +115,7 @@ impl VkShader {
         let push_constant_buffers = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -132,12 +132,12 @@ impl VkShader {
             let type_handle =
                 spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
             assert_ne!(type_handle, std::ptr::null());
-            let mut size = 0u64;
+            let mut size = 0usize;
             assert_eq!(
                 spirv_cross_sys::spvc_compiler_get_declared_struct_size(
                     compiler,
                     type_handle,
-                    &mut size as *mut u64
+                    &mut size as *mut usize
                 ),
                 spirv_cross_sys::spvc_result_SPVC_SUCCESS
             );
@@ -168,7 +168,7 @@ impl VkShader {
         let separate_images = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -240,7 +240,7 @@ impl VkShader {
         let separate_samplers = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -309,7 +309,7 @@ impl VkShader {
         let sampled_images = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -377,7 +377,7 @@ impl VkShader {
         let subpass_inputs = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -428,7 +428,7 @@ impl VkShader {
         let uniform_buffers = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -496,7 +496,7 @@ impl VkShader {
         let storage_buffers = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -571,7 +571,7 @@ impl VkShader {
         let storage_images = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
@@ -645,7 +645,7 @@ impl VkShader {
         let acceleration_structures = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
-            let mut resources_count: u64 = 0;
+            let mut resources_count: usize = 0;
             assert_eq!(
                 spirv_cross_sys::spvc_resources_get_resource_list_for_type(
                     resources,
