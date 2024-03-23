@@ -332,7 +332,13 @@ impl Device<VkBackend> for VkDevice {
         self.device.get_device_buffer_memory_requirements(&buffer_requirements_info, &mut requirements);
 
         ResourceHeapInfo {
-            prefer_dedicated_allocation: dedicated_requirements.prefers_dedicated_allocation == vk::TRUE || dedicated_requirements.requires_dedicated_allocation == vk::TRUE,
+            dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
+                DedicatedAllocationPreference::RequireDedicated            
+            } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
+                DedicatedAllocationPreference::PreferDedicated
+            } else {
+                DedicatedAllocationPreference::DontCare
+            },
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
             alignment: requirements.memory_requirements.alignment,
             size: requirements.memory_requirements.size
@@ -401,7 +407,13 @@ impl Device<VkBackend> for VkDevice {
         self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
 
         ResourceHeapInfo {
-            prefer_dedicated_allocation: dedicated_requirements.prefers_dedicated_allocation == vk::TRUE || dedicated_requirements.requires_dedicated_allocation == vk::TRUE,
+            dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
+                DedicatedAllocationPreference::RequireDedicated            
+            } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
+                DedicatedAllocationPreference::PreferDedicated
+            } else {
+                DedicatedAllocationPreference::DontCare
+            },
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
             alignment: requirements.memory_requirements.alignment,
             size: requirements.memory_requirements.size

@@ -1,8 +1,17 @@
 use super::*;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum DedicatedAllocationPreference {
+    RequireDedicated,
+    PreferDedicated,
+    DontCare,
+    PreferSuballocated,
+    RequireSuballocated
+}
+
 #[derive(Debug)]
 pub struct ResourceHeapInfo {
-    pub prefer_dedicated_allocation: bool,
+    pub dedicated_allocation_preference: DedicatedAllocationPreference,
     pub memory_type_mask: u32,
     pub alignment: u64,
     pub size: u64

@@ -24,7 +24,7 @@ impl<B: GPUBackend> Drop for Texture<B> {
 impl<B: GPUBackend> Texture<B> {
     pub(super) fn new(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, destroyer: &Arc<DeferredDestroyer<B>>, info: &TextureInfo, name: Option<&str>) -> Result<Arc<Self>, OutOfMemoryError> {
         let heap_info = unsafe { device.get_texture_heap_info(info) };
-        let (texture, allocation) = if heap_info.prefer_dedicated_allocation {
+        let (texture, allocation) = if heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::RequireDedicated || heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::PreferDedicated {
             let memory_types = unsafe { device.memory_type_infos() };
             let mut mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
             let mut texture: Result<B::Texture, OutOfMemoryError> = Err(OutOfMemoryError {});

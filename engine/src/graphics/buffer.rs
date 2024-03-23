@@ -128,7 +128,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
 
     pub(super) fn create_buffer(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Result<BufferAndAllocation<B>, OutOfMemoryError> {
         let heap_info = unsafe { device.get_buffer_heap_info(info) };
-        if heap_info.prefer_dedicated_allocation {
+        if heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::RequireDedicated || heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::PreferDedicated {
             let memory_types = unsafe { device.memory_type_infos() };
             let mut buffer: Result<B::Buffer, OutOfMemoryError> = Err(OutOfMemoryError {});
 
