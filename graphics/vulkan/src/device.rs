@@ -208,7 +208,7 @@ impl Device<VkBackend> for VkDevice {
         VkPipeline::new_graphics(&self.device, &vk_info, shared, name)
     }
 
-    unsafe fn create_fence(&self) -> VkTimelineSemaphore {
+    unsafe fn create_fence(&self, _is_cpu_accessible: bool) -> VkTimelineSemaphore {
         VkTimelineSemaphore::new(&self.device)
     }
 

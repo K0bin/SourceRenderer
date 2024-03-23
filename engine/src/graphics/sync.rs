@@ -18,7 +18,7 @@ impl<B: GPUBackend> Drop for Fence<B> {
 
 impl<B: GPUBackend> Fence<B> {
     pub(super) fn new(device: &B::Device, destoryer: &Arc<DeferredDestroyer<B>>) -> Self {
-        let fence = unsafe {device.create_fence() };
+        let fence = unsafe {device.create_fence(true) };
         Self {
             fence: ManuallyDrop::new(fence),
             destroyer: destoryer.clone()

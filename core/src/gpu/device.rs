@@ -25,7 +25,7 @@ pub trait Device<B: GPUBackend> {
   unsafe fn create_sampler(&self, info: &SamplerInfo) -> B::Sampler;
   unsafe fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> B::GraphicsPipeline;
   unsafe fn wait_for_idle(&self);
-  unsafe fn create_fence(&self) -> B::Fence;
+  unsafe fn create_fence(&self, is_cpu_accessible: bool) -> B::Fence;
   unsafe fn memory_infos(&self) -> Vec<MemoryInfo>;
   unsafe fn memory_type_infos(&self) -> &[MemoryTypeInfo];
   unsafe fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<B::Heap, OutOfMemoryError>;
