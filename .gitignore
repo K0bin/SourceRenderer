@@ -19,5 +19,13 @@ Cargo.lock
 !/graphics/vulkan/meta_shaders/*.spv
 **.code-workspace
 
+**/.DS_STORE
+
 assets/
 graphics/wgpu/
+graphics/d3d12/agility/
+platform/**/agility/
+platform/**/*.glb
+platform/**/*.blend
+
+**/*.bak
