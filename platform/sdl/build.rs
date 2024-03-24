@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use build_util::{
     compile_shader,
     compile_shaders,
-    copy_directory_rec,
+    copy_directory_rec, CompiledShaderFileType, ShadingLanguage,
 };
 
 fn main() {
@@ -29,7 +29,6 @@ fn main() {
         &shader_dir,
         &shader_dest_dir,
         true,
-        false,
         &HashMap::new(),
         |_| true,
     );
@@ -54,7 +53,7 @@ fn main() {
         "FFX_FSR2_OPTION_HDR_COLOR_INPUT".to_string(),
         "1".to_string(),
     );
-    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, false, &map, |f| {
+    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, &map, |f| {
         f.extension()
             .and_then(|ext| ext.to_str())
             .map(|ext| ext == "glsl")
@@ -71,6 +70,8 @@ fn main() {
     compile_shader(
         &accumulate_sharpen_path,
         &accumulate_sharpen_compiled_path,
+        ShadingLanguage::SpirV,
+        CompiledShaderFileType::Bytecode,
         true,
         &map,
     );
