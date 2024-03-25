@@ -9,7 +9,9 @@ pub use self::{
     format::*,
     queue::*,
     command::*,
-    sync::*
+    sync::*,
+    pipeline::*,
+    rt::*
 };
 
 mod backend;
@@ -23,3 +25,5 @@ mod format;
 mod queue;
 mod command;
 mod sync;
+mod pipeline;
+mod rt;

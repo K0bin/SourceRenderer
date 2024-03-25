@@ -253,11 +253,11 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
     
     unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>) -> gpu::AccelerationStructureSizes {
-        todo!()
+        MTLAccelerationStructure::bottom_level_size(&self.device, info)
     }
     
     unsafe fn get_top_level_acceleration_structure_size(&self, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>) -> gpu::AccelerationStructureSizes {
-        todo!()
+        MTLAccelerationStructure::top_level_size(&self.device, info)
     }
     
     fn get_top_level_instances_buffer_size(&self, instances: &[gpu::AccelerationStructureInstance<MTLBackend>]) -> u64 {
