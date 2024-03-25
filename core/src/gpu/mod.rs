@@ -13,6 +13,7 @@ pub use self::descriptor_heap::*;
 pub use self::queue::*;
 pub use self::backend::*;
 pub use self::heap::*;
+pub use self::shader_metadata::*;
 
 mod device;
 mod instance;
@@ -29,6 +30,7 @@ mod heap;
 mod rt;
 mod descriptor_heap;
 mod queue;
+mod shader_metadata;
 
 // TODO: find a better place for this
 pub trait Resettable {

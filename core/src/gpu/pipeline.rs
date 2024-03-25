@@ -1,3 +1,6 @@
+use serde::Deserialize;
+use serde::Serialize;
+
 use super::*;
 
 use std::hash::Hasher;
@@ -306,7 +309,7 @@ impl Default for AttachmentBlendInfo {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ShaderType {
   VertexShader = 0,
   FragmentShader,

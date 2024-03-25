@@ -215,6 +215,9 @@ dependencies = [
  "cargo_metadata",
  "log",
  "pathos",
+ "serde_json",
+ "sourcerenderer_core",
+ "spirv_cross_sys",
 ]
 
 [[package]]
@@ -2050,6 +2053,7 @@ dependencies = [
  "nalgebra",
  "num_cpus",
  "rayon",
+ "serde",
  "smallvec",
 ]
 

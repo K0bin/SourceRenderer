@@ -28,4 +28,6 @@ platform/**/agility/
 platform/**/*.glb
 platform/**/*.blend
 
+build_util/shaders/
+
 **/*.bak
