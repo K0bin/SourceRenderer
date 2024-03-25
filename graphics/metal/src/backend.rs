@@ -18,11 +18,11 @@ impl gpu::GPUBackend for MTLBackend {
     type Surface = MTLSurface;
     type Swapchain = MTLSwapchain;
     type Fence = MTLFence;
-    type Heap = MTLHeap;
-    
-    type Shader;    
-    type GraphicsPipeline;    
+    type Heap = MTLHeap;    
+    type Shader = MTLShader;
+    type GraphicsPipeline = MTLGraphicsPipeline;
+
     type ComputePipeline;    
-    type RayTracingPipeline;    
-    type AccelerationStructure;
+    type RayTracingPipeline;
+    type AccelerationStructure = MTLAccelerationStructure;
 }
