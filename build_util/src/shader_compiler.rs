@@ -116,7 +116,7 @@ fn compile_shader_glsl(
     shader_type: gpu::ShaderType,
     include_debug_info: bool,
     arguments: &HashMap<String, String>,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ()> {
     println!("cargo:rerun-if-changed={}", (file_path).to_str().unwrap());
 
     let is_rt = shader_type == gpu::ShaderType::RayClosestHit
@@ -152,30 +152,40 @@ fn compile_shader_glsl(
     command.arg("-o").arg(&compiled_spv_file_path);
     command.arg(&file_path);
 
-    let output = command.output().unwrap_or_else(|e| {
-        panic!(
-            "Failed to compile shader: {}\n{}",
+    let output_res = command.output();
+    if let Err(e) = output_res {
+        println!("Failed to compile shader: {}\n{}",
             file_path.to_str().unwrap(),
-            e.to_string()
-        )
-    });
+            e.to_string());
+        return Err(());
+    }
+    let output = output_res.unwrap();
 
     if !output.status.success() {
-        panic!(
+        println!(
             "Failed to compile shader: {}\n{:?}\n",
             file_path.to_str().unwrap(),
             output
         );
+        return Err(());
     }
 
     let mut spirv_bytecode = Vec::<u8>::new();
     {
         let file_res = std::fs::File::open(&compiled_spv_file_path);
+        if let Err(e) = file_res {
+            println!("Failed to open SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
+            return Err(());
+        }
         let mut file = file_res.unwrap();
-        file.read_to_end(&mut spirv_bytecode).unwrap();
+        let read_res = file.read_to_end(&mut spirv_bytecode);
+        if let Err(e) = read_res {
+            println!("Failed to read SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
+            return Err(());
+        }
     }
     let _ = std::fs::remove_file(compiled_spv_file_path);
-    spirv_bytecode
+    Ok(spirv_bytecode)
 }
 
 struct CallbackInfo {
@@ -564,8 +574,6 @@ fn compile_shader_spirv_cross(
                 let code_cstr = CStr::from_ptr(compiled_code_cstr_ptr);
                 let code_string = code_cstr.to_string_lossy();
                 compiled_shader = gpu::ShaderSource::Source(code_string.to_string());
-
-                // TODO: Compile HLSL to DXIL
             }
         }
 
@@ -723,7 +731,11 @@ pub fn compile_shader(
 
     // Compile GLSL to SPIR-V
     //
-    let spirv_bytecode = compile_shader_glsl(file_path, output_dir, shader_type, include_debug_info, arguments);
+    let spirv_bytecode_res = compile_shader_glsl(file_path, output_dir, shader_type, include_debug_info, arguments);
+    if spirv_bytecode_res.is_err() {
+        return;
+    }
+    let spirv_bytecode = spirv_bytecode_res.unwrap();
 
     // Compile SPIR-V to shading language source if necessary and/or generate metadata
     //
