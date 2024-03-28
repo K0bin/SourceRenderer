@@ -242,47 +242,56 @@ impl Adapter<VkBackend> for VkAdapter {
             let mut features = VkFeatures::empty();
 
             let mut supported_features: vk::PhysicalDeviceFeatures2 = Default::default();
+            let mut supported_features_11: vk::PhysicalDeviceVulkan11Features = Default::default();
+            let mut supported_features_12: vk::PhysicalDeviceVulkan12Features = Default::default();
+            let mut supported_features_13: vk::PhysicalDeviceVulkan13Features = Default::default();
             let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
-            let mut supported_descriptor_indexing_features =
-                vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
-            let mut descriptor_indexing_properties =
-                vk::PhysicalDeviceDescriptorIndexingPropertiesEXT::default();
+            let mut properties_11: vk::PhysicalDeviceVulkan11Properties = Default::default();
+            let mut properties_12: vk::PhysicalDeviceVulkan12Properties = Default::default();
+            let mut properties_13: vk::PhysicalDeviceVulkan13Properties = Default::default();
             let mut supported_acceleration_structure_features =
                 vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut supported_rt_pipeline_features =
                 vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-            let mut supported_bda_features =
-                vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
-            let mut supported_timeline_semaphore_features =
-                vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
-            let mut supported_sync2_features =
-                vk::PhysicalDeviceSynchronization2Features::default();
-            let mut filter_min_max_properties =
-                vk::PhysicalDeviceSamplerFilterMinmaxProperties::default();
             let mut supported_barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
-            let mut supported_16bit_features = vk::PhysicalDevice16BitStorageFeatures::default();
-            let mut supported_maintenance4_features = vk::PhysicalDeviceMaintenance4Features::default();
 
-            supported_16bit_features.p_next = std::mem::replace(
+            supported_features_11.p_next = std::mem::replace(
                 &mut supported_features.p_next,
-                &mut supported_16bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
+                &mut supported_features_11 as *mut vk::PhysicalDeviceVulkan11Features
                     as *mut c_void,
             );
 
-
-            supported_descriptor_indexing_features.p_next = std::mem::replace(
+            supported_features_12.p_next = std::mem::replace(
                 &mut supported_features.p_next,
-                &mut supported_descriptor_indexing_features
-                    as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT
+                &mut supported_features_12 as *mut vk::PhysicalDeviceVulkan12Features
                     as *mut c_void,
             );
-            descriptor_indexing_properties.p_next = std::mem::replace(
+
+            supported_features_13.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_features_13 as *mut vk::PhysicalDeviceVulkan13Features
+                    as *mut c_void,
+            );
+
+            properties_11.p_next = std::mem::replace(
                 &mut properties.p_next,
-                &mut descriptor_indexing_properties
-                    as *mut vk::PhysicalDeviceDescriptorIndexingPropertiesEXT
+                &mut properties_11 as *mut vk::PhysicalDeviceVulkan11Properties
                     as *mut c_void,
             );
+
+            properties_12.p_next = std::mem::replace(
+                &mut properties.p_next,
+                &mut properties_12 as *mut vk::PhysicalDeviceVulkan12Properties
+                    as *mut c_void,
+            );
+
+            properties_13.p_next = std::mem::replace(
+                &mut properties.p_next,
+                &mut properties_13 as *mut vk::PhysicalDeviceVulkan13Properties
+                    as *mut c_void,
+            );
+
             if self
                 .extensions
                 .intersects(VkAdapterExtensionSupport::ACCELERATION_STRUCTURE)
@@ -306,21 +315,6 @@ impl Adapter<VkBackend> for VkAdapter {
                 );
             }
 
-            supported_bda_features.p_next = std::mem::replace(
-                &mut supported_features.p_next,
-                &mut supported_bda_features
-                    as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR
-                    as *mut c_void,
-            );
-
-
-            filter_min_max_properties.p_next = std::mem::replace(
-                &mut properties.p_next,
-                &mut filter_min_max_properties
-                    as *mut vk::PhysicalDeviceSamplerFilterMinmaxProperties
-                    as *mut c_void,
-            );
-
             if !supported_features
                 .features
                 .shader_storage_image_write_without_format
@@ -341,55 +335,50 @@ impl Adapter<VkBackend> for VkAdapter {
                 );
             }
 
-            supported_timeline_semaphore_features.p_next = std::mem::replace(
-                &mut supported_features.p_next,
-                &mut supported_timeline_semaphore_features
-                    as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures
-                    as *mut c_void,
-            );
-            supported_sync2_features.p_next = std::mem::replace(
-                &mut supported_features.p_next,
-                &mut supported_sync2_features as *mut vk::PhysicalDeviceSynchronization2Features
-                    as *mut c_void,
-            );
-
-            supported_maintenance4_features.p_next = std::mem::replace(
-                &mut supported_features.p_next,
-                &mut supported_maintenance4_features
-                    as *mut vk::PhysicalDeviceMaintenance4Features
-                    as *mut c_void,
-            );
-
             self.instance
                 .get_physical_device_features2(self.physical_device, &mut supported_features);
             self.instance
                 .get_physical_device_properties2(self.physical_device, &mut properties);
 
-            let mut enabled_features: vk::PhysicalDeviceFeatures = Default::default();
-            let mut descriptor_indexing_features =
-                vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
+            let mut enabled_features: vk::PhysicalDeviceFeatures2 = Default::default();
+            let mut enabled_features_11: vk::PhysicalDeviceVulkan11Features = Default::default();
+            let mut enabled_features_12: vk::PhysicalDeviceVulkan12Features = Default::default();
+            let mut enabled_features_13: vk::PhysicalDeviceVulkan13Features = Default::default();
+
             let mut acceleration_structure_features =
                 vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut rt_pipeline_features =
                 vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-            let mut bda_features = vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
-            let mut timeline_semaphore_features =
-                vk::PhysicalDeviceTimelineSemaphoreFeatures::default();
-            let mut sync2_features = vk::PhysicalDeviceSynchronization2Features::default();
             let mut barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
-            let mut sixteen_bit_features = vk::PhysicalDevice16BitStorageFeatures::default();
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
-            let mut maintenance4_features = vk::PhysicalDeviceMaintenance4Features::default();
             let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
-            enabled_features.shader_storage_image_write_without_format = vk::TRUE;
+            enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
+
+            enabled_features_11.p_next = std::mem::replace(
+                &mut enabled_features.p_next,
+                &mut enabled_features_11 as *mut vk::PhysicalDeviceVulkan11Features
+                    as *mut c_void,
+            );
+
+            enabled_features_12.p_next = std::mem::replace(
+                &mut enabled_features.p_next,
+                &mut enabled_features_12 as *mut vk::PhysicalDeviceVulkan12Features
+                    as *mut c_void,
+            );
+
+            enabled_features_13.p_next = std::mem::replace(
+                &mut enabled_features.p_next,
+                &mut enabled_features_13 as *mut vk::PhysicalDeviceVulkan13Features
+                    as *mut c_void,
+            );
 
             if supported_features.features.shader_int16 == vk::TRUE
-                && supported_16bit_features.storage_buffer16_bit_access == vk::TRUE
+                && supported_features_11.storage_buffer16_bit_access == vk::TRUE
             {
-                sixteen_bit_features.storage_buffer16_bit_access = vk::TRUE;
-                enabled_features.shader_int16 = vk::TRUE;
+                enabled_features_11.storage_buffer16_bit_access = vk::TRUE;
+                enabled_features.features.shader_int16 = vk::TRUE;
             }
 
             if self
@@ -400,29 +389,29 @@ impl Adapter<VkBackend> for VkAdapter {
                 features |= VkFeatures::MEMORY_BUDGET;
             }
 
-            let supports_descriptor_indexing = supported_descriptor_indexing_features
+            let supports_descriptor_indexing = supported_features_12
                     .shader_sampled_image_array_non_uniform_indexing
                     == vk::TRUE
-                && supported_descriptor_indexing_features
+                && supported_features_12
                     .descriptor_binding_sampled_image_update_after_bind
                     == vk::TRUE
-                && supported_descriptor_indexing_features
+                && supported_features_12
                     .descriptor_binding_variable_descriptor_count
                     == vk::TRUE
-                && supported_descriptor_indexing_features.runtime_descriptor_array == vk::TRUE
-                && supported_descriptor_indexing_features.descriptor_binding_partially_bound
+                && supported_features_12.runtime_descriptor_array == vk::TRUE
+                && supported_features_12.descriptor_binding_partially_bound
                     == vk::TRUE
-                && supported_descriptor_indexing_features
+                && supported_features_12
                     .descriptor_binding_update_unused_while_pending
                     == vk::TRUE
-                && descriptor_indexing_properties
+                && properties_12
                     .shader_sampled_image_array_non_uniform_indexing_native
                     == vk::TRUE
-                && descriptor_indexing_properties
+                && properties_12
                     .max_descriptor_set_update_after_bind_sampled_images
                     > BINDLESS_TEXTURE_COUNT;
 
-            let supports_bda = supported_bda_features.buffer_device_address == vk::TRUE;
+            let supports_bda = supported_features_12.buffer_device_address == vk::TRUE;
 
             let supports_indirect = supported_features.features.draw_indirect_first_instance == vk::TRUE
                 && supported_features.features.multi_draw_indirect == vk::TRUE
@@ -440,23 +429,18 @@ impl Adapter<VkBackend> for VkAdapter {
 
             if supports_descriptor_indexing {
                 println!("Bindless supported.");
-                descriptor_indexing_features.p_next = std::mem::replace(
-                    &mut device_creation_pnext,
-                    &mut descriptor_indexing_features
-                        as *mut vk::PhysicalDeviceDescriptorIndexingFeaturesEXT
-                        as *mut c_void,
-                );
-                descriptor_indexing_features.shader_sampled_image_array_non_uniform_indexing =
+                supported_features_12.shader_sampled_image_array_non_uniform_indexing =
                     vk::TRUE;
-                descriptor_indexing_features.descriptor_binding_sampled_image_update_after_bind =
+                supported_features_12.descriptor_binding_sampled_image_update_after_bind =
                     vk::TRUE;
-                descriptor_indexing_features.descriptor_binding_variable_descriptor_count =
+                supported_features_12.descriptor_binding_variable_descriptor_count =
                     vk::TRUE;
-                descriptor_indexing_features.runtime_descriptor_array = vk::TRUE;
-                descriptor_indexing_features.descriptor_binding_partially_bound = vk::TRUE;
-                descriptor_indexing_features.descriptor_binding_update_unused_while_pending =
+                supported_features_12.runtime_descriptor_array = vk::TRUE;
+                supported_features_12.descriptor_binding_partially_bound = vk::TRUE;
+                supported_features_12.descriptor_binding_update_unused_while_pending =
                     vk::TRUE;
                 features |= VkFeatures::DESCRIPTOR_INDEXING;
+                enabled_features_12.descriptor_indexing = vk::TRUE;
             }
 
             if supports_rt {
@@ -486,41 +470,28 @@ impl Adapter<VkBackend> for VkAdapter {
             if supports_indirect {
                 println!("GPU driven rendering supported.");
                 features |= VkFeatures::ADVANCED_INDIRECT;
-                enabled_features.draw_indirect_first_instance = vk::TRUE;
-                enabled_features.multi_draw_indirect = vk::TRUE;
+                enabled_features.features.draw_indirect_first_instance = vk::TRUE;
+                enabled_features.features.multi_draw_indirect = vk::TRUE;
             }
 
             if supports_bda && supports_rt {
-                bda_features.buffer_device_address = vk::TRUE;
-                bda_features.p_next = std::mem::replace(
-                    &mut device_creation_pnext,
-                    &mut bda_features as *mut vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR
-                        as *mut c_void,
-                );
+                enabled_features_12.buffer_device_address = vk::TRUE;
             }
 
-            let supports_filter_min_max = filter_min_max_properties.filter_minmax_single_component_formats == vk::TRUE;
+            let supports_filter_min_max = supported_features_12.sampler_filter_minmax == vk::TRUE && properties_12.filter_minmax_single_component_formats == vk::TRUE;
             if supports_filter_min_max {
+                enabled_features_12.sampler_filter_minmax = vk::TRUE;
                 features |= VkFeatures::MIN_MAX_FILTER;
+
             }
 
-            if supported_sync2_features.synchronization2 != vk::TRUE
-                || supported_timeline_semaphore_features.timeline_semaphore != vk::TRUE
+            if supported_features_13.synchronization2 != vk::TRUE
+                || supported_features_12.timeline_semaphore != vk::TRUE
             {
                 panic!("Timeline semaphores or sync2 unsupported. Update your driver!");
             }
-            timeline_semaphore_features.timeline_semaphore = vk::TRUE;
-            sync2_features.synchronization2 = vk::TRUE;
-            timeline_semaphore_features.p_next = std::mem::replace(
-                &mut device_creation_pnext,
-                &mut timeline_semaphore_features as *mut vk::PhysicalDeviceTimelineSemaphoreFeatures
-                    as *mut c_void,
-            );
-            sync2_features.p_next = std::mem::replace(
-                &mut device_creation_pnext,
-                &mut sync2_features as *mut vk::PhysicalDeviceSynchronization2Features
-                    as *mut c_void,
-            );
+            enabled_features_12.timeline_semaphore = vk::TRUE;
+            enabled_features_13.synchronization2 = vk::TRUE;
 
             if supported_barycentrics_features.fragment_shader_barycentric == vk::TRUE {
                 println!("Barycentrics supported.");
@@ -533,23 +504,17 @@ impl Adapter<VkBackend> for VkAdapter {
                 );
                 extension_names.push(BARYCENTRICS_EXT_NAME);
                 features |= VkFeatures::BARYCENTRICS;
-                enabled_features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
+                enabled_features.features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
             }
 
-            sixteen_bit_features.p_next = std::mem::replace(
+            enabled_features.p_next = std::mem::replace(
                 &mut device_creation_pnext,
-                &mut sixteen_bit_features as *mut vk::PhysicalDevice16BitStorageFeatures
+                &mut enabled_features as *mut vk::PhysicalDeviceFeatures2
                     as *mut c_void,
             );
 
-            if supported_maintenance4_features.maintenance4 == vk::TRUE {
-                maintenance4_features.maintenance4 = vk::TRUE;
-                maintenance4_features.p_next = std::mem::replace(
-                    &mut device_creation_pnext,
-                    &mut maintenance4_features as *mut vk::PhysicalDeviceMaintenance4Features
-                        as *mut c_void,
-                );
-
+            if supported_features_13.maintenance4 == vk::TRUE {
+                enabled_features_13.maintenance4 = vk::TRUE;
                 features |= VkFeatures::MAINTENANCE4;
             }
 
@@ -565,7 +530,7 @@ impl Adapter<VkBackend> for VkAdapter {
             let device_create_info = vk::DeviceCreateInfo {
                 p_queue_create_infos: queue_create_descs.as_ptr(),
                 queue_create_info_count: queue_create_descs.len() as u32,
-                p_enabled_features: &enabled_features,
+                p_enabled_features: std::ptr::null(),
                 pp_enabled_extension_names: extension_names_ptr.as_ptr(),
                 enabled_extension_count: extension_names_c.len() as u32,
                 p_next: device_creation_pnext,
