@@ -1051,7 +1051,7 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
         path = path.join("ffx_fsr2_accumulate_pass.spv");
         name = "ffx_fsr2_accumulate_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_ACCUMULATE_SHARPEN {
-        path = path.join("ffx_fsr2_accumulate_sharpen_pass.spv");
+        path = path.join("ffx_fsr2_accumulate_pass.spv");
         name = "ffx_fsr2_accumulate_sharpen_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_RCAS {
         path = path.join("ffx_fsr2_rcas_pass.spv");
@@ -1068,6 +1068,8 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
     } else {
         panic!("Unsupported pass: {}", pass);
     }
+
+    println!("shader: {:?}", path);
 
     let shader = {
         let mut file = <P::IO as IO>::open_asset(path).unwrap();
