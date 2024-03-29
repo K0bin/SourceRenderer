@@ -41,11 +41,15 @@ impl Drop for VkMemoryHeap {
 
 impl VkMemoryHeap {
     pub unsafe fn new(device: &Arc<RawVkDevice>, memory_type_index: u32, size: u64) -> Result<Self, OutOfMemoryError> {
-        let flags_info = vk::MemoryAllocateFlagsInfo {
+        let mut flags_info = vk::MemoryAllocateFlagsInfo {
             flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
             device_mask: 0u32,
             ..Default::default()
         };
+        if !device.features.contains(VkFeatures::BDA) {
+            flags_info.flags &= !vk::MemoryAllocateFlags::DEVICE_ADDRESS;
+        }
+
         let memory_info = vk::MemoryAllocateInfo {
             allocation_size: size,
             memory_type_index,

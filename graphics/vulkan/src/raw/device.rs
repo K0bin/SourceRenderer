@@ -24,6 +24,7 @@ bitflags! {
     const BARYCENTRICS               = 0b1000000;
     const IMAGE_FORMAT_LIST          = 0b10000000;
     const MAINTENANCE4               = 0b100000000;
+    const BDA                        = 0b1000000000;
   }
 }
 
@@ -138,6 +139,7 @@ impl RawVkDevice {
             .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT);
 
         let mut supported_pipeline_stages = vk::PipelineStageFlags2::VERTEX_INPUT
+            | vk::PipelineStageFlags2::VERTEX_SHADER
             | vk::PipelineStageFlags2::FRAGMENT_SHADER
             | vk::PipelineStageFlags2::BLIT
             | vk::PipelineStageFlags2::CLEAR
@@ -149,7 +151,8 @@ impl RawVkDevice {
             | vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
             | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS
             | vk::PipelineStageFlags2::CONDITIONAL_RENDERING_EXT
-            | vk::PipelineStageFlags2::DRAW_INDIRECT;
+            | vk::PipelineStageFlags2::DRAW_INDIRECT
+            | vk::PipelineStageFlags2::COMPUTE_SHADER;
 
         let mut supported_access_flags = vk::AccessFlags2::SHADER_READ
             | vk::AccessFlags2::SHADER_WRITE

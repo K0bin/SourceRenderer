@@ -452,6 +452,8 @@ impl Adapter<VkBackend> for VkAdapter {
                 extension_names.push(PIPELINE_LIBRARY_EXT_NAME);
 
                 features |= VkFeatures::RAY_TRACING;
+                features |= VkFeatures::BDA;
+                enabled_features_12.buffer_device_address = vk::TRUE;
                 acceleration_structure_features.acceleration_structure = vk::TRUE;
                 rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
                 acceleration_structure_features.p_next = std::mem::replace(
@@ -474,10 +476,6 @@ impl Adapter<VkBackend> for VkAdapter {
                 enabled_features.features.draw_indirect_first_instance = vk::TRUE;
                 enabled_features.features.multi_draw_indirect = vk::TRUE;
                 enabled_features_12.draw_indirect_count = vk::TRUE;
-            }
-
-            if supports_bda && supports_rt {
-                enabled_features_12.buffer_device_address = vk::TRUE;
             }
 
             let supports_filter_min_max = supported_features_12.sampler_filter_minmax == vk::TRUE && properties_12.filter_minmax_single_component_formats == vk::TRUE;

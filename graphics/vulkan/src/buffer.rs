@@ -93,12 +93,15 @@ impl VkBuffer {
                     buffer: buffer,
                     ..Default::default()
                 };
-                let flags_info = vk::MemoryAllocateFlagsInfo {
+                let mut flags_info = vk::MemoryAllocateFlagsInfo {
                     flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
                     device_mask: 0u32,
                     p_next: &dedicated_alloc as *const vk::MemoryDedicatedAllocateInfo as *const c_void,
                     ..Default::default()
                 };
+                if !device.features.contains(VkFeatures::BDA) {
+                    flags_info.flags &= !vk::MemoryAllocateFlags::DEVICE_ADDRESS;
+                }
                 let memory_info = vk::MemoryAllocateInfo {
                     allocation_size: requirements.memory_requirements.size,
                     memory_type_index,
