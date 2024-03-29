@@ -1,8 +1,10 @@
-use std::{sync::Arc, sync::Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use smallvec::SmallVec;
 
 // TODO: Implement Two Level Seggregate Fit allocator
+
+const DEBUG: bool = false;
 
 pub(super) struct Chunk<T>
     where T : Send + Sync
@@ -15,7 +17,9 @@ struct ChunkInner<T>
 where T : Send + Sync {
     free_list: Mutex<SmallVec<[Range; 16]>>,
     data: T,
-    free_callback: Option<Box<dyn Fn(&[Range]) + Send + Sync>>
+    free_callback: Option<Box<dyn Fn(&[Range]) + Send + Sync>>,
+
+    debug_offset: AtomicU64
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,7 +73,8 @@ impl<T> Chunk<T>
             inner: Arc::new(ChunkInner {
                 free_list: Mutex::new(free_list),
                 data,
-                free_callback: None
+                free_callback: None,
+                debug_offset: AtomicU64::new(0u64)
             }),
             size: chunk_size
         }
@@ -86,13 +91,31 @@ impl<T> Chunk<T>
             inner: Arc::new(ChunkInner {
                 free_list: Mutex::new(free_list),
                 data,
-                free_callback: Some(Box::new(free_callback))
+                free_callback: Some(Box::new(free_callback)),
+                debug_offset: AtomicU64::new(0u64)
             }),
             size: chunk_size
         }
     }
 
     pub fn allocate(&self, size: u64, alignment: u64) -> Option<Allocation<T>> {
+        if DEBUG {
+            let offset = self.inner.debug_offset.fetch_add(size + alignment, std::sync::atomic::Ordering::SeqCst);
+            let alignment_mod = offset % alignment;
+            let alignment_diff = (alignment - alignment_mod) % alignment;
+            if offset + alignment_diff + size > self.size {
+                return None;
+            }
+            return Some(Allocation {
+                inner: self.inner.clone(),
+                data_ptr: &self.inner.data as *const T,
+                range: Range {
+                    offset: offset + alignment_diff,
+                    length: size
+                }
+            });
+        }
+
         let mut free_list = self.inner.free_list.lock().unwrap();
 
         let mut best = Option::<(usize, Range)>::None;
@@ -104,7 +127,7 @@ impl<T> Chunk<T>
 
             let alignment_mod = range.offset % alignment;
             let alignment_diff = (alignment - alignment_mod) % alignment;
-            if range.length - alignment_diff < size {
+            if range.length < size + alignment_diff {
                 continue;
             }
 
@@ -122,26 +145,35 @@ impl<T> Chunk<T>
             }
         }
 
-        best.map(|(free_index, range)| {
-            if range.length == size {
+        best.map(|(mut free_index, mut range)| {
+            let alignment_mod = range.offset % alignment;
+            let alignment_diff = (alignment - alignment_mod) % alignment;
+            let consume_entire_range = range.length == size + alignment_diff;
+            range.length = size;
+
+            if alignment_diff != 0 {
+                // Push chosen range back to fit alignment and add a new one before that
+                free_list.insert(free_index, Range {
+                    offset: range.offset,
+                    length: alignment_diff
+                });
+                range.offset += alignment_diff;
+                free_index += 1;
+            }
+
+            if consume_entire_range {
                 free_list.remove(free_index);
             } else {
-                let alignment_mod = range.offset % alignment;
-                let alignment_diff = (alignment - alignment_mod) % alignment;
-
-                if range.length != size + alignment_diff {
-                    let existing_range = &mut free_list[free_index];
-                    existing_range.offset += alignment_diff;
-                    existing_range.length -= alignment_diff;
-                }
+                let existing_range = &mut free_list[free_index];
+                debug_assert!(existing_range.length > size + alignment_diff);
+                existing_range.offset += size + alignment_diff;
+                existing_range.length -= size + alignment_diff;
             }
+
             Allocation {
                 inner: self.inner.clone(),
                 data_ptr: &self.inner.data as *const T,
-                range: Range {
-                    offset: range.offset,
-                    length: size
-                }
+                range
             }
         })
     }
@@ -160,12 +192,22 @@ impl<T> Drop for Allocation<T>
     where T : Send + Sync
 {
     fn drop(&mut self) {
+        if DEBUG {
+            return;
+        }
+
         let mut free_list = self.inner.free_list.lock().unwrap();
 
+        let mut insert_position = Option::<usize>::None;
         let mut i = 0usize;
         while i < free_list.len() {
             let drop_i = {
                 let range = &free_list[i];
+
+                if range.offset > self.range.offset + self.range.length {
+                    insert_position = Some(i);
+                    break;
+                }
 
                 if range.offset == self.range.offset + self.range.length {
                     self.range.length += range.length;
@@ -185,7 +227,11 @@ impl<T> Drop for Allocation<T>
             }
         }
 
-        free_list.push(self.range.clone());
+        if let Some(insert_position) = insert_position {
+            free_list.insert(insert_position, self.range.clone());
+        } else {
+            free_list.push(self.range.clone());
+        }
         if let Some(callback) = self.inner.free_callback.as_ref() {
             callback(&free_list[..]);
         }
