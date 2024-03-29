@@ -352,7 +352,6 @@ impl Adapter<VkBackend> for VkAdapter {
             let mut barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
-            let mut device_creation_pnext: *mut c_void = std::ptr::null_mut();
 
             enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
 
@@ -415,6 +414,7 @@ impl Adapter<VkBackend> for VkAdapter {
 
             let supports_indirect = supported_features.features.draw_indirect_first_instance == vk::TRUE
                 && supported_features.features.multi_draw_indirect == vk::TRUE
+                && supported_features_12.draw_indirect_count == vk::TRUE
                 && supports_bda;
 
             let supports_rt = supports_descriptor_indexing
@@ -425,19 +425,20 @@ impl Adapter<VkBackend> for VkAdapter {
                 )
                 && supported_acceleration_structure_features.acceleration_structure == vk::TRUE
                 && supported_rt_pipeline_features.ray_tracing_pipeline == vk::TRUE
-                && supports_bda;
+                && supports_bda
+                && false;
 
             if supports_descriptor_indexing {
                 println!("Bindless supported.");
-                supported_features_12.shader_sampled_image_array_non_uniform_indexing =
+                enabled_features_12.shader_sampled_image_array_non_uniform_indexing =
                     vk::TRUE;
-                supported_features_12.descriptor_binding_sampled_image_update_after_bind =
+                enabled_features_12.descriptor_binding_sampled_image_update_after_bind =
                     vk::TRUE;
-                supported_features_12.descriptor_binding_variable_descriptor_count =
+                enabled_features_12.descriptor_binding_variable_descriptor_count =
                     vk::TRUE;
-                supported_features_12.runtime_descriptor_array = vk::TRUE;
-                supported_features_12.descriptor_binding_partially_bound = vk::TRUE;
-                supported_features_12.descriptor_binding_update_unused_while_pending =
+                enabled_features_12.runtime_descriptor_array = vk::TRUE;
+                enabled_features_12.descriptor_binding_partially_bound = vk::TRUE;
+                enabled_features_12.descriptor_binding_update_unused_while_pending =
                     vk::TRUE;
                 features |= VkFeatures::DESCRIPTOR_INDEXING;
                 enabled_features_12.descriptor_indexing = vk::TRUE;
@@ -454,13 +455,13 @@ impl Adapter<VkBackend> for VkAdapter {
                 acceleration_structure_features.acceleration_structure = vk::TRUE;
                 rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
                 acceleration_structure_features.p_next = std::mem::replace(
-                    &mut device_creation_pnext,
+                    &mut enabled_features.p_next,
                     &mut acceleration_structure_features
                         as *mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR
                         as *mut c_void,
                 );
                 rt_pipeline_features.p_next = std::mem::replace(
-                    &mut device_creation_pnext,
+                    &mut enabled_features.p_next,
                     &mut rt_pipeline_features
                         as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
                         as *mut c_void,
@@ -472,6 +473,7 @@ impl Adapter<VkBackend> for VkAdapter {
                 features |= VkFeatures::ADVANCED_INDIRECT;
                 enabled_features.features.draw_indirect_first_instance = vk::TRUE;
                 enabled_features.features.multi_draw_indirect = vk::TRUE;
+                enabled_features_12.draw_indirect_count = vk::TRUE;
             }
 
             if supports_bda && supports_rt {
@@ -497,7 +499,7 @@ impl Adapter<VkBackend> for VkAdapter {
                 println!("Barycentrics supported.");
                 barycentrics_features.fragment_shader_barycentric = vk::TRUE;
                 barycentrics_features.p_next = std::mem::replace(
-                    &mut device_creation_pnext,
+                    &mut enabled_features.p_next,
                     &mut barycentrics_features
                         as *mut VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV
                         as *mut c_void,
@@ -506,12 +508,6 @@ impl Adapter<VkBackend> for VkAdapter {
                 features |= VkFeatures::BARYCENTRICS;
                 enabled_features.features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
             }
-
-            enabled_features.p_next = std::mem::replace(
-                &mut device_creation_pnext,
-                &mut enabled_features as *mut vk::PhysicalDeviceFeatures2
-                    as *mut c_void,
-            );
 
             if supported_features_13.maintenance4 == vk::TRUE {
                 enabled_features_13.maintenance4 = vk::TRUE;
@@ -533,7 +529,7 @@ impl Adapter<VkBackend> for VkAdapter {
                 p_enabled_features: std::ptr::null(),
                 pp_enabled_extension_names: extension_names_ptr.as_ptr(),
                 enabled_extension_count: extension_names_c.len() as u32,
-                p_next: device_creation_pnext,
+                p_next: &enabled_features as &vk::PhysicalDeviceFeatures2 as *const vk::PhysicalDeviceFeatures2 as *const c_void,
                 ..Default::default()
             };
             let vk_device = self

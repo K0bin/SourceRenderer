@@ -91,7 +91,7 @@ impl Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: fence.fence.handle(),
                     value: fence.value,
-                    stage_mask: barrier_sync_to_stage(fence.sync_before) & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: (barrier_sync_to_stage(fence.sync_before) & self.device.supported_pipeline_stages) & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -111,7 +111,7 @@ impl Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: fence.fence.handle(),
                     value: fence.value,
-                    stage_mask: barrier_sync_to_stage(fence.sync_before) & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: (barrier_sync_to_stage(fence.sync_before) & self.device.supported_pipeline_stages) & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });

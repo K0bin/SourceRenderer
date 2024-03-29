@@ -808,13 +808,13 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         dst_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
                     }
 
-                    let dst_stages = barrier_sync_to_stage(*new_sync);
-                    let src_stages = barrier_sync_to_stage(*old_sync);
+                    let dst_stages = barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
+                    let src_stages = barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
                     pending_image_barriers.push(vk::ImageMemoryBarrier2 {
                         src_stage_mask: src_stages,
                         dst_stage_mask: dst_stages,
-                        src_access_mask: barrier_access_to_access(*old_access),
-                        dst_access_mask: barrier_access_to_access(*new_access),
+                        src_access_mask: barrier_access_to_access(*old_access) & self.device.supported_access_flags,
+                        dst_access_mask: barrier_access_to_access(*new_access) & self.device.supported_access_flags,
                         old_layout: texture_layout_to_image_layout(*old_layout),
                         new_layout: texture_layout_to_image_layout(*new_layout),
                         src_queue_family_index: src_queue_family_index,
@@ -840,8 +840,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     length,
                     queue_ownership
                 } => {
-                    let dst_stages = barrier_sync_to_stage(*new_sync);
-                    let src_stages = barrier_sync_to_stage(*old_sync);
+                    let dst_stages = barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
+                    let src_stages = barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
 
                     let mut src_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
                     let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
@@ -881,8 +881,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
                         src_stage_mask: src_stages,
                         dst_stage_mask: dst_stages,
-                        src_access_mask: barrier_access_to_access(*old_access),
-                        dst_access_mask: barrier_access_to_access(*new_access),
+                        src_access_mask: barrier_access_to_access(*old_access) & self.device.supported_access_flags,
+                        dst_access_mask: barrier_access_to_access(*new_access) & self.device.supported_access_flags,
                         src_queue_family_index: src_queue_family_index,
                         dst_queue_family_index: dst_queue_family_index,
                         buffer: buffer.handle(),
@@ -897,10 +897,10 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     old_access,
                     new_access,
                 } => {
-                    let dst_stages = barrier_sync_to_stage(*new_sync);
-                    let src_stages = barrier_sync_to_stage(*old_sync);
-                    let src_access = barrier_access_to_access(*old_access);
-                    let dst_access = barrier_access_to_access(*new_access);
+                    let dst_stages = barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
+                    let src_stages = barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
+                    let src_access = barrier_access_to_access(*old_access) & self.device.supported_access_flags;
+                    let dst_access = barrier_access_to_access(*new_access) & self.device.supported_access_flags;
 
                     pending_memory_barriers[0].dst_stage_mask |= dst_stages
                         & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
@@ -909,7 +909,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
                             | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
                     pending_memory_barriers[0].src_access_mask |=
-                        barrier_access_to_access(*old_access)
+                        src_access
                             & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
                     pending_memory_barriers[0].dst_access_mask |= dst_access
                         & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR
