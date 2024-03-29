@@ -78,6 +78,7 @@ pub struct CommandBuffer<B: GPUBackend> {
     destroyer: Arc<DeferredDestroyer<B>>,
     acceleration_structure_scratch: Option<TransientBufferSlice<B>>,
     acceleration_structure_scratch_offset: u64,
+    frame: u64
 }
 
 pub struct CommandBufferRecorder<B: GPUBackend> {
@@ -794,7 +795,8 @@ impl<B: GPUBackend> CommandBuffer<B> {
             transient_buffer_allocator: transient_buffer_allocator.clone(),
             destroyer: destroyer.clone(),
             acceleration_structure_scratch: None,
-            acceleration_structure_scratch_offset: 0u64
+            acceleration_structure_scratch_offset: 0u64,
+            frame: 0u64
         }
     }
 
@@ -805,12 +807,13 @@ impl<B: GPUBackend> CommandBuffer<B> {
         &mut self.cmd_buffer
     }
 
-
     pub fn reset(&mut self, frame: u64) {
+        assert_ne!(self.frame, frame);
         unsafe { self.cmd_buffer.reset(frame); }
         self.buffer_refs.clear();
         self.acceleration_structure_scratch = None;
         self.acceleration_structure_scratch_offset = 0;
+        self.frame = frame;
     }
 }
 
