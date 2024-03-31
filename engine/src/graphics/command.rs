@@ -23,7 +23,7 @@ pub use sourcerenderer_core::gpu::{
     BindingFrequency
 };
 
-const DEBUG_FORCE_FAT_BARRIER: bool = true;
+const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
 pub enum Barrier<'a, B: GPUBackend> {
   RawTextureBarrier {

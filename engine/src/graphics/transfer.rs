@@ -5,7 +5,7 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
-const DEBUG_FORCE_FAT_BARRIER: bool = true;
+const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
 pub(crate) struct Transfer<B: GPUBackend> {
   device: Arc<B::Device>,
