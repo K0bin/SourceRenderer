@@ -15,6 +15,7 @@ use sourcerenderer_core::{
 };
 
 use super::desktop_renderer::FrameBindings;
+use crate::renderer::passes::clustering::ClusteringPass;
 use crate::renderer::passes::conservative::desktop_renderer::setup_frame;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::rt_shadows::RTShadowPass;
@@ -284,13 +285,13 @@ impl<P: Platform> GeometryPass<P> {
             pass_params.zero_textures.zero_texture_view
         };
 
-        /*let clusters = barriers.access_buffer(
+        let clusters = pass_params.resources.access_buffer(
           cmd_buffer,
-          ClusteringPass::<P::GPUBackend>::CLUSTERS_BUFFER_NAME,
+          ClusteringPass::CLUSTERS_BUFFER_NAME,
           BarrierSync::FRAGMENT_SHADER,
           BarrierAccess::STORAGE_READ,
           HistoryResourceEntry::Current
-        ).clone();*/
+        ).clone();
 
         cmd_buffer.begin_render_pass(
             &RenderPassBeginInfo {
@@ -321,7 +322,6 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::CommandBuffers,
         );
 
-        let device = pass_params.device;
         let assets = pass_params.assets;
         let zero_textures = pass_params.zero_textures;
         let lightmap = pass_params.scene.lightmap;
@@ -373,7 +373,7 @@ impl<P: Platform> GeometryPass<P> {
                     &ssao,
                     &self.sampler,
                 );
-                // command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, &clusters, 0, WHOLE_BUFFER);
+                command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, BufferRef::Regular(&clusters), 0, WHOLE_BUFFER);
 
                 let mut last_material = Option::<&RendererMaterial>::None;
 
