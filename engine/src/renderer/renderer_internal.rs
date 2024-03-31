@@ -31,7 +31,7 @@ use super::drawable::{
 use super::light::DirectionalLight;
 use super::passes::modern::ModernRenderer;
 //#[cfg(not(target_arch = "wasm32"))]
-//use super::passes::conservative::desktop_renderer::ConservativeRenderer;
+use super::passes::conservative::desktop_renderer::ConservativeRenderer;
 //#[cfg(not(target_arch = "wasm32"))]
 //use super::passes::modern::ModernRenderer;
 use super::render_path::RenderPath;
@@ -112,12 +112,12 @@ impl<P: Platform> RendererInternal<P> {
             {
                 Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager))
             } else {
-                unimplemented!("Conservative renderer not yet updated")
-                /*Box::new(ConservativeRenderer::new(
+                Box::new(ConservativeRenderer::new(
                     device,
-                    swapchain,
+                    &swapchain,
+                    &mut context,
                     &mut shader_manager,
-                ))*/
+                ))
             }
         };
 
