@@ -99,7 +99,7 @@ impl<T> Chunk<T>
         for (index, range) in free_list.iter().enumerate() {
             if size == 1 {
                 best = Some((index, range.clone()));
-                break;                
+                break;
             }
 
             let alignment_mod = range.offset % alignment;
@@ -128,17 +128,11 @@ impl<T> Chunk<T>
             } else {
                 let alignment_mod = range.offset % alignment;
                 let alignment_diff = (alignment - alignment_mod) % alignment;
-                if alignment_diff != 0 {
-                    free_list.insert(free_index, Range {
-                        offset: range.offset,
-                        length: alignment_diff
-                    });
-                }
 
                 if range.length != size + alignment_diff {
                     let existing_range = &mut free_list[free_index];
-                    existing_range.offset += size + alignment_diff;
-                    existing_range.length -= size + alignment_diff;
+                    existing_range.offset += alignment_diff;
+                    existing_range.length -= alignment_diff;
                 }
             }
             Allocation {

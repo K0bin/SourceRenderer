@@ -61,15 +61,13 @@ fn main() {
     });
     let mut accumulate_sharpen_path = fsr_shader_dir.clone();
     accumulate_sharpen_path.push("ffx_fsr2_accumulate_pass.glsl");
-    let mut accumulate_sharpen_compiled_path = shader_dest_dir.clone();
-    accumulate_sharpen_compiled_path.push("ffx_fsr2_accumulate_sharpen_pass.spv");
     map.insert(
         "FFX_FSR2_OPTION_APPLY_SHARPENING".to_string(),
         "1".to_string(),
     );
     compile_shader(
         &accumulate_sharpen_path,
-        &accumulate_sharpen_compiled_path,
+        &shader_dest_dir,
         ShadingLanguage::SpirV,
         CompiledShaderFileType::Bytecode,
         true,
