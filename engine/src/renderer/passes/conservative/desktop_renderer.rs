@@ -447,12 +447,11 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
-        todo!()
     }
 }
 
 pub fn setup_frame<B: GPUBackend>(cmd_buf: &mut CommandBufferRecorder<B>, frame_bindings: &FrameBindings<B>) {
-    for i in 0..6 {
+    for i in 0..7 {
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
             i,

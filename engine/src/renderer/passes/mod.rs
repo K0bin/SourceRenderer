@@ -1,7 +1,7 @@
 pub(crate) mod blue_noise;
 pub(crate) mod clustering;
 pub(crate) mod compositing;
-//pub(crate) mod conservative;
+pub(crate) mod conservative;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod fsr2;
 pub(crate) mod light_binning;
