@@ -28,12 +28,12 @@ pub struct D3D12Device {
     transfer_queue: D3D12Queue,
 
     // Descriptor Heaps
-    src_descriptor_heap: D3D12::ID3D12DescriptorHeap,
-    src_sampler_descriptor_heap: D3D12::ID3D12DescriptorHeap,
-    src_rtv_descriptor_heap: D3D12::ID3D12DescriptorHeap,
-    src_dsv_descriptor_heap: D3D12::ID3D12DescriptorHeap,
-    gpu_descriptor_heap: D3D12::ID3D12DescriptorHeap,
-    gpu_sampler_descriptor_heap: D3D12::ID3D12DescriptorHeap,
+    src_descriptor_heap: D3D12DescriptorHeap,
+    src_sampler_descriptor_heap: D3D12DescriptorHeap,
+    src_rtv_descriptor_heap: D3D12DescriptorHeap,
+    src_dsv_descriptor_heap: D3D12DescriptorHeap,
+    gpu_descriptor_heap: D3D12DescriptorHeap,
+    gpu_sampler_descriptor_heap: D3D12DescriptorHeap,
 }
 
 impl D3D12Device {
@@ -87,30 +87,12 @@ impl D3D12Device {
             Flags: D3D12::D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
             NodeMask: 0,
         };
-        let src_descriptor_heap: D3D12::ID3D12DescriptorHeap;
-        let src_sampler_descriptor_heap: D3D12::ID3D12DescriptorHeap;
-        let src_rtv_descriptor_heap: D3D12::ID3D12DescriptorHeap;
-        let src_dsv_descriptor_heap: D3D12::ID3D12DescriptorHeap;
-        let gpu_descriptor_heap: D3D12::ID3D12DescriptorHeap;
-        let gpu_sampler_descriptor_heap: D3D12::ID3D12DescriptorHeap;
-        unsafe {
-            src_descriptor_heap = device.CreateDescriptorHeap(&descriptor_heap_desc as *const D3D12::D3D12_DESCRIPTOR_HEAP_DESC).unwrap();
-            descriptor_heap_desc.Type = D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-            descriptor_heap_desc.NumDescriptors = 32;
-            src_sampler_descriptor_heap = device.CreateDescriptorHeap(&descriptor_heap_desc as *const D3D12::D3D12_DESCRIPTOR_HEAP_DESC).unwrap();
-            descriptor_heap_desc.Type = D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-            descriptor_heap_desc.NumDescriptors = 128;
-            src_rtv_descriptor_heap = device.CreateDescriptorHeap(&descriptor_heap_desc as *const D3D12::D3D12_DESCRIPTOR_HEAP_DESC).unwrap();
-            descriptor_heap_desc.Type = D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-            descriptor_heap_desc.NumDescriptors = 128;
-            src_dsv_descriptor_heap = device.CreateDescriptorHeap(&descriptor_heap_desc as *const D3D12::D3D12_DESCRIPTOR_HEAP_DESC).unwrap();
-            descriptor_heap_desc.NumDescriptors = 1_000_000;
-            descriptor_heap_desc.Flags = D3D12::D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-            gpu_descriptor_heap = device.CreateDescriptorHeap(&descriptor_heap_desc as *const D3D12::D3D12_DESCRIPTOR_HEAP_DESC).unwrap();
-            descriptor_heap_desc.Type = D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-            descriptor_heap_desc.NumDescriptors = 32;
-            gpu_sampler_descriptor_heap = device.CreateDescriptorHeap(&descriptor_heap_desc as *const D3D12::D3D12_DESCRIPTOR_HEAP_DESC).unwrap();
-        }
+        let src_descriptor_heap = D3D12DescriptorHeap::new(&device, D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, false, 2048);
+        let src_sampler_descriptor_heap = D3D12DescriptorHeap::new(&device, D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, false, 32);
+        let src_rtv_descriptor_heap = D3D12DescriptorHeap::new(&device, D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_RTV, false, 128);
+        let src_dsv_descriptor_heap = D3D12DescriptorHeap::new(&device, D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_DSV, false, 128);
+        let gpu_descriptor_heap = D3D12DescriptorHeap::new(&device, D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true, 128);
+        let gpu_sampler_descriptor_heap = D3D12DescriptorHeap::new(&device, D3D12::D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, true, 32);
 
         Self {
             device,
@@ -126,7 +108,7 @@ impl D3D12Device {
             src_rtv_descriptor_heap,
             src_dsv_descriptor_heap,
             gpu_descriptor_heap,
-            gpu_sampler_descriptor_heap
+            gpu_sampler_descriptor_heap,
         }
     }
 }
@@ -171,6 +153,16 @@ impl gpu::Device<D3D12Backend> for D3D12Device {
     unsafe fn create_buffer(&self, info: &gpu::BufferInfo, memory_type_index: u32, name: Option<&str>) -> Result<D3D12Buffer, gpu::OutOfMemoryError> {
         let heap_type = memory_type_index_to_memory_heap(memory_type_index);
         D3D12Buffer::new(&self.device, ResourceMemory::Dedicated { heap_type }, info, name)
+    }
+
+    unsafe fn create_texture(&self, info: &gpu::TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<D3D12Texture, gpu::OutOfMemoryError> {
+        let heap_type = memory_type_index_to_memory_heap(memory_type_index);
+        D3D12Texture::new(&self.device, ResourceMemory::Dedicated { heap_type }, info, name)
+    }
+
+    unsafe fn create_texture_view(&self, texture: &D3D12Texture, info: &gpu::TextureViewInfo, name: Option<&str>) -> D3D12TextureView {
+        let descriptor = self.src_descriptor_heap.get_new_descriptor();
+        //D3D12TextureView::new()
     }
 
     fn graphics_queue(&self) -> &D3D12Queue {

@@ -5,7 +5,8 @@ pub use self::{
     buffer::*,
     heap::*,
     queue::*,
-    texture::*
+    texture::*,
+    descriptor::*
 };
 
 mod backend;
@@ -15,3 +16,4 @@ mod buffer;
 mod heap;
 mod queue;
 mod texture;
+mod descriptor;
