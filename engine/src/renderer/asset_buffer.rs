@@ -1,8 +1,10 @@
-use std::sync::Arc;
+use std::sync::{atomic::AtomicU64, Arc};
 
 use smallvec::SmallVec;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use crate::graphics::*;
+
+const DEBUG: bool = false;
 
 /// We suballocate all mesh buffers from a large buffer
 /// to be able use indirect rendering.
@@ -14,6 +16,9 @@ struct AssetBufferInternal<B: GPUBackend> {
     buffer: Arc<BufferSlice<B>>,
     free_ranges: AtomicRefCell<Vec<BufferRange>>,
     reuse_ranges: AtomicRefCell<Vec<(BufferRange, u32)>>,
+
+    debug_offset: AtomicU64,
+    debug_size: u32
 }
 
 pub struct AssetBufferSlice<B: GPUBackend> {
@@ -52,11 +57,29 @@ impl<B: GPUBackend> AssetBuffer<B> {
                 buffer,
                 free_ranges: AtomicRefCell::new(vec![free_range]),
                 reuse_ranges: AtomicRefCell::new(Vec::new()),
+                debug_offset: AtomicU64::new(0u64),
+                debug_size: size as u32
             }),
         }
     }
 
     pub fn get_slice(&self, length: usize, alignment: usize) -> AssetBufferSlice<B> {
+        if DEBUG {
+            let offset = self.internal.debug_offset.fetch_add(length as u64 + alignment as u64, std::sync::atomic::Ordering::SeqCst);
+            let aligned_offset = align_up_64(offset, alignment as u64);
+            if aligned_offset + length as u64 > self.internal.debug_size as u64 {
+                panic!("Ran out of space.");
+            }
+            return AssetBufferSlice::<B> {
+                buffer: self.internal.clone(),
+                range: BufferRange {
+                    offset: offset as u32,
+                    aligned_offset: aligned_offset as u32,
+                    length: length as u32,
+                },
+            };
+        }
+
         let alignment = alignment as u32;
 
         let mut free_ranges = self.internal.free_ranges.borrow_mut();
@@ -64,7 +87,7 @@ impl<B: GPUBackend> AssetBuffer<B> {
         let mut used_range = Option::<(usize, u32)>::None;
         for (index, range) in free_ranges.iter_mut().enumerate() {
             let mut aligned_range = range.clone();
-            aligned_range.offset = ((aligned_range.offset + alignment - 1) / alignment) * alignment;
+            aligned_range.offset = align_up_32(range.offset, alignment);
             let alignment_diff = aligned_range.offset - range.offset;
             aligned_range.length -= alignment_diff;
             if aligned_range.length >= length as u32 {
@@ -88,7 +111,7 @@ impl<B: GPUBackend> AssetBuffer<B> {
             buffer: self.internal.clone(),
             range: BufferRange {
                 offset,
-                aligned_offset: ((offset + alignment - 1) / alignment) * alignment,
+                aligned_offset: align_up_32(offset, alignment),
                 length: length as u32,
             },
         }
@@ -147,7 +170,7 @@ impl<B: GPUBackend> AssetBufferSlice<B> {
     }
 
     pub fn offset(&self) -> u32 {
-        self.range.offset
+        self.range.aligned_offset
     }
 
     pub fn size(&self) -> u32 {
@@ -157,6 +180,9 @@ impl<B: GPUBackend> AssetBufferSlice<B> {
 
 impl<B: GPUBackend> Drop for AssetBufferSlice<B> {
     fn drop(&mut self) {
+        if DEBUG {
+            return;
+        }
         self.buffer.queue_for_reuse(&self.range);
     }
 }

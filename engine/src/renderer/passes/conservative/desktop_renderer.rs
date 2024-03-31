@@ -15,7 +15,7 @@ use super::acceleration_structure_update::AccelerationStructureUpdatePass;
 use super::clustering::ClusteringPass;
 use super::geometry::GeometryPass;
 use super::light_binning::LightBinningPass;
-use super::occlusion::OcclusionPass;
+//use super::occlusion::OcclusionPass;
 use super::prepass::Prepass;
 use super::rt_shadows::RTShadowPass;
 use super::sharpen::SharpenPass;
@@ -23,6 +23,7 @@ use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use crate::input::Input;
 use crate::renderer::passes::blue_noise::BlueNoise;
+use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
 use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
@@ -37,8 +38,9 @@ use crate::renderer::renderer_resources::{
 use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::LateLatching;
 
+use crate::graphics::*;
+
 pub struct ConservativeRenderer<P: Platform> {
-    swapchain: Arc<<P::GraphicsBackend as Backend>::Swapchain>,
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
     barriers: RendererResources<P::GPUBackend>,
     clustering_pass: ClusteringPass,
@@ -48,7 +50,7 @@ pub struct ConservativeRenderer<P: Platform> {
     taa: TAAPass,
     sharpen: SharpenPass,
     ssao: SsaoPass<P>,
-    occlusion: OcclusionPass<P>,
+    //occlusion: OcclusionPass<P>,
     rt_passes: Option<RTPasses<P>>,
     blue_noise: BlueNoise<P::GPUBackend>,
 }
@@ -58,24 +60,25 @@ pub struct RTPasses<P: Platform> {
     shadows: RTShadowPass,
 }
 
-pub struct FrameBindings<B: GPUBackend> {
-    gpu_scene_buffer: Arc<crate::graphics::BufferSlice<B>>,
-    camera_buffer: Arc<crate::graphics::BufferSlice<B>>,
-    camera_history_buffer: Arc<crate::graphics::BufferSlice<B>>,
-    vertex_buffer: Arc<crate::graphics::BufferSlice<B>>,
-    index_buffer: Arc<crate::graphics::BufferSlice<B>>,
-    directional_lights: Arc<crate::graphics::BufferSlice<B>>,
-    point_lights: Arc<crate::graphics::BufferSlice<B>>,
-    setup_buffer: Arc<crate::graphics::BufferSlice<B>>,
+pub struct FrameBindings<'a, B: GPUBackend> {
+    gpu_scene_buffer: BufferRef<'a, B>,
+    camera_buffer: BufferRef<'a, B>,
+    camera_history_buffer: BufferRef<'a, B>,
+    vertex_buffer: BufferRef<'a, B>,
+    index_buffer: BufferRef<'a, B>,
+    directional_lights: TransientBufferSlice<B>,
+    point_lights: TransientBufferSlice<B>,
+    setup_buffer: TransientBufferSlice<B>,
 }
 
 impl<P: Platform> ConservativeRenderer<P> {
     pub fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
+        swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
+        context: &mut GraphicsContext<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let mut init_cmd_buffer = device.graphics_queue().create_command_buffer();
+        let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
         let mut barriers = RendererResources::<P::GPUBackend>::new(device);
@@ -89,7 +92,7 @@ impl<P: Platform> ConservativeRenderer<P> {
         let taa = TAAPass::new::<P>(resolution, &mut barriers, shader_manager, false);
         let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, shader_manager);
         let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, false);
-        let occlusion = OcclusionPass::<P>::new(device, shader_manager);
+        //let occlusion = OcclusionPass::<P>::new(device, shader_manager);
         let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(
                 device,
@@ -100,12 +103,17 @@ impl<P: Platform> ConservativeRenderer<P> {
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
-        let c_graphics_queue = device.graphics_queue().clone();
-        c_graphics_queue.submit(init_cmd_buffer.finish(), &[], &[], true);
-        rayon::spawn(move || c_graphics_queue.process_submissions());
+        device.submit(QueueType::Graphics, QueueSubmission {
+            command_buffer: init_cmd_buffer.finish(),
+            wait_fences: &[],
+            signal_fences: &[],
+            acquire_swapchain: None,
+            release_swapchain: None
+        });
+        let c_device = device.clone();
+        rayon::spawn(move || c_device.flush(QueueType::Graphics));
 
         Self {
-            swapchain: swapchain.clone(),
             device: device.clone(),
             barriers,
             clustering_pass: clustering,
@@ -115,23 +123,24 @@ impl<P: Platform> ConservativeRenderer<P> {
             taa,
             sharpen,
             ssao,
-            occlusion,
+            //occlusion,
             rt_passes,
             blue_noise,
         }
     }
 
-    fn create_frame_bindings(
-        &self,
-        cmd_buf: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
-        gpu_scene_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        camera_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        camera_history_buffer: &Arc<<P::GraphicsBackend as Backend>::Buffer>,
-        swapchain: &Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+    fn create_frame_bindings<'a, 'b>(
+        &'b self,
+        cmd_buf: &'b mut CommandBufferRecorder<P::GPUBackend>,
+        scene: &'a SceneInfo<'a, P::GPUBackend>,
+        swapchain: &'a Swapchain<P::GPUBackend>,
+        gpu_scene_buffers: &'a SceneBuffers<P::GPUBackend>,
+        camera_buffer: BufferRef<'a, P::GPUBackend>,
+        camera_history_buffer: BufferRef<'a, P::GPUBackend>,
         rendering_resolution: &Vec2UI,
         frame: u64,
-    ) -> FrameBindings<P::GPUBackend> {
+    ) -> FrameBindings<'a, P::GPUBackend>
+        where 'a: 'b {
         let view = &scene.views[scene.active_view_index];
 
         let cluster_count = self.clustering_pass.cluster_count();
@@ -168,7 +177,7 @@ impl<P: Platform> ConservativeRenderer<P> {
                 rt_size: *rendering_resolution,
             }],
             BufferUsage::CONSTANT,
-        );
+        ).unwrap();
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct PointLight {
@@ -183,7 +192,7 @@ impl<P: Platform> ConservativeRenderer<P> {
                 intensity: l.intensity,
             })
             .collect();
-        let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT);
+        let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT).unwrap();
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct DirectionalLight {
@@ -199,17 +208,17 @@ impl<P: Platform> ConservativeRenderer<P> {
             })
             .collect();
         let directional_lights_buffer =
-            cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT);
+            cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT).unwrap();
 
         FrameBindings {
-            gpu_scene_buffer: gpu_scene_buffer.clone(),
+            gpu_scene_buffer: BufferRef::Transient(&gpu_scene_buffers.buffer),
             camera_buffer: camera_buffer.clone(),
             camera_history_buffer: camera_history_buffer.clone(),
             vertex_buffer: scene.vertex_buffer.clone(),
             index_buffer: scene.index_buffer.clone(),
             directional_lights: directional_lights_buffer,
             point_lights: point_lights_buffer,
-            setup_buffer,
+            setup_buffer: setup_buffer,
         }
     }
 }
@@ -220,20 +229,21 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     }
 
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>) {
-        self.occlusion.write_occlusion_query_results(frame, bitset);
+        //self.occlusion.write_occlusion_query_results(frame, bitset);
     }
 
     fn on_swapchain_changed(
         &mut self,
-        swapchain: &std::sync::Arc<<P::GraphicsBackend as Backend>::Swapchain>,
+        swapchain: &Swapchain<P::GPUBackend>,
     ) {
         // TODO: resize render targets
-        self.swapchain = swapchain.clone();
     }
 
     #[profiling::function]
     fn render(
         &mut self,
+        context: &mut GraphicsContext<P::GPUBackend>,
+        swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
         late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
@@ -242,8 +252,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) -> Result<(), SwapchainError> {
-        let graphics_queue = self.device.graphics_queue();
-        let mut cmd_buf = graphics_queue.create_command_buffer();
+        let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let late_latching_buffer = late_latching.unwrap().buffer();
         let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
@@ -254,18 +263,29 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &BufferInfo {
                 size: 16,
                 usage: BufferUsage::STORAGE,
+                sharing_mode: QueueSharingMode::Concurrent
             },
-            MemoryUsage::VRAM,
-        );
+            MemoryUsage::GPUMemory,
+        ).unwrap();
+        let gpu_scene = SceneBuffers {
+            buffer: empty_buffer,
+            scene_buffer: BufferBinding { offset: 0, length: 0 },
+            draws_buffer: BufferBinding { offset: 0, length: 0 },
+            meshes_buffer:  BufferBinding { offset: 0, length: 0 },
+            drawables_buffer: BufferBinding { offset: 0, length: 0 },
+            parts_buffer: BufferBinding { offset: 0, length: 0 },
+            materials_buffer: BufferBinding { offset: 0, length: 0 },
+            lights_buffer: BufferBinding { offset: 0, length: 0 }
+        };
 
         let frame_bindings = self.create_frame_bindings(
             &mut cmd_buf,
             scene,
-            &empty_buffer,
-            &late_latching_buffer,
-            &late_latching_history_buffer,
-            &self.swapchain,
-            &Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
+            swapchain,
+            &gpu_scene,
+            BufferRef::Regular(&late_latching_buffer),
+            BufferRef::Regular(&late_latching_history_buffer),
+            &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame,
         );
         setup_frame::<P::GPUBackend>(&mut cmd_buf, &frame_bindings);
@@ -285,17 +305,18 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
                 .execute(&mut cmd_buf, &params);
         }
 
-        self.occlusion.execute(
+        /*self.occlusion.execute(
+            context,
             &mut cmd_buf,
             &params,
             frame_info.frame,
             &late_latching_buffer,
             Prepass::DEPTH_TEXTURE_NAME,
-        );
+        );*/
         self.clustering_pass.execute::<P>(
             &mut cmd_buf,
             &params,
-            Vec2UI::new(self.swapchain.width(), self.swapchain.height()),
+            Vec2UI::new(swapchain.width(), swapchain.height()),
             &late_latching_buffer
         );
         self.light_binning_pass.execute(
@@ -304,9 +325,10 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &late_latching_buffer
         );
         self.prepass.execute(
+            context,
             &mut cmd_buf,
             &params,
-            self.swapchain.transform(),
+            swapchain.transform(),
             frame_info.frame,
             &late_latching_buffer,
             &late_latching_history_buffer
@@ -334,6 +356,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             );
         }
         self.geometry.execute(
+            context,
             &mut cmd_buf,
             &params,
             Prepass::DEPTH_TEXTURE_NAME,
@@ -361,34 +384,34 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             HistoryResourceEntry::Current,
         );
 
-        let back_buffer_res = self.swapchain.prepare_back_buffer();
-        if back_buffer_res.is_none() {
+        let back_buffer_res = swapchain.next_backbuffer();
+        if back_buffer_res.is_err() {
             return Err(SwapchainError::Other);
         }
 
-        let back_buffer = back_buffer_res.unwrap();
-
-        cmd_buf.barrier(&[Barrier::TextureBarrier {
+        cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
             new_sync: BarrierSync::COPY,
             old_access: BarrierAccess::empty(),
             new_access: BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::CopyDst,
-            texture: back_buffer.texture_view.texture(),
+            texture: swapchain.backbuffer_handle(),
             range: BarrierTextureRange::default(),
+            queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        cmd_buf.blit(&*sharpened_texture, 0, 0, back_buffer.texture_view.texture(), 0, 0);
-        cmd_buf.barrier(&[Barrier::TextureBarrier {
+        cmd_buf.blit_to_handle(&*sharpened_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
+        cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
             old_access: BarrierAccess::COPY_WRITE,
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: back_buffer.texture_view.texture(),
+            texture: swapchain.backbuffer_handle(),
             range: BarrierTextureRange::default(),
+            queue_ownership: None
         }]);
         std::mem::drop(sharpened_texture);
 
@@ -398,16 +421,23 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             let input_state = input.poll();
             late_latching.before_submit(&input_state, primary_view);
         }
-        graphics_queue.submit(
-            cmd_buf.finish(),
-            &[FenceRef::WSIFence(back_buffer.prepare_fence)],
-            &[FenceRef::WSIFence(back_buffer.present_fence)],
-            true,
-        );
-        graphics_queue.present(&self.swapchain, back_buffer.present_fence, true);
 
-        let c_graphics_queue = graphics_queue.clone();
-        rayon::spawn(move || c_graphics_queue.process_submissions());
+        let frame_end_signal = context.get_frame_end_fence_signal();
+
+        self.device.submit(
+            QueueType::Graphics,
+            QueueSubmission {
+                command_buffer: cmd_buf.finish(),
+                wait_fences: &[],
+                signal_fences: &[frame_end_signal],
+                acquire_swapchain: Some(&swapchain),
+                release_swapchain: Some(&swapchain)
+            }
+        );
+        self.device.present(QueueType::Graphics, &swapchain);
+
+        let c_device = self.device.clone();
+        rayon::spawn(move || c_device.flush(QueueType::Graphics));
 
         if let Some(late_latching) = late_latching {
             late_latching.after_submit(&self.device);
@@ -421,12 +451,12 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     }
 }
 
-pub fn setup_frame<B: GPUBackend>(cmd_buf: &mut B::CommandBuffer, frame_bindings: &FrameBindings<B>) {
+pub fn setup_frame<B: GPUBackend>(cmd_buf: &mut CommandBufferRecorder<B>, frame_bindings: &FrameBindings<B>) {
     for i in 0..6 {
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
             i,
-            &frame_bindings.gpu_scene_buffer,
+            frame_bindings.gpu_scene_buffer,
             0,
             WHOLE_BUFFER,
         );
@@ -434,49 +464,49 @@ pub fn setup_frame<B: GPUBackend>(cmd_buf: &mut B::CommandBuffer, frame_bindings
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
         7,
-        &frame_bindings.camera_buffer,
+        frame_bindings.camera_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
         8,
-        &frame_bindings.camera_history_buffer,
+        frame_bindings.camera_history_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_storage_buffer(
         BindingFrequency::Frame,
         9,
-        &frame_bindings.vertex_buffer,
+        frame_bindings.vertex_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_storage_buffer(
         BindingFrequency::Frame,
         10,
-        &frame_bindings.index_buffer,
+        frame_bindings.index_buffer,
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
         11,
-        &frame_bindings.setup_buffer,
+        BufferRef::Transient(&frame_bindings.setup_buffer),
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
         12,
-        &frame_bindings.point_lights,
+        BufferRef::Transient(&frame_bindings.point_lights),
         0,
         WHOLE_BUFFER,
     );
     cmd_buf.bind_uniform_buffer(
         BindingFrequency::Frame,
         13,
-        &frame_bindings.directional_lights,
+        BufferRef::Transient(&frame_bindings.directional_lights),
         0,
         WHOLE_BUFFER,
     );

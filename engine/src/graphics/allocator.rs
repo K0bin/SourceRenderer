@@ -2,6 +2,8 @@ use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use smallvec::SmallVec;
 
+use super::align_up_64;
+
 // TODO: Implement Two Level Seggregate Fit allocator
 
 const DEBUG: bool = false;
@@ -101,16 +103,15 @@ impl<T> Chunk<T>
     pub fn allocate(&self, size: u64, alignment: u64) -> Option<Allocation<T>> {
         if DEBUG {
             let offset = self.inner.debug_offset.fetch_add(size + alignment, std::sync::atomic::Ordering::SeqCst);
-            let alignment_mod = offset % alignment;
-            let alignment_diff = (alignment - alignment_mod) % alignment;
-            if offset + alignment_diff + size > self.size {
+            let aligned_offset = align_up_64(offset, alignment);
+            if aligned_offset + size > self.size {
                 return None;
             }
             return Some(Allocation {
                 inner: self.inner.clone(),
                 data_ptr: &self.inner.data as *const T,
                 range: Range {
-                    offset: offset + alignment_diff,
+                    offset: aligned_offset,
                     length: size
                 }
             });
@@ -125,8 +126,9 @@ impl<T> Chunk<T>
                 break;
             }
 
-            let alignment_mod = range.offset % alignment;
-            let alignment_diff = (alignment - alignment_mod) % alignment;
+            let aligned_offset = align_up_64(range.offset, alignment);
+            let alignment_diff = aligned_offset - range.offset;
+
             if range.length < size + alignment_diff {
                 continue;
             }
@@ -146,8 +148,8 @@ impl<T> Chunk<T>
         }
 
         best.map(|(mut free_index, mut range)| {
-            let alignment_mod = range.offset % alignment;
-            let alignment_diff = (alignment - alignment_mod) % alignment;
+            let aligned_offset = align_up_64(range.offset, alignment);
+            let alignment_diff = aligned_offset - range.offset;
             let consume_entire_range = range.length == size + alignment_diff;
             range.length = size;
 
