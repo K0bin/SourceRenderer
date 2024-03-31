@@ -4,6 +4,7 @@ use std::sync::Arc;
 use nalgebra::Vector2;
 use rayon::prelude::*;
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::Submission;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -14,6 +15,7 @@ use sourcerenderer_core::{
 };
 
 use super::desktop_renderer::FrameBindings;
+use crate::renderer::passes::clustering::ClusteringPass;
 use crate::renderer::passes::conservative::desktop_renderer::setup_frame;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::rt_shadows::RTShadowPass;
@@ -32,6 +34,8 @@ use crate::renderer::shader_manager::{
     ShaderManager,
 };
 
+use crate::graphics::*;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct FrameData {
@@ -48,7 +52,7 @@ struct FrameData {
 }
 
 pub struct GeometryPass<P: Platform> {
-    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
+    sampler: Sampler<P::GPUBackend>,
     pipeline: GraphicsPipelineHandle,
 }
 
@@ -58,7 +62,7 @@ impl<P: Platform> GeometryPass<P> {
     const DRAWABLE_LABELS: bool = false;
 
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        device: &Arc<Device<P::GPUBackend>>,
         resolution: Vec2UI,
         barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
@@ -205,7 +209,8 @@ impl<P: Platform> GeometryPass<P> {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        context: &mut GraphicsContext<P::GPUBackend>,
+        cmd_buffer: &mut crate::graphics::CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
         bindings: &FrameBindings<P::GPUBackend>,
@@ -263,7 +268,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-        let rt_shadows: Ref<Arc<<P::GraphicsBackend as Backend>::TextureView>>;
+        let rt_shadows: Ref<Arc<TextureView<P::GPUBackend>>>;
         let shadows = if pass_params.device.supports_ray_tracing() {
             rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
@@ -280,13 +285,13 @@ impl<P: Platform> GeometryPass<P> {
             pass_params.zero_textures.zero_texture_view
         };
 
-        /*let clusters = barriers.access_buffer(
+        let clusters = pass_params.resources.access_buffer(
           cmd_buffer,
-          ClusteringPass::<P::GPUBackend>::CLUSTERS_BUFFER_NAME,
+          ClusteringPass::CLUSTERS_BUFFER_NAME,
           BarrierSync::FRAGMENT_SHADER,
           BarrierAccess::STORAGE_READ,
           HistoryResourceEntry::Current
-        ).clone();*/
+        ).clone();
 
         cmd_buffer.begin_render_pass(
             &RenderPassBeginInfo {
@@ -317,7 +322,6 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::CommandBuffers,
         );
 
-        let device = pass_params.device;
         let assets = pass_params.assets;
         let zero_textures = pass_params.zero_textures;
         let lightmap = pass_params.scene.lightmap;
@@ -327,13 +331,9 @@ impl<P: Platform> GeometryPass<P> {
         let view = &pass_params.scene.views[pass_params.scene.active_view_index];
         let chunks = view.drawable_parts.par_chunks(CHUNK_SIZE);
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
-        let inner_cmd_buffers: Vec<
-            <P::GraphicsBackend as Backend>::CommandBufferSubmission,
-        > = chunks
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = chunks
             .map(|chunk| {
-                let mut command_buffer = device
-                    .graphics_queue()
-                    .create_inner_command_buffer(inheritance);
+                let mut command_buffer = context.get_inner_command_buffer(inheritance);
 
                 command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
                 command_buffer.set_viewports(&[Viewport {
@@ -363,7 +363,7 @@ impl<P: Platform> GeometryPass<P> {
                 command_buffer.bind_storage_buffer(
                     BindingFrequency::Frequent,
                     3,
-                    &light_bitmask_buffer,
+                    BufferRef::Regular(&light_bitmask_buffer),
                     0,
                     WHOLE_BUFFER,
                 );
@@ -373,10 +373,7 @@ impl<P: Platform> GeometryPass<P> {
                     &ssao,
                     &self.sampler,
                 );
-                // command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, &clusters, 0, WHOLE_BUFFER);
-
-                command_buffer.track_texture_view(zero_textures.zero_texture_view);
-                command_buffer.track_texture_view(zero_textures.zero_texture_view_black);
+                command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, BufferRef::Regular(&clusters), 0, WHOLE_BUFFER);
 
                 let mut last_material = Option::<&RendererMaterial>::None;
 
@@ -412,11 +409,11 @@ impl<P: Platform> GeometryPass<P> {
                         .collect();
 
                     command_buffer
-                        .set_vertex_buffer(mesh.vertices.buffer(), mesh.vertices.offset() as usize);
+                        .set_vertex_buffer(BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
                     if let Some(indices) = mesh.indices.as_ref() {
                         command_buffer.set_index_buffer(
-                            indices.buffer(),
-                            indices.offset() as usize,
+                            BufferRef::Regular(indices.buffer()),
+                            indices.offset() as u64,
                             IndexFormat::U32,
                         );
                     }
@@ -469,7 +466,6 @@ impl<P: Platform> GeometryPass<P> {
                                     albedo_view,
                                     &self.sampler,
                                 );
-                                command_buffer.track_texture_view(albedo_view);
                                 material_info.albedo_texture_index = 0;
                             }
                             RendererMaterialValue::Vec4(val) => material_info.albedo = *val,
@@ -510,11 +506,11 @@ impl<P: Platform> GeometryPass<P> {
                             None => {}
                         }
                         let material_info_buffer = command_buffer
-                            .upload_dynamic_data(&[material_info], BufferUsage::CONSTANT);
+                            .upload_dynamic_data(&[material_info], BufferUsage::CONSTANT).unwrap();
                         command_buffer.bind_uniform_buffer(
                             BindingFrequency::VeryFrequent,
                             3,
-                            &material_info_buffer,
+                            BufferRef::Transient(&material_info_buffer),
                             0,
                             WHOLE_BUFFER,
                         );

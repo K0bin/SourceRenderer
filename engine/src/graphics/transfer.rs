@@ -5,6 +5,8 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
+const DEBUG_FORCE_FAT_BARRIER: bool = false;
+
 pub(crate) struct Transfer<B: GPUBackend> {
   device: Arc<B::Device>,
   inner: Mutex<TransferInner<B>>,
@@ -208,8 +210,8 @@ impl<B: GPUBackend> Transfer<B> {
         src: src_buffer.clone(),
         dst: dst_buffer.clone(),
         region: gpu::BufferCopyRegion {
-          src_offset,
-          dst_offset,
+          src_offset: src_offset + src_buffer.offset(),
+          dst_offset: dst_offset + dst_buffer.offset(),
           size: actual_length
         }
       });
@@ -221,7 +223,7 @@ impl<B: GPUBackend> Transfer<B> {
           old_sync: BarrierSync::COPY,
           new_sync: BarrierSync::all(),
           old_access: BarrierAccess::COPY_WRITE,
-          new_access: BarrierAccess::SHADER_READ,
+          new_access: BarrierAccess::MEMORY_READ | BarrierAccess::MEMORY_WRITE,
           buffer: dst_buffer.clone(),
           offset: dst_offset + dst_buffer.offset(),
           length: actual_length,
@@ -241,7 +243,7 @@ impl<B: GPUBackend> Transfer<B> {
       buffer_offset: u64
     ) -> Option<SharedFenceValuePair<B>> {
       let mut guard = self.inner.lock().unwrap();
-      if guard.transfer.is_none() {
+      if guard.transfer.is_none() || DEBUG_FORCE_FAT_BARRIER {
         std::mem::drop(guard);
         self.init_texture(texture, src_buffer, mip_level, array_layer, buffer_offset);
         return None;
@@ -345,6 +347,8 @@ impl<B: GPUBackend> Transfer<B> {
     }
 
     pub fn try_free_unused_buffers(&self) {
+        return;
+
         let mut guard = self.inner.lock().unwrap();
         let mut signalled_counter: u64 = 0u64;
         for cmd_buffer in &mut guard.graphics.used_cmd_buffers {
@@ -405,6 +409,10 @@ impl<B: GPUBackend> Transfer<B> {
           cmd_buffer.cmd_buffer.begin(None);
         }
 
+        if DEBUG_FORCE_FAT_BARRIER {
+            Self::fat_barrier(&mut cmd_buffer.cmd_buffer);
+        }
+
         // commit pre barriers
         let mut barriers = Vec::<gpu::Barrier<B>>::with_capacity(commands.pre_barriers.len());
         for barrier in commands.pre_barriers.iter() {
@@ -462,6 +470,10 @@ impl<B: GPUBackend> Transfer<B> {
 
         // commit copies
         for copy in commands.copies.drain(..) {
+            if DEBUG_FORCE_FAT_BARRIER {
+                Self::fat_barrier(&mut cmd_buffer.cmd_buffer);
+            }
+
             match copy {
                 TransferCopy::BufferToBuffer {
                     src,
@@ -482,6 +494,10 @@ impl<B: GPUBackend> Transfer<B> {
                         cmd_buffer.cmd_buffer.copy_buffer_to_texture(src.handle(), dst.handle(), &region);
                     }
                 }
+            }
+
+            if DEBUG_FORCE_FAT_BARRIER {
+                Self::fat_barrier(&mut cmd_buffer.cmd_buffer);
             }
         }
 
@@ -593,6 +609,16 @@ impl<B: GPUBackend> Transfer<B> {
             guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
         }
     }
+
+    fn fat_barrier(cmd_buffer: &mut B::CommandBuffer) {
+        let fat_core_barrier = [
+            gpu::Barrier::GlobalBarrier { old_sync: gpu::BarrierSync::all(), new_sync: gpu::BarrierSync::all(), old_access: gpu::BarrierAccess::MEMORY_WRITE, new_access: gpu::BarrierAccess::MEMORY_READ | gpu::BarrierAccess::MEMORY_WRITE }
+        ];
+
+        unsafe {
+            cmd_buffer.barrier(&fat_core_barrier);
+        }
+    }
 }
 
 impl<B: GPUBackend> TransferCommandBuffer<B> {
@@ -631,7 +657,7 @@ impl<B: GPUBackend> TransferCommandBuffer<B> {
             self.cmd_buffer.reset(0u64);
         }
         self.is_used = false;
-        self.used_buffers_slices.clear();
+        //self.used_buffers_slices.clear();
         self.used_textures.clear();
     }
 

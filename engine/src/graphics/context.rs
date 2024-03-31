@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::{sync::Arc, mem::ManuallyDrop};
 
 use crossbeam_channel::{Sender, Receiver};
@@ -40,6 +41,7 @@ struct FrameContextCommandPool<B: GPUBackend> {
     command_pool: B::CommandPool,
     sender: Sender<Box<CommandBuffer<B>>>,
     receiver: Receiver<Box<CommandBuffer<B>>>,
+    existing_cmd_buffers: VecDeque<Box<CommandBuffer<B>>>
 }
 
 impl<B: GPUBackend> GraphicsContext<B> {
@@ -88,13 +90,19 @@ impl<B: GPUBackend> GraphicsContext<B> {
         unsafe { frame_context.secondary_command_pool.command_pool.reset(); }
         frame_context.buffer_allocator.reset();
         frame_context.last_used_frame = self.current_frame;
+
+        while let Ok(mut existing_cmd_buffer) = frame_context.command_pool.receiver.try_recv() {
+            existing_cmd_buffer.reset(self.current_frame);
+            frame_context.command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
+        }
+        while let Ok(mut existing_cmd_buffer) = frame_context.secondary_command_pool.receiver.try_recv() {
+            existing_cmd_buffer.reset(self.current_frame);
+            frame_context.secondary_command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
+        }
     }
 
-    let existing_cmd_buffer = frame_context.command_pool.receiver.try_recv();
-    let cmd_buffer = if let Ok(mut existing) = existing_cmd_buffer {
-        existing.reset(self.current_frame);
-        existing
-    } else {
+    let existing_cmd_buffer = frame_context.command_pool.existing_cmd_buffers.pop_front();
+    let cmd_buffer = existing_cmd_buffer.unwrap_or_else(|| {
         Box::new(CommandBuffer::new(
             unsafe { frame_context.command_pool.command_pool.create_command_buffer() },
             &self.device,
@@ -102,7 +110,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
             &self.global_buffer_allocator,
             &self.destroyer
         ))
-    };
+    });
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.command_pool.sender.clone());
     recorder.begin(None);
     recorder
@@ -112,18 +120,8 @@ impl<B: GPUBackend> GraphicsContext<B> {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
-    if frame_context.last_used_frame != self.current_frame {
-        unsafe { frame_context.command_pool.command_pool.reset(); }
-        unsafe { frame_context.secondary_command_pool.command_pool.reset(); }
-        frame_context.buffer_allocator.reset();
-        frame_context.last_used_frame = self.current_frame;
-    }
-
-    let existing_cmd_buffer = frame_context.secondary_command_pool.receiver.try_recv();
-    let cmd_buffer = if let Ok(mut existing) = existing_cmd_buffer {
-        existing.reset(self.current_frame);
-        existing
-    } else {
+    let existing_cmd_buffer = frame_context.secondary_command_pool.existing_cmd_buffers.pop_front();
+    let cmd_buffer = existing_cmd_buffer.unwrap_or_else(|| {
         Box::new(CommandBuffer::new(
             unsafe { frame_context.secondary_command_pool.command_pool.create_command_buffer() },
             &self.device,
@@ -131,8 +129,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
             &self.global_buffer_allocator,
             &self.destroyer
         ))
-    };
-
+    });
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.secondary_command_pool.sender.clone());
     recorder.begin(Some(inheritance));
     recorder
@@ -193,12 +190,14 @@ impl<B: GPUBackend> FrameContext<B> {
       command_pool: FrameContextCommandPool {
         command_pool,
         sender,
-        receiver
+        receiver,
+        existing_cmd_buffers: VecDeque::new()
       },
       secondary_command_pool: FrameContextCommandPool {
         command_pool: secondary_command_pool,
         sender: secondary_sender,
-        receiver: secondary_receiver
+        receiver: secondary_receiver,
+        existing_cmd_buffers: VecDeque::new()
       },
       buffer_allocator: Arc::new(buffer_allocator),
       last_used_frame: 0u64

@@ -181,7 +181,7 @@ impl VkInstance {
         }
 
         if message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
-            panic!(
+            println!(
                 "VK: {:?} - {:?}: {:?}",
                 message_severity,
                 message_types,

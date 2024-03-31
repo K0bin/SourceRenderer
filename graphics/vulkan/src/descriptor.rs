@@ -644,7 +644,7 @@ impl VkDescriptorSet {
                             write.descriptor_type = vk::DescriptorType::ACCELERATION_STRUCTURE_KHR;
                         }
                         VkBoundResource::None => {
-                            panic!("Shader expectes resource in binding: {}", binding)
+                            panic!("Shader expects resource in binding: {}", binding)
                         }
                     }
                     assert_eq!(

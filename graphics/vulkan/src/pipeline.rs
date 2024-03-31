@@ -1973,7 +1973,7 @@ impl VkPipeline {
         let group_alignment = rt.rt_pipeline_properties.shader_group_base_alignment as u64;
 
         let size = Self::ray_tracing_buffer_size(device, info, shared);
-        assert!(buffer.info().size - buffer_offset > size);
+        assert!(buffer.info().size - buffer_offset >= size);
 
         let handles = unsafe {
             rt.rt_pipelines.get_ray_tracing_shader_group_handles(

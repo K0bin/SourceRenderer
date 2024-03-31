@@ -16,6 +16,7 @@ pub use rt::*;
 pub use swapchain::*;
 pub use instance::*;
 pub use pipeline::*;
+pub use util::*;
 
 pub use command::PipelineBinding; // why is this necessary?
 
@@ -37,6 +38,7 @@ mod rt;
 mod pipeline;
 mod swapchain;
 mod instance;
+mod util;
 
 pub use sourcerenderer_core::gpu::{
     SubpassInfo,

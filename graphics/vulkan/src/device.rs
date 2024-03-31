@@ -333,7 +333,7 @@ impl Device<VkBackend> for VkDevice {
 
         ResourceHeapInfo {
             dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
-                DedicatedAllocationPreference::RequireDedicated            
+                DedicatedAllocationPreference::RequireDedicated
             } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
                 DedicatedAllocationPreference::PreferDedicated
             } else {
@@ -408,14 +408,14 @@ impl Device<VkBackend> for VkDevice {
 
         ResourceHeapInfo {
             dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
-                DedicatedAllocationPreference::RequireDedicated            
+                DedicatedAllocationPreference::RequireDedicated
             } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
                 DedicatedAllocationPreference::PreferDedicated
             } else {
                 DedicatedAllocationPreference::DontCare
             },
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
-            alignment: requirements.memory_requirements.alignment,
+            alignment: requirements.memory_requirements.alignment.max(self.device.properties.limits.buffer_image_granularity),
             size: requirements.memory_requirements.size
         }
     }

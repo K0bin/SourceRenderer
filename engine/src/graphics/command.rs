@@ -23,6 +23,8 @@ pub use sourcerenderer_core::gpu::{
     BindingFrequency
 };
 
+const DEBUG_FORCE_FAT_BARRIER: bool = false;
+
 pub enum Barrier<'a, B: GPUBackend> {
   RawTextureBarrier {
     old_sync: BarrierSync,
@@ -78,6 +80,7 @@ pub struct CommandBuffer<B: GPUBackend> {
     destroyer: Arc<DeferredDestroyer<B>>,
     acceleration_structure_scratch: Option<TransientBufferSlice<B>>,
     acceleration_structure_scratch_offset: u64,
+    frame: u64
 }
 
 pub struct CommandBufferRecorder<B: GPUBackend> {
@@ -347,8 +350,16 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     }
 
     pub fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
+
         unsafe {
             self.inner.cmd_buffer.dispatch(group_count_x, group_count_y, group_count_z);
+        }
+
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
         }
     }
 
@@ -447,7 +458,21 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         self.inner.transient_buffer_allocator.get_slice(info, usage, None)
     }
 
+    fn fat_barrier(&mut self) {
+        let fat_core_barrier = [
+            gpu::Barrier::GlobalBarrier { old_sync: gpu::BarrierSync::all(), new_sync: gpu::BarrierSync::all(), old_access: gpu::BarrierAccess::MEMORY_WRITE, new_access: gpu::BarrierAccess::MEMORY_READ | gpu::BarrierAccess::MEMORY_WRITE }
+        ];
+
+        unsafe {
+            self.inner.cmd_buffer.barrier(&fat_core_barrier);
+        }
+    }
+
     pub fn barrier(&mut self, barriers: &[Barrier<B>]) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
+
         let core_barriers: SmallVec::<[gpu::Barrier<B>; 4]> = barriers.iter().map(|b| {
             match b {
                 Barrier::TextureBarrier {
@@ -540,6 +565,10 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     }
 
     pub fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
+
         let attachments: SmallVec<[gpu::RenderPassAttachment<B>; 5]> = renderpass_info.attachments.iter().map(|a| gpu::RenderPassAttachment {
             view: match a.view {
                 RenderPassAttachmentView::RenderTarget(rt) => gpu::RenderPassAttachmentView::RenderTarget(rt.handle()),
@@ -566,6 +595,10 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     pub fn end_render_pass(&mut self) {
         unsafe {
             self.inner.cmd_buffer.end_render_pass();
+        }
+
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
         }
     }
 
@@ -794,7 +827,8 @@ impl<B: GPUBackend> CommandBuffer<B> {
             transient_buffer_allocator: transient_buffer_allocator.clone(),
             destroyer: destroyer.clone(),
             acceleration_structure_scratch: None,
-            acceleration_structure_scratch_offset: 0u64
+            acceleration_structure_scratch_offset: 0u64,
+            frame: 0u64
         }
     }
 
@@ -805,12 +839,13 @@ impl<B: GPUBackend> CommandBuffer<B> {
         &mut self.cmd_buffer
     }
 
-
     pub fn reset(&mut self, frame: u64) {
+        assert_ne!(self.frame, frame);
         unsafe { self.cmd_buffer.reset(frame); }
         self.buffer_refs.clear();
         self.acceleration_structure_scratch = None;
         self.acceleration_structure_scratch_offset = 0;
+        self.frame = frame;
     }
 }
 
