@@ -188,6 +188,10 @@ impl<T> Chunk<T>
         let first = free_list.first().unwrap();
         first.offset == 0 && first.length == self.size
     }
+
+    pub fn size(&self) -> u64 {
+        self.size
+    }
 }
 
 impl<T> Drop for Allocation<T>
