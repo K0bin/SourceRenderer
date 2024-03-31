@@ -92,10 +92,7 @@ impl VkMemoryHeap {
     }
 
     pub(crate) unsafe fn map_ptr(&self, offset: u64) -> Option<*mut c_void> {
-        self.map_ptr.map(|map_ptr| {
-            let map_ptr_bytes: *mut u8 = std::mem::transmute(map_ptr);
-            std::mem::transmute(map_ptr_bytes.add(offset as usize))
-        })
+        self.map_ptr.map(|map_ptr| map_ptr.add(offset as usize))
     }
 }
 
