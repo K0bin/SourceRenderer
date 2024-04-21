@@ -9,6 +9,7 @@ use build_util::{
 };
 
 fn main() {
+    build_util::build_script_logger::init();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
     // Copy shaders over

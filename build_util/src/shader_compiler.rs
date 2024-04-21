@@ -8,6 +8,7 @@ use std::process::Command;
 
 use bitflags::bitflags;
 
+use log::{error, info};
 use spirv_cross_sys;
 
 use sourcerenderer_core::gpu;
@@ -21,7 +22,7 @@ fn make_spirv_cross_msl_version(major: u32, minor: u32, patch: u32) -> u32 {
 fn msl_remap_binding(set: u32, binding: u32, shader_stage: gpu::ShaderType) -> u32 {
     match shader_stage {
         gpu::ShaderType::VertexShader | gpu::ShaderType::ComputeShader => set * 16 + binding,
-        gpu::ShaderType::FragmentShader => (set + 4) * 16 + binding,
+        gpu::ShaderType::FragmentShader => set * 16 + binding,
         gpu::ShaderType::RayClosestHit | gpu::ShaderType::RayGen | gpu::ShaderType::RayMiss => 0, // TODO
         _ => panic!("Unsupported shader stage")
     }
@@ -143,7 +144,7 @@ fn compile_shader_glsl(
 
     let output_res = command.output();
     if let Err(e) = output_res {
-        println!("Failed to compile shader: {}\n{}",
+        error!("Failed to compile shader: {}\n{}",
             file_path.to_str().unwrap(),
             e.to_string());
         return Err(());
@@ -151,7 +152,7 @@ fn compile_shader_glsl(
     let output = output_res.unwrap();
 
     if !output.status.success() {
-        println!(
+        error!(
             "Failed to compile shader: {}\n{:?}\n",
             file_path.to_str().unwrap(),
             output
@@ -163,13 +164,13 @@ fn compile_shader_glsl(
     {
         let file_res = std::fs::File::open(&compiled_spv_file_path);
         if let Err(e) = file_res {
-            println!("Failed to open SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
+            error!("Failed to open SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
             return Err(());
         }
         let mut file = file_res.unwrap();
         let read_res = file.read_to_end(&mut spirv_bytecode);
         if let Err(e) = read_res {
-            println!("Failed to read SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
+            error!("Failed to read SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
             return Err(());
         }
     }
@@ -188,7 +189,7 @@ unsafe extern "C" fn spirv_cross_error_callback(userdata: *mut c_void, error: *c
     if (*info).do_panic {
         panic!("SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}", (*info).shader_name, (*info).shading_lang, msg_cstr);
     } else {
-        println!("SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}", (*info).shader_name, (*info).shading_lang, msg_cstr);
+        error!("SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}", (*info).shader_name, (*info).shading_lang, msg_cstr);
     }
 }
 
@@ -663,19 +664,19 @@ fn compile_msl_to_air(
 
     let temp_source_file_res = std::fs::File::create(&temp_metal_path);
     if let Err(e) = temp_source_file_res {
-        println!("Error creating temporary file for MSL source: {:?} {:?}", &temp_metal_path, e);
+        error!("Error creating temporary file for MSL source: {:?} {:?}", &temp_metal_path, e);
         return Err(());
     }
     let mut temp_source_file = temp_source_file_res.unwrap();
     let write_res = write!(temp_source_file, "{}", &msl);
     if let Err(e) = write_res {
-        println!("Error writing MSL source to file: {:?}", e);
+        error!("Error writing MSL source to file: {:?}", e);
         return Err(());
     }
     std::mem::drop(temp_source_file);
 
     let mut output_file_name = shader_name.to_string();
-    output_file_name.push_str(".temp.air");
+    output_file_name.push_str(".temp.ir");
     let output_path = output_dir.join(output_file_name);
 
     let mut command = Command::new("xcrun");
@@ -689,21 +690,46 @@ fn compile_msl_to_air(
         .arg(&temp_metal_path);
     let cmd_result = command.output();
 
-    if let Err(e) = cmd_result {
-        println!("Error compiling Metal shader: {:?} {:?}", e, output_dir);
+    if let Err(e) = &cmd_result {
+        error!("Error compiling Metal shader: {:?} {:?}", e, output_dir);
         return Err(());
     }
 
-    let air_file_res = File::open(&output_path);
+    if !output_path.exists() {
+        error!("Compiled Metal shader file does not exist: {:?}", output_path);
+        error!("Output of compile command: {}", String::from_utf8(cmd_result.unwrap().stderr).unwrap());
+        return Err(());
+    }
+
+    let mut output_library_file_name = shader_name.to_string();
+    output_library_file_name.push_str(".temp.metallib");
+    let output_library_path = output_dir.join(output_library_file_name);
+
+    let mut command = Command::new("xcrun");
+    command
+        .arg("-sdk")
+        .arg("macosx")
+        .arg("metallib")
+        .arg("-o")
+        .arg(&output_library_path)
+        .arg(&output_path);
+    let cmd_result = command.output();
+
+    if let Err(e) = cmd_result {
+        error!("Error creating Metal library: {:?} {:?}", e, output_dir);
+        return Err(());
+    }
+
+    let air_file_res = File::open(&output_library_path);
     if let Err(e) = air_file_res {
-        println!("Failed to open file containing compiled AIR code: {:?} {:?}", &output_path, e);
+        error!("Failed to open file containing compiled Metal library code: {:?} {:?}", &output_library_path, e);
         return Err(());
     }
     let mut air_file = air_file_res.unwrap();
     let mut air_bytecode = Vec::<u8>::new();
     let read_res = air_file.read_to_end(&mut air_bytecode);
     if let Err(e) = read_res {
-        println!("Failed to read file containing compiled AIR code: {:?}", e);
+        error!("Failed to read file containing compiled Metal library code: {:?}", e);
         return Err(());
     }
 
@@ -726,7 +752,7 @@ fn compile_spirv(
     }
     if output_shading_languages == ShadingLanguage::Dxil {
         let _hlsl = compile_shader_spirv_cross(spirv, shader_name, shader_type, metadata, ShadingLanguage::Hlsl)?;
-        println!("Compiling HLSL to DXIL is unimplemented.");
+        error!("Compiling HLSL to DXIL is unimplemented.");
         return Err(());
     }
     panic!("compile_spirv only supports one shading language at a time and only supports MSL or DXIL as output")
@@ -740,8 +766,8 @@ pub fn compile_shader(
     include_debug_info: bool,
     arguments: &HashMap<String, String>,
 ) {
-    println!(
-        "Shader: {:?}, file type: {:?}, shading lang: {:?}",
+    info!(
+        "Shader: {:?}, file type: {:?}, shading langs: {:?}",
         file_path, output_file_type, output_shading_languages
     );
 
