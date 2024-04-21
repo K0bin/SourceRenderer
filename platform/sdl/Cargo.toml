@@ -6,8 +6,9 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-sdl2 = "0.36.0"
+sdl2 = { version = "0.36.0", features = [ "raw-window-handle" ] }
 sdl2-sys = "0.36.0"
+raw-window-handle = "0.5.2"
 ash = "0.37.3+1.3.2510"
 bitset-core = "0.1.1"
 sourcerenderer_bsp = { path = "../../valve_formats/bsp" }
@@ -18,6 +19,11 @@ lazy_static = "1.4.0"
 simple_logger = "4.3.3"
 notify = "6.1.1"
 crossbeam-channel = "0.5.12"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.27.0"
+objc = "0.2.7"
+sourcerenderer_metal = { path = "../../graphics/metal" }
 
 [build-dependencies]
 build-util = { path = "../../build_util" }
