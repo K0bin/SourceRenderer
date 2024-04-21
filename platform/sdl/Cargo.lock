@@ -2242,7 +2242,6 @@ dependencies = [
  "sourcerenderer_core",
  "spirv_cross_sys",
  "thread_local",
- "vma_sys",
 ]
 
 [[package]]
@@ -2531,15 +2530,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "vma_sys"
-version = "0.1.0"
-dependencies = [
- "ash",
- "bindgen 0.60.1",
- "cc",
-]
 
 [[package]]
 name = "walkdir"
