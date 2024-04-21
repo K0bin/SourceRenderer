@@ -5,7 +5,6 @@ extern crate sdl2;
 extern crate sdl2_sys;
 extern crate sourcerenderer_core;
 extern crate sourcerenderer_engine;
-extern crate sourcerenderer_vulkan;
 #[macro_use]
 extern crate lazy_static;
 
@@ -17,6 +16,16 @@ mod sdl_platform;
 mod sdl_metal;
 #[cfg(target_os = "macos")]
 pub(crate) use sdl_metal as sdl_gpu;
+
+#[cfg(target_os = "windows")]
+mod sdl_vulkan;
+#[cfg(target_os = "windows")]
+pub(crate) use sdl_vulkan as sdl_gpu;
+
+#[cfg(target_os = "linux")]
+mod sdl_vulkan;
+#[cfg(target_os = "linux")]
+pub(crate) use sdl_vulkan as sdl_gpu;
 
 #[cfg(target_os = "windows")]
 mod sdl_vulkan;

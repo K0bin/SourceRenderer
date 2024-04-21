@@ -11,7 +11,7 @@ use crate::{sdl_platform::{SDLWindow, StdIO, StdThreadHandle}, SDLPlatform};
 
 pub(crate) type SDLGPUBackend = MTLBackend;
 
-pub(crate) fn create_instance() -> Result<MTLInstance, Box<dyn Error>> {
+pub(crate) fn create_instance(debug_layers: bool, window: &SDLWindow) -> Result<MTLInstance, Box<dyn Error>> {
     Ok(MTLInstance::new())
 }
 

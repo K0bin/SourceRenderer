@@ -6,11 +6,6 @@ use std::path::{
     PathBuf,
 };
 
-use ash::extensions::khr::Surface as SurfaceLoader;
-use ash::vk::{
-    Handle,
-    SurfaceKHR,
-};
 use crossbeam_channel::Sender;
 use notify::{
     recommended_watcher,
@@ -193,12 +188,6 @@ impl SDLWindow {
     pub(crate) fn sdl_window_handle(&self) -> &sdl2::video::Window {
         &self.window
     }
-
-    #[cfg(not(target_os = "macos"))]
-    #[inline]
-    pub fn vulkan_instance_extensions(&self) -> Result<Vec<&str>, String> {
-        self.window.vulkan_instance_extensions()
-    }
 }
 
 impl Platform for SDLPlatform {
@@ -212,9 +201,7 @@ impl Platform for SDLPlatform {
     }
 
     fn create_graphics(&self, debug_layers: bool) -> Result<<Self::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance, Box<dyn Error>> {
-        sdl_gpu::create_instance()
-        //let extensions = self.window.vulkan_instance_extensions().unwrap();
-        //return Ok(VkInstance::new(&extensions, debug_layers));
+        sdl_gpu::create_instance(debug_layers, &self.window)
     }
 
     fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
