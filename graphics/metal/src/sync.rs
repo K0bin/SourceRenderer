@@ -54,7 +54,7 @@ impl MTLFence {
 
 impl gpu::Fence for MTLFence {
     unsafe fn value(&self) -> u64 {
-        match self.event {
+        match &self.event {
             MTLEventType::Shared(event) => event.signaled_value(),
             _ => panic!("Fence is not CPU accessible")
         }

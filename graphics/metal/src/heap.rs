@@ -19,11 +19,12 @@ pub(crate) enum ResourceMemory<'a> {
 
 pub struct MTLHeap {
     heap: metal::Heap,
-    memory_type_index: u32
+    memory_type_index: u32,
+    options: metal::MTLResourceOptions
 }
 
 impl MTLHeap {
-    pub(crate) fn new(device: &metal::DeviceRef, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn new(device: &metal::DeviceRef, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind, options: metal::MTLResourceOptions) -> Result<Self, gpu::OutOfMemoryError> {
         let mut descriptor = metal::HeapDescriptor::new();
         descriptor.set_size(size);
         unsafe {
@@ -46,12 +47,17 @@ impl MTLHeap {
         }
         Ok(Self {
             heap,
-            memory_type_index
+            memory_type_index,
+            options
         })
     }
 
     pub(crate) fn handle(&self) -> &metal::HeapRef {
         &self.heap
+    }
+
+    pub(crate) fn resource_options(&self) -> metal::MTLResourceOptions {
+        self.options
     }
 }
 

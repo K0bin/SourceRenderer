@@ -36,6 +36,7 @@ impl Eq for MTLSurface {}
 
 pub struct MTLSwapchain {
     surface: MTLSurface,
+    device: metal::Device,
     backbuffers: SmallVec<[MTLTexture; 5]>,
     current_backbuffer_index: AtomicUsize,
     current_drawable: Mutex<Option<metal::MetalDrawable>>
@@ -44,7 +45,8 @@ pub struct MTLSwapchain {
 const IMAGE_COUNT: u32 = 3;
 
 impl MTLSwapchain {
-    pub fn new(surface: MTLSurface) -> Self {
+    pub fn new(surface: MTLSurface, device: &metal::DeviceRef) -> Self {
+        surface.layer.set_device(device);
         surface.layer.set_maximum_drawable_count(IMAGE_COUNT as u64);
         let mut backbuffers = SmallVec::<[MTLTexture; 5]>::with_capacity(IMAGE_COUNT as usize);
         for i in 0..IMAGE_COUNT {
@@ -56,6 +58,7 @@ impl MTLSwapchain {
         Self {
             surface,
             backbuffers: backbuffers,
+            device: device.to_owned(),
             current_backbuffer_index: AtomicUsize::new(0usize),
             current_drawable: Mutex::new(None),
         }
@@ -73,7 +76,7 @@ impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
     }
 
     unsafe fn recreate_on_surface(old: Self, surface: MTLSurface, width: u32, height: u32) -> Result<Self, gpu::SwapchainError> {
-        Ok(Self::new(surface))
+        Ok(Self::new(surface, &old.device))
     }
 
     unsafe fn next_backbuffer(&self) -> Result<(), gpu::SwapchainError> {

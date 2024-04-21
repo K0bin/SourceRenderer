@@ -30,6 +30,7 @@ impl MTLBuffer {
             },
             ResourceMemory::Suballocated { memory, offset } => {
                 options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+                options |= memory.resource_options();
                 let buffer_opt = memory.handle().new_buffer_with_offset(info.size, options, offset);
                 if buffer_opt.is_none() {
                     return Err(gpu::OutOfMemoryError {});

@@ -13,7 +13,7 @@ pub struct MTLShader {
 }
 
 impl MTLShader {
-    pub(crate) fn new(device: &metal::DeviceRef, shader_type: gpu::ShaderType, data: &[u8]) -> Self {
+    pub(crate) fn new(device: &metal::DeviceRef, shader_type: gpu::ShaderType, data: &[u8], name: Option<&str>) -> Self {
         let library = device.new_library_with_data(data).unwrap();
         Self {
             shader_type,
@@ -138,7 +138,8 @@ pub(super) fn color_components_to_mtl(color_components: gpu::ColorComponents) ->
 }
 
 pub struct MTLGraphicsPipeline {
-    pipeline: metal::RenderPipelineState
+    pipeline: metal::RenderPipelineState,
+    primitive_type: metal::MTLPrimitiveType
 }
 
 impl MTLGraphicsPipeline {
@@ -148,8 +149,10 @@ impl MTLGraphicsPipeline {
         let descriptor = metal::RenderPipelineDescriptor::new();
         let function_descriptor = metal::FunctionDescriptor::new();
         function_descriptor.set_name(SHADER_ENTRY_POINT_NAME);
-        descriptor.set_vertex_function(Some(&info.vs.handle().new_function_with_descriptor(&function_descriptor).unwrap()));
-        descriptor.set_fragment_function(info.fs.map(|fs| &fs.handle().new_function_with_descriptor(&function_descriptor).unwrap() as &metal::FunctionRef));
+        let vertex_function = info.vs.handle().new_function_with_descriptor(&function_descriptor).unwrap();
+        descriptor.set_vertex_function(Some(&vertex_function));
+        let fragment_function = info.fs.map(|fs| fs.handle().new_function_with_descriptor(&function_descriptor).unwrap());
+        descriptor.set_fragment_function(fragment_function.as_ref().map(|fs| &fs as &metal::FunctionRef));
 
         let vertex_descriptor = metal::VertexDescriptor::new().to_owned();
         for (idx, a) in info.vertex_layout.shader_inputs.iter().enumerate() {
@@ -211,21 +214,55 @@ impl MTLGraphicsPipeline {
 
         descriptor.set_rasterization_enabled(true);
         descriptor.set_input_primitive_topology(match info.primitive_type {
-            gpu::PrimitiveType::Triangles => metal::MTLPrimitiveTopologyClass::Triangle,
-            gpu::PrimitiveType::TriangleStrip => panic!("Metal does not support triangle strips"),
-            gpu::PrimitiveType::Lines => metal::MTLPrimitiveTopologyClass::Line,
-            gpu::PrimitiveType::LineStrip => panic!("Metal does not support line strips"),
+            gpu::PrimitiveType::Triangles | gpu::PrimitiveType::TriangleStrip => metal::MTLPrimitiveTopologyClass::Triangle,
+            gpu::PrimitiveType::Lines | gpu::PrimitiveType::LineStrip => metal::MTLPrimitiveTopologyClass::Line,
             gpu::PrimitiveType::Points => metal::MTLPrimitiveTopologyClass::Point,
         });
 
+        let primitive_type = match info.primitive_type {
+            gpu::PrimitiveType::Triangles => metal::MTLPrimitiveType::Triangle,
+            gpu::PrimitiveType::TriangleStrip => metal::MTLPrimitiveType::TriangleStrip,
+            gpu::PrimitiveType::Lines => metal::MTLPrimitiveType::Line,
+            gpu::PrimitiveType::LineStrip => metal::MTLPrimitiveType::LineStrip,
+            gpu::PrimitiveType::Points => metal::MTLPrimitiveType::Point,
+        };
+
         let pipeline = device.new_render_pipeline_state(&descriptor).unwrap();
         Self {
-            pipeline
+            pipeline,
+            primitive_type
         }
     }
 
     pub(crate) fn handle(&self) -> &metal::RenderPipelineStateRef {
         &self.pipeline
     }
+
+    pub(crate) fn primitive_type(&self) -> metal::MTLPrimitiveType {
+        self.primitive_type
+    }
 }
 
+pub struct MTLComputePipeline {
+    pipeline: metal::ComputePipelineState
+}
+
+impl MTLComputePipeline {
+    pub(crate) fn new(device: &metal::DeviceRef, shader: &MTLShader, name: Option<&str>) -> Self {
+        let function = shader.handle().get_function("main", None).unwrap();
+        let pipeline = device.new_compute_pipeline_state_with_function(&function).unwrap();
+        Self {
+            pipeline
+        }
+    }
+
+    pub(crate) fn handle(&self) -> &metal::ComputePipelineStateRef {
+        &self.pipeline
+    }
+}
+
+impl gpu::ComputePipeline for MTLComputePipeline {
+    fn binding_info(&self, set: gpu::BindingFrequency, slot: u32) -> Option<gpu::BindingInfo> {
+        todo!()
+    }
+}

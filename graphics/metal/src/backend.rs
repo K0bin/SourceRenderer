@@ -4,6 +4,8 @@ use super::*;
 
 pub enum MTLBackend {}
 
+pub(crate) type MTLRayTracingPipeline = (); 
+
 impl gpu::GPUBackend for MTLBackend {
     type Instance = MTLInstance;
     type Adapter = MTLAdapter;
@@ -21,8 +23,8 @@ impl gpu::GPUBackend for MTLBackend {
     type Heap = MTLHeap;    
     type Shader = MTLShader;
     type GraphicsPipeline = MTLGraphicsPipeline;
+    type ComputePipeline = MTLComputePipeline;
 
-    type ComputePipeline;    
-    type RayTracingPipeline;
+    type RayTracingPipeline = MTLRayTracingPipeline;
     type AccelerationStructure = MTLAccelerationStructure;
 }

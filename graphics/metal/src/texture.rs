@@ -118,6 +118,7 @@ impl MTLTexture {
             }
             ResourceMemory::Suballocated { memory, offset } => {
                 options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+                options |= memory.resource_options();
                 descriptor.set_resource_options(options);
                 let texture_opt = memory.handle().new_texture_with_offset(&descriptor, offset);
                 if texture_opt.is_none() {
