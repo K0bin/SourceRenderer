@@ -240,7 +240,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     fn supports_bindless(&self) -> bool {
-        todo!()
+        false // TODO
     }
 
     fn supports_ray_tracing(&self) -> bool {
@@ -248,7 +248,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     fn supports_indirect(&self) -> bool {
-        todo!()
+        false // TODO
     }
 
     fn supports_min_max_filter(&self) -> bool {

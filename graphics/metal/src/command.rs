@@ -1,6 +1,6 @@
 use metal;
 
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, Texture as _};
 
 use super::*;
 
@@ -78,6 +78,39 @@ impl MTLCommandBuffer {
 
     pub(crate) fn post_event_handle(&self) -> &metal::EventRef {
         &self.post_event
+    }
+
+    fn get_blit_encoder(&mut self) -> &metal::BlitCommandEncoder {
+        if self.blit_encoder.is_none() {
+            if let Some(encoder) = &self.compute_encoder {
+                encoder.end_encoding();
+                self.compute_encoder = None;
+            }
+            self.blit_encoder = Some(self.command_buffer.new_blit_command_encoder().to_owned());
+        }
+        self.blit_encoder.as_ref().unwrap()
+    }
+
+    fn get_compute_encoder(&mut self) -> &metal::ComputeCommandEncoder {
+        if self.compute_encoder.is_none() {
+            if let Some(encoder) = &self.blit_encoder {
+                encoder.end_encoding();
+                self.blit_encoder = None;
+            }
+            self.compute_encoder = Some(self.command_buffer.compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
+        }
+        self.compute_encoder.as_ref().unwrap()
+    }
+
+    fn end_non_rendering_encoders(&mut self) {
+        if let Some(encoder) = &self.blit_encoder {
+            encoder.end_encoding();
+        }
+        if let Some(encoder) = &self.compute_encoder {
+            encoder.end_encoding();
+        }
+        self.blit_encoder = None;
+        self.compute_encoder = None;
     }
 }
 
@@ -211,10 +244,8 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
-        if self.compute_encoder.is_none() {
-            self.compute_encoder = Some(self.command_buffer.compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
-        }
-        self.compute_encoder.as_ref().unwrap().dispatch_thread_groups(metal::MTLSize::new(group_count_x as u64, group_count_y as u64, group_count_z as u64), metal::MTLSize::new(8, 8, 1));
+        let compute_encoder = self.get_compute_encoder();
+        compute_encoder.dispatch_thread_groups(metal::MTLSize::new(group_count_x as u64, group_count_y as u64, group_count_z as u64), metal::MTLSize::new(8, 8, 1));
     }
 
     unsafe fn blit(&mut self, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
@@ -225,20 +256,48 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         self.command_buffer.encode_wait_for_event(&self.pre_event, 1);
     }
 
-    unsafe fn finish(&mut self) {}
+    unsafe fn finish(&mut self) {
+        self.end_non_rendering_encoders();
+    }
 
     unsafe fn copy_buffer_to_texture(&mut self, src: &MTLBuffer, dst: &MTLTexture, region: &gpu::BufferTextureCopyRegion) {
-        todo!()
+        let blit_encoder = self.get_blit_encoder();
+        let format = dst.info().format;
+        let row_pitch = if region.buffer_row_pitch != 0 {
+            region.buffer_row_pitch
+        } else {
+            (region.texture_extent.x * format.block_size().x / format.element_size()) as u64
+        };
+        let slice_pitch = if region.buffer_slice_pitch != 0 {
+            region.buffer_slice_pitch
+        } else {
+            (region.texture_extent.y / format.block_size().y) as u64 * row_pitch
+        };
+
+        blit_encoder.copy_from_buffer_to_texture(
+            src.handle(),
+            region.buffer_offset,
+            row_pitch,
+            slice_pitch,
+            metal::MTLSize {
+                width: (dst.info().width >> region.texture_subresource.mip_level) as u64,
+                height: if dst.info().dimension.has_y_dimension() { (dst.info().height >> region.texture_subresource.mip_level) as u64 } else { 1 },
+                depth: if dst.info().dimension.has_z_dimension() { (dst.info().depth >> region.texture_subresource.mip_level) as u64 } else { 1 }
+            },
+            dst.handle(),
+            region.texture_subresource.array_layer as u64,
+            region.texture_subresource.mip_level as u64,
+            metal::MTLOrigin {
+                x: region.texture_extent.x as u64,
+                y: region.texture_extent.y as u64,
+                z: region.texture_extent.z as u64
+            },
+            metal::MTLBlitOption::empty()
+        );
     }
 
     unsafe fn copy_buffer(&mut self, src: &MTLBuffer, dst: &MTLBuffer, region: &gpu::BufferCopyRegion) {
-        if self.blit_encoder.is_none() {
-            if self.compute_encoder.is_some() {
-                self.compute_encoder = None;
-            }
-            self.blit_encoder = Some(self.command_buffer.new_blit_command_encoder().to_owned());
-        }
-        let blit_encoder = self.blit_encoder.as_ref().unwrap();
+        let blit_encoder = self.get_blit_encoder();
         blit_encoder.copy_from_buffer(src.handle(), region.src_offset, dst.handle(), region.dst_offset, region.size);
     }
 
@@ -261,10 +320,11 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn end_render_pass(&mut self) {
-        assert!(std::mem::replace(&mut self.render_encoder, None).is_none());
+        self.render_encoder.as_ref().unwrap().end_encoding();
+        self.render_encoder = None;
     }
 
-    unsafe fn barrier(&mut self, barriers: &[gpu::Barrier<MTLBackend>]) {
+    unsafe fn barrier(&mut self, _barriers: &[gpu::Barrier<MTLBackend>]) {
         // No-op, all writable resources are tracked by the Metal driver
     }
 
@@ -279,6 +339,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn reset(&mut self, frame: u64) {
+        self.end_non_rendering_encoders();
         assert!(self.render_encoder.is_none());
         assert!(self.compute_encoder.is_none());
         assert!(self.blit_encoder.is_none());
@@ -320,5 +381,15 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
         todo!()
+    }
+}
+
+impl Drop for MTLCommandBuffer {
+    fn drop(&mut self) {
+        if let Some(encoder) = &self.render_encoder {
+            encoder.end_encoding();
+        }
+        self.render_encoder = None;
+        self.end_non_rendering_encoders();
     }
 }
