@@ -49,7 +49,7 @@ impl SsrPass {
             false,
         );
 
-        let pipeline = shader_manager.request_compute_pipeline("shaders/ssr.comp.spv");
+        let pipeline = shader_manager.request_compute_pipeline("shaders/ssr.comp.json");
 
         Self { pipeline }
     }

@@ -34,6 +34,7 @@ use log::{
     trace,
     warn,
 };
+use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
 
@@ -195,7 +196,7 @@ pub enum Asset {
     Model(Model),
     Sound,
     Material(Material),
-    Shader(Box<[u8]>),
+    Shader(PackedShader),
 }
 
 pub struct AssetManager<P: Platform> {
@@ -399,10 +400,10 @@ impl<P: Platform> AssetManager<P> {
                     })
                     .unwrap();
             }
-            Asset::Shader(shader_bytecode) => {
+            Asset::Shader(shader) => {
                 self.renderer_sender
                     .send(LoadedAsset {
-                        asset: Asset::Shader(shader_bytecode),
+                        asset: Asset::Shader(shader),
                         path: path.to_owned(),
                         priority,
                     })

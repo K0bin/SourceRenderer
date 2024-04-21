@@ -8,6 +8,7 @@ use std::sync::{
 };
 
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::Platform;
 
 use crate::asset::{
@@ -715,7 +716,7 @@ impl<P: Platform> ShaderManager<P> {
         &self,
         pipeline_type_manager: &Arc<PipelineTypeManager<P, THandle, T>>,
         path: &str,
-        shader_bytecode: &Box<[u8]>,
+        shader: PackedShader
     ) -> bool
     where
         THandle: IndexHandle + Hash + PartialEq + Eq + Clone + Copy + Send + Sync + 'static,
@@ -723,7 +724,7 @@ impl<P: Platform> ShaderManager<P> {
     {
         {
             let mut ready_handles = SmallVec::<[THandle; 1]>::new();
-            let mut shader_type_opt = Option::<ShaderType>::None;
+            let mut found = false;
             {
                 let mut inner = pipeline_type_manager.inner.lock().unwrap();
 
@@ -734,8 +735,8 @@ impl<P: Platform> ShaderManager<P> {
                 for (_handle, pipeline) in &inner.compiled_pipelines {
                     let existing_pipeline_match = pipeline.task.contains_shader(path);
                     if let Some(shader_type) = existing_pipeline_match {
-                        assert!(shader_type_opt.is_none() || shader_type_opt == Some(shader_type));
-                        shader_type_opt = Some(shader_type);
+                        assert!(shader_type  == shader.shader_type);
+                        found = true;
                         pipeline.task.request_remaining_shaders(
                             path,
                             &inner.shaders,
@@ -747,18 +748,18 @@ impl<P: Platform> ShaderManager<P> {
                 for (handle, task) in &inner.remaining_compilations {
                     let remaining_compile_match = task.contains_shader(path);
                     if let Some(shader_type) = remaining_compile_match {
-                        assert!(shader_type_opt.is_none() || shader_type_opt == Some(shader_type));
-                        shader_type_opt = Some(shader_type);
+                        assert!(shader_type  == shader.shader_type);
+                        found = true;
                         if task.can_compile(Some(path), &inner.shaders) {
                             ready_handles.push(*handle);
                         }
                     }
                 }
 
-                if let Some(shader_type) = shader_type_opt {
+                if found {
                     let shader =
                         self.device
-                            .create_shader(shader_type, shader_bytecode, Some(path));
+                            .create_shader(shader, Some(path));
                     inner.shaders.insert(path.to_string(), Arc::new(shader));
                 } else {
                     return false;
@@ -800,14 +801,13 @@ impl<P: Platform> ShaderManager<P> {
         }
     }
 
-    pub fn add_shader(&mut self, path: &str, shader_bytecode: Box<[u8]>) {
-        if self.add_shader_type(&self.compute, path, &shader_bytecode) {
-            return;
-        }
-        if self.add_shader_type(&self.graphics, path, &shader_bytecode) {
-            return;
-        }
-        if !self.add_shader_type(&self.rt, path, &shader_bytecode) {
+    pub fn add_shader(&mut self, path: &str, shader: PackedShader) {
+        if !match shader.shader_type {
+            ShaderType::ComputeShader => self.add_shader_type(&self.compute, path, shader),
+            ShaderType::RayGen | ShaderType::RayClosestHit | ShaderType::RayMiss => self.add_shader_type(&self.rt, path, shader),
+            ShaderType::FragmentShader | ShaderType::VertexShader | ShaderType::GeometryShader | ShaderType::TessellationControlShader | ShaderType::TessellationEvaluationShader =>
+                self.add_shader_type(&self.graphics, path, shader),
+        } {
             panic!("Unhandled shader. {}", path);
         }
     }

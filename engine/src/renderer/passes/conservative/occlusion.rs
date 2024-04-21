@@ -113,7 +113,7 @@ impl<P: Platform> OcclusionPass<P> {
 
         let pipeline = shader_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
-                vs: "shaders/occlusion.vert.spv",
+                vs: "shaders/occlusion.vert.json",
                 fs: None,
                 primitive_type: PrimitiveType::Triangles,
                 vertex_layout: VertexLayoutInfo {

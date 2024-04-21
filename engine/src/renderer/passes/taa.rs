@@ -61,9 +61,9 @@ impl TAAPass {
         visibility_buffer: bool,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline(if !visibility_buffer {
-            "shaders/taa.comp.spv"
+            "shaders/taa.comp.json"
         } else {
-            "shaders/taa_vis_buf.comp.spv"
+            "shaders/taa_vis_buf.comp.json"
         });
 
         let texture_info = TextureInfo {

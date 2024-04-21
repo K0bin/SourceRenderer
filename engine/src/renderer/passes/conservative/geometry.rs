@@ -99,8 +99,8 @@ impl<P: Platform> GeometryPass<P> {
         });
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: "shaders/textured.vert.spv",
-            fs: Some("shaders/textured.frag.spv"),
+            vs: "shaders/textured.vert.json",
+            fs: Some("shaders/textured.frag.json"),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

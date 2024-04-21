@@ -1,6 +1,6 @@
 use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, mem::ManuallyDrop};
 
-use sourcerenderer_core::gpu::Device as GPUDevice;
+use sourcerenderer_core::gpu::{self, Device as GPUDevice};
 use sourcerenderer_core::gpu::RayTracingPipelineInfo;
 
 use super::*;
@@ -74,8 +74,8 @@ impl<B: GPUBackend> Device<B> {
         super::Sampler::new(&self.device, &self.destroyer, info)
     }
 
-    pub fn create_shader(&self, shader_type: ShaderType, bytecode: &[u8], name: Option<&str>) -> B::Shader {
-        unsafe { self.device.create_shader(shader_type, bytecode, name) }
+    pub fn create_shader(&self, shader: gpu::PackedShader, name: Option<&str>) -> B::Shader {
+        unsafe { self.device.create_shader(shader, name) }
     }
 
     pub fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<super::GraphicsPipeline<B>> {

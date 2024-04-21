@@ -36,7 +36,7 @@ impl<P: Platform> ShadingPass<P> {
         shader_manager: &mut ShaderManager<P>,
         _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/shading.comp.spv");
+        let pipeline = shader_manager.request_compute_pipeline("shaders/shading.comp.json");
 
         let sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,

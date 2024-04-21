@@ -347,8 +347,6 @@ impl<B: GPUBackend> Transfer<B> {
     }
 
     pub fn try_free_unused_buffers(&self) {
-        return;
-
         let mut guard = self.inner.lock().unwrap();
         let mut signalled_counter: u64 = 0u64;
         for cmd_buffer in &mut guard.graphics.used_cmd_buffers {

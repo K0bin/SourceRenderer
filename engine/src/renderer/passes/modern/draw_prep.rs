@@ -22,8 +22,8 @@ impl DrawPrepPass {
         resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let culling_pipeline = shader_manager.request_compute_pipeline("shaders/culling.comp.spv");
-        let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.spv");
+        let culling_pipeline = shader_manager.request_compute_pipeline("shaders/culling.comp.json");
+        let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
         resources.create_buffer(
             Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,
             &BufferInfo {

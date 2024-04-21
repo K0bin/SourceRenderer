@@ -15,7 +15,7 @@ use sourcerenderer_core::atomic_refcell::{
     AtomicRefCell,
     AtomicRefMut,
 };
-use sourcerenderer_core::gpu::GPUBackend;
+use sourcerenderer_core::gpu::{GPUBackend, PackedShader};
 use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::{
     Platform,
@@ -1039,31 +1039,31 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
     let mut path: PathBuf = PathBuf::from("shaders");
     let name: String;
     if pass == FfxFsr2Pass_FFX_FSR2_PASS_DEPTH_CLIP {
-        path = path.join("ffx_fsr2_depth_clip_pass.spv");
+        path = path.join("ffx_fsr2_depth_clip_pass.json");
         name = "ffx_fsr2_depth_clip_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_RECONSTRUCT_PREVIOUS_DEPTH {
-        path = path.join("ffx_fsr2_reconstruct_previous_depth_pass.spv");
+        path = path.join("ffx_fsr2_reconstruct_previous_depth_pass.json");
         name = "ffx_fsr2_reconstruct_previous_depth_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_LOCK {
-        path = path.join("ffx_fsr2_lock_pass.spv");
+        path = path.join("ffx_fsr2_lock_pass.json");
         name = "ffx_fsr2_lock_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_ACCUMULATE {
-        path = path.join("ffx_fsr2_accumulate_pass.spv");
+        path = path.join("ffx_fsr2_accumulate_pass.json");
         name = "ffx_fsr2_accumulate_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_ACCUMULATE_SHARPEN {
-        path = path.join("ffx_fsr2_accumulate_pass.spv");
+        path = path.join("ffx_fsr2_accumulate_pass.json");
         name = "ffx_fsr2_accumulate_sharpen_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_RCAS {
-        path = path.join("ffx_fsr2_rcas_pass.spv");
+        path = path.join("ffx_fsr2_rcas_pass.json");
         name = "ffx_fsr2_rcas_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_COMPUTE_LUMINANCE_PYRAMID {
-        path = path.join("ffx_fsr2_compute_luminance_pyramid_pass.spv");
+        path = path.join("ffx_fsr2_compute_luminance_pyramid_pass.json");
         name = "ffx_fsr2_compute_luminance_pyramid_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_GENERATE_REACTIVE {
-        path = path.join("ffx_fsr2_autogen_reactive_pass.spv");
+        path = path.join("ffx_fsr2_autogen_reactive_pass.json");
         name = "ffx_fsr2_autogen_reactive_pass".to_string();
     } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_TCR_AUTOGENERATE {
-        path = path.join("ffx_fsr2_autogen_reactive_pass.spv");
+        path = path.join("ffx_fsr2_autogen_reactive_pass.json");
         name = "ffx_fsr2_tcr_autogenerate_pass".to_string();
     } else {
         panic!("Unsupported pass: {}", pass);
@@ -1075,9 +1075,10 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
         let mut file = <P::IO as IO>::open_asset(path).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         file.read_to_end(&mut bytes).unwrap();
+        let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
         context
             .device
-            .create_shader(ShaderType::ComputeShader, &bytes, Some(&name))
+            .create_shader(shader, Some(&name))
     };
     let pipeline = context.device.create_compute_pipeline(&shader, Some(&name));
 

@@ -1,9 +1,6 @@
 use std::{
     collections::HashMap,
-    ffi::{
-        CStr,
-        CString,
-    },
+    ffi::CString,
     hash::{
         Hash,
         Hasher,
@@ -15,7 +12,6 @@ use std::{
 use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Buffer as _, Shader as _};
-use spirv_cross_sys;
 
 use super::*;
 use crate::adapter::BINDLESS_TEXTURE_COUNT;
@@ -57,86 +53,51 @@ impl VkShader {
     #[allow(clippy::size_of_in_element_count)]
     pub fn new(
         device: &Arc<RawVkDevice>,
-        shader_type: gpu::ShaderType,
-        bytecode: &[u8],
+        shader: gpu::PackedShader,
         name: Option<&str>,
     ) -> Self {
+        assert_ne!(shader.shader_spirv.len(), 0);
+
         let create_info = vk::ShaderModuleCreateInfo {
-            code_size: bytecode.len(),
-            p_code: bytecode.as_ptr() as *const u32,
+            code_size: shader.shader_spirv.len(),
+            p_code: shader.shader_spirv.as_ptr() as *const u32,
             ..Default::default()
         };
         let vk_device = &device.device;
         let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
-        let mut uses_bindless_texture_set = false;
         let mut sets: HashMap<u32, Vec<VkDescriptorSetEntryInfo>> = HashMap::new();
+        let vk_shader_stage = shader_type_to_vk(shader.shader_type);
 
-        let mut context: spirv_cross_sys::spvc_context = std::ptr::null_mut();
-        let mut ir: spirv_cross_sys::spvc_parsed_ir = std::ptr::null_mut();
-        let mut compiler: spirv_cross_sys::spvc_compiler = std::ptr::null_mut();
-        let mut resources: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
-        unsafe {
-            assert_eq!(
-                spirv_cross_sys::spvc_context_create(&mut context),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            assert_eq!(
-                spirv_cross_sys::spvc_context_parse_spirv(
-                    context,
-                    bytecode.as_ptr() as *const u32,
-                    bytecode.len() / std::mem::size_of::<u32>(),
-                    &mut ir
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            assert_eq!(
-                spirv_cross_sys::spvc_context_create_compiler(
-                    context,
-                    spirv_cross_sys::spvc_backend_SPVC_BACKEND_NONE,
-                    ir,
-                    spirv_cross_sys::spvc_capture_mode_SPVC_CAPTURE_MODE_COPY,
-                    &mut compiler
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-
-            assert_eq!(
-                spirv_cross_sys::spvc_compiler_create_shader_resources(compiler, &mut resources),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
+        for (set_index, set_metadata) in shader.resources.iter().enumerate() {
+            let set = sets.entry(set_index as u32).or_insert_with(Vec::new);
+            for binding_metadata in set_metadata.iter() {
+                assert_eq!(binding_metadata.set, set_index as u32);
+                set.push(VkDescriptorSetEntryInfo {
+                    name: binding_metadata.name.clone(),
+                    index: binding_metadata.binding,
+                    descriptor_type: match binding_metadata.resource_type {
+                        gpu::ResourceType::UniformBuffer => vk::DescriptorType::UNIFORM_BUFFER,
+                        gpu::ResourceType::StorageBuffer => vk::DescriptorType::STORAGE_BUFFER,
+                        gpu::ResourceType::SubpassInput => vk::DescriptorType::INPUT_ATTACHMENT,
+                        gpu::ResourceType::SampledTexture => vk::DescriptorType::SAMPLED_IMAGE,
+                        gpu::ResourceType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
+                        gpu::ResourceType::Sampler => vk::DescriptorType::SAMPLER,
+                        gpu::ResourceType::CombinedTextureSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                        gpu::ResourceType::AccelerationStructure => vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+                    },
+                    shader_stage: vk_shader_stage,
+                    count: binding_metadata.array_size,
+                    writable: false,
+                    flags: vk::DescriptorBindingFlags::empty(),
+                });
+            }
         }
 
-        let push_constant_buffers = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_PUSH_CONSTANT,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        let push_constant_resource = push_constant_buffers.first();
-        let push_constants_range = push_constant_resource.map(|resource| unsafe {
-            let type_handle =
-                spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-            assert_ne!(type_handle, std::ptr::null());
-            let mut size = 0usize;
-            assert_eq!(
-                spirv_cross_sys::spvc_compiler_get_declared_struct_size(
-                    compiler,
-                    type_handle,
-                    &mut size as *mut usize
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            let push_constant_range = vk::PushConstantRange {
-                stage_flags: match shader_type {
+        let push_constants_range = if shader.push_constant_size == 0 {
+            None
+        } else {
+            Some(vk::PushConstantRange {
+                stage_flags: match shader.shader_type {
                     gpu::ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
                     gpu::ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
                     gpu::ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
@@ -146,546 +107,9 @@ impl VkShader {
                     _ => unimplemented!(),
                 },
                 offset: 0u32,
-                size: size as u32,
-            };
-
-            if push_constant_range.size > 128 {
-                panic!(
-                    "Shader push constants exceed the size limit of 128 bytes, name: {:?}",
-                    name
-                );
-            }
-
-            push_constant_range
-        });
-
-        let separate_images = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SEPARATE_IMAGE,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
+                size: shader.push_constant_size as u32,
+            })
         };
-        for resource in separate_images {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-            if set_index == BINDLESS_TEXTURE_SET_INDEX {
-                uses_bindless_texture_set = true;
-                continue;
-            }
-
-            let array_size = unsafe {
-                let type_handle =
-                    spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                let array_dimensions =
-                    spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
-                assert!(array_dimensions == 1 || array_dimensions == 0);
-                if array_dimensions != 0 {
-                    assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
-                    );
-                    spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
-                } else {
-                    1
-                }
-            };
-
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: array_size,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
-
-        let separate_samplers = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        for resource in separate_samplers {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-
-            let array_size = unsafe {
-                let type_handle =
-                    spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                let array_dimensions =
-                    spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
-                assert!(array_dimensions == 1 || array_dimensions == 0);
-                if array_dimensions != 0 {
-                    assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
-                    );
-                    spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
-                } else {
-                    1
-                }
-            };
-
-            assert_eq!(array_size, 1);
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::SAMPLER,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: array_size,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
-
-        let sampled_images = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SAMPLED_IMAGE,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        for resource in sampled_images {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-
-            let array_size = unsafe {
-                let type_handle =
-                    spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                let array_dimensions =
-                    spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
-                assert!(array_dimensions == 1 || array_dimensions == 0);
-                if array_dimensions != 0 {
-                    assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
-                    );
-                    spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
-                } else {
-                    1
-                }
-            };
-
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: array_size,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
-
-        let subpass_inputs = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SUBPASS_INPUT,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        for resource in subpass_inputs {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: 1,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
-
-        let uniform_buffers = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_UNIFORM_BUFFER,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        for resource in uniform_buffers {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-
-            let array_size = unsafe {
-                let type_handle =
-                    spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                let array_dimensions =
-                    spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
-                assert!(array_dimensions == 1 || array_dimensions == 0);
-                if array_dimensions != 0 {
-                    assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
-                    );
-                    spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
-                } else {
-                    1
-                }
-            };
-
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: array_size,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
-
-        let storage_buffers = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STORAGE_BUFFER,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        for resource in storage_buffers {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let writable = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationNonWritable,
-                )
-            } == 0;
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-
-            let array_size = unsafe {
-                let type_handle =
-                    spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                let array_dimensions =
-                    spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
-                assert!(array_dimensions == 1 || array_dimensions == 0);
-                if array_dimensions != 0 {
-                    assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
-                    );
-                    spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
-                } else {
-                    1
-                }
-            };
-
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: array_size,
-                writable,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
-
-        let storage_images = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STORAGE_IMAGE,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        for resource in storage_images {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let writable = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationNonWritable,
-                )
-            } == 0;
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-
-            let array_size = unsafe {
-                let type_handle =
-                    spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
-                let array_dimensions =
-                    spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
-                assert!(array_dimensions == 1 || array_dimensions == 0);
-                if array_dimensions != 0 {
-                    assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
-                    );
-                    spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
-                } else {
-                    1
-                }
-            };
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: array_size,
-                writable,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
-
-        let acceleration_structures = unsafe {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    resources,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_ACCELERATION_STRUCTURE,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        for resource in acceleration_structures {
-            let set_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-                )
-            };
-            let binding_index = unsafe {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-                )
-            };
-            let name = unsafe {
-                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                    compiler,
-                    resource.id,
-                ))
-                .to_str()
-                .unwrap()
-                .to_string()
-            };
-            let set = sets.entry(set_index).or_insert_with(Vec::new);
-            set.push(VkDescriptorSetEntryInfo {
-                name,
-                index: binding_index,
-                descriptor_type: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
-                shader_stage: shader_type_to_vk(shader_type),
-                count: 1,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::empty(),
-            });
-        }
 
         if let Some(name) = name {
             if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
@@ -706,18 +130,13 @@ impl VkShader {
                 }
             }
         }
-
-        unsafe {
-            spirv_cross_sys::spvc_context_destroy(context);
-        }
-
         VkShader {
-            shader_type,
+            shader_type: shader.shader_type,
             shader_module,
             device: device.clone(),
             descriptor_set_bindings: sets,
             push_constants_range,
-            uses_bindless_texture_set,
+            uses_bindless_texture_set: shader.uses_bindless_texture_set,
         }
     }
 

@@ -136,11 +136,10 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     unsafe fn create_shader(
         &self,
-        shader_type: gpu::ShaderType,
-        bytecode: &[u8],
+        shader: gpu::PackedShader,
         name: Option<&str>,
     ) -> VkShader {
-        VkShader::new(&self.device, shader_type, bytecode, name)
+        VkShader::new(&self.device, shader, name)
     }
 
     unsafe fn create_texture(&self, info: &gpu::TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<VkTexture, gpu::OutOfMemoryError> {

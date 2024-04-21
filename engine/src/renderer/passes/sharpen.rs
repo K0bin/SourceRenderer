@@ -30,9 +30,9 @@ impl SharpenPass {
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let pipeline = shader_manager.request_compute_pipeline(if !USE_CAS {
-            "shaders/sharpen.comp.spv"
+            "shaders/sharpen.comp.json"
         } else {
-            "shaders/cas.comp.spv"
+            "shaders/cas.comp.json"
         });
 
         resources.create_texture(
