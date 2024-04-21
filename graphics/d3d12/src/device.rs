@@ -163,6 +163,7 @@ impl gpu::Device<D3D12Backend> for D3D12Device {
     unsafe fn create_texture_view(&self, texture: &D3D12Texture, info: &gpu::TextureViewInfo, name: Option<&str>) -> D3D12TextureView {
         let descriptor = self.src_descriptor_heap.get_new_descriptor();
         //D3D12TextureView::new()
+        unimplemented!()
     }
 
     fn graphics_queue(&self) -> &D3D12Queue {
@@ -175,5 +176,81 @@ impl gpu::Device<D3D12Backend> for D3D12Device {
 
     fn transfer_queue(&self) -> Option<&D3D12Queue> {
         Some(&self.transfer_queue)
+    }
+
+    unsafe fn create_shader(&self, shader_type: gpu::ShaderType, bytecode: &[u8], name: Option<&str>) -> <D3D12Backend as gpu::GPUBackend>::Shader {
+        todo!()
+    }
+
+    unsafe fn create_compute_pipeline(&self, shader: &<D3D12Backend as gpu::GPUBackend>::Shader, name: Option<&str>) -> <D3D12Backend as gpu::GPUBackend>::ComputePipeline {
+        todo!()
+    }
+
+    unsafe fn create_sampler(&self, info: &gpu::SamplerInfo) -> <D3D12Backend as gpu::GPUBackend>::Sampler {
+        todo!()
+    }
+
+    unsafe fn create_graphics_pipeline(&self, info: &gpu::GraphicsPipelineInfo<D3D12Backend>, renderpass_info: &gpu::RenderPassInfo, subpass: u32, name: Option<&str>) -> <D3D12Backend as gpu::GPUBackend>::GraphicsPipeline {
+        todo!()
+    }
+
+    unsafe fn wait_for_idle(&self) {
+        todo!()
+    }
+
+    unsafe fn create_fence(&self) -> <D3D12Backend as gpu::GPUBackend>::Fence {
+        todo!()
+    }
+
+    unsafe fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> ResourceHeapInfo {
+        todo!()
+    }
+
+    unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> ResourceHeapInfo {
+        todo!()
+    }
+
+    unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &<D3D12Backend as gpu::GPUBackend>::TextureView) {
+        todo!()
+    }
+
+    fn supports_bindless(&self) -> bool {
+        todo!()
+    }
+
+    fn supports_ray_tracing(&self) -> bool {
+        todo!()
+    }
+
+    fn supports_indirect(&self) -> bool {
+        todo!()
+    }
+
+    fn supports_min_max_filter(&self) -> bool {
+        todo!()
+    }
+
+    fn supports_barycentrics(&self) -> bool {
+        todo!()
+    }
+
+    unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &gpu::BottomLevelAccelerationStructureInfo<D3D12Backend>) -> gpu::AccelerationStructureSizes {
+        todo!()
+    }
+
+    unsafe fn get_top_level_acceleration_structure_size(&self, info: &gpu::TopLevelAccelerationStructureInfo<D3D12Backend>) -> gpu::AccelerationStructureSizes {
+        todo!()
+    }
+
+    fn get_top_level_instances_buffer_size(&self, instances: &[gpu::AccelerationStructureInstance<D3D12Backend>]) -> u64 {
+        todo!()
+    }
+
+    unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &gpu::RayTracingPipelineInfo<D3D12Backend>) -> u64 {
+        todo!()
+    }
+
+    unsafe fn create_raytracing_pipeline(&self, info: &gpu::RayTracingPipelineInfo<D3D12Backend>, sbt_buffer: &<D3D12Backend as gpu::GPUBackend>::Buffer, sbt_buffer_offset: u64, name: Option<&str>) -> <D3D12Backend as gpu::GPUBackend>::RayTracingPipeline {
+        todo!()
     }
 }

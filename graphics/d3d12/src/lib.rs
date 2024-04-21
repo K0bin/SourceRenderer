@@ -6,7 +6,9 @@ pub use self::{
     heap::*,
     queue::*,
     texture::*,
-    descriptor::*
+    descriptor::*,
+    sync::*,
+    command::*,
 };
 
 mod backend;
@@ -17,3 +19,5 @@ mod heap;
 mod queue;
 mod texture;
 mod descriptor;
+mod sync;
+mod command;

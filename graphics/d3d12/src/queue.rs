@@ -36,7 +36,10 @@ impl D3D12Queue {
 
 impl gpu::Queue<D3D12Backend> for D3D12Queue {
     unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, flags: gpu::CommandPoolFlags) -> D3D12CommandPool {
-        todo!()
+        let mut device_opt: Option::<D3D12::ID3D12Device12> = None;
+        self.queue.GetDevice(&mut device_opt as *mut Option<D3D12::ID3D12Device12>).unwrap();
+        let device = device_opt.unwrap();
+        D3D12CommandPool::new(&device, command_pool_type, flags)
     }
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<D3D12Backend>]) {

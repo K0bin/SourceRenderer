@@ -209,3 +209,16 @@ impl D3D12DescriptorHeap {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::SlotAllocator;
+
+    #[test]
+    fn test_alloc() {
+        let allocator = SlotAllocator::new(32);
+        for i in 0..32 {
+            assert!(allocator.alloc().is_some());
+        }
+    }
+}

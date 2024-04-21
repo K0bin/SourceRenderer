@@ -27,7 +27,7 @@ pub struct D3D12Texture {
 }
 
 impl D3D12Texture {
-    pub(crate) fn new(device: &D3D12::ID3D12Device12, memory: ResourceMemory, info: &TextureInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn new(device: &D3D12::ID3D12Device12, memory: ResourceMemory, info: &gpu::TextureInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
         let mut flags = D3D12::D3D12_RESOURCE_FLAG_NONE;
         if !info.usage.contains(gpu::TextureUsage::SAMPLED) {
             flags |= D3D12::D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
@@ -125,7 +125,7 @@ impl D3D12Texture {
                         D3D12::D3D12_BARRIER_LAYOUT_UNDEFINED,
                         optimized_clear_value_ptr,
                         protected,
-                        compatible_formats_opt,
+                        compatible_formats_opt.map(|vec| &vec[..]),
                         &mut resource_opt as *mut Option<D3D12::ID3D12Resource2>
                     )
                 }
@@ -137,7 +137,7 @@ impl D3D12Texture {
                         &desc as *const D3D12::D3D12_RESOURCE_DESC1,
                         D3D12::D3D12_BARRIER_LAYOUT_UNDEFINED,
                         optimized_clear_value_ptr,
-                        compatible_formats_opt,
+                        compatible_formats_opt.map(|vec| &vec[..]),
                         &mut resource_opt as *mut Option<D3D12::ID3D12Resource2>
                     )
                 }
@@ -177,5 +177,37 @@ impl Eq for D3D12Texture {}
 
 pub struct D3D12TextureView {
     index: u32,
-    handle: D3D12::D3D12_CPU_DESCRIPTOR_HANDLE
+    handle: D3D12::D3D12_CPU_DESCRIPTOR_HANDLE,
+    texture_info: gpu::TextureInfo,
+    info: gpu::TextureViewInfo
+}
+
+impl gpu::TextureView for D3D12TextureView {
+    fn texture_info(&self) -> &gpu::TextureInfo {
+        &self.texture_info
+    }
+
+    fn info(&self) -> &gpu::TextureViewInfo {
+        &self.info
+    }
+}
+
+impl PartialEq<D3D12TextureView> for D3D12TextureView {
+    fn eq(&self, other: &D3D12TextureView) -> bool {
+        self.handle == other.handle
+    }
+}
+
+impl Eq for D3D12TextureView {}
+
+pub struct D3D12Sampler {
+    index: u32,
+    handle: D3D12::D3D12_CPU_DESCRIPTOR_HANDLE,
+    info: gpu::SamplerInfo
+}
+
+impl D3D12Sampler {
+    pub(crate) fn new(device: &D3D12::ID3D12Device12, info: &gpu::SamplerInfo) -> Self {
+        unimplemented!()
+    }
 }

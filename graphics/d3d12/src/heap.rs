@@ -82,7 +82,7 @@ impl gpu::Heap<D3D12Backend> for D3D12Heap {
     }
 
     unsafe fn create_texture(&self, info: &gpu::TextureInfo, offset: u64, name: Option<&str>) -> Result<D3D12Texture, gpu::OutOfMemoryError> {
-        todo!()
+        D3D12Texture::new(&self.device, ResourceMemory::Suballocated { memory: self, offset }, info, name)
     }
 }
 

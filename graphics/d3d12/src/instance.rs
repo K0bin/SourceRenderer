@@ -80,7 +80,7 @@ impl gpu::Adapter<D3D12Backend> for D3D12Adapter {
         self.adapter_type
     }
 
-    fn create_device(&self, surface: &B::Surface) -> D3D12Device {
+    fn create_device(&self, surface: &D3D12Surface) -> D3D12Device {
         D3D12Device::new(&self.adapter)
     }
 }
