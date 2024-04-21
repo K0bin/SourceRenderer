@@ -6,11 +6,6 @@ use std::path::{
     PathBuf,
 };
 
-use ash::extensions::khr::Surface as SurfaceLoader;
-use ash::vk::{
-    Handle,
-    SurfaceKHR,
-};
 use crossbeam_channel::Sender;
 use notify::{
     recommended_watcher,
@@ -44,13 +39,8 @@ use sourcerenderer_core::{
     Vec2I,
     Vec2UI,
 };
+use crate::sdl_gpu;
 use sourcerenderer_engine::Engine;
-use sourcerenderer_vulkan::{
-    VkDevice,
-    VkInstance,
-    VkSurface,
-    VkSwapchain,
-};
 
 lazy_static! {
     pub static ref SCANCODE_TO_KEY: HashMap<Scancode, Key> = {
@@ -78,17 +68,16 @@ pub struct SDLPlatform {
 
 pub struct SDLWindow {
     window: sdl2::video::Window,
-    graphics_api: GraphicsApi,
     is_active: bool,
 }
 
 impl SDLPlatform {
-    pub fn new(graphics_api: GraphicsApi) -> Box<SDLPlatform> {
+    pub fn new() -> Box<SDLPlatform> {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
         let event_pump = sdl_context.event_pump().unwrap();
 
-        let window = SDLWindow::new(&sdl_context, &video_subsystem, graphics_api);
+        let window = SDLWindow::new(&sdl_context, &video_subsystem);
 
         Box::new(SDLPlatform {
             sdl_context,
@@ -182,24 +171,15 @@ impl SDLWindow {
     pub fn new(
         _sdl_context: &Sdl,
         video_subsystem: &VideoSubsystem,
-        graphics_api: GraphicsApi,
     ) -> SDLWindow {
         let mut window_builder = video_subsystem.window("sourcerenderer", 1920, 1080);
         window_builder.position_centered();
         //window_builder.fullscreen();
 
-        match graphics_api {
-            GraphicsApi::Vulkan => {
-                window_builder.vulkan();
-            }
-            GraphicsApi::OpenGLES => {
-                window_builder.opengl();
-            }
-        }
+        sdl_gpu::prepare_window(&mut window_builder);
 
         let window = window_builder.build().unwrap();
         SDLWindow {
-            graphics_api,
             window,
             is_active: true,
         }
@@ -208,16 +188,11 @@ impl SDLWindow {
     pub(crate) fn sdl_window_handle(&self) -> &sdl2::video::Window {
         &self.window
     }
-
-    #[inline]
-    pub fn vulkan_instance_extensions(&self) -> Result<Vec<&str>, String> {
-        self.window.vulkan_instance_extensions()
-    }
 }
 
 impl Platform for SDLPlatform {
     type Window = SDLWindow;
-    type GPUBackend = sourcerenderer_vulkan::VkBackend;
+    type GPUBackend = sdl_gpu::SDLGPUBackend;
     type IO = StdIO;
     type ThreadHandle = StdThreadHandle;
 
@@ -225,9 +200,8 @@ impl Platform for SDLPlatform {
         &self.window
     }
 
-    fn create_graphics(&self, debug_layers: bool) -> Result<VkInstance, Box<dyn Error>> {
-        let extensions = self.window.vulkan_instance_extensions().unwrap();
-        Ok(VkInstance::new(&extensions, debug_layers))
+    fn create_graphics(&self, debug_layers: bool) -> Result<<Self::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance, Box<dyn Error>> {
+        sdl_gpu::create_instance(debug_layers, &self.window)
     }
 
     fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
@@ -245,38 +219,18 @@ impl Platform for SDLPlatform {
 }
 
 impl Window<SDLPlatform> for SDLWindow {
-    fn create_surface(&self, graphics_instance: &VkInstance) -> VkSurface {
-        let instance_raw = graphics_instance.raw();
-        let surface = self
-            .window
-            .vulkan_create_surface(
-                instance_raw.instance.handle().as_raw() as sdl2::video::VkInstance
-            )
-            .unwrap();
-        let surface_loader = SurfaceLoader::new(&instance_raw.entry, &instance_raw.instance);
-        VkSurface::new(
-            graphics_instance.raw(),
-            SurfaceKHR::from_raw(surface),
-            surface_loader
-        )
+    fn create_surface(&self, graphics_instance: &<<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance) -> <<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface {
+        sdl_gpu::create_surface(&self.window, graphics_instance)
     }
 
     fn create_swapchain(
         &self,
         vsync: bool,
-        device: &VkDevice,
-        surface: VkSurface
-     ) -> VkSwapchain {
-        let device_inner = device.inner();
+        device: &<<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Device,
+        surface: <<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface
+     ) -> <<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Swapchain {
         let (width, height) = self.window.drawable_size();
-        VkSwapchain::new(
-            vsync,
-            width,
-            height,
-            device_inner,
-            surface
-        )
-        .unwrap()
+        sdl_gpu::create_swapchain(vsync, width, height, device, surface)
     }
 
     fn width(&self) -> u32 {
