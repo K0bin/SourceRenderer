@@ -24,17 +24,11 @@ pub struct Resource {
     pub writable: bool
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ShaderSource {
-    Bytecode(Box<[u8]>),
-    Source(String)
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PackedShader {
     pub push_constant_size: u32,
     pub resources: [Box<[Resource]>; 4],
     pub shader_type: ShaderType,
-    pub shader: ShaderSource
+    pub shader: Box<[u8]>
 }
 

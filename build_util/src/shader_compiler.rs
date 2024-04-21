@@ -7,7 +7,7 @@ use std::process::Command;
 
 use spirv_cross_sys;
 
-use sourcerenderer_core::gpu::{self, ShaderSource};
+use sourcerenderer_core::gpu;
 
 fn make_spirv_cross_msl_version(major: u32, minor: u32, patch: u32) -> u32 {
     major * 10000 + minor * 100 + patch
@@ -213,7 +213,7 @@ fn compile_shader_spirv_cross(
         let mut resources: [Vec<gpu::Resource>; 4] = Default::default();
         let mut push_constant_size = 0u32;
         let mut compiled_code_cstr_ptr: *const c_char = std::ptr::null();
-        let compiled_shader: gpu::ShaderSource;
+        let compiled_shader: Box<[u8]>;
 
         // Generate metadata
         let mut context: spirv_cross_sys::spvc_context = std::ptr::null_mut();
@@ -553,12 +553,11 @@ fn compile_shader_spirv_cross(
                     );
                     let code_cstr = CStr::from_ptr(compiled_code_cstr_ptr);
                     let code_string = code_cstr.to_string_lossy();
-                    compiled_shader = gpu::ShaderSource::Source(code_string.to_string());
+                    compiled_shader = code_string.to_string().into_bytes().into_boxed_slice();
 
                     // TODO: Compile HLSL to DXIL
                 } else {
-                    compiled_shader =
-                        gpu::ShaderSource::Bytecode(spirv.into_boxed_slice());
+                    compiled_shader = spirv.into_boxed_slice();
                 }
                 spirv_cross_sys::spvc_context_destroy(context);
             }
@@ -573,7 +572,7 @@ fn compile_shader_spirv_cross(
                 }
                 let code_cstr = CStr::from_ptr(compiled_code_cstr_ptr);
                 let code_string = code_cstr.to_string_lossy();
-                compiled_shader = gpu::ShaderSource::Source(code_string.to_string());
+                compiled_shader = code_string.to_string().into_bytes().into_boxed_slice();
             }
         }
 
@@ -610,14 +609,7 @@ fn write_shader(
         CompiledShaderFileType::Bytecode => {
             let mut file = std::fs::File::create(compiled_file_path).expect("Failed to open file");
             let gpu::PackedShader { push_constant_size : _, resources : _, shader_type : _, shader : compiled_shader  } = packed_shader;
-            match compiled_shader {
-                gpu::ShaderSource::Bytecode(bytecode) => {
-                    file.write_all(&bytecode).expect("Failed to write shader file");
-                }
-                gpu::ShaderSource::Source(code) => {
-                    write!(file, "{}", code).expect("Failed to write shader file");
-                }
-            }
+            file.write_all(&compiled_shader).expect("Failed to write shader file");
         }
         CompiledShaderFileType::Packed => {
             let serialized_str = serde_json::to_string(&packed_shader).expect("Failed to serialize");
@@ -634,6 +626,13 @@ fn compile_msl_to_air(
 ) -> Result<gpu::PackedShader, ()> {
     // xcrun -sdk macosx metal -o Shadow.ir  -c Shadow.metal
 
+    let gpu::PackedShader {
+        push_constant_size,
+        resources,
+        shader_type,
+        shader,
+    } = packed_shader;
+
     let mut temp_file_name = shader_name.to_string();
     temp_file_name.push_str(".temp.metal");
 
@@ -645,10 +644,7 @@ fn compile_msl_to_air(
         return Err(());
     }
     let mut temp_source_file = temp_source_file_res.unwrap();
-    let source = match &packed_shader.shader {
-        ShaderSource::Source(code) => code,
-        _ => unreachable!()
-    };
+    let source = String::from_utf8(shader.to_vec()).expect("Failed to read shader as string");
     let write_res = write!(temp_source_file, "{}", source);
     if let Err(e) = write_res {
         println!("Error writing MSL source to file: {:?}", e);
@@ -692,8 +688,12 @@ fn compile_msl_to_air(
     let _ = std::fs::remove_file(temp_metal_path);
     let _ = std::fs::remove_file(output_path);
 
-    packed_shader.shader = ShaderSource::Bytecode(air_bytecode.into_boxed_slice());
-    Ok(packed_shader)
+    Ok(gpu::PackedShader {
+        push_constant_size,
+        resources,
+        shader_type,
+        shader: air_bytecode.into_boxed_slice()
+    })
 
 }
 
@@ -751,7 +751,7 @@ pub fn compile_shader(
             push_constant_size: 0,
             resources: Default::default(),
             shader_type,
-            shader: gpu::ShaderSource::Bytecode(spirv_bytecode.into_boxed_slice()),
+            shader: spirv_bytecode.into_boxed_slice(),
         }
     };
 
