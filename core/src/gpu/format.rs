@@ -69,12 +69,13 @@ impl Format {
       Format::RG32Float => 8,
       Format::RGB32Float => 12,
       Format::RGBA32Float => 16,
+      Format::RGBA8UNorm => 4,
 
       Format::BC1 => 8,
       Format::BC1Alpha => 8,
       Format::BC2 => 16,
       Format::BC3 => 16,
-      _ => todo!()
+      _ => todo!("Format: {:?}", self)
     }
   }
 
