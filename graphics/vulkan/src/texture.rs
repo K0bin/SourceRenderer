@@ -13,17 +13,17 @@ use std::{
 
 use ash::{
     vk,
-    vk::Handle,
+    vk::Handle as _,
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
 pub struct VkTexture {
     image: vk::Image,
     device: Arc<RawVkDevice>,
-    info: TextureInfo,
+    info: gpu::TextureInfo,
     memory: Option<vk::DeviceMemory>,
     is_image_owned: bool,
     is_memory_owned: bool
@@ -33,7 +33,7 @@ unsafe impl Send for VkTexture {}
 unsafe impl Sync for VkTexture {}
 
 impl VkTexture {
-    pub(crate) unsafe fn new(device: &Arc<RawVkDevice>, info: &TextureInfo, memory: ResourceMemory, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
+    pub(crate) unsafe fn new(device: &Arc<RawVkDevice>, info: &gpu::TextureInfo, memory: ResourceMemory, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
         let mut create_info = vk::ImageCreateInfo {
             flags: vk::ImageCreateFlags::empty(),
             tiling: vk::ImageTiling::OPTIMAL,
@@ -41,9 +41,9 @@ impl VkTexture {
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             usage: texture_usage_to_vk(info.usage),
             image_type: match info.dimension {
-                TextureDimension::Dim1DArray | TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
-                TextureDimension::Dim2DArray | TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
-                TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
+                gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
+                gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
+                gpu::TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
             },
             extent: vk::Extent3D {
                 width: max(1, info.width),
@@ -59,15 +59,15 @@ impl VkTexture {
 
         debug_assert!(
             info.array_length == 1
-                || (info.dimension == TextureDimension::Dim1DArray
-                    || info.dimension == TextureDimension::Dim2DArray)
+                || (info.dimension == gpu::TextureDimension::Dim1DArray
+                    || info.dimension == gpu::TextureDimension::Dim2DArray)
         );
-        debug_assert!(info.depth == 1 || info.dimension == TextureDimension::Dim3D);
+        debug_assert!(info.depth == 1 || info.dimension == gpu::TextureDimension::Dim3D);
         debug_assert!(
             info.height == 1
-                || (info.dimension == TextureDimension::Dim2D
-                    || info.dimension == TextureDimension::Dim2DArray
-                    || info.dimension == TextureDimension::Dim3D)
+                || (info.dimension == gpu::TextureDimension::Dim2D
+                    || info.dimension == gpu::TextureDimension::Dim2DArray
+                    || info.dimension == gpu::TextureDimension::Dim3D)
         );
 
         let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
@@ -114,7 +114,7 @@ impl VkTexture {
         let image_res = device.create_image(&create_info, None);
         if let Err(e) = image_res {
             if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                return Err(OutOfMemoryError {});
+                return Err(gpu::OutOfMemoryError {});
             }
         }
         let image = image_res.unwrap();
@@ -146,7 +146,7 @@ impl VkTexture {
                 let memory_result: Result<vk::DeviceMemory, vk::Result> = device.allocate_memory(&memory_info, None);
                 if let Err(e) = memory_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                        return Err(OutOfMemoryError {});
+                        return Err(gpu::OutOfMemoryError {});
                     }
                 }
                 vk_memory = memory_result.unwrap();
@@ -161,7 +161,7 @@ impl VkTexture {
                 ]);
                 if let Err(e) = bind_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                        return Err(OutOfMemoryError {});
+                        return Err(gpu::OutOfMemoryError {});
                     }
                 }
 
@@ -182,7 +182,7 @@ impl VkTexture {
                 ]);
                 if let Err(e) = bind_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                        return Err(OutOfMemoryError {});
+                        return Err(gpu::OutOfMemoryError {});
                     }
                 }
 
@@ -219,7 +219,7 @@ impl VkTexture {
         })
     }
 
-    pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, info: TextureInfo) -> Self {
+    pub fn from_image(device: &Arc<RawVkDevice>, image: vk::Image, info: gpu::TextureInfo) -> Self {
         VkTexture {
             image,
             device: device.clone(),
@@ -234,39 +234,39 @@ impl VkTexture {
         self.image
     }
 
-    pub(crate) fn info(&self) -> &TextureInfo {
+    pub(crate) fn info(&self) -> &gpu::TextureInfo {
         &self.info
     }
 }
 
-pub(crate) fn texture_usage_to_vk(usage: TextureUsage) -> vk::ImageUsageFlags {
+pub(crate) fn texture_usage_to_vk(usage: gpu::TextureUsage) -> vk::ImageUsageFlags {
     let mut flags = vk::ImageUsageFlags::empty();
 
-    if usage.contains(TextureUsage::STORAGE) {
+    if usage.contains(gpu::TextureUsage::STORAGE) {
         flags |= vk::ImageUsageFlags::STORAGE;
     }
 
-    if usage.contains(TextureUsage::SAMPLED) {
+    if usage.contains(gpu::TextureUsage::SAMPLED) {
         flags |= vk::ImageUsageFlags::SAMPLED;
     }
 
     let transfer_src_usages =
-        TextureUsage::BLIT_SRC | TextureUsage::COPY_SRC | TextureUsage::RESOLVE_SRC; // TODO: sync2
+        gpu::TextureUsage::BLIT_SRC | gpu::TextureUsage::COPY_SRC | gpu::TextureUsage::RESOLVE_SRC; // TODO: sync2
     if usage.intersects(transfer_src_usages) {
         flags |= vk::ImageUsageFlags::TRANSFER_SRC;
     }
 
     let transfer_dst_usages =
-        TextureUsage::BLIT_DST | TextureUsage::COPY_DST | TextureUsage::RESOLVE_DST;
+        gpu::TextureUsage::BLIT_DST | gpu::TextureUsage::COPY_DST | gpu::TextureUsage::RESOLVE_DST;
     if usage.intersects(transfer_dst_usages) {
         flags |= vk::ImageUsageFlags::TRANSFER_DST;
     }
 
-    if usage.contains(TextureUsage::DEPTH_STENCIL) {
+    if usage.contains(gpu::TextureUsage::DEPTH_STENCIL) {
         flags |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
     }
 
-    if usage.contains(TextureUsage::RENDER_TARGET) {
+    if usage.contains(gpu::TextureUsage::RENDER_TARGET) {
         flags |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
     }
 
@@ -302,68 +302,68 @@ impl PartialEq for VkTexture {
 
 impl Eq for VkTexture {}
 
-impl Texture for VkTexture {
-    fn info(&self) -> &TextureInfo {
+impl gpu::Texture for VkTexture {
+    fn info(&self) -> &gpu::TextureInfo {
         &self.info
     }
 }
 
-fn filter_to_vk(filter: Filter) -> vk::Filter {
+fn filter_to_vk(filter: gpu::Filter) -> vk::Filter {
     match filter {
-        Filter::Linear => vk::Filter::LINEAR,
-        Filter::Nearest => vk::Filter::NEAREST,
-        Filter::Max => vk::Filter::LINEAR,
-        Filter::Min => vk::Filter::LINEAR,
+        gpu::Filter::Linear => vk::Filter::LINEAR,
+        gpu::Filter::Nearest => vk::Filter::NEAREST,
+        gpu::Filter::Max => vk::Filter::LINEAR,
+        gpu::Filter::Min => vk::Filter::LINEAR,
     }
 }
-fn filter_to_vk_mip(filter: Filter) -> vk::SamplerMipmapMode {
+fn filter_to_vk_mip(filter: gpu::Filter) -> vk::SamplerMipmapMode {
     match filter {
-        Filter::Linear => vk::SamplerMipmapMode::LINEAR,
-        Filter::Nearest => vk::SamplerMipmapMode::NEAREST,
-        Filter::Max => panic!("Can't use max as mipmap filter."),
-        Filter::Min => panic!("Can't use min as mipmap filter."),
+        gpu::Filter::Linear => vk::SamplerMipmapMode::LINEAR,
+        gpu::Filter::Nearest => vk::SamplerMipmapMode::NEAREST,
+        gpu::Filter::Max => panic!("Can't use max as mipmap filter."),
+        gpu::Filter::Min => panic!("Can't use min as mipmap filter."),
     }
 }
-fn filter_to_reduction_mode(filter: Filter) -> vk::SamplerReductionMode {
+fn filter_to_reduction_mode(filter: gpu::Filter) -> vk::SamplerReductionMode {
     match filter {
-        Filter::Max => vk::SamplerReductionMode::MAX,
-        Filter::Min => vk::SamplerReductionMode::MIN,
+        gpu::Filter::Max => vk::SamplerReductionMode::MAX,
+        gpu::Filter::Min => vk::SamplerReductionMode::MIN,
         _ => unreachable!(),
     }
 }
 
-fn address_mode_to_vk(address_mode: AddressMode) -> vk::SamplerAddressMode {
+fn address_mode_to_vk(address_mode: gpu::AddressMode) -> vk::SamplerAddressMode {
     match address_mode {
-        AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
-        AddressMode::ClampToBorder => vk::SamplerAddressMode::CLAMP_TO_BORDER,
-        AddressMode::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
-        AddressMode::MirroredRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
+        gpu::AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
+        gpu::AddressMode::ClampToBorder => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+        gpu::AddressMode::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+        gpu::AddressMode::MirroredRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
     }
 }
 
 pub struct VkTextureView {
     view: vk::ImageView,
     device: Arc<RawVkDevice>,
-    info: TextureViewInfo,
-    texture_info: TextureInfo, // required to create a frame buffer later
+    info: gpu::TextureViewInfo,
+    texture_info: gpu::TextureInfo, // required to create a frame buffer later
 }
 
 impl VkTextureView {
     pub(crate) fn new(
         device: &Arc<RawVkDevice>,
         texture: &VkTexture,
-        info: &TextureViewInfo,
+        info: &gpu::TextureViewInfo,
         name: Option<&str>,
     ) -> Self {
         let format = info.format.unwrap_or(texture.info.format);
         let view_create_info = vk::ImageViewCreateInfo {
             image: texture.handle(),
             view_type: match texture.info.dimension {
-                TextureDimension::Dim1D => vk::ImageViewType::TYPE_1D,
-                TextureDimension::Dim2D => vk::ImageViewType::TYPE_2D,
-                TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
-                TextureDimension::Dim1DArray => vk::ImageViewType::TYPE_1D_ARRAY,
-                TextureDimension::Dim2DArray => vk::ImageViewType::TYPE_2D_ARRAY,
+                gpu::TextureDimension::Dim1D => vk::ImageViewType::TYPE_1D,
+                gpu::TextureDimension::Dim2D => vk::ImageViewType::TYPE_2D,
+                gpu::TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
+                gpu::TextureDimension::Dim1DArray => vk::ImageViewType::TYPE_1D_ARRAY,
+                gpu::TextureDimension::Dim2DArray => vk::ImageViewType::TYPE_2D_ARRAY,
             },
             format: format_to_vk(format, device.supports_d24),
             components: vk::ComponentMapping {
@@ -420,11 +420,11 @@ impl VkTextureView {
         self.view
     }
 
-    pub(crate) fn info(&self) -> &TextureViewInfo {
+    pub(crate) fn info(&self) -> &gpu::TextureViewInfo {
         &self.info
     }
 
-    pub(crate) fn texture_info(&self) -> &TextureInfo {
+    pub(crate) fn texture_info(&self) -> &gpu::TextureInfo {
         &self.texture_info
     }
 }
@@ -451,12 +451,12 @@ impl PartialEq for VkTextureView {
 
 impl Eq for VkTextureView {}
 
-impl TextureView for VkTextureView {
-    fn info(&self) -> &TextureViewInfo {
+impl gpu::TextureView for VkTextureView {
+    fn info(&self) -> &gpu::TextureViewInfo {
         &self.info
     }
 
-    fn texture_info(&self) -> &TextureInfo {
+    fn texture_info(&self) -> &gpu::TextureInfo {
         &self.texture_info
     }
 }
@@ -464,11 +464,11 @@ impl TextureView for VkTextureView {
 pub struct VkSampler {
     sampler: vk::Sampler,
     device: Arc<RawVkDevice>,
-    info: SamplerInfo
+    info: gpu::SamplerInfo
 }
 
 impl VkSampler {
-    pub fn new(device: &Arc<RawVkDevice>, info: &SamplerInfo) -> Self {
+    pub fn new(device: &Arc<RawVkDevice>, info: &gpu::SamplerInfo) -> Self {
         let mut sampler_create_info = vk::SamplerCreateInfo {
             mag_filter: filter_to_vk(info.mag_filter),
             min_filter: filter_to_vk(info.mag_filter),
@@ -491,17 +491,17 @@ impl VkSampler {
         };
 
         let mut sampler_minmax_info = vk::SamplerReductionModeCreateInfo::default();
-        if info.min_filter == Filter::Min || info.min_filter == Filter::Max {
+        if info.min_filter == gpu::Filter::Min || info.min_filter == gpu::Filter::Max {
             assert!(device.features.contains(VkFeatures::MIN_MAX_FILTER));
 
             sampler_minmax_info.reduction_mode = filter_to_reduction_mode(info.min_filter);
             sampler_create_info.p_next =
                 &sampler_minmax_info as *const vk::SamplerReductionModeCreateInfo as *const c_void;
         }
-        debug_assert_ne!(info.mag_filter, Filter::Min);
-        debug_assert_ne!(info.mag_filter, Filter::Max);
-        debug_assert_ne!(info.mip_filter, Filter::Min);
-        debug_assert_ne!(info.mip_filter, Filter::Max);
+        debug_assert_ne!(info.mag_filter, gpu::Filter::Min);
+        debug_assert_ne!(info.mag_filter, gpu::Filter::Max);
+        debug_assert_ne!(info.mip_filter, gpu::Filter::Min);
+        debug_assert_ne!(info.mip_filter, gpu::Filter::Max);
 
         let sampler = unsafe { device.create_sampler(&sampler_create_info, None) }.unwrap();
 
@@ -540,13 +540,13 @@ impl PartialEq for VkSampler {
 
 impl Eq for VkSampler {}
 
-impl Sampler for VkSampler {
-    fn info(&self) -> &SamplerInfo {
+impl gpu::Sampler for VkSampler {
+    fn info(&self) -> &gpu::SamplerInfo {
         &self.info
     }
 }
 
-pub(crate) fn texture_subresource_to_vk(subresource: &TextureSubresource, texture_format: Format) -> vk::ImageSubresource {
+pub(crate) fn texture_subresource_to_vk(subresource: &gpu::TextureSubresource, texture_format: gpu::Format) -> vk::ImageSubresource {
     vk::ImageSubresource {
         mip_level: subresource.mip_level,
         array_layer: subresource.array_layer,
@@ -558,7 +558,7 @@ pub(crate) fn texture_subresource_to_vk(subresource: &TextureSubresource, textur
     }
 }
 
-pub(crate) fn texture_subresource_to_vk_layers(subresource: &TextureSubresource, texture_format: Format, layers: u32) -> vk::ImageSubresourceLayers {
+pub(crate) fn texture_subresource_to_vk_layers(subresource: &gpu::TextureSubresource, texture_format: gpu::Format, layers: u32) -> vk::ImageSubresourceLayers {
     vk::ImageSubresourceLayers {
         mip_level: subresource.mip_level,
         base_array_layer: subresource.array_layer,

@@ -5,7 +5,7 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
-const DEBUG_FORCE_FAT_BARRIER: bool = true;
+const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
 pub(crate) struct Transfer<B: GPUBackend> {
   device: Arc<B::Device>,
@@ -210,8 +210,8 @@ impl<B: GPUBackend> Transfer<B> {
         src: src_buffer.clone(),
         dst: dst_buffer.clone(),
         region: gpu::BufferCopyRegion {
-          src_offset,
-          dst_offset,
+          src_offset: src_offset + src_buffer.offset(),
+          dst_offset: dst_offset + dst_buffer.offset(),
           size: actual_length
         }
       });
@@ -223,7 +223,7 @@ impl<B: GPUBackend> Transfer<B> {
           old_sync: BarrierSync::COPY,
           new_sync: BarrierSync::all(),
           old_access: BarrierAccess::COPY_WRITE,
-          new_access: BarrierAccess::SHADER_READ,
+          new_access: BarrierAccess::MEMORY_READ | BarrierAccess::MEMORY_WRITE,
           buffer: dst_buffer.clone(),
           offset: dst_offset + dst_buffer.offset(),
           length: actual_length,

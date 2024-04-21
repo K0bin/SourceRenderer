@@ -11,7 +11,7 @@ use std::{
 };
 
 use ash::vk;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -181,7 +181,7 @@ impl VkInstance {
         }
 
         if message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
-            panic!(
+            println!(
                 "VK: {:?} - {:?}: {:?}",
                 message_severity,
                 message_types,
@@ -199,7 +199,7 @@ impl VkInstance {
     }
 }
 
-impl Instance<VkBackend> for VkInstance {
+impl gpu::Instance<VkBackend> for VkInstance {
     fn list_adapters(&self) -> &[VkAdapter] {
         &self.adapters
     }

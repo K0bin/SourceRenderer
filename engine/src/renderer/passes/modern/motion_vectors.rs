@@ -28,7 +28,7 @@ impl MotionVectorPass {
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let pipeline =
-            shader_manager.request_compute_pipeline("shaders/motion_vectors_vis_buf.comp.spv");
+            shader_manager.request_compute_pipeline("shaders/motion_vectors_vis_buf.comp.json");
 
         resources.create_texture(
             Self::MOTION_TEXTURE_NAME,

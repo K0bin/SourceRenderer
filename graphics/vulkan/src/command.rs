@@ -8,7 +8,7 @@ use std::{
 use ash::vk;
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -18,18 +18,18 @@ const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 pub struct VkCommandPool {
     raw: Arc<RawVkCommandPool>,
     shared: Arc<VkShared>,
-    flags: CommandPoolFlags,
+    flags: gpu::CommandPoolFlags,
     queue_family_index: u32,
-    command_pool_type: CommandPoolType
+    command_pool_type: gpu::CommandPoolType
 }
 
 impl VkCommandPool {
-    pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, flags: CommandPoolFlags, shared: &Arc<VkShared>, command_pool_type: CommandPoolType) -> Self {
+    pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, flags: gpu::CommandPoolFlags, shared: &Arc<VkShared>, command_pool_type: gpu::CommandPoolType) -> Self {
         let mut vk_flags = vk::CommandPoolCreateFlags::empty();
-        if flags.contains(CommandPoolFlags::INDIVIDUAL_RESET) {
+        if flags.contains(gpu::CommandPoolFlags::INDIVIDUAL_RESET) {
             vk_flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
         }
-        if flags.contains(CommandPoolFlags::TRANSIENT) {
+        if flags.contains(gpu::CommandPoolFlags::TRANSIENT) {
             vk_flags |= vk::CommandPoolCreateFlags::TRANSIENT;
         }
 
@@ -49,20 +49,20 @@ impl VkCommandPool {
     }
 }
 
-impl CommandPool<VkBackend> for VkCommandPool {
+impl gpu::CommandPool<VkBackend> for VkCommandPool {
     unsafe fn create_command_buffer(
         &mut self
     ) -> VkCommandBuffer {
         let buffer = VkCommandBuffer::new(
             &self.raw.device,
             &self.raw,
-            if self.command_pool_type == CommandPoolType::InnerCommandBuffers {
-                CommandBufferType::Secondary
+            if self.command_pool_type == gpu::CommandPoolType::InnerCommandBuffers {
+                gpu::CommandBufferType::Secondary
             } else {
-                CommandBufferType::Primary
+                gpu::CommandBufferType::Primary
             },
             self.queue_family_index,
-            self.flags.contains(CommandPoolFlags::INDIVIDUAL_RESET),
+            self.flags.contains(gpu::CommandPoolFlags::INDIVIDUAL_RESET),
             &self.shared
         );
         buffer
@@ -117,7 +117,7 @@ pub struct VkCommandBuffer {
     pool: Arc<RawVkCommandPool>,
     device: Arc<RawVkDevice>,
     state: AtomicCell<VkCommandBufferState>,
-    command_buffer_type: CommandBufferType,
+    command_buffer_type: gpu::CommandBufferType,
     shared: Arc<VkShared>,
     render_pass: Option<Arc<VkRenderPass>>,
     pipeline: Option<BoundPipeline>,
@@ -133,14 +133,14 @@ impl VkCommandBuffer {
     pub(crate) fn new(
         device: &Arc<RawVkDevice>,
         pool: &Arc<RawVkCommandPool>,
-        command_buffer_type: CommandBufferType,
+        command_buffer_type: gpu::CommandBufferType,
         queue_family_index: u32,
         reset_individually: bool,
         shared: &Arc<VkShared>,
     ) -> Self {
         let buffers_create_info = vk::CommandBufferAllocateInfo {
             command_pool: ***pool,
-            level: if command_buffer_type == CommandBufferType::Primary {
+            level: if command_buffer_type == gpu::CommandBufferType::Primary {
                 vk::CommandBufferLevel::PRIMARY
             } else {
                 vk::CommandBufferLevel::SECONDARY
@@ -171,7 +171,7 @@ impl VkCommandBuffer {
         self.cmd_buffer
     }
 
-    pub fn cmd_buffer_type(&self) -> CommandBufferType {
+    pub fn cmd_buffer_type(&self) -> gpu::CommandBufferType {
         self.command_buffer_type
     }
 
@@ -179,7 +179,7 @@ impl VkCommandBuffer {
         assert_eq!(self.state.swap(VkCommandBufferState::Submitted), VkCommandBufferState::Finished);
     }
 
-    pub(crate) fn command_buffer_type(&self) -> CommandBufferType {
+    pub(crate) fn command_buffer_type(&self) -> gpu::CommandBufferType {
         self.command_buffer_type
     }
 }
@@ -192,14 +192,14 @@ impl Drop for VkCommandBuffer {
     }
 }
 
-impl CommandBuffer<VkBackend> for VkCommandBuffer {
+impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     type CommandBufferInheritance = VkInnerCommandBufferInfo;
 
-    unsafe fn set_pipeline(&mut self, pipeline: PipelineBinding<VkBackend>) {
+    unsafe fn set_pipeline(&mut self, pipeline: gpu::PipelineBinding<VkBackend>) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
 
         match &pipeline {
-            PipelineBinding::Graphics(graphics_pipeline) => {
+            gpu::PipelineBinding::Graphics(graphics_pipeline) => {
                 let vk_pipeline = graphics_pipeline.handle();
                 unsafe {
                     self.device.cmd_bind_pipeline(
@@ -224,7 +224,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
                 }
             }
-            PipelineBinding::Compute(compute_pipeline) => {
+            gpu::PipelineBinding::Compute(compute_pipeline) => {
                 let vk_pipeline = compute_pipeline.handle();
                 unsafe {
                     self.device.cmd_bind_pipeline(
@@ -249,7 +249,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
                 }
             }
-            PipelineBinding::RayTracing(rt_pipeline) => {
+            gpu::PipelineBinding::RayTracing(rt_pipeline) => {
                 let vk_pipeline = rt_pipeline.handle();
                 unsafe {
                     self.device.cmd_bind_pipeline(
@@ -284,7 +284,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn end_render_pass(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
+            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device.cmd_end_render_pass(self.cmd_buffer);
@@ -295,7 +295,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn advance_subpass(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
+            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device
@@ -320,7 +320,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         &mut self,
         index_buffer: &VkBuffer,
         offset: u64,
-        format: IndexFormat,
+        format: gpu::IndexFormat,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
@@ -333,7 +333,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn set_viewports(&mut self, viewports: &[Viewport]) {
+    unsafe fn set_viewports(&mut self, viewports: &[gpu::Viewport]) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
             for (i, viewport) in viewports.iter().enumerate() {
@@ -353,7 +353,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn set_scissors(&mut self, scissors: &[Scissor]) {
+    unsafe fn set_scissors(&mut self, scissors: &[gpu::Scissor]) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
             let vk_scissors: Vec<vk::Rect2D> = scissors
@@ -380,7 +380,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
+            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device.cmd_draw(self.cmd_buffer, vertices, 1, offset, 0);
@@ -401,7 +401,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
+            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device.cmd_draw_indexed(
@@ -417,7 +417,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_sampling_view(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         texture: &VkTextureView,
     ) {
@@ -431,7 +431,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_sampling_view_and_sampler(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         texture: &VkTextureView,
         sampler: &VkSampler,
@@ -446,7 +446,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_uniform_buffer(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         buffer: &VkBuffer,
         offset: u64,
@@ -460,7 +460,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             VkBoundResourceRef::UniformBuffer(VkBufferBindingInfo {
                 buffer: buffer.handle(),
                 offset,
-                length: if length == WHOLE_BUFFER {
+                length: if length == gpu::WHOLE_BUFFER {
                     buffer.info().size - offset
                 } else {
                     length
@@ -471,7 +471,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_storage_buffer(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         buffer: &VkBuffer,
         offset: u64,
@@ -485,7 +485,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
                 buffer: buffer.handle(),
                 offset,
-                length: if length == WHOLE_BUFFER {
+                length: if length == gpu::WHOLE_BUFFER {
                     buffer.info().size - offset
                 } else {
                     length
@@ -496,7 +496,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_storage_texture(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         texture: &VkTextureView,
     ) {
@@ -510,7 +510,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_sampler(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         sampler: &VkSampler,
     ) {
@@ -638,7 +638,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         for submission in submissions.iter() {
             assert_eq!(
                 submission.command_buffer_type(),
-                CommandBufferType::Secondary
+                gpu::CommandBufferType::Secondary
             );
         }
         let submission_handles: SmallVec<[vk::CommandBuffer; 16]> =
@@ -741,7 +741,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn barrier(&mut self, barriers: &[Barrier<VkBackend>]) {
+    unsafe fn barrier(&mut self, barriers: &[gpu::Barrier<VkBackend>]) {
         let mut pending_image_barriers =
             SmallVec::<[vk::ImageMemoryBarrier2; 4]>::with_capacity(barriers.len());
         let mut pending_buffer_barriers =
@@ -750,7 +750,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
         for barrier in barriers {
             match barrier {
-                Barrier::TextureBarrier {
+                gpu::Barrier::TextureBarrier {
                     old_sync,
                     new_sync,
                     old_layout,
@@ -777,26 +777,26 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
                     if let Some(queue_transfer) = queue_ownership {
                         src_queue_family_index = match queue_transfer.from {
-                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
-                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                            gpu::QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            gpu::QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
                             },
-                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                            gpu::QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
                             },
                         };
                         dst_queue_family_index = match queue_transfer.to {
-                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
-                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                            gpu::QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            gpu::QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
                             },
-                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                            gpu::QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
@@ -808,13 +808,13 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         dst_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
                     }
 
-                    let dst_stages = barrier_sync_to_stage(*new_sync);
-                    let src_stages = barrier_sync_to_stage(*old_sync);
+                    let dst_stages = barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
+                    let src_stages = barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
                     pending_image_barriers.push(vk::ImageMemoryBarrier2 {
                         src_stage_mask: src_stages,
                         dst_stage_mask: dst_stages,
-                        src_access_mask: barrier_access_to_access(*old_access),
-                        dst_access_mask: barrier_access_to_access(*new_access),
+                        src_access_mask: barrier_access_to_access(*old_access) & self.device.supported_access_flags,
+                        dst_access_mask: barrier_access_to_access(*new_access) & self.device.supported_access_flags,
                         old_layout: texture_layout_to_image_layout(*old_layout),
                         new_layout: texture_layout_to_image_layout(*new_layout),
                         src_queue_family_index: src_queue_family_index,
@@ -830,7 +830,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         ..Default::default()
                     });
                 }
-                Barrier::BufferBarrier {
+                gpu::Barrier::BufferBarrier {
                     old_sync,
                     new_sync,
                     old_access,
@@ -840,33 +840,33 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     length,
                     queue_ownership
                 } => {
-                    let dst_stages = barrier_sync_to_stage(*new_sync);
-                    let src_stages = barrier_sync_to_stage(*old_sync);
+                    let dst_stages = barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
+                    let src_stages = barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
 
                     let mut src_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
                     let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
                     if let Some(queue_transfer) = queue_ownership {
                         src_queue_family_index = match queue_transfer.from {
-                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
-                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                            gpu::QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            gpu::QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
                             },
-                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                            gpu::QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
                             },
                         };
                         dst_queue_family_index = match queue_transfer.to {
-                            QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
-                            QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
+                            gpu::QueueType::Graphics => self.device.graphics_queue_info.queue_family_index as u32,
+                            gpu::QueueType::Compute => if let Some(info) = self.device.compute_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
                             },
-                            QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
+                            gpu::QueueType::Transfer => if let Some(info) = self.device.transfer_queue_info.as_ref() {
                                 info.queue_family_index as u32
                             } else {
                                 vk::QUEUE_FAMILY_IGNORED
@@ -881,8 +881,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                     pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
                         src_stage_mask: src_stages,
                         dst_stage_mask: dst_stages,
-                        src_access_mask: barrier_access_to_access(*old_access),
-                        dst_access_mask: barrier_access_to_access(*new_access),
+                        src_access_mask: barrier_access_to_access(*old_access) & self.device.supported_access_flags,
+                        dst_access_mask: barrier_access_to_access(*new_access) & self.device.supported_access_flags,
                         src_queue_family_index: src_queue_family_index,
                         dst_queue_family_index: dst_queue_family_index,
                         buffer: buffer.handle(),
@@ -891,16 +891,16 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         ..Default::default()
                     });
                 }
-                Barrier::GlobalBarrier {
+                gpu::Barrier::GlobalBarrier {
                     old_sync,
                     new_sync,
                     old_access,
                     new_access,
                 } => {
-                    let dst_stages = barrier_sync_to_stage(*new_sync);
-                    let src_stages = barrier_sync_to_stage(*old_sync);
-                    let src_access = barrier_access_to_access(*old_access);
-                    let dst_access = barrier_access_to_access(*new_access);
+                    let dst_stages = barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
+                    let src_stages = barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
+                    let src_access = barrier_access_to_access(*old_access) & self.device.supported_access_flags;
+                    let dst_access = barrier_access_to_access(*new_access) & self.device.supported_access_flags;
 
                     pending_memory_barriers[0].dst_stage_mask |= dst_stages
                         & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
@@ -909,7 +909,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                         & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
                             | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
                     pending_memory_barriers[0].src_access_mask |=
-                        barrier_access_to_access(*old_access)
+                        src_access
                             & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
                     pending_memory_barriers[0].dst_access_mask |= dst_access
                         & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR
@@ -1015,8 +1015,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn begin_render_pass(
         &mut self,
-        renderpass_begin_info: &RenderPassBeginInfo<VkBackend>,
-        recording_mode: RenderpassRecordingMode,
+        renderpass_begin_info: &gpu::RenderPassBeginInfo<VkBackend>,
+        recording_mode: gpu::RenderpassRecordingMode,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
@@ -1033,8 +1033,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
         for attachment in renderpass_begin_info.attachments {
             let view = match &attachment.view {
-                RenderPassAttachmentView::RenderTarget(view) => *view,
-                RenderPassAttachmentView::DepthStencil(view) => *view,
+                gpu::RenderPassAttachmentView::RenderTarget(view) => *view,
+                gpu::RenderPassAttachmentView::DepthStencil(view) => *view,
             };
 
             let info = view.texture_info();
@@ -1043,8 +1043,8 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
                 samples: info.samples,
                 load_op: attachment.load_op,
                 store_op: attachment.store_op,
-                stencil_load_op: LoadOp::DontCare,
-                stencil_store_op: StoreOp::DontCare,
+                stencil_load_op: gpu::LoadOp::DontCare,
+                stencil_store_op: gpu::StoreOp::DontCare,
             });
             width = width.max(info.width);
             height = height.max(info.height);
@@ -1096,7 +1096,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             self.device.cmd_begin_render_pass(
                 self.cmd_buffer,
                 &begin_info,
-                if recording_mode == RenderpassRecordingMode::Commands {
+                if recording_mode == gpu::RenderpassRecordingMode::Commands {
                     vk::SubpassContents::INLINE
                 } else {
                     vk::SubpassContents::SECONDARY_COMMAND_BUFFERS
@@ -1118,7 +1118,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn create_bottom_level_acceleration_structure(
         &mut self,
-        info: &BottomLevelAccelerationStructureInfo<VkBackend>,
+        info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>,
         size: u64,
         target_buffer: &VkBuffer,
         target_buffer_offset: u64,
@@ -1142,7 +1142,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn upload_top_level_instances(
         &mut self,
-        instances: &[AccelerationStructureInstance<VkBackend>],
+        instances: &[gpu::AccelerationStructureInstance<VkBackend>],
         target_buffer: &VkBuffer,
         target_buffer_offset: u64
     ) {
@@ -1151,7 +1151,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn create_top_level_acceleration_structure(
         &mut self,
-        info: &TopLevelAccelerationStructureInfo<VkBackend>,
+        info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>,
         size: u64,
         target_buffer: &VkBuffer,
         target_buffer_offset: u64,
@@ -1202,7 +1202,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_acceleration_structure(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         acceleration_structure: &VkAccelerationStructure,
     ) {
@@ -1216,7 +1216,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_sampling_view_and_sampler_array(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         textures_and_samplers: &[(&VkTextureView, &VkSampler)],
     ) {
@@ -1234,7 +1234,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn bind_storage_view_array(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         binding: u32,
         textures: &[&VkTextureView],
     ) {
@@ -1263,7 +1263,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
+            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device
@@ -1294,7 +1294,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == CommandBufferType::Secondary
+            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device
@@ -1310,7 +1310,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_type: ShaderType)
+    unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_type: gpu::ShaderType)
     where
         T: 'static + Send + Sync + Sized + Clone,
     {
@@ -1404,7 +1404,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.render_pass.is_none());
 
-        let actual_length_in_u32s = if length_in_u32s == WHOLE_BUFFER {
+        let actual_length_in_u32s = if length_in_u32s == gpu::WHOLE_BUFFER {
             debug_assert_eq!((buffer.info().size - offset) % 4, 0);
             (buffer.info().size - offset) / 4
         } else {
@@ -1521,7 +1521,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn copy_buffer(&mut self, src: &VkBuffer, dst: &VkBuffer, region: &BufferCopyRegion) {
+    unsafe fn copy_buffer(&mut self, src: &VkBuffer, dst: &VkBuffer, region: &gpu::BufferCopyRegion) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let copy = vk::BufferCopy {
             src_offset: region.src_offset,
@@ -1533,7 +1533,7 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
         self.device.cmd_copy_buffer(self.cmd_buffer, src.handle(), dst.handle(), &[copy]);
     }
 
-    unsafe fn copy_buffer_to_texture(&mut self, src: &VkBuffer, dst: &VkTexture, region: &BufferTextureCopyRegion) {
+    unsafe fn copy_buffer_to_texture(&mut self, src: &VkBuffer, dst: &VkTexture, region: &gpu::BufferTextureCopyRegion) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let format = dst.info().format;
         let texels_width = if region.buffer_row_pitch != 0 {
@@ -1585,149 +1585,149 @@ impl CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 }
 
-pub(super) fn barrier_sync_to_stage(sync: BarrierSync) -> vk::PipelineStageFlags2 {
+pub(super) fn barrier_sync_to_stage(sync: gpu::BarrierSync) -> vk::PipelineStageFlags2 {
     let mut stages = vk::PipelineStageFlags2::NONE;
-    if sync.contains(BarrierSync::COMPUTE_SHADER) {
+    if sync.contains(gpu::BarrierSync::COMPUTE_SHADER) {
         stages |= vk::PipelineStageFlags2::COMPUTE_SHADER;
     }
-    if sync.contains(BarrierSync::COPY) {
+    if sync.contains(gpu::BarrierSync::COPY) {
         stages |= vk::PipelineStageFlags2::TRANSFER;
     }
-    if sync.contains(BarrierSync::EARLY_DEPTH) {
+    if sync.contains(gpu::BarrierSync::EARLY_DEPTH) {
         stages |= vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS;
     }
-    if sync.contains(BarrierSync::FRAGMENT_SHADER) {
+    if sync.contains(gpu::BarrierSync::FRAGMENT_SHADER) {
         stages |= vk::PipelineStageFlags2::FRAGMENT_SHADER;
     }
-    if sync.contains(BarrierSync::INDIRECT) {
+    if sync.contains(gpu::BarrierSync::INDIRECT) {
         stages |= vk::PipelineStageFlags2::DRAW_INDIRECT;
     }
-    if sync.contains(BarrierSync::LATE_DEPTH) {
+    if sync.contains(gpu::BarrierSync::LATE_DEPTH) {
         stages |= vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS;
     }
-    if sync.contains(BarrierSync::RENDER_TARGET) {
+    if sync.contains(gpu::BarrierSync::RENDER_TARGET) {
         stages |= vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT;
     }
-    if sync.contains(BarrierSync::RESOLVE) {
+    if sync.contains(gpu::BarrierSync::RESOLVE) {
         stages |= vk::PipelineStageFlags2::RESOLVE;
     }
-    if sync.contains(BarrierSync::VERTEX_INPUT) {
+    if sync.contains(gpu::BarrierSync::VERTEX_INPUT) {
         stages |= vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT;
     }
-    if sync.contains(BarrierSync::INDEX_INPUT) {
+    if sync.contains(gpu::BarrierSync::INDEX_INPUT) {
         stages |= vk::PipelineStageFlags2::INDEX_INPUT;
     }
-    if sync.contains(BarrierSync::VERTEX_SHADER) {
+    if sync.contains(gpu::BarrierSync::VERTEX_SHADER) {
         stages |= vk::PipelineStageFlags2::VERTEX_SHADER;
     }
-    if sync.contains(BarrierSync::HOST) {
+    if sync.contains(gpu::BarrierSync::HOST) {
         stages |= vk::PipelineStageFlags2::HOST;
     }
-    if sync.contains(BarrierSync::ACCELERATION_STRUCTURE_BUILD) {
+    if sync.contains(gpu::BarrierSync::ACCELERATION_STRUCTURE_BUILD) {
         stages |= vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR;
     }
-    if sync.contains(BarrierSync::RAY_TRACING) {
+    if sync.contains(gpu::BarrierSync::RAY_TRACING) {
         stages |= vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR;
     }
     stages
 }
 
-fn barrier_access_to_access(access: BarrierAccess) -> vk::AccessFlags2 {
+fn barrier_access_to_access(access: gpu::BarrierAccess) -> vk::AccessFlags2 {
     let mut vk_access = vk::AccessFlags2::empty();
-    if access.contains(BarrierAccess::INDEX_READ) {
+    if access.contains(gpu::BarrierAccess::INDEX_READ) {
         vk_access |= vk::AccessFlags2::INDEX_READ;
     }
-    if access.contains(BarrierAccess::INDIRECT_READ) {
+    if access.contains(gpu::BarrierAccess::INDIRECT_READ) {
         vk_access |= vk::AccessFlags2::INDIRECT_COMMAND_READ;
     }
-    if access.contains(BarrierAccess::VERTEX_INPUT_READ) {
+    if access.contains(gpu::BarrierAccess::VERTEX_INPUT_READ) {
         vk_access |= vk::AccessFlags2::VERTEX_ATTRIBUTE_READ;
     }
-    if access.contains(BarrierAccess::CONSTANT_READ) {
+    if access.contains(gpu::BarrierAccess::CONSTANT_READ) {
         vk_access |= vk::AccessFlags2::UNIFORM_READ;
     }
-    if access.intersects(BarrierAccess::SAMPLING_READ) {
+    if access.intersects(gpu::BarrierAccess::SAMPLING_READ) {
         vk_access |= vk::AccessFlags2::SHADER_SAMPLED_READ;
     }
-    if access.intersects(BarrierAccess::STORAGE_READ) {
+    if access.intersects(gpu::BarrierAccess::STORAGE_READ) {
         vk_access |= vk::AccessFlags2::SHADER_STORAGE_READ;
     }
-    if access.contains(BarrierAccess::STORAGE_WRITE) {
+    if access.contains(gpu::BarrierAccess::STORAGE_WRITE) {
         vk_access |= vk::AccessFlags2::SHADER_STORAGE_WRITE;
     }
-    if access.contains(BarrierAccess::COPY_READ) {
+    if access.contains(gpu::BarrierAccess::COPY_READ) {
         vk_access |= vk::AccessFlags2::TRANSFER_READ;
     }
-    if access.contains(BarrierAccess::COPY_WRITE) {
+    if access.contains(gpu::BarrierAccess::COPY_WRITE) {
         vk_access |= vk::AccessFlags2::TRANSFER_WRITE;
     }
-    if access.contains(BarrierAccess::RESOLVE_READ) {
+    if access.contains(gpu::BarrierAccess::RESOLVE_READ) {
         vk_access |= vk::AccessFlags2::TRANSFER_READ;
         // TODO: sync2
     }
-    if access.contains(BarrierAccess::RESOLVE_WRITE) {
+    if access.contains(gpu::BarrierAccess::RESOLVE_WRITE) {
         vk_access |= vk::AccessFlags2::TRANSFER_WRITE;
     }
-    if access.contains(BarrierAccess::DEPTH_STENCIL_READ) {
+    if access.contains(gpu::BarrierAccess::DEPTH_STENCIL_READ) {
         vk_access |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ;
     }
-    if access.contains(BarrierAccess::DEPTH_STENCIL_WRITE) {
+    if access.contains(gpu::BarrierAccess::DEPTH_STENCIL_WRITE) {
         vk_access |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE;
     }
-    if access.contains(BarrierAccess::RENDER_TARGET_READ) {
+    if access.contains(gpu::BarrierAccess::RENDER_TARGET_READ) {
         vk_access |= vk::AccessFlags2::COLOR_ATTACHMENT_READ;
     }
-    if access.contains(BarrierAccess::RENDER_TARGET_WRITE) {
+    if access.contains(gpu::BarrierAccess::RENDER_TARGET_WRITE) {
         vk_access |= vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
     }
-    if access.contains(BarrierAccess::SHADER_READ) {
+    if access.contains(gpu::BarrierAccess::SHADER_READ) {
         vk_access |= vk::AccessFlags2::SHADER_READ;
     }
-    if access.contains(BarrierAccess::SHADER_WRITE) {
+    if access.contains(gpu::BarrierAccess::SHADER_WRITE) {
         vk_access |= vk::AccessFlags2::SHADER_WRITE;
     }
-    if access.contains(BarrierAccess::MEMORY_READ) {
+    if access.contains(gpu::BarrierAccess::MEMORY_READ) {
         vk_access |= vk::AccessFlags2::MEMORY_READ;
     }
-    if access.contains(BarrierAccess::MEMORY_WRITE) {
+    if access.contains(gpu::BarrierAccess::MEMORY_WRITE) {
         vk_access |= vk::AccessFlags2::MEMORY_WRITE;
     }
-    if access.contains(BarrierAccess::HOST_READ) {
+    if access.contains(gpu::BarrierAccess::HOST_READ) {
         vk_access |= vk::AccessFlags2::HOST_READ;
     }
-    if access.contains(BarrierAccess::HOST_WRITE) {
+    if access.contains(gpu::BarrierAccess::HOST_WRITE) {
         vk_access |= vk::AccessFlags2::HOST_WRITE;
     }
-    if access.contains(BarrierAccess::ACCELERATION_STRUCTURE_READ) {
+    if access.contains(gpu::BarrierAccess::ACCELERATION_STRUCTURE_READ) {
         vk_access |= vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR;
     }
-    if access.contains(BarrierAccess::ACCELERATION_STRUCTURE_WRITE) {
+    if access.contains(gpu::BarrierAccess::ACCELERATION_STRUCTURE_WRITE) {
         vk_access |= vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR;
     }
     vk_access
 }
 
-fn texture_layout_to_image_layout(layout: TextureLayout) -> vk::ImageLayout {
+fn texture_layout_to_image_layout(layout: gpu::TextureLayout) -> vk::ImageLayout {
     match layout {
-        TextureLayout::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        TextureLayout::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-        TextureLayout::DepthStencilRead => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-        TextureLayout::DepthStencilReadWrite => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        TextureLayout::General => vk::ImageLayout::GENERAL,
-        TextureLayout::Sampled => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        TextureLayout::Storage => vk::ImageLayout::GENERAL,
-        TextureLayout::RenderTarget => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        TextureLayout::ResolveSrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-        TextureLayout::ResolveDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
-        TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
+        gpu::TextureLayout::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        gpu::TextureLayout::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        gpu::TextureLayout::DepthStencilRead => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        gpu::TextureLayout::DepthStencilReadWrite => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        gpu::TextureLayout::General => vk::ImageLayout::GENERAL,
+        gpu::TextureLayout::Sampled => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        gpu::TextureLayout::Storage => vk::ImageLayout::GENERAL,
+        gpu::TextureLayout::RenderTarget => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        gpu::TextureLayout::ResolveSrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        gpu::TextureLayout::ResolveDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        gpu::TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
+        gpu::TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
     }
 }
 
-pub(crate) fn index_format_to_vk(format: IndexFormat) -> vk::IndexType {
+pub(crate) fn index_format_to_vk(format: gpu::IndexFormat) -> vk::IndexType {
     match format {
-        IndexFormat::U16 => vk::IndexType::UINT16,
-        IndexFormat::U32 => vk::IndexType::UINT32,
+        gpu::IndexFormat::U16 => vk::IndexType::UINT16,
+        gpu::IndexFormat::U32 => vk::IndexType::UINT32,
     }
 }
 

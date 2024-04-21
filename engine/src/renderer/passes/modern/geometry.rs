@@ -95,8 +95,8 @@ impl<P: Platform> GeometryPass<P> {
         }));
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: "shaders/geometry_bindless.vert.spv",
-            fs: Some("shaders/geometry_bindless.frag.spv"),
+            vs: "shaders/geometry_bindless.vert.json",
+            fs: Some("shaders/geometry_bindless.frag.json"),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

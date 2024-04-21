@@ -91,8 +91,8 @@ impl VisibilityBufferPass {
         resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_texture_info, true);
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: "shaders/visibility_buffer.vert.spv",
-            fs: Some("shaders/visibility_buffer.frag.spv"),
+            vs: "shaders/visibility_buffer.vert.json",
+            fs: Some("shaders/visibility_buffer.frag.json"),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

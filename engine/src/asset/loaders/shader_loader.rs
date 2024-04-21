@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::sync::Arc;
 
+use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::Platform;
 
 use crate::asset::asset_manager::{
@@ -28,7 +29,7 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
         if cfg!(target_arch = "wasm32") {
             file.path.ends_with(".glsl")
         } else {
-            file.path.ends_with(".spv")
+            file.path.ends_with(".json")
         }
     }
 
@@ -41,9 +42,10 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
     ) -> Result<AssetLoaderResult, ()> {
         let mut buffer = Vec::<u8>::new();
         file.data.read_to_end(&mut buffer).map_err(|_e| ())?;
+        let shader: PackedShader = serde_json::from_slice(&buffer).map_err(|_e| ())?;
         manager.add_asset_with_progress(
             &file.path,
-            Asset::Shader(buffer.into_boxed_slice()),
+            Asset::Shader(shader),
             Some(progress),
             priority,
         );

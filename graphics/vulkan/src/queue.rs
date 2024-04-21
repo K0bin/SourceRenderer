@@ -6,7 +6,7 @@ use std::{
 use ash::vk;
 use parking_lot::ReentrantMutexGuard;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu::{self, Swapchain as _};
 
 use super::*;
 
@@ -69,8 +69,8 @@ impl VkQueue {
     }
 }
 
-impl Queue<VkBackend> for VkQueue {
-    unsafe fn submit(&self, submissions: &[Submission<VkBackend>]) {
+impl gpu::Queue<VkBackend> for VkQueue {
+    unsafe fn submit(&self, submissions: &[gpu::Submission<VkBackend>]) {
         let guard = self.lock_queue();
 
         let mut command_buffers =
@@ -91,7 +91,7 @@ impl Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: fence.fence.handle(),
                     value: fence.value,
-                    stage_mask: barrier_sync_to_stage(fence.sync_before) & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: (barrier_sync_to_stage(fence.sync_before) & self.device.supported_pipeline_stages) & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -111,7 +111,7 @@ impl Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: fence.fence.handle(),
                     value: fence.value,
-                    stage_mask: barrier_sync_to_stage(fence.sync_before) & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: (barrier_sync_to_stage(fence.sync_before) & self.device.supported_pipeline_stages) & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -192,7 +192,7 @@ impl Queue<VkBackend> for VkQueue {
         }
     }
 
-    unsafe fn create_command_pool(&self, command_pool_type: CommandPoolType, flags: CommandPoolFlags) -> VkCommandPool {
+    unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, flags: gpu::CommandPoolFlags) -> VkCommandPool {
         VkCommandPool::new(
             &self.device,
             self.info.queue_family_index as u32,

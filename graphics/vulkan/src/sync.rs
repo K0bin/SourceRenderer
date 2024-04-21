@@ -4,7 +4,7 @@ use std::{
 };
 
 use ash::vk;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -77,7 +77,7 @@ impl Drop for VkTimelineSemaphore {
     }
 }
 
-impl Fence for VkTimelineSemaphore {
+impl gpu::Fence for VkTimelineSemaphore {
     unsafe fn value(&self) -> u64 {
         unsafe {
             self.device

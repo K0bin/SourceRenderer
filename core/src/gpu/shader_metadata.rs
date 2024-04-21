@@ -29,6 +29,8 @@ pub struct PackedShader {
     pub push_constant_size: u32,
     pub resources: [Box<[Resource]>; 4],
     pub shader_type: ShaderType,
-    pub shader: Box<[u8]>
+    pub uses_bindless_texture_set: bool,
+    pub shader_spirv: Box<[u8]>,
+    pub shader_air: Box<[u8]>,
+    pub shader_dxil: Box<[u8]>,
 }
-

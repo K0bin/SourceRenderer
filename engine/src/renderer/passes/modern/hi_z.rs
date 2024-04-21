@@ -44,8 +44,8 @@ impl<P: Platform> HierarchicalZPass<P> {
         assert!(device.supports_min_max_filter()); // TODO: Implement variant that doesn't rely on min-max filter. PLS JUST ADD IT TO METAL @APPLE
 
         let ffx_pipeline =
-            shader_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.spv");
-        let copy_pipeline = shader_manager.request_compute_pipeline("shaders/hi_z_copy.comp.spv");
+            shader_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
+        let copy_pipeline = shader_manager.request_compute_pipeline("shaders/hi_z_copy.comp.json");
 
         let sampler = if device.supports_min_max_filter() {
             Arc::new(device.create_sampler(&SamplerInfo {

@@ -16,7 +16,13 @@ Cargo.lock
 **/.vs/
 
 **.spv
-!/graphics/vulkan/meta_shaders/*.spv
+platform/sdl/shaders/
+/graphics/vulkan/meta_shaders/*.spv
+/graphics/vulkan/meta_shaders/*.metal
+/graphics/vulkan/meta_shaders/*.hlsl
+/graphics/vulkan/meta_shaders/*.air
+/graphics/vulkan/meta_shaders/*.dxil
+/graphics/vulkan/meta_shaders/*.json
 **.code-workspace
 
 **/.DS_STORE

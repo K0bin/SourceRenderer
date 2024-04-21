@@ -46,7 +46,7 @@ impl LightBinningPass {
         barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/light_binning.comp.spv");
+        let pipeline = shader_manager.request_compute_pipeline("shaders/light_binning.comp.json");
 
         barriers.create_buffer(
             Self::LIGHT_BINNING_BUFFER_NAME,

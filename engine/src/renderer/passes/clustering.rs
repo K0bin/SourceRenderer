@@ -38,7 +38,7 @@ impl ClusteringPass {
         barriers: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/clustering.comp.spv");
+        let pipeline = shader_manager.request_compute_pipeline("shaders/clustering.comp.json");
 
         barriers.create_buffer(
             Self::CLUSTERS_BUFFER_NAME,

@@ -8,7 +8,7 @@ use ash::vk::{
 };
 use smallvec::SmallVec;
 
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu::{self, Buffer as _};
 
 use super::*;
 
@@ -23,7 +23,7 @@ impl VkAccelerationStructure {
     pub unsafe fn upload_top_level_instances(
         target_buffer: &VkBuffer,
         target_buffer_offset: u64,
-        instances: &[AccelerationStructureInstance<VkBackend>],
+        instances: &[gpu::AccelerationStructureInstance<VkBackend>],
     ) {
         let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances
             .iter()
@@ -39,7 +39,7 @@ impl VkAccelerationStructure {
                     instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xFF),
                     instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
                         0,
-                        if instance.front_face == FrontFace::CounterClockwise {
+                        if instance.front_face == gpu::FrontFace::CounterClockwise {
                             vk::GeometryInstanceFlagsKHR::TRIANGLE_FRONT_COUNTERCLOCKWISE.as_raw()
                                 as u8
                         } else {
@@ -61,8 +61,8 @@ impl VkAccelerationStructure {
 
     pub fn top_level_size(
         device: &Arc<RawVkDevice>,
-        info: &TopLevelAccelerationStructureInfo<VkBackend>,
-    ) -> AccelerationStructureSizes {
+        info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>,
+    ) -> gpu::AccelerationStructureSizes {
         let rt = device.rt.as_ref().unwrap();
 
         let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
@@ -104,7 +104,7 @@ impl VkAccelerationStructure {
                     &[info.instances_count],
                 )
         };
-        AccelerationStructureSizes {
+        gpu::AccelerationStructureSizes {
             build_scratch_size: size_info.build_scratch_size,
             update_scratch_size: size_info.update_scratch_size,
             size: size_info.acceleration_structure_size,
@@ -113,7 +113,7 @@ impl VkAccelerationStructure {
 
     pub fn new_top_level(
         device: &Arc<RawVkDevice>,
-        info: &TopLevelAccelerationStructureInfo<VkBackend>,
+        info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>,
         size: u64,
         target_buffer: &VkBuffer,
         target_buffer_offset: u64,
@@ -203,8 +203,8 @@ impl VkAccelerationStructure {
 
     pub fn bottom_level_size(
         device: &Arc<RawVkDevice>,
-        info: &BottomLevelAccelerationStructureInfo<VkBackend>,
-    ) -> AccelerationStructureSizes {
+        info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>,
+    ) -> gpu::AccelerationStructureSizes {
         let rt = device.rt.as_ref().unwrap();
 
         let geometry_data = vk::AccelerationStructureGeometryTrianglesDataKHR {
@@ -253,7 +253,7 @@ impl VkAccelerationStructure {
                 primitive_count: part.primitive_count,
                 primitive_offset: part.primitive_start
                     * 3
-                    * if info.index_format == IndexFormat::U32 {
+                    * if info.index_format == gpu::IndexFormat::U32 {
                         std::mem::size_of::<u32>() as u32
                     } else {
                         std::mem::size_of::<u16>() as u32
@@ -288,7 +288,7 @@ impl VkAccelerationStructure {
                     &max_primitive_counts[..],
                 )
         };
-        AccelerationStructureSizes {
+        gpu::AccelerationStructureSizes {
             build_scratch_size: size_info.build_scratch_size,
             update_scratch_size: size_info.update_scratch_size,
             size: size_info.acceleration_structure_size,
@@ -297,7 +297,7 @@ impl VkAccelerationStructure {
 
     pub fn new_bottom_level(
         device: &Arc<RawVkDevice>,
-        info: &BottomLevelAccelerationStructureInfo<VkBackend>,
+        info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>,
         size: u64,
         target_buffer: &VkBuffer,
         target_buffer_offset: u64,
@@ -384,7 +384,7 @@ impl VkAccelerationStructure {
                 primitive_count: part.primitive_count,
                 primitive_offset: part.primitive_start
                     * 3
-                    * if info.index_format == IndexFormat::U32 {
+                    * if info.index_format == gpu::IndexFormat::U32 {
                         std::mem::size_of::<u32>() as u32
                     } else {
                         std::mem::size_of::<u16>() as u32
@@ -458,4 +458,4 @@ impl Drop for VkAccelerationStructure {
     }
 }
 
-impl AccelerationStructure for VkAccelerationStructure {}
+impl gpu::AccelerationStructure for VkAccelerationStructure {}

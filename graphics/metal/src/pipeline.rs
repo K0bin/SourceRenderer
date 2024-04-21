@@ -13,10 +13,10 @@ pub struct MTLShader {
 }
 
 impl MTLShader {
-    pub(crate) fn new(device: &metal::DeviceRef, shader_type: gpu::ShaderType, data: &[u8], name: Option<&str>) -> Self {
-        let library = device.new_library_with_data(data).unwrap();
+    pub(crate) fn new(device: &metal::DeviceRef, shader: gpu::PackedShader, name: Option<&str>) -> Self {
+        let library = device.new_library_with_data(&shader.shader_air).unwrap();
         Self {
-            shader_type,
+            shader_type: shader.shader_type,
             library
         }
     }

@@ -38,6 +38,7 @@ widestring = "1.0.2"
 bitflags = "2.4.2"
 imgui = "0.11.0"
 thread_local = "1.1.8"
+serde_json = "1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 fsr2 = { path = "../vendor/fsr2" }

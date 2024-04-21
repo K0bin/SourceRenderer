@@ -107,8 +107,8 @@ impl Prepass {
         );
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: &("shaders/prepass.vert.spv"),
-            fs: Some("shaders/prepass.frag.spv"),
+            vs: &("shaders/prepass.vert.json"),
+            fs: Some("shaders/prepass.frag.json"),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

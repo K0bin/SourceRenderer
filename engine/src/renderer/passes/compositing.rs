@@ -30,7 +30,7 @@ impl CompositingPass {
         resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/compositing.comp.spv");
+        let pipeline = shader_manager.request_compute_pipeline("shaders/compositing.comp.json");
 
         resources.create_texture(
             Self::COMPOSITION_TEXTURE_NAME,

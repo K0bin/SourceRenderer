@@ -1,6 +1,6 @@
 use std::{sync::Arc, io::Read};
 
-use sourcerenderer_core::{Vec2, Platform, platform::IO};
+use sourcerenderer_core::{gpu::PackedShader, platform::IO, Platform, Vec2};
 
 use crate::{renderer::{renderer_resources::HistoryResourceEntry, render_path::RenderPassParameters}, ui::UIDrawData};
 use crate::graphics::*;
@@ -13,17 +13,19 @@ pub struct UIPass<P: Platform> {
 impl<P: Platform> UIPass<P> {
     pub fn new(device: &Arc<Device<P::GPUBackend>>) -> Self {
         let vs = {
-            let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.vert.spv").unwrap();
+            let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.vert.json").unwrap();
             let mut bytes: Vec<u8> = Vec::new();
             file.read_to_end(&mut bytes).unwrap();
-            device.create_shader(ShaderType::VertexShader, &bytes, Some("DearImguiVS"))
+            let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
+            device.create_shader(shader, Some("DearImguiVS"))
         };
 
         let ps = {
-            let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.frag.spv").unwrap();
+            let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.frag.json").unwrap();
             let mut bytes: Vec<u8> = Vec::new();
             file.read_to_end(&mut bytes).unwrap();
-            device.create_shader(ShaderType::FragmentShader, &bytes, Some("DearImguiPS"))
+            let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
+            device.create_shader(shader, Some("DearImguiPS"))
         };
 
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineInfo {

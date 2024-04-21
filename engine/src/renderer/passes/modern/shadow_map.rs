@@ -96,7 +96,7 @@ impl<P: Platform> ShadowMapPass<P> {
             false,
         );
 
-        let vs_path = Path::new("shaders").join(Path::new("shadow_map_bindless.vert.spv"));
+        let vs_path = Path::new("shaders").join(Path::new("shadow_map_bindless.vert.json"));
         let pipeline = shader_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
                 vs: vs_path.to_str().unwrap(),
@@ -158,7 +158,7 @@ impl<P: Platform> ShadowMapPass<P> {
             0,
         );
 
-        let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.spv");
+        let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
 
         let mut cascades = SmallVec::<[ShadowMapCascade; 5]>::with_capacity(cascades_count as usize);
         cascades.resize_with(cascades_count as usize, || ShadowMapCascade::default());

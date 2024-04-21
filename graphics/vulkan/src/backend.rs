@@ -1,11 +1,11 @@
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum VkBackend {}
 
-impl GPUBackend for VkBackend {
+impl gpu::GPUBackend for VkBackend {
     type Device = VkDevice;
     type Instance = VkInstance;
     type CommandBuffer = VkCommandBuffer;

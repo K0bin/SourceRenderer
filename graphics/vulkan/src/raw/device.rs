@@ -24,6 +24,7 @@ bitflags! {
     const BARYCENTRICS               = 0b1000000;
     const IMAGE_FORMAT_LIST          = 0b10000000;
     const MAINTENANCE4               = 0b100000000;
+    const BDA                        = 0b1000000000;
   }
 }
 
@@ -42,6 +43,11 @@ pub struct RawVkDevice {
     pub rt: Option<RawVkRTEntries>,
     pub supports_d24: bool,
     pub properties: vk::PhysicalDeviceProperties,
+    pub properties11: vk::PhysicalDeviceVulkan11Properties,
+    pub properties12: vk::PhysicalDeviceVulkan12Properties,
+    pub properties13: vk::PhysicalDeviceVulkan13Properties,
+    pub supported_pipeline_stages: vk::PipelineStageFlags2,
+    pub supported_access_flags: vk::AccessFlags2
 }
 
 unsafe impl Send for RawVkDevice {}
@@ -73,6 +79,31 @@ impl RawVkDevice {
         let mut rt_pipeline_properties =
             vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
         let mut properties: vk::PhysicalDeviceProperties2 = Default::default();
+        let mut properties11: vk::PhysicalDeviceVulkan11Properties = Default::default();
+        let mut properties12: vk::PhysicalDeviceVulkan12Properties = Default::default();
+        let mut properties13: vk::PhysicalDeviceVulkan13Properties = Default::default();
+
+        properties11.p_next = std::mem::replace(
+            &mut properties.p_next,
+            &mut properties11
+                as *mut vk::PhysicalDeviceVulkan11Properties
+                as *mut c_void,
+        );
+
+        properties12.p_next = std::mem::replace(
+            &mut properties.p_next,
+            &mut properties12
+                as *mut vk::PhysicalDeviceVulkan12Properties
+                as *mut c_void,
+        );
+
+        properties13.p_next = std::mem::replace(
+            &mut properties.p_next,
+            &mut properties13
+                as *mut vk::PhysicalDeviceVulkan13Properties
+                as *mut c_void,
+        );
+
         if features.contains(VkFeatures::RAY_TRACING) {
             rt_pipeline_properties.p_next = std::mem::replace(
                 &mut properties.p_next,
@@ -107,6 +138,49 @@ impl RawVkDevice {
             .optimal_tiling_features
             .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT);
 
+        let mut supported_pipeline_stages = vk::PipelineStageFlags2::VERTEX_INPUT
+            | vk::PipelineStageFlags2::VERTEX_SHADER
+            | vk::PipelineStageFlags2::FRAGMENT_SHADER
+            | vk::PipelineStageFlags2::BLIT
+            | vk::PipelineStageFlags2::CLEAR
+            | vk::PipelineStageFlags2::COPY
+            | vk::PipelineStageFlags2::RESOLVE
+            | vk::PipelineStageFlags2::HOST
+            | vk::PipelineStageFlags2::TRANSFER
+            | vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
+            | vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
+            | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS
+            | vk::PipelineStageFlags2::CONDITIONAL_RENDERING_EXT
+            | vk::PipelineStageFlags2::DRAW_INDIRECT
+            | vk::PipelineStageFlags2::COMPUTE_SHADER;
+
+        let mut supported_access_flags = vk::AccessFlags2::SHADER_READ
+            | vk::AccessFlags2::SHADER_WRITE
+            | vk::AccessFlags2::INDIRECT_COMMAND_READ
+            | vk::AccessFlags2::COLOR_ATTACHMENT_READ
+            | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
+            | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
+            | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE
+            | vk::AccessFlags2::VERTEX_ATTRIBUTE_READ
+            | vk::AccessFlags2::TRANSFER_READ
+            | vk::AccessFlags2::TRANSFER_WRITE
+            | vk::AccessFlags2::SHADER_STORAGE_READ
+            | vk::AccessFlags2::SHADER_STORAGE_WRITE
+            | vk::AccessFlags2::INDEX_READ
+            | vk::AccessFlags2::UNIFORM_READ
+            | vk::AccessFlags2::HOST_READ
+            | vk::AccessFlags2::HOST_WRITE
+            | vk::AccessFlags2::SHADER_SAMPLED_READ;
+
+        if features.contains(VkFeatures::RAY_TRACING) {
+            supported_pipeline_stages |= vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR
+                | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
+                | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR;
+
+            supported_access_flags |= vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR
+                | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR;
+        }
+
         Self {
             device,
             physical_device,
@@ -122,6 +196,11 @@ impl RawVkDevice {
             rt,
             supports_d24,
             properties: properties.properties,
+            properties11,
+            properties12,
+            properties13,
+            supported_pipeline_stages,
+            supported_access_flags
         }
     }
 

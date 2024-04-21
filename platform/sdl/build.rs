@@ -19,6 +19,11 @@ fn main() {
         std::fs::create_dir(&shader_dest_dir).expect("Failed to create shader target directory.");
     }
 
+    let mut output_shading_languages = ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air;
+    if env::var("DEBUG").map(|envvar| envvar == "true").unwrap_or_default() {
+        output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
+    }
+
     let mut shader_dir = manifest_dir.clone();
     shader_dir.pop();
     shader_dir.pop();
@@ -30,6 +35,7 @@ fn main() {
         &shader_dest_dir,
         true,
         &HashMap::new(),
+        output_shading_languages,
         |_| true,
     );
 
@@ -53,7 +59,9 @@ fn main() {
         "FFX_FSR2_OPTION_HDR_COLOR_INPUT".to_string(),
         "1".to_string(),
     );
-    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, &map, |f| {
+    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, &map,
+        output_shading_languages,
+        |f| {
         f.extension()
             .and_then(|ext| ext.to_str())
             .map(|ext| ext == "glsl")
@@ -68,8 +76,8 @@ fn main() {
     compile_shader(
         &accumulate_sharpen_path,
         &shader_dest_dir,
-        ShadingLanguage::SpirV,
-        CompiledShaderFileType::Bytecode,
+        ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air,
+        CompiledShaderFileType::Packed,
         true,
         &map,
     );

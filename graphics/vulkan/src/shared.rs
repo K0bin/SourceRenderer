@@ -12,7 +12,7 @@ use ash::{
     vk::Handle,
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -56,11 +56,11 @@ impl VkShared {
             None
         };
 
-        let shader_bytes = include_bytes!("../meta_shaders/clear_buffer.comp.spv");
+        let shader_bytes = include_bytes!("../meta_shaders/clear_buffer.comp.json");
+        let packed: gpu::PackedShader = serde_json::from_slice(shader_bytes).unwrap();
         let shader = Arc::new(VkShader::new(
             device,
-            ShaderType::ComputeShader,
-            &shader_bytes[..],
+            packed,
             Some("ClearBufferMeta"),
         ));
         let clear_buffer_meta_pipeline =

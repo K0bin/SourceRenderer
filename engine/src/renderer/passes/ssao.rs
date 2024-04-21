@@ -74,16 +74,16 @@ impl<P: Platform> SsaoPass<P> {
             true,
         );
 
-        let pipeline = shader_manager.request_compute_pipeline("shaders/ssao.comp.spv");
+        let pipeline = shader_manager.request_compute_pipeline("shaders/ssao.comp.json");
 
         // TODO: Clear history texture
 
         let kernel = Self::create_hemisphere(device, 64);
 
         let blur_pipeline = shader_manager.request_compute_pipeline(if !visibility_buffer {
-            "shaders/ssao_blur.comp.spv"
+            "shaders/ssao_blur.comp.json"
         } else {
-            "shaders/ssao_blur_vis_buf.comp.spv"
+            "shaders/ssao_blur_vis_buf.comp.json"
         });
 
         Self {

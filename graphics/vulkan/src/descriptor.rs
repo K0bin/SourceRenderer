@@ -13,12 +13,9 @@ use std::{
     },
 };
 
-use ash::{
-    prelude::VkResult,
-    vk,
-};
+use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -39,12 +36,12 @@ bitflags! {
     }
 }
 
-impl From<BindingFrequency> for DirtyDescriptorSets {
-    fn from(value: BindingFrequency) -> Self {
+impl From<gpu::BindingFrequency> for DirtyDescriptorSets {
+    fn from(value: gpu::BindingFrequency) -> Self {
         match value {
-            BindingFrequency::VeryFrequent => DirtyDescriptorSets::VERY_FREQUENT,
-            BindingFrequency::Frequent => DirtyDescriptorSets::FREQUENT,
-            BindingFrequency::Frame => DirtyDescriptorSets::FRAME,
+            gpu::BindingFrequency::VeryFrequent => DirtyDescriptorSets::VERY_FREQUENT,
+            gpu::BindingFrequency::Frequent => DirtyDescriptorSets::FREQUENT,
+            gpu::BindingFrequency::Frame => DirtyDescriptorSets::FRAME,
         }
     }
 }
@@ -313,7 +310,7 @@ impl VkDescriptorSet {
         layout: &Arc<VkDescriptorSetLayout>,
         is_transient: bool,
         bindings: &'a [T; PER_SET_BINDINGS],
-    ) -> VkResult<Self>
+    ) -> ash::prelude::VkResult<Self>
     where
         VkBoundResource: From<&'a T>,
     {
@@ -1325,7 +1322,7 @@ impl VkBindingManager {
 
     pub(crate) fn bind(
         &mut self,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
         slot: u32,
         binding: VkBoundResourceRef,
     ) {
@@ -1370,7 +1367,7 @@ impl VkBindingManager {
         &mut self,
         frame: u64,
         pipeline_layout: &VkPipelineLayout,
-        frequency: BindingFrequency,
+        frequency: gpu::BindingFrequency,
     ) -> Option<VkDescriptorSetBinding> {
         let layout_option = pipeline_layout.descriptor_set_layout(frequency as u32);
         if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
@@ -1548,12 +1545,12 @@ impl VkBindingManager {
         }
 
         let mut set_bindings: [Option<VkDescriptorSetBinding>; 3] = Default::default();
-        set_bindings[BindingFrequency::VeryFrequent as usize] =
-            self.finish_set(frame, pipeline_layout, BindingFrequency::VeryFrequent);
-        set_bindings[BindingFrequency::Frame as usize] =
-            self.finish_set(frame, pipeline_layout, BindingFrequency::Frame);
-        set_bindings[BindingFrequency::Frequent as usize] =
-            self.finish_set(frame, pipeline_layout, BindingFrequency::Frequent);
+        set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
+            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::VeryFrequent);
+        set_bindings[gpu::BindingFrequency::Frame as usize] =
+            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::Frame);
+        set_bindings[gpu::BindingFrequency::Frequent as usize] =
+            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::Frequent);
 
         self.dirty = DirtyDescriptorSets::empty();
         set_bindings

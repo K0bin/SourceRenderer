@@ -31,6 +31,7 @@ fn main() {
         &shader_dest_dir,
         true,
         &HashMap::new(),
+        ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air,
         |_| true,
     );
 }

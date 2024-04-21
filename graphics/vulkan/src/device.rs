@@ -5,7 +5,7 @@ use std::{sync::{
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu::{self, Device as _};
 
 use super::*;
 
@@ -16,7 +16,7 @@ pub struct VkDevice {
     transfer_queue: Option<VkQueue>,
     shared: Arc<VkShared>,
     query_count: AtomicU64,
-    memory_type_infos: Vec<MemoryTypeInfo>,
+    memory_type_infos: Vec<gpu::MemoryTypeInfo>,
 }
 
 impl VkDevice {
@@ -73,18 +73,18 @@ impl VkDevice {
         let memory_type_count = memory_properties.memory_properties.memory_type_count as usize;
         let memory_types = &memory_properties.memory_properties.memory_types[.. memory_type_count];
 
-        let mut memory_type_infos = Vec::<MemoryTypeInfo>::new();
+        let mut memory_type_infos = Vec::<gpu::MemoryTypeInfo>::new();
         for memory_type in memory_types {
-            let kind: MemoryKind = if memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
-                MemoryKind::VRAM
+            let kind: gpu::MemoryKind = if memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                gpu::MemoryKind::VRAM
             } else {
-                MemoryKind::RAM
+                gpu::MemoryKind::RAM
             };
             let is_cpu_accessible = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
             let is_cached = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_CACHED);
             let is_coherent = memory_type.property_flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT);
 
-            let info = MemoryTypeInfo {
+            let info = gpu::MemoryTypeInfo {
                 memory_index: memory_type.heap_index,
                 memory_kind: kind, is_cached, is_cpu_accessible,
                 is_coherent
@@ -124,39 +124,38 @@ impl VkDevice {
     }
 }
 
-impl Device<VkBackend> for VkDevice {
+impl gpu::Device<VkBackend> for VkDevice {
     unsafe fn create_buffer(
         &self,
-        info: &BufferInfo,
+        info: &gpu::BufferInfo,
         memory_type_index: u32,
         name: Option<&str>,
-    ) -> Result<VkBuffer, OutOfMemoryError> {
+    ) -> Result<VkBuffer, gpu::OutOfMemoryError> {
         VkBuffer::new(&self.device, ResourceMemory::Dedicated { memory_type_index }, info, name)
     }
 
     unsafe fn create_shader(
         &self,
-        shader_type: ShaderType,
-        bytecode: &[u8],
+        shader: gpu::PackedShader,
         name: Option<&str>,
     ) -> VkShader {
-        VkShader::new(&self.device, shader_type, bytecode, name)
+        VkShader::new(&self.device, shader, name)
     }
 
-    unsafe fn create_texture(&self, info: &TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<VkTexture, OutOfMemoryError> {
+    unsafe fn create_texture(&self, info: &gpu::TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<VkTexture, gpu::OutOfMemoryError> {
         VkTexture::new(&self.device, info, ResourceMemory::Dedicated { memory_type_index }, name)
     }
 
     unsafe fn create_texture_view(
         &self,
         texture: &VkTexture,
-        info: &TextureViewInfo,
+        info: &gpu::TextureViewInfo,
         name: Option<&str>,
     ) -> VkTextureView {
         VkTextureView::new(&self.device, texture, info, name)
     }
 
-    unsafe fn create_sampler(&self, info: &SamplerInfo) -> VkSampler {
+    unsafe fn create_sampler(&self, info: &gpu::SamplerInfo) -> VkSampler {
         VkSampler::new(&self.device, info)
     }
 
@@ -170,8 +169,8 @@ impl Device<VkBackend> for VkDevice {
 
     unsafe fn create_graphics_pipeline(
         &self,
-        info: &GraphicsPipelineInfo<VkBackend>,
-        renderpass_info: &RenderPassInfo,
+        info: &gpu::GraphicsPipelineInfo<VkBackend>,
+        renderpass_info: &gpu::RenderPassInfo,
         subpass: u32,
         name: Option<&str>,
     ) -> VkPipeline {
@@ -183,10 +182,10 @@ impl Device<VkBackend> for VkDevice {
                 .map(|a| VkAttachmentInfo {
                     format: a.format,
                     samples: a.samples,
-                    load_op: LoadOp::DontCare,
-                    store_op: StoreOp::DontCare,
-                    stencil_load_op: LoadOp::DontCare,
-                    stencil_store_op: StoreOp::DontCare,
+                    load_op: gpu::LoadOp::DontCare,
+                    store_op: gpu::StoreOp::DontCare,
+                    stencil_load_op: gpu::LoadOp::DontCare,
+                    stencil_store_op: gpu::StoreOp::DontCare,
                 })
                 .collect(),
             subpasses: renderpass_info
@@ -252,8 +251,8 @@ impl Device<VkBackend> for VkDevice {
         self.device.features.contains(VkFeatures::BARYCENTRICS)
     }
 
-    unsafe fn memory_infos(&self) -> Vec<MemoryInfo> {
-        let mut memory_infos = Vec::<MemoryInfo>::new();
+    unsafe fn memory_infos(&self) -> Vec<gpu::MemoryInfo> {
+        let mut memory_infos = Vec::<gpu::MemoryInfo>::new();
 
         let supports_ext_budget = self.device.features.contains(VkFeatures::MEMORY_BUDGET);
 
@@ -272,13 +271,13 @@ impl Device<VkBackend> for VkDevice {
             let heap_budget = budget.heap_budget[i];
             let heap_usage = budget.heap_usage[i];
 
-            let kind: MemoryKind = if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
-                MemoryKind::VRAM
+            let kind: gpu::MemoryKind = if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
+                gpu::MemoryKind::VRAM
             } else {
-                MemoryKind::RAM
+                gpu::MemoryKind::RAM
             };
 
-            let info = MemoryInfo {
+            let info = gpu::MemoryInfo {
                 available: if supports_ext_budget { heap_budget - heap_usage } else { heap.size },
                 total: if supports_ext_budget { heap_budget } else { heap.size },
                 memory_kind: kind
@@ -288,18 +287,18 @@ impl Device<VkBackend> for VkDevice {
         memory_infos
     }
 
-    unsafe fn memory_type_infos(&self) -> &[MemoryTypeInfo] {
+    unsafe fn memory_type_infos(&self) -> &[gpu::MemoryTypeInfo] {
         &self.memory_type_infos
     }
 
-    unsafe fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<VkMemoryHeap, OutOfMemoryError> {
+    unsafe fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<VkMemoryHeap, gpu::OutOfMemoryError> {
         VkMemoryHeap::new(&self.device, memory_type_index, size)
     }
 
-    unsafe fn get_buffer_heap_info(&self, info: &BufferInfo) -> ResourceHeapInfo {
+    unsafe fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> gpu::ResourceHeapInfo {
         let mut queue_families = SmallVec::<[u32; 3]>::new();
         let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
-        if info.sharing_mode == QueueSharingMode::Concurrent && (self.device.transfer_queue_info.is_some() || self.device.compute_queue_info.is_some()) {
+        if info.sharing_mode == gpu::QueueSharingMode::Concurrent && (self.device.transfer_queue_info.is_some() || self.device.compute_queue_info.is_some()) {
             sharing_mode = vk::SharingMode::CONCURRENT;
             queue_families.push(self.device.graphics_queue_info.queue_family_index as u32);
             if let Some(info) = self.device.transfer_queue_info.as_ref() {
@@ -331,13 +330,13 @@ impl Device<VkBackend> for VkDevice {
         };
         self.device.get_device_buffer_memory_requirements(&buffer_requirements_info, &mut requirements);
 
-        ResourceHeapInfo {
+        gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
-                DedicatedAllocationPreference::RequireDedicated            
+                gpu::DedicatedAllocationPreference::RequireDedicated
             } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
-                DedicatedAllocationPreference::PreferDedicated
+                gpu::DedicatedAllocationPreference::PreferDedicated
             } else {
-                DedicatedAllocationPreference::DontCare
+                gpu::DedicatedAllocationPreference::DontCare
             },
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
             alignment: requirements.memory_requirements.alignment,
@@ -345,7 +344,7 @@ impl Device<VkBackend> for VkDevice {
         }
     }
 
-    unsafe fn get_texture_heap_info(&self, info: &TextureInfo) -> ResourceHeapInfo {
+    unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
         let mut image_info = vk::ImageCreateInfo {
             flags: vk::ImageCreateFlags::empty(),
             tiling: vk::ImageTiling::OPTIMAL,
@@ -353,9 +352,9 @@ impl Device<VkBackend> for VkDevice {
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             usage: texture_usage_to_vk(info.usage),
             image_type: match info.dimension {
-                TextureDimension::Dim1DArray | TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
-                TextureDimension::Dim2DArray | TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
-                TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
+                gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
+                gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
+                gpu::TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
             },
             extent: vk::Extent3D {
                 width: info.width.max(1),
@@ -371,15 +370,15 @@ impl Device<VkBackend> for VkDevice {
 
         debug_assert!(
             info.array_length == 1
-                || (info.dimension == TextureDimension::Dim1DArray
-                    || info.dimension == TextureDimension::Dim2DArray)
+                || (info.dimension == gpu::TextureDimension::Dim1DArray
+                    || info.dimension == gpu::TextureDimension::Dim2DArray)
         );
-        debug_assert!(info.depth == 1 || info.dimension == TextureDimension::Dim3D);
+        debug_assert!(info.depth == 1 || info.dimension == gpu::TextureDimension::Dim3D);
         debug_assert!(
             info.height == 1
-                || (info.dimension == TextureDimension::Dim2D
-                    || info.dimension == TextureDimension::Dim2DArray
-                    || info.dimension == TextureDimension::Dim3D)
+                || (info.dimension == gpu::TextureDimension::Dim2D
+                    || info.dimension == gpu::TextureDimension::Dim2DArray
+                    || info.dimension == gpu::TextureDimension::Dim3D)
         );
 
         let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
@@ -406,37 +405,37 @@ impl Device<VkBackend> for VkDevice {
         };
         self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
 
-        ResourceHeapInfo {
+        gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
-                DedicatedAllocationPreference::RequireDedicated            
+                gpu::DedicatedAllocationPreference::RequireDedicated
             } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
-                DedicatedAllocationPreference::PreferDedicated
+                gpu::DedicatedAllocationPreference::PreferDedicated
             } else {
-                DedicatedAllocationPreference::DontCare
+                gpu::DedicatedAllocationPreference::DontCare
             },
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
-            alignment: requirements.memory_requirements.alignment,
+            alignment: requirements.memory_requirements.alignment.max(self.device.properties.limits.buffer_image_granularity),
             size: requirements.memory_requirements.size
         }
     }
 
-    unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
+    unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>) -> gpu::AccelerationStructureSizes {
         VkAccelerationStructure::bottom_level_size(&self.device, info)
     }
 
-    unsafe fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<VkBackend>) -> AccelerationStructureSizes {
+    unsafe fn get_top_level_acceleration_structure_size(&self, info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>) -> gpu::AccelerationStructureSizes {
         VkAccelerationStructure::top_level_size(&self.device, info)
     }
 
-    unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &RayTracingPipelineInfo<VkBackend>) -> u64 {
+    unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &gpu::RayTracingPipelineInfo<VkBackend>) -> u64 {
         VkPipeline::ray_tracing_buffer_size(&self.device, info, &self.shared)
     }
 
-    unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<VkBackend>, sbt_buffer: &VkBuffer, sbt_buffer_offset: u64, name: Option<&str>) -> VkPipeline {
+    unsafe fn create_raytracing_pipeline(&self, info: &gpu::RayTracingPipelineInfo<VkBackend>, sbt_buffer: &VkBuffer, sbt_buffer_offset: u64, name: Option<&str>) -> VkPipeline {
         VkPipeline::new_ray_tracing(&self.device, info, &self.shared, sbt_buffer, sbt_buffer_offset, name)
     }
 
-    fn get_top_level_instances_buffer_size(&self, instances: &[AccelerationStructureInstance<VkBackend>]) -> u64 {
+    fn get_top_level_instances_buffer_size(&self, instances: &[gpu::AccelerationStructureInstance<VkBackend>]) -> u64 {
         (std::mem::size_of::<vk::AccelerationStructureInstanceKHR>() * instances.len()) as u64
     }
 }

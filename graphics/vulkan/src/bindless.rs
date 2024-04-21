@@ -6,7 +6,7 @@ use std::sync::{
 
 use ash::vk::{
     self,
-    Handle,
+    Handle as _
 };
 use smallvec::SmallVec;
 

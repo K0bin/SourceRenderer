@@ -172,8 +172,8 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         )
     }
 
-    unsafe fn create_shader(&self, shader_type: gpu::ShaderType, bytecode: &[u8], name: Option<&str>) -> MTLShader {
-        MTLShader::new(&self.device, shader_type, bytecode, name)
+    unsafe fn create_shader(&self, shader: gpu::PackedShader, name: Option<&str>) -> MTLShader {
+        MTLShader::new(&self.device, shader, name)
     }
 
     unsafe fn create_texture_view(&self, texture: &MTLTexture, info: &gpu::TextureViewInfo, name: Option<&str>) -> MTLTextureView {
