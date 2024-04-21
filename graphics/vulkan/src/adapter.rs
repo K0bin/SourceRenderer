@@ -13,7 +13,7 @@ use ash::{
     extensions::khr::Surface as KhrSurface,
     vk,
 };
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -125,7 +125,7 @@ impl VkAdapter {
 
 pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
 
-impl Adapter<VkBackend> for VkAdapter {
+impl gpu::Adapter<VkBackend> for VkAdapter {
     fn create_device(&self, surface: &VkSurface) -> VkDevice {
         return unsafe {
             let surface_loader = KhrSurface::new(&self.instance.entry, &self.instance.instance);
@@ -548,13 +548,13 @@ impl Adapter<VkBackend> for VkAdapter {
         };
     }
 
-    fn adapter_type(&self) -> AdapterType {
+    fn adapter_type(&self) -> gpu::AdapterType {
         match self.properties.device_type {
-            vk::PhysicalDeviceType::DISCRETE_GPU => AdapterType::Discrete,
-            vk::PhysicalDeviceType::INTEGRATED_GPU => AdapterType::Integrated,
-            vk::PhysicalDeviceType::VIRTUAL_GPU => AdapterType::Virtual,
-            vk::PhysicalDeviceType::CPU => AdapterType::Software,
-            _ => AdapterType::Other,
+            vk::PhysicalDeviceType::DISCRETE_GPU => gpu::AdapterType::Discrete,
+            vk::PhysicalDeviceType::INTEGRATED_GPU => gpu::AdapterType::Integrated,
+            vk::PhysicalDeviceType::VIRTUAL_GPU => gpu::AdapterType::Virtual,
+            vk::PhysicalDeviceType::CPU => gpu::AdapterType::Software,
+            _ => gpu::AdapterType::Other,
         }
     }
 

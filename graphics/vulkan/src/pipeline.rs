@@ -12,15 +12,9 @@ use std::{
     sync::Arc,
 };
 
-use ash::{
-    vk,
-    vk::{
-        Handle,
-        PipelineRasterizationStateCreateFlags,
-    },
-};
+use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu::{self, Buffer as _, Shader as _};
 use spirv_cross_sys;
 
 use super::*;
@@ -29,15 +23,15 @@ use crate::adapter::BINDLESS_TEXTURE_COUNT;
 const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
 #[inline]
-pub(super) fn input_rate_to_vk(input_rate: InputRate) -> vk::VertexInputRate {
+pub(super) fn input_rate_to_vk(input_rate: gpu::InputRate) -> vk::VertexInputRate {
     match input_rate {
-        InputRate::PerVertex => vk::VertexInputRate::VERTEX,
-        InputRate::PerInstance => vk::VertexInputRate::INSTANCE,
+        gpu::InputRate::PerVertex => vk::VertexInputRate::VERTEX,
+        gpu::InputRate::PerInstance => vk::VertexInputRate::INSTANCE,
     }
 }
 
 pub struct VkShader {
-    shader_type: ShaderType,
+    shader_type: gpu::ShaderType,
     shader_module: vk::ShaderModule,
     device: Arc<RawVkDevice>,
     descriptor_set_bindings: HashMap<u32, Vec<VkDescriptorSetEntryInfo>>,
@@ -63,7 +57,7 @@ impl VkShader {
     #[allow(clippy::size_of_in_element_count)]
     pub fn new(
         device: &Arc<RawVkDevice>,
-        shader_type: ShaderType,
+        shader_type: gpu::ShaderType,
         bytecode: &[u8],
         name: Option<&str>,
     ) -> Self {
@@ -143,12 +137,12 @@ impl VkShader {
             );
             let push_constant_range = vk::PushConstantRange {
                 stage_flags: match shader_type {
-                    ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
-                    ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
-                    ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
-                    ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
-                    ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
-                    ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                    gpu::ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
+                    gpu::ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
+                    gpu::ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+                    gpu::ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+                    gpu::ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
+                    gpu::ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                     _ => unimplemented!(),
                 },
                 offset: 0u32,
@@ -732,8 +726,8 @@ impl VkShader {
     }
 }
 
-impl Shader for VkShader {
-    fn shader_type(&self) -> ShaderType {
+impl gpu::Shader for VkShader {
+    fn shader_type(&self) -> gpu::ShaderType {
         self.shader_type
     }
 }
@@ -779,125 +773,125 @@ impl PartialEq for VkPipeline {
 
 const SHADER_ENTRY_POINT_NAME: &str = "main";
 
-pub(super) fn shader_type_to_vk(shader_type: ShaderType) -> vk::ShaderStageFlags {
+pub(super) fn shader_type_to_vk(shader_type: gpu::ShaderType) -> vk::ShaderStageFlags {
     match shader_type {
-        ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
-        ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
-        ShaderType::GeometryShader => vk::ShaderStageFlags::GEOMETRY,
-        ShaderType::TessellationControlShader => vk::ShaderStageFlags::TESSELLATION_CONTROL,
-        ShaderType::TessellationEvaluationShader => vk::ShaderStageFlags::TESSELLATION_EVALUATION,
-        ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
-        ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-        ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
-        ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
+        gpu::ShaderType::VertexShader => vk::ShaderStageFlags::VERTEX,
+        gpu::ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
+        gpu::ShaderType::GeometryShader => vk::ShaderStageFlags::GEOMETRY,
+        gpu::ShaderType::TessellationControlShader => vk::ShaderStageFlags::TESSELLATION_CONTROL,
+        gpu::ShaderType::TessellationEvaluationShader => vk::ShaderStageFlags::TESSELLATION_EVALUATION,
+        gpu::ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
+        gpu::ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+        gpu::ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+        gpu::ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
     }
 }
 
-pub(super) fn samples_to_vk(samples: SampleCount) -> vk::SampleCountFlags {
+pub(super) fn samples_to_vk(samples: gpu::SampleCount) -> vk::SampleCountFlags {
     match samples {
-        SampleCount::Samples1 => vk::SampleCountFlags::TYPE_1,
-        SampleCount::Samples2 => vk::SampleCountFlags::TYPE_2,
-        SampleCount::Samples4 => vk::SampleCountFlags::TYPE_4,
-        SampleCount::Samples8 => vk::SampleCountFlags::TYPE_8,
+        gpu::SampleCount::Samples1 => vk::SampleCountFlags::TYPE_1,
+        gpu::SampleCount::Samples2 => vk::SampleCountFlags::TYPE_2,
+        gpu::SampleCount::Samples4 => vk::SampleCountFlags::TYPE_4,
+        gpu::SampleCount::Samples8 => vk::SampleCountFlags::TYPE_8,
     }
 }
 
-pub(super) fn compare_func_to_vk(compare_func: CompareFunc) -> vk::CompareOp {
+pub(super) fn compare_func_to_vk(compare_func: gpu::CompareFunc) -> vk::CompareOp {
     match compare_func {
-        CompareFunc::Always => vk::CompareOp::ALWAYS,
-        CompareFunc::NotEqual => vk::CompareOp::NOT_EQUAL,
-        CompareFunc::Never => vk::CompareOp::NEVER,
-        CompareFunc::Less => vk::CompareOp::LESS,
-        CompareFunc::LessEqual => vk::CompareOp::LESS_OR_EQUAL,
-        CompareFunc::Equal => vk::CompareOp::EQUAL,
-        CompareFunc::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
-        CompareFunc::Greater => vk::CompareOp::GREATER,
+        gpu::CompareFunc::Always => vk::CompareOp::ALWAYS,
+        gpu::CompareFunc::NotEqual => vk::CompareOp::NOT_EQUAL,
+        gpu::CompareFunc::Never => vk::CompareOp::NEVER,
+        gpu::CompareFunc::Less => vk::CompareOp::LESS,
+        gpu::CompareFunc::LessEqual => vk::CompareOp::LESS_OR_EQUAL,
+        gpu::CompareFunc::Equal => vk::CompareOp::EQUAL,
+        gpu::CompareFunc::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
+        gpu::CompareFunc::Greater => vk::CompareOp::GREATER,
     }
 }
 
-pub(super) fn stencil_op_to_vk(stencil_op: StencilOp) -> vk::StencilOp {
+pub(super) fn stencil_op_to_vk(stencil_op: gpu::StencilOp) -> vk::StencilOp {
     match stencil_op {
-        StencilOp::Decrease => vk::StencilOp::DECREMENT_AND_WRAP,
-        StencilOp::Increase => vk::StencilOp::INCREMENT_AND_WRAP,
-        StencilOp::DecreaseClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
-        StencilOp::IncreaseClamp => vk::StencilOp::INCREMENT_AND_CLAMP,
-        StencilOp::Invert => vk::StencilOp::INVERT,
-        StencilOp::Keep => vk::StencilOp::KEEP,
-        StencilOp::Replace => vk::StencilOp::REPLACE,
-        StencilOp::Zero => vk::StencilOp::ZERO,
+        gpu::StencilOp::Decrease => vk::StencilOp::DECREMENT_AND_WRAP,
+        gpu::StencilOp::Increase => vk::StencilOp::INCREMENT_AND_WRAP,
+        gpu::StencilOp::DecreaseClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
+        gpu::StencilOp::IncreaseClamp => vk::StencilOp::INCREMENT_AND_CLAMP,
+        gpu::StencilOp::Invert => vk::StencilOp::INVERT,
+        gpu::StencilOp::Keep => vk::StencilOp::KEEP,
+        gpu::StencilOp::Replace => vk::StencilOp::REPLACE,
+        gpu::StencilOp::Zero => vk::StencilOp::ZERO,
     }
 }
 
-pub(super) fn logic_op_to_vk(logic_op: LogicOp) -> vk::LogicOp {
+pub(super) fn logic_op_to_vk(logic_op: gpu::LogicOp) -> vk::LogicOp {
     match logic_op {
-        LogicOp::And => vk::LogicOp::AND,
-        LogicOp::AndInverted => vk::LogicOp::AND_INVERTED,
-        LogicOp::AndReversed => vk::LogicOp::AND_REVERSE,
-        LogicOp::Clear => vk::LogicOp::CLEAR,
-        LogicOp::Copy => vk::LogicOp::COPY,
-        LogicOp::CopyInverted => vk::LogicOp::COPY_INVERTED,
-        LogicOp::Equivalent => vk::LogicOp::EQUIVALENT,
-        LogicOp::Invert => vk::LogicOp::INVERT,
-        LogicOp::Nand => vk::LogicOp::NAND,
-        LogicOp::Noop => vk::LogicOp::NO_OP,
-        LogicOp::Nor => vk::LogicOp::NOR,
-        LogicOp::Or => vk::LogicOp::OR,
-        LogicOp::OrInverted => vk::LogicOp::OR_INVERTED,
-        LogicOp::OrReverse => vk::LogicOp::OR_REVERSE,
-        LogicOp::Set => vk::LogicOp::SET,
-        LogicOp::Xor => vk::LogicOp::XOR,
+        gpu::LogicOp::And => vk::LogicOp::AND,
+        gpu::LogicOp::AndInverted => vk::LogicOp::AND_INVERTED,
+        gpu::LogicOp::AndReversed => vk::LogicOp::AND_REVERSE,
+        gpu::LogicOp::Clear => vk::LogicOp::CLEAR,
+        gpu::LogicOp::Copy => vk::LogicOp::COPY,
+        gpu::LogicOp::CopyInverted => vk::LogicOp::COPY_INVERTED,
+        gpu::LogicOp::Equivalent => vk::LogicOp::EQUIVALENT,
+        gpu::LogicOp::Invert => vk::LogicOp::INVERT,
+        gpu::LogicOp::Nand => vk::LogicOp::NAND,
+        gpu::LogicOp::Noop => vk::LogicOp::NO_OP,
+        gpu::LogicOp::Nor => vk::LogicOp::NOR,
+        gpu::LogicOp::Or => vk::LogicOp::OR,
+        gpu::LogicOp::OrInverted => vk::LogicOp::OR_INVERTED,
+        gpu::LogicOp::OrReverse => vk::LogicOp::OR_REVERSE,
+        gpu::LogicOp::Set => vk::LogicOp::SET,
+        gpu::LogicOp::Xor => vk::LogicOp::XOR,
     }
 }
 
-pub(super) fn blend_factor_to_vk(blend_factor: BlendFactor) -> vk::BlendFactor {
+pub(super) fn blend_factor_to_vk(blend_factor: gpu::BlendFactor) -> vk::BlendFactor {
     match blend_factor {
-        BlendFactor::ConstantColor => vk::BlendFactor::CONSTANT_COLOR,
-        BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
-        BlendFactor::DstColor => vk::BlendFactor::DST_COLOR,
-        BlendFactor::One => vk::BlendFactor::ONE,
-        BlendFactor::OneMinusConstantColor => vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR,
-        BlendFactor::OneMinusDstAlpha => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
-        BlendFactor::OneMinusDstColor => vk::BlendFactor::ONE_MINUS_DST_COLOR,
-        BlendFactor::OneMinusSrc1Alpha => vk::BlendFactor::ONE_MINUS_SRC1_ALPHA,
-        BlendFactor::OneMinusSrc1Color => vk::BlendFactor::ONE_MINUS_SRC1_COLOR,
-        BlendFactor::OneMinusSrcColor => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
-        BlendFactor::Src1Alpha => vk::BlendFactor::SRC1_ALPHA,
-        BlendFactor::Src1Color => vk::BlendFactor::SRC1_COLOR,
-        BlendFactor::SrcAlphaSaturate => vk::BlendFactor::SRC_ALPHA_SATURATE,
-        BlendFactor::SrcColor => vk::BlendFactor::SRC_COLOR,
-        BlendFactor::Zero => vk::BlendFactor::ZERO,
-        BlendFactor::SrcAlpha => vk::BlendFactor::SRC_ALPHA,
-        BlendFactor::OneMinusSrcAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+        gpu::BlendFactor::ConstantColor => vk::BlendFactor::CONSTANT_COLOR,
+        gpu::BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
+        gpu::BlendFactor::DstColor => vk::BlendFactor::DST_COLOR,
+        gpu::BlendFactor::One => vk::BlendFactor::ONE,
+        gpu::BlendFactor::OneMinusConstantColor => vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR,
+        gpu::BlendFactor::OneMinusDstAlpha => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
+        gpu::BlendFactor::OneMinusDstColor => vk::BlendFactor::ONE_MINUS_DST_COLOR,
+        gpu::BlendFactor::OneMinusSrc1Alpha => vk::BlendFactor::ONE_MINUS_SRC1_ALPHA,
+        gpu::BlendFactor::OneMinusSrc1Color => vk::BlendFactor::ONE_MINUS_SRC1_COLOR,
+        gpu::BlendFactor::OneMinusSrcColor => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
+        gpu::BlendFactor::Src1Alpha => vk::BlendFactor::SRC1_ALPHA,
+        gpu::BlendFactor::Src1Color => vk::BlendFactor::SRC1_COLOR,
+        gpu::BlendFactor::SrcAlphaSaturate => vk::BlendFactor::SRC_ALPHA_SATURATE,
+        gpu::BlendFactor::SrcColor => vk::BlendFactor::SRC_COLOR,
+        gpu::BlendFactor::Zero => vk::BlendFactor::ZERO,
+        gpu::BlendFactor::SrcAlpha => vk::BlendFactor::SRC_ALPHA,
+        gpu::BlendFactor::OneMinusSrcAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
     }
 }
 
-pub(super) fn blend_op_to_vk(blend_op: BlendOp) -> vk::BlendOp {
+pub(super) fn blend_op_to_vk(blend_op: gpu::BlendOp) -> vk::BlendOp {
     match blend_op {
-        BlendOp::Add => vk::BlendOp::ADD,
-        BlendOp::Max => vk::BlendOp::MAX,
-        BlendOp::Min => vk::BlendOp::MIN,
-        BlendOp::ReverseSubtract => vk::BlendOp::REVERSE_SUBTRACT,
-        BlendOp::Subtract => vk::BlendOp::SUBTRACT,
+        gpu::BlendOp::Add => vk::BlendOp::ADD,
+        gpu::BlendOp::Max => vk::BlendOp::MAX,
+        gpu::BlendOp::Min => vk::BlendOp::MIN,
+        gpu::BlendOp::ReverseSubtract => vk::BlendOp::REVERSE_SUBTRACT,
+        gpu::BlendOp::Subtract => vk::BlendOp::SUBTRACT,
     }
 }
 
-pub(super) fn color_components_to_vk(color_components: ColorComponents) -> vk::ColorComponentFlags {
+pub(super) fn color_components_to_vk(color_components: gpu::ColorComponents) -> vk::ColorComponentFlags {
     let components_bits = color_components.bits() as u32;
     let mut colors = 0u32;
     colors |= components_bits.rotate_left(
-        ColorComponents::RED.bits().trailing_zeros()
+        gpu::ColorComponents::RED.bits().trailing_zeros()
             - vk::ColorComponentFlags::R.as_raw().trailing_zeros(),
     ) & vk::ColorComponentFlags::R.as_raw();
     colors |= components_bits.rotate_left(
-        ColorComponents::GREEN.bits().trailing_zeros()
+        gpu::ColorComponents::GREEN.bits().trailing_zeros()
             - vk::ColorComponentFlags::G.as_raw().trailing_zeros(),
     ) & vk::ColorComponentFlags::G.as_raw();
     colors |= components_bits.rotate_left(
-        ColorComponents::BLUE.bits().trailing_zeros()
+        gpu::ColorComponents::BLUE.bits().trailing_zeros()
             - vk::ColorComponentFlags::B.as_raw().trailing_zeros(),
     ) & vk::ColorComponentFlags::B.as_raw();
     colors |= components_bits.rotate_left(
-        ColorComponents::ALPHA.bits().trailing_zeros()
+        gpu::ColorComponents::ALPHA.bits().trailing_zeros()
             - vk::ColorComponentFlags::A.as_raw().trailing_zeros(),
     ) & vk::ColorComponentFlags::A.as_raw();
     vk::ColorComponentFlags::from_raw(colors)
@@ -905,7 +899,7 @@ pub(super) fn color_components_to_vk(color_components: ColorComponents) -> vk::C
 
 #[derive(Hash, Eq, PartialEq)]
 pub struct VkGraphicsPipelineInfo<'a> {
-    pub info: &'a GraphicsPipelineInfo<'a, VkBackend>,
+    pub info: &'a gpu::GraphicsPipelineInfo<'a, VkBackend>,
     pub render_pass: &'a VkRenderPass,
     pub sub_pass: u32,
 }
@@ -1090,32 +1084,32 @@ impl VkPipeline {
 
         let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo {
             topology: match info.info.primitive_type {
-                PrimitiveType::Triangles => vk::PrimitiveTopology::TRIANGLE_LIST,
-                PrimitiveType::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
-                PrimitiveType::Lines => vk::PrimitiveTopology::LINE_LIST,
-                PrimitiveType::LineStrip => vk::PrimitiveTopology::LINE_STRIP,
-                PrimitiveType::Points => vk::PrimitiveTopology::POINT_LIST,
+                gpu::PrimitiveType::Triangles => vk::PrimitiveTopology::TRIANGLE_LIST,
+                gpu::PrimitiveType::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
+                gpu::PrimitiveType::Lines => vk::PrimitiveTopology::LINE_LIST,
+                gpu::PrimitiveType::LineStrip => vk::PrimitiveTopology::LINE_STRIP,
+                gpu::PrimitiveType::Points => vk::PrimitiveTopology::POINT_LIST,
             },
             primitive_restart_enable: false as u32,
             ..Default::default()
         };
 
         let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo {
-            flags: PipelineRasterizationStateCreateFlags::empty(),
+            flags: vk::PipelineRasterizationStateCreateFlags::empty(),
             depth_clamp_enable: vk::FALSE,
             rasterizer_discard_enable: vk::FALSE,
             polygon_mode: match &info.info.rasterizer.fill_mode {
-                FillMode::Fill => vk::PolygonMode::FILL,
-                FillMode::Line => vk::PolygonMode::LINE,
+                gpu::FillMode::Fill => vk::PolygonMode::FILL,
+                gpu::FillMode::Line => vk::PolygonMode::LINE,
             },
             cull_mode: match &info.info.rasterizer.cull_mode {
-                CullMode::Back => vk::CullModeFlags::BACK,
-                CullMode::Front => vk::CullModeFlags::FRONT,
-                CullMode::None => vk::CullModeFlags::NONE,
+                gpu::CullMode::Back => vk::CullModeFlags::BACK,
+                gpu::CullMode::Front => vk::CullModeFlags::FRONT,
+                gpu::CullMode::None => vk::CullModeFlags::NONE,
             },
             front_face: match &info.info.rasterizer.front_face {
-                FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
-                FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
+                gpu::FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
+                gpu::FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
             },
             depth_bias_enable: vk::FALSE,
             depth_bias_constant_factor: 0.0f32,
@@ -1609,7 +1603,7 @@ impl VkPipeline {
 
     pub fn ray_tracing_buffer_size(
         device: &Arc<RawVkDevice>,
-        info: &RayTracingPipelineInfo<VkBackend>,
+        info: &gpu::RayTracingPipelineInfo<VkBackend>,
         _shared: &VkShared
     ) -> u64 {
         let shader_count = 1 + info.closest_hit_shaders.len() + info.miss_shaders.len();
@@ -1625,7 +1619,7 @@ impl VkPipeline {
 
     pub fn new_ray_tracing(
         device: &Arc<RawVkDevice>,
-        info: &RayTracingPipelineInfo<VkBackend>,
+        info: &gpu::RayTracingPipelineInfo<VkBackend>,
         shared: &VkShared,
         buffer: &VkBuffer,
         buffer_offset: u64,
@@ -2121,25 +2115,25 @@ impl Drop for VkPipeline {
     }
 }
 
-impl ComputePipeline for VkPipeline {
-    fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo> {
+impl gpu::ComputePipeline for VkPipeline {
+    fn binding_info(&self, set: gpu::BindingFrequency, slot: u32) -> Option<gpu::BindingInfo> {
         self.layout
             .descriptor_set_layouts
             .get(set as usize)
             .unwrap()
             .as_ref()
             .and_then(|layout| layout.binding(slot))
-            .map(|i| BindingInfo {
+            .map(|i| gpu::BindingInfo {
                 name: i.name.as_str(),
                 binding_type: match i.descriptor_type {
                     vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                    | vk::DescriptorType::STORAGE_BUFFER => BindingType::StorageTexture,
+                    | vk::DescriptorType::STORAGE_BUFFER => gpu::BindingType::StorageTexture,
                     vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                    | vk::DescriptorType::UNIFORM_BUFFER => BindingType::ConstantBuffer,
-                    vk::DescriptorType::STORAGE_IMAGE => BindingType::StorageTexture,
-                    vk::DescriptorType::SAMPLED_IMAGE => BindingType::SampledTexture,
-                    vk::DescriptorType::SAMPLER => BindingType::Sampler,
-                    vk::DescriptorType::COMBINED_IMAGE_SAMPLER => BindingType::TextureAndSampler,
+                    | vk::DescriptorType::UNIFORM_BUFFER => gpu::BindingType::ConstantBuffer,
+                    vk::DescriptorType::STORAGE_IMAGE => gpu::BindingType::StorageTexture,
+                    vk::DescriptorType::SAMPLED_IMAGE => gpu::BindingType::SampledTexture,
+                    vk::DescriptorType::SAMPLER => gpu::BindingType::Sampler,
+                    vk::DescriptorType::COMBINED_IMAGE_SAMPLER => gpu::BindingType::TextureAndSampler,
                     _ => unreachable!(),
                 },
             })
@@ -2211,14 +2205,14 @@ impl VkPipelineLayout {
         self.descriptor_set_layouts[index as usize].as_ref()
     }
 
-    pub(super) fn push_constant_range(&self, shader_type: ShaderType) -> Option<&VkConstantRange> {
+    pub(super) fn push_constant_range(&self, shader_type: gpu::ShaderType) -> Option<&VkConstantRange> {
         match shader_type {
-            ShaderType::VertexShader => self.push_constant_ranges[0].as_ref(),
-            ShaderType::FragmentShader => self.push_constant_ranges[1].as_ref(),
-            ShaderType::ComputeShader => self.push_constant_ranges[0].as_ref(),
-            ShaderType::RayGen => self.push_constant_ranges[0].as_ref(),
-            ShaderType::RayClosestHit => self.push_constant_ranges[1].as_ref(),
-            ShaderType::RayMiss => self.push_constant_ranges[2].as_ref(),
+            gpu::ShaderType::VertexShader => self.push_constant_ranges[0].as_ref(),
+            gpu::ShaderType::FragmentShader => self.push_constant_ranges[1].as_ref(),
+            gpu::ShaderType::ComputeShader => self.push_constant_ranges[0].as_ref(),
+            gpu::ShaderType::RayGen => self.push_constant_ranges[0].as_ref(),
+            gpu::ShaderType::RayClosestHit => self.push_constant_ranges[1].as_ref(),
+            gpu::ShaderType::RayMiss => self.push_constant_ranges[2].as_ref(),
             _ => None,
         }
     }

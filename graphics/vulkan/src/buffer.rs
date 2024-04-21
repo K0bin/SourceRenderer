@@ -9,11 +9,10 @@ use std::{
 
 use ash::vk::{
     self,
-    BufferDeviceAddressInfo,
-    Handle,
+    Handle as _,
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -21,7 +20,7 @@ pub struct VkBuffer {
     buffer: vk::Buffer,
     device: Arc<RawVkDevice>,
     map_ptr: Option<*mut c_void>,
-    info: BufferInfo,
+    info: gpu::BufferInfo,
     va: Option<vk::DeviceSize>,
     memory: vk::DeviceMemory,
     memory_offset: u64,
@@ -36,12 +35,12 @@ impl VkBuffer {
     pub(crate) unsafe fn new(
         device: &Arc<RawVkDevice>,
         memory: ResourceMemory,
-        info: &BufferInfo,
+        info: &gpu::BufferInfo,
         name: Option<&str>,
-    ) -> Result<Self, OutOfMemoryError> {
+    ) -> Result<Self, gpu::OutOfMemoryError> {
         let mut queue_families = SmallVec::<[u32; 3]>::new();
         let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
-        if info.sharing_mode == QueueSharingMode::Concurrent && (device.transfer_queue_info.is_some() || device.compute_queue_info.is_some()) {
+        if info.sharing_mode == gpu::QueueSharingMode::Concurrent && (device.transfer_queue_info.is_some() || device.compute_queue_info.is_some()) {
             sharing_mode = vk::SharingMode::CONCURRENT;
             queue_families.push(device.graphics_queue_info.queue_family_index as u32);
             if let Some(info) = device.transfer_queue_info.as_ref() {
@@ -66,7 +65,7 @@ impl VkBuffer {
         let buffer_res = device.create_buffer(&buffer_info, None);
         if let Err(e) = buffer_res {
             if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                return Err(OutOfMemoryError {});
+                return Err(gpu::OutOfMemoryError {});
             }
         }
         let buffer = buffer_res.unwrap();
@@ -111,7 +110,7 @@ impl VkBuffer {
                 let memory_result: Result<vk::DeviceMemory, vk::Result> = device.allocate_memory(&memory_info, None);
                 if let Err(e) = memory_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                        return Err(OutOfMemoryError {});
+                        return Err(gpu::OutOfMemoryError {});
                     }
                 }
                 vk_memory = memory_result.unwrap();
@@ -126,7 +125,7 @@ impl VkBuffer {
                 ]);
                 if let Err(e) = bind_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                        return Err(OutOfMemoryError {});
+                        return Err(gpu::OutOfMemoryError {});
                     }
                 }
 
@@ -156,7 +155,7 @@ impl VkBuffer {
                 ]);
                 if let Err(e) = bind_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
-                        return Err(OutOfMemoryError {});
+                        return Err(gpu::OutOfMemoryError {});
                     }
                 }
 
@@ -191,7 +190,7 @@ impl VkBuffer {
             .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
         {
             device.rt.as_ref().map(|_rt| unsafe {
-                device.get_buffer_device_address(&BufferDeviceAddressInfo {
+                device.get_buffer_device_address(&vk::BufferDeviceAddressInfo {
                     buffer,
                     ..Default::default()
                 })
@@ -226,7 +225,7 @@ impl VkBuffer {
             .map(|va| va + offset as vk::DeviceSize)
     }
 
-    pub(crate) fn info(&self) -> &BufferInfo {
+    pub(crate) fn info(&self) -> &gpu::BufferInfo {
         &self.info
     }
 }
@@ -260,8 +259,8 @@ impl PartialEq for VkBuffer {
 
 impl Eq for VkBuffer {}
 
-impl Buffer for VkBuffer {
-    fn info(&self) -> &BufferInfo {
+impl gpu::Buffer for VkBuffer {
+    fn info(&self) -> &gpu::BufferInfo {
         &self.info
     }
 
@@ -292,18 +291,18 @@ impl Buffer for VkBuffer {
     }
 }
 
-pub fn buffer_usage_to_vk(usage: BufferUsage, rt_supported: bool) -> vk::BufferUsageFlags {
+pub fn buffer_usage_to_vk(usage: gpu::BufferUsage, rt_supported: bool) -> vk::BufferUsageFlags {
     let mut flags = vk::BufferUsageFlags::empty();
 
-    if usage.contains(BufferUsage::STORAGE) {
+    if usage.contains(gpu::BufferUsage::STORAGE) {
         flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
     }
 
-    if usage.contains(BufferUsage::CONSTANT) {
+    if usage.contains(gpu::BufferUsage::CONSTANT) {
         flags |= vk::BufferUsageFlags::UNIFORM_BUFFER;
     }
 
-    if usage.contains(BufferUsage::VERTEX) {
+    if usage.contains(gpu::BufferUsage::VERTEX) {
         flags |= vk::BufferUsageFlags::VERTEX_BUFFER;
 
         if rt_supported {
@@ -312,7 +311,7 @@ pub fn buffer_usage_to_vk(usage: BufferUsage, rt_supported: bool) -> vk::BufferU
         }
     }
 
-    if usage.contains(BufferUsage::INDEX) {
+    if usage.contains(gpu::BufferUsage::INDEX) {
         flags |= vk::BufferUsageFlags::INDEX_BUFFER;
 
         if rt_supported {
@@ -321,29 +320,29 @@ pub fn buffer_usage_to_vk(usage: BufferUsage, rt_supported: bool) -> vk::BufferU
         }
     }
 
-    if usage.contains(BufferUsage::INDIRECT) {
+    if usage.contains(gpu::BufferUsage::INDIRECT) {
         flags |= vk::BufferUsageFlags::INDIRECT_BUFFER;
     }
 
-    if usage.contains(BufferUsage::COPY_SRC) {
+    if usage.contains(gpu::BufferUsage::COPY_SRC) {
         flags |= vk::BufferUsageFlags::TRANSFER_SRC;
     }
 
-    if usage.contains(BufferUsage::COPY_DST) {
+    if usage.contains(gpu::BufferUsage::COPY_DST) {
         flags |= vk::BufferUsageFlags::TRANSFER_DST;
     }
 
-    if usage.contains(BufferUsage::ACCELERATION_STRUCTURE) {
+    if usage.contains(gpu::BufferUsage::ACCELERATION_STRUCTURE) {
         flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
     }
 
-    if usage.contains(BufferUsage::ACCELERATION_STRUCTURE_BUILD) {
+    if usage.contains(gpu::BufferUsage::ACCELERATION_STRUCTURE_BUILD) {
         flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
     }
 
-    if usage.contains(BufferUsage::SHADER_BINDING_TABLE) {
+    if usage.contains(gpu::BufferUsage::SHADER_BINDING_TABLE) {
         flags |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
     }

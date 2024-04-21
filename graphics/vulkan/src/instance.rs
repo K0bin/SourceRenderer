@@ -11,7 +11,7 @@ use std::{
 };
 
 use ash::vk;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -199,7 +199,7 @@ impl VkInstance {
     }
 }
 
-impl Instance<VkBackend> for VkInstance {
+impl gpu::Instance<VkBackend> for VkInstance {
     fn list_adapters(&self) -> &[VkAdapter] {
         &self.adapters
     }

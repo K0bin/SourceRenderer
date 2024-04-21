@@ -11,25 +11,25 @@ use std::{
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu;
 
 use super::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub(crate) struct VkAttachmentInfo {
-    pub(crate) format: Format,
-    pub(crate) samples: SampleCount,
-    pub(crate) load_op: LoadOp,
-    pub(crate) store_op: StoreOp,
-    pub(crate) stencil_load_op: LoadOp,
-    pub(crate) stencil_store_op: StoreOp,
+    pub(crate) format: gpu::Format,
+    pub(crate) samples: gpu::SampleCount,
+    pub(crate) load_op: gpu::LoadOp,
+    pub(crate) store_op: gpu::StoreOp,
+    pub(crate) stencil_load_op: gpu::LoadOp,
+    pub(crate) stencil_store_op: gpu::StoreOp,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub(crate) struct VkSubpassInfo {
-    pub(crate) input_attachments: SmallVec<[AttachmentRef; 16]>,
-    pub(crate) output_color_attachments: SmallVec<[OutputAttachmentRef; 16]>,
-    pub(crate) depth_stencil_attachment: Option<DepthStencilAttachmentRef>,
+    pub(crate) input_attachments: SmallVec<[gpu::AttachmentRef; 16]>,
+    pub(crate) output_color_attachments: SmallVec<[gpu::OutputAttachmentRef; 16]>,
+    pub(crate) depth_stencil_attachment: Option<gpu::DepthStencilAttachmentRef>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -180,8 +180,8 @@ impl VkRenderPass {
             }
         }
         for (index, attachment) in info.attachments.iter().enumerate() {
-            if attachment.store_op == StoreOp::DontCare
-                || attachment.stencil_store_op == StoreOp::DontCare
+            if attachment.store_op == gpu::StoreOp::DontCare
+                || attachment.stencil_store_op == gpu::StoreOp::DontCare
             {
                 let metadata = attachment_metadata.entry(index as u32).or_default();
                 metadata.last_used_in_subpass = vk::SUBPASS_EXTERNAL;
@@ -424,32 +424,32 @@ impl Drop for VkFrameBuffer {
     }
 }
 
-fn load_op_to_vk(load_op: LoadOp) -> vk::AttachmentLoadOp {
+fn load_op_to_vk(load_op: gpu::LoadOp) -> vk::AttachmentLoadOp {
     match load_op {
-        LoadOp::Load => vk::AttachmentLoadOp::LOAD,
-        LoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
-        LoadOp::DontCare => vk::AttachmentLoadOp::DONT_CARE,
+        gpu::LoadOp::Load => vk::AttachmentLoadOp::LOAD,
+        gpu::LoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
+        gpu::LoadOp::DontCare => vk::AttachmentLoadOp::DONT_CARE,
     }
 }
 
-fn store_op_to_vk(store_op: StoreOp) -> vk::AttachmentStoreOp {
+fn store_op_to_vk(store_op: gpu::StoreOp) -> vk::AttachmentStoreOp {
     match store_op {
-        StoreOp::DontCare => vk::AttachmentStoreOp::DONT_CARE,
-        StoreOp::Store => vk::AttachmentStoreOp::STORE,
+        gpu::StoreOp::DontCare => vk::AttachmentStoreOp::DONT_CARE,
+        gpu::StoreOp::Store => vk::AttachmentStoreOp::STORE,
     }
 }
 
 fn build_dependency(
     subpass_index: u32,
     src_subpass: u32,
-    format: Format,
-    stage: RenderPassPipelineStage,
+    format: gpu::Format,
+    stage: gpu::RenderPassPipelineStage,
 ) -> vk::SubpassDependency {
     let mut vk_pipeline_stages = vk::PipelineStageFlags::empty();
-    if stage.contains(RenderPassPipelineStage::FRAGMENT) {
+    if stage.contains(gpu::RenderPassPipelineStage::FRAGMENT) {
         vk_pipeline_stages |= vk::PipelineStageFlags::FRAGMENT_SHADER;
     }
-    if stage.contains(RenderPassPipelineStage::VERTEX) {
+    if stage.contains(gpu::RenderPassPipelineStage::VERTEX) {
         vk_pipeline_stages |= vk::PipelineStageFlags::VERTEX_SHADER;
     }
 
