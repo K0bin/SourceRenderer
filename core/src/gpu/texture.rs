@@ -55,6 +55,22 @@ pub enum TextureDimension {
   Dim2DArray,
 }
 
+impl TextureDimension {
+  pub fn has_y_dimension(&self) -> bool {
+    match self {
+      Self::Dim1D | Self::Dim1DArray => false,
+      _ => true
+    }
+  }
+
+  pub fn has_z_dimension(&self) -> bool {
+    match self {
+      Self::Dim3D => true,
+      _ => false
+    }
+  }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
   pub dimension: TextureDimension,
