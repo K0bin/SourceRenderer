@@ -25,6 +25,9 @@ fn main() {
         output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
     }
 
+    // Unimplemented and the warning is annoying.
+    output_shading_languages &= !ShadingLanguage::Dxil;
+
     let mut shader_dir = manifest_dir.clone();
     shader_dir.pop();
     shader_dir.pop();

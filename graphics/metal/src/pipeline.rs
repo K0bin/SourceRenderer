@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
 
 use metal;
 use metal::foreign_types::ForeignType;
@@ -7,17 +9,100 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
+#[derive(Clone, Default)]
+pub(crate) struct MSLBinding {
+    pub(crate) buffer_binding: Option<u32>,
+    pub(crate) texture_binding: Option<u32>,
+    pub(crate) sampler_binding: Option<u32>,
+    pub(crate) array_count: u32,
+}
+
+#[derive(Clone)]
+pub(crate) struct ShaderPushConstantInfo {
+    pub(crate) binding: u32,
+    pub(crate) size: u32,
+}
+pub(crate) struct ShaderResourceMap {
+    pub(crate) resources: HashMap<(u32, u32), MSLBinding>,
+    pub(crate) push_constants: Option<ShaderPushConstantInfo>,
+    pub(crate) bindless_argument_buffer_binding: Option<u32>
+}
+
+pub(crate) struct PipelineResourceMap {
+    pub(crate) resources: HashMap<(gpu::ShaderType, u32, u32), MSLBinding>,
+    pub(crate) push_constants: HashMap<gpu::ShaderType, ShaderPushConstantInfo>,
+    pub(crate) bindless_argument_buffer_binding: HashMap<gpu::ShaderType, u32>
+}
+
 pub struct MTLShader {
     shader_type: gpu::ShaderType,
-    library: metal::Library
+    library: metal::Library,
+    resource_map: ShaderResourceMap,
+    name: Option<String>
 }
 
 impl MTLShader {
     pub(crate) fn new(device: &metal::DeviceRef, shader: gpu::PackedShader, name: Option<&str>) -> Self {
+        println!("New shader {:?}", name);
         let library = device.new_library_with_data(&shader.shader_air).unwrap();
+        if let Some(name) = name {
+            library.set_label(name);
+        }
+
+        let mut resource_map = ShaderResourceMap {
+            resources: HashMap::new(),
+            push_constants: None,
+            bindless_argument_buffer_binding: None
+        };
+        let mut buffer_count: u32 = 0;
+        let mut texture_count: u32 = 0;
+        let mut sampler_count: u32 = 0;
+        for set in shader.resources.iter() {
+            for resource in set.iter() {
+                let mut binding = MSLBinding::default();
+                binding.array_count = resource.array_size;
+                match resource.resource_type {
+                    gpu::ResourceType::UniformBuffer | gpu::ResourceType::StorageBuffer
+                        | gpu::ResourceType::AccelerationStructure => {
+                        binding.buffer_binding = Some(buffer_count);
+                        buffer_count += resource.array_size;
+                    },
+                    gpu::ResourceType::SubpassInput | gpu::ResourceType::SampledTexture
+                        | gpu::ResourceType::StorageTexture => {
+                        binding.texture_binding = Some(texture_count);
+                        texture_count += resource.array_size;
+                    },
+                    gpu::ResourceType::Sampler => {
+                        binding.sampler_binding = Some(sampler_count);
+                        sampler_count += resource.array_size;
+                    },
+                    gpu::ResourceType::CombinedTextureSampler => {
+                        binding.texture_binding = Some(texture_count);
+                        binding.sampler_binding = Some(sampler_count);
+                        sampler_count += resource.array_size;
+                        texture_count += resource.array_size;
+                    },
+                }
+                resource_map.resources.insert((resource.set, resource.binding), binding);
+            }
+        }
+        if shader.push_constant_size != 0 {
+            resource_map.push_constants = Some(ShaderPushConstantInfo {
+                binding: buffer_count,
+                size: shader.push_constant_size
+            });
+            buffer_count += 1;
+        }
+        if shader.uses_bindless_texture_set {
+            resource_map.bindless_argument_buffer_binding = Some(buffer_count);
+            buffer_count += 1;
+        }
+
         Self {
             shader_type: shader.shader_type,
-            library
+            library,
+            resource_map,
+            name: name.map(|name| name.to_string())
         }
     }
 
@@ -46,7 +131,7 @@ impl Hash for MTLShader {
     }
 }
 
-const SHADER_ENTRY_POINT_NAME: &str = "main";
+const SHADER_ENTRY_POINT_NAME: &str = "main0";
 
 pub(crate) fn samples_to_mtl(samples: gpu::SampleCount) -> u64 {
     match samples {
@@ -117,29 +202,26 @@ pub(crate) fn blend_op_to_mtl(blend_op: gpu::BlendOp) -> metal::MTLBlendOperatio
 
 pub(super) fn color_components_to_mtl(color_components: gpu::ColorComponents) -> metal::MTLColorWriteMask {
     let components_bits = color_components.bits() as u64;
-    let mut colors = 0u64;
-    colors |= components_bits.rotate_left(
-        (gpu::ColorComponents::RED.bits() as u64).trailing_zeros()
-            - metal::MTLColorWriteMask::Red.bits().trailing_zeros()
-    ) & metal::MTLColorWriteMask::Red.bits();
-    colors |= components_bits.rotate_left(
-        (gpu::ColorComponents::GREEN.bits() as u64).trailing_zeros()
-            - metal::MTLColorWriteMask::Green.bits().trailing_zeros()
-    ) & metal::MTLColorWriteMask::Green.bits();
-    colors |= components_bits.rotate_left(
-        (gpu::ColorComponents::BLUE.bits() as u64).trailing_zeros()
-            - metal::MTLColorWriteMask::Blue.bits().trailing_zeros()
-    ) & metal::MTLColorWriteMask::Blue.bits();
-    colors |= components_bits.rotate_left(
-        (gpu::ColorComponents::ALPHA.bits() as u64).trailing_zeros()
-            - metal::MTLColorWriteMask::Alpha.bits().trailing_zeros()
-    ) & metal::MTLColorWriteMask::Alpha.bits();
-    metal::MTLColorWriteMask::from_bits(colors).unwrap()
+    let mut colors = metal::MTLColorWriteMask::empty();
+    if color_components.contains(gpu::ColorComponents::RED) {
+        colors |= metal::MTLColorWriteMask::Red;
+    }
+    if color_components.contains(gpu::ColorComponents::GREEN) {
+        colors |= metal::MTLColorWriteMask::Green;
+    }
+    if color_components.contains(gpu::ColorComponents::BLUE) {
+        colors |= metal::MTLColorWriteMask::Blue;
+    }
+    if color_components.contains(gpu::ColorComponents::ALPHA) {
+        colors |= metal::MTLColorWriteMask::Alpha;
+    }
+    colors
 }
 
 pub struct MTLGraphicsPipeline {
     pipeline: metal::RenderPipelineState,
-    primitive_type: metal::MTLPrimitiveType
+    primitive_type: metal::MTLPrimitiveType,
+    resource_map: Arc<PipelineResourceMap>,
 }
 
 impl MTLGraphicsPipeline {
@@ -147,11 +229,20 @@ impl MTLGraphicsPipeline {
         let subpass = &renderpass_info.subpasses[subpass as usize];
 
         let descriptor = metal::RenderPipelineDescriptor::new();
-        let function_descriptor = metal::FunctionDescriptor::new();
-        function_descriptor.set_name(SHADER_ENTRY_POINT_NAME);
-        let vertex_function = info.vs.handle().new_function_with_descriptor(&function_descriptor).unwrap();
+        println!("VS name: {:?}", info.vs.name);
+        for name in info.vs.handle().function_names() {
+            println!("function: {:?}", name);
+        }
+        let vertex_function = info.vs.handle().get_function(SHADER_ENTRY_POINT_NAME, None);
+        if vertex_function.is_err() {
+            for name in info.vs.handle().function_names() {
+                println!("function: {:?}", name);
+            }
+            panic!("ERROR {:?} shader: {:?}", vertex_function.err().unwrap(), info.vs.name.as_ref());
+        }
+        let vertex_function = vertex_function.unwrap();
         descriptor.set_vertex_function(Some(&vertex_function));
-        let fragment_function = info.fs.map(|fs| fs.handle().new_function_with_descriptor(&function_descriptor).unwrap());
+        let fragment_function = info.fs.map(|fs| fs.handle().get_function(SHADER_ENTRY_POINT_NAME, None).unwrap());
         descriptor.set_fragment_function(fragment_function.as_ref().map(|fs| &fs as &metal::FunctionRef));
 
         let vertex_descriptor = metal::VertexDescriptor::new().to_owned();
@@ -227,10 +318,41 @@ impl MTLGraphicsPipeline {
             gpu::PrimitiveType::Points => metal::MTLPrimitiveType::Point,
         };
 
+        if let Some(name) = name {
+            descriptor.set_label(name);
+        }
         let pipeline = device.new_render_pipeline_state(&descriptor).unwrap();
+
+        let mut resource_map = PipelineResourceMap {
+            resources: HashMap::new(),
+            push_constants: HashMap::new(),
+            bindless_argument_buffer_binding: HashMap::new()
+        };
+        for ((set, binding), msl_binding) in &info.vs.resource_map.resources {
+            resource_map.resources.insert((gpu::ShaderType::VertexShader, *set, *binding), msl_binding.clone());
+        }
+        if let Some(push_constants) = info.vs.resource_map.push_constants.as_ref() {
+            resource_map.push_constants.insert(gpu::ShaderType::VertexShader, push_constants.clone());
+        }
+        if let Some(bindless_binding) = info.vs.resource_map.bindless_argument_buffer_binding {
+            resource_map.bindless_argument_buffer_binding.insert(gpu::ShaderType::VertexShader, bindless_binding);
+        }
+        if let Some(fs) = info.fs.as_ref() {
+            for ((set, binding), msl_binding) in &fs.resource_map.resources {
+                resource_map.resources.insert((gpu::ShaderType::FragmentShader, *set, *binding), msl_binding.clone());
+            }
+            if let Some(push_constants) = fs.resource_map.push_constants.as_ref() {
+                resource_map.push_constants.insert(gpu::ShaderType::FragmentShader, push_constants.clone());
+            }
+            if let Some(bindless_binding) = fs.resource_map.bindless_argument_buffer_binding {
+                resource_map.bindless_argument_buffer_binding.insert(gpu::ShaderType::FragmentShader, bindless_binding);
+            }
+        }
+
         Self {
             pipeline,
-            primitive_type
+            primitive_type,
+            resource_map: Arc::new(resource_map)
         }
     }
 
@@ -241,23 +363,48 @@ impl MTLGraphicsPipeline {
     pub(crate) fn primitive_type(&self) -> metal::MTLPrimitiveType {
         self.primitive_type
     }
+
+    pub(crate) fn resource_map(&self) -> &Arc<PipelineResourceMap> {
+        &self.resource_map
+    }
 }
 
 pub struct MTLComputePipeline {
-    pipeline: metal::ComputePipelineState
+    pipeline: metal::ComputePipelineState,
+    resource_map: Arc<PipelineResourceMap>
 }
 
 impl MTLComputePipeline {
     pub(crate) fn new(device: &metal::DeviceRef, shader: &MTLShader, name: Option<&str>) -> Self {
-        let function = shader.handle().get_function("main", None).unwrap();
+        println!("shader name: {:?}", shader.name.as_ref());
+        let function = shader.handle().get_function(SHADER_ENTRY_POINT_NAME, None).unwrap();
         let pipeline = device.new_compute_pipeline_state_with_function(&function).unwrap();
+        let mut resource_map = PipelineResourceMap {
+            resources: HashMap::new(),
+            push_constants: HashMap::new(),
+            bindless_argument_buffer_binding: HashMap::new()
+        };
+        for ((set, binding), msl_binding) in &shader.resource_map.resources {
+            resource_map.resources.insert((gpu::ShaderType::ComputeShader, *set, *binding), msl_binding.clone());
+        }
+        if let Some(push_constants) = shader.resource_map.push_constants.as_ref() {
+            resource_map.push_constants.insert(gpu::ShaderType::ComputeShader, push_constants.clone());
+        }
+        if let Some(bindless_binding) = shader.resource_map.bindless_argument_buffer_binding {
+            resource_map.bindless_argument_buffer_binding.insert(gpu::ShaderType::ComputeShader, bindless_binding);
+        }
         Self {
-            pipeline
+            pipeline,
+            resource_map: Arc::new(resource_map)
         }
     }
 
     pub(crate) fn handle(&self) -> &metal::ComputePipelineStateRef {
         &self.pipeline
+    }
+
+    pub(crate) fn resource_map(&self) -> &Arc<PipelineResourceMap> {
+        &self.resource_map
     }
 }
 

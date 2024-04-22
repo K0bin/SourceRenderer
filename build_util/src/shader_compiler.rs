@@ -19,15 +19,6 @@ fn make_spirv_cross_msl_version(major: u32, minor: u32, patch: u32) -> u32 {
     major * 10000 + minor * 100 + patch
 }
 
-fn msl_remap_binding(set: u32, binding: u32, shader_stage: gpu::ShaderType) -> u32 {
-    match shader_stage {
-        gpu::ShaderType::VertexShader | gpu::ShaderType::ComputeShader => set * 16 + binding,
-        gpu::ShaderType::FragmentShader => set * 16 + binding,
-        gpu::ShaderType::RayClosestHit | gpu::ShaderType::RayGen | gpu::ShaderType::RayMiss => 0, // TODO
-        _ => panic!("Unsupported shader stage")
-    }
-}
-
 pub fn compile_shaders<F>(
     source_dir: &Path,
     out_dir: &Path,
@@ -69,7 +60,7 @@ pub fn compile_shaders<F>(
                     arguments,
                 );
             }
-            if shading_languages.intersects(ShadingLanguage::Msl | ShadingLanguage::Hlsl) && false {
+            if shading_languages.intersects(ShadingLanguage::Msl | ShadingLanguage::Hlsl) {
                 compile_shader(
                     &file_path,
                     out_dir,
@@ -453,6 +444,10 @@ fn read_metadata(
         spirv_cross_sys::spvc_context_destroy(context);
     }
 
+    resources
+        .iter_mut()
+        .for_each(|set| set.sort_by_key(|r| r.binding));
+
     gpu::PackedShader {
         push_constant_size,
         resources: resources.map(|r| r.into_boxed_slice()),
@@ -477,7 +472,10 @@ fn compile_shader_spirv_cross(
     let mut context: spirv_cross_sys::spvc_context = std::ptr::null_mut();
     let mut ir: spirv_cross_sys::spvc_parsed_ir = std::ptr::null_mut();
     let mut compiler: spirv_cross_sys::spvc_compiler = std::ptr::null_mut();
-    let mut spv_resources: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
+
+    let mut buffer_count: u32 = 0;
+    let mut texture_count: u32 = 0;
+    let mut sampler_count: u32 = 0;
 
     unsafe {
         assert_eq!(
@@ -577,19 +575,78 @@ fn compile_shader_spirv_cross(
                         msl_texture: u32::MAX,
                         msl_sampler: u32::MAX,
                     };
-                    let binding = msl_remap_binding(resource.set, resource.binding, shader_type);
+                    assert_ne!(resource.array_size, 0);
+                    assert!(resource.binding < 32);
+                    assert!(resource.set < 4);
                     match resource.resource_type {
-                        gpu::ResourceType::UniformBuffer => { msl_binding.msl_buffer = binding; }
-                        gpu::ResourceType::StorageBuffer => { msl_binding.msl_buffer = binding; }
-                        gpu::ResourceType::SubpassInput => { msl_binding.msl_texture = binding; }
-                        gpu::ResourceType::SampledTexture => { msl_binding.msl_texture = binding; }
-                        gpu::ResourceType::StorageTexture => { msl_binding.msl_texture = binding; }
-                        gpu::ResourceType::Sampler =>  { msl_binding.msl_sampler = binding; }
-                        gpu::ResourceType::CombinedTextureSampler =>  { msl_binding.msl_sampler = binding; msl_binding.msl_texture = binding; },
-                        gpu::ResourceType::AccelerationStructure => { msl_binding.msl_buffer = binding; }
+                        gpu::ResourceType::UniformBuffer | gpu::ResourceType::StorageBuffer 
+                            | gpu::ResourceType::AccelerationStructure => {
+                            msl_binding.msl_buffer = buffer_count;
+                            buffer_count += resource.array_size;
+                        }
+                        gpu::ResourceType::SubpassInput | gpu::ResourceType::SampledTexture | gpu::ResourceType::StorageTexture => {
+                            msl_binding.msl_texture = texture_count;
+                            texture_count += resource.array_size;
+                        }
+                        gpu::ResourceType::Sampler =>  {
+                            msl_binding.msl_sampler = sampler_count;
+                            sampler_count += resource.array_size;
+                        }
+                        gpu::ResourceType::CombinedTextureSampler => {
+                            msl_binding.msl_sampler = sampler_count;
+                            msl_binding.msl_texture = texture_count;
+                            sampler_count += resource.array_size;
+                            texture_count += resource.array_size;
+                        },
                     }
                     spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
                 }
+            }
+
+            if metadata.push_constant_size != 0 {
+                let msl_binding = spirv_cross_sys::spvc_msl_resource_binding {
+                    stage: match shader_type {
+                        gpu::ShaderType::VertexShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex,
+                        gpu::ShaderType::FragmentShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment,
+                        gpu::ShaderType::GeometryShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry,
+                        gpu::ShaderType::TessellationControlShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl,
+                        gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
+                        gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
+                        gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
+                        gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
+                        gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
+                    },
+                    desc_set: spirv_cross_sys::SPVC_MSL_PUSH_CONSTANT_DESC_SET as u32,
+                    binding: spirv_cross_sys::SPVC_MSL_PUSH_CONSTANT_BINDING,
+                    msl_buffer: buffer_count,
+                    msl_texture: u32::MAX,
+                    msl_sampler: u32::MAX,
+                };
+                buffer_count += 1;
+                spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
+            }
+
+            if metadata.uses_bindless_texture_set {
+                let msl_binding = spirv_cross_sys::spvc_msl_resource_binding {
+                    stage: match shader_type {
+                        gpu::ShaderType::VertexShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex,
+                        gpu::ShaderType::FragmentShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment,
+                        gpu::ShaderType::GeometryShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry,
+                        gpu::ShaderType::TessellationControlShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl,
+                        gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
+                        gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
+                        gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
+                        gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
+                        gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
+                    },
+                    desc_set: BINDLESS_TEXTURE_SET_INDEX,
+                    binding: 0,
+                    msl_buffer: u32::MAX,
+                    msl_texture: buffer_count, // SPIRV-Cross decides which binding to use based on the SPIR-V type but uses the buffer annotation regardless
+                    msl_sampler: u32::MAX,
+                };
+                buffer_count += 1;
+                spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
             }
         }
 

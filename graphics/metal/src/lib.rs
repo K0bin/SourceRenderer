@@ -11,7 +11,8 @@ pub use self::{
     command::*,
     sync::*,
     pipeline::*,
-    rt::*
+    rt::*,
+    binding::*
 };
 
 mod backend;
@@ -27,3 +28,4 @@ mod command;
 mod sync;
 mod pipeline;
 mod rt;
+mod binding;

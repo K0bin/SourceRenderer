@@ -309,7 +309,7 @@ impl Default for AttachmentBlendInfo {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Hash)]
 pub enum ShaderType {
   VertexShader = 0,
   FragmentShader,

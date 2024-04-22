@@ -1,5 +1,9 @@
+use std::{ffi::c_void, sync::Arc};
+
 use metal;
 
+use objc::Encode;
+use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Texture as _};
 
 use super::*;
@@ -50,7 +54,9 @@ pub struct MTLCommandBuffer {
     pre_event: metal::Event,
     post_event: metal::Event,
     index_buffer: Option<IndexBufferBinding>,
-    primitive_type: metal::MTLPrimitiveType
+    primitive_type: metal::MTLPrimitiveType,
+    resource_map: Option<Arc<PipelineResourceMap>>,
+    binding: MTLBindingManager
 }
 
 impl MTLCommandBuffer {
@@ -64,7 +70,9 @@ impl MTLCommandBuffer {
             pre_event: queue.device().new_event(),
             post_event: queue.device().new_event(),
             index_buffer: None,
-            primitive_type: metal::MTLPrimitiveType::Triangle
+            primitive_type: metal::MTLPrimitiveType::Triangle,
+            resource_map: None,
+            binding: MTLBindingManager::new()
         }
     }
 
@@ -81,6 +89,7 @@ impl MTLCommandBuffer {
     }
 
     fn get_blit_encoder(&mut self) -> &metal::BlitCommandEncoder {
+        assert!(self.render_encoder.is_none());
         if self.blit_encoder.is_none() {
             if let Some(encoder) = &self.compute_encoder {
                 encoder.end_encoding();
@@ -92,6 +101,7 @@ impl MTLCommandBuffer {
     }
 
     fn get_compute_encoder(&mut self) -> &metal::ComputeCommandEncoder {
+        assert!(self.render_encoder.is_none());
         if self.compute_encoder.is_none() {
             if let Some(encoder) = &self.blit_encoder {
                 encoder.end_encoding();
@@ -121,8 +131,14 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 self.primitive_type = pipeline.primitive_type();
                 let encoder = self.render_encoder.as_ref().expect("Need to start render pass before setting a graphics pipeline.");
                 encoder.set_render_pipeline_state(pipeline.handle());
+                self.resource_map = Some(pipeline.resource_map().clone());
             },
-            _ => todo!()
+            gpu::PipelineBinding::Compute(pipeline) => {
+                let encoder = self.get_compute_encoder();
+                encoder.set_compute_pipeline_state(pipeline.handle());
+                self.resource_map = Some(pipeline.resource_map().clone());
+            },
+            _ => unimplemented!()
         }
     }
 
@@ -169,7 +185,28 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: gpu::ShaderType)
         where T: 'static + Send + Sync + Sized + Clone {
-        todo!()
+        if let Some(encoder) = self.render_encoder.as_ref() {
+            let resource_map = self.resource_map.as_ref().expect("Cannot set push constant data before binding a shader");
+            let push_constant_info = resource_map.push_constants.get(&visible_for_shader_stage).expect("Shader does not have push constants");
+            let data_size = std::mem::size_of_val(data);
+            assert!(data_size <= push_constant_info.size as usize);
+            if visible_for_shader_stage == gpu::ShaderType::VertexShader {
+                encoder.set_vertex_bytes(push_constant_info.binding as u64, data_size as u64, data.as_ptr() as *const c_void);
+            } else if visible_for_shader_stage == gpu::ShaderType::FragmentShader {
+                encoder.set_fragment_bytes(push_constant_info.binding as u64, data_size as u64, data.as_ptr() as *const c_void);
+            } else {
+                panic!("Can only set vertex or fragment push constant data while in a render pass");
+            }
+        } else if visible_for_shader_stage == gpu::ShaderType::ComputeShader {
+            let resource_map = self.resource_map.as_ref().expect("Cannot set push constant data before binding a shader");
+            let push_constant_info = resource_map.push_constants.get(&visible_for_shader_stage).expect("Shader does not have push constants").clone();
+            let encoder = self.get_compute_encoder();
+            let data_size = std::mem::size_of_val(data);
+            assert!(data_size <= push_constant_info.size as usize);
+            encoder.set_bytes(push_constant_info.binding as u64, data_size as u64, data.as_ptr() as *const c_void);
+        } else {
+            unimplemented!()
+        }
     }
 
     unsafe fn draw(&mut self, vertices: u32, offset: u32) {
@@ -196,43 +233,61 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn bind_sampling_view(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &MTLTextureView) {
-        todo!()
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::SampledTexture(texture.handle()));
     }
 
     unsafe fn bind_sampling_view_and_sampler(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &MTLTextureView, sampler: &MTLSampler) {
-        todo!()
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::SampledTextureAndSampler(texture.handle(), sampler.handle()));
     }
 
     unsafe fn bind_sampling_view_and_sampler_array(&mut self, frequency: gpu::BindingFrequency, binding: u32, textures_and_samplers: &[(&MTLTextureView, &MTLSampler)]) {
-        todo!()
+        let handles: SmallVec<[(&metal::TextureRef, &metal::SamplerStateRef); 8]> = textures_and_samplers
+            .iter()
+            .map(|(tv, s)| (tv.handle(), s.handle()))
+            .collect();
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::SampledTextureAndSamplerArray(&handles));
     }
 
     unsafe fn bind_storage_view_array(&mut self, frequency: gpu::BindingFrequency, binding: u32, textures: &[&MTLTextureView]) {
-        todo!()
+        let handles: SmallVec<[(&metal::TextureRef); 8]> = textures
+            .iter()
+            .map(|tv| tv.handle())
+            .collect();
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::StorageTextureArray(&handles));
     }
 
     unsafe fn bind_uniform_buffer(&mut self, frequency: gpu::BindingFrequency, binding: u32, buffer: &MTLBuffer, offset: u64, length: u64) {
-        todo!()
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::UniformBuffer(MTLBufferBindingInfoRef {
+            buffer: buffer.handle(), offset: offset, length: length
+        }));
     }
 
     unsafe fn bind_storage_buffer(&mut self, frequency: gpu::BindingFrequency, binding: u32, buffer: &MTLBuffer, offset: u64, length: u64) {
-        todo!()
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::UniformBuffer(MTLBufferBindingInfoRef {
+            buffer: buffer.handle(), offset: offset, length: length
+        }));
     }
 
     unsafe fn bind_storage_texture(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &MTLTextureView) {
-        todo!()
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::SampledTexture(texture.handle()));
     }
 
     unsafe fn bind_sampler(&mut self, frequency: gpu::BindingFrequency, binding: u32, sampler: &MTLSampler) {
-        todo!()
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::Sampler(sampler.handle()));
     }
 
     unsafe fn bind_acceleration_structure(&mut self, frequency: gpu::BindingFrequency, binding: u32, acceleration_structure: &MTLAccelerationStructure) {
-        todo!()
+        unimplemented!()
     }
 
     unsafe fn finish_binding(&mut self) {
-        todo!()
+        if let Some(encoder) = self.compute_encoder.as_ref() {
+            self.binding.finish(MTLEncoderRef::Compute(encoder), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
+        }
+
+        if let Some(encoder) = self.render_encoder.as_ref() {
+            self.binding.finish(MTLEncoderRef::Graphics(encoder), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
+        }
     }
 
     unsafe fn begin_label(&mut self, label: &str) {

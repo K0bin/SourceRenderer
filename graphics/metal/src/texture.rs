@@ -289,6 +289,10 @@ impl MTLTextureView {
             texture_info: texture.info.clone()
         }
     }
+
+    pub(crate) fn handle(&self) -> &metal::TextureRef {
+        &self.view
+    }
 }
 
 impl gpu::TextureView for MTLTextureView {
@@ -337,6 +341,10 @@ impl MTLSampler {
             sampler,
             info: info.clone()
         }
+    }
+
+    pub(crate) fn handle(&self) -> &metal::SamplerStateRef {
+        &self.sampler
     }
 }
 

@@ -20,6 +20,6 @@ pub fn init() {
     unsafe {
         let ptr = Box::into_raw(boxed);
         log::set_logger(&*ptr).unwrap();
-        log::set_max_level(log::LevelFilter::Info);
+        log::set_max_level(log::LevelFilter::Warn);
     }
 }
