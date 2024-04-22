@@ -93,6 +93,12 @@ impl<P: Platform> GameInternal<P> {
                 .unwrap(),
         ));
 
+        #[cfg(target_os = "macos")]
+        asset_manager.add_container(Box::new(
+            GltfContainer::<P>::load("bistro_sun.glb", true)
+                .unwrap(),
+        ));
+
         //asset_manager.add_container(Box::new(GltfContainer::<P>::load("/home/robin/Projekte/SourceRenderer/assets/Sponza2/Sponza.glb", true).unwrap()));
         asset_manager.add_loader(Box::new(GltfLoader::new()));
         asset_manager.add_loader(Box::new(ImageLoader::new()));

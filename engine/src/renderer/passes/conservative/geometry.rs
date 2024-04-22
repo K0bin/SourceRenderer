@@ -92,7 +92,7 @@ impl<P: Platform> GeometryPass<P> {
             address_mode_v: AddressMode::Repeat,
             address_mode_w: AddressMode::Repeat,
             mip_bias: 0.0,
-            max_anisotropy: 0.0,
+            max_anisotropy: 1f32,
             compare_op: None,
             min_lod: 0.0,
             max_lod: None,

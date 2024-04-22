@@ -44,6 +44,7 @@ pub enum CommandPoolType {
   InnerCommandBuffers
 }
 
+#[derive(Debug)]
 pub struct BufferTextureCopyRegion {
   pub buffer_offset: u64,
   pub buffer_row_pitch: u64,
