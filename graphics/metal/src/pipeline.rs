@@ -3,7 +3,6 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use metal;
-use metal::foreign_types::ForeignType;
 
 use sourcerenderer_core::gpu;
 
@@ -37,17 +36,16 @@ pub(crate) struct PipelineResourceMap {
 pub struct MTLShader {
     shader_type: gpu::ShaderType,
     library: metal::Library,
+    function: metal::Function,
+    data: Box<[u8]>,
     resource_map: ShaderResourceMap,
     name: Option<String>
 }
 
 impl MTLShader {
     pub(crate) fn new(device: &metal::DeviceRef, shader: gpu::PackedShader, name: Option<&str>) -> Self {
-        println!("New shader {:?}", name);
-        let library = device.new_library_with_data(&shader.shader_air).unwrap();
-        if let Some(name) = name {
-            library.set_label(name);
-        }
+        let data = shader.shader_air.clone(); // Need to keep this alive because of a bug in metal-rs
+        let library = device.new_library_with_data(&data).unwrap();
 
         let mut resource_map = ShaderResourceMap {
             resources: HashMap::new(),
@@ -98,16 +96,24 @@ impl MTLShader {
             buffer_count += 1;
         }
 
+        let function = library.get_function(SHADER_ENTRY_POINT_NAME, None).unwrap();
+
         Self {
             shader_type: shader.shader_type,
             library,
             resource_map,
-            name: name.map(|name| name.to_string())
+            data,
+            name: name.map(|name| name.to_string()),
+            function
         }
     }
 
     pub(crate) fn handle(&self) -> &metal::LibraryRef {
         &self.library
+    }
+
+    pub(crate) fn function_handle(&self) -> &metal::FunctionRef {
+        &self.function
     }
 }
 
@@ -227,23 +233,14 @@ pub struct MTLGraphicsPipeline {
 impl MTLGraphicsPipeline {
     pub(crate) fn new(device: &metal::DeviceRef, info: &gpu::GraphicsPipelineInfo<MTLBackend>, renderpass_info: &gpu::RenderPassInfo, subpass: u32, name: Option<&str>) -> Self {
         let subpass = &renderpass_info.subpasses[subpass as usize];
-
         let descriptor = metal::RenderPipelineDescriptor::new();
-        println!("VS name: {:?}", info.vs.name);
-        for name in info.vs.handle().function_names() {
-            println!("function: {:?}", name);
+
+        if let Some(name) = name {
+            descriptor.set_label(name);
         }
-        let vertex_function = info.vs.handle().get_function(SHADER_ENTRY_POINT_NAME, None);
-        if vertex_function.is_err() {
-            for name in info.vs.handle().function_names() {
-                println!("function: {:?}", name);
-            }
-            panic!("ERROR {:?} shader: {:?}", vertex_function.err().unwrap(), info.vs.name.as_ref());
-        }
-        let vertex_function = vertex_function.unwrap();
-        descriptor.set_vertex_function(Some(&vertex_function));
-        let fragment_function = info.fs.map(|fs| fs.handle().get_function(SHADER_ENTRY_POINT_NAME, None).unwrap());
-        descriptor.set_fragment_function(fragment_function.as_ref().map(|fs| &fs as &metal::FunctionRef));
+
+        descriptor.set_vertex_function(Some(info.vs.function_handle()));
+        descriptor.set_fragment_function(info.fs.map(|fs| fs.function_handle()));
 
         let vertex_descriptor = metal::VertexDescriptor::new().to_owned();
         for (idx, a) in info.vertex_layout.shader_inputs.iter().enumerate() {
@@ -376,9 +373,14 @@ pub struct MTLComputePipeline {
 
 impl MTLComputePipeline {
     pub(crate) fn new(device: &metal::DeviceRef, shader: &MTLShader, name: Option<&str>) -> Self {
-        println!("shader name: {:?}", shader.name.as_ref());
-        let function = shader.handle().get_function(SHADER_ENTRY_POINT_NAME, None).unwrap();
-        let pipeline = device.new_compute_pipeline_state_with_function(&function).unwrap();
+        let descriptor = metal::ComputePipelineDescriptor::new();
+        if let Some(name) = name {
+            descriptor.set_label(name);
+        }
+
+        descriptor.set_compute_function(Some(shader.function_handle()));
+
+        let pipeline = device.new_compute_pipeline_state(&descriptor).unwrap();
         let mut resource_map = PipelineResourceMap {
             resources: HashMap::new(),
             push_constants: HashMap::new(),
