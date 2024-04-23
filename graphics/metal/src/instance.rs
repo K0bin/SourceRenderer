@@ -9,7 +9,11 @@ pub struct MTLInstance {
 }
 
 impl MTLInstance {
-    pub fn new() -> Self {
+    pub fn new(debug_layer: bool) -> Self {
+        if debug_layer && !std::env::var("MTL_DEBUG_LAYER").map(|var| var == "1").unwrap_or_default() {
+            println!("Metal debug layer cannot be enable programmatically, use env var MTL_DEBUG_LAYER=1.");
+        }
+
         let devices = metal::Device::all();
         let adapters = devices.into_iter().map(|d| MTLAdapter::new(d)).collect();
         Self {
