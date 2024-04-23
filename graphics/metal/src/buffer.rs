@@ -74,12 +74,6 @@ impl gpu::Buffer for MTLBuffer {
     }
 
     unsafe fn unmap(&self, offset: u64, length: u64, flush: bool) {
-        if flush {
-            self.buffer.did_modify_range(metal::NSRange {
-                location: offset,
-                length
-            });
-        }
     }
 }
 
