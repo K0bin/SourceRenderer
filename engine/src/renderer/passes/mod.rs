@@ -11,8 +11,9 @@ pub(crate) mod sharpen;
 pub(crate) mod ssao;
 pub(crate) mod ssr;
 pub(crate) mod taa;
-//pub(crate) mod web;
+pub(crate) mod web;
 pub(crate) mod ui;
+pub(crate) mod blit;
 
 use modern::{
     rt_shadows,

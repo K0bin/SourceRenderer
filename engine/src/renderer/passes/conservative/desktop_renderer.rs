@@ -22,6 +22,7 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use crate::input::Input;
+use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
 use crate::renderer::render_path::{
@@ -53,6 +54,7 @@ pub struct ConservativeRenderer<P: Platform> {
     //occlusion: OcclusionPass<P>,
     rt_passes: Option<RTPasses<P>>,
     blue_noise: BlueNoise<P::GPUBackend>,
+    blit_pass: BlitPass
 }
 
 pub struct RTPasses<P: Platform> {
@@ -100,6 +102,8 @@ impl<P: Platform> ConservativeRenderer<P> {
             ),
             shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager),
         });
+        let blit = BlitPass::new::<P>(&mut barriers, shader_manager, swapchain.format());
+
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
@@ -126,6 +130,7 @@ impl<P: Platform> ConservativeRenderer<P> {
             //occlusion,
             rt_passes,
             blue_noise,
+            blit_pass: blit
         }
     }
 
@@ -391,17 +396,29 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
-            new_sync: BarrierSync::COPY,
+            new_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,
             old_access: BarrierAccess::empty(),
-            new_access: BarrierAccess::COPY_WRITE,
+            new_access: BarrierAccess::RENDER_TARGET_WRITE, // BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
-            new_layout: TextureLayout::CopyDst,
+            new_layout: TextureLayout::RenderTarget, // TextureLayout::CopyDst,
             texture: swapchain.backbuffer_handle(),
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        cmd_buf.blit_to_handle(&*sharpened_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
+        //cmd_buf.blit_to_handle(&*sharpened_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
+        std::mem::drop(sharpened_texture);
+        let sharpened_view = self.barriers.get_view(SharpenPass::SHAPENED_TEXTURE_NAME,
+            &TextureViewInfo {
+                base_mip_level: 0,
+                mip_level_length: 1,
+                base_array_layer: 0,
+                array_layer_length: 1,
+                format: None
+            }, HistoryResourceEntry::Current);
+        let sampler = self.barriers.linear_sampler();
+        self.blit_pass.execute::<P>(context, &mut cmd_buf, shader_manager, &sharpened_view, swapchain.backbuffer(), sampler);
+        std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
@@ -413,7 +430,6 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
-        std::mem::drop(sharpened_texture);
 
         self.barriers.swap_history_resources();
 
@@ -507,6 +523,6 @@ pub fn setup_frame<B: GPUBackend>(cmd_buf: &mut CommandBufferRecorder<B>, frame_
         13,
         BufferRef::Transient(&frame_bindings.directional_lights),
         0,
-        WHOLE_BUFFER,
+          WHOLE_BUFFER,
     );
 }

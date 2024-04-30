@@ -32,6 +32,7 @@ use super::light::DirectionalLight;
 use super::passes::modern::ModernRenderer;
 //#[cfg(not(target_arch = "wasm32"))]
 use super::passes::conservative::desktop_renderer::ConservativeRenderer;
+use super::passes::web::WebRenderer;
 //#[cfg(not(target_arch = "wasm32"))]
 //use super::passes::modern::ModernRenderer;
 use super::render_path::RenderPath;
@@ -102,9 +103,13 @@ impl<P: Platform> RendererInternal<P> {
         let path = Box::new(WebRenderer::new(device, swapchain, &mut shader_manager));
 
         #[cfg(not(target_arch = "wasm32"))]
-        let path: Box<dyn RenderPath<P>> = if cfg!(target_family = "wasm") {
-            unimplemented!("Web renderer not yet updated")
-            //Box::new(WebRenderer::new(device, swapchain, &mut shader_manager))
+        let path: Box<dyn RenderPath<P>> = if true {
+            Box::new(WebRenderer::new(
+                device,
+                &swapchain,
+                &mut context,
+                &mut shader_manager,
+            ))
         } else {
             if device.supports_indirect()
                 && device.supports_bindless()
