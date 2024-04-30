@@ -42,8 +42,8 @@ impl<P: Platform> GeometryPass<P> {
 
     pub(super) fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &Arc<crate::graphics::Swapchain<P::GPUBackend>>,
-        _init_cmd_buffer: &mut crate::graphics::CommandBuffer<P::GPUBackend>,
+        swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
+        _init_cmd_buffer: &mut crate::graphics::CommandBufferRecorder<P::GPUBackend>,
         resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
@@ -81,7 +81,7 @@ impl<P: Platform> GeometryPass<P> {
         let shader_file_extension = if cfg!(target_family = "wasm") {
             "glsl"
         } else {
-            "spv"
+            "json"
         };
 
         let fs_name = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
@@ -201,17 +201,20 @@ impl<P: Platform> GeometryPass<P> {
         camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
         resources: &RendererResources<P::GPUBackend>,
         backbuffer: &Arc<TextureView<P::GPUBackend>>,
+        backbuffer_handle: &<P::GPUBackend as GPUBackend>::Texture,
+        width: u32,
+        height: u32,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) {
-        cmd_buffer.barrier(&[Barrier::TextureBarrier {
+        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
             new_sync: BarrierSync::RENDER_TARGET,
             old_access: BarrierAccess::empty(),
             new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::RenderTarget,
-            texture: backbuffer.texture().unwrap(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
@@ -257,19 +260,17 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::Commands,
         );
 
-        let rtv_info = backbuffer.texture().unwrap().info();
-
         let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
-            extent: Vec2::new(rtv_info.width as f32, rtv_info.height as f32),
+            extent: Vec2::new(width as f32, height as f32),
             min_depth: 0.0f32,
             max_depth: 1.0f32,
         }]);
         cmd_buffer.set_scissors(&[Scissor {
             position: Vec2I::new(0, 0),
-            extent: Vec2UI::new(9999, 9999),
+            extent: Vec2UI::new(width, height),
         }]);
 
         //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
@@ -329,14 +330,14 @@ impl<P: Platform> GeometryPass<P> {
         }
         cmd_buffer.end_render_pass();
 
-        cmd_buffer.barrier(&[Barrier::TextureBarrier {
+        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET,
             new_sync: BarrierSync::empty(),
             old_access: BarrierAccess::RENDER_TARGET_WRITE,
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::RenderTarget,
             new_layout: TextureLayout::Present,
-            texture: backbuffer.texture().unwrap(),
+            texture: backbuffer_handle,
             queue_ownership: None,
             range: BarrierTextureRange::default(),
         }]);
