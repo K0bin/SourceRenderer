@@ -134,6 +134,9 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         );
         self.device.present(QueueType::Graphics, &swapchain);
 
+        let c_device = self.device.clone();
+        rayon::spawn(move || c_device.flush(QueueType::Graphics));
+
         if let Some(late_latching) = late_latching {
             late_latching.after_submit(&self.device);
         }
@@ -142,6 +145,5 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
-        
     }
 }
