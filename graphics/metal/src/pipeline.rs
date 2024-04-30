@@ -53,7 +53,7 @@ impl MTLShader {
             push_constants: None,
             bindless_argument_buffer_binding: None
         };
-        let mut buffer_count: u32 = 0;
+        let mut buffer_count: u32 = if shader.shader_type == gpu::ShaderType::VertexShader { shader.max_stage_input + 1 } else { 0 };
         let mut texture_count: u32 = 0;
         let mut sampler_count: u32 = 0;
         for set in shader.resources.iter() {
