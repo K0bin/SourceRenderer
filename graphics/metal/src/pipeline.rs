@@ -225,10 +225,32 @@ pub(super) fn color_components_to_mtl(color_components: gpu::ColorComponents) ->
     colors
 }
 
+fn stencil_info_to_mtl(stencil: &gpu::StencilInfo, stencil_enabled: bool, read_mask: u8, write_mask: u8) -> metal::StencilDescriptor {
+    let descriptor = metal::StencilDescriptor::new();
+    descriptor.set_stencil_compare_function(if stencil_enabled { compare_func_to_mtl(stencil.func)
+    }else {
+        metal::MTLCompareFunction::Always
+    });
+    descriptor.set_depth_stencil_pass_operation(stencil_op_to_mtl(stencil.pass_op));
+    descriptor.set_depth_failure_operation(stencil_op_to_mtl(stencil.fail_op));
+    descriptor.set_read_mask(read_mask as u32);
+    descriptor.set_write_mask(write_mask as u32);
+    descriptor
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+pub(crate) struct MTLRasterizerInfo {
+  pub(crate) fill_mode: metal::MTLTriangleFillMode,
+  pub(crate) cull_mode: metal::MTLCullMode,
+  pub(crate) front_face: metal::MTLWinding,
+}
+
 pub struct MTLGraphicsPipeline {
     pipeline: metal::RenderPipelineState,
     primitive_type: metal::MTLPrimitiveType,
     resource_map: Arc<PipelineResourceMap>,
+    rasterizer_state: MTLRasterizerInfo,
+    depth_stencil_state: metal::DepthStencilState,
 }
 
 impl MTLGraphicsPipeline {
@@ -347,10 +369,49 @@ impl MTLGraphicsPipeline {
             }
         }
 
+        let rasterizer_state = MTLRasterizerInfo {
+            front_face: match info.rasterizer.front_face {
+                gpu::FrontFace::CounterClockwise => metal::MTLWinding::CounterClockwise,
+                gpu::FrontFace::Clockwise => metal::MTLWinding::Clockwise,
+            },
+            fill_mode: match info.rasterizer.fill_mode {
+                gpu::FillMode::Fill => metal::MTLTriangleFillMode::Fill,
+                gpu::FillMode::Line => metal::MTLTriangleFillMode::Lines,
+            },
+            cull_mode: match info.rasterizer.cull_mode {
+                gpu::CullMode::None => metal::MTLCullMode::None,
+                gpu::CullMode::Front => metal::MTLCullMode::Front,
+                gpu::CullMode::Back => metal::MTLCullMode::Back,
+            },
+        };
+
+        let depth_stencil_state_descriptor = metal::DepthStencilDescriptor::new();
+        depth_stencil_state_descriptor.set_depth_compare_function(if info.depth_stencil.depth_test_enabled {
+            metal::MTLCompareFunction::Always
+        } else {
+            compare_func_to_mtl(info.depth_stencil.depth_func)
+        });
+        depth_stencil_state_descriptor.set_depth_write_enabled(info.depth_stencil.depth_write_enabled);
+        depth_stencil_state_descriptor.set_front_face_stencil(
+            Some(&stencil_info_to_mtl(&info.depth_stencil.stencil_front,
+                info.depth_stencil.stencil_enable,
+                info.depth_stencil.stencil_read_mask,
+                info.depth_stencil.stencil_write_mask
+        )));
+        depth_stencil_state_descriptor.set_back_face_stencil(
+            Some(&stencil_info_to_mtl(&info.depth_stencil.stencil_back,
+                info.depth_stencil.stencil_enable,
+                info.depth_stencil.stencil_read_mask,
+                info.depth_stencil.stencil_write_mask
+        )));
+        let depth_stencil_state = device.new_depth_stencil_state(&depth_stencil_state_descriptor);
+
         Self {
             pipeline,
             primitive_type,
-            resource_map: Arc::new(resource_map)
+            resource_map: Arc::new(resource_map),
+            rasterizer_state,
+            depth_stencil_state
         }
     }
 
@@ -360,6 +421,14 @@ impl MTLGraphicsPipeline {
 
     pub(crate) fn primitive_type(&self) -> metal::MTLPrimitiveType {
         self.primitive_type
+    }
+
+    pub(crate) fn rasterizer_state(&self) -> &MTLRasterizerInfo {
+        &self.rasterizer_state
+    }
+
+    pub(crate) fn depth_stencil_state(&self) -> &metal::DepthStencilState {
+        &self.depth_stencil_state
     }
 
     pub(crate) fn resource_map(&self) -> &Arc<PipelineResourceMap> {

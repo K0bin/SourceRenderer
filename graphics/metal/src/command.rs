@@ -1,6 +1,6 @@
 use std::{ffi::c_void, sync::{Arc, Mutex}};
 
-use metal;
+use metal::{self, NSRange};
 
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_32, gpu::{self, Texture}};
@@ -9,14 +9,16 @@ use super::*;
 
 pub struct MTLCommandPool {
     queue: metal::CommandQueue,
-    command_pool_type: gpu::CommandPoolType
+    command_pool_type: gpu::CommandPoolType,
+    meta_shaders: Arc<MTLMetaShaders>
 }
 
 impl MTLCommandPool {
-    pub(crate) fn new(queue: &metal::CommandQueueRef, command_pool_type: gpu::CommandPoolType) -> Self {
+    pub(crate) fn new(queue: &metal::CommandQueueRef, command_pool_type: gpu::CommandPoolType, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
         Self {
             queue: queue.to_owned(),
-            command_pool_type
+            command_pool_type,
+            meta_shaders: meta_shaders.clone()
         }
     }
 }
@@ -24,12 +26,12 @@ impl MTLCommandPool {
 impl gpu::CommandPool<MTLBackend> for MTLCommandPool {
     unsafe fn create_command_buffer(&mut self) -> MTLCommandBuffer {
         if self.command_pool_type == gpu::CommandPoolType::InnerCommandBuffers {
-            return MTLCommandBuffer::new_without_cmd_buffer(&self.queue);
+            return MTLCommandBuffer::new_without_cmd_buffer(&self.queue, &self.meta_shaders);
         }
 
         let cmd_buffer_handle_ref = self.queue.new_command_buffer_with_unretained_references();
         let cmd_buffer_handle: metal::CommandBuffer = cmd_buffer_handle_ref.to_owned();
-        MTLCommandBuffer::new(&self.queue, cmd_buffer_handle)
+        MTLCommandBuffer::new(&self.queue, cmd_buffer_handle, &self.meta_shaders)
     }
 
     unsafe fn reset(&mut self) {}
@@ -72,12 +74,13 @@ pub struct MTLCommandBuffer {
     primitive_type: metal::MTLPrimitiveType,
     resource_map: Option<Arc<PipelineResourceMap>>,
     binding: MTLBindingManager,
+    meta_shaders: Arc<MTLMetaShaders>
 }
 
 const MAX_PARALLELISM: usize = 16;
 
 impl MTLCommandBuffer {
-    pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer) -> Self {
+    pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
         Self {
             queue: queue.to_owned(),
             command_buffer: Some(command_buffer),
@@ -90,10 +93,11 @@ impl MTLCommandBuffer {
             primitive_type: metal::MTLPrimitiveType::Triangle,
             resource_map: None,
             binding: MTLBindingManager::new(),
+            meta_shaders: meta_shaders.clone()
         }
     }
 
-    pub(crate) fn new_without_cmd_buffer(queue: &metal::CommandQueueRef) -> Self {
+    pub(crate) fn new_without_cmd_buffer(queue: &metal::CommandQueueRef, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
         Self {
             queue: queue.to_owned(),
             command_buffer: None,
@@ -106,6 +110,7 @@ impl MTLCommandBuffer {
             primitive_type: metal::MTLPrimitiveType::Triangle,
             resource_map: None,
             binding: MTLBindingManager::new(),
+            meta_shaders: meta_shaders.clone()
         }
     }
 
@@ -140,6 +145,7 @@ impl MTLCommandBuffer {
                 encoder.end_encoding();
                 self.blit_encoder = None;
             }
+            self.binding.dirty_all();
             self.compute_encoder = Some(self.handle().compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
         }
         self.compute_encoder.as_ref().unwrap()
@@ -173,6 +179,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 self.primitive_type = pipeline.primitive_type();
                 let encoder = self.get_render_pass_encoder();
                 encoder.set_render_pipeline_state(pipeline.handle());
+                encoder.set_cull_mode(pipeline.rasterizer_state().cull_mode);
+                encoder.set_front_facing_winding(pipeline.rasterizer_state().front_face);
+                encoder.set_triangle_fill_mode(pipeline.rasterizer_state().fill_mode);
+                encoder.set_depth_stencil_state(pipeline.depth_stencil_state());
                 self.resource_map = Some(pipeline.resource_map().clone());
             },
             gpu::PipelineBinding::Compute(pipeline) => {
@@ -344,18 +354,44 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn blit(&mut self, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
-        let encoder = self.get_blit_encoder();
-        encoder.copy_from_texture(
-            src_texture.handle(),
-            src_array_layer as u64,
-            src_mip_level as u64,
-            metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 },
-            metal::MTLSize { width: (src_texture.info().width >> src_mip_level) as u64, height: (src_texture.info().height >> src_mip_level) as u64, depth: (src_texture.info().depth >> src_mip_level) as u64 },
-            dst_texture.handle(),
-            dst_array_layer as u64,
-            dst_mip_level as u64,
-            metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 }
-        );
+        if dst_texture.info().usage.contains(gpu::TextureUsage::COPY_DST) {
+            let encoder = self.get_blit_encoder();
+            encoder.copy_from_texture(
+                src_texture.handle(),
+                src_array_layer as u64,
+                src_mip_level as u64,
+                metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 },
+                metal::MTLSize { width: (src_texture.info().width >> src_mip_level) as u64, height: (src_texture.info().height >> src_mip_level) as u64, depth: (src_texture.info().depth >> src_mip_level) as u64 },
+                dst_texture.handle(),
+                dst_array_layer as u64,
+                dst_mip_level as u64,
+                metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 }
+            );
+        } else if dst_texture.info().usage.contains(gpu::TextureUsage::RENDER_TARGET) {
+            let mut new_view: Option<metal::Texture> = None;
+
+            let descriptor = metal::RenderPassDescriptor::new();
+            let attachment = descriptor.color_attachments().object_at(0).unwrap();
+            attachment.set_load_action(metal::MTLLoadAction::DontCare);
+            attachment.set_store_action(metal::MTLStoreAction::Store);
+            attachment.set_level(dst_mip_level as u64);
+            attachment.set_slice(dst_array_layer as u64);
+            attachment.set_texture(Some(dst_texture.handle()));
+            let encoder = self.handle().new_render_command_encoder(&descriptor);
+            encoder.set_render_pipeline_state(self.meta_shaders.blit_pipeline.handle());
+            if src_array_layer == 0 && src_mip_level == 0 {
+                encoder.set_fragment_texture(0, Some(src_texture.handle()));
+            } else {
+                new_view = Some(src_texture.handle().new_texture_view_from_slice(
+                    src_texture.handle().pixel_format(), src_texture.handle().texture_type(),
+                    metal::NSRange::new(src_mip_level as u64, 1), NSRange::new(src_array_layer as u64, 1)));
+                encoder.set_fragment_texture(0, new_view.as_ref().map(|v| v as &metal::TextureRef));
+            }
+            encoder.set_fragment_texture(0, Some(src_texture.handle()));
+            encoder.set_fragment_sampler_state(0, Some(&self.meta_shaders.linear_sampler));
+            encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 3);
+            encoder.end_encoding();
+        }
     }
 
     unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>) {
@@ -434,6 +470,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let descriptors = render_pass_to_descriptors(renderpass_info);
         let first_descriptor = descriptors[0].clone();
         if recording_mode == gpu::RenderpassRecordingMode::Commands {
+            self.binding.dirty_all();
             self.render_pass = Some(MTLRenderPassState {
                 render_pass: descriptors,
                 parallel_encoder: None,
@@ -443,6 +480,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             });
         } else {
             assert_eq!(descriptors.len(), 1);
+            self.binding.dirty_all();
             let parallel_encoder = self.handle().new_parallel_render_command_encoder(&first_descriptor).to_owned();
             let mut render_encoders = Vec::<metal::RenderCommandEncoder>::with_capacity(MAX_PARALLELISM);
             for _ in 0..MAX_PARALLELISM {
@@ -504,6 +542,8 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.compute_encoder.is_none());
         assert!(self.blit_encoder.is_none());
         self.command_buffer = Some(self.queue.new_command_buffer_with_unretained_references().to_owned());
+        self.pre_event = self.queue.device().new_event();
+        self.post_event = self.queue.device().new_event();
     }
 
     unsafe fn create_bottom_level_acceleration_structure(
