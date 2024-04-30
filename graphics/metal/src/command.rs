@@ -1,35 +1,38 @@
-use std::{ffi::c_void, sync::Arc};
+use std::{ffi::c_void, sync::{Arc, Mutex}};
 
 use metal;
 
-use objc::Encode;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Texture as _};
+use sourcerenderer_core::{align_up_32, gpu::{self, Texture}};
 
 use super::*;
 
 pub struct MTLCommandPool {
-    queue: metal::CommandQueue
+    queue: metal::CommandQueue,
+    command_pool_type: gpu::CommandPoolType
 }
 
 impl MTLCommandPool {
-    pub(crate) fn new(queue: &metal::CommandQueueRef) -> Self {
+    pub(crate) fn new(queue: &metal::CommandQueueRef, command_pool_type: gpu::CommandPoolType) -> Self {
         Self {
-            queue: queue.to_owned()
+            queue: queue.to_owned(),
+            command_pool_type
         }
     }
 }
 
 impl gpu::CommandPool<MTLBackend> for MTLCommandPool {
     unsafe fn create_command_buffer(&mut self) -> MTLCommandBuffer {
+        if self.command_pool_type == gpu::CommandPoolType::InnerCommandBuffers {
+            return MTLCommandBuffer::new_without_cmd_buffer(&self.queue);
+        }
+
         let cmd_buffer_handle_ref = self.queue.new_command_buffer_with_unretained_references();
         let cmd_buffer_handle: metal::CommandBuffer = cmd_buffer_handle_ref.to_owned();
         MTLCommandBuffer::new(&self.queue, cmd_buffer_handle)
     }
 
-    unsafe fn reset(&mut self) {
-        todo!()
-    }
+    unsafe fn reset(&mut self) {}
 }
 
 struct IndexBufferBinding {
@@ -45,26 +48,40 @@ fn index_format_to_mtl(index_format: gpu::IndexFormat) -> metal::MTLIndexType {
     }
 }
 
+struct MTLRenderPassState {
+    render_encoder: Option<metal::RenderCommandEncoder>,
+    parallel_encoder: Option<metal::ParallelRenderCommandEncoder>,
+    render_pass: Vec<metal::RenderPassDescriptor>,
+    subpass: u32,
+    inheritance: Option<MTLCommandBufferInheritance>
+}
+
+pub struct MTLCommandBufferInheritance {
+    render_encoders: Mutex<Vec<metal::RenderCommandEncoder>>
+}
+
 pub struct MTLCommandBuffer {
     queue: metal::CommandQueue,
-    command_buffer: metal::CommandBuffer,
-    render_encoder: Option<metal::RenderCommandEncoder>,
+    command_buffer: Option<metal::CommandBuffer>,
     blit_encoder: Option<metal::BlitCommandEncoder>,
+    render_pass: Option<MTLRenderPassState>,
     compute_encoder: Option<metal::ComputeCommandEncoder>,
     pre_event: metal::Event,
     post_event: metal::Event,
     index_buffer: Option<IndexBufferBinding>,
     primitive_type: metal::MTLPrimitiveType,
     resource_map: Option<Arc<PipelineResourceMap>>,
-    binding: MTLBindingManager
+    binding: MTLBindingManager,
 }
+
+const MAX_PARALLELISM: usize = 16;
 
 impl MTLCommandBuffer {
     pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer) -> Self {
         Self {
             queue: queue.to_owned(),
-            command_buffer: command_buffer,
-            render_encoder: None,
+            command_buffer: Some(command_buffer),
+            render_pass: None,
             blit_encoder: None,
             compute_encoder: None,
             pre_event: queue.device().new_event(),
@@ -72,12 +89,28 @@ impl MTLCommandBuffer {
             index_buffer: None,
             primitive_type: metal::MTLPrimitiveType::Triangle,
             resource_map: None,
-            binding: MTLBindingManager::new()
+            binding: MTLBindingManager::new(),
+        }
+    }
+
+    pub(crate) fn new_without_cmd_buffer(queue: &metal::CommandQueueRef) -> Self {
+        Self {
+            queue: queue.to_owned(),
+            command_buffer: None,
+            render_pass: None,
+            blit_encoder: None,
+            compute_encoder: None,
+            pre_event: queue.device().new_event(),
+            post_event: queue.device().new_event(),
+            index_buffer: None,
+            primitive_type: metal::MTLPrimitiveType::Triangle,
+            resource_map: None,
+            binding: MTLBindingManager::new(),
         }
     }
 
     pub(crate) fn handle(&self) -> &metal::CommandBufferRef {
-        &self.command_buffer
+        self.command_buffer.as_ref().expect("Secondary command buffer doesnt have a Metal command buffer")
     }
 
     pub(crate) fn pre_event_handle(&self) -> &metal::EventRef {
@@ -89,27 +122,36 @@ impl MTLCommandBuffer {
     }
 
     fn get_blit_encoder(&mut self) -> &metal::BlitCommandEncoder {
-        assert!(self.render_encoder.is_none());
+        assert!(self.render_pass.is_none());
         if self.blit_encoder.is_none() {
             if let Some(encoder) = &self.compute_encoder {
                 encoder.end_encoding();
                 self.compute_encoder = None;
             }
-            self.blit_encoder = Some(self.command_buffer.new_blit_command_encoder().to_owned());
+            self.blit_encoder = Some(self.handle().new_blit_command_encoder().to_owned());
         }
         self.blit_encoder.as_ref().unwrap()
     }
 
     fn get_compute_encoder(&mut self) -> &metal::ComputeCommandEncoder {
-        assert!(self.render_encoder.is_none());
+        assert!(self.render_pass.is_none());
         if self.compute_encoder.is_none() {
             if let Some(encoder) = &self.blit_encoder {
                 encoder.end_encoding();
                 self.blit_encoder = None;
             }
-            self.compute_encoder = Some(self.command_buffer.compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
+            self.compute_encoder = Some(self.handle().compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
         }
         self.compute_encoder.as_ref().unwrap()
+    }
+
+    fn get_render_pass_encoder(&self) -> &metal::RenderCommandEncoder {
+        let encoder = &self.render_pass.as_ref().and_then(|r| r.render_encoder.as_ref()).expect("Need to start a render pass first");
+        encoder
+    }
+
+    fn get_render_pass_encoder_opt(&self) -> Option<&metal::RenderCommandEncoder> {
+        self.render_pass.as_ref().and_then(|r| r.render_encoder.as_ref())
     }
 
     fn end_non_rendering_encoders(&mut self) {
@@ -129,7 +171,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         match pipeline {
             gpu::PipelineBinding::Graphics(pipeline) => {
                 self.primitive_type = pipeline.primitive_type();
-                let encoder = self.render_encoder.as_ref().expect("Need to start render pass before setting a graphics pipeline.");
+                let encoder = self.get_render_pass_encoder();
                 encoder.set_render_pipeline_state(pipeline.handle());
                 self.resource_map = Some(pipeline.resource_map().clone());
             },
@@ -143,7 +185,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &MTLBuffer, offset: u64) {
-        let encoder = self.render_encoder.as_ref().expect("Need to start a render pass first");
+        let encoder = self.get_render_pass_encoder();
         encoder.set_vertex_buffer(0, Some(vertex_buffer.handle()), offset);
     }
 
@@ -158,8 +200,8 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn set_viewports(&mut self, viewports: &[ gpu::Viewport ]) {
         assert_eq!(viewports.len(), 1);
         let viewport = &viewports[0];
-        self.render_encoder.as_ref()
-            .expect("Viewports can only be set after starting a render pass.")
+        let encoder = self.get_render_pass_encoder();
+        encoder
             .set_viewport(metal::MTLViewport {
                 originX: viewport.position.x as f64,
                 originY: viewport.position.y as f64,
@@ -173,8 +215,8 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn set_scissors(&mut self, scissors: &[ gpu::Scissor ]) {
         assert_eq!(scissors.len(), 1);
         let scissor = &scissors[0];
-        self.render_encoder.as_ref()
-            .expect("Scissor can only be set after starting a render pass.")
+        let encoder = self.get_render_pass_encoder();
+        encoder
             .set_scissor_rect(metal::MTLScissorRect {
                 x: scissor.position.x as u64,
                 y: scissor.position.y as u64,
@@ -185,7 +227,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: gpu::ShaderType)
         where T: 'static + Send + Sync + Sized + Clone {
-        if let Some(encoder) = self.render_encoder.as_ref() {
+        if let Some(encoder) = self.get_render_pass_encoder_opt() {
             let resource_map = self.resource_map.as_ref().expect("Cannot set push constant data before binding a shader");
             let push_constant_info = resource_map.push_constants.get(&visible_for_shader_stage).expect("Shader does not have push constants");
             let data_size = std::mem::size_of_val(data);
@@ -210,8 +252,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn draw(&mut self, vertices: u32, offset: u32) {
-        self.render_encoder.as_ref()
-            .expect("Draws can only be done after starting a render pass.")
+        self.get_render_pass_encoder()
             .draw_primitives(self.primitive_type, offset as u64, vertices as u64);
     }
 
@@ -219,8 +260,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let index_buffer = self.index_buffer.as_ref()
             .expect("No index buffer bound");
 
-        self.render_encoder.as_ref()
-            .expect("Draws can only be done after starting a render pass.")
+        self.get_render_pass_encoder()
             .draw_indexed_primitives(self.primitive_type, indices as u64, index_format_to_mtl(index_buffer.format), &index_buffer.buffer, index_buffer.offset as u64);
     }
 
@@ -285,17 +325,17 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             self.binding.finish(MTLEncoderRef::Compute(encoder), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
         }
 
-        if let Some(encoder) = self.render_encoder.as_ref() {
-            self.binding.finish(MTLEncoderRef::Graphics(encoder), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
+        if let Some(rp) = self.render_pass.as_ref().and_then(|r| r.render_encoder.as_ref()) {
+            self.binding.finish(MTLEncoderRef::Graphics(rp), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
         }
     }
 
     unsafe fn begin_label(&mut self, label: &str) {
-        self.command_buffer.push_debug_group(label);
+        self.handle().push_debug_group(label);
     }
 
     unsafe fn end_label(&mut self) {
-        self.command_buffer.pop_debug_group();
+        self.handle().pop_debug_group();
     }
 
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
@@ -304,11 +344,35 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn blit(&mut self, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
-        todo!()
+        let encoder = self.get_blit_encoder();
+        encoder.copy_from_texture(
+            src_texture.handle(),
+            src_array_layer as u64,
+            src_mip_level as u64,
+            metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 },
+            metal::MTLSize { width: (src_texture.info().width >> src_mip_level) as u64, height: (src_texture.info().height >> src_mip_level) as u64, depth: (src_texture.info().depth >> src_mip_level) as u64 },
+            dst_texture.handle(),
+            dst_array_layer as u64,
+            dst_mip_level as u64,
+            metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 }
+        );
     }
 
     unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>) {
-        self.command_buffer.encode_wait_for_event(&self.pre_event, 1);
+        if let Some(handle) = self.command_buffer.as_ref() {
+            handle.encode_wait_for_event(&self.pre_event, 1);
+        }
+        if let Some(inheritance) = inheritance {
+            let mut encoders = inheritance.render_encoders.lock().unwrap();
+
+            self.render_pass = Some(MTLRenderPassState {
+                render_encoder: Some(encoders.pop().unwrap()),
+                parallel_encoder: None,
+                render_pass: Vec::new(),
+                subpass: 0,
+                inheritance: None
+            });
+        }
     }
 
     unsafe fn finish(&mut self) {
@@ -321,12 +385,12 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let row_pitch = if region.buffer_row_pitch != 0 {
             region.buffer_row_pitch
         } else {
-            (region.texture_extent.x * format.block_size().x / format.element_size()) as u64
+            (align_up_32(region.texture_extent.x, format.block_size().x) / format.block_size().x * format.element_size()) as u64
         };
         let slice_pitch = if region.buffer_slice_pitch != 0 {
             region.buffer_slice_pitch
         } else {
-            (region.texture_extent.y / format.block_size().y) as u64 * row_pitch
+            (align_up_32(region.texture_extent.y, format.block_size().y) / format.block_size().y) as u64 * row_pitch
         };
 
         blit_encoder.copy_from_buffer_to_texture(
@@ -335,17 +399,17 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             row_pitch,
             slice_pitch,
             metal::MTLSize {
-                width: (dst.info().width >> region.texture_subresource.mip_level) as u64,
-                height: if dst.info().dimension.has_y_dimension() { (dst.info().height >> region.texture_subresource.mip_level) as u64 } else { 1 },
-                depth: if dst.info().dimension.has_z_dimension() { (dst.info().depth >> region.texture_subresource.mip_level) as u64 } else { 1 }
+                width: region.texture_extent.x as u64,
+                height: region.texture_extent.y as u64,
+                depth: region.texture_extent.z as u64
             },
             dst.handle(),
             region.texture_subresource.array_layer as u64,
             region.texture_subresource.mip_level as u64,
             metal::MTLOrigin {
-                x: region.texture_extent.x as u64,
-                y: region.texture_extent.y as u64,
-                z: region.texture_extent.z as u64
+                x: region.texture_offset.x as u64,
+                y: region.texture_offset.y as u64,
+                z: region.texture_offset.z as u64
             },
             metal::MTLBlitOption::empty()
         );
@@ -365,18 +429,59 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn begin_render_pass(&mut self, renderpass_info: &gpu::RenderPassBeginInfo<MTLBackend>, recording_mode: gpu::RenderpassRecordingMode) {
-        let descriptor = metal::RenderPassDescriptor::new();
-        //descriptor.
-        self.command_buffer.new_parallel_render_command_encoder(descriptor);
+        assert!(self.render_pass.is_none());
+        self.end_non_rendering_encoders();
+        let descriptors = render_pass_to_descriptors(renderpass_info);
+        let first_descriptor = descriptors[0].clone();
+        if recording_mode == gpu::RenderpassRecordingMode::Commands {
+            self.render_pass = Some(MTLRenderPassState {
+                render_pass: descriptors,
+                parallel_encoder: None,
+                render_encoder: Some(self.handle().new_render_command_encoder(&first_descriptor).to_owned()),
+                subpass: 0,
+                inheritance: None
+            });
+        } else {
+            assert_eq!(descriptors.len(), 1);
+            let parallel_encoder = self.handle().new_parallel_render_command_encoder(&first_descriptor).to_owned();
+            let mut render_encoders = Vec::<metal::RenderCommandEncoder>::with_capacity(MAX_PARALLELISM);
+            for _ in 0..MAX_PARALLELISM {
+                render_encoders.push(parallel_encoder.render_command_encoder().to_owned());
+            }
+            self.render_pass = Some(MTLRenderPassState {
+                render_pass: descriptors,
+                parallel_encoder: Some(parallel_encoder),
+                render_encoder: None,
+                subpass: 0,
+                inheritance: Some(MTLCommandBufferInheritance {
+                    render_encoders: Mutex::new(render_encoders)
+                })
+            });
+        }
     }
 
     unsafe fn advance_subpass(&mut self) {
-        todo!()
+        let renderpass_state = self.render_pass.as_mut().unwrap();
+        let subpass = renderpass_state.subpass + 1;
+        renderpass_state.subpass = subpass;
+        renderpass_state.render_encoder = Some(self.command_buffer.as_ref().unwrap().new_render_command_encoder(&renderpass_state.render_pass[subpass as usize]).to_owned());
     }
 
     unsafe fn end_render_pass(&mut self) {
-        self.render_encoder.as_ref().unwrap().end_encoding();
-        self.render_encoder = None;
+        if let Some(encoder) = self.get_render_pass_encoder_opt() {
+            encoder.end_encoding();
+        }
+        if let Some(inheritance) = self.render_pass.as_mut().and_then(|r| r.inheritance.as_mut()) {
+            let mut encoders = inheritance.render_encoders.lock().unwrap();
+            for encoder in encoders.iter() {
+                encoder.end_encoding();
+            }
+            encoders.clear();
+        }
+        if let Some(encoder) = self.render_pass.as_ref().and_then(|r| r.parallel_encoder.as_ref()) {
+            encoder.end_encoding();
+        }
+        self.render_pass = None;
     }
 
     unsafe fn barrier(&mut self, _barriers: &[gpu::Barrier<MTLBackend>]) {
@@ -384,21 +489,21 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn inheritance(&self) -> &Self::CommandBufferInheritance {
-        todo!()
+        self.render_pass.as_ref().and_then(|r| r.inheritance.as_ref()).expect("Need to start render pass first")
     }
 
-    type CommandBufferInheritance = ();
+    type CommandBufferInheritance = MTLCommandBufferInheritance;
 
-    unsafe fn execute_inner(&mut self, submission: &[&MTLCommandBuffer]) {
-        todo!()
+    unsafe fn execute_inner(&mut self, _submission: &[&MTLCommandBuffer]) {
+        // Done automatically
     }
 
     unsafe fn reset(&mut self, frame: u64) {
         self.end_non_rendering_encoders();
-        assert!(self.render_encoder.is_none());
+        assert!(self.render_pass.is_none());
         assert!(self.compute_encoder.is_none());
         assert!(self.blit_encoder.is_none());
-        self.command_buffer = self.queue.new_command_buffer_with_unretained_references().to_owned();;
+        self.command_buffer = Some(self.queue.new_command_buffer_with_unretained_references().to_owned());
     }
 
     unsafe fn create_bottom_level_acceleration_structure(
@@ -441,10 +546,13 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
 impl Drop for MTLCommandBuffer {
     fn drop(&mut self) {
-        if let Some(encoder) = &self.render_encoder {
+        if let Some(encoder) = self.get_render_pass_encoder_opt() {
             encoder.end_encoding();
         }
-        self.render_encoder = None;
+        if let Some(encoder) = self.render_pass.as_ref().and_then(|r| r.parallel_encoder.as_ref()) {
+            encoder.end_encoding();
+        }
+        self.render_pass = None;
         self.end_non_rendering_encoders();
     }
 }

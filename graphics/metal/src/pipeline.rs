@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use metal;
+use metal::foreign_types::ForeignType;
 
 use sourcerenderer_core::gpu;
 

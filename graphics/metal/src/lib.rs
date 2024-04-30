@@ -12,7 +12,8 @@ pub use self::{
     sync::*,
     pipeline::*,
     rt::*,
-    binding::*
+    binding::*,
+    renderpass::*
 };
 
 mod backend;
@@ -29,3 +30,4 @@ mod sync;
 mod pipeline;
 mod rt;
 mod binding;
+mod renderpass;

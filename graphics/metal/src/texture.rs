@@ -178,7 +178,10 @@ impl MTLTexture {
                 usage |= gpu::TextureUsage::RENDER_TARGET;
             }
         }
-        usage |= gpu::TextureUsage::COPY_DST | gpu::TextureUsage::COPY_SRC;
+
+        if !texture.framebuffer_only() {
+            usage |= gpu::TextureUsage::COPY_DST | gpu::TextureUsage::COPY_SRC;
+        }
 
         let info = gpu::TextureInfo {
             width: texture.width() as u32,
