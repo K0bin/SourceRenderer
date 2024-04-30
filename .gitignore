@@ -23,6 +23,12 @@ platform/sdl/shaders/
 /graphics/vulkan/meta_shaders/*.air
 /graphics/vulkan/meta_shaders/*.dxil
 /graphics/vulkan/meta_shaders/*.json
+/graphics/metal/meta_shaders/*.spv
+/graphics/metal/meta_shaders/*.metal
+/graphics/metal/meta_shaders/*.hlsl
+/graphics/metal/meta_shaders/*.air
+/graphics/metal/meta_shaders/*.dxil
+/graphics/metal/meta_shaders/*.json
 **.code-workspace
 
 **/.DS_STORE
