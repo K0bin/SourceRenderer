@@ -12,7 +12,7 @@ use crate::{sdl_platform::{SDLWindow, StdIO, StdThreadHandle}, SDLPlatform};
 pub(crate) type SDLGPUBackend = MTLBackend;
 
 pub(crate) fn create_instance(debug_layers: bool, window: &SDLWindow) -> Result<MTLInstance, Box<dyn Error>> {
-    Ok(MTLInstance::new())
+    Ok(MTLInstance::new(debug_layers))
 }
 
 pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_instance: &MTLInstance) -> MTLSurface {
