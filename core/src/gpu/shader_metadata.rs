@@ -27,6 +27,8 @@ pub struct Resource {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PackedShader {
     pub push_constant_size: u32,
+    pub stage_input_count: u32,
+    pub max_stage_input: u32,
     pub resources: [Box<[Resource]>; 4],
     pub shader_type: ShaderType,
     pub uses_bindless_texture_set: bool,
