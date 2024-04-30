@@ -785,7 +785,7 @@ fn compile_msl_to_air(
         .arg(&temp_metal_path);
 
     if include_debug_info {
-        command.arg("frecord-sources=flat");
+        command.arg("-frecord-sources");
     }
 
     let cmd_result = command.output();
