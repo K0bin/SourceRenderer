@@ -65,15 +65,15 @@ impl gpu::Buffer for MTLBuffer {
         &self.info
     }
 
-    unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
+    unsafe fn map(&self, offset: u64, _length: u64, _invalidate: bool) -> Option<*mut c_void> {
         let ptr = self.buffer.contents();
         if ptr == std::ptr::null_mut() {
             return None;
         }
-        return Some(ptr);
+        return Some(ptr.offset(offset as isize));
     }
 
-    unsafe fn unmap(&self, offset: u64, length: u64, flush: bool) {
+    unsafe fn unmap(&self, _offset: u64, _length: u64, _flush: bool) {
     }
 }
 
