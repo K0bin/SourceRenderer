@@ -56,7 +56,7 @@ impl<P: Platform> HierarchicalZPass<P> {
                 address_mode_v: AddressMode::ClampToEdge,
                 address_mode_w: AddressMode::ClampToEdge,
                 mip_bias: 0f32,
-                max_anisotropy: 0f32,
+                max_anisotropy: 1f32,
                 compare_op: None,
                 min_lod: 0f32,
                 max_lod: None,

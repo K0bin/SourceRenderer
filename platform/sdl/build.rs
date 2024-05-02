@@ -9,6 +9,7 @@ use build_util::{
 };
 
 fn main() {
+    build_util::build_script_logger::init();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
     // Copy shaders over
@@ -23,6 +24,9 @@ fn main() {
     if env::var("DEBUG").map(|envvar| envvar == "true").unwrap_or_default() {
         output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
     }
+
+    // Unimplemented and the warning is annoying.
+    output_shading_languages &= !ShadingLanguage::Dxil;
 
     let mut shader_dir = manifest_dir.clone();
     shader_dir.pop();
@@ -123,5 +127,7 @@ fn main() {
                 }
             }
         }
+    } else {
+        pkg_config::Config::new().probe("sdl2").unwrap();
     }
 }

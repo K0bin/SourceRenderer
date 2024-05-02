@@ -52,7 +52,7 @@ impl<P: Platform> Engine<P> {
 
     pub fn run(platform: &P) -> Self {
         let core_instance = platform
-            .create_graphics(false)
+            .create_graphics(true)
             .expect("Failed to initialize graphics");
         let instance = Instance::new(core_instance);
         let surface = platform.window().create_surface(&instance.handle());

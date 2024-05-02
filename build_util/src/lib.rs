@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 mod shader_compiler;
 pub mod android;
 pub use shader_compiler::*;
+pub mod build_script_logger;
 
 pub fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
   where F: Fn(&Path) -> bool {

@@ -55,7 +55,7 @@ impl<P: Platform> GeometryPass<P> {
             address_mode_v: AddressMode::Repeat,
             address_mode_w: AddressMode::ClampToEdge,
             mip_bias: 0.0f32,
-            max_anisotropy: 0.0f32,
+            max_anisotropy: 1f32,
             compare_op: None,
             min_lod: 0.0f32,
             max_lod: None,

@@ -50,7 +50,6 @@ impl Format {
   pub fn is_stencil(&self) -> bool {
     matches!(self,
       Format::D16S8
-      | Format::D24
       | Format::D32S8)
   }
 

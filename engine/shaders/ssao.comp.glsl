@@ -9,7 +9,7 @@ layout(local_size_x = 8,
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform kernel {
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform SSAOKernel {
   vec4 samples[16];
 };
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D noise;
