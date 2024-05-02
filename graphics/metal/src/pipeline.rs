@@ -386,7 +386,7 @@ impl MTLGraphicsPipeline {
         };
 
         let depth_stencil_state_descriptor = metal::DepthStencilDescriptor::new();
-        depth_stencil_state_descriptor.set_depth_compare_function(if info.depth_stencil.depth_test_enabled {
+        depth_stencil_state_descriptor.set_depth_compare_function(if !info.depth_stencil.depth_test_enabled {
             metal::MTLCompareFunction::Always
         } else {
             compare_func_to_mtl(info.depth_stencil.depth_func)
