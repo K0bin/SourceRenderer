@@ -9,12 +9,8 @@ use sourcerenderer_core::gpu::{self, CommandBuffer, Swapchain};
 
 use super::*;
 
-struct CompletionStateInner {
-    waiting_for_completion: u64,
-}
-
 struct CompletionState {
-    inner: Mutex<CompletionStateInner>,
+    waiting_for_completion: Mutex<u64>,
     cond_var: Condvar
 }
 
@@ -31,9 +27,7 @@ impl MTLQueue {
             queue,
             meta_shaders: meta_shaders.clone(),
             completion_state: Arc::new(CompletionState {
-                inner: Mutex::new(CompletionStateInner {
-                    waiting_for_completion: 0u64,
-                }),
+                waiting_for_completion: Mutex::new(0u64),
                 cond_var: Condvar::new()
             })
         }
@@ -45,9 +39,9 @@ impl MTLQueue {
     }
 
     pub fn wait_for_idle(&self) {
-        let state = self.completion_state.inner.lock().unwrap();
-        let _guard = self.completion_state.cond_var.wait_while(state, |inner|
-            inner.waiting_for_completion == 0
+        let state = self.completion_state.waiting_for_completion.lock().unwrap();
+        let _guard = self.completion_state.cond_var.wait_while(state, |waiting_for_completion|
+            *waiting_for_completion == 0
         ).unwrap();
     }
 }
@@ -58,7 +52,7 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
     }
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<MTLBackend>]) {
-        let mut state = self.completion_state.inner.lock().unwrap();
+        let mut waiting_for_completion = self.completion_state.waiting_for_completion.lock().unwrap();
         for submission in submissions {
             for cmd_buf in submission.command_buffers {
                 // We cannot add a wait for an event after encoding the command buffer, so each command buffer starts off with
@@ -100,16 +94,16 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
                     cmd_buf.handle().encode_signal_event(cmd_buf.post_event_handle(), 1);
                 }
 
-                let id = state.waiting_for_completion.trailing_ones();
-                assert_eq!(state.waiting_for_completion & (1 << (id as u64)), 0);
-                state.waiting_for_completion |= 1 << (id as u64);
+                let id = waiting_for_completion.trailing_ones();
+                assert_eq!(*waiting_for_completion & (1 << (id as u64)), 0);
+                *waiting_for_completion |= 1 << (id as u64);
 
                 let c_state = self.completion_state.clone();
                 let block = ConcreteBlock::new(move |_cmd_buffer: &metal::CommandBufferRef| {
                     {
-                        let mut state = c_state.inner.lock().unwrap();
-                        assert_eq!((state.waiting_for_completion >> (id as u64)) & 1, 1);
-                        state.waiting_for_completion &= !(1 << (id as u64));
+                        let mut waiting_for_completion = c_state.waiting_for_completion.lock().unwrap();
+                        assert_eq!((*waiting_for_completion >> (id as u64)) & 1, 1);
+                        *waiting_for_completion &= !(1 << (id as u64));
                     }
                     c_state.cond_var.notify_all();
                 }).copy();
