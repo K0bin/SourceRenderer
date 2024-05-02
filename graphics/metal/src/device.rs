@@ -199,7 +199,9 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     unsafe fn wait_for_idle(&self) {
-
+        self.transfer_queue.wait_for_idle();
+        self.compute_queue.wait_for_idle();
+        self.graphics_queue.wait_for_idle();
     }
 
     unsafe fn create_fence(&self, is_cpu_accessible: bool) -> MTLFence {

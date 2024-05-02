@@ -1,5 +1,4 @@
 use metal;
-use metal::foreign_types::ForeignType;
 use metal::objc::sel;
 use metal::objc::sel_impl;
 use metal::objc::runtime::BOOL;
@@ -13,11 +12,6 @@ use super::*;
 enum MTLEventType {
     Shared(metal::SharedEvent),
     Regular(metal::Event)
-}
-
-pub(crate) enum MTLEventTypeRef<'a> {
-    Shared(&'a metal::SharedEventRef),
-    Regular(&'a metal::EventRef)
 }
 
 pub struct MTLFence {
@@ -36,19 +30,25 @@ impl MTLFence {
         }
     }
 
-    pub(crate) fn handle(&self) -> MTLEventTypeRef {
-        match &self.event {
-            MTLEventType::Regular(event) => MTLEventTypeRef::Regular(event),
-            MTLEventType::Shared(event) => MTLEventTypeRef::Shared(event)
-        }
-    }
-
     pub(crate) fn event_handle(&self) -> &metal::EventRef {
         match &self.event {
             MTLEventType::Regular(event) => event,
             MTLEventType::Shared(event) => event
         }
+    }
 
+    pub(crate) fn is_shared(&self) -> bool {
+        match &self.event {
+            MTLEventType::Regular(_) => false,
+            MTLEventType::Shared(_) => true
+        }
+    }
+
+    pub(crate) fn shared_handle(&self) -> &metal::SharedEventRef {
+        match &self.event {
+            MTLEventType::Regular(_) => panic!(),
+            MTLEventType::Shared(event) => event
+        }
     }
 }
 
