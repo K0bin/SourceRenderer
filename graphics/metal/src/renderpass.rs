@@ -97,7 +97,7 @@ pub(crate) fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<MTLBack
                 },
                 gpu::RenderPassAttachmentView::RenderTarget(_view) => unreachable!()
             }
-            attachment_desc.set_clear_depth(0f64);
+            attachment_desc.set_clear_depth(1f64);
         }
         if !subpass.input_attachments.is_empty() {
             todo!();
