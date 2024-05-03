@@ -61,6 +61,13 @@ use crate::renderer::{
 };
 use crate::transform::interpolation::deconstruct_transform;
 
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+enum ReceiveMessagesResult {
+    FrameCompleted,
+    Quit,
+    WaitForMessages
+}
+
 pub(super) struct RendererInternal<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
     swapchain: Option<Arc<Swapchain<P::GPUBackend>>>,
@@ -103,7 +110,7 @@ impl<P: Platform> RendererInternal<P> {
         let path = Box::new(WebRenderer::new(device, swapchain, &mut shader_manager));
 
         #[cfg(not(target_arch = "wasm32"))]
-        let path: Box<dyn RenderPath<P>> = if false {
+        let path: Box<dyn RenderPath<P>> = if true {
             Box::new(WebRenderer::new(
                 device,
                 &swapchain,
@@ -224,7 +231,8 @@ impl<P: Platform> RendererInternal<P> {
         }
     }
 
-    fn receive_messages(&mut self) -> bool {
+
+    fn receive_messages(&mut self) -> ReceiveMessagesResult {
         // TODO: merge channels to get rid of this mess.
         while self.shader_manager.has_remaining_mandatory_compilations() {
             self.assets
@@ -265,7 +273,7 @@ impl<P: Platform> RendererInternal<P> {
             .receive_assets(&self.asset_manager, &mut self.shader_manager);
 
         if message_opt.is_none() {
-            return false;
+            return ReceiveMessagesResult::WaitForMessages;
         }
 
         let main_view = &mut self.views[0];
@@ -274,7 +282,11 @@ impl<P: Platform> RendererInternal<P> {
             let message = message_opt.take().unwrap();
             match message {
                 RendererCommand::<P::GPUBackend>::EndFrame => {
-                    return true;
+                    return ReceiveMessagesResult::FrameCompleted;
+                }
+
+                RendererCommand::<P::GPUBackend>::Quit => {
+                    return ReceiveMessagesResult::Quit;
                 }
 
                 RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
@@ -380,14 +392,18 @@ impl<P: Platform> RendererInternal<P> {
             }
             message_opt = message_res.ok();
         }
-        false
+        ReceiveMessagesResult::WaitForMessages
     }
 
     #[profiling::function]
     pub(super) fn render(&mut self, renderer: &Renderer<P>) {
-        let mut done_receiving_messages = false;
-        while !done_receiving_messages {
-            done_receiving_messages = self.receive_messages();
+        let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
+        while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
+            message_receiving_result = self.receive_messages();
+        }
+
+        if message_receiving_result == ReceiveMessagesResult::Quit {
+            return;
         }
 
         let delta = Instant::now().duration_since(self.last_frame);

@@ -36,4 +36,5 @@ pub enum RendererCommand<B: GPUBackend> {
     SetLightmap(String),
     RenderUI(UIDrawData<B>),
     EndFrame,
+    Quit
 }

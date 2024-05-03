@@ -191,7 +191,7 @@ impl<P: Platform> Renderer<P> {
                 return;
             }
 
-            let end_frame_res = self.sender.send(RendererCommand::<P::GPUBackend>::EndFrame);
+            let end_frame_res = self.sender.send(RendererCommand::<P::GPUBackend>::Quit);
             if end_frame_res.is_err() {
                 log::error!("Render thread crashed.");
             }
@@ -377,7 +377,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
     }
 
     fn is_saturated(&self) -> bool {
-        let queued_guard = self.queued_frames_counter.lock().unwrap();
+        let queued_guard: std::sync::MutexGuard<u32> = self.queued_frames_counter.lock().unwrap();
         *queued_guard > 1
     }
 
