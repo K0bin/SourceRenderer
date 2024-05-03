@@ -17,6 +17,7 @@ pub struct GraphicsContext<B: GPUBackend> {
   allocator: Arc<MemoryAllocator<B>>,
   fence: Arc<super::Fence<B>>,
   current_frame: u64,
+  completed_frame: u64,
   thread_contexts: ManuallyDrop<ThreadLocal<ThreadContext<B>>>,
   prerendered_frames: u32,
   destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
@@ -52,6 +53,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
       destroyer: ManuallyDrop::new(destroyer.clone()),
       fence: Arc::new(super::Fence::<B>::new(device, destroyer)),
       current_frame: 0u64,
+      completed_frame: 0u64,
       thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
       prerendered_frames,
       global_buffer_allocator: buffer_allocator.clone(),
@@ -73,7 +75,9 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
   }
 
-  pub fn get_frame_end_fence_signal(&self) -> SharedFenceValuePairRef<B> {
+  pub fn end_frame(&mut self) -> SharedFenceValuePairRef<B> {
+    assert_eq!(self.current_frame, self.completed_frame + 1);
+    self.completed_frame += 1;
     SharedFenceValuePairRef {
         fence: &self.fence,
         value: self.current_frame,
@@ -147,8 +151,8 @@ impl<B: GPUBackend> GraphicsContext<B> {
 impl<B: GPUBackend> Drop for GraphicsContext<B> {
     fn drop(&mut self) {
         if self.current_frame > 0 {
-            self.fence.await_value(self.current_frame - 1);
-            self.destroyer.destroy_unused(self.current_frame - 1);
+            self.fence.await_value(self.completed_frame);
+            self.destroyer.destroy_unused(self.completed_frame);
         }
 
         unsafe { ManuallyDrop::drop(&mut self.thread_contexts) };

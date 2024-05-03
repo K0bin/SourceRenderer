@@ -438,7 +438,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             late_latching.before_submit(&input_state, primary_view);
         }
 
-        let frame_end_signal = context.get_frame_end_fence_signal();
+        let frame_end_signal = context.end_frame();
 
         self.device.submit(
             QueueType::Graphics,
