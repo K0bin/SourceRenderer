@@ -45,7 +45,7 @@ impl MTLQueue {
     pub fn wait_for_idle(&self) {
         let state = self.completion_state.waiting_for_completion.lock().unwrap();
         let _guard = self.completion_state.cond_var.wait_while(state, |waiting_for_completion|
-            *waiting_for_completion == 0
+            *waiting_for_completion != 0
         ).unwrap();
     }
 }
