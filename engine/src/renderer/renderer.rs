@@ -122,7 +122,7 @@ impl<P: Platform> Renderer<P> {
         if cfg!(feature = "threading") {
             let thread_handle = platform.start_thread("RenderThread", move || {
                 trace!("Started renderer thread");
-                let mut internal = RendererInternal::new(
+                let mut internal = P::thread_memory_management_pool(|| { RendererInternal::new(
                     &c_device,
                     swapchain,
                     &c_asset_manager,
@@ -130,12 +130,14 @@ impl<P: Platform> Renderer<P> {
                     window_event_receiver,
                     receiver,
                     &c_console,
-                );
+                )});
                 loop {
                     if !c_renderer.is_running.load(Ordering::SeqCst) {
                         break;
                     }
-                    internal.render(&c_renderer);
+                    P::thread_memory_management_pool(|| {
+                        internal.render(&c_renderer);
+                    });
                 }
                 c_renderer.is_running.store(false, Ordering::SeqCst);
                 trace!("Stopped renderer thread");

@@ -645,43 +645,49 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
     };
 
     'asset_loop: loop {
-        let mgr_opt = asset_manager.upgrade();
-        if mgr_opt.is_none() {
-            break 'asset_loop;
-        }
-        let mgr = mgr_opt.unwrap();
-        if !mgr.is_running.load(Ordering::SeqCst) {
-            break 'asset_loop;
-        }
-        let request = {
-            let mut inner = mgr.inner.lock().unwrap();
-            let mut request_opt = inner.high_priority_load_queue.pop_front();
-            request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
-            request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
-            while request_opt.is_none() {
-                if !mgr.is_running.load(Ordering::SeqCst) {
-                    break 'asset_loop;
-                }
-
-                inner = cond_var.wait(inner).unwrap();
-                request_opt = inner.load_queue.pop_front();
+        let mut break_loop = false;
+        P::thread_memory_management_pool(|| {
+            let mgr_opt = asset_manager.upgrade();
+            if mgr_opt.is_none() {
+                break_loop = true;
+            }
+            let mgr = mgr_opt.unwrap();
+            if !mgr.is_running.load(Ordering::SeqCst) {
+                break_loop = true;
+            }
+            let request = {
+                let mut inner = mgr.inner.lock().unwrap();
+                let mut request_opt = inner.high_priority_load_queue.pop_front();
                 request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
                 request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
-            }
-            match request_opt {
-                Some(request) => request,
-                None => continue 'asset_loop,
-            }
-        };
+                while request_opt.is_none() {
+                    if !mgr.is_running.load(Ordering::SeqCst) {
+                        break_loop = true;
+                    }
 
-        {
-            let file_opt = mgr.load_file(&request.path);
-            if file_opt.is_none() {
-                request.progress.finished.fetch_add(1, Ordering::SeqCst);
-                continue 'asset_loop;
+                    inner = cond_var.wait(inner).unwrap();
+                    request_opt = inner.load_queue.pop_front();
+                    request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
+                    request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
+                }
+                match request_opt {
+                    Some(request) => request,
+                    None => return
+                }
+            };
+
+            {
+                let file_opt = mgr.load_file(&request.path);
+                if file_opt.is_none() {
+                    request.progress.finished.fetch_add(1, Ordering::SeqCst);
+                    return;
+                }
+                let file = file_opt.unwrap();
+                mgr.load_asset(file, request.priority, &request.progress);
             }
-            let file = file_opt.unwrap();
-            mgr.load_asset(file, request.priority, &request.progress);
+        });
+        if break_loop {
+            break;
         }
     }
     trace!("Stopped asset manager thread");
