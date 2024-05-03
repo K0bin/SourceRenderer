@@ -212,7 +212,7 @@ impl Platform for SDLPlatform {
         StdThreadHandle(
             std::thread::Builder::new()
                 .name(name.to_string())
-                .spawn(callback)
+                .spawn(|| Self::thread_memory_management_pool(callback))
                 .unwrap(),
         )
     }
