@@ -103,7 +103,7 @@ impl<P: Platform> RendererInternal<P> {
         let path = Box::new(WebRenderer::new(device, swapchain, &mut shader_manager));
 
         #[cfg(not(target_arch = "wasm32"))]
-        let path: Box<dyn RenderPath<P>> = if true {
+        let path: Box<dyn RenderPath<P>> = if false {
             Box::new(WebRenderer::new(
                 device,
                 &swapchain,

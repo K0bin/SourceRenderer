@@ -379,7 +379,7 @@ impl<P: Platform> GeometryPass<P> {
         }]);
         cmd_buffer.set_scissors(&[Scissor {
             position: Vec2I::new(0, 0),
-            extent: Vec2UI::new(9999, 9999),
+            extent: Vec2UI::new(rtv_info.width, rtv_info.height),
         }]);
 
         //command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 7, clusters);

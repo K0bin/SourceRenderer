@@ -34,6 +34,9 @@ pub trait Platform: 'static + Sized {
   fn window(&self) -> &Self::Window;
   fn create_graphics(&self, debug_layers: bool) -> Result<<Self::GPUBackend as GPUBackend>::Instance, Box<dyn Error>>;
 
+  fn thread_memory_management_pool<F, T>(callback: F) -> T
+    where F: FnOnce() -> T;
+
   fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
   where
       F: FnOnce(),

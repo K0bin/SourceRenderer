@@ -216,6 +216,19 @@ impl Platform for SDLPlatform {
                 .unwrap(),
         )
     }
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    fn thread_memory_management_pool<F, T>(callback: F) -> T
+        where F: FnOnce() -> T {
+            use objc::rc::autoreleasepool;
+        autoreleasepool(callback)
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    fn thread_memory_management_pool<F, T>(callback: F) -> T
+        where F: FnOnce() -> T {
+        callback()
+    }
 }
 
 impl Window<SDLPlatform> for SDLWindow {

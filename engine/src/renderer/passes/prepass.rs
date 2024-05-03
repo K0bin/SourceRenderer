@@ -319,7 +319,7 @@ impl Prepass {
                 }]);
                 command_buffer.set_scissors(&[Scissor {
                     position: Vec2I::new(0, 0),
-                    extent: Vec2UI::new(9999, 9999),
+                    extent: Vec2UI::new(info.width, info.height),
                 }]);
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,

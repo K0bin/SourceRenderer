@@ -337,7 +337,7 @@ impl<P: Platform> ShadowMapPass<P> {
             }]);
             cmd_buffer.set_scissors(&[Scissor {
                 position: Vec2I::new(0, 0),
-                extent: Vec2UI::new(9999, 9999),
+                extent: Vec2UI::new(dsv_info.width, dsv_info.height),
             }]);
 
             cmd_buffer.set_vertex_buffer(pass_params.scene.vertex_buffer, 0);

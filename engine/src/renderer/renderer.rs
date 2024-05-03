@@ -238,7 +238,9 @@ impl<P: Platform> Renderer<P> {
     pub fn render(&self) {
         let mut renderer_impl = self.renderer_impl.borrow_mut();
         if let RendererImpl::SingleThreaded(renderer) = &mut *renderer_impl {
-            renderer.render(self);
+            P::thread_memory_management_pool(|| {
+                renderer.render(self);
+            });
         }
     }
 }

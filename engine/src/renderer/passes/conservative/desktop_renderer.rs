@@ -107,6 +107,7 @@ impl<P: Platform> ConservativeRenderer<P> {
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
+        println!("Submit init cmd buffer!");
         device.submit(QueueType::Graphics, QueueSubmission {
             command_buffer: init_cmd_buffer.finish(),
             wait_fences: &[],
@@ -115,7 +116,10 @@ impl<P: Platform> ConservativeRenderer<P> {
             release_swapchain: None
         });
         let c_device = device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
+        rayon::spawn(move || {
+            c_device.flush(QueueType::Graphics);
+            println!("Done submitting init cmd buffer!");
+        });
 
         Self {
             device: device.clone(),
@@ -440,6 +444,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
         let frame_end_signal = context.get_frame_end_fence_signal();
 
+        println!("Regular submit (should have event)");
         self.device.submit(
             QueueType::Graphics,
             QueueSubmission {
@@ -453,7 +458,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         self.device.present(QueueType::Graphics, &swapchain);
 
         let c_device = self.device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
+        rayon::spawn(move || { c_device.flush(QueueType::Graphics); println!("Done submitting (should have event"); });
 
         if let Some(late_latching) = late_latching {
             late_latching.after_submit(&self.device);

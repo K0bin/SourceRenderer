@@ -272,7 +272,10 @@ impl<P: Platform> OcclusionPass<P> {
                     command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
                     command_buffer.set_scissors(&[Scissor {
                         position: Vec2I::new(0i32, 0i32),
-                        extent: Vec2UI::new(99999u32, 99999u32),
+                        extent: Vec2UI::new(
+                            history_depth_buffer.texture().unwrap().info().width,
+                            history_depth_buffer.texture().unwrap().info().height
+                        ),
                     }]);
                     command_buffer.set_viewports(&[Viewport {
                         position: Vec2::new(0f32, 0f32),

@@ -1,4 +1,4 @@
-use std::{ffi::c_void, sync::{Arc, Mutex}};
+use std::{ffi::c_void, sync::Arc};
 
 use metal::{self, NSRange};
 
@@ -55,11 +55,6 @@ struct MTLRenderPassState {
     parallel_encoder: Option<metal::ParallelRenderCommandEncoder>,
     render_pass: Vec<metal::RenderPassDescriptor>,
     subpass: u32,
-    inheritance: Option<MTLCommandBufferInheritance>
-}
-
-pub struct MTLCommandBufferInheritance {
-    render_encoders: Mutex<Vec<metal::RenderCommandEncoder>>
 }
 
 pub struct MTLCommandBuffer {
@@ -77,13 +72,11 @@ pub struct MTLCommandBuffer {
     meta_shaders: Arc<MTLMetaShaders>
 }
 
-const MAX_PARALLELISM: usize = 16;
-
 impl MTLCommandBuffer {
     pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
         Self {
             queue: queue.to_owned(),
-            command_buffer: Some(command_buffer),
+            command_buffer: Some(command_buffer.clone()),
             render_pass: None,
             blit_encoder: None,
             compute_encoder: None,
@@ -399,14 +392,11 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             handle.encode_wait_for_event(&self.pre_event, 1);
         }
         if let Some(inheritance) = inheritance {
-            let mut encoders = inheritance.render_encoders.lock().unwrap();
-
             self.render_pass = Some(MTLRenderPassState {
-                render_encoder: Some(encoders.pop().unwrap()),
+                render_encoder: Some(inheritance.render_command_encoder().to_owned()),
                 parallel_encoder: None,
                 render_pass: Vec::new(),
-                subpass: 0,
-                inheritance: None
+                subpass: 0
             });
         }
     }
@@ -476,24 +466,16 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 parallel_encoder: None,
                 render_encoder: Some(self.handle().new_render_command_encoder(&first_descriptor).to_owned()),
                 subpass: 0,
-                inheritance: None
             });
         } else {
             assert_eq!(descriptors.len(), 1);
             self.binding.dirty_all();
             let parallel_encoder = self.handle().new_parallel_render_command_encoder(&first_descriptor).to_owned();
-            let mut render_encoders = Vec::<metal::RenderCommandEncoder>::with_capacity(MAX_PARALLELISM);
-            for _ in 0..MAX_PARALLELISM {
-                render_encoders.push(parallel_encoder.render_command_encoder().to_owned());
-            }
             self.render_pass = Some(MTLRenderPassState {
                 render_pass: descriptors,
                 parallel_encoder: Some(parallel_encoder),
                 render_encoder: None,
                 subpass: 0,
-                inheritance: Some(MTLCommandBufferInheritance {
-                    render_encoders: Mutex::new(render_encoders)
-                })
             });
         }
     }
@@ -509,13 +491,6 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         if let Some(encoder) = self.get_render_pass_encoder_opt() {
             encoder.end_encoding();
         }
-        if let Some(inheritance) = self.render_pass.as_mut().and_then(|r| r.inheritance.as_mut()) {
-            let mut encoders = inheritance.render_encoders.lock().unwrap();
-            for encoder in encoders.iter() {
-                encoder.end_encoding();
-            }
-            encoders.clear();
-        }
         if let Some(encoder) = self.render_pass.as_ref().and_then(|r| r.parallel_encoder.as_ref()) {
             encoder.end_encoding();
         }
@@ -527,10 +502,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn inheritance(&self) -> &Self::CommandBufferInheritance {
-        self.render_pass.as_ref().and_then(|r| r.inheritance.as_ref()).expect("Need to start render pass first")
+        self.render_pass.as_ref().and_then(|r| r.parallel_encoder.as_ref()).expect("Need to start render pass first")
     }
 
-    type CommandBufferInheritance = MTLCommandBufferInheritance;
+    type CommandBufferInheritance = metal::ParallelRenderCommandEncoder;
 
     unsafe fn execute_inner(&mut self, _submission: &[&MTLCommandBuffer]) {
         // Done automatically
@@ -542,6 +517,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.compute_encoder.is_none());
         assert!(self.blit_encoder.is_none());
         self.command_buffer = Some(self.queue.new_command_buffer_with_unretained_references().to_owned());
+
         self.pre_event = self.queue.device().new_event();
         self.post_event = self.queue.device().new_event();
     }

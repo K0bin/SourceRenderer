@@ -68,13 +68,13 @@ struct PointLight {
   vec4 positionAndIntensity;
 };
 layout(set = DESCRIPTOR_SET_FRAME, binding = 12, std140) uniform PointLightUBO {
-  PointLight pointLights[1024];
+  PointLight pointLights[32];
 };
 struct DirectionalLight {
   vec4 directionAndIntensity;
 };
 layout(set = DESCRIPTOR_SET_FRAME, binding = 13, std140) uniform DirectionalLightUBO {
-  DirectionalLight directionalLights[1024];
+  DirectionalLight directionalLights[32];
 };
 
 #endif

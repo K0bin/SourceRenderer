@@ -1,10 +1,16 @@
+use std::ffi::c_void;
+
 use metal;
 use metal::objc::sel;
 use metal::objc::sel_impl;
 use metal::objc::runtime::BOOL;
 
+use metal::EventRef;
 use metal::SharedEventRef;
+use objc::class;
 use objc::msg_send;
+use metal::foreign_types::ForeignTypeRef;
+
 use sourcerenderer_core::gpu;
 
 use super::*;
@@ -48,6 +54,31 @@ impl MTLFence {
         match &self.event {
             MTLEventType::Regular(_) => panic!(),
             MTLEventType::Shared(event) => event
+        }
+    }
+
+    pub(crate) fn event_set_label(event: &EventRef, label: &str) {
+        fn nsstring_from_str(string: &str) -> *mut objc::runtime::Object {
+            const UTF8_ENCODING: usize = 4;
+
+            let cls = class!(NSString);
+            let bytes = string.as_ptr() as *const c_void;
+            unsafe {
+                let obj: *mut objc::runtime::Object = msg_send![cls, alloc];
+                let obj: *mut objc::runtime::Object = msg_send![
+                    obj,
+                    initWithBytes:bytes
+                    length:string.len()
+                    encoding:UTF8_ENCODING
+                ];
+                let _: *mut c_void = msg_send![obj, autorelease];
+                obj
+            }
+        }
+
+        unsafe {
+            let nslabel = nsstring_from_str(label);
+            let () = msg_send![event, setLabel: nslabel];
         }
     }
 }

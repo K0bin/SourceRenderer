@@ -1,4 +1,5 @@
 
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Condvar, Mutex};
 
 use metal;
@@ -17,6 +18,8 @@ struct CompletionState {
 pub struct MTLQueue {
     queue: metal::CommandQueue,
     meta_shaders: Arc<MTLMetaShaders>,
+    global_order_event: metal::Event,
+    global_order_counter: AtomicU64,
     completion_state: Arc<CompletionState>
 }
 
@@ -26,12 +29,13 @@ impl MTLQueue {
         Self {
             queue,
             meta_shaders: meta_shaders.clone(),
+            global_order_event: device.new_event().to_owned(),
+            global_order_counter: AtomicU64::new(0),
             completion_state: Arc::new(CompletionState {
                 waiting_for_completion: Mutex::new(0u64),
                 cond_var: Condvar::new()
             })
         }
-
     }
 
     pub(crate) fn handle(&self) -> &metal::CommandQueueRef {
@@ -53,16 +57,24 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<MTLBackend>]) {
         let mut waiting_for_completion = self.completion_state.waiting_for_completion.lock().unwrap();
+        let counter_val = self.global_order_counter.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         for submission in submissions {
             for cmd_buf in submission.command_buffers {
+
                 // We cannot add a wait for an event after encoding the command buffer, so each command buffer starts off with
                 // a wait for its own event and we record a helper command buffer that does nothing but signal that event after waiting
                 // for all events that are passed to the submission
                 let fence_wait_cmd_buffer = self.queue.new_command_buffer();
                 for gpu::FenceValuePairRef { fence, value, sync_before: _ } in submission.wait_fences {
                     fence_wait_cmd_buffer.encode_wait_for_event(fence.event_handle(), *value);
+
+                    // Because Metal doesn't have pipeline barriers and only guarantees that command buffers are started in time,
+                    // we synchronize between submissions. D3D12 does the same thing, so should hopefully be fine.
+                    fence_wait_cmd_buffer.encode_wait_for_event(&self.global_order_event, counter_val);
                 }
+                fence_wait_cmd_buffer.set_label("Fence wait helper");
                 fence_wait_cmd_buffer.encode_signal_event(cmd_buf.pre_event_handle(), 1);
+
                 fence_wait_cmd_buffer.commit();
 
                 // Fences are only supposed to be signalled after all command buffers in the submission are completed.
@@ -75,6 +87,7 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
                             fences.push((fence.shared_handle().to_owned(), *value));
                         }
                     }
+                    cmd_buf.handle().encode_signal_event(&self.global_order_event, counter_val + 1);
 
                     let callback = move |_cmd_buffer: &metal::CommandBufferRef| {
                         for (fence, value) in fences.iter() {
@@ -89,17 +102,18 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
 
                     let block = ConcreteBlock::new(callback).copy();
                     cmd_buf.handle().add_completed_handler(&block);
-
                 } else {
                     cmd_buf.handle().encode_signal_event(cmd_buf.post_event_handle(), 1);
                 }
 
+                let c_state = self.completion_state.clone();
                 let id = waiting_for_completion.trailing_ones();
                 assert_eq!(*waiting_for_completion & (1 << (id as u64)), 0);
-                *waiting_for_completion |= 1 << (id as u64);
 
-                let c_state = self.completion_state.clone();
+                *waiting_for_completion |= 1 << (id as u64);
                 let block = ConcreteBlock::new(move |_cmd_buffer: &metal::CommandBufferRef| {
+                    // Set the bit of the command buffer to 0 and notify the queue.
+                    // The render thread might be waiting until the queue is idle.
                     {
                         let mut waiting_for_completion = c_state.waiting_for_completion.lock().unwrap();
                         assert_eq!((*waiting_for_completion >> (id as u64)) & 1, 1);
@@ -110,7 +124,12 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
                 cmd_buf.handle().add_completed_handler(&block);
                 cmd_buf.handle().commit();
             }
-            if !submission.signal_fences.is_empty() && submission.command_buffers.len() > 1 {
+            if submission.command_buffers.len() > 1 {
+                // We're submitting more than 1 command buffer and only want to signal the events after
+                // all command buffers are done.
+                // So similar to the wait helper, we use a helper command buffer that does nothing
+                // except wait for all command buffers to signal that they're done and then signal
+                // both the events that are specified in the submission and the global order event.
                 let fence_signal_cmd_buffer = self.queue.new_command_buffer();
                 for cmd_buf in submission.command_buffers {
                     fence_signal_cmd_buffer.encode_wait_for_event(cmd_buf.post_event_handle(), 1);
@@ -118,6 +137,8 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
                 for gpu::FenceValuePairRef { fence, value, sync_before: _ } in submission.signal_fences {
                     fence_signal_cmd_buffer.encode_signal_event(fence.event_handle(), *value);
                 }
+                fence_signal_cmd_buffer.encode_signal_event(&self.global_order_event, counter_val + 1);
+                fence_signal_cmd_buffer.set_label("Fence signal helper");
                 fence_signal_cmd_buffer.commit();
             }
         }
@@ -130,6 +151,7 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
         let drawable_mtl_texture = drawable.texture();
         let dst = MTLTexture::from_mtl_texture(drawable_mtl_texture, false);
         let mut cmd_buffer = MTLCommandBuffer::new(&self.queue, self.queue.new_command_buffer().to_owned(), &self.meta_shaders);
+        cmd_buffer.handle().set_label("Present helper");
         // Begin/End are not actually necessary
         cmd_buffer.blit(backbuffer, 0, 0, &dst, 0, 0);
         cmd_buffer.handle().present_drawable(&drawable);
