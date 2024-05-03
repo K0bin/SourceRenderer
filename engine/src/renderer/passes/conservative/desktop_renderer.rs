@@ -115,10 +115,7 @@ impl<P: Platform> ConservativeRenderer<P> {
             release_swapchain: None
         });
         let c_device = device.clone();
-        rayon::spawn(move || {
-            c_device.flush(QueueType::Graphics);
-            println!("Done submitting init cmd buffer!");
-        });
+        rayon::spawn(move || c_device.flush(QueueType::Graphics));
 
         Self {
             device: device.clone(),

@@ -163,6 +163,32 @@ impl MTLCommandBuffer {
         self.blit_encoder = None;
         self.compute_encoder = None;
     }
+
+    pub(crate) fn blit_rp(command_buffer: &metal::CommandBufferRef, meta_shaders: &Arc<MTLMetaShaders>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
+        let new_view: Option<metal::Texture>;
+
+        let descriptor = metal::RenderPassDescriptor::new();
+        let attachment = descriptor.color_attachments().object_at(0).unwrap();
+        attachment.set_load_action(metal::MTLLoadAction::DontCare);
+        attachment.set_store_action(metal::MTLStoreAction::Store);
+        attachment.set_level(dst_mip_level as u64);
+        attachment.set_slice(dst_array_layer as u64);
+        attachment.set_texture(Some(dst_texture.handle()));
+        let encoder = command_buffer.new_render_command_encoder(&descriptor);
+        encoder.set_render_pipeline_state(meta_shaders.blit_pipeline.handle());
+        if src_array_layer == 0 && src_mip_level == 0 {
+            encoder.set_fragment_texture(0, Some(src_texture.handle()));
+        } else {
+            new_view = Some(src_texture.handle().new_texture_view_from_slice(
+                src_texture.handle().pixel_format(), src_texture.handle().texture_type(),
+                metal::NSRange::new(src_mip_level as u64, 1), NSRange::new(src_array_layer as u64, 1)));
+            encoder.set_fragment_texture(0, new_view.as_ref().map(|v| v as &metal::TextureRef));
+        }
+        encoder.set_fragment_texture(0, Some(src_texture.handle()));
+        encoder.set_fragment_sampler_state(0, Some(&meta_shaders.linear_sampler));
+        encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 3);
+        encoder.end_encoding();
+    }
 }
 
 impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
@@ -361,29 +387,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 }
             );
         } else if dst_texture.info().usage.contains(gpu::TextureUsage::RENDER_TARGET) {
-            let mut new_view: Option<metal::Texture> = None;
-
-            let descriptor = metal::RenderPassDescriptor::new();
-            let attachment = descriptor.color_attachments().object_at(0).unwrap();
-            attachment.set_load_action(metal::MTLLoadAction::DontCare);
-            attachment.set_store_action(metal::MTLStoreAction::Store);
-            attachment.set_level(dst_mip_level as u64);
-            attachment.set_slice(dst_array_layer as u64);
-            attachment.set_texture(Some(dst_texture.handle()));
-            let encoder = self.handle().new_render_command_encoder(&descriptor);
-            encoder.set_render_pipeline_state(self.meta_shaders.blit_pipeline.handle());
-            if src_array_layer == 0 && src_mip_level == 0 {
-                encoder.set_fragment_texture(0, Some(src_texture.handle()));
-            } else {
-                new_view = Some(src_texture.handle().new_texture_view_from_slice(
-                    src_texture.handle().pixel_format(), src_texture.handle().texture_type(),
-                    metal::NSRange::new(src_mip_level as u64, 1), NSRange::new(src_array_layer as u64, 1)));
-                encoder.set_fragment_texture(0, new_view.as_ref().map(|v| v as &metal::TextureRef));
-            }
-            encoder.set_fragment_texture(0, Some(src_texture.handle()));
-            encoder.set_fragment_sampler_state(0, Some(&self.meta_shaders.linear_sampler));
-            encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 3);
-            encoder.end_encoding();
+            Self::blit_rp(self.command_buffer.as_ref().unwrap(), &self.meta_shaders, src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
         }
     }
 
@@ -516,7 +520,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         assert!(self.compute_encoder.is_none());
         assert!(self.blit_encoder.is_none());
-        self.command_buffer = Some(self.queue.new_command_buffer_with_unretained_references().to_owned());
+        if let Some(command_buffer) = self.command_buffer.as_mut() {
+            assert_eq!(command_buffer.status(), metal::MTLCommandBufferStatus::Completed);
+            *command_buffer = self.queue.new_command_buffer_with_unretained_references().to_owned();
+        }
 
         self.pre_event = self.queue.device().new_event();
         self.post_event = self.queue.device().new_event();
@@ -567,6 +574,9 @@ impl Drop for MTLCommandBuffer {
         }
         if let Some(encoder) = self.render_pass.as_ref().and_then(|r| r.parallel_encoder.as_ref()) {
             encoder.end_encoding();
+        }
+        if let Some(command_buffer) = self.command_buffer.as_ref() {
+            assert_eq!(command_buffer.status(), metal::MTLCommandBufferStatus::Completed);
         }
         self.render_pass = None;
         self.end_non_rendering_encoders();

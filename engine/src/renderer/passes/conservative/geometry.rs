@@ -331,7 +331,6 @@ impl<P: Platform> GeometryPass<P> {
         let view = &pass_params.scene.views[pass_params.scene.active_view_index];
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
         let chunks = view.drawable_parts.par_chunks(chunk_size);
-        println!("Chunk count: {}", chunks.len());
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
         let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = chunks
             .map(|chunk| {

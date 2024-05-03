@@ -150,11 +150,11 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
 
         let drawable_mtl_texture = drawable.texture();
         let dst = MTLTexture::from_mtl_texture(drawable_mtl_texture, false);
-        let mut cmd_buffer = MTLCommandBuffer::new(&self.queue, self.queue.new_command_buffer().to_owned(), &self.meta_shaders);
-        cmd_buffer.handle().set_label("Present helper");
+        let cmd_buffer = self.queue.new_command_buffer().to_owned();
+        cmd_buffer.set_label("Present helper");
         // Begin/End are not actually necessary
-        cmd_buffer.blit(backbuffer, 0, 0, &dst, 0, 0);
-        cmd_buffer.handle().present_drawable(&drawable);
-        cmd_buffer.handle().commit();
+        MTLCommandBuffer::blit_rp(&cmd_buffer, &self.meta_shaders, backbuffer, 0, 0, &dst, 0, 0);
+        cmd_buffer.present_drawable(&drawable);
+        cmd_buffer.commit();
     }
 }
