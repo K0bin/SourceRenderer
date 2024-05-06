@@ -15,6 +15,7 @@ pub(crate) struct MSLBinding {
     pub(crate) texture_binding: Option<u32>,
     pub(crate) sampler_binding: Option<u32>,
     pub(crate) array_count: u32,
+    pub(crate) wriable: bool
 }
 
 #[derive(Clone)]
@@ -65,6 +66,7 @@ impl MTLShader {
                         | gpu::ResourceType::AccelerationStructure => {
                         binding.buffer_binding = Some(buffer_count);
                         buffer_count += resource.array_size;
+                        binding.wriable = resource.writable;
                     },
                     gpu::ResourceType::SubpassInput | gpu::ResourceType::SampledTexture
                         | gpu::ResourceType::StorageTexture => {
@@ -341,7 +343,6 @@ impl MTLGraphicsPipeline {
         if let Some(name) = name {
             descriptor.set_label(name);
         }
-        let pipeline = device.new_render_pipeline_state(&descriptor).unwrap();
 
         let mut resource_map = PipelineResourceMap {
             resources: HashMap::new(),
@@ -349,6 +350,13 @@ impl MTLGraphicsPipeline {
             bindless_argument_buffer_binding: HashMap::new()
         };
         for ((set, binding), msl_binding) in &info.vs.resource_map.resources {
+            if let Some(buffer_binding) = msl_binding.buffer_binding {
+                descriptor.vertex_buffers().unwrap().object_at(buffer_binding as u64).as_ref().unwrap().set_mutability(if msl_binding.wriable {
+                    metal::MTLMutability::Mutable
+                } else {
+                    metal::MTLMutability::Immutable
+                });
+            }
             resource_map.resources.insert((gpu::ShaderType::VertexShader, *set, *binding), msl_binding.clone());
         }
         if let Some(push_constants) = info.vs.resource_map.push_constants.as_ref() {
@@ -359,6 +367,13 @@ impl MTLGraphicsPipeline {
         }
         if let Some(fs) = info.fs.as_ref() {
             for ((set, binding), msl_binding) in &fs.resource_map.resources {
+                if let Some(buffer_binding) = msl_binding.buffer_binding {
+                    descriptor.vertex_buffers().unwrap().object_at(buffer_binding as u64).as_ref().unwrap().set_mutability(if msl_binding.wriable {
+                        metal::MTLMutability::Mutable
+                    } else {
+                        metal::MTLMutability::Immutable
+                    });
+                }
                 resource_map.resources.insert((gpu::ShaderType::FragmentShader, *set, *binding), msl_binding.clone());
             }
             if let Some(push_constants) = fs.resource_map.push_constants.as_ref() {
@@ -368,6 +383,8 @@ impl MTLGraphicsPipeline {
                 resource_map.bindless_argument_buffer_binding.insert(gpu::ShaderType::FragmentShader, bindless_binding);
             }
         }
+
+        let pipeline = device.new_render_pipeline_state(&descriptor).unwrap();
 
         let rasterizer_state = MTLRasterizerInfo {
             front_face: match info.rasterizer.front_face {
