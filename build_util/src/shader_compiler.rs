@@ -871,6 +871,7 @@ pub fn compile_shader(
         "Shader: {:?}, file type: {:?}, shading langs: {:?}",
         file_path, output_file_type, output_shading_languages
     );
+    println!("cargo:rerun-if-changed={}", file_path.to_str().unwrap());
 
     let shader_type = if let Some(path) = file_path.to_str() {
         if path.contains(".rchit") {

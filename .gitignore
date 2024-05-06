@@ -29,6 +29,8 @@ platform/sdl/shaders/
 /graphics/metal/meta_shaders/*.air
 /graphics/metal/meta_shaders/*.dxil
 /graphics/metal/meta_shaders/*.json
+/graphics/metal/meta_shaders/*.ir
+/graphics/metal/meta_shaders/*.metallib
 **.code-workspace
 
 **/.DS_STORE

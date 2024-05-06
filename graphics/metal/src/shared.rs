@@ -5,6 +5,7 @@ use crate::{MTLBindlessArgumentBuffer, MTLGraphicsPipeline, MTLShader};
 pub(crate) struct MTLShared {
     pub(crate) device: metal::Device,
     pub(crate) blit_pipeline: MTLGraphicsPipeline,
+    pub(crate) mdi_pipeline: metal::ComputePipelineState,
     pub(crate) linear_sampler: metal::SamplerState,
     pub(crate) bindless: MTLBindlessArgumentBuffer
 }
@@ -70,6 +71,11 @@ impl MTLShared {
             0, Some("Blit Pipeline")
         );
 
+        let mdi_shader_bytes = include_bytes!("../meta_shaders/mdi.metallib");
+        let mdi_lib = device.new_library_with_data(mdi_shader_bytes).unwrap();
+        let mdi_function = mdi_lib.get_function("writeMDICommands", None).unwrap();
+        let mdi_pipeline = device.new_compute_pipeline_state_with_function(&mdi_function).unwrap();
+
         let sampler_descriptor = metal::SamplerDescriptor::new();
         sampler_descriptor.set_address_mode_r(metal::MTLSamplerAddressMode::ClampToEdge);
         sampler_descriptor.set_address_mode_s(metal::MTLSamplerAddressMode::ClampToEdge);
@@ -82,6 +88,7 @@ impl MTLShared {
         Self {
             device: device.to_owned(),
             blit_pipeline,
+            mdi_pipeline,
             linear_sampler,
             bindless
         }

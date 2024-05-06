@@ -2,6 +2,7 @@ use std::{ffi::c_void, sync::{Arc, Mutex}};
 
 use metal::{self, NSRange};
 
+use objc::{msg_send, sel, sel_impl};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_32, gpu::{self, BindingFrequency, Texture}};
 
@@ -48,6 +49,14 @@ fn index_format_to_mtl(index_format: gpu::IndexFormat) -> metal::MTLIndexType {
         gpu::IndexFormat::U32 => metal::MTLIndexType::UInt32,
         gpu::IndexFormat::U16 => metal::MTLIndexType::UInt16
     }
+}
+
+struct MTLMDIParams {
+    indirect_cmd_buffer: metal::MTLResourceID,
+    draw_buffer: u64,
+    count_buffer: u64,
+    stride: usize,
+    primitive_type: metal::MTLPrimitiveType
 }
 
 enum MTLRenderPassState {
@@ -210,6 +219,45 @@ impl MTLCommandBuffer {
         encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 3);
         encoder.end_encoding();
     }
+
+    fn multi_draw_indirect(&mut self, indexed: bool, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+        {
+            let render_encoder = self.get_render_pass_encoder();
+            render_encoder.end_encoding();
+        }
+        let descriptor = metal::IndirectCommandBufferDescriptor::new();
+        descriptor.set_inherit_buffers(true);
+        descriptor.set_inherit_pipeline_state(true);
+        descriptor.set_command_types(if indexed { metal::MTLIndirectCommandType::DrawIndexed } else { metal::MTLIndirectCommandType::Draw });
+        let icb = self.shared.device.new_indirect_command_buffer_with_descriptor(&descriptor, max_draw_count as u64, metal::MTLResourceOptions::StorageModeShared);
+        {
+            let compute_encoder = self.command_buffer.as_ref().expect("Draw indirect is not supported in secondary command buffers.")
+                .new_compute_command_encoder();
+            compute_encoder.set_compute_pipeline_state(&self.shared.mdi_pipeline);
+            let resource_id: metal::MTLResourceID = unsafe {
+                msg_send![icb, gpuResourceId]
+            };
+            let params = MTLMDIParams {
+                indirect_cmd_buffer: resource_id,
+                draw_buffer: draw_buffer.handle().gpu_address() + draw_buffer_offset as u64,
+                count_buffer: count_buffer.handle().gpu_address() + count_buffer_offset as u64,
+                stride: stride as usize,
+                primitive_type: self.primitive_type
+            };
+            compute_encoder.set_bytes(0, std::mem::size_of_val(&params) as u64, &params as *const MTLMDIParams as *const c_void);
+            compute_encoder.dispatch_threads(metal::MTLSize { width: max_draw_count as u64, height: 1, depth: 1 }, metal::MTLSize { width: 32, height: 1, depth: 1 });
+        }
+        {
+            match &mut self.render_pass {
+                MTLRenderPassState::Commands { render_encoder, render_pass, subpass } => {
+                    *render_encoder = self.command_buffer.as_ref().unwrap().new_render_command_encoder(&render_pass[*subpass as usize]).to_owned();
+                    render_encoder.execute_commands_in_buffer(&icb, metal::NSRange { location: 0u64, length: max_draw_count as u64});
+                },
+                MTLRenderPassState::Parallel { .. } => panic!("Cannot use draw indirect inside of a parallel render pass"),
+                MTLRenderPassState::None => panic!("Cannot use draw indirect outside of a render pass"),
+            }
+        }
+    }
 }
 
 impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
@@ -315,11 +363,11 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
-        todo!()
+       self.multi_draw_indirect(true, draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
     }
 
     unsafe fn draw_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
-        todo!()
+        self.multi_draw_indirect(false, draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
     }
 
     unsafe fn bind_sampling_view(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &MTLTextureView) {
@@ -601,7 +649,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.compute_encoder.is_none());
         assert!(self.blit_encoder.is_none());
         if let Some(command_buffer) = self.command_buffer.as_mut() {
-            assert_eq!(command_buffer.status(), metal::MTLCommandBufferStatus::Completed);
+            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued);
             *command_buffer = self.queue.new_command_buffer_with_unretained_references().to_owned();
         }
 
@@ -667,7 +715,7 @@ impl Drop for MTLCommandBuffer {
         }
 
         if let Some(command_buffer) = self.command_buffer.as_ref() {
-            assert_eq!(command_buffer.status(), metal::MTLCommandBufferStatus::Completed);
+            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued);
         }
         self.render_pass = MTLRenderPassState::None;
         self.end_non_rendering_encoders();
