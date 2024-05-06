@@ -67,12 +67,13 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
                 let fence_wait_cmd_buffer = self.queue.new_command_buffer();
                 for gpu::FenceValuePairRef { fence, value, sync_before: _ } in submission.wait_fences {
                     fence_wait_cmd_buffer.encode_wait_for_event(fence.event_handle(), *value);
-
-                    // Because Metal doesn't have pipeline barriers and only guarantees that command buffers are started in time,
-                    // we synchronize between submissions. D3D12 does the same thing, so should hopefully be fine.
-                    fence_wait_cmd_buffer.encode_wait_for_event(&self.global_order_event, counter_val);
                 }
                 fence_wait_cmd_buffer.set_label("Fence wait helper");
+
+                // Because Metal doesn't have pipeline barriers and only guarantees that command buffers are started in order,
+                // we synchronize between submissions. D3D12 does the same thing, so should hopefully be fine.
+                // We do this to make sure events are signalled in order.
+                fence_wait_cmd_buffer.encode_wait_for_event(&self.global_order_event, counter_val);
                 fence_wait_cmd_buffer.encode_signal_event(cmd_buf.pre_event_handle(), 1);
 
                 fence_wait_cmd_buffer.commit();
