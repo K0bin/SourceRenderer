@@ -121,6 +121,7 @@ impl<P: Platform> RendererInternal<P> {
             if device.supports_indirect()
                 && device.supports_bindless()
                 && device.supports_barycentrics()
+                && device.supports_min_max_filter()
             {
                 Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager))
             } else {
