@@ -89,6 +89,17 @@ pub(crate) fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<MTLBack
         if let Some(depth_stencil) = subpass.depth_stencil_attachment.as_ref() {
             let attachment_desc = descriptor.depth_attachment().unwrap();
             let resource = info.attachments.get(depth_stencil.index as usize).unwrap();
+            let (first_used_in, last_used_in) = first_and_last_used_in.get(&depth_stencil.index).unwrap();
+            if *first_used_in == subpass_index as u32 {
+                attachment_desc.set_load_action(load_action_to_mtl(resource.load_op));
+            } else {
+                attachment_desc.set_load_action(metal::MTLLoadAction::Load);
+            }
+            if *last_used_in == subpass_index as u32 {
+                attachment_desc.set_store_action(store_action_to_mtl(resource.store_op, false));
+            } else {
+                attachment_desc.set_store_action(metal::MTLStoreAction::Store);
+            }
             match resource.view {
                 gpu::RenderPassAttachmentView::DepthStencil(view) => {
                     attachment_desc.set_texture(Some(view.handle()));
