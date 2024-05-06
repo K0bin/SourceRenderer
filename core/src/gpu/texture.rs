@@ -14,7 +14,7 @@ bitflags! {
     const BLIT_DST      = 0b100000000;
     const DEPTH_STENCIL = 0b1000000000;
 
-    const GPU_WRITABLE = 0b10 | 0b10000 | 0b1000000 | 0b100000000 | 0b1000000000;
+    const GPU_WRITABLE = 0b10 | 0b100 | 0b10000 | 0b1000000 | 0b100000000 | 0b1000000000;
   }
 }
 
