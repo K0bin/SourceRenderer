@@ -10,15 +10,15 @@ use super::*;
 pub struct MTLCommandPool {
     queue: metal::CommandQueue,
     command_pool_type: gpu::CommandPoolType,
-    meta_shaders: Arc<MTLMetaShaders>
+    shared: Arc<MTLShared>
 }
 
 impl MTLCommandPool {
-    pub(crate) fn new(queue: &metal::CommandQueueRef, command_pool_type: gpu::CommandPoolType, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
+    pub(crate) fn new(queue: &metal::CommandQueueRef, command_pool_type: gpu::CommandPoolType, shared: &Arc<MTLShared>) -> Self {
         Self {
             queue: queue.to_owned(),
             command_pool_type,
-            meta_shaders: meta_shaders.clone()
+            shared: shared.clone()
         }
     }
 }
@@ -26,12 +26,12 @@ impl MTLCommandPool {
 impl gpu::CommandPool<MTLBackend> for MTLCommandPool {
     unsafe fn create_command_buffer(&mut self) -> MTLCommandBuffer {
         if self.command_pool_type == gpu::CommandPoolType::InnerCommandBuffers {
-            return MTLCommandBuffer::new_without_cmd_buffer(&self.queue, &self.meta_shaders);
+            return MTLCommandBuffer::new_without_cmd_buffer(&self.queue, &self.shared);
         }
 
         let cmd_buffer_handle_ref = self.queue.new_command_buffer_with_unretained_references();
         let cmd_buffer_handle: metal::CommandBuffer = cmd_buffer_handle_ref.to_owned();
-        MTLCommandBuffer::new(&self.queue, cmd_buffer_handle, &self.meta_shaders)
+        MTLCommandBuffer::new(&self.queue, cmd_buffer_handle, &self.shared)
     }
 
     unsafe fn reset(&mut self) {}
@@ -88,11 +88,11 @@ pub struct MTLCommandBuffer {
     primitive_type: metal::MTLPrimitiveType,
     resource_map: Option<Arc<PipelineResourceMap>>,
     binding: MTLBindingManager,
-    meta_shaders: Arc<MTLMetaShaders>
+    shared: Arc<MTLShared>
 }
 
 impl MTLCommandBuffer {
-    pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
+    pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer, shared: &Arc<MTLShared>) -> Self {
         Self {
             queue: queue.to_owned(),
             command_buffer: Some(command_buffer.clone()),
@@ -105,11 +105,11 @@ impl MTLCommandBuffer {
             primitive_type: metal::MTLPrimitiveType::Triangle,
             resource_map: None,
             binding: MTLBindingManager::new(),
-            meta_shaders: meta_shaders.clone()
+            shared: shared.clone()
         }
     }
 
-    pub(crate) fn new_without_cmd_buffer(queue: &metal::CommandQueueRef, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
+    pub(crate) fn new_without_cmd_buffer(queue: &metal::CommandQueueRef, shared: &Arc<MTLShared>) -> Self {
         Self {
             queue: queue.to_owned(),
             command_buffer: None,
@@ -122,7 +122,7 @@ impl MTLCommandBuffer {
             primitive_type: metal::MTLPrimitiveType::Triangle,
             resource_map: None,
             binding: MTLBindingManager::new(),
-            meta_shaders: meta_shaders.clone()
+            shared: shared.clone()
         }
     }
 
@@ -185,7 +185,7 @@ impl MTLCommandBuffer {
         self.compute_encoder = None;
     }
 
-    pub(crate) fn blit_rp(command_buffer: &metal::CommandBufferRef, meta_shaders: &Arc<MTLMetaShaders>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
+    pub(crate) fn blit_rp(command_buffer: &metal::CommandBufferRef, shared: &Arc<MTLShared>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
         let new_view: Option<metal::Texture>;
 
         let descriptor = metal::RenderPassDescriptor::new();
@@ -196,7 +196,7 @@ impl MTLCommandBuffer {
         attachment.set_slice(dst_array_layer as u64);
         attachment.set_texture(Some(dst_texture.handle()));
         let encoder = command_buffer.new_render_command_encoder(&descriptor);
-        encoder.set_render_pipeline_state(meta_shaders.blit_pipeline.handle());
+        encoder.set_render_pipeline_state(shared.blit_pipeline.handle());
         if src_array_layer == 0 && src_mip_level == 0 {
             encoder.set_fragment_texture(0, Some(src_texture.handle()));
         } else {
@@ -206,7 +206,7 @@ impl MTLCommandBuffer {
             encoder.set_fragment_texture(0, new_view.as_ref().map(|v| v as &metal::TextureRef));
         }
         encoder.set_fragment_texture(0, Some(src_texture.handle()));
-        encoder.set_fragment_sampler_state(0, Some(&meta_shaders.linear_sampler));
+        encoder.set_fragment_sampler_state(0, Some(&shared.linear_sampler));
         encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 3);
         encoder.end_encoding();
     }
@@ -411,7 +411,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 }
             );
         } else if dst_texture.info().usage.contains(gpu::TextureUsage::RENDER_TARGET) {
-            Self::blit_rp(self.command_buffer.as_ref().unwrap(), &self.meta_shaders, src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
+            Self::blit_rp(self.command_buffer.as_ref().unwrap(), &self.shared, src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
         }
     }
 

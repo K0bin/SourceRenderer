@@ -2,12 +2,13 @@ use sourcerenderer_core::gpu;
 
 use crate::{MTLGraphicsPipeline, MTLShader};
 
-pub(crate) struct MTLMetaShaders {
+pub(crate) struct MTLShared {
+    pub(crate) device: metal::Device,
     pub(crate) blit_pipeline: MTLGraphicsPipeline,
     pub(crate) linear_sampler: metal::SamplerState
 }
 
-impl MTLMetaShaders {
+impl MTLShared {
     pub(crate) fn new(device: &metal::DeviceRef) -> Self {
         let fullscreen_vs_shader_bytes = include_bytes!("../meta_shaders/fullscreen_quad.vert.json");
         let fullscreen_vs_packed: gpu::PackedShader = serde_json::from_slice(fullscreen_vs_shader_bytes).unwrap();
@@ -78,6 +79,7 @@ impl MTLMetaShaders {
         let linear_sampler = device.new_sampler(&sampler_descriptor);
 
         Self {
+            device: device.to_owned(),
             blit_pipeline,
             linear_sampler
         }

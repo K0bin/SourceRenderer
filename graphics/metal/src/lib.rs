@@ -14,7 +14,7 @@ pub use self::{
     rt::*,
     binding::*,
     renderpass::*,
-    meta::*
+    shared::*,
 };
 
 mod backend;
@@ -32,4 +32,4 @@ mod pipeline;
 mod rt;
 mod binding;
 mod renderpass;
-mod meta;
+mod shared;

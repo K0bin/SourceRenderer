@@ -17,18 +17,18 @@ struct CompletionState {
 
 pub struct MTLQueue {
     queue: metal::CommandQueue,
-    meta_shaders: Arc<MTLMetaShaders>,
+    shared: Arc<MTLShared>,
     global_order_event: metal::Event,
     global_order_counter: AtomicU64,
     completion_state: Arc<CompletionState>
 }
 
 impl MTLQueue {
-    pub(crate) fn new(device: &metal::DeviceRef, meta_shaders: &Arc<MTLMetaShaders>) -> Self {
+    pub(crate) fn new(device: &metal::DeviceRef, shared: &Arc<MTLShared>) -> Self {
         let queue = device.new_command_queue();
         Self {
             queue,
-            meta_shaders: meta_shaders.clone(),
+            shared: shared.clone(),
             global_order_event: device.new_event().to_owned(),
             global_order_counter: AtomicU64::new(0),
             completion_state: Arc::new(CompletionState {
@@ -52,7 +52,7 @@ impl MTLQueue {
 
 impl gpu::Queue<MTLBackend> for MTLQueue {
     unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, _flags: gpu::CommandPoolFlags) -> MTLCommandPool {
-        MTLCommandPool::new(&self.queue, command_pool_type, &self.meta_shaders)
+        MTLCommandPool::new(&self.queue, command_pool_type, &self.shared)
     }
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<MTLBackend>]) {
@@ -154,7 +154,7 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
         let cmd_buffer = self.queue.new_command_buffer().to_owned();
         cmd_buffer.set_label("Present helper");
         // Begin/End are not actually necessary
-        MTLCommandBuffer::blit_rp(&cmd_buffer, &self.meta_shaders, backbuffer, 0, 0, &dst, 0, 0);
+        MTLCommandBuffer::blit_rp(&cmd_buffer, &self.shared, backbuffer, 0, 0, &dst, 0, 0);
         cmd_buffer.present_drawable(&drawable);
         cmd_buffer.commit();
     }

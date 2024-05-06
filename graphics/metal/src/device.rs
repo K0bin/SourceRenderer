@@ -13,7 +13,7 @@ pub struct MTLDevice {
     graphics_queue: MTLQueue,
     compute_queue: MTLQueue,
     transfer_queue: MTLQueue,
-    meta_shaders: Arc<MTLMetaShaders>
+    shared: Arc<MTLShared>
 }
 
 impl MTLDevice {
@@ -47,15 +47,15 @@ impl MTLDevice {
             infos[2].memory_kind = gpu::MemoryKind::VRAM;
         }
 
-        let meta_shaders = Arc::new(MTLMetaShaders::new(device));
+        let shared = Arc::new(MTLShared::new(device));
 
         Self {
             device: device.to_owned(),
             memory_type_infos: infos,
-            graphics_queue: MTLQueue::new(device, &meta_shaders),
-            compute_queue: MTLQueue::new(device, &meta_shaders),
-            transfer_queue: MTLQueue::new(device, &meta_shaders),
-            meta_shaders
+            graphics_queue: MTLQueue::new(device, &shared),
+            compute_queue: MTLQueue::new(device, &shared),
+            transfer_queue: MTLQueue::new(device, &shared),
+            shared
         }
     }
 
