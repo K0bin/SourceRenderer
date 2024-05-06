@@ -234,10 +234,8 @@ impl Drop for MTLTexture {
         if !self.is_texture_owned {
             // Add 1 reference to counteract the upcoming drop reducing
             // the refcount by 1
-            unsafe {
-                let new_ref = metal::Texture::from_ptr(self.texture.as_ptr());
-                std::mem::forget(new_ref);
-            }
+            let new_ref = self.texture.clone();
+            std::mem::forget(new_ref);
         }
     }
 }
