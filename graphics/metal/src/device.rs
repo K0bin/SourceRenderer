@@ -47,7 +47,8 @@ impl MTLDevice {
             infos[2].memory_kind = gpu::MemoryKind::VRAM;
         }
 
-        let shared = Arc::new(MTLShared::new(device));
+        let bindless = MTLBindlessArgumentBuffer::new(&device, 500_000);
+        let shared = Arc::new(MTLShared::new(device, bindless));
 
         Self {
             device: device.to_owned(),
@@ -232,7 +233,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &MTLTextureView) {
-        todo!()
+        self.shared.bindless.insert(texture, slot);
     }
 
     fn graphics_queue(&self) -> &MTLQueue {
@@ -248,7 +249,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     fn supports_bindless(&self) -> bool {
-        false // TODO
+        true
     }
 
     fn supports_ray_tracing(&self) -> bool {

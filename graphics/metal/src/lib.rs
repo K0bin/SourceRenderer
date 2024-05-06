@@ -15,6 +15,7 @@ pub use self::{
     binding::*,
     renderpass::*,
     shared::*,
+    bindless::*,
 };
 
 mod backend;
@@ -33,3 +34,4 @@ mod rt;
 mod binding;
 mod renderpass;
 mod shared;
+mod bindless;

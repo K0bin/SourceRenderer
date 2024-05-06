@@ -3,7 +3,7 @@ use std::{ffi::c_void, sync::{Arc, Mutex}};
 use metal::{self, NSRange};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{align_up_32, gpu::{self, Texture}};
+use sourcerenderer_core::{align_up_32, gpu::{self, BindingFrequency, Texture}};
 
 use super::*;
 
@@ -373,11 +373,22 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn finish_binding(&mut self) {
         if let Some(encoder) = self.compute_encoder.as_ref() {
             self.binding.finish(MTLEncoderRef::Compute(encoder), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
+            let bindless_map = &self.resource_map.as_ref().unwrap().bindless_argument_buffer_binding;
+            if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::ComputeShader) {
+                encoder.set_buffer(*bindless_binding as u64, Some(self.shared.bindless.handle()), 0);
+            }
         }
 
         match &mut self.render_pass {
             MTLRenderPassState::Commands { render_encoder: rp, .. } => {
                 self.binding.finish(MTLEncoderRef::Graphics(rp), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
+                let bindless_map = &self.resource_map.as_ref().unwrap().bindless_argument_buffer_binding;
+                if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::VertexShader) {
+                    rp.set_vertex_buffer(*bindless_binding as u64, Some(self.shared.bindless.handle()), 0);
+                }
+                if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::FragmentShader) {
+                    rp.set_fragment_buffer(*bindless_binding as u64, Some(self.shared.bindless.handle()), 0);
+                }
             }
             _ => {}
         }
