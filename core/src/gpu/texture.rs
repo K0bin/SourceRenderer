@@ -20,7 +20,7 @@ bitflags! {
 
 impl TextureUsage {
   pub fn gpu_writable(&self) -> bool {
-    self.contains(Self::GPU_WRITABLE)
+    self.intersects(Self::GPU_WRITABLE)
   }
 }
 
