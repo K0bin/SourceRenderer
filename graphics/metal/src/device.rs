@@ -257,7 +257,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     fn supports_indirect(&self) -> bool {
-        false // TODO
+        true
     }
 
     fn supports_min_max_filter(&self) -> bool {
