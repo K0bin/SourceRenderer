@@ -837,7 +837,6 @@ fn compile_msl_to_air(
     let _ = std::fs::remove_file(output_path);
 
     Ok(air_bytecode.into_boxed_slice())
-
 }
 
 fn compile_spirv(
@@ -862,11 +861,20 @@ fn compile_spirv(
 pub fn compile_shader(
     file_path: &Path,
     output_dir: &Path,
-    output_shading_languages: ShadingLanguage,
+    mut output_shading_languages: ShadingLanguage,
     output_file_type: CompiledShaderFileType,
     include_debug_info: bool,
     arguments: &HashMap<String, String>,
 ) {
+    if cfg!(not(target_os = "macos")) {
+        output_shading_languages.remove(ShadingLanguage::Air);
+        output_shading_languages.remove(ShadingLanguage::Msl);
+    }
+    if cfg!(not(target_os = "windows")) {
+        output_shading_languages.remove(ShadingLanguage::Dxil);
+        output_shading_languages.remove(ShadingLanguage::Hlsl);
+    }
+
     info!(
         "Shader: {:?}, file type: {:?}, shading langs: {:?}",
         file_path, output_file_type, output_shading_languages
@@ -955,8 +963,4 @@ pub fn compile_shader(
         }
         write_shader(file_path, output_dir, output_shading_languages, CompiledShaderType::Packed(&metadata));
     }
-}
-
-pub fn compile_meta_shader() {
-    unimplemented!()
 }
