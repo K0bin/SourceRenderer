@@ -1,4 +1,4 @@
-use std::{sync::{Mutex, Arc}, collections::VecDeque};
+use std::{collections::{HashSet, VecDeque}, sync::{Arc, Mutex}};
 
 use sourcerenderer_core::{gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _}, Vec3UI};
 use sourcerenderer_core::gpu;
@@ -501,9 +501,11 @@ impl<B: GPUBackend> Transfer<B> {
 
         // commit post barriers
         let mut barriers = Vec::<gpu::Barrier<B>>::with_capacity(commands.pre_barriers.len());
-        for (fence_opt, barrier) in commands.post_barriers.iter() {
+        let mut retained_barrier_indices = HashSet::<u32>::new();
+        for (index, (fence_opt, barrier)) in commands.post_barriers.iter().enumerate() {
             if let Some(fence) = fence_opt {
                 if !fence.is_signalled() {
+                    retained_barrier_indices.insert(index as u32);
                     continue;
                 }
             }
@@ -557,7 +559,12 @@ impl<B: GPUBackend> Transfer<B> {
         unsafe {
             cmd_buffer.cmd_buffer.barrier(&barriers);
         }
-        commands.post_barriers.retain(|(fence_opt, _barrier)| fence_opt.as_ref().map_or(false, |f| !f.is_signalled()));
+        let mut index = 0u32;
+        commands.post_barriers.retain(|_| {
+          let keep = retained_barrier_indices.contains(&index);
+          index += 1;
+          keep
+        });
 
         unsafe {
             cmd_buffer.cmd_buffer.finish();
