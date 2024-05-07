@@ -405,10 +405,14 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
-        cmd_buf.flush_barriers();
+        //cmd_buf.flush_barriers();
         //cmd_buf.blit_to_handle(&*sharpened_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
         std::mem::drop(sharpened_texture);
-        let sharpened_view = self.barriers.get_view(SharpenPass::SHAPENED_TEXTURE_NAME,
+        let sharpened_view = self.barriers.access_view(&mut cmd_buf, SharpenPass::SHAPENED_TEXTURE_NAME,
+            BarrierSync::FRAGMENT_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
             &TextureViewInfo {
                 base_mip_level: 0,
                 mip_level_length: 1,
@@ -417,14 +421,15 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
                 format: None
             }, HistoryResourceEntry::Current);
         let sampler = self.barriers.linear_sampler();
+        cmd_buf.flush_barriers();
         self.blit_pass.execute::<P>(context, &mut cmd_buf, shader_manager, &sharpened_view, swapchain.backbuffer(), sampler);
         std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
-            old_sync: BarrierSync::COPY,
+            old_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
-            old_access: BarrierAccess::COPY_WRITE,
+            old_access: BarrierAccess::RENDER_TARGET_WRITE, // BarrierAccess::COPY_WRITE,
             new_access: BarrierAccess::empty(),
-            old_layout: TextureLayout::CopyDst,
+            old_layout: TextureLayout::RenderTarget, // TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
             texture: swapchain.backbuffer_handle(),
             range: BarrierTextureRange::default(),

@@ -58,11 +58,11 @@ impl VkShared {
 
         let shader_bytes = include_bytes!("../meta_shaders/clear_buffer.comp.json");
         let packed: gpu::PackedShader = serde_json::from_slice(shader_bytes).unwrap();
-        let shader = Arc::new(VkShader::new(
+        let shader = VkShader::new(
             device,
             packed,
             Some("ClearBufferMeta"),
-        ));
+        );
         let clear_buffer_meta_pipeline =
             VkPipeline::new_compute_meta(device, &shader, Some("ClearBufferPipeline"));
 

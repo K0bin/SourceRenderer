@@ -181,7 +181,7 @@ impl<P: Platform> GeometryPass<P> {
                         samples: texture_info.samples,
                     },
                     AttachmentInfo {
-                        format: Format::D24,
+                        format: Format::D24S8,
                         samples: SampleCount::Samples1,
                     },
                 ],

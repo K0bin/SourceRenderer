@@ -354,6 +354,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
             enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
+            enabled_features.features.sampler_anisotropy = vk::TRUE;
 
             enabled_features_11.p_next = std::mem::replace(
                 &mut enabled_features.p_next,

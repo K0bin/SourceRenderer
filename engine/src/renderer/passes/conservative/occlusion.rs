@@ -157,7 +157,7 @@ impl<P: Platform> OcclusionPass<P> {
             },
             &RenderPassInfo {
                 attachments: &[AttachmentInfo {
-                    format: Format::D24,
+                    format: Format::D24S8,
                     samples: SampleCount::Samples1,
                 }],
                 subpasses: &[SubpassInfo {

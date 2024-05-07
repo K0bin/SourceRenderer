@@ -78,7 +78,7 @@ impl VisibilityBufferPass {
 
         let depth_texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
-            format: Format::D24,
+            format: Format::D24S8,
             width: resolution.x,
             height: resolution.y,
             depth: 1,

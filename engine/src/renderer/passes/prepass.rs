@@ -60,7 +60,7 @@ impl Prepass {
     ) -> Self {
         let depth_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
-            format: Format::D24,
+            format: Format::D24S8,
             width: resolution.x,
             height: resolution.y,
             depth: 1,
@@ -175,7 +175,7 @@ impl Prepass {
                         samples: SampleCount::Samples1,
                     },
                     AttachmentInfo {
-                        format: Format::D24,
+                        format: Format::D24S8,
                         samples: SampleCount::Samples1,
                     },
                 ],

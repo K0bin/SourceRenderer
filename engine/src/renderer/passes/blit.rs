@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 
 use crate::{graphics::*, renderer::{render_path::RenderPassParameters, renderer_resources::RendererResources, shader_manager::{GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager}}};
 
@@ -94,6 +94,23 @@ impl BlitPass {
 
         let pipeline = shader_manager.get_graphics_pipeline(self.pipeline_handle);
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+
+        cmd_buffer.set_scissors(&[Scissor {
+            position: Vec2I::new(0i32, 0i32),
+            extent: Vec2UI::new(
+                src_view.texture().unwrap().info().width,
+                src_view.texture().unwrap().info().height
+            ),
+        }]);
+        cmd_buffer.set_viewports(&[Viewport {
+            position: Vec2::new(0f32, 0f32),
+            extent: Vec2::new(
+                src_view.texture().unwrap().info().width as f32,
+                src_view.texture().unwrap().info().height as f32,
+            ),
+            min_depth: 0f32,
+            max_depth: 1f32,
+        }]);
 
         cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, src_view, sampler);
         cmd_buffer.finish_binding();

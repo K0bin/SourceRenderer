@@ -46,7 +46,7 @@ impl SharpenPass {
                 mip_levels: 1,
                 array_length: 1,
                 samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC | TextureUsage::RENDER_TARGET,
+                usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC | TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
                 supports_srgb: false,
             },
             false,

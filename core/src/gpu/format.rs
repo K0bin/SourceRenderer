@@ -34,7 +34,7 @@ pub enum Format {
   D16S8,
   D32,
   D32S8,
-  D24
+  D24S8
 }
 
 impl Format {
@@ -43,13 +43,14 @@ impl Format {
       Format::D32
       | Format::D16
       | Format::D16S8
-      | Format::D24
+      | Format::D24S8
       | Format::D32S8)
   }
 
   pub fn is_stencil(&self) -> bool {
     matches!(self,
       Format::D16S8
+      | Format::D24S8
       | Format::D32S8)
   }
 

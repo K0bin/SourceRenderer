@@ -61,7 +61,7 @@ impl<P: Platform> ShadowMapPass<P> {
             &Self::SHADOW_MAP_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2DArray,
-                format: Format::D24,
+                format: Format::D24S8,
                 width: shadow_map_res,
                 height: shadow_map_res,
                 depth: 1,
@@ -143,7 +143,7 @@ impl<P: Platform> ShadowMapPass<P> {
             },
             &RenderPassInfo {
                 attachments: &[AttachmentInfo {
-                    format: Format::D24,
+                    format: Format::D24S8,
                     samples: SampleCount::Samples1,
                 }],
                 subpasses: &[SubpassInfo {
