@@ -8,7 +8,7 @@ use std::{
             AtomicU32,
             AtomicU64,
             Ordering,
-        }, Arc, Mutex, MutexGuard
+        }, Arc, Condvar, Mutex, MutexGuard
     },
 };
 
@@ -48,8 +48,11 @@ pub struct VkSwapchain {
     device: Arc<RawVkDevice>,
     vsync: bool,
     state: AtomicCell<VkSwapchainState>,
-    semaphore_index: AtomicU64,
+    acquire_semaphore_index: AtomicU64,
+    present_semaphore_index: AtomicU64,
+    cond_var: Condvar,
     image_index: AtomicU32,
+    min_image_count: u32,
     transform_matrix: Matrix4,
 }
 
@@ -256,7 +259,9 @@ impl VkSwapchain {
                 textures,
                 acquire_semaphores,
                 present_semaphores,
-                semaphore_index: AtomicU64::new(0),
+                acquire_semaphore_index: AtomicU64::new(0),
+                present_semaphore_index: AtomicU64::new(1),
+                cond_var: Condvar::new(),
                 image_index: AtomicU32::new(0),
                 swapchain: Mutex::new(swapchain),
                 swapchain_loader,
@@ -264,6 +269,7 @@ impl VkSwapchain {
                 surface: Some(surface),
                 device: device.clone(),
                 vsync,
+                min_image_count: capabilities.min_image_count,
                 state: AtomicCell::new(VkSwapchainState::Okay),
                 transform_matrix: matrix,
             })
@@ -377,8 +383,19 @@ impl VkSwapchain {
 
     #[allow(clippy::logic_bug)]
     pub unsafe fn acquire_back_buffer(&self) -> VkResult<(u32, bool)> {
-        let index: usize = ((self.semaphore_index.fetch_add(1, Ordering::AcqRel) + 1) % self.acquire_semaphores.len() as u64) as usize;
-        let semaphore = &self.acquire_semaphores[index];
+        let acquire_index = self.acquire_semaphore_index.fetch_add(1, Ordering::AcqRel) + 1;
+        let present_index = self.present_semaphore_index.load(Ordering::Acquire);
+        if (acquire_index - present_index) as usize > self.textures.len() - self.min_image_count as usize {
+            let guard = self.swapchain.lock().unwrap();
+            let _unused = self.cond_var.wait_while(guard, |_| {
+                let acquire_index = self.acquire_semaphore_index.fetch_add(1, Ordering::AcqRel);
+                let present_index = self.present_semaphore_index.fetch_add(1, Ordering::AcqRel);
+                (acquire_index - present_index) as usize >= self.min_image_count as usize
+            }).unwrap();
+        }
+
+        let acquire_semaphore_index: usize = (acquire_index % self.acquire_semaphores.len() as u64) as usize;
+        let semaphore = &self.acquire_semaphores[acquire_semaphore_index];
 
         let result = {
             let swapchain_handle = self.handle();
@@ -411,6 +428,14 @@ impl VkSwapchain {
 
                     self.set_state(VkSwapchainState::OutOfDate);
                 }
+                vk::Result::NOT_READY => {
+                    let guard = self.swapchain.lock().unwrap();
+                    let _unused = self.cond_var.wait_while(guard, |_| {
+                        let acquire_index = self.acquire_semaphore_index.fetch_add(1, Ordering::AcqRel);
+                        let present_index = self.present_semaphore_index.fetch_add(1, Ordering::AcqRel);
+                        (acquire_index - present_index) as usize >= 1
+                    }).unwrap();
+                }
                 _ => {
                     panic!(
                         "Unknown error in prepare_back_buffer: {:?}",
@@ -431,13 +456,18 @@ impl VkSwapchain {
     }
 
     pub(super) fn acquire_semaphore(&self) -> &VkBinarySemaphore {
-        let index = (self.semaphore_index.load(Ordering::Acquire) % self.acquire_semaphores.len() as u64) as usize;
+        let index = (self.acquire_semaphore_index.load(Ordering::Acquire) % self.acquire_semaphores.len() as u64) as usize;
         &self.acquire_semaphores[index]
     }
 
     pub(super) fn present_semaphore(&self) -> &VkBinarySemaphore {
-        let index = (self.semaphore_index.load(Ordering::Acquire) % self.present_semaphores.len() as u64) as usize;
+        let index = (self.present_semaphore_index.load(Ordering::Acquire) % self.present_semaphores.len() as u64) as usize;
         &self.present_semaphores[index]
+    }
+
+    pub(super) fn bump_present_counter(&self) {
+        self.present_semaphore_index.fetch_add(1, Ordering::Release);
+        self.cond_var.notify_all();
     }
 }
 
@@ -525,12 +555,18 @@ impl Swapchain<VkBackend> for VkSwapchain {
     }
 
     unsafe fn next_backbuffer(&self) -> Result<(), SwapchainError> {
-        let _ = self.acquire_back_buffer()
-            .map_err(|e| match e {
-                vk::Result::ERROR_OUT_OF_DATE_KHR => SwapchainError::Other,
-                vk::Result::ERROR_SURFACE_LOST_KHR => SwapchainError::SurfaceLost,
-                _ => SwapchainError::Other
-            })?;
+        let res = self.acquire_back_buffer();
+
+        if res == Err(vk::Result::NOT_READY) {
+            println!("retry");
+            return self.next_backbuffer();
+        }
+
+        res.map_err(|e| match e {
+            vk::Result::ERROR_OUT_OF_DATE_KHR => SwapchainError::Other,
+            vk::Result::ERROR_SURFACE_LOST_KHR => SwapchainError::SurfaceLost,
+            _ => SwapchainError::Other
+        })?;
         Ok(())
     }
 

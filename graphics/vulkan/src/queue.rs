@@ -190,6 +190,7 @@ impl gpu::Queue<VkBackend> for VkQueue {
                 }
             }
         }
+        swapchain.bump_present_counter();
     }
 
     unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, flags: gpu::CommandPoolFlags) -> VkCommandPool {

@@ -87,6 +87,10 @@ impl<B: GPUBackend> Swapchain<B> {
         unsafe { self.swapchain.next_backbuffer() }
     }
 
+    pub fn backbuffer_index(&self) -> u32 {
+        self.swapchain.backbuffer_index()
+    }
+
     pub fn backbuffer(&self) -> &Arc<super::TextureView<B>> {
         let idx = self.swapchain.backbuffer_index();
         &self.views[idx as usize]
