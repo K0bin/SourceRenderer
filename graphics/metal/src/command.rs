@@ -2,7 +2,7 @@ use std::{ffi::c_void, sync::{Arc, Mutex}};
 
 use metal::{self, NSRange};
 
-use objc::{msg_send, sel, sel_impl};
+use objc::{msg_send, runtime::Object, sel, sel_impl};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_32, gpu::{self, BindingFrequency, Texture}};
 
@@ -32,6 +32,7 @@ impl gpu::CommandPool<MTLBackend> for MTLCommandPool {
 
         let cmd_buffer_handle_ref = self.queue.new_command_buffer_with_unretained_references();
         let cmd_buffer_handle: metal::CommandBuffer = cmd_buffer_handle_ref.to_owned();
+        MTLCommandBuffer::enable_error_tracking(&cmd_buffer_handle);
         MTLCommandBuffer::new(&self.queue, cmd_buffer_handle, &self.shared)
     }
 
@@ -175,7 +176,6 @@ impl MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         if self.compute_encoder.is_none() {
             self.end_non_rendering_encoders();
-            self.binding.dirty_all();
             self.compute_encoder = Some(self.handle().compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
         }
         self.compute_encoder.as_ref().unwrap()
@@ -185,7 +185,6 @@ impl MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         if self.as_encoder.is_none() {
             self.end_non_rendering_encoders();
-            self.binding.dirty_all();
             self.as_encoder = Some(self.handle().new_acceleration_structure_command_encoder().to_owned());
         }
         self.as_encoder.as_ref().unwrap()
@@ -216,6 +215,7 @@ impl MTLCommandBuffer {
         self.blit_encoder = None;
         self.compute_encoder = None;
         self.as_encoder = None;
+        self.binding.dirty_all();
     }
 
     pub(crate) fn blit_rp(command_buffer: &metal::CommandBufferRef, shared: &Arc<MTLShared>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
@@ -282,10 +282,22 @@ impl MTLCommandBuffer {
             }
         }
     }
+
+    fn enable_error_tracking(command_buffer: &metal::CommandBufferRef) {
+        //let _: ()  = unsafe { msg_send![command_buffer, setErrorOptions: 1] };
+    }
+
+    fn print_error(command_buffer: &metal::CommandBufferRef) {
+        return;
+        let error: *mut Object  = unsafe { msg_send![command_buffer, error] };
+        let domain: &str  = unsafe { msg_send![error, error] };
+        println!("domain {}", domain);
+    }
 }
 
 impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn set_pipeline(&mut self, pipeline: gpu::PipelineBinding<MTLBackend>) {
+        self.binding.dirty_all();
         match pipeline {
             gpu::PipelineBinding::Graphics(pipeline) => {
                 self.primitive_type = pipeline.primitive_type();
@@ -425,7 +437,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn bind_storage_buffer(&mut self, frequency: gpu::BindingFrequency, binding: u32, buffer: &MTLBuffer, offset: u64, length: u64) {
-        self.binding.bind(frequency, binding, MTLBoundResourceRef::UniformBuffer(MTLBufferBindingInfoRef {
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::StorageBuffer(MTLBufferBindingInfoRef {
             buffer: buffer.handle(), offset: offset, length: length
         }));
     }
@@ -439,7 +451,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn bind_acceleration_structure(&mut self, frequency: gpu::BindingFrequency, binding: u32, acceleration_structure: &MTLAccelerationStructure) {
-        unimplemented!()
+        self.binding.bind(frequency, binding, MTLBoundResourceRef::AccelerationStructure(acceleration_structure.handle()));
     }
 
     unsafe fn finish_binding(&mut self) {
@@ -572,7 +584,6 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let descriptors = render_pass_to_descriptors(renderpass_info);
         let first_descriptor = descriptors[0].clone();
         if recording_mode == gpu::RenderpassRecordingMode::Commands {
-            self.binding.dirty_all();
             self.render_pass = MTLRenderPassState::Commands {
                 render_encoder: self.handle().new_render_command_encoder(&first_descriptor).to_owned(),
                 subpass: 0,
@@ -580,7 +591,6 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             };
         } else {
             assert_eq!(descriptors.len(), 1);
-            self.binding.dirty_all();
             let parallel_encoder = self.handle().new_parallel_render_command_encoder(&first_descriptor).to_owned();
             let encoders = Arc::new(Mutex::new(Vec::new()));
             {
@@ -599,6 +609,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn advance_subpass(&mut self) {
+        self.binding.dirty_all();
         match &mut self.render_pass {
             MTLRenderPassState::Commands { render_encoder, subpass, render_pass } => {
                 *subpass += 1;
@@ -674,8 +685,13 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.blit_encoder.is_none());
         assert!(self.as_encoder.is_none());
         if let Some(command_buffer) = self.command_buffer.as_mut() {
-            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued);
+            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == metal::MTLCommandBufferStatus::Error);
+            if command_buffer.status() == metal::MTLCommandBufferStatus::Error {
+                println!("COMMAND BUFFER ERROR: {:?}", "TODO: implement error checking");
+                Self::print_error(command_buffer);
+            }
             *command_buffer = self.queue.new_command_buffer_with_unretained_references().to_owned();
+            Self::enable_error_tracking(command_buffer);
         }
 
         self.pre_event = self.queue.device().new_event();
@@ -752,7 +768,11 @@ impl Drop for MTLCommandBuffer {
         }
 
         if let Some(command_buffer) = self.command_buffer.as_ref() {
-            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued);
+            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == metal::MTLCommandBufferStatus::Error);
+            if command_buffer.status() == metal::MTLCommandBufferStatus::Error {
+                println!("COMMAND BUFFER ERROR: {:?}", "TODO: implement error checking");
+                Self::print_error(command_buffer);
+            }
         }
         self.render_pass = MTLRenderPassState::None;
         self.end_non_rendering_encoders();

@@ -616,6 +616,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     }
 
     pub fn create_bottom_level_acceleration_structure(&mut self, info: &BottomLevelAccelerationStructureInfo<B>, mut use_preallocated_scratch: bool) -> Option<AccelerationStructure<B>> {
+        assert_ne!(info.mesh_parts.len(), 0);
         let core_info = gpu::BottomLevelAccelerationStructureInfo {
             index_format: info.index_format,
             vertex_position_offset: info.vertex_position_offset,

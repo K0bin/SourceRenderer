@@ -9,7 +9,7 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub(crate) struct MSLBinding {
     pub(crate) buffer_binding: Option<u32>,
     pub(crate) texture_binding: Option<u32>,

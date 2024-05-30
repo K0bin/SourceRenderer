@@ -29,8 +29,8 @@ struct GPUDrawable {
   mat4 oldTransform;
   uint meshIndex;
   uint flags;
-  uint _padding1;
-  uint _padding2; // 16 byte alignment because of the mat4 members
+  uint partStart;
+  uint partCount; // 16 byte alignment because of the mat4 members
 };
 
 struct GPUBoundingBox {

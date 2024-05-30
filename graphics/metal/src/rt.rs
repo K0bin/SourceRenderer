@@ -65,7 +65,7 @@ impl MTLAccelerationStructure {
 
     fn bottom_level_descriptor(info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>) -> metal::PrimitiveAccelerationStructureDescriptor {
         let descriptor = metal::PrimitiveAccelerationStructureDescriptor::descriptor();
-        let mut geometries = SmallVec::<[metal::AccelerationStructureTriangleGeometryDescriptor; 16]>::with_capacity(info.mesh_parts.len());
+        let mut geometries = SmallVec::<[metal::AccelerationStructureGeometryDescriptor; 16]>::with_capacity(info.mesh_parts.len());
         for part in info.mesh_parts {
             let geometry: metal::AccelerationStructureTriangleGeometryDescriptor = metal::AccelerationStructureTriangleGeometryDescriptor::descriptor();
             geometry.set_index_buffer(Some(info.index_buffer.handle()));
@@ -78,8 +78,12 @@ impl MTLAccelerationStructure {
             geometry.set_opaque(info.opaque);
             geometry.set_triangle_count(part.primitive_count as u64);
             geometry.set_vertex_format(format_to_mtl_attribute_format(info.vertex_format));
-            geometries.push(geometry);
+            let _: () = unsafe { msg_send![&geometry as &metal::AccelerationStructureTriangleGeometryDescriptorRef, retain] };
+            geometries.push(metal::AccelerationStructureGeometryDescriptor::from(geometry));
         }
+        let geometries_array = metal::Array::from_owned_slice(&geometries);
+        descriptor.set_geometry_descriptors(geometries_array);
+        let _: () = unsafe { msg_send![&descriptor as &metal::PrimitiveAccelerationStructureDescriptorRef, retain] };
         descriptor
     }
 
@@ -91,6 +95,7 @@ impl MTLAccelerationStructure {
         descriptor.set_instance_descriptor_buffer_offset(info.instances_buffer_offset);
         descriptor.set_instance_descriptor_buffer(info.instances_buffer.handle());
         descriptor.set_instance_descriptor_stride(std::mem::size_of::<metal::MTLAccelerationStructureUserIDInstanceDescriptor>() as u64);
+        let _: () = unsafe { msg_send![&descriptor as &metal::InstanceAccelerationStructureDescriptorRef, retain] };
         descriptor
     }
 
@@ -141,6 +146,10 @@ impl MTLAccelerationStructure {
             shared: shared.clone(),
             is_blas: false
         }
+    }
+
+    pub(crate) fn handle(&self) -> &metal::AccelerationStructureRef {
+        &self.acceleration_structure
     }
 }
 

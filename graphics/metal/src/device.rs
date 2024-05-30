@@ -156,13 +156,20 @@ impl gpu::Device<MTLBackend> for MTLDevice {
 
         let is_apple_gpu = self.device.supports_family(metal::MTLGPUFamily::Apple7);
         let is_uma = self.device.has_unified_memory();
+
+        let mut memory_type_mask = if !is_uma { 1 | 1 << 1 | 1 << 2 } else { 1 | 1 << 1 };
+        if info.usage.contains(gpu::BufferUsage::ACCELERATION_STRUCTURE) {
+            // Acceleration structures must be private
+            memory_type_mask = 1 << 2;
+        }
+
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if !is_apple_gpu || info.usage.gpu_writable() {
                 DedicatedAllocationPreference::RequireDedicated
             } else {
                 DedicatedAllocationPreference::DontCare
             },
-            memory_type_mask: if !is_uma { 1 | 1 << 1 | 1 << 2 } else { 1 | 1 << 1 },
+            memory_type_mask,
             alignment: size_and_align.align,
             size: size_and_align.size,
         }
@@ -253,7 +260,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     fn supports_ray_tracing(&self) -> bool {
-        self.device.supports_raytracing() && false
+        self.device.supports_raytracing()
     }
 
     fn supports_indirect(&self) -> bool {

@@ -14,6 +14,7 @@ pub(crate) mod taa;
 pub(crate) mod web;
 pub(crate) mod ui;
 pub(crate) mod blit;
+pub(crate) mod path_tracing;
 
 use modern::{
     rt_shadows,

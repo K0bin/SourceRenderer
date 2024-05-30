@@ -11,7 +11,7 @@ use bitflags::bitflags;
 
 pub const PER_SET_BINDINGS: usize = 32;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct MTLBufferBindingInfo {
     pub(crate) buffer: metal::Buffer,
     pub(crate) offset: u64,
@@ -41,7 +41,7 @@ impl PartialEq<MTLBufferBindingInfoRef<'_>> for MTLBufferBindingInfo {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum MTLBoundResource {
     None,
     UniformBuffer(MTLBufferBindingInfo),
@@ -249,7 +249,7 @@ impl MTLBindingManager {
     }
 
     pub(crate) fn dirty_all(&mut self) {
-        for i in 0..gpu::BindingFrequency::Frame as u32 {
+        for i in 0..=gpu::BindingFrequency::Frame as u32 {
             self.dirty[i as usize] = !0u64;
         }
     }
@@ -515,6 +515,8 @@ impl MTLBindingManager {
                             }
                         }
                     }
+
+                    *dirty = 0;
                 }
             },
             MTLEncoderRef::Compute(encoder) => {
@@ -650,6 +652,8 @@ impl MTLBindingManager {
                             },
                         }
                     }
+
+                    *dirty = 0;
                 }
             },
         }
