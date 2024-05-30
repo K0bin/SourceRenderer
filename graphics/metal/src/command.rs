@@ -103,6 +103,7 @@ pub struct MTLCommandBuffer {
     blit_encoder: Option<metal::BlitCommandEncoder>,
     render_pass: MTLRenderPassState,
     compute_encoder: Option<metal::ComputeCommandEncoder>,
+    as_encoder: Option<metal::AccelerationStructureCommandEncoder>,
     pre_event: metal::Event,
     post_event: metal::Event,
     index_buffer: Option<IndexBufferBinding>,
@@ -120,6 +121,7 @@ impl MTLCommandBuffer {
             render_pass: MTLRenderPassState::None,
             blit_encoder: None,
             compute_encoder: None,
+            as_encoder: None,
             pre_event: queue.device().new_event(),
             post_event: queue.device().new_event(),
             index_buffer: None,
@@ -137,6 +139,7 @@ impl MTLCommandBuffer {
             render_pass: MTLRenderPassState::None,
             blit_encoder: None,
             compute_encoder: None,
+            as_encoder: None,
             pre_event: queue.device().new_event(),
             post_event: queue.device().new_event(),
             index_buffer: None,
@@ -162,10 +165,7 @@ impl MTLCommandBuffer {
     fn get_blit_encoder(&mut self) -> &metal::BlitCommandEncoder {
         assert!(self.render_pass.is_none());
         if self.blit_encoder.is_none() {
-            if let Some(encoder) = &self.compute_encoder {
-                encoder.end_encoding();
-                self.compute_encoder = None;
-            }
+            self.end_non_rendering_encoders();
             self.blit_encoder = Some(self.handle().new_blit_command_encoder().to_owned());
         }
         self.blit_encoder.as_ref().unwrap()
@@ -174,14 +174,21 @@ impl MTLCommandBuffer {
     fn get_compute_encoder(&mut self) -> &metal::ComputeCommandEncoder {
         assert!(self.render_pass.is_none());
         if self.compute_encoder.is_none() {
-            if let Some(encoder) = &self.blit_encoder {
-                encoder.end_encoding();
-                self.blit_encoder = None;
-            }
+            self.end_non_rendering_encoders();
             self.binding.dirty_all();
             self.compute_encoder = Some(self.handle().compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
         }
         self.compute_encoder.as_ref().unwrap()
+    }
+
+    fn get_acceleration_structure_encoder(&mut self) -> &metal::AccelerationStructureCommandEncoder {
+        assert!(self.render_pass.is_none());
+        if self.as_encoder.is_none() {
+            self.end_non_rendering_encoders();
+            self.binding.dirty_all();
+            self.as_encoder = Some(self.handle().new_acceleration_structure_command_encoder().to_owned());
+        }
+        self.as_encoder.as_ref().unwrap()
     }
 
     fn get_render_pass_encoder(&self) -> &metal::RenderCommandEncoder {
@@ -202,8 +209,13 @@ impl MTLCommandBuffer {
         if let Some(encoder) = &self.compute_encoder {
             encoder.end_encoding();
         }
+        if let Some(encoder) = &self.as_encoder {
+            encoder.end_encoding();
+        }
+
         self.blit_encoder = None;
         self.compute_encoder = None;
+        self.as_encoder = None;
     }
 
     pub(crate) fn blit_rp(command_buffer: &metal::CommandBufferRef, shared: &Arc<MTLShared>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
@@ -660,6 +672,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         assert!(self.compute_encoder.is_none());
         assert!(self.blit_encoder.is_none());
+        assert!(self.as_encoder.is_none());
         if let Some(command_buffer) = self.command_buffer.as_mut() {
             assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued);
             *command_buffer = self.queue.new_command_buffer_with_unretained_references().to_owned();
@@ -678,7 +691,9 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         scratch_buffer: &MTLBuffer,
         scratch_buffer_offset: u64
       ) -> MTLAccelerationStructure {
+        let encoder = { self.get_acceleration_structure_encoder().clone() };
         MTLAccelerationStructure::new_bottom_level(
+            &encoder,
             &self.shared,
             size,
             target_buffer,
@@ -708,8 +723,8 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         scratch_buffer: &MTLBuffer,
         scratch_buffer_offset: u64
       ) -> MTLAccelerationStructure {
-        self.end_non_rendering_encoders();
-        MTLAccelerationStructure::new_top_level(&self.shared, size, target_buffer, target_buffer_offset, scratch_buffer, scratch_buffer_offset, info, self.command_buffer.as_ref().unwrap())
+        let encoder = { self.get_acceleration_structure_encoder().clone() };
+        MTLAccelerationStructure::new_top_level(&encoder, &self.shared, size, target_buffer, target_buffer_offset, scratch_buffer, scratch_buffer_offset, info, self.command_buffer.as_ref().unwrap())
     }
 
     unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
