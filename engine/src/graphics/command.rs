@@ -697,7 +697,8 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         let core_instances: SmallVec::<[gpu::AccelerationStructureInstance<B>; 16]> = info.instances.iter().map(|i| gpu::AccelerationStructureInstance {
             acceleration_structure: i.acceleration_structure.handle(),
             transform: i.transform.clone(),
-            front_face: i.front_face
+            front_face: i.front_face,
+            id: i.id
         }).collect();
 
         let required_instances_buffer_size = self.inner.device.get_top_level_instances_buffer_size(&core_instances);

@@ -123,14 +123,16 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
         let mut instances = Vec::<AccelerationStructureInstance<P::GPUBackend>>::with_capacity(
             static_drawables.len(),
         );
-        for (bl, drawable) in bl_acceleration_structures
+        for ((index, bl), drawable) in bl_acceleration_structures
             .iter()
+            .enumerate()
             .zip(static_drawables.iter())
         {
             instances.push(AccelerationStructureInstance::<P::GPUBackend> {
                 acceleration_structure: bl,
                 transform: drawable.transform,
                 front_face: FrontFace::Clockwise,
+                id: index as u32
             });
         }
 

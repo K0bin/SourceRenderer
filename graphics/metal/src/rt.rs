@@ -30,7 +30,7 @@ impl MTLAccelerationStructure {
             }
         }
 
-        let instances: Vec<metal::MTLAccelerationStructureInstanceDescriptor> = instances
+        let instances: Vec<metal::MTLAccelerationStructureUserIDInstanceDescriptor> = instances
             .iter()
             .map(|instance| {
                 let mut transform_data = [[0f32; 3]; 4];
@@ -46,18 +46,19 @@ impl MTLAccelerationStructure {
                 }
 
                 let index = instances_index_map.get(&(instance.acceleration_structure.acceleration_structure.as_ptr() as usize));
-                metal::MTLAccelerationStructureInstanceDescriptor {
+                metal::MTLAccelerationStructureUserIDInstanceDescriptor {
                     transformation_matrix: transform_data,
                     options,
                     mask: 0xFFFFu32,
                     intersection_function_table_offset: 0u32,
                     acceleration_structure_index: *index.unwrap(),
+                    user_id: instance.id
                 }
             })
             .collect();
 
         let size: u64 = std::mem::size_of_val(&instances) as u64;
-        let ptr = target_buffer.map(target_buffer_offset, size, false).expect("Failed to map buffer.") as *mut metal::MTLAccelerationStructureInstanceDescriptor;
+        let ptr = target_buffer.map(target_buffer_offset, size, false).expect("Failed to map buffer.") as *mut metal::MTLAccelerationStructureUserIDInstanceDescriptor;
         ptr.copy_from(instances.as_ptr(), instances.len());
         target_buffer.unmap(target_buffer_offset, size, true);
     }
@@ -84,12 +85,12 @@ impl MTLAccelerationStructure {
 
     fn top_level_descriptor(info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>, instances: &[metal::AccelerationStructure]) -> metal::InstanceAccelerationStructureDescriptor {
         let descriptor = metal::InstanceAccelerationStructureDescriptor::descriptor();
-        descriptor.set_instance_descriptor_type(metal::MTLAccelerationStructureInstanceDescriptorType::Default);
+        descriptor.set_instance_descriptor_type(metal::MTLAccelerationStructureInstanceDescriptorType::UserID);
         descriptor.set_instance_count(info.instances_count as u64);
         descriptor.set_instanced_acceleration_structures(&metal::Array::from_owned_slice(instances));
         descriptor.set_instance_descriptor_buffer_offset(info.instances_buffer_offset);
         descriptor.set_instance_descriptor_buffer(info.instances_buffer.handle());
-        descriptor.set_instance_descriptor_stride(std::mem::size_of::<metal::MTLAccelerationStructureInstanceDescriptor>() as u64);
+        descriptor.set_instance_descriptor_stride(std::mem::size_of::<metal::MTLAccelerationStructureUserIDInstanceDescriptor>() as u64);
         descriptor
     }
 

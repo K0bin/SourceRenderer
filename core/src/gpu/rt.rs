@@ -38,6 +38,7 @@ pub struct AccelerationStructureInstance<'a, B: GPUBackend> {
   pub acceleration_structure: &'a B::AccelerationStructure,
   pub transform: Matrix4,
   pub front_face: FrontFace,
+  pub id: u32
 }
 
 pub trait AccelerationStructure {}

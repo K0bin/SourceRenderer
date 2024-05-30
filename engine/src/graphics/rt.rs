@@ -26,6 +26,7 @@ pub struct AccelerationStructureInstance<'a, B: GPUBackend> {
     pub acceleration_structure: &'a Arc<AccelerationStructure<B>>,
     pub transform: Matrix4,
     pub front_face: FrontFace,
+    pub id: u32
 }
 
 pub use sourcerenderer_core::gpu::AccelerationStructureMeshRange;
