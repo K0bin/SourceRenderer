@@ -32,6 +32,7 @@ use super::light::DirectionalLight;
 use super::passes::modern::ModernRenderer;
 //#[cfg(not(target_arch = "wasm32"))]
 use super::passes::conservative::desktop_renderer::ConservativeRenderer;
+use super::passes::path_tracing::PathTracingRenderer;
 use super::passes::web::WebRenderer;
 //#[cfg(not(target_arch = "wasm32"))]
 //use super::passes::modern::ModernRenderer;
@@ -118,7 +119,9 @@ impl<P: Platform> RendererInternal<P> {
                 &mut shader_manager,
             ))
         } else {
-            if device.supports_indirect()
+            Box::new(PathTracingRenderer::new(device, &swapchain, &mut context, &mut shader_manager))
+
+            /*if device.supports_indirect()
                 && device.supports_bindless()
                 && device.supports_barycentrics()
                 && device.supports_min_max_filter()
@@ -131,7 +134,7 @@ impl<P: Platform> RendererInternal<P> {
                     &mut context,
                     &mut shader_manager,
                 ))
-            }
+            }*/
         };
 
         Self {

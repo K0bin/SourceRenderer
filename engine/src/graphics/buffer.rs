@@ -132,16 +132,14 @@ impl<B: GPUBackend> BufferAllocator<B> {
             let memory_types = unsafe { device.memory_type_infos() };
             let mut buffer: Result<B::Buffer, OutOfMemoryError> = Err(OutOfMemoryError {});
 
-            if memory_usage != MemoryUsage::GPUMemory {
-                let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::ForceCoherent) & heap_info.memory_type_mask;
-                for i in 0..memory_types.len() as u32 {
-                    if (mask & (1 << i)) == 0 {
-                        continue;
-                    }
-                    buffer = unsafe { device.create_buffer(info, i, name) };
-                    if buffer.is_ok() {
-                        break;
-                    }
+            let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Strict) & heap_info.memory_type_mask;
+            for i in 0..memory_types.len() as u32 {
+                if (mask & (1 << i)) == 0 {
+                    continue;
+                }
+                buffer = unsafe { device.create_buffer(info, i, name) };
+                if buffer.is_ok() {
+                    break;
                 }
             }
 

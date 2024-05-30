@@ -2,6 +2,7 @@ use std::{ffi::c_void, hash::Hash};
 
 use metal;
 use metal::foreign_types::ForeignType;
+use metal::objc::{msg_send, sel, sel_impl};
 
 use sourcerenderer_core::gpu;
 
@@ -9,23 +10,31 @@ use crate::heap::ResourceMemory;
 
 pub struct MTLBuffer {
     info: gpu::BufferInfo,
-    buffer: metal::Buffer
+    buffer: metal::Buffer,
+    _heap: Option<metal::Heap>
 }
 
 impl MTLBuffer {
     pub(crate) fn new(memory: ResourceMemory, info: &gpu::BufferInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
         let mut options = Self::resource_options(info);
-        let buffer = match memory {
+        let (buffer, heap) = match memory {
             ResourceMemory::Dedicated { device, options: memory_options } => {
                 let buffer = if info.usage.contains(gpu::BufferUsage::ACCELERATION_STRUCTURE) {
                     let heap_descriptor = metal::HeapDescriptor::new();
                     options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
                     let size = device.heap_buffer_size_and_align(info.size, options);
                     heap_descriptor.set_size(size.size);
+                    if !memory_options.contains(metal::MTLResourceOptions::StorageModePrivate) {
+                        panic!("Acceleration structure memory must not be cpu accessible");
+                    }
+                    unsafe {
+                        let _: () = msg_send![&heap_descriptor as &metal::HeapDescriptorRef, setType: metal::MTLHeapType::Placement];
+                        let _: () = msg_send![&heap_descriptor as &metal::HeapDescriptorRef, setResourceOptions: options | memory_options];
+                    }
                     let heap = device.new_heap(&heap_descriptor);
-                    let buffer = heap.new_buffer_with_offset(info.size, options, 0u64).unwrap();
+                    let buffer = heap.new_buffer_with_offset(info.size, options | memory_options, 0u64).unwrap();
                     buffer.make_aliasable();
-                    buffer
+                    (buffer, Some(heap))
                 } else {
                     if info.usage.gpu_writable() {
                         options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
@@ -36,7 +45,7 @@ impl MTLBuffer {
                     if buffer.as_ptr() == std::ptr::null_mut() {
                         return Err(gpu::OutOfMemoryError {});
                     }
-                    buffer
+                    (buffer, None)
                 };
                 buffer
             },
@@ -47,7 +56,7 @@ impl MTLBuffer {
                 if buffer_opt.is_none() {
                     return Err(gpu::OutOfMemoryError {});
                 }
-                buffer_opt.unwrap()
+                (buffer_opt.unwrap(), None)
             }
         };
         if let Some(name) = name {
@@ -58,7 +67,8 @@ impl MTLBuffer {
         }
         Ok(Self {
             info: info.clone(),
-            buffer
+            buffer,
+            _heap: heap
         })
     }
 

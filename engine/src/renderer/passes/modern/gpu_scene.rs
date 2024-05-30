@@ -68,8 +68,8 @@ struct GPUDrawable {
     old_transform: Matrix4,
     mesh_index: u32,
     flags: GPUDrawableFlags,
-    _padding1: u32,
-    _padding2: u32,
+    part_start: u32,
+    part_count: u32,
 }
 
 #[repr(C)]
@@ -304,8 +304,8 @@ pub fn upload<P: Platform>(
                     old_transform: drawable.old_transform,
                     mesh_index: model_entry.mesh_index,
                     flags: GPUDrawableFlags::empty(),
-                    _padding1: 0,
-                    _padding2: 0,
+                    part_start: model_entry.part_start,
+                    part_count: model_entry.part_count,
                 };
 
                 if !drawable.can_move {
