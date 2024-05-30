@@ -253,6 +253,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut supported_rt_pipeline_features =
                 vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+            let mut supported_rt_query_features =
+                vk::PhysicalDeviceRayQueryFeaturesKHR::default();
             let mut supported_barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
 
@@ -314,6 +316,17 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                         as *mut c_void,
                 );
             }
+            if self
+                .extensions
+                .intersects(VkAdapterExtensionSupport::RAY_QUERY)
+            {
+                supported_rt_query_features.p_next = std::mem::replace(
+                    &mut supported_features.p_next,
+                    &mut supported_rt_query_features
+                        as *mut vk::PhysicalDeviceRayQueryFeaturesKHR
+                        as *mut c_void,
+                );
+            }
 
             if !supported_features
                 .features
@@ -349,6 +362,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut rt_pipeline_features =
                 vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+            let mut rt_query_features =
+                vk::PhysicalDeviceRayQueryFeaturesKHR::default();
             let mut barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
@@ -422,12 +437,13 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 && self.extensions.contains(
                     VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
                         | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
+                        | VkAdapterExtensionSupport::RAY_QUERY
                         | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS,
                 )
                 && supported_acceleration_structure_features.acceleration_structure == vk::TRUE
                 && supported_rt_pipeline_features.ray_tracing_pipeline == vk::TRUE
-                && supports_bda
-                && false;
+                && supported_rt_query_features.ray_query == vk::TRUE
+                && supports_bda;
 
             if supports_descriptor_indexing {
                 println!("Bindless supported.");
@@ -450,6 +466,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 extension_names.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
                 extension_names.push(ACCELERATION_STRUCTURE_EXT_NAME);
                 extension_names.push(RAY_TRACING_PIPELINE_EXT_NAME);
+                extension_names.push(RAY_QUERY_EXT_NAME);
                 extension_names.push(PIPELINE_LIBRARY_EXT_NAME);
 
                 features |= VkFeatures::RAY_TRACING;
@@ -457,6 +474,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 enabled_features_12.buffer_device_address = vk::TRUE;
                 acceleration_structure_features.acceleration_structure = vk::TRUE;
                 rt_pipeline_features.ray_tracing_pipeline = vk::TRUE;
+                rt_query_features.ray_query = vk::TRUE;
                 acceleration_structure_features.p_next = std::mem::replace(
                     &mut enabled_features.p_next,
                     &mut acceleration_structure_features
@@ -467,6 +485,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                     &mut enabled_features.p_next,
                     &mut rt_pipeline_features
                         as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
+                        as *mut c_void,
+                );
+                rt_query_features.p_next = std::mem::replace(
+                    &mut enabled_features.p_next,
+                    &mut rt_query_features
+                        as *mut vk::PhysicalDeviceRayQueryFeaturesKHR
                         as *mut c_void,
                 );
             }
