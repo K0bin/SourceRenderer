@@ -28,6 +28,8 @@ impl VkAccelerationStructure {
         let instances: Vec<vk::AccelerationStructureInstanceKHR> = instances
             .iter()
             .map(|instance| {
+                assert!(instance.id < ((1u32 << 25) - 1));
+
                 let mut transform_data = [0f32; 12];
                 transform_data
                     .copy_from_slice(&instance.transform.transpose().data.as_slice()[0..12]);
@@ -38,7 +40,7 @@ impl VkAccelerationStructure {
                     },
                     instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xFF),
                     instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
-                        0,
+                        instance.id,
                         if instance.front_face == gpu::FrontFace::CounterClockwise {
                             vk::GeometryInstanceFlagsKHR::TRIANGLE_FRONT_COUNTERCLOCKWISE.as_raw()
                                 as u8

@@ -277,7 +277,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     fn get_top_level_instances_buffer_size(&self, instances: &[gpu::AccelerationStructureInstance<MTLBackend>]) -> u64 {
-        (instances.len() * std::mem::size_of::<metal::MTLAccelerationStructureInstanceDescriptor>()) as u64
+        (instances.len() * std::mem::size_of::<metal::MTLAccelerationStructureUserIDInstanceDescriptor>()) as u64
     }
 
     unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &gpu::RayTracingPipelineInfo<MTLBackend>) -> u64 {
