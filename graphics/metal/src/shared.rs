@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use sourcerenderer_core::gpu;
 
 use crate::{MTLBindlessArgumentBuffer, MTLGraphicsPipeline, MTLShader};
@@ -7,7 +9,8 @@ pub(crate) struct MTLShared {
     pub(crate) blit_pipeline: MTLGraphicsPipeline,
     pub(crate) mdi_pipeline: metal::ComputePipelineState,
     pub(crate) linear_sampler: metal::SamplerState,
-    pub(crate) bindless: MTLBindlessArgumentBuffer
+    pub(crate) bindless: MTLBindlessArgumentBuffer,
+    pub(crate) acceleration_structure_list: Arc<Mutex<Vec<metal::AccelerationStructure>>>
 }
 
 impl MTLShared {
@@ -90,7 +93,8 @@ impl MTLShared {
             blit_pipeline,
             mdi_pipeline,
             linear_sampler,
-            bindless
+            bindless,
+            acceleration_structure_list: Arc::new(Mutex::new(Vec::new()))
         }
     }
 }

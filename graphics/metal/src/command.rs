@@ -44,10 +44,22 @@ struct IndexBufferBinding {
     format: gpu::IndexFormat
 }
 
-fn index_format_to_mtl(index_format: gpu::IndexFormat) -> metal::MTLIndexType {
+pub(crate) fn index_format_to_mtl(index_format: gpu::IndexFormat) -> metal::MTLIndexType {
     match index_format {
         gpu::IndexFormat::U32 => metal::MTLIndexType::UInt32,
         gpu::IndexFormat::U16 => metal::MTLIndexType::UInt16
+    }
+}
+
+pub(crate) fn format_to_mtl_attribute_format(format: gpu::Format) -> metal::MTLAttributeFormat {
+    match format {
+        gpu::Format::R32Float => metal::MTLAttributeFormat::Float,
+        gpu::Format::RG32Float => metal::MTLAttributeFormat::Float2,
+        gpu::Format::RGB32Float => metal::MTLAttributeFormat::Float3,
+        gpu::Format::RGBA32Float => metal::MTLAttributeFormat::Float4,
+        gpu::Format::R32UInt => metal::MTLAttributeFormat::UInt,
+        gpu::Format::R8Unorm => metal::MTLAttributeFormat::UCharNormalized,
+        _ => todo!("Unsupported format")
     }
 }
 
@@ -490,6 +502,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn finish(&mut self) {
         self.end_non_rendering_encoders();
+        self.end_render_pass();
     }
 
     unsafe fn copy_buffer_to_texture(&mut self, src: &MTLBuffer, dst: &MTLTexture, region: &gpu::BufferTextureCopyRegion) {
@@ -564,7 +577,6 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                     encoders_guard.push(parallel_encoder.render_command_encoder().to_owned());
                 }
             }
-            println!("Begin RP, {}", MAX_INNER_ENCODERS);
             self.render_pass = MTLRenderPassState::Parallel {
                 parallel_passes: encoders,
                 parallel_encoder: parallel_encoder,
@@ -666,7 +678,16 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         scratch_buffer: &MTLBuffer,
         scratch_buffer_offset: u64
       ) -> MTLAccelerationStructure {
-        todo!()
+        MTLAccelerationStructure::new_bottom_level(
+            &self.shared,
+            size,
+            target_buffer,
+            target_buffer_offset,
+            scratch_buffer,
+            scratch_buffer_offset,
+            info,
+            self.command_buffer.as_ref().unwrap()
+        )
     }
 
     unsafe fn upload_top_level_instances(
@@ -675,7 +696,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         target_buffer: &MTLBuffer,
         target_buffer_offset: u64
       ) {
-        todo!()
+        MTLAccelerationStructure::upload_top_level_instances(&self.shared, target_buffer, target_buffer_offset, instances)
     }
 
     unsafe fn create_top_level_acceleration_structure(
@@ -687,11 +708,12 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         scratch_buffer: &MTLBuffer,
         scratch_buffer_offset: u64
       ) -> MTLAccelerationStructure {
-        todo!()
+        self.end_non_rendering_encoders();
+        MTLAccelerationStructure::new_top_level(&self.shared, size, target_buffer, target_buffer_offset, scratch_buffer, scratch_buffer_offset, info, self.command_buffer.as_ref().unwrap())
     }
 
     unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
-        todo!()
+        panic!("Metal does not support ray tracing pipelines")
     }
 }
 
