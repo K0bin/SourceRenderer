@@ -13,7 +13,7 @@ pub struct MTLDevice {
     graphics_queue: MTLQueue,
     compute_queue: MTLQueue,
     transfer_queue: MTLQueue,
-    shared: Arc<MTLShared>
+    shared: Arc<MTLShared>,
 }
 
 impl MTLDevice {
@@ -273,11 +273,11 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     }
 
     unsafe fn get_top_level_acceleration_structure_size(&self, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>) -> gpu::AccelerationStructureSizes {
-        MTLAccelerationStructure::top_level_size(&self.device, info)
+        MTLAccelerationStructure::top_level_size(&self.device, &self.shared, info)
     }
 
     fn get_top_level_instances_buffer_size(&self, instances: &[gpu::AccelerationStructureInstance<MTLBackend>]) -> u64 {
-        todo!()
+        (instances.len() * std::mem::size_of::<metal::MTLAccelerationStructureInstanceDescriptor>()) as u64
     }
 
     unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &gpu::RayTracingPipelineInfo<MTLBackend>) -> u64 {

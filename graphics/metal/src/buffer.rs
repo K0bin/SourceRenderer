@@ -17,15 +17,27 @@ impl MTLBuffer {
         let mut options = Self::resource_options(info);
         let buffer = match memory {
             ResourceMemory::Dedicated { device, options: memory_options } => {
-                if info.usage.gpu_writable() {
+                let buffer = if info.usage.contains(gpu::BufferUsage::ACCELERATION_STRUCTURE) {
+                    let heap_descriptor = metal::HeapDescriptor::new();
                     options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
+                    let size = device.heap_buffer_size_and_align(info.size, options);
+                    heap_descriptor.set_size(size.size);
+                    let heap = device.new_heap(&heap_descriptor);
+                    let buffer = heap.new_buffer_with_offset(info.size, options, 0u64).unwrap();
+                    buffer.make_aliasable();
+                    buffer
                 } else {
-                    options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
-                }
-                let buffer = device.new_buffer(info.size, options | memory_options);
-                if buffer.as_ptr() == std::ptr::null_mut() {
-                    return Err(gpu::OutOfMemoryError {});
-                }
+                    if info.usage.gpu_writable() {
+                        options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
+                    } else {
+                        options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+                    }
+                    let buffer = device.new_buffer(info.size, options | memory_options);
+                    if buffer.as_ptr() == std::ptr::null_mut() {
+                        return Err(gpu::OutOfMemoryError {});
+                    }
+                    buffer
+                };
                 buffer
             },
             ResourceMemory::Suballocated { memory, offset } => {
