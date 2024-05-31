@@ -1,7 +1,4 @@
 use metal;
-use smallvec::{smallvec, SmallVec};
-
-use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -12,6 +9,7 @@ pub(crate) struct MTLBindlessArgumentBuffer {
 impl MTLBindlessArgumentBuffer {
     pub(crate) fn new(device: &metal::DeviceRef, size: usize) -> Self {
         let buffer = device.new_buffer((std::mem::size_of::<metal::MTLResourceID>() * size) as u64, metal::MTLResourceOptions::StorageModeShared);
+        buffer.set_label("Bindless textures");
         Self {
             argument_buffer: buffer
         }
