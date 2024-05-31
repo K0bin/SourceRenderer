@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io::Write;
 use std::sync::Arc;
 
 use metal;
@@ -44,10 +45,27 @@ pub struct MTLShader {
     name: Option<String>
 }
 
+const METAL_DEBUGGER_WORKAROUND: bool = true;
+
 impl MTLShader {
     pub(crate) fn new(device: &metal::DeviceRef, shader: gpu::PackedShader, name: Option<&str>) -> Self {
         let data = shader.shader_air.clone(); // Need to keep this alive because of a bug in metal-rs
-        let library = device.new_library_with_data(&data).unwrap();
+
+        let library = if METAL_DEBUGGER_WORKAROUND {
+            let mut hasher = DefaultHasher::new();
+            data.hash(&mut hasher);
+            let hash = hasher.finish();
+
+            let temp_dir = std::env::temp_dir();
+            let temp_path = temp_dir.join(format!("{}.metallib", hash));
+            let mut file = std::fs::File::create(&temp_path).unwrap();
+            file.write_all(&data).unwrap();
+            file.flush().unwrap();
+            std::mem::drop(file);
+            device.new_library_with_file(&temp_path).unwrap()
+        } else {
+            device.new_library_with_data(&data).unwrap()
+        };
 
         let mut resource_map = ShaderResourceMap {
             resources: HashMap::new(),
