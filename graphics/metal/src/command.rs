@@ -1,4 +1,4 @@
-use std::{ffi::c_void, sync::{Arc, Mutex}};
+use std::{ffi::{c_void, CStr}, sync::{Arc, Mutex}};
 
 use metal::{self, NSRange};
 
@@ -311,10 +311,13 @@ impl MTLCommandBuffer {
     }
 
     fn print_error(command_buffer: &metal::CommandBufferRef) {
-        return;
-        let error: *mut Object  = unsafe { msg_send![command_buffer, error] };
-        let domain: &str  = unsafe { msg_send![error, error] };
-        println!("domain {}", domain);
+        unsafe {
+            let error: *mut Object  = unsafe { msg_send![command_buffer, error] };
+            let desc: *mut Object = msg_send![error, localizedDescription];
+            let compile_error: *const std::os::raw::c_char = msg_send![desc, UTF8String];
+            let message = CStr::from_ptr(compile_error).to_string_lossy().into_owned();
+            println!("error {}", message);
+        }
     }
 }
 
@@ -715,7 +718,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         if let Some(command_buffer) = self.command_buffer.as_mut() {
             assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == metal::MTLCommandBufferStatus::Error);
             if command_buffer.status() == metal::MTLCommandBufferStatus::Error {
-                println!("COMMAND BUFFER ERROR: {:?}", "TODO: implement error checking");
+                println!("COMMAND BUFFER ERROR");
                 Self::print_error(command_buffer);
             }
             *command_buffer = self.queue.new_command_buffer_with_unretained_references().to_owned();
@@ -798,7 +801,7 @@ impl Drop for MTLCommandBuffer {
         if let Some(command_buffer) = self.command_buffer.as_ref() {
             assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == metal::MTLCommandBufferStatus::Error);
             if command_buffer.status() == metal::MTLCommandBufferStatus::Error {
-                println!("COMMAND BUFFER ERROR: {:?}", "TODO: implement error checking");
+                println!("COMMAND BUFFER ERROR");
                 Self::print_error(command_buffer);
             }
         }
