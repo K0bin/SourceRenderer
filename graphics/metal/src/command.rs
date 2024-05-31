@@ -167,7 +167,8 @@ impl MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         if self.blit_encoder.is_none() {
             self.end_non_rendering_encoders();
-            self.blit_encoder = Some(self.handle().new_blit_command_encoder().to_owned());
+            let encoder = self.handle().new_blit_command_encoder().to_owned();
+            self.blit_encoder = Some(encoder);
         }
         self.blit_encoder.as_ref().unwrap()
     }
@@ -176,7 +177,12 @@ impl MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         if self.compute_encoder.is_none() {
             self.end_non_rendering_encoders();
-            self.compute_encoder = Some(self.handle().compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned());
+            let encoder = self.handle().compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned();
+            let heap_list = self.shared.heap_list.read().unwrap();
+            for heap in heap_list.iter() {
+                encoder.use_heap(&heap);
+            }
+            self.compute_encoder = Some(encoder);
         }
         self.compute_encoder.as_ref().unwrap()
     }
@@ -185,9 +191,25 @@ impl MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         if self.as_encoder.is_none() {
             self.end_non_rendering_encoders();
-            self.as_encoder = Some(self.handle().new_acceleration_structure_command_encoder().to_owned());
+            let encoder = self.handle().new_acceleration_structure_command_encoder().to_owned();
+            let heap_list = self.shared.heap_list.read().unwrap();
+            for heap in heap_list.iter() {
+                unsafe {
+                    let _: () = msg_send![&encoder as &metal::AccelerationStructureCommandEncoderRef, useHeap: &heap as &metal::HeapRef];
+                }
+            }
+            self.as_encoder = Some(encoder);
         }
         self.as_encoder.as_ref().unwrap()
+    }
+
+    fn render_encoder_use_all_heaps<'a>(encoder: &metal::RenderCommandEncoderRef, shared: &Arc<MTLShared>) {
+        let heap_list = shared.heap_list.read().unwrap();
+        for heap in heap_list.iter() {
+            unsafe {
+                let _: () = msg_send![encoder, useHeap: &heap as &metal::HeapRef];
+            }
+        }
     }
 
     fn get_render_pass_encoder(&self) -> &metal::RenderCommandEncoder {
@@ -275,6 +297,7 @@ impl MTLCommandBuffer {
             match &mut self.render_pass {
                 MTLRenderPassState::Commands { render_encoder, render_pass, subpass } => {
                     *render_encoder = self.command_buffer.as_ref().unwrap().new_render_command_encoder(&render_pass[*subpass as usize]).to_owned();
+                    Self::render_encoder_use_all_heaps(render_encoder, &self.shared);
                     render_encoder.execute_commands_in_buffer(&icb, metal::NSRange { location: 0u64, length: max_draw_count as u64});
                 },
                 MTLRenderPassState::Parallel { .. } => panic!("Cannot use draw indirect inside of a parallel render pass"),
@@ -584,8 +607,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let descriptors = render_pass_to_descriptors(renderpass_info);
         let first_descriptor = descriptors[0].clone();
         if recording_mode == gpu::RenderpassRecordingMode::Commands {
+            let encoder = self.handle().new_render_command_encoder(&first_descriptor).to_owned();
+            Self::render_encoder_use_all_heaps(&encoder, &self.shared);
             self.render_pass = MTLRenderPassState::Commands {
-                render_encoder: self.handle().new_render_command_encoder(&first_descriptor).to_owned(),
+                render_encoder: encoder,
                 subpass: 0,
                 render_pass: descriptors,
             };
@@ -596,7 +621,9 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             {
                 let mut encoders_guard = encoders.lock().unwrap();
                 for _ in 0..MAX_INNER_ENCODERS {
-                    encoders_guard.push(parallel_encoder.render_command_encoder().to_owned());
+                    let encoder = parallel_encoder.render_command_encoder().to_owned();
+                    Self::render_encoder_use_all_heaps(&encoder, &self.shared);
+                    encoders_guard.push(encoder);
                 }
             }
             self.render_pass = MTLRenderPassState::Parallel {
@@ -615,6 +642,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 *subpass += 1;
                 render_encoder.end_encoding();
                 *render_encoder = self.command_buffer.as_ref().unwrap().new_render_command_encoder(&render_pass[*subpass as usize]).to_owned();
+                Self::render_encoder_use_all_heaps(render_encoder, &self.shared);
             }
             MTLRenderPassState::Parallel { parallel_passes, parallel_encoder, subpass, render_pass } => {
                 assert_eq!(Arc::strong_count(parallel_passes), 1);

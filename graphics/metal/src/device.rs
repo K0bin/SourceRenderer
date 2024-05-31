@@ -126,6 +126,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
 
         MTLHeap::new(
             &self.device,
+            &self.shared,
             size,
             memory_type_index,
             memory_type.is_cached,

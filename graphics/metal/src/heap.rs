@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use metal;
 use metal::foreign_types::ForeignType;
 use metal::objc::{msg_send, sel, sel_impl};
@@ -20,11 +22,12 @@ pub(crate) enum ResourceMemory<'a> {
 pub struct MTLHeap {
     heap: metal::Heap,
     memory_type_index: u32,
-    options: metal::MTLResourceOptions
+    options: metal::MTLResourceOptions,
+    shared: Arc<MTLShared>
 }
 
 impl MTLHeap {
-    pub(crate) fn new(device: &metal::DeviceRef, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind, options: metal::MTLResourceOptions) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn new(device: &metal::DeviceRef, shared: &Arc<MTLShared>, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind, options: metal::MTLResourceOptions) -> Result<Self, gpu::OutOfMemoryError> {
         let mut descriptor = metal::HeapDescriptor::new();
         descriptor.set_size(size);
         unsafe {
@@ -45,10 +48,15 @@ impl MTLHeap {
         if heap.as_ptr() == std::ptr::null_mut() {
             return Err(OutOfMemoryError {});
         }
+        {
+            let mut list = shared.heap_list.write().unwrap();
+            list.push(heap.clone());
+        }
         Ok(Self {
             heap,
             memory_type_index,
-            options
+            options,
+            shared: shared.clone()
         })
     }
 
@@ -86,5 +94,17 @@ impl gpu::Heap<MTLBackend> for MTLHeap {
             info,
             name
         )
+    }
+}
+
+impl Drop for MTLHeap {
+    fn drop(&mut self) {
+        let mut list = self.shared.heap_list.write().unwrap();
+        let index = list.iter().enumerate().find_map(|(index, heap)| if heap.as_ptr() == self.heap.as_ptr() {
+            Some(index)
+        } else {
+            None
+        });
+        list.remove(index.unwrap());
     }
 }
