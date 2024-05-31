@@ -576,7 +576,21 @@ fn compile_shader_spirv_cross(
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
                 assert_eq!(
+                    spirv_cross_sys::spvc_compiler_options_set_bool(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_MSL_ARGUMENT_BUFFERS, 1),
+                    spirv_cross_sys::spvc_result_SPVC_SUCCESS
+                );
+                assert_eq!(
                     spirv_cross_sys::spvc_compiler_options_set_uint(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_MSL_ARGUMENT_BUFFERS_TIER, 2),
+                    spirv_cross_sys::spvc_result_SPVC_SUCCESS
+                );
+                for i in 0..3 {
+                    assert_eq!(
+                        spirv_cross_sys::spvc_compiler_msl_add_discrete_descriptor_set(compiler, i),
+                        spirv_cross_sys::spvc_result_SPVC_SUCCESS
+                    );
+                }
+                assert_eq!(
+                    spirv_cross_sys::spvc_compiler_msl_set_argument_buffer_device_address_space(compiler, BINDLESS_TEXTURE_SET_INDEX, 1),
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
             },
