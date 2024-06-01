@@ -13,6 +13,7 @@ bitflags! {
     const ACCELERATION_STRUCTURE             = 0b100000000;
     const ACCELERATION_STRUCTURE_BUILD       = 0b1000000000;
     const SHADER_BINDING_TABLE               = 0b10000000000;
+    const INITIAL_COPY                       = 0b100000000000;
 
     const GPU_WRITABLE = 0b100 | 0b1000000 | 0b100000000 | 0b1000000000;
   }

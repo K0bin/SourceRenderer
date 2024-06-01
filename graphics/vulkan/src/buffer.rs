@@ -328,7 +328,7 @@ pub fn buffer_usage_to_vk(usage: gpu::BufferUsage, rt_supported: bool) -> vk::Bu
         flags |= vk::BufferUsageFlags::TRANSFER_SRC;
     }
 
-    if usage.contains(gpu::BufferUsage::COPY_DST) {
+    if usage.intersects(gpu::BufferUsage::COPY_DST | gpu::BufferUsage::INITIAL_COPY) {
         flags |= vk::BufferUsageFlags::TRANSFER_DST;
     }
 

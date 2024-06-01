@@ -73,7 +73,7 @@ impl<B: GPUBackend> BlueNoise<B> {
                 mip_levels: 1,
                 array_length: 1,
                 samples: SampleCount::Samples1,
-                usage: TextureUsage::COPY_DST | TextureUsage::SAMPLED | TextureUsage::STORAGE,
+                usage: TextureUsage::INITIAL_COPY | TextureUsage::SAMPLED | TextureUsage::STORAGE,
                 supports_srgb: false,
             },
             Some(&format!("STBlueNoise{}", index)),
