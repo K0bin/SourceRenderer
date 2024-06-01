@@ -81,7 +81,7 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
                     mip_levels: 1,
                     array_length: 1,
                     samples: SampleCount::Samples1,
-                    usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
+                    usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
                     supports_srgb: false,
                 },
                 data: vec![data.into_boxed_slice()].into_boxed_slice(),

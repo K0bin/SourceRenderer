@@ -78,7 +78,7 @@ impl<P: Platform> OcclusionPass<P> {
         let occluder_vb = device.create_buffer(
             &BufferInfo {
                 size: (std::mem::size_of::<Vec4>() * 8) as u64,
-                usage: BufferUsage::COPY_DST | BufferUsage::VERTEX,
+                usage: BufferUsage::INITIAL_COPY | BufferUsage::VERTEX,
                 sharing_mode: QueueSharingMode::Exclusive
             },
             MemoryUsage::GPUMemory,
@@ -88,7 +88,7 @@ impl<P: Platform> OcclusionPass<P> {
         let occluder_ib = device.create_buffer(
             &BufferInfo {
                 size: (std::mem::size_of::<u32>() * 36) as u64,
-                usage: BufferUsage::COPY_DST | BufferUsage::INDEX,
+                usage: BufferUsage::INITIAL_COPY | BufferUsage::INDEX,
                 sharing_mode: QueueSharingMode::Exclusive
             },
             MemoryUsage::GPUMemory,

@@ -257,7 +257,7 @@ pub(crate) fn texture_usage_to_vk(usage: gpu::TextureUsage) -> vk::ImageUsageFla
     }
 
     let transfer_dst_usages =
-        gpu::TextureUsage::BLIT_DST | gpu::TextureUsage::COPY_DST | gpu::TextureUsage::RESOLVE_DST;
+        gpu::TextureUsage::BLIT_DST | gpu::TextureUsage::COPY_DST | gpu::TextureUsage::RESOLVE_DST | gpu::TextureUsage::INITIAL_COPY;
     if usage.intersects(transfer_dst_usages) {
         flags |= vk::ImageUsageFlags::TRANSFER_DST;
     }

@@ -117,7 +117,7 @@ impl<P: Platform> SsaoPass<P> {
         let buffer = device.create_buffer(
             &BufferInfo {
                 size: std::mem::size_of_val(&ssao_kernel[..]) as u64,
-                usage: BufferUsage::COPY_DST | BufferUsage::CONSTANT,
+                usage: BufferUsage::INITIAL_COPY | BufferUsage::CONSTANT,
                 sharing_mode: QueueSharingMode::Exclusive
             },
             MemoryUsage::GPUMemory,

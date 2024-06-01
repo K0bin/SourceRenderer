@@ -389,7 +389,7 @@ impl<P: Platform> RendererAssets<P> {
                 mip_levels: 1,
                 array_length: 1,
                 samples: SampleCount::Samples1,
-                usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
+                usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
                 supports_srgb: false,
             },
             Some("AssetManagerZeroTexture"),
