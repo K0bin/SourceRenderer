@@ -27,12 +27,14 @@ pub struct MTLHeap {
 }
 
 impl MTLHeap {
-    pub(crate) fn new(device: &metal::DeviceRef, shared: &Arc<MTLShared>, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind, options: metal::MTLResourceOptions) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) fn new(device: &metal::DeviceRef, shared: &Arc<MTLShared>, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind, mut options: metal::MTLResourceOptions) -> Result<Self, gpu::OutOfMemoryError> {
         let mut descriptor = metal::HeapDescriptor::new();
         descriptor.set_size(size);
         unsafe {
             let _: () = msg_send![&descriptor as &metal::HeapDescriptorRef, setType: metal::MTLHeapType::Placement];
         }
+
+        options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
 
         if device.has_unified_memory() {
             if memory_kind == gpu::MemoryKind::VRAM {
