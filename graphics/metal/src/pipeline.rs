@@ -48,6 +48,8 @@ pub struct MTLShader {
 const METAL_DEBUGGER_WORKAROUND: bool = true;
 
 impl MTLShader {
+    pub const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
+
     pub(crate) fn new(device: &metal::DeviceRef, shader: gpu::PackedShader, name: Option<&str>) -> Self {
         let data = shader.shader_air.clone(); // Need to keep this alive because of a bug in metal-rs
 
@@ -72,7 +74,8 @@ impl MTLShader {
             push_constants: None,
             bindless_argument_buffer_binding: None
         };
-        let mut buffer_count: u32 = if shader.shader_type == gpu::ShaderType::VertexShader { shader.max_stage_input + 1 } else { 0 };
+        let mut buffer_count: u32 = if shader.uses_bindless_texture_set { Self::BINDLESS_TEXTURE_SET_INDEX + 1 } else { 0 };
+        buffer_count += if shader.shader_type == gpu::ShaderType::VertexShader { shader.max_stage_input + 1 } else { 0 };
         let mut texture_count: u32 = 0;
         let mut sampler_count: u32 = 0;
         for set in shader.resources.iter() {
@@ -110,11 +113,9 @@ impl MTLShader {
                 binding: buffer_count,
                 size: shader.push_constant_size
             });
-            buffer_count += 1;
         }
         if shader.uses_bindless_texture_set {
-            resource_map.bindless_argument_buffer_binding = Some(buffer_count);
-            buffer_count += 1;
+            resource_map.bindless_argument_buffer_binding = Some(Self::BINDLESS_TEXTURE_SET_INDEX);
         }
 
         let function = library.get_function(SHADER_ENTRY_POINT_NAME, None).unwrap();
@@ -289,7 +290,7 @@ impl MTLGraphicsPipeline {
         for (idx, a) in info.vertex_layout.shader_inputs.iter().enumerate() {
             let adesc = metal::VertexAttributeDescriptor::new();
             adesc.set_offset(a.offset as u64);
-            adesc.set_buffer_index(a.input_assembler_binding as u64);
+            adesc.set_buffer_index(a.input_assembler_binding as u64 + info.vs.resource_map.bindless_argument_buffer_binding.map_or(0u64, |i| i as u64 + 1u64));
             adesc.set_format(match a.format {
                 gpu::Format::R32Float => metal::MTLVertexFormat::Float,
                 gpu::Format::RG32Float => metal::MTLVertexFormat::Float2,
