@@ -603,8 +603,10 @@ fn compile_shader_spirv_cross(
         );
 
         if output_shading_language == ShadingLanguage::Msl {
+            // SPIRV-CROSS has no way to remap the argument buffer, so reserve buffer bindings 0-4
+            buffer_count = if metadata.uses_bindless_texture_set { BINDLESS_TEXTURE_SET_INDEX + 1 } else { 0 };
             // Metal vertex buffers share buffer binding slots
-            buffer_count = if metadata.shader_type == gpu::ShaderType::VertexShader { metadata.max_stage_input + 1 } else { 0 };
+            buffer_count += if metadata.shader_type == gpu::ShaderType::VertexShader { metadata.max_stage_input + 1 } else { 0 };
 
             for set in &metadata.resources {
                 for resource in set.iter() {
@@ -673,7 +675,6 @@ fn compile_shader_spirv_cross(
                     msl_texture: u32::MAX,
                     msl_sampler: u32::MAX,
                 };
-                buffer_count += 1;
                 spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
             }
 
@@ -691,12 +692,11 @@ fn compile_shader_spirv_cross(
                         gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
                     },
                     desc_set: BINDLESS_TEXTURE_SET_INDEX,
-                    binding: 0,
+                    binding: 0, // the binding sets the [[id(n)]] attribute inside the argument buffer which impacts the offset
                     msl_buffer: u32::MAX,
-                    msl_texture: buffer_count, // SPIRV-Cross decides which binding to use based on the SPIR-V type but uses the buffer annotation regardless
+                    msl_texture: 0,
                     msl_sampler: u32::MAX,
                 };
-                buffer_count += 1;
                 spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
             }
         }
