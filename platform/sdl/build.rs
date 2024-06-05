@@ -130,4 +130,6 @@ fn main() {
     } else {
         pkg_config::Config::new().probe("sdl2").unwrap();
     }
+
+    log::logger().flush();
 }

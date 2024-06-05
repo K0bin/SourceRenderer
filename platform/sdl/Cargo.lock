@@ -2208,10 +2208,14 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.5.0",
  "block",
+ "build-util",
+ "log",
  "metal",
  "objc",
+ "serde_json",
  "smallvec",
  "sourcerenderer_core",
+ "spirv_cross_sys",
 ]
 
 [[package]]
@@ -2223,6 +2227,7 @@ dependencies = [
  "build-util",
  "crossbeam-channel",
  "lazy_static",
+ "log",
  "metal",
  "notify",
  "objc",
