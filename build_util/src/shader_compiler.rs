@@ -144,7 +144,7 @@ fn compile_shader_glsl(
         Ok(output) => {
             if !output.status.success() {
                 error!("Failed to compile shader: {}", file_path.to_str().unwrap());
-                error!("{}", std::str::from_utf8(&output.stderr).unwrap());
+                error!("{}", std::str::from_utf8(&output.stdout).unwrap());
                 return Err(());
             }
         }
