@@ -1,11 +1,15 @@
 use std::process::Command;
 use std::{collections::HashMap, path::Path};
-use std::{env, error};
+use std::env;
 use std::path::PathBuf;
 
 use build_util::{compile_shaders, ShadingLanguage};
 
+use log::{error, logger};
+
 fn main() {
+    build_util::build_script_logger::init();
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let mut meta_shader_dir = manifest_dir.clone();
     meta_shader_dir.push("meta_shaders");
@@ -47,15 +51,19 @@ fn compile_msl_shader(shader_path: &Path, out_path: &Path) -> Result<(), ()> {
         .arg(&shader_path);
     let cmd_result = command.output();
 
-    if let Err(e) = &cmd_result {
-        eprintln!("Error compiling Metal shader: {:?} {:?}", e, out_path);
-        return Err(());
+    match &cmd_result {
+        Err(e) => {
+            panic!("Error compiling Metal shader: {}: {}", temp_ir_path.to_str().unwrap(), e.to_string());
+        },
+        Ok(output) => {
+            if !output.status.success() {
+                panic!("Error compiling Metal shader: {}: {}", temp_ir_path.to_str().unwrap(), std::str::from_utf8(&output.stderr).unwrap());
+            }
+        }
     }
 
     if !temp_ir_path.exists() {
-        eprintln!("Compiled Metal shader file does not exist: {:?}", temp_ir_path);
-        eprintln!("Output of compile command: {}", String::from_utf8(cmd_result.unwrap().stderr).unwrap());
-        return Err(());
+        panic!("Compiled Metal shader file does not exist: {:?}", temp_ir_path);
     }
 
     let mut command = Command::new("xcrun");
@@ -68,18 +76,24 @@ fn compile_msl_shader(shader_path: &Path, out_path: &Path) -> Result<(), ()> {
         .arg(&temp_ir_path);
     let cmd_result = command.output();
 
-    if let Err(e) = cmd_result {
-        eprintln!("Error creating Metal library: {:?} {:?}", e, out_path);
-        return Err(());
+    match &cmd_result {
+        Err(e) => {
+            panic!("Error creating Metal library: {}: {}", temp_ir_path.to_str().unwrap(), e.to_string());
+        },
+        Ok(output) => {
+            if !output.status.success() {
+                panic!("Error creating Metal library: {}: {}", temp_ir_path.to_str().unwrap(), std::str::from_utf8(&output.stderr).unwrap());
+            }
+        }
     }
 
     if !out_path.exists() {
-        eprintln!("Compiled Metal shader file does not exist: {:?}", out_path);
-        eprintln!("Output of compile command: {}", String::from_utf8(cmd_result.unwrap().stderr).unwrap());
-        return Err(());
+        panic!("Compiled Metal shader file does not exist: {:?}", out_path);
     }
 
     let _ = std::fs::remove_file(temp_ir_path);
+
+    logger().flush();
 
     Ok(())
 }

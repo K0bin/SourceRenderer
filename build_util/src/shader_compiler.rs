@@ -134,21 +134,20 @@ fn compile_shader_glsl(
     command.arg(&file_path);
 
     let output_res = command.output();
-    if let Err(e) = output_res {
-        error!("Failed to compile shader: {}\n{}",
-            file_path.to_str().unwrap(),
-            e.to_string());
-        return Err(());
-    }
-    let output = output_res.unwrap();
-
-    if !output.status.success() {
-        error!(
-            "Failed to compile shader: {}\n{:?}\n",
-            file_path.to_str().unwrap(),
-            output
-        );
-        return Err(());
+    match &output_res {
+        Err(e) => {
+            error!("Failed to compile shader: {}",
+                file_path.to_str().unwrap());
+            error!("{}", e.to_string());
+            return Err(());
+        },
+        Ok(output) => {
+            if !output.status.success() {
+                error!("Failed to compile shader: {}", file_path.to_str().unwrap());
+                error!("{}", std::str::from_utf8(&output.stderr).unwrap());
+                return Err(());
+            }
+        }
     }
 
     let mut spirv_bytecode = Vec::<u8>::new();
@@ -804,9 +803,19 @@ fn compile_msl_to_air(
 
     let cmd_result = command.output();
 
-    if let Err(e) = &cmd_result {
-        error!("Error compiling Metal shader: {:?} {:?}", e, output_dir);
-        return Err(());
+    match &cmd_result {
+        Err(e) => {
+            error!("Error compiling Metal shader: {}", output_path.to_str().unwrap());
+            error!("{}", e.to_string());
+            return Err(());
+        },
+        Ok(output) => {
+            if !output.status.success() {
+                error!("Error compiling Metal shader: {}", shader_name);
+                error!("{}", std::str::from_utf8(&output.stderr).unwrap());
+                return Err(());
+            }
+        }
     }
 
     if !output_path.exists() {
@@ -829,9 +838,19 @@ fn compile_msl_to_air(
         .arg(&output_path);
     let cmd_result = command.output();
 
-    if let Err(e) = cmd_result {
-        error!("Error creating Metal library: {:?} {:?}", e, output_dir);
-        return Err(());
+    match &cmd_result {
+        Err(e) => {
+            error!("Error creating Metal library: {:?}", output_path.to_str().unwrap());
+            error!("{:?}", e.to_string());
+            return Err(());
+        },
+        Ok(output) => {
+            if !output.status.success() {
+                error!("Error creating Metal library: {:?}", output_path.to_str().unwrap());
+                error!("{:?}", std::str::from_utf8(&output.stderr).unwrap());
+                return Err(());
+            }
+        }
     }
 
     let air_file_res = File::open(&output_library_path);
