@@ -28,6 +28,7 @@ impl<P: Platform> PathTracerPass<P> {
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
+        _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
     ) -> Self {
         resources.create_texture(
             Self::PATH_TRACING_TARGET,
@@ -43,7 +44,7 @@ impl<P: Platform> PathTracerPass<P> {
                 usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
                 supports_srgb: false,
             },
-            false,
+            true,
         );
 
         let pipeline = shader_manager.request_compute_pipeline("shaders/path_tracer.comp.json");
@@ -86,6 +87,16 @@ impl<P: Platform> PathTracerPass<P> {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
+        let texture_uav_history = pass_params.resources.access_view(
+            cmd_buffer,
+            Self::PATH_TRACING_TARGET,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_READ,
+            TextureLayout::Storage,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Past,
+        );
 
         let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
@@ -95,6 +106,7 @@ impl<P: Platform> PathTracerPass<P> {
             acceleration_structure,
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 1, &*texture_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 4, &*&texture_uav_history);
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::Frequent,
             2,

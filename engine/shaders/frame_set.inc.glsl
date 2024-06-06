@@ -62,7 +62,7 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 11, std140) uniform SetupUBO {
   uvec2 rtSize;
   ShadowCascade[5] cascades;
   uint cascadeCount;
-
+  uint frameIdx;
 };
 struct PointLight {
   vec4 positionAndIntensity;

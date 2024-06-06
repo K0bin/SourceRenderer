@@ -252,7 +252,8 @@ impl<P: Platform> ModernRenderer<P> {
             halton_point: Vec2,
             rt_size: Vec2UI,
             cascades: [ShadowCascade; 5],
-            cascade_count: u32
+            cascade_count: u32,
+            frame: u32
         }
 
         let setup_buffer = cmd_buf.upload_dynamic_data(
@@ -272,6 +273,7 @@ impl<P: Platform> ModernRenderer<P> {
                 rt_size: *rendering_resolution,
                 cascade_count: cascades.len() as u32,
                 cascades: gpu_cascade_data,
+                frame: frame as u32
             }],
             BufferUsage::CONSTANT,
         ).unwrap();
