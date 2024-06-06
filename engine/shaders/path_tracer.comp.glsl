@@ -159,18 +159,30 @@ vec3 random(uint iteration) {
     return texture(noise, texCoord).xyz;
 }
 
+float radToDeg(float rad) {
+    return rad * 180.0 / PI;
+}
+
 void rayMiss(vec3 rayDirection, out RayHitResult result) {
-    vec3 sunDirection = vec3(0.1, -1, 0.1);
+    vec3 sunDirection = vec3(0.3, 1, 0.2);
     sunDirection = normalize(sunDirection);
-    float angle = acos(dot(sunDirection, rayDirection));
-    if (angle < SUN_ANGLE) {
+    rayDirection = normalize(rayDirection);
+    float angle = radToDeg(acos(dot(sunDirection, rayDirection)));
+
+    if (angle <= SUN_ANGLE) {
+        // Sun
         result.nextFactor = vec3(0.0);
-        result.radiance = vec3(20.0);
+        result.radiance = vec3(200.0);
         result.nextRayDirection = vec3(0.0);
         result.nextRayOrigin = vec3(0.0);
     } else {
+        // Sky
+        float y = max(0.0, rayDirection.y);
+        vec3 skyBlue = vec3(0.529, 0.808, 0.922);
+        vec3 color = mix(vec3(1.0), skyBlue, clamp(y * y + 0.4, 0.0, 1.0));
+
         result.nextFactor = vec3(0.0);
-        result.radiance = vec3(0.0);
+        result.radiance = color;
         result.nextRayDirection = vec3(0.0);
         result.nextRayOrigin = vec3(0.0);
     }
