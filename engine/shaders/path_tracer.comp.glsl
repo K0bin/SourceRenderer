@@ -40,11 +40,11 @@ struct RayHitResult {
     vec3 nextFactor;
 };
 
-const uint RAYS_PER_PIXEL = 300;
+const uint RAYS_PER_PIXEL = 30;
 
 vec3 random(uint iteration);
 bool traceRay(vec3 rayOrigin, vec3 rayDirection, uint iteration, out RayHitResult result);
-void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec2 barycentricsYZ, uint iteration, out RayHitResult result);
+void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec2 barycentricsYZ, mat4x3 transform, uint iteration, out RayHitResult result);
 void rayMiss(vec3 rayDirection, out RayHitResult result);
 
 void main() {
@@ -104,15 +104,16 @@ bool traceRay(vec3 rayOrigin, vec3 rayDirection, uint iteration, out RayHitResul
         int drawableIndex = rayQueryGetIntersectionInstanceIdEXT(rayQuery, true);
         int partIndex = rayQueryGetIntersectionGeometryIndexEXT(rayQuery, true);
         int primitiveId = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+        mat4x3 transform = rayQueryGetIntersectionObjectToWorldEXT(rayQuery, true);
 
-        rayHit(drawableIndex, partIndex, primitiveId, barycentricsYZ, iteration, result);
+        rayHit(drawableIndex, partIndex, primitiveId, barycentricsYZ, transform, iteration, result);
         return true;
     }
 }
 
 // vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness);
 
-void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec2 barycentricsYZ, uint iteration, out RayHitResult result) {
+void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec2 barycentricsYZ, mat4x3 transform, uint iteration, out RayHitResult result) {
     GPUDrawable drawable = GPU_SCENE_DRAWABLES_NAME[drawableIndex];
     GPUMeshPart part = GPU_SCENE_PARTS_NAME[drawable.partStart + partIndex];
 
@@ -141,7 +142,7 @@ void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec2 baryce
 
     vec3 localDiffuseDir = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
     vec3 diffuseDir = vertex.normal * localDiffuseDir;
-    result.nextRayOrigin = vertex.position;
+    result.nextRayOrigin = (transform * vec4(vertex.position, 1.0)).xyz;
     result.nextRayDirection = diffuseDir;
     result.nextFactor = color * PI * cos(theta) * sin(theta);
     result.radiance = emission;
