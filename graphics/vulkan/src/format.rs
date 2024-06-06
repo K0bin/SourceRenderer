@@ -38,6 +38,8 @@ pub fn format_to_vk(format: gpu::Format, supports_d24: bool) -> vk::Format {
         gpu::Format::RG16UInt => vk::Format::R16G16_UINT,
         gpu::Format::R16UInt => vk::Format::R16_UINT,
         gpu::Format::R16SNorm => vk::Format::R16_SNORM,
+        gpu::Format::RG16SInt => vk::Format::R16G16_SINT,
+        gpu::Format::R16SInt => vk::Format::R16_SINT,
         _ => vk::Format::UNDEFINED,
     }
 }

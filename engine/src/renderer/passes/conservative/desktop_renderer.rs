@@ -164,6 +164,7 @@ impl<P: Platform> ConservativeRenderer<P> {
             swapchain_transform: Matrix4,
             halton_point: Vec2,
             rt_size: Vec2UI,
+            frame: u32
         }
         let setup_buffer = cmd_buf.upload_dynamic_data(
             &[SetupBuffer {
@@ -180,6 +181,7 @@ impl<P: Platform> ConservativeRenderer<P> {
                     (frame % 8) as u32 + 1,
                 ),
                 rt_size: *rendering_resolution,
+                frame: frame as u32
             }],
             BufferUsage::CONSTANT,
         ).unwrap();

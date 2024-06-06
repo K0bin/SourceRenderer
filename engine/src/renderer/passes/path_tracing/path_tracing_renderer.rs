@@ -65,7 +65,7 @@ impl<P: Platform> PathTracingRenderer<P> {
             &mut init_cmd_buffer,
         );
         let blit_pass = BlitPass::new(&mut barriers, shader_manager, swapchain.format());
-        let path_tracer_pass = PathTracerPass::<P>::new(device, resolution, &mut barriers, shader_manager);
+        let path_tracer_pass = PathTracerPass::<P>::new(device, resolution, &mut barriers, shader_manager, &mut init_cmd_buffer);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -150,7 +150,8 @@ impl<P: Platform> PathTracingRenderer<P> {
             halton_point: Vec2,
             rt_size: Vec2UI,
             cascades: [ShadowCascade; 5],
-            cascade_count: u32
+            cascade_count: u32,
+            frame: u32
         }
 
         let setup_buffer = cmd_buf.upload_dynamic_data(
@@ -170,6 +171,7 @@ impl<P: Platform> PathTracingRenderer<P> {
                 rt_size: *rendering_resolution,
                 cascade_count: 0u32,
                 cascades: gpu_cascade_data,
+                frame: frame as u32
             }],
             BufferUsage::CONSTANT,
         ).unwrap();
