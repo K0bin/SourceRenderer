@@ -422,7 +422,9 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             }, HistoryResourceEntry::Current);
         let sampler = self.barriers.linear_sampler();
         cmd_buf.flush_barriers();
-        self.blit_pass.execute::<P>(context, &mut cmd_buf, shader_manager, &sharpened_view, swapchain.backbuffer(), sampler);
+
+        let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
+        self.blit_pass.execute::<P>(context, &mut cmd_buf, shader_manager, &sharpened_view, swapchain.backbuffer(), sampler, resolution);
         std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,

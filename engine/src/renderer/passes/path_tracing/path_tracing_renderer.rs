@@ -51,7 +51,7 @@ impl<P: Platform> PathTracingRenderer<P> {
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
-        let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
+        let resolution = Vec2UI::new(swapchain.width() / 2, swapchain.height() / 2);
 
         let mut barriers = RendererResources::<P::GPUBackend>::new(device);
 
@@ -65,7 +65,7 @@ impl<P: Platform> PathTracingRenderer<P> {
             &mut init_cmd_buffer,
         );
         let blit_pass = BlitPass::new(&mut barriers, shader_manager, swapchain.format());
-        let path_tracer_pass = PathTracerPass::<P>::new(device, Vec2UI::new(swapchain.width(), swapchain.height()), &mut barriers, shader_manager);
+        let path_tracer_pass = PathTracerPass::<P>::new(device, resolution, &mut barriers, shader_manager);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -314,7 +314,8 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
                 format: None
             }, HistoryResourceEntry::Current);
         let sampler = self.barriers.linear_sampler();
-        self.blit_pass.execute(context, &mut cmd_buf, shader_manager, &rt_view, swapchain.backbuffer(), sampler);
+        let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
+        self.blit_pass.execute(context, &mut cmd_buf, shader_manager, &rt_view, swapchain.backbuffer(), sampler, resolution);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET,
             new_sync: BarrierSync::empty(),

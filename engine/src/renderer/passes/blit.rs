@@ -71,7 +71,8 @@ impl BlitPass {
         shader_manager: &ShaderManager<P>,
         src_view: &TextureView<P::GPUBackend>,
         dst_view: &TextureView<P::GPUBackend>,
-        sampler: &Sampler<P::GPUBackend>
+        sampler: &Sampler<P::GPUBackend>,
+        dst_resolution: Vec2UI
     ) {
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             attachments: &[
@@ -97,16 +98,13 @@ impl BlitPass {
 
         cmd_buffer.set_scissors(&[Scissor {
             position: Vec2I::new(0i32, 0i32),
-            extent: Vec2UI::new(
-                src_view.texture().unwrap().info().width,
-                src_view.texture().unwrap().info().height
-            ),
+            extent: dst_resolution,
         }]);
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0f32, 0f32),
             extent: Vec2::new(
-                src_view.texture().unwrap().info().width as f32,
-                src_view.texture().unwrap().info().height as f32,
+                dst_resolution.x as f32,
+                dst_resolution.y as f32,
             ),
             min_depth: 0f32,
             max_depth: 1f32,
