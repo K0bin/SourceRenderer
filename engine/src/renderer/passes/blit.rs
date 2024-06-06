@@ -112,7 +112,7 @@ impl BlitPass {
 
         cmd_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, src_view, sampler);
         cmd_buffer.finish_binding();
-        cmd_buffer.draw(4, 0);
+        cmd_buffer.draw(3, 0);
 
         cmd_buffer.end_render_pass();
     }
