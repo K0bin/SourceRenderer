@@ -31,6 +31,7 @@ layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D al
 
 #define PI 3.1415926538
 #define SUN_ANGLE 0.53
+#define ALBEDO_ONLY false
 
 struct RayHitResult {
     vec3 radiance;
@@ -146,8 +147,10 @@ void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec2 baryce
     result.radiance = emission;
 
     // DEBUG
-    result.radiance = color;
-    result.nextFactor = vec3(0.0);
+    if (ALBEDO_ONLY) {
+        result.radiance = color;
+        result.nextFactor = vec3(0.0);
+    }
 }
 
 vec3 random(uint iteration) {
