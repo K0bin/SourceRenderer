@@ -41,8 +41,8 @@ uint getPrimitiveIndex(uint id) {
   return id & 0xffff;
 }
 
-Vertex interpolateVertex(vec2 barycentrics, Vertex vertices[3]) {
-  vec3 bary = vec3(barycentrics.x, barycentrics.y, 1 - barycentrics.x - barycentrics.y);
+Vertex interpolateVertex(vec3 barycentrics, Vertex vertices[3]) {
+  vec3 bary = barycentrics;
   Vertex interpolated;
   interpolated.position = vertices[0].position * bary.x + vertices[1].position * bary.y + vertices[2].position * bary.z;
   interpolated.normal = vertices[0].normal * bary.x + vertices[1].normal * bary.y + vertices[2].normal * bary.z;
@@ -81,7 +81,7 @@ Vertex getVertex(uint id, vec2 barycentrics) {
   GPUDrawable drawable = GPU_SCENE_DRAWABLES_NAME[draw.drawableIndex];
 
   mat4 transposedTransform = transpose(inverse(drawable.transform));
-  Vertex vertex = interpolateVertex(barycentrics, vertices);
+  Vertex vertex = interpolateVertex(vec3(barycentrics, 1.0 - barycentrics.x - barycentrics.y), vertices);
   vertex.position = (drawable.transform * vec4(vertex.position, 1)).xyz;
   vertex.normal = normalize((transposedTransform * vec4(vertex.normal, 0)).xyz);
   return vertex;
@@ -95,7 +95,7 @@ GPUMaterial getMaterial(uint id) {
   return material;
 }
 
-vec2 getMotionVector(uint id, vec2 barycentrics, Camera camera, Camera oldCamera) {
+vec2 getMotionVector(uint id, vec3 barycentrics, Camera camera, Camera oldCamera) {
   Vertex vertices[3] = getVertices(id);
   Vertex oldVertices[3] = vertices;
 

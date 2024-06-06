@@ -15,14 +15,16 @@ use crate::renderer::shader_manager::{
 };
 use crate::graphics::*;
 
-pub struct PathTracerPass {
+pub struct PathTracerPass<P: Platform> {
     pipeline: ComputePipelineHandle,
+    sampler: Sampler<P::GPUBackend>
 }
 
-impl PathTracerPass {
+impl<P: Platform> PathTracerPass<P> {
     pub const PATH_TRACING_TARGET: &'static str = "PathTracingTarget";
 
-    pub fn new<P: Platform>(
+    pub fn new(
+        device: &Device<P::GPUBackend>,
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
@@ -46,10 +48,27 @@ impl PathTracerPass {
 
         let pipeline = shader_manager.request_compute_pipeline("shaders/path_tracer.comp.json");
 
-        Self { pipeline }
+        let sampler = device.create_sampler(&SamplerInfo {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            mip_filter: Filter::Linear,
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
+            mip_bias: 0.0,
+            max_anisotropy: 1f32,
+            compare_op: None,
+            min_lod: 0.0,
+            max_lod: None,
+        });
+
+        Self {
+            pipeline,
+            sampler
+        }
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
@@ -82,7 +101,7 @@ impl PathTracerPass {
             blue_noise,
             blue_noise_sampler,
         );
-        cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 3, pass_params.resources.linear_sampler());
+        cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 3, &self.sampler);
         let info = texture_uav.texture().unwrap().info();
 
         cmd_buffer.flush_barriers();

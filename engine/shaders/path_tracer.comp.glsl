@@ -27,7 +27,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform accelerationStructure
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, rgba8) uniform image2D image;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform sampler2D noise;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler linearSampler;
-layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
+layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[1024];
 
 void main() {
     ivec2 texSize = imageSize(image);
@@ -37,16 +37,25 @@ void main() {
     vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
     ivec2 iTexCoord = ivec2(gl_GlobalInvocationID.xy);
 
+
+    /*bindless debug
+    uint index = max(8, min(iTexCoord.x, 8));
+    vec3 color1 = texture(sampler2D(albedo_global[index], linearSampler), texCoord).xyz;
+    //vec3 color1 = texture(sampler2D(tex15, linearSampler), texCoord).xyz;
+    //vec3 color1 = vec3(1.0);
+    imageStore(image, iTexCoord, vec4(color1, 1.0));
+
+    return;*/
+
     vec3 rayOrigin = camera.position.xyz;
-    vec4 pixelOffset = camera.invProj * vec4(texCoord * 2.0 - 1.0, 1.0, 1.0);
-    pixelOffset.xyz /= pixelOffset.w;
-    vec4 rayDirectionViewSpace = vec4(0.0, 0.0, 1.0, 0.0);
-    vec4 rayDirection = camera.invView * rayDirectionViewSpace;
-    rayDirection.xyz += pixelOffset.xyz;
+    vec4 rayDirectionViewSpace = camera.invProj * vec4(vec2(texCoord.x, 1.0 - texCoord.y) * 2.0 - 1.0, 1.0, 1.0);
+    rayDirectionViewSpace.xyz /= rayDirectionViewSpace.w;
+    vec4 rayDirection = camera.invView * (rayDirectionViewSpace);
+    rayDirection = normalize(rayDirection);
 
     rayQueryEXT rayQuery;
     rayQueryInitializeEXT(rayQuery, topLevelAS,
-                      gl_RayFlagsTerminateOnFirstHitEXT,
+                      0,
                       0xFF, rayOrigin, 0.01, rayDirection.xyz, 100.0);
 
     while (rayQueryProceedEXT(rayQuery)) {
@@ -59,11 +68,10 @@ void main() {
 
     vec3 color;
     if (rayQueryGetIntersectionTypeEXT(rayQuery, true) ==
-        gl_RayQueryCommittedIntersectionNoneEXT)
-    {
+        gl_RayQueryCommittedIntersectionNoneEXT) {
         color = vec3(0.0);
     } else {
-        vec2 barycentrics = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
+        vec2 barycentricsYZ = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
         int drawableIndex = rayQueryGetIntersectionInstanceIdEXT(rayQuery, true);
         int partIndex = rayQueryGetIntersectionGeometryIndexEXT(rayQuery, true);
         int primitiveId = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
@@ -76,12 +84,13 @@ void main() {
         uint index1 = INDICES_ARRAY_NAME[firstIndex + 1];
         uint index2 = INDICES_ARRAY_NAME[firstIndex + 2];
 
-        Vertex vertices[3];
-        vertices[0] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index0];
-        vertices[1] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index1];
-        vertices[2] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index2];
+        Vertex triangle_verts[3];
+        triangle_verts[0] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index0];
+        triangle_verts[1] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index1];
+        triangle_verts[2] = VERTICES_ARRAY_NAME[part.meshVertexOffset + index2];
 
-        Vertex vertex = interpolateVertex(barycentrics, vertices);
+        vec3 barycentrics = vec3(1.0 - barycentricsYZ.x - barycentricsYZ.y, barycentricsYZ.x, barycentricsYZ.y);
+        Vertex vertex = interpolateVertex(barycentrics, triangle_verts);
 
         GPUMaterial material = GPU_SCENE_MATERIALS_NAME[part.materialIndex];
         vec3 albedo = material.albedoColor.rgb * texture(sampler2D(albedo_global[material.albedoTextureIndex], linearSampler), vertex.uv).rgb;
