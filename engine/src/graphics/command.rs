@@ -621,11 +621,11 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             index_format: info.index_format,
             vertex_position_offset: info.vertex_position_offset,
             vertex_buffer: info.vertex_buffer.handle(),
-            vertex_buffer_offset: info.vertex_buffer.offset(),
+            vertex_buffer_offset: info.vertex_buffer.offset() + info.vertex_buffer_offset as u64,
             vertex_stride: info.vertex_stride,
             vertex_format: info.vertex_format,
             index_buffer: info.index_buffer.handle(),
-            index_buffer_offset: info.index_buffer.offset(),
+            index_buffer_offset: info.index_buffer.offset() + info.index_buffer_offset as u64,
             opaque: info.opaque,
             mesh_parts: info.mesh_parts,
             max_vertex: info.max_vertex
