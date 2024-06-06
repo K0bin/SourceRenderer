@@ -147,7 +147,8 @@ void main() {
     vec2 motion = textureLod(motionTex, motionTexCoord, 0).xy;
 #else
   uint id = imageLoad(primitiveIds, storageTexCoord).x;
-  vec2 barycentrics = imageLoad(barycentrics, storageTexCoord).xy;
+  vec2 barycentricsXY = imageLoad(barycentrics, storageTexCoord).xy;
+  vec3 barycentrics = vec3(barycentricsXY, 1.0 - barycentricsXY.x - barycentricsXY.y);
   vec2 motion = getMotionVector(id, barycentrics, camera, oldCamera);
 #endif
 

@@ -21,7 +21,8 @@ void main() {
 
   ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
   uint id = imageLoad(primitiveIds, storageTexCoord).x;
-  vec2 barycentrics = imageLoad(barycentrics, storageTexCoord).xy;
+  vec2 barycentricsXY = imageLoad(barycentrics, storageTexCoord).xy;
+  vec3 barycentrics = vec3(barycentricsXY, 1.0 - barycentricsXY.x - barycentricsXY.y);
   vec2 motion = getMotionVector(id, barycentrics, camera, oldCamera);
 
   imageStore(outputTexture, storageTexCoord, vec4(motion, 0.0, 0.0));

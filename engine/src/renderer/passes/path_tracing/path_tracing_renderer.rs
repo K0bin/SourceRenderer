@@ -38,7 +38,7 @@ pub struct PathTracingRenderer<P: Platform> {
     blue_noise: BlueNoise<P::GPUBackend>,
     acceleration_structure_update: AccelerationStructureUpdatePass<P>,
     blit_pass: crate::renderer::passes::blit::BlitPass,
-    path_tracer: PathTracerPass
+    path_tracer: PathTracerPass<P>
 }
 
 impl<P: Platform> PathTracingRenderer<P> {
@@ -65,7 +65,7 @@ impl<P: Platform> PathTracingRenderer<P> {
             &mut init_cmd_buffer,
         );
         let blit_pass = BlitPass::new(&mut barriers, shader_manager, swapchain.format());
-        let path_tracer_pass = PathTracerPass::new(Vec2UI::new(swapchain.width(), swapchain.height()), &mut barriers, shader_manager);
+        let path_tracer_pass = PathTracerPass::<P>::new(device, Vec2UI::new(swapchain.width(), swapchain.height()), &mut barriers, shader_manager);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -301,7 +301,7 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
             queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        let rt_view = self.barriers.access_view(&mut cmd_buf, PathTracerPass::PATH_TRACING_TARGET,
+        let rt_view = self.barriers.access_view(&mut cmd_buf, PathTracerPass::<P>::PATH_TRACING_TARGET,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
