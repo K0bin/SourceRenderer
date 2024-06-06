@@ -10,6 +10,6 @@ void main(void) {
     float(gl_VertexIndex & 1) * 2.0
   );
 
-  out_uv = coord;
+  out_uv = vec2(coord.x, 1.0 - coord.y);
   gl_Position = vec4(coord * 2.0 - 1.0, 0.0, 1.0);
 }
