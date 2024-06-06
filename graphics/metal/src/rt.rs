@@ -72,7 +72,7 @@ impl MTLAccelerationStructure {
             geometry.set_index_buffer_offset(info.index_buffer_offset
                 + (part.primitive_start as u64) * 3 * (if info.index_format == gpu::IndexFormat::U16 { 2 } else { 4 }));
             geometry.set_vertex_buffer(Some(info.vertex_buffer.handle()));
-            geometry.set_vertex_buffer_offset(info.vertex_buffer_offset);
+            geometry.set_vertex_buffer_offset(info.vertex_buffer_offset + info.vertex_position_offset as u64);
             geometry.set_index_type(index_format_to_mtl(info.index_format));
             geometry.set_vertex_stride(info.vertex_stride as u64);
             geometry.set_opaque(info.opaque);
