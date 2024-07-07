@@ -106,10 +106,12 @@ impl GltfLoader {
         };
 
         let fixed_position = fixup_vec(&translation);
-        let fixed_rotation = Vec4::new(-rotation.x, rotation.y, rotation.z, rotation.w);
+        let fixed_rotation = Vec4::new(rotation.x, rotation.y, rotation.z, rotation.w);
         let rot_quat = Quaternion::new_normalize(nalgebra::Quaternion {
             coords: fixed_rotation,
         });
+        let euler_angles = rot_quat.euler_angles();
+        let rot_quat = Quaternion::from_euler_angles(euler_angles.0, -euler_angles.1, -euler_angles.2);
         let entity = world.push((Transform {
             position: fixed_position,
             scale,
