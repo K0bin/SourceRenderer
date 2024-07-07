@@ -34,7 +34,7 @@ impl<P: Platform> PathTracerPass<P> {
             Self::PATH_TRACING_TARGET,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::RGBA8UNorm,
+                format: Format::RGBA32Float,
                 width: resolution.x,
                 height: resolution.y,
                 depth: 1,

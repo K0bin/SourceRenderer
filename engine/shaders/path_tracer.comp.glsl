@@ -2,6 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_ray_query : enable
 #extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_KHR_shader_subgroup_vote : enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
 
 #ifdef DEBUG
 #extension GL_EXT_debug_printf : enable
@@ -32,10 +34,11 @@ layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D al
 
 #define PI 3.1415926538
 #define SUN_ANGLE 0.53
-//#define SUN_ANGLE 53
+#define SUN_RADIANCE 80000
+#define SKY_RANDIANCE 10000
 #define ALBEDO_ONLY false
 #define USE_PROCEDURAL_NOISE true
-vec3 sunDirection = vec3(0.3, 1, 0.2);
+vec3 sunDirection = vec3(-0.3, 0.5, -0.3);
 
 struct RayHitResult {
     vec3 radiance;
@@ -45,7 +48,7 @@ struct RayHitResult {
     vec4 oldColor;
 };
 
-const uint LIGHT_BOUNCES = 6;
+const uint LIGHT_BOUNCES = 64;
 
 
 float radToDeg(float rad);
@@ -89,35 +92,31 @@ void main() {
         color += contribution * result.radiance;
         contribution *= result.nextFactor;
 
-        if (!hit || length(contribution) <= 0.01) {
+        if (subgroupAll(!hit) || subgroupMax(length(contribution)) <= 0.01) {
             break;
         }
         rayOrigin = result.nextRayOrigin;
         rayDirection = result.nextRayDirection;
     }
     color = max(color, vec3(0.0));
-    /*if (oldColorHit && length(color) - length(oldColor) < 0.3) {
-        color = mix(
-            oldColor,
-            color,
-            length(contribution) > 0.01 ? 0.1 : 0.0
-        );
-        //color = (oldColor * float(frameIdx) + color) / float(frameIdx + 1);
-    }*/
+
+    bool hasOldColor = length(oldColor.xyz) > 0.01;
+    hasOldColor = true;
+
+    // revert eye adaptation
+    oldColor.xyz *= 85000.0;
+
     color = mix(
             color,
             oldColor.xyz,
-            oldColor.w
+            hasOldColor ? 0.999 : 0.85
+            //clamp((oldColor.w * 0.1) + 0.99, 0.0, 0.99)
+            //oldColor.w
         );
 
-    /*if (oldColorHit) {
-        color = (oldColor * float(frameIdx) + color) / float(frameIdx + 1);
-    }*/
-    /*if (texCoord.x > 0.5) {
-        color = oldColor;
-    }*/
-
-    //imageStore(image, iTexCoord, vec4(color, min(1.0, oldColor.w < 0.02 ? 0.6 : oldColor.w + 0.01)));
+    vec4 finalColor = vec4(color, min(1.0, oldColor.w + epsilon));
+    finalColor.xyz /= 85000.0; // eye adaptation
+    imageStore(image, iTexCoord, finalColor);
 }
 
 bool traceRay(vec3 rayOrigin, vec3 rayDirection, uint iteration, out RayHitResult result) {
@@ -152,8 +151,6 @@ bool traceRay(vec3 rayOrigin, vec3 rayDirection, uint iteration, out RayHitResul
     }
 }
 
-// vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness);
-
 void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec3 viewDir, vec2 barycentricsYZ, mat4x3 transform, uint iteration, out RayHitResult result) {
     GPUDrawable drawable = GPU_SCENE_DRAWABLES_NAME[drawableIndex];
     GPUMeshPart part = GPU_SCENE_PARTS_NAME[drawable.partStart + partIndex];
@@ -180,46 +177,61 @@ void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec3 viewDi
     }
 
     GPUMaterial material = GPU_SCENE_MATERIALS_NAME[part.materialIndex];
+    material.metalnessFactor *= 0.25;
     vec3 albedo = material.albedoColor.rgb * texture(sampler2D(albedo_global[nonuniformEXT(material.albedoTextureIndex)], linearSampler), vertex.uv).rgb;
     vec3 color = albedo;
     vec3 emission = vec3(0.0);
 
-    vec3 random = random(iteration);
-    float phi = 2.0 * PI * random.x;
-    vec3 lightDir;
+    vec3 rand = random(iteration);
+    float phi = 2.0 * PI * rand.x;
+    vec3 lightDir = vec3(0.0);
     result.nextRayOrigin = transformedPosition;
 
-    vec3 normalizedSunDirection = normalize(sunDirection);
-    if (random.z > 0.3 && dot(transformedNormal, normalizedSunDirection) > 0.1) {
-        // Send ray towards sun
-        float thetaLight = acos(1.0 - 2.0 * random.y);
-        float phiLight = 2.0 * PI * random.x;
-        vec3 spherePos = vec3(sin(thetaLight) * cos(phiLight), sin(thetaLight) * sin(phiLight), cos(thetaLight));
-        vec3 lightCenter = transformedPosition + sunDirection;
-        lightDir = normalize(normalizedSunDirection + spherePos * degToRad(SUN_ANGLE));
-    } else { //if (random.z < 0.2) {
+    vec3 nextFactor = vec3(0.0);
+
+    if (rand.z < 0.5) {
         // importance sampling of ggx
         float a = material.roughnessFactor * material.roughnessFactor;
-        float theta = acos(sqrt((1.0 - random.y) / (1.0 + (a * a - 1.0) * random.y)));
+        float theta = acos(sqrt((1.0 - rand.y) / (1.0 + (a * a - 1.0) * rand.y)));
         vec3 localDir = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
         vec3 worldDir = getNormalSpace(transformedNormal) * localDir;
         lightDir = reflect(-viewDir, worldDir);
-    } /*else {
+        vec3 halfway = worldDir;
+
+        float viewDotHalf = clamp(dot(viewDir, halfway), 0.0, 1.0);
+        vec3 f0 = vec3(0.04);
+        f0 = mix(f0, albedo, material.metalnessFactor);
+        vec3 fresnel = fresnelSchlick(viewDotHalf, f0);
+        float distribution = distributionGGX(transformedNormal, halfway, material.roughnessFactor);
+        float geometry = geometrySmith(transformedNormal, viewDir, lightDir, material.roughnessFactor, false);
+        nextFactor = fresnel * geometry * viewDotHalf / max(clamp(dot(transformedNormal, halfway), 0.0, 1.0) * clamp(dot(transformedNormal, viewDir), 0.0, 1.0), 0.001);
+        nextFactor *= 2.0;
+    } else {
         // importance sampling diffuse
-        float theta = asin(sqrt(random.y));
-        vec3 localDir = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
-        lightDir = getNormalSpace(transformedNormal) * localDir;
-    }*/
-    float theta = asin(sqrt(random.y));
-
-    vec3 f0 = vec3(0.04);
-    f0 = mix(f0, albedo, material.metalnessFactor);
-
+        float theta = asin(sqrt(rand.y));
+        vec3 normalizedSunDirection = normalize(sunDirection);
+        if ((rand.z > 0.75 && dot(transformedNormal, normalizedSunDirection) > 0.1)) {
+            float thetaLight = acos(1.0 - 2.0 * rand.y);
+            float phiLight = 2.0 * PI * rand.x;
+            vec3 spherePos = vec3(sin(thetaLight) * cos(phiLight), sin(thetaLight) * sin(phiLight), cos(thetaLight));
+            lightDir = normalize(normalizedSunDirection + spherePos * degToRad(SUN_ANGLE));
+        } else {
+            vec3 localDir = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+            lightDir = getNormalSpace(transformedNormal) * localDir;
+        }
+        vec3 halfway = normalize(viewDir + lightDir);
+        float viewDotHalf = clamp(dot(viewDir, halfway), 0.0, 1.0);
+        vec3 f0 = vec3(0.04);
+        f0 = mix(f0, albedo, material.metalnessFactor);
+        vec3 fresnel = fresnelSchlick(viewDotHalf, f0);
+        vec3 notSpec = vec3(1.0) - fresnel;
+        notSpec *= 1.0 - material.metalnessFactor;
+        nextFactor = notSpec * color;
+        nextFactor *= 2.0;
+    }
 
     result.nextRayDirection = lightDir;
-    //result.nextFactor = min(color * PI * cos(theta) * sin(theta), vec3(1.0));
-    result.nextFactor = color * vec3(1.0);
-    //result.nextFactor = pbr(lightDir, viewDir, transformedNormal, f0, albedo, vec3(1.0), material.roughnessFactor, material.metalnessFactor);
+    result.nextFactor = nextFactor;
     result.radiance = emission;
 
     // DEBUG
@@ -283,30 +295,25 @@ void rayMiss(vec3 rayDirection, uint iteration, out RayHitResult result) {
     if (angle <= SUN_ANGLE) {
         // Sun
         result.nextFactor = vec3(1.0);
-        result.radiance = vec3(20.0);
+        result.radiance = vec3(SUN_RADIANCE);
         result.nextRayDirection = vec3(0.0);
         result.nextRayOrigin = vec3(0.0);
-    } else if (iteration < 2) {
+    } else {
         // Sky
         float y = max(0.0, rayDirection.y);
         vec3 skyBlue = vec3(0.529, 0.808, 0.922);
         vec3 color = mix(vec3(1.0), skyBlue, clamp(y * y + 0.4, 0.0, 1.0));
 
         result.nextFactor = vec3(1.0);
-        result.radiance = color * (iteration == 0 ? 1.0 : 0.2);
-        result.nextRayDirection = vec3(0.0);
-        result.nextRayOrigin = vec3(0.0);
-    } else {
-        result.nextFactor = vec3(0.0);
-        result.radiance = vec3(0.0);
+        result.radiance = color * SKY_RANDIANCE; //(iteration == 0 ? 0 : 0);
         result.nextRayDirection = vec3(0.0);
         result.nextRayOrigin = vec3(0.0);
     }
     result.oldColor = vec4(0.0);
 
-    if (iteration == 0) {
-    ivec2 iTexCoord = ivec2(gl_GlobalInvocationID.xy);
-    imageStore(image, iTexCoord, vec4(1.0, 0.0, 1.0, 1.0));
+    if (iteration == 0 && false) {
+        ivec2 iTexCoord = ivec2(gl_GlobalInvocationID.xy);
+        imageStore(image, iTexCoord, vec4(1.0, 0.0, 1.0, 1.0));
     }
 }
 
@@ -323,17 +330,28 @@ bool getHistoryColor(GPUDrawable drawable, Vertex vertex, vec3 transformedPositi
     bool vertexCloseEnough = length(transformedPosition - lastFramePosition.xyz) < 0.1;
     bool reject = !withinOfBounds || !vertexCloseEnough;
 
+    // DEBUG
+    // I originally wanted to allow moving around by reprojecting the pixel in the previous frame.
+    // However, while it mostly worked, I hit a few issues where it didn't work as expected
+    // and I didn't have time to figure it out.
+    ivec2 oldITexCoord = ivec2(vec2(lastFrameTexcoord.x, 1.0 - lastFrameTexcoord.y) * vec2(texSize));
+    oldITexCoord.y += 1;
+    vec4 test = camera.view * vec4(0.0, 0.0, 0.0, 1.0);
+    vec4 oldTest = oldCamera.view * vec4(0.0, 0.0, 0.0, 1.0);
+    vec3 diff = test.xyz - oldTest.xyz;
+    reject = length(diff) > 0.01;
+
     if (!reject) {
         lastFrameTexcoord.y = 1.0 - lastFrameTexcoord.y;
         vec2 lastFrameTexCoordPixels = lastFrameTexcoord.xy * vec2(texSize);
         lastFrameTexCoordPixels.y += 1.0;
-        oldColor = imageLoad(historyImage, ivec2(lastFrameTexCoordPixels));
-        //return true;
+        //oldColor = imageLoad(historyImage, ivec2(lastFrameTexCoordPixels));
+        oldColor = imageLoad(historyImage, iTexCoord);
+        return true;
     } else {
         oldColor = vec4(0.0);
-        //return false;
+        return false;
     }
 
-    imageStore(image, iTexCoord, vec4(lastFrameTexcoord, 0.0, 1.0));
     return false;
 }

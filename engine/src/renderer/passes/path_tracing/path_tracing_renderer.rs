@@ -51,7 +51,7 @@ impl<P: Platform> PathTracingRenderer<P> {
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
-        let resolution = Vec2UI::new(swapchain.width() / 2, swapchain.height() / 2);
+        let resolution = Vec2UI::new(swapchain.width() * 2, swapchain.height() * 2);
 
         let mut barriers = RendererResources::<P::GPUBackend>::new(device);
 
