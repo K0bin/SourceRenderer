@@ -230,6 +230,7 @@ dependencies = [
  "log",
  "pathos",
  "serde_json",
+ "simple_logger 5.0.0",
  "sourcerenderer_core",
  "spirv_cross_sys",
 ]
@@ -2113,6 +2114,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_logger"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8c5dfa5e08767553704aa0ffd9d9794d527103c736aba9854773851fd7497eb"
+dependencies = [
+ "colored",
+ "log",
+ "time",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2235,7 +2248,7 @@ dependencies = [
  "raw-window-handle",
  "sdl2",
  "sdl2-sys",
- "simple_logger",
+ "simple_logger 4.3.3",
  "sourcerenderer_bsp",
  "sourcerenderer_core",
  "sourcerenderer_engine",

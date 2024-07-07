@@ -9,6 +9,7 @@ use std::sync::{
     Mutex,
 };
 
+use nalgebra_glm::pi;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::Platform;
@@ -26,7 +27,7 @@ use crate::graphics::RayTracingPipelineInfo as ActualRayTracingPipelineInfo;
 // COMMON
 //
 
-trait PipelineCompileTask<P: Platform>: Send + Sync {
+trait PipelineCompileTask<P: Platform>: Send + Sync + Clone {
     type TShaders;
     type TPipeline: Send + Sync;
 
@@ -53,6 +54,7 @@ trait PipelineCompileTask<P: Platform>: Send + Sync {
         device: &Arc<Device<P::GPUBackend>>,
     ) -> Arc<Self::TPipeline>;
     fn is_async(&self) -> bool;
+    fn set_async(&mut self);
 }
 
 struct CompiledPipeline<P: Platform, T: PipelineCompileTask<P>> {
@@ -151,13 +153,25 @@ struct StoredRenderPassInfo {
     subpasses: SmallVec<[StoredSubpassInfo; 4]>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct GraphicsCompileTask<P: Platform> {
     info: StoredGraphicsPipelineInfo,
     renderpass: StoredRenderPassInfo,
     subpass: u32,
     is_async: bool,
     _p: PhantomData<<P::GPUBackend as GPUBackend>::Device>,
+}
+
+impl<P: Platform> Clone for GraphicsCompileTask<P> {
+    fn clone(&self) -> Self {
+        Self {
+            info: self.info.clone(),
+            renderpass: self.renderpass.clone(),
+            subpass: self.subpass,
+            is_async: self.is_async,
+            _p: PhantomData
+        }
+    }
 }
 
 struct GraphicsPipeline<P: Platform> {
@@ -291,6 +305,10 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
     fn is_async(&self) -> bool {
         self.is_async
     }
+
+    fn set_async(&mut self) {
+        self.is_async = true;
+    }
 }
 
 //
@@ -306,6 +324,16 @@ struct ComputeCompileTask<P: Platform> {
     path: String,
     is_async: bool,
     _p: PhantomData<<P::GPUBackend as GPUBackend>::Device>,
+}
+
+impl<P: Platform> Clone for ComputeCompileTask<P> {
+    fn clone(&self) -> Self {
+        Self {
+            path: self.path.clone(),
+            is_async: self.is_async,
+            _p: PhantomData
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -369,6 +397,10 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
     fn is_async(&self) -> bool {
         self.is_async
     }
+
+    fn set_async(&mut self) {
+        self.is_async = true;
+    }
 }
 
 //
@@ -387,13 +419,25 @@ pub struct RayTracingPipelineInfo<'a> {
     pub miss_shaders: &'a [&'a str],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct StoredRayTracingPipelineInfo<P: Platform> {
     ray_gen_shader: String,
     closest_hit_shaders: SmallVec<[String; 4]>,
     miss_shaders: SmallVec<[String; 1]>,
     is_async: bool,
     _p: PhantomData<<P::GPUBackend as GPUBackend>::Device>,
+}
+
+impl<P: Platform> Clone for StoredRayTracingPipelineInfo<P> {
+    fn clone(&self) -> Self {
+        Self {
+            ray_gen_shader: self.ray_gen_shader.clone(),
+            closest_hit_shaders: self.closest_hit_shaders.clone(),
+            miss_shaders: self.miss_shaders.clone(),
+            is_async: self.is_async,
+            _p: PhantomData
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -534,6 +578,10 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 
     fn is_async(&self) -> bool {
         self.is_async
+    }
+
+    fn set_async(&mut self) {
+        self.is_async = true;
     }
 }
 
@@ -725,6 +773,7 @@ impl<P: Platform> ShaderManager<P> {
         T: PipelineCompileTask<P> + 'static,
     {
         {
+            println!("Integrating shader {:?}", path);
             let mut ready_handles = SmallVec::<[THandle; 1]>::new();
             let mut found = false;
             {
@@ -734,7 +783,9 @@ impl<P: Platform> ShaderManager<P> {
                 // This is done because add_shader will get called when a shader has changed on disk, so we need to load
                 // all remaining shaders of a pipeline and recompile it.
 
-                for (_handle, pipeline) in &inner.compiled_pipelines {
+                let mut tasks_to_add: SmallVec<[(THandle, T); 1]> = SmallVec::new();
+
+                for (handle, pipeline) in &inner.compiled_pipelines {
                     let existing_pipeline_match = pipeline.task.contains_shader(path);
                     if let Some(shader_type) = existing_pipeline_match {
                         assert!(shader_type  == shader.shader_type);
@@ -744,6 +795,11 @@ impl<P: Platform> ShaderManager<P> {
                             &inner.shaders,
                             &self.asset_manager,
                         );
+                        if !inner.remaining_compilations.contains_key(handle) {
+                            let mut task: T = pipeline.task.clone();
+                            task.set_async();
+                            tasks_to_add.push((handle.clone(), task));
+                        }
                     }
                 }
 
@@ -763,6 +819,10 @@ impl<P: Platform> ShaderManager<P> {
                         self.device
                             .create_shader(shader, Some(path));
                     inner.shaders.insert(path.to_string(), Arc::new(shader));
+
+                    for (handle, task) in tasks_to_add.drain(..) {
+                        inner.remaining_compilations.insert(handle, task);
+                    }
                 } else {
                     return false;
                 }

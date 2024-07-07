@@ -40,8 +40,13 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {
+        println!("Loading shader: {:?}", &file.path);
         let mut buffer = Vec::<u8>::new();
-        file.data.read_to_end(&mut buffer).map_err(|_e| ())?;
+        let res = file.data.read_to_end(&mut buffer);
+        if res.is_err() {
+            println!("WTF {:?}", res);
+        }
+        res.map_err(|_e| ())?;
         let shader: PackedShader = serde_json::from_slice(&buffer).map_err(|_e| ())?;
         manager.add_asset_with_progress(
             &file.path,

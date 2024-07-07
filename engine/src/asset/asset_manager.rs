@@ -486,6 +486,7 @@ impl<P: Platform> AssetManager<P> {
                 progress: progress.clone(),
                 priority,
             });
+            println!("Queue depth: {}", queue.len());
         }
         self.cond_var.notify_one();
 
@@ -675,6 +676,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
                     None => return
                 }
             };
+            println!("Loading: {:?}", &request.path);
 
             {
                 let file_opt = mgr.load_file(&request.path);
