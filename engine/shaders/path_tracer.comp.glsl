@@ -101,7 +101,6 @@ void main() {
     color = max(color, vec3(0.0));
 
     bool hasOldColor = length(oldColor.xyz) > 0.01;
-    hasOldColor = true;
 
     // revert eye adaptation
     oldColor.xyz *= 85000.0;
@@ -110,11 +109,9 @@ void main() {
             color,
             oldColor.xyz,
             hasOldColor ? 0.999 : 0.85
-            //clamp((oldColor.w * 0.1) + 0.99, 0.0, 0.99)
-            //oldColor.w
         );
 
-    vec4 finalColor = vec4(color, min(1.0, oldColor.w + epsilon));
+    vec4 finalColor = vec4(color, 1.0);
     finalColor.xyz /= 85000.0; // eye adaptation
     imageStore(image, iTexCoord, finalColor);
 }
