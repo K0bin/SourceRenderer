@@ -486,7 +486,6 @@ impl<P: Platform> AssetManager<P> {
                 progress: progress.clone(),
                 priority,
             });
-            println!("Queue depth: {}", queue.len());
         }
         self.cond_var.notify_one();
 
@@ -667,7 +666,7 @@ fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
                     }
 
                     inner = cond_var.wait(inner).unwrap();
-                    request_opt = inner.load_queue.pop_front();
+                    request_opt = inner.high_priority_load_queue.pop_front();
                     request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
                     request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
                 }
