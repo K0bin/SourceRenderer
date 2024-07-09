@@ -182,7 +182,7 @@ void rayHit(uint drawableIndex, uint partIndex, uint primitiveIndex, vec3 viewDi
     vec3 rand = random(iteration);
     float phi = 2.0 * PI * rand.x;
     vec3 lightDir = vec3(0.0);
-    result.nextRayOrigin = transformedPosition;
+    result.nextRayOrigin = transformedPosition + transformedNormal * 0.001;
 
     vec3 nextFactor = vec3(0.0);
 
