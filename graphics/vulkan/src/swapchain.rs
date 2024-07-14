@@ -13,7 +13,7 @@ use std::{
 };
 
 use ash::{
-    extensions::khr::Swapchain as SwapchainLoader,
+    khr::swapchain::Device as SwapchainDevice,
     prelude::VkResult,
     vk,
     vk::SurfaceTransformFlagsKHR,
@@ -42,7 +42,7 @@ pub struct VkSwapchain {
     acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     present_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     swapchain: Mutex<vk::SwapchainKHR>,
-    swapchain_loader: SwapchainLoader,
+    swapchain_device: SwapchainDevice,
     instance: Arc<RawVkInstance>,
     surface: Option<VkSurface>,
     device: Arc<RawVkDevice>,
@@ -87,7 +87,7 @@ impl VkSwapchain {
                 },
             };
             let present_mode = VkSwapchain::pick_present_mode(vsync, &present_modes);
-            let swapchain_loader = SwapchainLoader::new(&instance.instance, vk_device);
+            let swapchain_device = SwapchainDevice::new(&instance.instance, vk_device);
 
             let capabilities = match surface.get_capabilities(&physical_device) {
                 Ok(capabilities) => capabilities,
@@ -206,7 +206,7 @@ impl VkSwapchain {
                     ..Default::default()
                 };
 
-                swapchain_loader
+                swapchain_device
                     .create_swapchain(&swapchain_create_info, None)
                     .map_err(|e| match e {
                         vk::Result::ERROR_SURFACE_LOST_KHR => {
@@ -222,7 +222,7 @@ impl VkSwapchain {
                     })?
             };
 
-            let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
+            let swapchain_images = swapchain_device.get_swapchain_images(swapchain).unwrap();
             let textures: SmallVec<[VkTexture; 5]> = swapchain_images
                 .iter()
                 .map(|image| {
@@ -264,7 +264,7 @@ impl VkSwapchain {
                 cond_var: Condvar::new(),
                 image_index: AtomicU32::new(0),
                 swapchain: Mutex::new(swapchain),
-                swapchain_loader,
+                swapchain_device,
                 instance: device.instance.clone(),
                 surface: Some(surface),
                 device: device.clone(),
@@ -365,8 +365,8 @@ impl VkSwapchain {
             .expect("No compatible present mode found")
     }
 
-    pub fn loader(&self) -> &SwapchainLoader {
-        &self.swapchain_loader
+    pub fn swapchain_device(&self) -> &SwapchainDevice {
+        &self.swapchain_device
     }
 
     pub fn handle(&self) -> MutexGuard<vk::SwapchainKHR> {
@@ -399,7 +399,7 @@ impl VkSwapchain {
 
         let result = {
             let swapchain_handle = self.handle();
-            self.swapchain_loader.acquire_next_image(
+            self.swapchain_device.acquire_next_image(
                 *swapchain_handle,
                 std::u64::MAX,
                 semaphore.handle(),
@@ -475,7 +475,7 @@ impl Drop for VkSwapchain {
     fn drop(&mut self) {
         self.device.wait_for_idle();
         unsafe {
-            self.swapchain_loader
+            self.swapchain_device
                 .destroy_swapchain(*self.handle(), None)
         }
     }

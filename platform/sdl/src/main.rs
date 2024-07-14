@@ -27,7 +27,7 @@ mod sdl_vulkan;
 #[cfg(target_os = "linux")]
 pub(crate) use sdl_vulkan as sdl_gpu;
 
-fn main() {
+pub fn main() {
     simple_logger::SimpleLogger::new().init().unwrap();
     //std::thread::sleep(std::time::Duration::from_secs(20));
 

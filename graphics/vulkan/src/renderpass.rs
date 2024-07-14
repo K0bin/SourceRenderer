@@ -5,6 +5,7 @@ use std::{
         Hash,
         Hasher,
     },
+    marker::PhantomData,
     sync::Arc,
     usize,
 };
@@ -290,6 +291,7 @@ impl VkRenderPass {
                     - preserve_attachments_offset)
                     as u32,
                 p_preserve_attachments,
+                _marker: PhantomData
             });
             // QCOM driver bug: https://developer.qualcomm.com/forum/qdn-forums/software/adreno-gpu-sdk/68949
         }

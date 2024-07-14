@@ -10,7 +10,7 @@ use std::{
 };
 
 use ash::{
-    extensions::khr::Surface as KhrSurface,
+    khr::surface::Instance as KhrSurface,
     vk,
 };
 use sourcerenderer_core::gpu;

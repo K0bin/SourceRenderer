@@ -6,7 +6,7 @@ use sourcerenderer_vulkan::{VkBackend, VkDevice, VkInstance, VkSurface, VkSwapch
 
 use crate::{sdl_platform::{SDLWindow, StdIO, StdThreadHandle}, SDLPlatform};
 
-use ash::extensions::khr::Surface as SurfaceLoader;
+use ash::khr::surface::Instance as SurfaceLoader;
 use ash::vk::{
     Handle,
     SurfaceKHR,

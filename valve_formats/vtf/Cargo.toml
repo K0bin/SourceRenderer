@@ -5,5 +5,5 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bitflags = "1.2.1"
+bitflags = "2.6.0"
 lazy_static = "1.4.0"

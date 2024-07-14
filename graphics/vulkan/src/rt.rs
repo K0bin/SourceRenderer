@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use ash::vk::{
     self,
+    AccelerationStructureBuildSizesInfoKHR,
     AccelerationStructureReferenceKHR,
     DeviceOrHostAddressConstKHR,
 };
@@ -99,12 +100,17 @@ impl VkAccelerationStructure {
         };
 
         let size_info = unsafe {
+            let mut size_info = AccelerationStructureBuildSizesInfoKHR::default();
+
             rt.acceleration_structure
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &build_info,
                     &[info.instances_count],
-                )
+                    &mut size_info
+                );
+
+            size_info
         };
         gpu::AccelerationStructureSizes {
             build_scratch_size: size_info.build_scratch_size,
@@ -283,12 +289,17 @@ impl VkAccelerationStructure {
         };
 
         let size_info = unsafe {
+            let mut size_info = AccelerationStructureBuildSizesInfoKHR::default();
+
             rt.acceleration_structure
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &build_info,
                     &max_primitive_counts[..],
-                )
+                    &mut size_info
+                );
+
+            size_info
         };
         gpu::AccelerationStructureSizes {
             build_scratch_size: size_info.build_scratch_size,

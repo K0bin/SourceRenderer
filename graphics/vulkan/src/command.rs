@@ -608,8 +608,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn begin_label(&mut self, label: &str) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let label_cstring = CString::new(label).unwrap();
-        if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
-            debug_utils.debug_utils_loader.cmd_begin_debug_utils_label(
+        if let Some(debug_utils) = self.device.debug_utils.as_ref() {
+            debug_utils.cmd_begin_debug_utils_label(
                 self.cmd_buffer,
                 &vk::DebugUtilsLabelEXT {
                     p_label_name: label_cstring.as_ptr(),
@@ -622,9 +622,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn end_label(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        if let Some(debug_utils) = self.device.instance.debug_utils.as_ref() {
+        if let Some(debug_utils) = self.device.debug_utils.as_ref() {
             debug_utils
-                .debug_utils_loader
                 .cmd_end_debug_utils_label(self.cmd_buffer);
         }
     }

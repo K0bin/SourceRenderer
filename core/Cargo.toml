@@ -5,7 +5,7 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-nalgebra = "0.32.4"
+nalgebra = "0.33.0"
 bitflags = "2.4.2"
 bitset-core = "0.1.1"
 crossbeam-channel = "0.5.12"

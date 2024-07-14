@@ -2,22 +2,22 @@ use std::ops::Deref;
 
 use ash::vk;
 
-pub struct RawVkDebugUtils {
-    pub debug_utils_loader: ash::extensions::ext::DebugUtils,
+pub struct RawInstanceVkDebugUtils {
+    pub debug_utils_instance: ash::ext::debug_utils::Instance,
     pub debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl Drop for RawVkDebugUtils {
+impl Drop for RawInstanceVkDebugUtils {
     fn drop(&mut self) {
         unsafe {
-            self.debug_utils_loader
+            self.debug_utils_instance
                 .destroy_debug_utils_messenger(self.debug_messenger, None);
         }
     }
 }
 
 pub struct RawVkInstance {
-    pub debug_utils: Option<RawVkDebugUtils>,
+    pub debug_utils: Option<RawInstanceVkDebugUtils>,
     pub instance: ash::Instance,
     pub entry: ash::Entry,
 }

@@ -171,7 +171,7 @@ impl gpu::Queue<VkBackend> for VkQueue {
             p_results: std::ptr::null_mut(),
             ..Default::default()
         };
-        let result = swapchain.loader().queue_present(*guard, &present_info);
+        let result = swapchain.swapchain_device().queue_present(*guard, &present_info);
         match result {
             Ok(suboptimal) => {
                 if suboptimal {

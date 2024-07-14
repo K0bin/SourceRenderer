@@ -7,7 +7,7 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-metal = "0.27.0"
+metal = "0.29.0"
 objc = "0.2.7"
 block = "0.1.6"
 sourcerenderer_core = { path = "../../core" }

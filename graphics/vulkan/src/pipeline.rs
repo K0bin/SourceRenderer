@@ -112,13 +112,11 @@ impl VkShader {
         };
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .debug_utils_loader
                         .set_debug_utils_object_name(
-                            device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::SHADER_MODULE,
                                 object_handle: shader_module.as_raw(),
@@ -706,13 +704,11 @@ impl VkPipeline {
         };
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .debug_utils_loader
                         .set_debug_utils_object_name(
-                            device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::PIPELINE,
                                 object_handle: pipeline.as_raw(),
@@ -857,13 +853,11 @@ impl VkPipeline {
         };
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .debug_utils_loader
                         .set_debug_utils_object_name(
-                            device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::PIPELINE,
                                 object_handle: pipeline.as_raw(),
@@ -991,13 +985,11 @@ impl VkPipeline {
         };
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .debug_utils_loader
                         .set_debug_utils_object_name(
-                            device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::PIPELINE,
                                 object_handle: pipeline.as_raw(),
@@ -1360,13 +1352,11 @@ impl VkPipeline {
         .unwrap();
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .debug_utils_loader
                         .set_debug_utils_object_name(
-                            device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::PIPELINE,
                                 object_handle: pipeline.as_raw(),

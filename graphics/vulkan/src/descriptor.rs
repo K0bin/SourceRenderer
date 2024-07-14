@@ -6,6 +6,7 @@ use std::{
         Hash,
         Hasher,
     },
+    marker::PhantomData,
     sync::{
         Arc,
         Mutex,
@@ -93,6 +94,7 @@ impl VkDescriptorSetLayout {
                 descriptor_type: binding.descriptor_type,
                 stage_flags: binding.shader_stage,
                 p_immutable_samplers: std::ptr::null(),
+                _marker: PhantomData
             });
             vk_binding_flags.push(binding.flags);
 
@@ -138,6 +140,7 @@ impl VkDescriptorSetLayout {
             pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
             pipeline_layout: vk::PipelineLayout::null(),
             set: 0,
+            _marker: PhantomData
         };
         let template = if !flags
             .contains(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT)

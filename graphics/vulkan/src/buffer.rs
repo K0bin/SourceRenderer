@@ -168,12 +168,10 @@ impl VkBuffer {
         }
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 debug_utils
-                    .debug_utils_loader
                     .set_debug_utils_object_name(
-                        device.handle(),
                         &vk::DebugUtilsObjectNameInfoEXT {
                             object_type: vk::ObjectType::BUFFER,
                             object_handle: buffer.as_raw(),

@@ -70,13 +70,11 @@ impl VkBindlessDescriptorSet {
                 .unwrap()
         };
 
-        if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        if let Some(debug_utils) = device.debug_utils.as_ref() {
             let name_cstring = CString::new("BindlessTexturesPool").unwrap();
             unsafe {
                 debug_utils
-                    .debug_utils_loader
                     .set_debug_utils_object_name(
-                        device.handle(),
                         &vk::DebugUtilsObjectNameInfoEXT {
                             object_type: vk::ObjectType::DESCRIPTOR_POOL,
                             object_handle: descriptor_pool.as_raw(),
@@ -101,13 +99,11 @@ impl VkBindlessDescriptorSet {
                 .unwrap()
         };
 
-        if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+        if let Some(debug_utils) = device.debug_utils.as_ref() {
             let name_cstring = CString::new("BindlessTextures").unwrap();
             unsafe {
                 debug_utils
-                    .debug_utils_loader
                     .set_debug_utils_object_name(
-                        device.handle(),
                         &vk::DebugUtilsObjectNameInfoEXT {
                             object_type: vk::ObjectType::DESCRIPTOR_SET,
                             object_handle: descriptor_set.as_raw(),

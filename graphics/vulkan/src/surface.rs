@@ -1,7 +1,7 @@
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 use ash::{
-    extensions::khr::Surface as SurfaceLoader,
+    khr::surface::Instance as SurfaceLoader,
     prelude::VkResult,
     vk,
     vk::Handle,

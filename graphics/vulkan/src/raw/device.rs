@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use ash::extensions::khr;
+use ash::khr;
 use ash::vk;
 use parking_lot::{
     ReentrantMutex,
@@ -32,6 +32,7 @@ pub struct RawVkDevice {
     pub device: ash::Device,
     pub physical_device: vk::PhysicalDevice,
     pub instance: Arc<RawVkInstance>,
+    pub debug_utils: Option<ash::ext::debug_utils::Device>,
     pub features: VkFeatures,
     pub graphics_queue_info: VkQueueInfo,
     pub compute_queue_info: Option<VkQueueInfo>,
@@ -43,9 +44,9 @@ pub struct RawVkDevice {
     pub rt: Option<RawVkRTEntries>,
     pub supports_d24: bool,
     pub properties: vk::PhysicalDeviceProperties,
-    pub properties11: vk::PhysicalDeviceVulkan11Properties,
-    pub properties12: vk::PhysicalDeviceVulkan12Properties,
-    pub properties13: vk::PhysicalDeviceVulkan13Properties,
+    pub properties11: vk::PhysicalDeviceVulkan11Properties<'static>,
+    pub properties12: vk::PhysicalDeviceVulkan12Properties<'static>,
+    pub properties13: vk::PhysicalDeviceVulkan13Properties<'static>,
     pub supported_pipeline_stages: vk::PipelineStageFlags2,
     pub supported_access_flags: vk::AccessFlags2
 }
@@ -54,10 +55,10 @@ unsafe impl Send for RawVkDevice {}
 unsafe impl Sync for RawVkDevice {}
 
 pub struct RawVkRTEntries {
-    pub acceleration_structure: khr::AccelerationStructure,
-    pub rt_pipelines: khr::RayTracingPipeline,
-    pub deferred_operations: khr::DeferredHostOperations,
-    pub rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+    pub acceleration_structure: khr::acceleration_structure::Device,
+    pub rt_pipelines: khr::ray_tracing_pipeline::Device,
+    pub deferred_operations: khr::deferred_host_operations::Device,
+    pub rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'static>,
 }
 
 unsafe impl Send for RawVkRTEntries {}
@@ -82,6 +83,8 @@ impl RawVkDevice {
         let mut properties11: vk::PhysicalDeviceVulkan11Properties = Default::default();
         let mut properties12: vk::PhysicalDeviceVulkan12Properties = Default::default();
         let mut properties13: vk::PhysicalDeviceVulkan13Properties = Default::default();
+
+        let debug_utils = instance.debug_utils.as_ref().map(|_d| ash::ext::debug_utils::Device::new(&instance.instance, &device));
 
         properties11.p_next = std::mem::replace(
             &mut properties.p_next,
@@ -116,10 +119,10 @@ impl RawVkDevice {
 
         let rt = if features.contains(VkFeatures::RAY_TRACING) {
             Some(RawVkRTEntries {
-                acceleration_structure: khr::AccelerationStructure::new(&instance, &device),
-                rt_pipelines: khr::RayTracingPipeline::new(&instance, &device),
-                deferred_operations: khr::DeferredHostOperations::new(&instance, &device),
-                rt_pipeline_properties,
+                acceleration_structure: khr::acceleration_structure::Device::new(&instance, &device),
+                rt_pipelines: khr::ray_tracing_pipeline::Device::new(&instance, &device),
+                deferred_operations: khr::deferred_host_operations::Device::new(&instance, &device),
+                rt_pipeline_properties: unsafe { std::mem::transmute(rt_pipeline_properties) },
             })
         } else {
             None
@@ -185,6 +188,7 @@ impl RawVkDevice {
             device,
             physical_device,
             instance,
+            debug_utils,
             features,
             graphics_queue_info,
             compute_queue_info,
@@ -196,9 +200,9 @@ impl RawVkDevice {
             rt,
             supports_d24,
             properties: properties.properties,
-            properties11,
-            properties12,
-            properties13,
+            properties11: unsafe { std::mem::transmute(properties11) },
+            properties12: unsafe { std::mem::transmute(properties12) },
+            properties13: unsafe { std::mem::transmute(properties13) },
             supported_pipeline_stages,
             supported_access_flags
         }

@@ -191,13 +191,11 @@ impl VkTexture {
         }
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .debug_utils_loader
                         .set_debug_utils_object_name(
-                            device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::IMAGE,
                                 object_handle: image.as_raw(),
@@ -388,13 +386,11 @@ impl VkTextureView {
         let view = unsafe { device.create_image_view(&view_create_info, None) }.unwrap();
 
         if let Some(name) = name {
-            if let Some(debug_utils) = device.instance.debug_utils.as_ref() {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .debug_utils_loader
                         .set_debug_utils_object_name(
-                            device.handle(),
                             &vk::DebugUtilsObjectNameInfoEXT {
                                 object_type: vk::ObjectType::IMAGE_VIEW,
                                 object_handle: view.as_raw(),

@@ -8,6 +8,6 @@ pub use crate::raw::device::{
     VkFeatures,
 };
 pub use crate::raw::instance::{
-    RawVkDebugUtils,
+    RawInstanceVkDebugUtils,
     RawVkInstance,
 };

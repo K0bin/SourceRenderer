@@ -24,8 +24,8 @@ impl VkInstance {
     pub fn new(instance_extensions: &[&str], debug_layers: bool) -> Self {
         let entry: ash::Entry = unsafe { ash::Entry::load().unwrap() };
 
-        let extensions = entry.enumerate_instance_extension_properties(None).unwrap();
-        let layers = entry.enumerate_instance_layer_properties().unwrap();
+        let extensions = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
+        let layers = unsafe { entry.enumerate_instance_layer_properties() }.unwrap();
         let mut supports_khronos_validation = false;
         let mut supports_debug_utils = false;
         for layer in &layers {
@@ -39,7 +39,7 @@ impl VkInstance {
         }
         for extension in &extensions {
             let name = unsafe { CStr::from_ptr(&extension.extension_name as *const c_char) };
-            let debug_utils_name = ash::extensions::ext::DebugUtils::name();
+            let debug_utils_name = ash::ext::debug_utils::NAME;
             if name == debug_utils_name {
                 supports_debug_utils = true;
             }
@@ -80,7 +80,7 @@ impl VkInstance {
             .map(|ext| CString::new(*ext).unwrap())
             .collect();
         if supports_debug_utils {
-            extension_names_c.push(CString::from(ash::extensions::ext::DebugUtils::name()));
+            extension_names_c.push(CString::from(ash::ext::debug_utils::NAME));
         } else {
             println!("Vulkan debug utils are unsupported");
         }
@@ -111,8 +111,8 @@ impl VkInstance {
             let instance = entry.create_instance(&instance_create_info, None).unwrap();
 
             let debug_utils = if supports_debug_utils {
-                let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
-                let debug_messenger = debug_utils_loader
+                let debug_utils_instance = ash::ext::debug_utils::Instance::new(&entry, &instance);
+                let debug_messenger = debug_utils_instance
                     .create_debug_utils_messenger(
                         &vk::DebugUtilsMessengerCreateInfoEXT {
                             flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
@@ -130,9 +130,9 @@ impl VkInstance {
                         None,
                     )
                     .unwrap();
-                Some(RawVkDebugUtils {
+                Some(RawInstanceVkDebugUtils {
                     debug_messenger,
-                    debug_utils_loader,
+                    debug_utils_instance,
                 })
             } else {
                 None

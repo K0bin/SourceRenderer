@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cargo_metadata = "0.15.2"
+cargo_metadata = "0.18.1"
 pathos = "0.3.0"
 log = "0.4.17"
 spirv_cross_sys = { path = "../vendor/spirv-cross-sys", features = [ "msl", "hlsl" ] }
