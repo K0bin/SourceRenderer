@@ -47,7 +47,7 @@ pub struct RenderPassParameters<'a, P: Platform> {
     pub assets: &'a RendererAssets<P>
 }
 
-pub(super) trait RenderPath<P: Platform> {
+pub(super) trait RenderPath<P: Platform> : Send {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain<P::GPUBackend>);
@@ -58,8 +58,6 @@ pub(super) trait RenderPath<P: Platform> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,

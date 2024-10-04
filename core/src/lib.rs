@@ -27,14 +27,15 @@ pub use rayon::ThreadPool;
 pub use rayon::scope;
 pub use rayon::spawn;
 
-pub type Vec2 = nalgebra::Vector2<f32>;
-pub type Vec3 = nalgebra::Vector3<f32>;
-pub type Vec4 = nalgebra::Vector4<f32>;
-pub type Vec2I = nalgebra::Vector2<i32>;
-pub type Vec2UI = nalgebra::Vector2<u32>;
-pub type Vec3UI = nalgebra::Vector3<u32>;
-pub type Quaternion = nalgebra::UnitQuaternion<f32>;
-pub type Matrix4 = nalgebra::Matrix4<f32>;
+pub type Vec2 = bevy_math::Vec2;
+pub type Vec3 = bevy_math::Vec3;
+pub type Vec4 = bevy_math::Vec4;
+pub type Vec2I = bevy_math::IVec2;
+pub type Vec2UI = bevy_math::UVec2;
+pub type Vec3UI = bevy_math::UVec3;
+pub type Quaternion = bevy_math::Quat;
+pub type Matrix4 = bevy_math::Mat4;
+pub type Matrix3 = bevy_math::Mat3;
 
 mod align;
 pub use align::*;

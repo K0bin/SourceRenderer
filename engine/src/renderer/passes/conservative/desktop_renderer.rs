@@ -344,7 +344,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &mut cmd_buf,
             &params,
             Prepass::DEPTH_TEXTURE_NAME,
-            Some(Prepass::MOTION_TEXTURE_NAME),
+            Some("TODO"),
             &late_latching_buffer,
             self.blue_noise.frame(frame_info.frame),
             self.blue_noise.sampler(),
@@ -374,7 +374,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &params,
             GeometryPass::<P>::GEOMETRY_PASS_TEXTURE_NAME,
             Prepass::DEPTH_TEXTURE_NAME,
-            Some(Prepass::MOTION_TEXTURE_NAME),
+            Some("TODO"),
             false
         );
         self.sharpen

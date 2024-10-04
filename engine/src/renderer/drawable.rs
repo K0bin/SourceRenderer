@@ -3,7 +3,7 @@ use std::{
     usize,
 };
 
-use legion::Entity;
+use bevy_ecs::entity::Entity;
 use nalgebra::Point3;
 use sourcerenderer_core::{
     Matrix4,

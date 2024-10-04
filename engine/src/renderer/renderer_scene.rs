@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::usize;
 
-use legion::Entity;
+use bevy_ecs::entity::Entity;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4,

@@ -8,17 +8,13 @@ use std::sync::{
     Mutex
 };
 
+use bevy_ecs::entity::Entity;
+use bevy_ecs::system::Resource;
 use crossbeam_channel::{
     unbounded,
     Sender,
 };
 use instant::Duration;
-use legion::systems::Builder;
-use legion::{
-    Entity,
-    Resources,
-    World,
-};
 use log::trace;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::{
@@ -48,213 +44,101 @@ use crate::transform::interpolation::InterpolatedTransform;
 use crate::ui::UIDrawData;
 use crate::graphics::*;
 
-enum RendererImpl<P: Platform> {
-    MultiThreaded(P::ThreadHandle),
-    SingleThreaded(Box<RendererInternal<P>>),
-    Uninitialized,
+struct RendererState {
+    queued_frames_counter: Mutex<u32>, // we need the mutex for the condvar anyway
+    is_running: AtomicBool,
+    cond_var: Condvar,
 }
 
-unsafe impl<P: Platform> Send for RendererImpl<P> {}
-unsafe impl<P: Platform> Sync for RendererImpl<P> {}
+pub struct RendererSender<B: GPUBackend> {
+    sender: Sender<RendererCommand<B>>,
+    state: Arc<RendererState>
+}
 
 pub struct Renderer<P: Platform> {
-    sender: Sender<RendererCommand<P::GPUBackend>>,
     window_event_sender: Sender<Event<P>>,
-    instance: Arc<Instance<P::GPUBackend>>,
     device: Arc<Device<P::GPUBackend>>,
-    queued_frames_counter: Mutex<u32>,
-    is_running: AtomicBool,
-    input: Arc<Input>,
-    late_latching: Option<Arc<dyn LateLatching<P::GPUBackend>>>,
-    cond_var: Condvar,
-    renderer_impl: AtomicRefCell<RendererImpl<P>>,
+    internal: RendererInternal<P>,
+    state: Arc<RendererState>
 }
 
 impl<P: Platform> Renderer<P> {
-    fn new(
-        sender: Sender<RendererCommand<P::GPUBackend>>,
-        window_event_sender: Sender<Event<P>>,
-        instance: &Arc<Instance<P::GPUBackend>>,
-        device: &Arc<Device<P::GPUBackend>>,
-        input: &Arc<Input>,
-        late_latching: Option<&Arc<dyn LateLatching<P::GPUBackend>>>,
-    ) -> Self {
-        Self {
-            sender,
-            instance: instance.clone(),
-            device: device.clone(),
-            queued_frames_counter: Mutex::new(0),
-            is_running: AtomicBool::new(true),
-            window_event_sender,
-            late_latching: late_latching.cloned(),
-            input: input.clone(),
-            cond_var: Condvar::new(),
-            renderer_impl: AtomicRefCell::new(RendererImpl::Uninitialized),
-        }
-    }
-
-    pub fn run(
-        platform: &P,
-        instance: &Arc<Instance<P::GPUBackend>>,
+    pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: Swapchain<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
-        input: &Arc<Input>,
-        late_latching: Option<&Arc<dyn LateLatching<P::GPUBackend>>>,
         console: &Arc<Console>,
-    ) -> Arc<Renderer<P>> {
+    ) -> (Renderer<P>, RendererSender<P::GPUBackend>) {
         let (sender, receiver) = unbounded::<RendererCommand<P::GPUBackend>>();
         let (window_event_sender, window_event_receiver) = unbounded();
-        let renderer = Arc::new(Renderer::new(
-            sender.clone(),
-            window_event_sender,
-            instance,
+
+        let internal = RendererInternal::new(
             device,
-            input,
-            late_latching,
-        ));
+            swapchain,
+            asset_manager,
+            window_event_receiver,
+            receiver,
+            console,
+        );
 
-        let c_device = device.clone();
-        let c_renderer = renderer.clone();
-        let c_asset_manager = asset_manager.clone();
-        let c_console = console.clone();
+        let renderer = Self {
+            device: device.clone(),
+            window_event_sender,
+            internal,
+            state: Arc::new(RendererState {
+                queued_frames_counter: Mutex::new(0),
+                is_running: AtomicBool::new(true),
+                cond_var: Condvar::new(),
+            }),
+        };
+        let renderer_sender = RendererSender {
+            sender,
+            state: renderer.state.clone()
+        };
 
-        if cfg!(feature = "threading") {
-            let thread_handle = platform.start_thread("RenderThread", move || {
-                trace!("Started renderer thread");
-                let mut internal = P::thread_memory_management_pool(|| { RendererInternal::new(
-                    &c_device,
-                    swapchain,
-                    &c_asset_manager,
-                    sender,
-                    window_event_receiver,
-                    receiver,
-                    &c_console,
-                )});
-                loop {
-                    if !c_renderer.is_running.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    P::thread_memory_management_pool(|| {
-                        internal.render(&c_renderer);
-                    });
-                }
-                c_renderer.is_running.store(false, Ordering::SeqCst);
-                trace!("Stopped renderer thread");
-            });
-
-            let mut thread_handle_guard = renderer.renderer_impl.borrow_mut();
-            *thread_handle_guard = RendererImpl::MultiThreaded(thread_handle);
-        } else {
-            let internal = RendererInternal::new(
-                &c_device,
-                swapchain,
-                &c_asset_manager,
-                sender,
-                window_event_receiver,
-                receiver,
-                &c_console,
-            );
-            let mut thread_handle_guard = renderer.renderer_impl.borrow_mut();
-            *thread_handle_guard = RendererImpl::SingleThreaded(Box::new(internal));
-        }
-
-        renderer
-    }
-
-    pub fn install(
-        self: &Arc<Renderer<P>>,
-        _world: &mut World,
-        _resources: &mut Resources,
-        systems: &mut Builder,
-    ) {
-        crate::renderer::ecs::install::<P, Arc<Renderer<P>>>(systems, self.clone());
-    }
-
-    pub(super) fn dec_queued_frames_counter(&self) {
-        let mut counter_guard = self.queued_frames_counter.lock().unwrap();
-        *counter_guard -= 1;
-        self.cond_var.notify_all();
+        (renderer, renderer_sender)
     }
 
     pub(crate) fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {
-        &self.instance
-    }
-
-    pub(crate) fn unblock_game_thread(&self) {
-        self.cond_var.notify_all();
-    }
-
-    pub fn stop(&self) {
-        trace!("Stopping renderer");
-        if cfg!(feature = "threading") {
-            let was_running = self.is_running.swap(false, Ordering::SeqCst);
-            if !was_running {
-                return;
-            }
-
-            let end_frame_res = self.sender.send(RendererCommand::<P::GPUBackend>::Quit);
-            if end_frame_res.is_err() {
-                log::error!("Render thread crashed.");
-            }
-
-            let mut renderer_impl = self.renderer_impl.borrow_mut();
-
-            if let RendererImpl::Uninitialized = &*renderer_impl {
-                return;
-            }
-
-            self.unblock_game_thread();
-            let renderer_impl = std::mem::replace(&mut *renderer_impl, RendererImpl::Uninitialized);
-
-            match renderer_impl {
-                RendererImpl::MultiThreaded(thread_handle) => {
-                    if let Err(e) = thread_handle.join() {
-                        log::error!("Renderer thread did not exit cleanly: {:?}", e);
-                    }
-                }
-                RendererImpl::Uninitialized => {
-                    panic!("Renderer was already stopped.");
-                }
-                _ => {}
-            }
-        }
+        self.device.instance()
     }
 
     pub fn dispatch_window_event(&self, event: Event<P>) {
         self.window_event_sender.send(event).unwrap();
     }
 
-    pub fn late_latching(&self) -> Option<&dyn LateLatching<P::GPUBackend>> {
-        self.late_latching.as_ref().map(|l| l.as_ref())
-    }
-
-    pub fn input(&self) -> &Input {
-        &self.input
-    }
-
     pub fn device(&self) -> &Arc<Device<P::GPUBackend>> {
         &self.device
     }
 
-    pub fn render(&self) {
-        let mut renderer_impl = self.renderer_impl.borrow_mut();
-        if let RendererImpl::SingleThreaded(renderer) = &mut *renderer_impl {
-            P::thread_memory_management_pool(|| {
-                renderer.render(self);
-            });
-        }
+    pub fn render(&mut self) {
+        P::thread_memory_management_pool(|| {
+            self.internal.render();
+        });
+
+        // Dec queued frame counter
+        let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
+        *counter_guard -= 1;
+        self.state.cond_var.notify_all();
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.state.is_running.load(Ordering::Acquire)
+    }
+
+    pub fn notify_stopped_running(&self) {
+        self.state.is_running.store(false, Ordering::Release);
     }
 }
 
-impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
-    fn register_static_renderable(
+impl<B: GPUBackend> RendererSender<B> {
+    pub fn register_static_renderable(
         &self,
         entity: Entity,
         transform: &InterpolatedTransform,
         renderable: &StaticRenderableComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<P::GPUBackend>::RegisterStatic {
+        let result = self.sender.send(RendererCommand::<B>::RegisterStatic {
             entity,
             transform: transform.0,
             model_path: renderable.model_path.to_string(),
@@ -267,20 +151,20 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         }
     }
 
-    fn unregister_static_renderable(&self, entity: Entity) {
-        let result = self.sender.send(RendererCommand::<P::GPUBackend>::UnregisterStatic(entity));
+    pub fn unregister_static_renderable(&self, entity: Entity) {
+        let result = self.sender.send(RendererCommand::<B>::UnregisterStatic(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
     }
 
-    fn register_point_light(
+    pub fn register_point_light(
         &self,
         entity: Entity,
         transform: &InterpolatedTransform,
         component: &PointLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<P::GPUBackend>::RegisterPointLight {
+        let result = self.sender.send(RendererCommand::<B>::RegisterPointLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -290,7 +174,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         }
     }
 
-    fn unregister_point_light(&self, entity: Entity) {
+    pub fn unregister_point_light(&self, entity: Entity) {
         let result = self
             .sender
             .send(RendererCommand::UnregisterPointLight(entity));
@@ -299,13 +183,13 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         }
     }
 
-    fn register_directional_light(
+    pub fn register_directional_light(
         &self,
         entity: Entity,
         transform: &InterpolatedTransform,
         component: &DirectionalLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<P::GPUBackend>::RegisterDirectionalLight {
+        let result = self.sender.send(RendererCommand::<B>::RegisterDirectionalLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -315,7 +199,7 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         }
     }
 
-    fn unregister_directional_light(&self, entity: Entity) {
+    pub fn unregister_directional_light(&self, entity: Entity) {
         let result = self
             .sender
             .send(RendererCommand::UnregisterDirectionalLight(entity));
@@ -324,8 +208,8 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         }
     }
 
-    fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
-        let result = self.sender.send(RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
+    pub fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
+        let result = self.sender.send(RendererCommand::<B>::UpdateCameraTransform {
             camera_transform_mat,
             fov,
         });
@@ -334,8 +218,8 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         }
     }
 
-    fn update_transform(&self, entity: Entity, transform: Matrix4) {
-        let result = self.sender.send(RendererCommand::<P::GPUBackend>::UpdateTransform {
+    pub fn update_transform(&self, entity: Entity, transform: Matrix4) {
+        let result = self.sender.send(RendererCommand::<B>::UpdateTransform {
             entity,
             transform_mat: transform,
         });
@@ -344,31 +228,30 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
         }
     }
 
-    fn end_frame(&self) {
-        let mut queued_guard = self.queued_frames_counter.lock().unwrap();
+    pub fn end_frame(&self) {
+        let mut queued_guard = self.state.queued_frames_counter.lock().unwrap();
         *queued_guard += 1;
-        let result = self.sender.send(RendererCommand::<P::GPUBackend>::EndFrame);
+        let result = self.sender.send(RendererCommand::<B>::EndFrame);
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
     }
 
-    fn update_lightmap(&self, path: &str) {
+    pub fn update_lightmap(&self, path: &str) {
         let result = self
             .sender
-            .send(RendererCommand::<P::GPUBackend>::SetLightmap(path.to_string()));
+            .send(RendererCommand::<B>::SetLightmap(path.to_string()));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
     }
 
-    fn wait_until_available(&self, timeout: Duration) {
-        let queued_guard = self.queued_frames_counter.lock().unwrap();
+    pub fn wait_until_available(&self, timeout: Duration) {
+        let queued_guard = self.state.queued_frames_counter.lock().unwrap();
         #[cfg(not(target_arch = "wasm32"))]
-        let _ = self
-            .cond_var
+        let _ = self.state.cond_var
             .wait_timeout_while(queued_guard, timeout, |queued| {
-                *queued > 1 || !self.is_running()
+                *queued > 1 || !self.state.is_running.load(Ordering::Acquire)
             })
             .unwrap();
         #[cfg(target_arch = "wasm32")]
@@ -378,19 +261,40 @@ impl<P: Platform> RendererInterface<P> for Arc<Renderer<P>> {
             .unwrap();
     }
 
-    fn is_saturated(&self) -> bool {
-        let queued_guard: std::sync::MutexGuard<u32> = self.queued_frames_counter.lock().unwrap();
+    pub fn is_saturated(&self) -> bool {
+        let queued_guard: std::sync::MutexGuard<u32> = self.state.queued_frames_counter.lock().unwrap();
         *queued_guard > 1
     }
 
-    fn is_running(&self) -> bool {
-        self.is_running.load(Ordering::SeqCst)
+    pub fn is_running(&self) -> bool {
+        self.state.is_running.load(Ordering::Acquire)
     }
 
-    fn update_ui(&self, ui_data: UIDrawData<P::GPUBackend>) {
+    pub fn update_ui(&self, ui_data: UIDrawData<B>) {
         let result = self.sender.send(RendererCommand::RenderUI(ui_data));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
+        }
+    }
+
+    pub fn unblock_game_thread(&self) {
+        self.state.cond_var.notify_all();
+    }
+
+    pub fn stop(&self) {
+        trace!("Stopping renderer");
+        if cfg!(feature = "threading") {
+            let was_running = self.state.is_running.swap(false, Ordering::Release);
+            if !was_running {
+                return;
+            }
+
+            let end_frame_res = self.sender.send(RendererCommand::<B>::Quit);
+            if end_frame_res.is_err() {
+                log::error!("Render thread crashed.");
+            }
+
+            self.unblock_game_thread();
         }
     }
 }

@@ -1,4 +1,4 @@
-use legion::Entity;
+use bevy_ecs::entity::Entity;
 use sourcerenderer_core::{Matrix4, gpu::GPUBackend};
 
 use crate::ui::UIDrawData;

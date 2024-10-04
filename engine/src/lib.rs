@@ -31,8 +31,8 @@ pub use transform::{
     Transform,
 };
 
-#[cfg(feature = "threading")]
-pub use self::engine::Engine;
+/*#[cfg(feature = "threading")]
+pub use self::engine::Engine;*/
 pub use self::game::{
     DeltaTime,
     Tick,
@@ -41,8 +41,8 @@ pub use self::game::{
     TickRate,
 };
 
-#[cfg(feature = "threading")]
-mod engine;
+/*#[cfg(feature = "threading")]
+mod engine;*/
 
 mod asset;
 mod camera;
@@ -58,3 +58,4 @@ mod physics;
 pub mod renderer;
 mod ui;
 mod graphics;
+mod bevy_main;

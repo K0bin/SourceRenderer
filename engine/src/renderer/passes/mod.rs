@@ -6,6 +6,7 @@ pub(crate) mod conservative;
 pub(crate) mod fsr2;
 pub(crate) mod light_binning;
 pub(crate) mod modern;
+pub(crate) mod new;
 pub(crate) mod prepass;
 pub(crate) mod sharpen;
 pub(crate) mod ssao;

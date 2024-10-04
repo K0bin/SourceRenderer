@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use bevy_ecs::component::Component;
 use instant::Duration;
 use legion::systems::Builder;
 use legion::world::SubWorld;
@@ -10,6 +11,7 @@ use legion::{
     EntityStore,
     IntoQuery,
 };
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -23,7 +25,9 @@ use crate::{
     Camera,
 };
 
-pub trait RendererInterface<P: Platform> {
+use super::renderer::RendererSender;
+
+pub trait RendererInterface<B: GPUBackend> {
     fn register_static_renderable(
         &self,
         entity: Entity,
@@ -52,10 +56,11 @@ pub trait RendererInterface<P: Platform> {
     fn is_saturated(&self) -> bool;
     fn wait_until_available(&self, timeout: Duration);
     fn is_running(&self) -> bool;
-    fn update_ui(&self, ui_data: UIDrawData<P::GPUBackend>);
+    fn update_ui(&self, ui_data: UIDrawData<B>);
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[derive(Component)]
 pub struct StaticRenderableComponent {
     pub model_path: String,
     pub receive_shadows: bool,
@@ -64,11 +69,13 @@ pub struct StaticRenderableComponent {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[derive(Component)]
 pub struct PointLightComponent {
     pub intensity: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[derive(Component)]
 pub struct DirectionalLightComponent {
     pub intensity: f32,
 }
@@ -91,11 +98,11 @@ pub struct ActiveDirectionalLights(HashSet<Entity>);
 #[derive(Clone, Default, Debug)]
 pub struct RegisteredDirectionalLights(HashSet<Entity>);
 
-pub fn install<P: Platform, R: RendererInterface<P> + Send + Sync + 'static>(
+pub fn install<P: Platform>(
     systems: &mut Builder,
-    renderer: R,
+    renderer: RendererSender<P::GPUBackend>,
 ) {
-    systems.add_system(renderer_system::<P, R>(
+    systems.add_system(renderer_system::<P>(
         renderer,
         ActiveStaticRenderables(HashSet::new()),
         RegisteredStaticRenderables(HashSet::new()),
@@ -114,9 +121,9 @@ pub fn install<P: Platform, R: RendererInterface<P> + Send + Sync + 'static>(
 #[read_component(GlobalTransform)]
 #[read_component(Camera)]
 #[read_component(Lightmap)]
-fn renderer<P: Platform, R: RendererInterface<P> + 'static>(
+fn renderer<P: Platform>(
     world: &mut SubWorld,
-    #[state] renderer: &R,
+    #[state] renderer: &RendererSender<P::GPUBackend>,
     #[state] active_static_renderables: &mut ActiveStaticRenderables,
     #[state] registered_static_renderables: &mut RegisteredStaticRenderables,
     #[state] active_point_lights: &mut ActivePointLights,

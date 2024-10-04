@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{GPUBackend, Instance as GPUInstance, AdapterType, Adapter as GPUAdapter};
@@ -12,17 +12,17 @@ impl<B: GPUBackend> Instance<B> {
     pub fn new(instance: B::Instance) -> Arc<Self> {
         let instance_arc = Arc::new(instance);
 
-        let adapters: SmallVec<[Adapter<B>; 2]> = instance_arc.list_adapters()
-            .iter()
-            .map(|a| Adapter {
-                adapter: a as *const B::Adapter,
-                instance: instance_arc.clone()
-            })
-            .collect();
-
-        let result = Arc::new(Self {
-            instance: instance_arc,
-            adapters
+        let result = Arc::new_cyclic(|result_weak| {
+            Self {
+                instance: instance_arc.clone(),
+                adapters: instance_arc.list_adapters()
+                .iter()
+                .map(|a| Adapter {
+                    adapter: a as *const B::Adapter,
+                    instance: result_weak.clone()
+                })
+                .collect()
+            }
         });
 
         result
@@ -39,7 +39,7 @@ impl<B: GPUBackend> Instance<B> {
 
 pub struct Adapter<B: GPUBackend> {
     adapter: *const B::Adapter,
-    instance: Arc<B::Instance>
+    instance: Weak<Instance<B>>
 }
 
 impl<B: GPUBackend> Adapter<B> {
@@ -49,7 +49,8 @@ impl<B: GPUBackend> Adapter<B> {
 
     pub fn create_device(&self, surface: &B::Surface) -> Arc<super::Device<B>> {
         let device = unsafe { (*self.adapter).create_device(surface) };
-        Arc::new(super::Device::new(&self.instance, device))
+        let instance = self.instance.upgrade().unwrap();
+        Arc::new(super::Device::new(device, instance))
     }
 }
 

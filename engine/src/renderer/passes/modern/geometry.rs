@@ -56,11 +56,13 @@ pub struct GeometryPass<P: Platform> {
 
 impl<P: Platform> GeometryPass<P> {
     pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
+    pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
+    pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
 
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
-        barriers: &mut RendererResources<P::GPUBackend>,
+        resources: &mut RendererResources<P::GPUBackend>,
         shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let texture_info = TextureInfo {
@@ -78,7 +80,41 @@ impl<P: Platform> GeometryPass<P> {
                 | TextureUsage::STORAGE,
             supports_srgb: false,
         };
-        barriers.create_texture(Self::GEOMETRY_PASS_TEXTURE_NAME, &texture_info, false);
+        resources.create_texture(Self::GEOMETRY_PASS_TEXTURE_NAME, &texture_info, false);
+
+        resources.create_texture(
+            Self::MOTION_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RG32Float,
+                width: swapchain.width(),
+                height: swapchain.height(),
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
+                supports_srgb: false,
+            },
+            true,
+        );
+
+        resources.create_texture(
+            Self::NORMALS_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RGBA32Float,
+                width: swapchain.width(),
+                height: swapchain.height(),
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
+                supports_srgb: false,
+            },
+            false,
+        );
 
         let sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
@@ -244,6 +280,28 @@ impl<P: Platform> GeometryPass<P> {
         );
         let rtv = &*rtv_ref;
 
+        let motion = barriers.access_view(
+            cmd_buffer,
+            Self::MOTION_TEXTURE_NAME,
+            BarrierSync::RENDER_TARGET,
+            BarrierAccess::RENDER_TARGET_WRITE,
+            TextureLayout::RenderTarget,
+            true,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        let normals = barriers.access_view(
+            cmd_buffer,
+            Self::NORMALS_TEXTURE_NAME,
+            BarrierSync::RENDER_TARGET,
+            BarrierAccess::RENDER_TARGET_WRITE,
+            TextureLayout::RenderTarget,
+            true,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
         let prepass_depth_ref = barriers.access_view(
             cmd_buffer,
             depth_name,
@@ -299,6 +357,16 @@ impl<P: Platform> GeometryPass<P> {
                 attachments: &[
                     RenderPassAttachment {
                         view: RenderPassAttachmentView::RenderTarget(&rtv),
+                        load_op: LoadOp::Clear,
+                        store_op: StoreOp::Store,
+                    },
+                    RenderPassAttachment {
+                        view: RenderPassAttachmentView::RenderTarget(&*motion),
+                        load_op: LoadOp::Clear,
+                        store_op: StoreOp::Store,
+                    },
+                    RenderPassAttachment {
+                        view: RenderPassAttachmentView::RenderTarget(&*normals),
                         load_op: LoadOp::Clear,
                         store_op: StoreOp::Store,
                     },

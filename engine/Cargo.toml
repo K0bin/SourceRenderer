@@ -2,7 +2,7 @@
 name = "sourcerenderer_engine"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 nalgebra = "0.33.0"
@@ -39,6 +39,22 @@ bitflags = "2.4.2"
 imgui = "0.12.0"
 thread_local = "1.1.8"
 serde_json = "1.0"
+smartstring = "1.0.1"
+
+bevy_app = "0.14.2"
+bevy_math = "0.14.2"
+bevy_ecs = "0.14.2"
+bevy_transform = "0.14.2"
+bevy_hierarchy = "0.14.2"
+bevy_log = "0.14.2"
+bevy_tasks = "0.14.2"
+bevy_utils = "0.14.2"
+bevy_core = "0.14.2"
+bevy_time = "0.14.2"
+
+# bevy_ecs has a dependency on async-executor which itself has a dependency on an ancient version of slab that no longer builds on modern rust versions.
+# This forces Cargo to use a more recent version of Slab.
+slab = "=0.4.9"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 fsr2 = { path = "../vendor/fsr2" }

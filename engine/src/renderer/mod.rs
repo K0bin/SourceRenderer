@@ -10,6 +10,7 @@ mod render_path;
 mod renderer_internal;
 mod renderer_resources;
 mod renderer_scene;
+mod renderer_plugin;
 
 mod asset_buffer;
 mod late_latch_camera;
@@ -40,3 +41,4 @@ pub use self::renderer::Renderer;
 #[cfg(feature = "threading")]
 use self::renderer_internal::RendererInternal;
 pub use self::vertex::Vertex;
+pub use self::renderer_plugin::RendererPlugin;
