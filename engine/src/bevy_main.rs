@@ -9,10 +9,16 @@ use bevy_transform::TransformPlugin;
 use bevy_hierarchy::HierarchyPlugin;
 use sourcerenderer_core::{gpu::GPUBackend, platform::Window, Console, Platform};
 
-use crate::{graphics::{Device, Instance}, renderer::RendererPlugin, transform::InterpolationPlugin};
+use crate::{asset::AssetManager, graphics::{Device, Instance, Swapchain}, renderer::RendererPlugin, transform::InterpolationPlugin};
 
 #[derive(Resource)]
 pub struct GPUDeviceResource<B: GPUBackend>(pub Arc<Device<B>>);
+
+#[derive(Resource)]
+pub struct GPUSwapchainResource<B: GPUBackend>(pub Swapchain<B>);
+
+#[derive(Resource)]
+pub struct AssetManagerResource<P: Platform>(pub Arc<AssetManager<P>>);
 
 #[derive(Resource)]
 pub struct ConsoleResource(pub Arc<Console>);
@@ -31,7 +37,14 @@ fn run<P: Platform>(platform: &P) {
     let gpu_adapters = gpu_instance.list_adapters();
     let gpu_device = gpu_adapters.first().expect("No suitable GPU found").create_device(&surface);
 
+
+    let core_swapchain = platform.window().create_swapchain(true, gpu_device.handle(), surface);
+    let gpu_swapchain = Swapchain::new(core_swapchain, &gpu_device);
+    let asset_manager = AssetManager::<P>::new(platform, &gpu_device);
+    let asset_manager_resource = AssetManagerResource(asset_manager);
+
     let gpu_resource = GPUDeviceResource::<P::GPUBackend>(gpu_device);
+    let gpu_swapchain_resource = GPUSwapchainResource::<P::GPUBackend>(gpu_swapchain);
 
     App::new()
         .add_plugins(PanicHandlerPlugin::default())
@@ -45,6 +58,8 @@ fn run<P: Platform>(platform: &P) {
         .add_plugins(InterpolationPlugin::default())
         .insert_resource(console_resource)
         .insert_resource(gpu_resource)
+        .insert_resource(gpu_swapchain_resource)
+        .insert_resource(asset_manager_resource)
         .add_plugins(RendererPlugin::<P>::new())
         .run();
 }

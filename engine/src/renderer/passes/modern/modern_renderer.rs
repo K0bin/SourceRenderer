@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, TextureInfo, Device, Swapchain, TextureLayout, WHOLE_BUFFER, SwapchainError, QueueSubmission, QueueType};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -43,7 +43,6 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
@@ -355,8 +354,10 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let main_view = &scene.views[scene.active_view_index];
 
-        let camera_buffer = late_latching.unwrap().buffer();
-        let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+        /*let camera_buffer = late_latching.unwrap().buffer();
+        let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();*/
+        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
 
         let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 

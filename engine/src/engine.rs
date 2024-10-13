@@ -19,12 +19,7 @@ use crate::asset::AssetManager;
 use crate::game::Game;
 use crate::graphics::*;
 use crate::input::Input;
-use crate::renderer::{
-    LateLatchCamera,
-    LateLatching,
-    Renderer,
-    RendererInterface,
-};
+use crate::renderer::Renderer;
 
 const TICK_RATE: u32 = 5;
 
@@ -33,7 +28,6 @@ pub struct Engine<P: Platform> {
     game: Arc<Game<P>>,
     asset_manager: Arc<AssetManager<P>>,
     input: Arc<Input>,
-    late_latching: Option<Arc<dyn LateLatching<P::GPUBackend>>>,
     console: Arc<Console>,
 }
 
@@ -67,13 +61,6 @@ impl<P: Platform> Engine<P> {
         let asset_manager = AssetManager::<P>::new(platform, &device);
         asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
         asset_manager.add_loader(Box::new(ShaderLoader::new()));
-        let late_latching = Arc::new(LateLatchCamera::new(
-            device.as_ref(),
-            swapchain.width() as f32 / swapchain.height() as f32,
-            std::f32::consts::FRAC_PI_2,
-        ));
-        let late_latching_trait_obj =
-            late_latching.clone() as Arc<dyn LateLatching<P::GPUBackend>>;
         let renderer = Renderer::<P>::run(
             platform,
             &instance,
@@ -81,7 +68,6 @@ impl<P: Platform> Engine<P> {
             swapchain,
             &asset_manager,
             &input,
-            Some(&late_latching_trait_obj),
             &console,
         );
         let game = Game::<P>::run(platform, &input, &renderer, &asset_manager, TICK_RATE);

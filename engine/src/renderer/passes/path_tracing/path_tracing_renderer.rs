@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{TextureUsage, TextureViewInfo};
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, TextureInfo, Device, Swapchain, TextureLayout, WHOLE_BUFFER, SwapchainError, QueueSubmission, QueueType};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
 use crate::renderer::passes::blit::BlitPass;
 use sourcerenderer_core::{
     gpu, Matrix4, Platform, Vec2, Vec2UI, Vec3, Vec3UI
@@ -25,7 +24,6 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
@@ -144,7 +142,7 @@ impl<P: Platform> PathTracingRenderer<P> {
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
-            cluster_count: Vector3<u32>,
+            cluster_count: Vec3UI,
             _padding: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
@@ -245,8 +243,6 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
@@ -255,8 +251,8 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
 
         let main_view = &scene.views[scene.active_view_index];
 
-        let camera_buffer = late_latching.unwrap().buffer();
-        let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
 
         let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
@@ -333,11 +329,6 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         std::mem::drop(rt_view);
         self.barriers.swap_history_resources();
 
-        if let Some(late_latching) = late_latching {
-            let input_state = input.poll();
-            late_latching.before_submit(&input_state, main_view);
-        }
-
         let frame_end_signal = context.end_frame();
 
         self.device.submit(
@@ -354,10 +345,6 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
 
         let c_device = self.device.clone();
         rayon::spawn(move || c_device.flush(QueueType::Graphics));
-
-        if let Some(late_latching) = late_latching {
-            late_latching.after_submit(&self.device);
-        }
 
         Ok(())
     }

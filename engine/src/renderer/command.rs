@@ -1,12 +1,12 @@
 use bevy_ecs::entity::Entity;
-use sourcerenderer_core::{Matrix4, gpu::GPUBackend};
+use sourcerenderer_core::{Matrix4, gpu::GPUBackend, Affine3A};
 
 use crate::ui::UIDrawData;
 
 pub enum RendererCommand<B: GPUBackend> {
     RegisterStatic {
         entity: Entity,
-        transform: Matrix4,
+        transform: Affine3A,
         model_path: String,
         receive_shadows: bool,
         cast_shadows: bool,
@@ -15,22 +15,22 @@ pub enum RendererCommand<B: GPUBackend> {
     UnregisterStatic(Entity),
     RegisterPointLight {
         entity: Entity,
-        transform: Matrix4,
+        transform: Affine3A,
         intensity: f32,
     },
     UnregisterPointLight(Entity),
     RegisterDirectionalLight {
         entity: Entity,
-        transform: Matrix4,
+        transform: Affine3A,
         intensity: f32,
     },
     UnregisterDirectionalLight(Entity),
     UpdateTransform {
         entity: Entity,
-        transform_mat: Matrix4,
+        transform: Affine3A,
     },
     UpdateCameraTransform {
-        camera_transform_mat: Matrix4,
+        camera_transform: Affine3A,
         fov: f32,
     },
     SetLightmap(String),

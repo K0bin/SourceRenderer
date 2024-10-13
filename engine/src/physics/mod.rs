@@ -3,6 +3,7 @@ use std::collections::{
     HashSet,
 };
 
+use bevy_transform::components::Transform;
 use instant::Duration;
 use legion::systems::Builder;
 use legion::world::SubWorld;
@@ -19,8 +20,6 @@ use rapier3d::prelude::{
     *,
 };
 use sourcerenderer_core::Vec3;
-
-use crate::Transform;
 
 #[derive(Clone, Default, Debug)]
 pub struct ActiveRigidBodies(HashSet<Entity>);
@@ -119,7 +118,7 @@ fn physics_tick(
             let collider = physics_world.collider_set.get(*collider_handle).unwrap();
             let parent = collider.parent().unwrap();
             let rigid_body = physics_world.rigid_body_set.get_mut(parent).unwrap();
-            rigid_body.set_translation(transform.position, true);
+            rigid_body.set_translation(transform.translation, true);
             let euler_angles = transform.rotation.euler_angles();
             rigid_body.set_rotation(
                 Rotation::from_euler_angles(euler_angles.0, euler_angles.1, euler_angles.2),

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use bevy_math::Affine3A;
 use rayon::prelude::*;
 use sourcerenderer_core::{
     Matrix4,
@@ -32,8 +33,8 @@ struct PrepassCameraCB {
 #[derive(Clone, Copy)]
 #[repr(C)]
 struct PrepassModelCB {
-    model: Matrix4,
-    old_model: Matrix4,
+    model: Affine3A,
+    old_model: Affine3A,
 }
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

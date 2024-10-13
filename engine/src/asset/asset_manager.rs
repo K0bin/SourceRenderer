@@ -23,12 +23,13 @@ use std::sync::{
     Weak,
 };
 
+use bevy_ecs::system::Resource;
+use bevy_ecs::world::World;
 use crossbeam_channel::{
     unbounded,
     Receiver,
     Sender,
 };
-use legion::World;
 use log::{
     error,
     trace,

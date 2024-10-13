@@ -4,8 +4,7 @@ use std::usize;
 use bevy_ecs::entity::Entity;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
-    Matrix4,
-    Vec4,
+    Affine3A, Matrix4, Vec3, Vec4
 };
 
 use super::light::{
@@ -70,7 +69,7 @@ impl<B: GPUBackend> RendererScene<B> {
         self.static_meshes.remove(index);
     }
 
-    pub fn update_transform(&mut self, entity: &Entity, transform: Matrix4) {
+    pub fn update_transform(&mut self, entity: &Entity, transform: Affine3A) {
         let index = self.drawable_entity_map.get(entity);
         if let Some(index) = index {
             let static_drawable = &mut self.static_meshes[*index];
@@ -81,7 +80,7 @@ impl<B: GPUBackend> RendererScene<B> {
         let index = self.point_light_entity_map.get(entity);
         if let Some(index) = index {
             let point_light = &mut self.point_lights[*index];
-            point_light.position = (transform * Vec4::new(0f32, 0f32, 0f32, 1f32)).xyz();
+            point_light.position = transform.transform_point3(Vec3::new(0f32, 0f32, 0f32));
             return;
         }
 

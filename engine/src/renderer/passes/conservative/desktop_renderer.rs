@@ -37,7 +37,6 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 
 use crate::graphics::*;
 
@@ -253,16 +252,14 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
     ) -> Result<(), SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
-        let late_latching_buffer = late_latching.unwrap().buffer();
-        let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
 
         let primary_view = &scene.views[scene.active_view_index];
 
@@ -290,8 +287,8 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             scene,
             swapchain,
             &gpu_scene,
-            BufferRef::Regular(&late_latching_buffer),
-            BufferRef::Regular(&late_latching_history_buffer),
+            BufferRef::Regular(&camera_buffer),
+            BufferRef::Regular(&camera_history_buffer),
             &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame,
         );
@@ -317,19 +314,19 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &mut cmd_buf,
             &params,
             frame_info.frame,
-            &late_latching_buffer,
+            &camera_buffer,
             Prepass::DEPTH_TEXTURE_NAME,
         );*/
         self.clustering_pass.execute::<P>(
             &mut cmd_buf,
             &params,
             Vec2UI::new(swapchain.width(), swapchain.height()),
-            &late_latching_buffer
+            &camera_buffer
         );
         self.light_binning_pass.execute(
             &mut cmd_buf,
             &params,
-            &late_latching_buffer
+            &camera_buffer
         );
         self.prepass.execute(
             context,
@@ -337,15 +334,15 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &params,
             swapchain.transform(),
             frame_info.frame,
-            &late_latching_buffer,
-            &late_latching_history_buffer
+            &camera_buffer,
+            &camera_history_buffer
         );
         self.ssao.execute(
             &mut cmd_buf,
             &params,
             Prepass::DEPTH_TEXTURE_NAME,
             Some("TODO"),
-            &late_latching_buffer,
+            &camera_buffer,
             self.blue_noise.frame(frame_info.frame),
             self.blue_noise.sampler(),
             false
@@ -442,11 +439,6 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
         self.barriers.swap_history_resources();
 
-        if let Some(late_latching) = late_latching {
-            let input_state = input.poll();
-            late_latching.before_submit(&input_state, primary_view);
-        }
-
         let frame_end_signal = context.end_frame();
 
         self.device.submit(
@@ -463,10 +455,6 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
         let c_device = self.device.clone();
         rayon::spawn(move || c_device.flush(QueueType::Graphics) );
-
-        if let Some(late_latching) = late_latching {
-            late_latching.after_submit(&self.device);
-        }
 
         Ok(())
     }

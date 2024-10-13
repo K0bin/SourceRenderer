@@ -27,10 +27,7 @@ use crate::game::{
     Game,
 };
 use crate::physics::PhysicsWorld;
-use crate::renderer::{
-    RendererInterface,
-    *,
-};
+use crate::renderer::*;
 use crate::ui::UI;
 use crate::{
     fps_camera,
@@ -39,8 +36,7 @@ use crate::{
     Tick,
     TickDelta,
     TickDuration,
-    TickRate,
-    Transform,
+    TickRate
 };
 
 pub struct GameInternal<P: Platform> {

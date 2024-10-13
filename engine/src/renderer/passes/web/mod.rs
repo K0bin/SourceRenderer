@@ -13,7 +13,6 @@ use crate::renderer::render_path::{
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::RendererResources;
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 
 use crate::graphics::*;
 
@@ -86,8 +85,6 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>
@@ -100,12 +97,14 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
         let view_ref = &scene.views[scene.active_view_index];
-        let late_latching_buffer = late_latching.unwrap().buffer();
+
+        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+
         self.geometry.execute(
             &mut cmd_buffer,
             scene.scene,
             &view_ref,
-            &late_latching_buffer,
+            &camera_buffer,
             &self.resources,
             swapchain.backbuffer(),
             swapchain.backbuffer_handle(),
@@ -114,11 +113,6 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
             shader_manager,
             assets,
         );
-
-        if let Some(late_latching) = late_latching {
-            let input_state = input.poll();
-            late_latching.before_submit(&input_state, &view_ref);
-        }
 
         let frame_end_signal = context.end_frame();
 
@@ -136,10 +130,6 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
         let c_device = self.device.clone();
         rayon::spawn(move || c_device.flush(QueueType::Graphics));
-
-        if let Some(late_latching) = late_latching {
-            late_latching.after_submit(&self.device);
-        }
 
         Ok(())
     }

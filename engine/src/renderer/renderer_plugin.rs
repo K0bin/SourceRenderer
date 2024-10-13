@@ -1,29 +1,23 @@
 use std::marker::PhantomData;
-use std::sync::atomic::Ordering;
 
 use bevy_app::{App, Last, Plugin};
 use bevy_ecs::removal_detection::RemovedComponents;
 use bevy_ecs::system::{Res, ResMut, Resource};
-use bevy_ecs::world::Ref;
 use bevy_log::trace;
 use bevy_transform::components::GlobalTransform;
-use bevy_utils::synccell::SyncCell;
 use sourcerenderer_core::Platform;
 use bevy_ecs::system::Query;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, With};
-use bevy_ecs::query::Changed;
-use super::light::DirectionalLight;
 use super::{DirectionalLightComponent, PointLightComponent, StaticRenderableComponent};
-use crate::transform::interpolation::InterpolatedTransform;
+use crate::transform::InterpolatedTransform;
 use crate::{Camera, ActiveCamera};
 use bevy_ecs::schedule::{IntoSystemConfigs, SystemSet};
 
-use crate::bevy_main::{ConsoleResource, GPUDeviceResource};
+use crate::bevy_main::{AssetManagerResource, ConsoleResource, GPUDeviceResource, GPUSwapchainResource};
 
 use super::Renderer;
 use super::renderer::RendererSender;
-use super::RendererInterface;
 
 pub struct RendererPlugin<P: Platform> {
     _a : PhantomData<P>
@@ -34,11 +28,13 @@ unsafe impl<P: Platform> Sync for RendererPlugin<P> {}
 
 impl<P: Platform> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
+        let swapchain = app.world_mut().remove_resource::<GPUSwapchainResource<P::GPUBackend>>().unwrap().0;
         let gpu_resources = app.world().resource::<GPUDeviceResource<P::GPUBackend>>();
         let console_resource = app.world().resource::<ConsoleResource>();
+        let asset_manager_resource = app.world().resource::<AssetManagerResource<P>>();
 
         let (renderer, sender) = Renderer::new(
-            &gpu_resources.0, swapchain, asset_manager, &console_resource.0);
+            &gpu_resources.0, swapchain, &asset_manager_resource.0, &console_resource.0);
 
         install_renderer(app, renderer, sender);
     }
@@ -122,8 +118,8 @@ fn extract_camera<P: Platform>(renderer: Res<RendererResourceWrapper<P>>,
         if camera.interpolate_rotation {
             renderer.sender.update_camera_transform(interpolated.0, camera.fov);
         } else {
-            let mut combined_transform = transform.compute_matrix();
-            *combined_transform.column_mut(3) = *interpolated.0.column(3);
+            let mut combined_transform = transform.affine();
+            combined_transform.z_axis = interpolated.0.z_axis;
             renderer.sender.update_camera_transform(combined_transform, camera.fov);
         }
     }

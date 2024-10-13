@@ -41,6 +41,8 @@ pub struct Fsr2Pass<P: Platform> {
     scratch_context: *mut AtomicRefCell<ScratchContext<P::GPUBackend>>
 }
 
+unsafe impl<P: Platform> Send for Fsr2Pass<P> {}
+
 impl<P: Platform> Fsr2Pass<P> {
     pub const UPSCALED_TEXTURE_NAME: &'static str = "FSR2Upscaled";
 

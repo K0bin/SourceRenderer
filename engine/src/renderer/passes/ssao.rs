@@ -106,7 +106,7 @@ impl<P: Platform> SsaoPass<P> {
                 random::<f32>(),
                 0.0f32,
             );
-            sample.normalize_mut();
+            sample = sample.normalize();
             sample *= random::<f32>();
             let mut scale = (i as f32) / (samples as f32);
             scale = lerp(0.1f32, 1.0f32, scale * scale);

@@ -14,10 +14,7 @@ use sourcerenderer_core::{
 
 use crate::game::TickRate;
 use crate::input::InputState;
-use crate::{
-    Camera,
-    Transform,
-};
+use crate::Camera;
 
 pub fn install<P: Platform>(_world: &mut World, systems: &mut Builder) {
     systems.add_system(retrieve_fps_camera_rotation_system::<P>());
@@ -82,7 +79,7 @@ pub fn fps_camera_rotation(input: &InputState, fps_camera: &mut FPSCamera) -> Qu
 
     fps_camera.last_touch_position = touch_position;
     fps_camera.last_mouse_position = mouse_position;
-    Quaternion::from_euler_angles(fps_camera.pitch, fps_camera.yaw, 0f32)
+    Quaternion::from_euler(bevy_math::EulerRot::XYZ, fps_camera.pitch, fps_camera.yaw, 0f32)
 }
 
 #[system(for_each)]

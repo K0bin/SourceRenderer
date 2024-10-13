@@ -1,3 +1,4 @@
+use bevy_math::Vec4Swizzles;
 use sourcerenderer_core::{Platform, Vec4};
 
 use crate::math::Frustum;
@@ -209,5 +210,5 @@ impl DrawPrepPass {
 }
 
 fn normalize_plane(p: Vec4) -> Vec4 {
-    p / p.xyz().magnitude()
+    p / p.xyz().length()
 }

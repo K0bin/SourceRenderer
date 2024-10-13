@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::Vector3;
 use smallvec::SmallVec;
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, CommandBufferRecorder, Device, GraphicsContext, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, CommandBufferRecorder, Device, GraphicsContext, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
 use crate::input::Input;
 use sourcerenderer_core::{
     Matrix4,
@@ -23,7 +23,6 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
@@ -244,8 +243,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
@@ -254,8 +251,10 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let main_view = &scene.views[scene.active_view_index];
 
-        let camera_buffer = late_latching.unwrap().buffer();
-        let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+        /*let camera_buffer = late_latching.unwrap().buffer();
+        let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();*/
+        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
 
         let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
@@ -274,11 +273,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         self.resources.swap_history_resources();
 
-        if let Some(late_latching) = late_latching {
-            let input_state = input.poll();
-            late_latching.before_submit(&input_state, main_view);
-        }
-
         let frame_end_signal = context.end_frame();
 
         self.device.submit(
@@ -295,10 +289,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let c_device = self.device.clone();
         rayon::spawn(move || c_device.flush(QueueType::Graphics));
-
-        if let Some(late_latching) = late_latching {
-            late_latching.after_submit(&self.device);
-        }
 
         Ok(())
     }

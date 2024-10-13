@@ -5,7 +5,6 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-nalgebra = "0.33.0"
 num_cpus = "1.16.0"
 atomic_refcell = "0.1.13"
 sourcerenderer_core = { path = "../core" }
@@ -19,7 +18,6 @@ sourcerenderer_vmt = { path = "../valve_formats/vmt" }
 sourcerenderer_mdl = { path = "../valve_formats/mdl" }
 sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
-legion = { version = "0.4.0", default-features = false, features=["crossbeam-events", "codegen"] }
 regex = "1.10.3"
 bitvec = "1.0.1"
 rayon = "1.9.0"
@@ -31,7 +29,6 @@ instant = "0.1.12"
 log = "0.4.21"
 rapier3d = { version = "0.21.0", features = [ "enhanced-determinism", "f32" ] }
 half = "2.4.0"
-nalgebra-glm = "0.19.0"
 profiling = "1.0.15"
 field-offset = "0.3.6"
 widestring = "1.0.2"
@@ -63,8 +60,8 @@ fsr2 = { path = "../vendor/fsr2" }
 default = ["threading", "late-latching"]
 late-latching = []
 threading = []
-# threading = ["legion/parallel"] Legion relies on thread parking atm
-web = ["legion/wasm-bindgen", "instant/wasm-bindgen", "instant/inaccurate", "rapier3d/wasm-bindgen"]
+# threading = [] Legion relies on thread parking atm
+web = ["instant/wasm-bindgen", "instant/inaccurate", "rapier3d/wasm-bindgen"]
 profile = [ "profiling/profile-with-optick" ]
 
 [profile.release]

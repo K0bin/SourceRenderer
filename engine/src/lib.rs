@@ -26,10 +26,6 @@ pub use camera::{
     ActiveCamera,
     Camera,
 };
-pub use transform::{
-    Parent,
-    Transform,
-};
 
 /*#[cfg(feature = "threading")]
 pub use self::engine::Engine;*/
@@ -54,7 +50,7 @@ pub mod transform;
 mod game;
 mod game_internal;
 mod input;
-mod physics;
+//mod physics;
 pub mod renderer;
 mod ui;
 mod graphics;

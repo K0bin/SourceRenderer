@@ -10,6 +10,7 @@ use std::sync::{
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
+use bevy_math::Affine3A;
 use crossbeam_channel::{
     unbounded,
     Sender,
@@ -30,17 +31,13 @@ use sourcerenderer_core::{
 use super::ecs::{
     DirectionalLightComponent,
     PointLightComponent,
-    RendererInterface,
 };
-use super::{
-    LateLatching,
-    StaticRenderableComponent,
-};
+use super::StaticRenderableComponent;
 use crate::asset::AssetManager;
 use crate::input::Input;
 use crate::renderer::command::RendererCommand;
 use crate::renderer::RendererInternal;
-use crate::transform::interpolation::InterpolatedTransform;
+use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
 use crate::graphics::*;
 
@@ -208,9 +205,9 @@ impl<B: GPUBackend> RendererSender<B> {
         }
     }
 
-    pub fn update_camera_transform(&self, camera_transform_mat: Matrix4, fov: f32) {
+    pub fn update_camera_transform(&self, camera_transform: Affine3A, fov: f32) {
         let result = self.sender.send(RendererCommand::<B>::UpdateCameraTransform {
-            camera_transform_mat,
+            camera_transform,
             fov,
         });
         if let Result::Err(err) = result {
@@ -218,10 +215,10 @@ impl<B: GPUBackend> RendererSender<B> {
         }
     }
 
-    pub fn update_transform(&self, entity: Entity, transform: Matrix4) {
+    pub fn update_transform(&self, entity: Entity, transform: Affine3A) {
         let result = self.sender.send(RendererCommand::<B>::UpdateTransform {
             entity,
-            transform_mat: transform,
+            transform: transform,
         });
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);

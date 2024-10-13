@@ -32,20 +32,12 @@ use crate::fps_camera::FPSCameraComponent;
 use crate::game::DeltaTime;
 use crate::input::InputState;
 use crate::math::BoundingBox;
-use crate::physics::{
-    ColliderComponent,
-    RigidBodyComponent,
-    RigidBodyType,
-};
 use crate::renderer::{
     PointLightComponent,
     StaticRenderableComponent,
     Vertex,
 };
-use crate::{
-    Camera,
-    Transform,
-};
+use crate::Camera;
 
 struct SpinningCube {}
 
@@ -55,9 +47,9 @@ pub fn install<P: Platform>(
     systems: &mut SystemBuilder,
     asset_manager: &Arc<AssetManager<P>>,
 ) {
-    systems.add_system(place_lights_system(PlaceLightsState {
+    /*systems.add_system(place_lights_system(PlaceLightsState {
         was_space_down: false,
-    }));
+    }));*/
 
     let indices: [u32; 36] = [
         2, 1, 0, 0, 3, 2, // front
