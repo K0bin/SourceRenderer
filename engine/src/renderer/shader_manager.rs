@@ -9,7 +9,6 @@ use std::sync::{
     Mutex,
 };
 
-use nalgebra_glm::pi;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::Platform;

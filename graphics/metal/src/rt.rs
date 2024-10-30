@@ -36,7 +36,7 @@ impl MTLAccelerationStructure {
                 let mut transform_data = [[0f32; 3]; 4];
                 for col in 0..4 {
                     for row in 0..3 {
-                        transform_data[col][row] = instance.transform.column(col as usize)[row as usize];
+                        transform_data[col][row] = instance.transform.col(col as usize)[row as usize];
                     }
                 }
 

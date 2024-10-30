@@ -28,19 +28,17 @@ mod sdl_vulkan;
 pub(crate) use sdl_vulkan as sdl_gpu;
 
 pub fn main() {
-    simple_logger::SimpleLogger::new().init().unwrap();
     //std::thread::sleep(std::time::Duration::from_secs(20));
 
-    Engine::<SDLPlatform>::initialize_global();
     let mut platform = SDLPlatform::new();
-    let engine = Box::new(Engine::run(platform.as_ref()));
+    let mut engine = Box::new(Engine::run(platform.as_ref()));
 
     'event_loop: loop {
         if !engine.is_running() {
             break;
         }
 
-        if !platform.poll_events(&engine) {
+        if !platform.poll_events(&mut engine) {
             break 'event_loop;
         }
 
@@ -48,5 +46,5 @@ pub fn main() {
 
         engine.frame();
     }
-    engine.stop();
+    engine.stop::<SDLPlatform>();
 }

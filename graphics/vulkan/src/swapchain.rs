@@ -24,6 +24,7 @@ use sourcerenderer_core::{
     gpu::*,
     Matrix4,
     Vec3,
+    EulerRot
 };
 
 use super::*;
@@ -134,45 +135,45 @@ impl VkSwapchain {
 
             let (_matrix, _transform) = match capabilities.current_transform {
                 SurfaceTransformFlagsKHR::ROTATE_90 => (
-                    Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2),
+                    Matrix4::from_euler(EulerRot::XYZ, 0f32, 0f32, -std::f32::consts::FRAC_PI_2),
                     SurfaceTransformFlagsKHR::ROTATE_90,
                 ),
                 SurfaceTransformFlagsKHR::ROTATE_180 => (
-                    Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::PI),
+                    Matrix4::from_euler(EulerRot::XYZ, 0f32, 0f32, -std::f32::consts::PI),
                     SurfaceTransformFlagsKHR::ROTATE_180,
                 ),
                 SurfaceTransformFlagsKHR::ROTATE_270 => (
-                    Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2 * 3f32),
+                    Matrix4::from_euler(EulerRot::XYZ, 0f32, 0f32, -std::f32::consts::FRAC_PI_2 * 3f32),
                     SurfaceTransformFlagsKHR::ROTATE_270,
                 ),
                 SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR => (
-                    Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32)),
+                    Matrix4::from_scale(Vec3::new(-1f32, 1f32, 1f32)),
                     SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR,
                 ),
                 SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90 => (
-                    Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32))
-                        * Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::FRAC_PI_2),
+                    Matrix4::from_scale(Vec3::new(-1f32, 1f32, 1f32))
+                        * Matrix4::from_euler(EulerRot::XYZ, 0f32, 0f32, -std::f32::consts::FRAC_PI_2),
                     SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90,
                 ),
                 SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180 => (
-                    Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32))
-                        * Matrix4::from_euler_angles(0f32, 0f32, -std::f32::consts::PI),
+                    Matrix4::from_scale(Vec3::new(-1f32, 1f32, 1f32))
+                        * Matrix4::from_euler(EulerRot::XYZ, 0f32, 0f32, -std::f32::consts::PI),
                     SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180,
                 ),
                 SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270 => (
-                    Matrix4::new_nonuniform_scaling(&Vec3::new(-1f32, 1f32, 1f32))
-                        * Matrix4::from_euler_angles(
+                    Matrix4::from_scale(Vec3::new(-1f32, 1f32, 1f32))
+                        * Matrix4::from_euler(EulerRot::XYZ,
                             0f32,
                             0f32,
                             -std::f32::consts::FRAC_PI_2 * 3f32,
                         ),
                     SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270,
                 ),
-                _ => (Matrix4::identity(), SurfaceTransformFlagsKHR::IDENTITY),
+                _ => (Matrix4::IDENTITY, SurfaceTransformFlagsKHR::IDENTITY),
             };
 
             // TODO: Rendering is broken with actual pretransform
-            let matrix = Matrix4::identity();
+            let matrix = Matrix4::IDENTITY;
             let transform = SurfaceTransformFlagsKHR::IDENTITY;
 
             let image_count = VkSwapchain::pick_image_count(&capabilities, 3);

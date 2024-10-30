@@ -176,8 +176,8 @@ impl Prepass {
         pass_params: &RenderPassParameters<'_, P>,
         swapchain_transform: Matrix4,
         frame: u64,
-        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
-        camera_history_buffer: &Arc<BufferSlice<P::GPUBackend>>
+        camera_buffer: &TransientBufferSlice<P::GPUBackend>,
+        camera_history_buffer: &TransientBufferSlice<P::GPUBackend>
     ) {
         let view = &pass_params.scene.views[pass_params.scene.active_view_index];
 
@@ -266,14 +266,14 @@ impl Prepass {
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,
                     0,
-                    BufferRef::Regular(camera_buffer),
+                    BufferRef::Transient(camera_buffer),
                     0,
                     WHOLE_BUFFER,
                 );
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,
                     1,
-                    BufferRef::Regular(camera_history_buffer),
+                    BufferRef::Transient(camera_history_buffer),
                     0,
                     WHOLE_BUFFER,
                 );

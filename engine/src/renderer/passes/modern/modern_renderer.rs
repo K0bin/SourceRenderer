@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
 use smallvec::SmallVec;
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, TextureInfo, Device, Swapchain, TextureLayout, WHOLE_BUFFER, SwapchainError, QueueSubmission, QueueType};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
     Vec2,
     Vec2UI,
-    Vec3,
+    Vec3, Vec3UI, Vec4,
 };
 
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
@@ -76,6 +75,22 @@ enum AntiAliasing<P: Platform> {
 pub struct RTPasses<P: Platform> {
     acceleration_structure_update: AccelerationStructureUpdatePass<P>,
     shadows: RTShadowPass,
+}
+
+#[derive(Clone)]
+#[repr(C)]
+struct CameraBuffer {
+    view_proj: Matrix4,
+    inv_proj: Matrix4,
+    view: Matrix4,
+    proj: Matrix4,
+    inv_view: Matrix4,
+    position: Vec4,
+    inv_proj_view: Matrix4,
+    z_near: f32,
+    z_far: f32,
+    aspect_ratio: f32,
+    fov: f32,
 }
 
 impl<P: Platform> ModernRenderer<P> {
@@ -245,7 +260,7 @@ impl<P: Platform> ModernRenderer<P> {
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
-            cluster_count: Vector3<u32>,
+            cluster_count: Vec3UI,
             _padding: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
@@ -354,10 +369,21 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let main_view = &scene.views[scene.active_view_index];
 
-        /*let camera_buffer = late_latching.unwrap().buffer();
-        let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();*/
-        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
-        let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        let camera_buffer = cmd_buf.upload_dynamic_data(&[CameraBuffer {
+            view_proj: main_view.view_matrix * main_view.proj_matrix,
+            inv_proj: main_view.proj_matrix.inverse(),
+            view: main_view.view_matrix,
+            proj: main_view.proj_matrix,
+            inv_view: main_view.view_matrix.inverse(),
+            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
+            inv_proj_view: (main_view.view_matrix * main_view.proj_matrix).inverse(),
+            z_near: main_view.near_plane,
+            z_far: main_view.far_plane,
+            aspect_ratio: main_view.aspect_ratio,
+            fov: main_view.camera_fov
+        }], BufferUsage::CONSTANT).unwrap();
+
+        let camera_history_buffer = &camera_buffer;
 
         let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
@@ -368,8 +394,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             scene,
             swapchain,
             scene_buffers,
-            BufferRef::Regular(&camera_buffer),
-            BufferRef::Regular(&camera_history_buffer),
+            BufferRef::Transient(&camera_buffer),
+            BufferRef::Transient(camera_history_buffer),
             &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame
         );

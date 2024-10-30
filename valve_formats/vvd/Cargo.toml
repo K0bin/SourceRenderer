@@ -6,4 +6,4 @@ edition = "2018"
 
 [dependencies]
 bitflags = "2.6.0"
-nalgebra = "0.33.0"
+bevy_math = "0.14.2"

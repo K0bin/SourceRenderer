@@ -1,22 +1,21 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use nalgebra::Vector2;
 use smallvec::SmallVec;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
     Vec2,
     Vec2I,
-    Vec2UI,
+    Vec2UI, Vec3UI,
 };
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
+use super::rt_shadows::RTShadowPass;
 use crate::renderer::drawable::View;
 use crate::renderer::light::DirectionalLight;
 use crate::renderer::passes::light_binning;
-use crate::renderer::passes::rt_shadows::RTShadowPass;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::renderer_assets::*;
@@ -41,10 +40,10 @@ struct FrameData {
     jitter: Vec2,
     z_near: f32,
     z_far: f32,
-    rt_size: Vector2<u32>,
+    rt_size: Vec2UI,
     cluster_z_bias: f32,
     cluster_z_scale: f32,
-    cluster_count: nalgebra::Vector3<u32>,
+    cluster_count: Vec3UI,
     point_light_count: u32,
     directional_light_count: u32,
 }
@@ -58,6 +57,7 @@ impl<P: Platform> GeometryPass<P> {
     pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
     pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
     pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
+    pub const SPECULAR_TEXTURE_NAME: &'static str = "Specular";
 
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
@@ -392,7 +392,7 @@ impl<P: Platform> GeometryPass<P> {
         );
 
         let rtv_info = rtv.texture().unwrap().info();
-        let cluster_count = nalgebra::Vector3::<u32>::new(16, 9, 24);
+        let cluster_count = Vec3UI::new(16, 9, 24);
         let near = view.near_plane;
         let far = view.far_plane;
         let cluster_z_scale = (cluster_count.z as f32) / (far / near).log2();
@@ -402,7 +402,7 @@ impl<P: Platform> GeometryPass<P> {
             jitter: scaled_halton_point(rtv_info.width, rtv_info.height, (frame % 8) as u32 + 1),
             z_near: near,
             z_far: far,
-            rt_size: Vector2::<u32>::new(rtv_info.width, rtv_info.height),
+            rt_size: Vec2UI::new(rtv_info.width, rtv_info.height),
             cluster_z_bias,
             cluster_z_scale,
             cluster_count,

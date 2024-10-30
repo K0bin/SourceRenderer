@@ -134,7 +134,7 @@ impl<P: Platform> SsaoPass<P> {
         pass_params: &RenderPassParameters<'_, P>,
         depth_name: &str,
         motion_name: Option<&str>,
-        camera: &Arc<BufferSlice<P::GPUBackend>>,
+        camera: &TransientBufferSlice<P::GPUBackend>,
         blue_noise_view: &Arc<TextureView<P::GPUBackend>>,
         blue_noise_sampler: &Arc<Sampler<P::GPUBackend>>,
         visibility_buffer: bool,
@@ -224,7 +224,7 @@ impl<P: Platform> SsaoPass<P> {
             &*depth_srv,
             pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, BufferRef::Regular(camera), 0, WHOLE_BUFFER);
+        cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, BufferRef::Transient(camera), 0, WHOLE_BUFFER);
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &*ssao_uav);
         cmd_buffer.finish_binding();
         let ssao_info = ssao_uav.texture().unwrap().info();

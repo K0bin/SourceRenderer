@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 
+use bevy_ecs::system::Resource;
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
@@ -57,7 +58,7 @@ impl Input {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Resource)]
 pub struct InputState {
     keyboard_keys: [u32; 4],
     mouse_pos: Vec2I,

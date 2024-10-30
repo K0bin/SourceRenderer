@@ -1,16 +1,8 @@
 use std::collections::HashSet;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use instant::Duration;
-use legion::systems::Builder;
-use legion::world::SubWorld;
-use legion::{
-    component,
-    maybe_changed,
-    Entity,
-    EntityStore,
-    IntoQuery,
-};
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4,
@@ -47,7 +39,7 @@ pub struct DirectionalLightComponent {
     pub intensity: f32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Component)]
 pub struct Lightmap {
     pub path: String,
 }

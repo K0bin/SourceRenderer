@@ -4,8 +4,9 @@ use std::{
 };
 
 use bevy_ecs::entity::Entity;
+use bevy_math::Affine3A;
 use sourcerenderer_core::{
-    Affine3A, Matrix4, Quaternion, Vec3
+    Matrix4, Quaternion, Vec3
 };
 
 use crate::renderer::renderer_assets::*;

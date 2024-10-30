@@ -1,3 +1,4 @@
+use bevy_math::Vec4Swizzles;
 use sourcerenderer_core::{
     Matrix4,
     Vec3,
@@ -34,6 +35,7 @@ impl Frustum {
     }
 
     pub fn intersects(&self, bounding_box: &BoundingBox, model_view: &Matrix4) -> bool {
+        let model_view = *model_view;
         let mut corners = [
             (model_view
                 * Vec4::new(
@@ -81,9 +83,9 @@ impl Frustum {
         ];
         let center = corners[0] + 0.5f32 * (axes[0] + axes[1] + axes[2]);
         let extents = Vec3::new(
-            axes[0].magnitude(),
-            axes[1].magnitude(),
-            axes[2].magnitude(),
+            axes[0].length(),
+            axes[1].length(),
+            axes[2].length(),
         );
         let normalized_axes = [
             axes[0] / extents.x,
@@ -126,10 +128,10 @@ impl Frustum {
                 let mo_x = m.x.abs();
                 let mo_y = m.y.abs();
                 let mo_z = m.z;
-                let mo_c = m.dot(&obb.center);
+                let mo_c = m.dot(obb.center);
                 let mut obb_radius = 0f32;
                 for i in 0..3 {
-                    obb_radius += (m.dot(&obb.axes[i])).abs() * obb.extents[i];
+                    obb_radius += (m.dot(obb.axes[i])).abs() * obb.extents[i];
                 }
                 let obb_min = mo_c - obb_radius;
                 let obb_max = mo_c + obb_radius;
@@ -153,12 +155,12 @@ impl Frustum {
 
         // OBB axes
         {
-            for i in 0..obb.extents.len() {
+            for i in 0..3 {
                 let m = &obb.axes[i];
                 let mo_x = m.x.abs();
                 let mo_y = m.y.abs();
                 let mo_z = m.z;
-                let mo_c = m.dot(&obb.center);
+                let mo_c = m.dot(obb.center);
                 let obb_radius = obb.extents[i];
                 let obb_min = mo_c - obb_radius;
                 let obb_max = mo_c + obb_radius;
@@ -183,7 +185,7 @@ impl Frustum {
         // cross products between the edges
         // R x A_i
         {
-            for i in 0..obb.extents.len() {
+            for i in 0..3 {
                 let m = Vec3::new(0f32, -obb.axes[i].z, obb.axes[i].y);
                 let mo_x = 0f32;
                 let mo_y = m.y.abs();
@@ -191,7 +193,7 @@ impl Frustum {
                 let mo_c = m.y * obb.center.y + m.z * obb.center.z;
                 let mut obb_radius = 0f32;
                 for i in 0..3 {
-                    obb_radius += (m.dot(&obb.axes[i])).abs() * obb.extents[i];
+                    obb_radius += (m.dot(obb.axes[i])).abs() * obb.extents[i];
                 }
                 let obb_min = mo_c - obb_radius;
                 let obb_max = mo_c + obb_radius;
@@ -215,7 +217,7 @@ impl Frustum {
 
         // U x A_i
         {
-            for i in 0..obb.extents.len() {
+            for i in 0..3 {
                 let m = Vec3::new(obb.axes[i].z, 0f32, -obb.axes[i].y);
                 let mo_x = m.x.abs();
                 let mo_y = 0f32;
@@ -223,7 +225,7 @@ impl Frustum {
                 let mo_c = m.x * obb.center.x + m.z * obb.center.z;
                 let mut obb_radius = 0f32;
                 for i in 0..3 {
-                    obb_radius += (m.dot(&obb.axes[i])).abs() * obb.extents[i];
+                    obb_radius += (m.dot(obb.axes[i])).abs() * obb.extents[i];
                 }
                 let obb_min = mo_c - obb_radius;
                 let obb_max = mo_c + obb_radius;
@@ -249,10 +251,10 @@ impl Frustum {
         {
             for axis in &obb.axes {
                 let m = [
-                    Vec3::new(-self.near_half_width, 0.0f32, self.z_near).cross(axis),
-                    Vec3::new(self.near_half_width, 0.0f32, self.z_near).cross(axis),
-                    Vec3::new(0f32, self.near_half_height, self.z_near).cross(axis),
-                    Vec3::new(0f32, -self.near_half_height, self.z_near).cross(axis),
+                    Vec3::new(-self.near_half_width, 0.0f32, self.z_near).cross(*axis),
+                    Vec3::new(self.near_half_width, 0.0f32, self.z_near).cross(*axis),
+                    Vec3::new(0f32, self.near_half_height, self.z_near).cross(*axis),
+                    Vec3::new(0f32, -self.near_half_height, self.z_near).cross(*axis),
                 ];
                 for m in m.iter() {
                     let mo_x = m.x.abs();
@@ -262,10 +264,10 @@ impl Frustum {
                     if mo_x < EPSILON && mo_y < EPSILON && mo_z.abs() < EPSILON {
                         continue;
                     }
-                    let mo_c = m.dot(&obb.center);
+                    let mo_c = m.dot(obb.center);
                     let mut obb_radius = 0f32;
                     for i in 0..3 {
-                        obb_radius += (m.dot(&obb.axes[i])).abs() * obb.extents[i];
+                        obb_radius += (m.dot(obb.axes[i])).abs() * obb.extents[i];
                     }
                     let obb_min = mo_c - obb_radius;
                     let obb_max = mo_c + obb_radius;
@@ -294,14 +296,14 @@ impl Frustum {
     pub fn extract_planes(proj: &Matrix4) -> (Vec4, Vec4) {
         // http://www.cs.otago.ac.nz/postgrads/alexis/planeExtraction.pdf
         let transposed_proj = proj.transpose();
-        let frustum_x = normalize_plane(transposed_proj.column(3) + transposed_proj.column(0)); // x + w < 0
-        let frustum_y = normalize_plane(transposed_proj.column(3) + transposed_proj.column(1)); // y + w < 0
+        let frustum_x = normalize_plane(transposed_proj.col(3) + transposed_proj.col(0)); // x + w < 0
+        let frustum_y = normalize_plane(transposed_proj.col(3) + transposed_proj.col(1)); // y + w < 0
         (frustum_x, frustum_y)
     }
 }
 
 fn normalize_plane(p: Vec4) -> Vec4 {
-    p / p.xyz().magnitude()
+    p / p.xyz().length()
 }
 
 // REF:

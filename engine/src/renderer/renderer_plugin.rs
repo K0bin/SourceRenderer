@@ -1,11 +1,13 @@
 use std::marker::PhantomData;
 
 use bevy_app::{App, Last, Plugin};
+use bevy_ecs::event::Event;
 use bevy_ecs::removal_detection::RemovedComponents;
 use bevy_ecs::system::{Res, ResMut, Resource};
+use bevy_ecs::world::World;
 use bevy_log::trace;
 use bevy_transform::components::GlobalTransform;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec2UI};
 use bevy_ecs::system::Query;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, With};
@@ -14,10 +16,18 @@ use crate::transform::InterpolatedTransform;
 use crate::{Camera, ActiveCamera};
 use bevy_ecs::schedule::{IntoSystemConfigs, SystemSet};
 
-use crate::bevy_main::{AssetManagerResource, ConsoleResource, GPUDeviceResource, GPUSwapchainResource};
+use crate::engine::{AssetManagerResource, ConsoleResource, GPUDeviceResource, GPUSwapchainResource, WindowState};
 
 use super::Renderer;
 use super::renderer::RendererSender;
+
+#[derive(Event)]
+struct WindowSizeChangedEvent {
+    size: Vec2UI
+}
+
+#[derive(Event)]
+struct WindowMinimized {}
 
 pub struct RendererPlugin<P: Platform> {
     _a : PhantomData<P>
@@ -46,6 +56,16 @@ impl<P: Platform> RendererPlugin<P> {
             _a: PhantomData
         }
     }
+
+    pub fn stop(app: &App) {
+        let resource = app.world().resource::<RendererResourceWrapper<P>>();
+        resource.sender.stop();
+    }
+
+    pub fn window_changed(app: &App, window_state: WindowState) {
+        let resource = app.world().resource::<RendererResourceWrapper<P>>();
+        resource.sender.window_changed(window_state);
+    }
 }
 
 #[derive(Resource)]
@@ -62,8 +82,13 @@ fn install_renderer<P: Platform>(app: &mut App, renderer: Renderer<P>, _sender: 
         renderer: SyncCell::new(renderer)
     };
     app.insert_resource(wrapper);
-    app.add_systems(Last, extract::<P>);
-    app.add_systems(Last, run_renderer::<P>.after(extract::<P>));
+    app.add_systems(Last, (
+        extract_camera::<P>,
+        extract_static_renderables::<P>,
+        extract_point_lights::<P>,
+        extract_directional_lights::<P>
+    ).in_set(ExtractSet));
+    app.add_systems(Last, run_renderer::<P>.after(ExtractSet));
 }
 
 #[cfg(not(feature = "threading"))]

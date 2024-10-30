@@ -36,6 +36,7 @@ pub type Vec3UI = bevy_math::UVec3;
 pub type Quaternion = bevy_math::Quat;
 pub type Matrix4 = bevy_math::Mat4;
 pub type Matrix3 = bevy_math::Mat3;
+pub type EulerRot = bevy_math::EulerRot;
 
 mod align;
 pub use align::*;

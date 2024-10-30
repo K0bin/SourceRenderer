@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec2};
 
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{

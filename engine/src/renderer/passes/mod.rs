@@ -5,8 +5,6 @@ pub(crate) mod conservative;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod fsr2;
 pub(crate) mod light_binning;
-pub(crate) mod modern;
-pub(crate) mod new;
 pub(crate) mod prepass;
 pub(crate) mod sharpen;
 pub(crate) mod ssao;
@@ -17,6 +15,8 @@ pub(crate) mod ui;
 pub(crate) mod blit;
 pub(crate) mod path_tracing;
 
+pub(crate) mod modern;
 use modern::{
     rt_shadows,
 };
+

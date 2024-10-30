@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
@@ -8,7 +7,7 @@ use sourcerenderer_core::{
     Platform,
     Vec2,
     Vec2UI,
-    Vec3,
+    Vec3, Vec3UI, Vec4,
 };
 
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
@@ -70,6 +69,22 @@ pub struct FrameBindings<'a, B: GPUBackend> {
     directional_lights: TransientBufferSlice<B>,
     point_lights: TransientBufferSlice<B>,
     setup_buffer: TransientBufferSlice<B>,
+}
+
+#[derive(Clone)]
+#[repr(C)]
+struct CameraBuffer {
+    view_proj: Matrix4,
+    inv_proj: Matrix4,
+    view: Matrix4,
+    proj: Matrix4,
+    inv_view: Matrix4,
+    position: Vec4,
+    inv_proj_view: Matrix4,
+    z_near: f32,
+    z_far: f32,
+    aspect_ratio: f32,
+    fov: f32,
 }
 
 impl<P: Platform> ConservativeRenderer<P> {
@@ -158,7 +173,7 @@ impl<P: Platform> ConservativeRenderer<P> {
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
-            cluster_count: Vector3<u32>,
+            cluster_count: Vec3UI,
             _padding: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
@@ -258,9 +273,23 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     ) -> Result<(), SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
-        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
-        let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        let main_view = &scene.views[scene.active_view_index];
 
+        let camera_buffer = cmd_buf.upload_dynamic_data(&[CameraBuffer {
+            view_proj: main_view.view_matrix * main_view.proj_matrix,
+            inv_proj: main_view.proj_matrix.inverse(),
+            view: main_view.view_matrix,
+            proj: main_view.proj_matrix,
+            inv_view: main_view.view_matrix.inverse(),
+            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
+            inv_proj_view: (main_view.view_matrix * main_view.proj_matrix).inverse(),
+            z_near: main_view.near_plane,
+            z_far: main_view.far_plane,
+            aspect_ratio: main_view.aspect_ratio,
+            fov: main_view.camera_fov
+        }], BufferUsage::CONSTANT).unwrap();
+
+        let camera_history_buffer = &camera_buffer;
         let primary_view = &scene.views[scene.active_view_index];
 
         let empty_buffer = cmd_buf.create_temporary_buffer(
@@ -287,8 +316,8 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             scene,
             swapchain,
             &gpu_scene,
-            BufferRef::Regular(&camera_buffer),
-            BufferRef::Regular(&camera_history_buffer),
+            BufferRef::Transient(&camera_buffer),
+            BufferRef::Transient(camera_history_buffer),
             &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame,
         );

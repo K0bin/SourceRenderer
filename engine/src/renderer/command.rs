@@ -1,7 +1,8 @@
 use bevy_ecs::entity::Entity;
-use sourcerenderer_core::{Matrix4, gpu::GPUBackend, Affine3A};
+use bevy_math::Affine3A;
+use sourcerenderer_core::{gpu::GPUBackend, Matrix4, Vec2UI};
 
-use crate::ui::UIDrawData;
+use crate::{engine::WindowState, ui::UIDrawData};
 
 pub enum RendererCommand<B: GPUBackend> {
     RegisterStatic {
@@ -36,5 +37,6 @@ pub enum RendererCommand<B: GPUBackend> {
     SetLightmap(String),
     RenderUI(UIDrawData<B>),
     EndFrame,
-    Quit
+    Quit,
+    WindowChanged(WindowState)
 }

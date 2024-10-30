@@ -31,9 +31,11 @@ impl VkAccelerationStructure {
             .map(|instance| {
                 assert!(instance.id < ((1u32 << 25) - 1));
 
+                let data = instance.transform.transpose().to_cols_array();
+
                 let mut transform_data = [0f32; 12];
                 transform_data
-                    .copy_from_slice(&instance.transform.transpose().data.as_slice()[0..12]);
+                    .copy_from_slice(&data[0..12]);
 
                 vk::AccelerationStructureInstanceKHR {
                     transform: vk::TransformMatrixKHR {

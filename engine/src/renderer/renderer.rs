@@ -12,8 +12,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
 use bevy_math::Affine3A;
 use crossbeam_channel::{
-    unbounded,
-    Sender,
+    unbounded, Receiver, Sender
 };
 use instant::Duration;
 use log::trace;
@@ -24,19 +23,25 @@ use sourcerenderer_core::platform::{
     ThreadHandle,
 };
 use sourcerenderer_core::{
-    Console,
-    Matrix4,
+    Console, Matrix4, Vec2UI, Vec3
 };
 
+use super::drawable::{make_camera_proj, make_camera_view, RendererStaticDrawable};
 use super::ecs::{
     DirectionalLightComponent,
     PointLightComponent,
 };
-use super::StaticRenderableComponent;
+use super::light::DirectionalLight;
+use super::passes::modern::ModernRenderer;
+use super::render_path::RenderPath;
+use super::renderer_assets::RendererAssets;
+use super::renderer_scene::RendererScene;
+use super::shader_manager::ShaderManager;
+use super::{PointLight, StaticRenderableComponent};
 use crate::asset::AssetManager;
+use crate::engine::WindowState;
 use crate::input::Input;
 use crate::renderer::command::RendererCommand;
-use crate::renderer::RendererInternal;
 use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
 use crate::graphics::*;
@@ -52,11 +57,23 @@ pub struct RendererSender<B: GPUBackend> {
     state: Arc<RendererState>
 }
 
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+enum ReceiveMessagesResult {
+    FrameCompleted,
+    Quit,
+    WaitForMessages
+}
+
 pub struct Renderer<P: Platform> {
-    window_event_sender: Sender<Event<P>>,
     device: Arc<Device<P::GPUBackend>>,
-    internal: RendererInternal<P>,
-    state: Arc<RendererState>
+    state: Arc<RendererState>,
+    receiver: Receiver<RendererCommand<P::GPUBackend>>,
+    asset_manager: Arc<AssetManager<P>>,
+    assets: RendererAssets<P>,
+    shader_manager: ShaderManager<P>,
+    scene: RendererScene<P::GPUBackend>,
+    context: GraphicsContext<P::GPUBackend>,
+    render_path: Box<dyn RenderPath<P>>
 }
 
 impl<P: Platform> Renderer<P> {
@@ -67,26 +84,25 @@ impl<P: Platform> Renderer<P> {
         console: &Arc<Console>,
     ) -> (Renderer<P>, RendererSender<P::GPUBackend>) {
         let (sender, receiver) = unbounded::<RendererCommand<P::GPUBackend>>();
-        let (window_event_sender, window_event_receiver) = unbounded();
 
-        let internal = RendererInternal::new(
-            device,
-            swapchain,
-            asset_manager,
-            window_event_receiver,
-            receiver,
-            console,
-        );
+        let mut context = device.create_context();
+        let mut shader_manager = ShaderManager::new(device, asset_manager);
+        let render_path = Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
 
         let renderer = Self {
             device: device.clone(),
-            window_event_sender,
-            internal,
             state: Arc::new(RendererState {
                 queued_frames_counter: Mutex::new(0),
                 is_running: AtomicBool::new(true),
                 cond_var: Condvar::new(),
             }),
+            receiver,
+            asset_manager: asset_manager.clone(),
+            assets: RendererAssets::new(device),
+            shader_manager,
+            scene: RendererScene::new(),
+            context,
+            render_path
         };
         let renderer_sender = RendererSender {
             sender,
@@ -100,23 +116,198 @@ impl<P: Platform> Renderer<P> {
         self.device.instance()
     }
 
-    pub fn dispatch_window_event(&self, event: Event<P>) {
-        self.window_event_sender.send(event).unwrap();
-    }
-
     pub fn device(&self) -> &Arc<Device<P::GPUBackend>> {
         &self.device
     }
 
     pub fn render(&mut self) {
         P::thread_memory_management_pool(|| {
-            self.internal.render();
+            let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
+            while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
+                message_receiving_result = self.receive_messages();
+            }
+
+            if message_receiving_result == ReceiveMessagesResult::Quit {
+                self.notify_stopped_running();
+                return;
+            }
+
+            self.context.begin_frame();
+            self.context.end_frame();
         });
 
         // Dec queued frame counter
         let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
         *counter_guard -= 1;
         self.state.cond_var.notify_all();
+    }
+
+    fn receive_messages(&mut self) -> ReceiveMessagesResult {
+        while self.shader_manager.has_remaining_mandatory_compilations() {
+            self.assets
+                .receive_assets(&self.asset_manager, &mut self.shader_manager);
+        }
+
+        let mut message_opt = if self.assets.is_empty()
+            || self.asset_manager.has_open_renderer_assets()
+            || self.scene.static_drawables().is_empty()
+        {
+            let message_res = self.receiver.try_recv();
+            if let Err(err) = &message_res {
+                if err.is_disconnected() {
+                    panic!("Rendering channel closed {:?}", err);
+                }
+            }
+            message_res.ok()
+        } else if cfg!(target_arch = "wasm32") {
+            let message_res = self.receiver.recv();
+            if let Err(err) = &message_res {
+                panic!("Rendering channel closed {:?}", err);
+            }
+            message_res.ok()
+        } else {
+            let message_res = self.receiver.recv_timeout(Duration::from_millis(16));
+            if let Err(err) = &message_res {
+                if err.is_disconnected() {
+                    panic!("Rendering channel closed {:?}", err);
+                }
+            }
+            message_res.ok()
+        };
+
+        // recv blocks, so do the preparation after receiving the first event
+        //self.receive_window_events();
+        self.assets
+            .receive_assets(&self.asset_manager, &mut self.shader_manager);
+
+        if message_opt.is_none() {
+            return ReceiveMessagesResult::WaitForMessages;
+        }
+
+        while message_opt.is_some() {
+            let message = message_opt.take().unwrap();
+            match message {
+                RendererCommand::<P::GPUBackend>::EndFrame => {
+                    return ReceiveMessagesResult::FrameCompleted;
+                }
+
+                RendererCommand::<P::GPUBackend>::Quit => {
+                    return ReceiveMessagesResult::Quit;
+                }
+
+                RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
+                    camera_transform,
+                    fov,
+                } => {
+                    let main_view = self.scene.main_view_mut();
+                    main_view.camera_transform = camera_transform;
+                    main_view.camera_fov = fov;
+                    main_view.old_camera_matrix = main_view.proj_matrix * main_view.view_matrix;
+                    let (_, rotation, position) = camera_transform.to_scale_rotation_translation();
+                    main_view.camera_position = position;
+                    main_view.camera_rotation = rotation;
+                    main_view.view_matrix = make_camera_view(position, rotation);
+                    main_view.proj_matrix = make_camera_proj(
+                        main_view.camera_fov,
+                        main_view.aspect_ratio,
+                        main_view.near_plane,
+                        main_view.far_plane,
+                    )
+                }
+
+                RendererCommand::<P::GPUBackend>::UpdateTransform {
+                    entity,
+                    transform,
+                } => {
+                    self.scene.update_transform(&entity, transform);
+                }
+
+                RendererCommand::<P::GPUBackend>::RegisterStatic {
+                    model_path,
+                    entity,
+                    transform,
+                    receive_shadows,
+                    cast_shadows,
+                    can_move,
+                } => {
+                    let model = self.assets.get_or_create_model_handle(&model_path);
+                    self.scene.add_static_drawable(
+                        entity,
+                        RendererStaticDrawable {
+                            entity,
+                            transform,
+                            old_transform: transform,
+                            model,
+                            receive_shadows,
+                            cast_shadows,
+                            can_move,
+                        },
+                    );
+                }
+                RendererCommand::<P::GPUBackend>::UnregisterStatic(entity) => {
+                    self.scene.remove_static_drawable(&entity);
+                }
+
+                RendererCommand::<P::GPUBackend>::RegisterPointLight {
+                    entity,
+                    transform,
+                    intensity,
+                } => {
+                    self.scene.add_point_light(
+                        entity,
+                        PointLight {
+                            position: transform.transform_vector3(Vec3::new(0f32, 0f32, 0f32)),
+                            intensity,
+                        },
+                    );
+                }
+                RendererCommand::<P::GPUBackend>::UnregisterPointLight(entity) => {
+                    self.scene.remove_point_light(&entity);
+                }
+
+                RendererCommand::<P::GPUBackend>::RegisterDirectionalLight {
+                    entity,
+                    transform,
+                    intensity,
+                } => {
+                    let (_, rotation, _) = transform.to_scale_rotation_translation();
+                    let base_dir = Vec3::new(0f32, 0f32, 1f32);
+                    let dir = rotation.mul_vec3(base_dir);
+                    self.scene.add_directional_light(
+                        entity,
+                        DirectionalLight {
+                            direction: dir,
+                            intensity,
+                        },
+                    );
+                }
+                RendererCommand::<P::GPUBackend>::UnregisterDirectionalLight(entity) => {
+                    self.scene.remove_directional_light(&entity);
+                }
+                RendererCommand::<P::GPUBackend>::SetLightmap(path) => {
+                    let handle = self.assets.get_or_create_texture_handle(&path);
+                    self.scene.set_lightmap(Some(handle));
+                }
+                RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
+
+                RendererCommand::WindowChanged(window_state) => {
+                    match window_state {
+                        WindowState::Fullscreen(size) => {},
+                        WindowState::Window(size) => {},
+                        WindowState::Minimized => {}
+                    }
+                }
+            }
+
+            let message_res = self.receiver.try_recv();
+            if let Err(err) = &message_res {
+                if err.is_disconnected() {
+                    panic!("Rendering channel closed {:?}", err);
+                }
+            }
+            message_opt = message_res.ok();
+        }
+        ReceiveMessagesResult::WaitForMessages
     }
 
     pub fn is_running(&self) -> bool {
@@ -292,6 +483,15 @@ impl<B: GPUBackend> RendererSender<B> {
             }
 
             self.unblock_game_thread();
+        }
+    }
+
+    pub fn window_changed(&self, window_state: WindowState) {
+        let result = self
+            .sender
+            .send(RendererCommand::WindowChanged(window_state));
+        if let Result::Err(err) = result {
+            panic!("Sending message to render thread failed {:?}", err);
         }
     }
 }

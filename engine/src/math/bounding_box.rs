@@ -26,8 +26,8 @@ impl BoundingBox {
     }
 
     pub fn transform(&self, matrix: &Matrix4) -> BoundingBox {
-        let a = matrix * Vec4::new(self.min.x, self.min.y, self.min.z, 1f32);
-        let b = matrix * Vec4::new(self.max.x, self.max.y, self.max.z, 1f32);
+        let a = *matrix * Vec4::new(self.min.x, self.min.y, self.min.z, 1f32);
+        let b = *matrix * Vec4::new(self.max.x, self.max.y, self.max.z, 1f32);
         BoundingBox::new(
             Vec3::new(a.x.min(b.x), a.y.min(b.y), a.z.min(b.z)),
             Vec3::new(a.x.max(b.x), a.y.max(b.y), a.z.max(b.z)),

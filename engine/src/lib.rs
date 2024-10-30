@@ -11,8 +11,6 @@ extern crate sourcerenderer_vpk;
 extern crate sourcerenderer_vtf;
 extern crate sourcerenderer_vtx;
 extern crate sourcerenderer_vvd;
-#[macro_use]
-extern crate legion;
 extern crate bitset_core;
 extern crate bitvec;
 extern crate gltf;
@@ -27,18 +25,11 @@ pub use camera::{
     Camera,
 };
 
-/*#[cfg(feature = "threading")]
-pub use self::engine::Engine;*/
-pub use self::game::{
-    DeltaTime,
-    Tick,
-    TickDelta,
-    TickDuration,
-    TickRate,
-};
+pub use self::engine::Engine;
+pub use self::engine::WindowState;
 
-/*#[cfg(feature = "threading")]
-mod engine;*/
+/*#[cfg(feature = "threading")]*/
+mod engine;
 
 mod asset;
 mod camera;
@@ -47,11 +38,9 @@ mod math;
 mod spinning_cube;
 pub mod transform;
 
-mod game;
-mod game_internal;
+//mod game_internal;
 mod input;
 //mod physics;
 pub mod renderer;
 mod ui;
 mod graphics;
-mod bevy_main;

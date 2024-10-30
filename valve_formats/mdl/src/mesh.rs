@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 
-use nalgebra::Vector3;
+use bevy_math::Vec3;
 
 use crate::PrimitiveRead;
 
@@ -14,7 +14,7 @@ pub struct Mesh {
   pub material_type: i32,
   pub material_param: i32,
   pub mesh_id: i32,
-  pub center: Vector3<f32>,
+  pub center: Vec3,
   pub vertex_data: MeshVertexData
 }
 
@@ -48,7 +48,7 @@ impl Mesh {
     let material_type = read.read_i32()?;
     let material_param = read.read_i32()?;
     let mesh_id = read.read_i32()?;
-    let center = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let center = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let vertex_data = MeshVertexData::read(read)?;
     for _ in 0..8 {
       read.read_i32()?;

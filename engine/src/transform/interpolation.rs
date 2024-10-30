@@ -3,21 +3,6 @@ use bevy_ecs::{component::Component, entity::Entity, system::{Commands, Query, R
 use bevy_math::{Affine3A, VectorSpace};
 use bevy_time::{Fixed, Time};
 use bevy_transform::components::GlobalTransform;
-use legion::systems::{
-    Builder,
-    CommandBuffer,
-};
-use sourcerenderer_core::{
-    Matrix3,
-    Matrix4,
-    Quaternion,
-    Vec3,
-};
-
-use crate::game::{
-    TickDelta,
-    TickDuration,
-};
 
 #[derive(Component)]
 pub struct PreviousGlobalTransform(pub Affine3A);

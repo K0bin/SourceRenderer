@@ -1,9 +1,10 @@
-use nalgebra::Vector3;
 use std::io::{Read, Result as IOResult, Error as IOError, ErrorKind};
+use bevy_math::Vec3;
+
 use crate::{PrimitiveRead, LumpData, LumpType};
 
 pub struct DispInfo {
-  pub start_position: Vector3<f32>,
+  pub start_position: Vec3,
   pub disp_vert_start: i32,
   pub disp_tri_start: i32,
   pub power: i32,
@@ -42,7 +43,7 @@ impl LumpData for DispInfo {
   }
 
   fn read(read: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let start_position = Vector3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let start_position = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let disp_vert_start = read.read_i32()?;
     let disp_tri_start = read.read_i32()?;
     let power = read.read_i32()?;

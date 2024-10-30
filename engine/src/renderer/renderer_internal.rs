@@ -28,12 +28,6 @@ use super::drawable::{
     make_camera_view,
 };
 use super::light::DirectionalLight;
-use super::passes::modern::ModernRenderer;
-//#[cfg(not(target_arch = "wasm32"))]
-use super::passes::path_tracing::PathTracingRenderer;
-use super::passes::web::WebRenderer;
-//#[cfg(not(target_arch = "wasm32"))]
-//use super::passes::modern::ModernRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;

@@ -1,17 +1,11 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use nalgebra::Vector2;
 use rayon::prelude::*;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::Submission;
 use sourcerenderer_core::{
-    Matrix4,
-    Platform,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-    Vec4,
+    Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4
 };
 
 use super::desktop_renderer::FrameBindings;
@@ -43,10 +37,10 @@ struct FrameData {
     halton_point: Vec2,
     z_near: f32,
     z_far: f32,
-    rt_size: Vector2<u32>,
+    rt_size: Vec2UI,
     cluster_z_bias: f32,
     cluster_z_scale: f32,
-    cluster_count: nalgebra::Vector3<u32>,
+    cluster_count: Vec3UI,
     point_light_count: u32,
     directional_light_count: u32,
 }

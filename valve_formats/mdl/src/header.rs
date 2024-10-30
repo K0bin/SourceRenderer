@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 
-use nalgebra::Vector3;
+use bevy_math::Vec3;
 
 use crate::{PrimitiveRead, StringRead};
 
@@ -37,12 +37,12 @@ pub struct Header {
 
   pub data_length: i32,
 
-  pub eye_position: Vector3<f32>,
-  pub illum_position: Vector3<f32>,
-  pub hull_min: Vector3<f32>,
-  pub hull_max: Vector3<f32>,
-  pub view_bb_min: Vector3<f32>,
-  pub view_bb_max: Vector3<f32>,
+  pub eye_position: Vec3,
+  pub illum_position: Vec3,
+  pub hull_min: Vec3,
+  pub hull_max: Vec3,
+  pub view_bb_min: Vec3,
+  pub view_bb_max: Vec3,
 
   pub flags: StudioHDRFlags,
 
@@ -150,12 +150,12 @@ impl Header {
 
     let data_length = read.read_i32()?;
 
-    let eye_position = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let illum_position = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let hull_min = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let hull_max = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let view_bb_min = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let view_bb_max = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let eye_position = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let illum_position = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let hull_min = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let hull_max = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let view_bb_min = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let view_bb_max = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
 
     let flags_raw = read.read_u32()?;
     let flags = StudioHDRFlags::from_bits(flags_raw).unwrap();

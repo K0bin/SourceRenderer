@@ -1,11 +1,12 @@
 use std::io::{Read, Result as IOResult};
-use nalgebra::Vector3;
+use bevy_math::Vec3;
+
 use crate::lump_data::{LumpData, LumpType};
 use crate::PrimitiveRead;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Plane {
-  pub normal: Vector3<f32>,
+  pub normal: Vec3,
   pub dist: f32,
   pub edge_type: i32
 }
@@ -23,7 +24,7 @@ impl LumpData for Plane {
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let normal = Vector3::<f32>::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
+    let normal = Vec3::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let dist = reader.read_f32()?;
     let edge_type = reader.read_i32()?;
     Ok(Self {

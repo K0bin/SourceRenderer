@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
 use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
-    Vec4,
+    Platform, Vec2UI, Vec3UI, Vec4
 };
 
 use crate::renderer::render_path::RenderPassParameters;
@@ -59,13 +56,13 @@ impl ClusteringPass {
         command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
         rt_size: Vec2UI,
-        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>
+        camera_buffer: &TransientBufferSlice<P::GPUBackend>
     ) {
         command_buffer.begin_label("Clustering pass");
 
         let view = &pass_params.scene.views[pass_params.scene.active_view_index];
 
-        let cluster_count = Vector3::<u32>::new(16, 9, 24);
+        let cluster_count = Vec3UI::new(16, 9, 24);
         let screen_to_view = ShaderScreenToView {
             tile_size: Vec2UI::new(
                 ((rt_size.x as f32) / cluster_count.x as f32).ceil() as u32,
@@ -115,7 +112,7 @@ impl ClusteringPass {
         command_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             2,
-            BufferRef::Regular(camera_buffer),
+            BufferRef::Transient(camera_buffer),
             0,
             WHOLE_BUFFER,
         );
@@ -129,7 +126,7 @@ impl ClusteringPass {
         command_buffer.end_label();
     }
 
-    pub fn cluster_count(&self) -> Vector3<u32> {
-        Vector3::<u32>::new(16, 9, 24)
+    pub fn cluster_count(&self) -> Vec3UI {
+        Vec3UI::new(16, 9, 24)
     }
 }

@@ -18,13 +18,13 @@ pub(crate) fn create_instance(debug_layers: bool, window: &SDLWindow) -> Result<
 pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_instance: &MTLInstance) -> MTLSurface {
     let has_handle: &dyn HasRawWindowHandle = sdl_window_handle;
     let handle = has_handle.raw_window_handle();
-    let view = match handle {
+    let view = match handle.expect("Failed to get window handle") {
         raw_window_handle::RawWindowHandle::UiKit(_) => todo!(),
         raw_window_handle::RawWindowHandle::AppKit(handle) => handle.ns_view,
         _ => unreachable!(),
     };
 
-    let layer = unsafe { sdl2_sys::SDL_Metal_GetLayer(view) };
+    let layer = unsafe { sdl2_sys::SDL_Metal_GetLayer(view.as_ptr()) };
     let layer_ref = unsafe { metal::MetalLayerRef::from_ptr(std::mem::transmute(layer)) };
     MTLSurface::new(graphics_instance, layer_ref)
 }

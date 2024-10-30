@@ -4,9 +4,11 @@ use std::usize;
 use bevy_ecs::entity::Entity;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
-    Affine3A, Matrix4, Vec3, Vec4
+    Matrix4, Vec3, Vec4
 };
+use bevy_math::Affine3A;
 
+use super::drawable::View;
 use super::light::{
     DirectionalLight,
     RendererDirectionalLight,
@@ -19,6 +21,7 @@ use super::{
 };
 
 pub struct RendererScene<B: GPUBackend> {
+    views: Vec<View>,
     static_meshes: Vec<RendererStaticDrawable>,
     point_lights: Vec<RendererPointLight<B>>,
     directional_lights: Vec<RendererDirectionalLight<B>>,
@@ -31,6 +34,7 @@ pub struct RendererScene<B: GPUBackend> {
 impl<B: GPUBackend> RendererScene<B> {
     pub fn new() -> Self {
         Self {
+            views: vec![View::default()],
             static_meshes: Vec::new(),
             point_lights: Vec::new(),
             directional_lights: Vec::new(),
@@ -39,6 +43,14 @@ impl<B: GPUBackend> RendererScene<B> {
             directional_light_entity_map: HashMap::new(),
             lightmap: None,
         }
+    }
+
+    pub fn main_view(&self) -> &View {
+        &self.views[0]
+    }
+
+    pub fn main_view_mut(&mut self) -> &mut View {
+        &mut self.views[0]
     }
 
     pub fn static_drawables(&self) -> &[RendererStaticDrawable] {

@@ -90,7 +90,7 @@ impl DrawPrepPass {
                 HistoryResourceEntry::Current,
             );
 
-            #[repr(packed(16))]
+            #[repr(C)]
             #[derive(Clone, Debug)]
             struct GPUFrustum {
                 pub near_half_width: f32,

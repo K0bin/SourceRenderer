@@ -3,13 +3,7 @@ use std::time::Duration;
 
 use crossbeam_channel::{Receiver, TryRecvError};
 use instant::Instant;
-use legion::{
-    Resources,
-    Schedule,
-    World,
-};
 use log::trace;
-use nalgebra::UnitQuaternion;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
     Platform,

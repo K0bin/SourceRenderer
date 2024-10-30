@@ -8,11 +8,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::u8;
 
-use legion::{
-    World,
-    WorldOptions,
-};
-use nalgebra::Rotation3;
+use bevy_ecs::world::World;
+use bevy_math::{EulerRot, Quat};
+use bevy_transform::components::Transform;
+use rapier3d::na::Matrix4;
 use regex::Regex;
 use sourcerenderer_bsp::{
     DispInfo,
@@ -56,7 +55,6 @@ use crate::renderer::{
     Lightmap,
     StaticRenderableComponent,
 };
-use crate::Transform;
 
 // REFERENCE
 // https://github.com/lewa-j/Unity-Source-Tools/blob/1c5dc0635cdc4c65775d4af2c4449be49639f46b/Assets/Code/Read/SourceBSPLoader.cs#L877
@@ -245,7 +243,7 @@ impl BspLevelLoader {
             corners_uv[index].x /= tex_data.width as f32;
             corners_uv[index].y /= tex_data.height as f32;
 
-            let dist_squared = (disp_info.start_position - position).magnitude_squared();
+            let dist_squared = (disp_info.start_position - position).length_squared();
             if dist_squared < first_corner_dist_squared {
                 first_corner = surf_edge_index - face.first_edge;
                 first_corner_dist_squared = dist_squared;
@@ -377,7 +375,7 @@ impl BspLevelLoader {
 
     fn calculate_uv(position: &Vec3, texture_vecs_s: &Vec4, texture_vecs_t: &Vec4) -> Vec2 {
         let pos4 = Vec4::new(position.x, position.y, position.z, 1.0f32);
-        Vec2::new(pos4.dot(texture_vecs_s), pos4.dot(texture_vecs_t))
+        Vec2::new(pos4.dot(*texture_vecs_s), pos4.dot(*texture_vecs_t))
     }
 
     fn fixup_position(position: &Vec3) -> Vec3 {
@@ -392,11 +390,9 @@ impl BspLevelLoader {
         const DEG_TO_RAD: f32 = std::f32::consts::PI / 180f32;
         // Source rotations are in the following order: Pitch Yaw Roll (Y Z X)
         // We need them in the following order: Pitch Yaw Roll (X Y Z)
-        let rotation = Rotation3::from_euler_angles(0f32, rotation.y * DEG_TO_RAD, 0f32)
-            * Rotation3::from_euler_angles(0f32, 0f32, rotation.x * DEG_TO_RAD)
-            * Rotation3::from_euler_angles(rotation.z * DEG_TO_RAD, 0f32, 0f32);
-
-        Quaternion::from_rotation_matrix(&rotation)
+        Quat::from_euler(EulerRot::XYZ, 0f32, rotation.y * DEG_TO_RAD, 0f32)
+            * Quat::from_euler(EulerRot::XYZ, 0f32, 0f32, rotation.x * DEG_TO_RAD)
+            * Quat::from_euler(EulerRot::XYZ, rotation.z * DEG_TO_RAD, 0f32, 0f32)
     }
 }
 
@@ -468,7 +464,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
         let pakfile_container = Box::new(PakFileContainer::new(pakfile));
 
-        let mut world = World::new(WorldOptions::default());
+        let mut world = World::new();
         let mut materials_to_load = HashSet::<String>::new();
         let mut lightmap_packer = LightmapPacker::new(2048, 2048);
 
@@ -581,7 +577,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
             };
             manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal);
 
-            world.push((
+            world.spawn((
                 StaticRenderableComponent {
                     model_path: model_name,
                     receive_shadows: true,
@@ -589,9 +585,9 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
                     can_move: false,
                 },
                 Transform {
-                    position: brush_models[model_index].origin,
+                    translation: brush_models[model_index].origin,
                     scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-                    rotation: Quaternion::identity(),
+                    rotation: Quat::IDENTITY,
                 },
             ));
 
@@ -606,7 +602,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
                 AssetLoadPriority::Normal,
                 progress,
             );
-            world.push((
+            world.spawn((
                 StaticRenderableComponent {
                     model_path: name.clone(),
                     receive_shadows: true,
@@ -614,7 +610,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
                     can_move: false,
                 },
                 Transform {
-                    position: Self::fixup_position(&prop.origin),
+                    translation: Self::fixup_position(&prop.origin),
                     scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
                     rotation: Self::fixup_rotation(&prop.angles),
                 },
@@ -657,7 +653,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
             AssetLoadPriority::Normal,
         );
 
-        world.push((Lightmap {
+        world.spawn((Lightmap {
             path: "lightmap".to_string(),
         },));
 

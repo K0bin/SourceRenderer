@@ -11,6 +11,11 @@ use std::{
     usize,
 };
 
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::{Mut, World};
+use bevy_hierarchy::BuildChildren;
+use bevy_math::{EulerRot, Quat};
+use bevy_transform::components::Transform;
 use gltf::buffer::{
     Source,
     View,
@@ -24,11 +29,6 @@ use gltf::{
     Primitive,
     Scene,
     Semantic,
-};
-use legion::{
-    Entity,
-    World,
-    WorldOptions,
 };
 use log::warn;
 use sourcerenderer_core::{
@@ -60,10 +60,6 @@ use crate::renderer::{
     DirectionalLightComponent,
     PointLightComponent,
     StaticRenderableComponent,
-};
-use crate::{
-    Parent,
-    Transform,
 };
 
 pub struct GltfLoader {}
@@ -107,21 +103,19 @@ impl GltfLoader {
 
         let fixed_position = fixup_vec(&translation);
         let fixed_rotation = Vec4::new(rotation.x, rotation.y, rotation.z, rotation.w);
-        let rot_quat = Quaternion::new_normalize(nalgebra::Quaternion {
-            coords: fixed_rotation,
-        });
-        let euler_angles = rot_quat.euler_angles();
-        let rot_quat = Quaternion::from_euler_angles(euler_angles.0, -euler_angles.1, -euler_angles.2);
-        let entity = world.push((Transform {
-            position: fixed_position,
+        let rot_quat = Quat::from_vec4(fixed_rotation).normalize();
+        let euler_angles = rot_quat.to_euler(EulerRot::XYZ);
+        let rot_quat = Quat::from_euler(EulerRot::XYZ, euler_angles.0, -euler_angles.1, -euler_angles.2);
+        let entity_mut = world.spawn((Transform {
+            translation: fixed_position,
             scale,
             rotation: rot_quat,
         },));
-
+        let entity = entity_mut.flush();
         {
-            let mut entry = world.entry(entity).unwrap();
-            if let Some(parent) = parent_entity {
-                entry.add_component(Parent(parent));
+            let mut commands = world.commands();
+            if let Some(mut parent) = parent_entity.map(|e| commands.entity(e)) {
+                parent.push_children(&[entity]);
             }
         }
 
@@ -129,7 +123,9 @@ impl GltfLoader {
             let model_name = node
                 .name()
                 .map_or_else(|| node.index().to_string(), |name| name.to_string());
-            let mesh_path = gltf_file_name.to_string() + "/mesh/" + &model_name;
+            let mut mesh_path = gltf_file_name.to_string();
+            mesh_path += "/mesh/";
+            mesh_path += &model_name;
 
             let mut indices = Vec::<u32>::new();
             let mut vertices = Vec::<Vertex>::new();
@@ -233,7 +229,9 @@ impl GltfLoader {
                 AssetLoadPriority::Normal,
             );
 
-            let model_path = gltf_file_name.to_string() + "/model/" + &model_name;
+            let mut model_path = gltf_file_name.to_string();
+            model_path += "/model/";
+            model_path += &model_name;
             asset_mgr.add_asset(
                 &model_path,
                 Asset::Model(Model {
@@ -243,13 +241,13 @@ impl GltfLoader {
                 AssetLoadPriority::Normal,
             );
 
-            let mut entry = world.entry(entity).unwrap();
-            entry.add_component(StaticRenderableComponent {
+            let mut entry = world.entity_mut(entity);
+            entry.insert((StaticRenderableComponent {
                 model_path,
                 receive_shadows: true,
                 cast_shadows: true,
                 can_move: false,
-            });
+            },));
         };
 
         if node.skin().is_some() {
@@ -273,24 +271,21 @@ impl GltfLoader {
 
         if let Some(light) = node.light() {
             println!("light is dir");
-            let mut entry = world.entry(entity).unwrap();
-            let transform: &mut Transform = entry.get_component_mut::<Transform>().unwrap();
-            let mut coords = transform.rotation.coords.clone();
+            let mut entry = world.entity_mut(entity);
+            let mut transform: Mut<Transform> = entry.get_mut::<Transform>().unwrap();
+            let mut coords = Vec4::from(transform.rotation);
             coords.z = -coords.z;
-            transform.rotation = Quaternion::new_normalize(nalgebra::Quaternion {
-                coords
-              }
-            );
+            transform.rotation = Quat::from_vec4(coords).normalize();
             match light.kind() {
                 gltf::khr_lights_punctual::Kind::Directional => {
-                    entry.add_component(DirectionalLightComponent {
+                    entry.insert((DirectionalLightComponent {
                         intensity: light.intensity() * 685f32, // Blender exports as W/m2, we need lux
-                    });
+                    },));
                 }
                 gltf::khr_lights_punctual::Kind::Point => {
-                    entry.add_component(PointLightComponent {
+                    entry.insert((PointLightComponent {
                         intensity: light.intensity(),
-                    });
+                    },));
                 }
                 gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
             }
@@ -313,7 +308,7 @@ impl GltfLoader {
         asset_mgr: &AssetManager<P>,
         gltf_file_name: &str,
     ) -> World {
-        let mut world = World::new(WorldOptions::default());
+        let mut world = World::new();
         let mut buffer_cache = HashMap::<String, Vec<u8>>::new();
         let nodes = scene.nodes();
         for node in nodes {
@@ -518,7 +513,7 @@ impl GltfLoader {
                         std::mem::transmute(texcoords_data.as_ptr());
                     let position = fixup_vec(&*position_vec_ptr);
                     let mut normal = fixup_vec(&*normal_vec_ptr);
-                    normal.normalize_mut();
+                    normal = normal.normalize();
                     vertices.push(Vertex {
                         position,
                         normal,
