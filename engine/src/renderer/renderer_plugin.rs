@@ -45,7 +45,7 @@ use crate::engine::{
     ConsoleResource,
     GPUDeviceResource,
     GPUSwapchainResource,
-    WindowState,
+    WindowState, TICK_RATE,
 };
 use crate::transform::InterpolatedTransform;
 use crate::{
@@ -201,6 +201,10 @@ fn extract_camera<P: Platform>(
     active_camera: Res<ActiveCamera>,
     camera_entities: Query<(&InterpolatedTransform, &Camera, &GlobalTransform)>,
 ) {
+    if renderer.sender.is_saturated() {
+        return;
+    }
+
     if let Ok((interpolated, camera, transform)) = camera_entities.get(active_camera.0) {
         if camera.interpolate_rotation {
             renderer
@@ -221,6 +225,10 @@ fn extract_static_renderables<P: Platform>(
     static_renderables: Query<(Entity, Ref<StaticRenderableComponent>, Ref<InterpolatedTransform>)>,
     mut removed_static_renderables: RemovedComponents<StaticRenderableComponent>,
 ) {
+    if renderer.sender.is_saturated() {
+        return;
+    }
+
     for (entity, renderable, transform) in static_renderables.iter() {
         if renderable.is_added() || transform.is_added() {
             renderer
@@ -245,6 +253,10 @@ fn extract_point_lights<P: Platform>(
     static_renderables: Query<(Entity, &InterpolatedTransform), With<PointLightComponent>>,
     mut removed_static_renderables: RemovedComponents<PointLightComponent>,
 ) {
+    if renderer.sender.is_saturated() {
+        return;
+    }
+
     for (entity, light, transform) in new_static_renderables.iter() {
         renderer
             .sender
@@ -269,6 +281,10 @@ fn extract_directional_lights<P: Platform>(
     static_renderables: Query<(Entity, &InterpolatedTransform), With<DirectionalLightComponent>>,
     mut removed_static_renderables: RemovedComponents<DirectionalLightComponent>,
 ) {
+    if renderer.sender.is_saturated() {
+        return;
+    }
+
     for (entity, light, transform) in new_static_renderables.iter() {
         renderer
             .sender
@@ -290,5 +306,7 @@ fn end_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
 }
 
 fn begin_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
-    renderer.sender.wait_until_available(Duration::from_secs(25));
+    // Unblock regularly so the fixed time systems can run.
+    // All rendering systems check if the renderer is saturated before sending new commands.
+    renderer.sender.wait_until_available(Duration::from_micros(1000000u64 / 4u64 / (TICK_RATE as u64)));
 }

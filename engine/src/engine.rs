@@ -50,7 +50,7 @@ pub enum WindowState {
     Fullscreen(Vec2UI)
 }
 
-const TICK_RATE: u32 = 5;
+pub const TICK_RATE: u32 = 5;
 
 pub struct Engine(App);
 
@@ -90,7 +90,7 @@ impl Engine {
             .add_plugins(LogPlugin::default())
             .add_plugins(TaskPoolPlugin::default())
             .add_plugins(TimePlugin::default())
-            .insert_resource(Time::<Fixed>::from_hz(60.0))
+            .insert_resource(Time::<Fixed>::from_hz(TICK_RATE as f64))
             .add_plugins(FrameCountPlugin::default())
             .add_plugins(TransformPlugin::default())
             .add_plugins(HierarchyPlugin::default())
