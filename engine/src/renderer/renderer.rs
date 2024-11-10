@@ -303,7 +303,6 @@ impl<P: Platform> Renderer<P> {
                     cast_shadows,
                     can_move,
                 } => {
-                    println!("Handling register msg");
                     let model = self.assets.get_or_create_model_handle(&model_path);
                     self.scene.add_static_drawable(
                         entity,

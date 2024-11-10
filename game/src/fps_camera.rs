@@ -1,5 +1,6 @@
 use bevy_app::{App, Update};
 use bevy_ecs::component::{Component, Tick};
+use bevy_ecs::entity::Entity;
 use bevy_ecs::event::EventReader;
 use bevy_ecs::query::{Has, With};
 use bevy_ecs::query::{QueryFilter};
@@ -29,6 +30,7 @@ pub(crate) struct FPSCameraComponent {
     fps_camera: FPSCamera,
 }
 
+#[derive(Debug)]
 struct FPSCamera {
     sensitivity: f32,
     pitch: f32,

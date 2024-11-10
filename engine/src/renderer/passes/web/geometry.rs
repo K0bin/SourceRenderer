@@ -7,10 +7,7 @@ use gltf::texture::{
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
-    Platform,
-    Vec2,
-    Vec2I,
-    Vec2UI,
+    Matrix4, Platform, Quaternion, Vec2, Vec2I, Vec2UI, Vec3
 };
 
 use crate::renderer::drawable::View;
@@ -278,10 +275,9 @@ impl<P: Platform> GeometryPass<P> {
 
         let drawables = scene.static_drawables();
         let parts = &view.drawable_parts;
-        println!("Parts: {}, drawables: {}", parts.len(), drawables.len());
         for part in parts {
             let drawable = &drawables[part.drawable_index];
-            cmd_buffer.set_push_constant_data(&[drawable.transform], ShaderType::VertexShader);
+            cmd_buffer.set_push_constant_data(&[Matrix4::from(drawable.transform)], ShaderType::VertexShader);
             let model = assets.get_model(drawable.model);
             if model.is_none() {
                 log::info!("Skipping draw because of missing model");

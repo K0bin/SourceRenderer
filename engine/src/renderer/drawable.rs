@@ -76,5 +76,5 @@ pub(crate) fn make_camera_view(position: Vec3, rotation: Quaternion) -> Matrix4 
 
 pub(crate) fn make_camera_proj(fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Matrix4 {
     let vertical_fov = 2f32 * ((fov / 2f32).tan() * (1f32 / aspect_ratio)).atan();
-    Matrix4::perspective_lh(aspect_ratio, vertical_fov, z_near, z_far)
+    Matrix4::perspective_lh(vertical_fov, aspect_ratio, z_near, z_far)
 }

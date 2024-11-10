@@ -1,4 +1,6 @@
 use std::marker::PhantomData;
+use std::sync::atomic::AtomicU64;
+use std::time::Duration;
 
 use bevy_app::{
     App,
@@ -141,6 +143,9 @@ fn run_renderer<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
 }
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+struct SyncSet;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct ExtractSet;
 
 #[cfg(feature = "threading")]
@@ -155,13 +160,18 @@ fn install_renderer<P: Platform>(
     app.insert_resource(wrapper);
     app.add_systems(
         Last,
+        (begin_frame::<P>,).in_set(SyncSet)
+    );
+    app.add_systems(
+        Last,
         (
             extract_camera::<P>,
             extract_static_renderables::<P>,
             extract_point_lights::<P>,
             extract_directional_lights::<P>,
         )
-            .in_set(ExtractSet),
+            .in_set(ExtractSet)
+            .after(SyncSet),
     );
     app.add_systems(Last, end_frame::<P>.after(ExtractSet));
 }
@@ -198,7 +208,7 @@ fn extract_camera<P: Platform>(
                 .update_camera_transform(interpolated.0, camera.fov);
         } else {
             let mut combined_transform = transform.affine();
-            combined_transform.z_axis = interpolated.0.z_axis;
+            combined_transform.translation = interpolated.0.translation;
             renderer
                 .sender
                 .update_camera_transform(combined_transform, camera.fov);
@@ -213,7 +223,6 @@ fn extract_static_renderables<P: Platform>(
 ) {
     for (entity, renderable, transform) in static_renderables.iter() {
         if renderable.is_added() || transform.is_added() {
-            println!("Registering new renderable");
             renderer
                 .sender
                 .register_static_renderable(entity, transform.as_ref(), renderable.as_ref());
@@ -278,4 +287,8 @@ fn extract_directional_lights<P: Platform>(
 #[cfg(feature = "threading")]
 fn end_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
     renderer.sender.end_frame();
+}
+
+fn begin_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
+    renderer.sender.wait_until_available(Duration::from_secs(25));
 }

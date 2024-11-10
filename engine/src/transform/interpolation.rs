@@ -22,7 +22,7 @@ impl Plugin for InterpolationPlugin {
 }
 
 fn update_previous_global_transform(
-    query: Query<(Entity, &GlobalTransform), Without<PreviousGlobalTransform>>,
+    query: Query<(Entity, &GlobalTransform)>,
     mut commands: Commands,
 ) {
     for (entity, transform) in query.iter() {
@@ -50,7 +50,7 @@ fn interpolate_transform_matrix(
 }
 
 fn add_global_transform(
-    query: Query<(Entity, &Transform), (Added<Transform>)>,
+    query: Query<(Entity, &Transform), Added<Transform>>,
     mut commands: Commands
 ) {
     for (entity, transform) in query.iter() {

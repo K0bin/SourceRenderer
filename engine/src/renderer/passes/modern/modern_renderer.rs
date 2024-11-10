@@ -370,13 +370,13 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         let main_view = &scene.scene.views()[scene.active_view_index];
 
         let camera_buffer = cmd_buf.upload_dynamic_data(&[CameraBuffer {
-            view_proj: main_view.view_matrix * main_view.proj_matrix,
+            view_proj: main_view.proj_matrix * main_view.view_matrix,
             inv_proj: main_view.proj_matrix.inverse(),
             view: main_view.view_matrix,
             proj: main_view.proj_matrix,
             inv_view: main_view.view_matrix.inverse(),
             position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
-            inv_proj_view: (main_view.view_matrix * main_view.proj_matrix).inverse(),
+            inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
             z_near: main_view.near_plane,
             z_far: main_view.far_plane,
             aspect_ratio: main_view.aspect_ratio,

@@ -351,7 +351,7 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
                 fov: f32::consts::PI / 2f32,
                 interpolate_rotation: false,
             },
-            Transform::from_translation(Vec3::new(0.0f32, 1.0f32, -1.0f32)),
+            Transform::from_translation(Vec3::new(0.0f32, 0.0f32, -1.0f32)),
             FPSCameraComponent::default(),
         )).flush();
 
