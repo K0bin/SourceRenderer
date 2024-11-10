@@ -11,7 +11,6 @@ use crossbeam_channel::{
     TryRecvError,
 };
 use instant::Instant;
-use rayon::prelude::*;
 use smallvec::SmallVec;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{

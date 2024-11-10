@@ -21,12 +21,6 @@ pub mod atomic_refcell;
 
 pub use crate::platform::Platform;
 
-pub use rayon::ThreadPoolBuilder;
-pub use rayon::ThreadPoolBuildError;
-pub use rayon::ThreadPool;
-pub use rayon::scope;
-pub use rayon::spawn;
-
 pub type Vec2 = bevy_math::Vec2;
 pub type Vec3 = bevy_math::Vec3;
 pub type Vec4 = bevy_math::Vec4;

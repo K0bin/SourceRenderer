@@ -70,7 +70,8 @@ impl<P: Platform> WebRenderer<P> {
             release_swapchain: None
         });
         let c_device = device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
 
         Self {
             device: device.clone(),

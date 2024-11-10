@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_math::Affine3A;
-use rayon::prelude::*;
+use bevy_tasks::ParallelSlice;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -238,10 +238,9 @@ impl Prepass {
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let chunks = view.drawable_parts.par_chunks(chunk_size);
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = chunks
-            .map(|chunk| {
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 let mut command_buffer = graphics_context.get_inner_command_buffer(inheritance);
 
                 command_buffer.set_pipeline(crate::graphics::PipelineBinding::Graphics(&pipeline));
@@ -328,8 +327,7 @@ impl Prepass {
                     }
                 }
                 command_buffer.finish()
-            })
-            .collect();
+            });
 
         cmd_buffer.execute_inner(inner_cmd_buffers);
         cmd_buffer.end_render_pass();

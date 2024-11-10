@@ -23,6 +23,7 @@ use std::sync::{
     Weak,
 };
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use crossbeam_channel::{

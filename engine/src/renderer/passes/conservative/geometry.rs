@@ -1,7 +1,7 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use rayon::prelude::*;
+use bevy_tasks::ParallelSlice;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::Submission;
 use sourcerenderer_core::{
@@ -324,10 +324,9 @@ impl<P: Platform> GeometryPass<P> {
         const CHUNK_SIZE: usize = 128;
         let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let chunks = view.drawable_parts.par_chunks(chunk_size);
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = chunks
-            .map(|chunk| {
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 P::thread_memory_management_pool(|| {
                     let mut command_buffer = context.get_inner_command_buffer(inheritance);
 
@@ -526,8 +525,7 @@ impl<P: Platform> GeometryPass<P> {
                     }
                     command_buffer.finish()
                 })
-            })
-            .collect();
+            });
 
         cmd_buffer.execute_inner(inner_cmd_buffers);
         cmd_buffer.end_render_pass();

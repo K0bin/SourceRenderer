@@ -834,7 +834,8 @@ impl<P: Platform> ShaderManager<P> {
             let c_device = self.device.clone();
             let c_manager = pipeline_type_manager.clone();
             c_manager.cond_var.notify_all();
-            rayon::spawn(move || {
+            let task_pool = bevy_tasks::ComputeTaskPool::get();
+            task_pool.spawn(async move {
                 for handle in ready_handles.drain(..) {
                     let task: T;
                     let shaders: T::TShaders;

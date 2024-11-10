@@ -20,7 +20,7 @@ use sourcerenderer_core::platform::{
 };
 use sourcerenderer_core::{
     Console,
-    ThreadPoolBuilder, Vec2I, Vec2UI,
+    Vec2I, Vec2UI,
 };
 
 use crate::asset::loaders::{
