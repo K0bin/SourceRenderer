@@ -36,7 +36,7 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
     fn load(
         &self,
         mut file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {

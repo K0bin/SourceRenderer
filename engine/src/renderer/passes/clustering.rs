@@ -60,7 +60,7 @@ impl ClusteringPass {
     ) {
         command_buffer.begin_label("Clustering pass");
 
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &(*pass_params.scene.scene).views()[pass_params.scene.active_view_index];
 
         let cluster_count = Vec3UI::new(16, 9, 24);
         let screen_to_view = ShaderScreenToView {

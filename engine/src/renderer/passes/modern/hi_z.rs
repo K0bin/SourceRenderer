@@ -40,8 +40,6 @@ impl<P: Platform> HierarchicalZPass<P> {
 
         resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
-        assert!(device.supports_min_max_filter()); // TODO: Implement variant that doesn't rely on min-max filter. PLS JUST ADD IT TO METAL @APPLE
-
         let ffx_pipeline =
             shader_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
         let copy_pipeline = shader_manager.request_compute_pipeline("shaders/hi_z_copy.comp.json");

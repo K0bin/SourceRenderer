@@ -184,7 +184,7 @@ impl<P: Platform> ShadowMapPass<P> {
         }
         let light: &RendererDirectionalLight<<P as Platform>::GPUBackend> = light.unwrap();
 
-        let view = &scene.views[scene.active_view_index];
+        let view = &scene.scene.views()[scene.active_view_index];
         let z_min = view.near_plane;
         let z_max = view.far_plane;
 

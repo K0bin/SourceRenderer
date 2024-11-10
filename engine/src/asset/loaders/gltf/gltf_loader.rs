@@ -680,7 +680,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
     fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         _priority: AssetLoadPriority,
         _progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {

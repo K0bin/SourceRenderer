@@ -185,7 +185,7 @@ pub trait AssetLoader<P: Platform>: Send + Sync {
     fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()>;
@@ -493,7 +493,7 @@ impl<P: Platform> AssetManager<P> {
         progress
     }
 
-    pub fn load_level(self: &Arc<Self>, path: &str) -> Option<World> {
+    pub fn load_level(&self, path: &str) -> Option<World> {
         let file_opt = self.load_file(path);
         if file_opt.is_none() {
             error!("Could not load file: {:?}", path);
@@ -538,7 +538,7 @@ impl<P: Platform> AssetManager<P> {
             }
         }
         if file_opt.is_none() {
-            error!("Could not find file: {:?}", path);
+            error!("Could not find file: {:?}, working dir: {:?}", path, std::env::current_dir());
             {
                 let mut inner = self.inner.lock().unwrap();
                 inner.requested_assets.remove(path);
@@ -573,7 +573,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     fn load_asset(
-        self: &Arc<Self>,
+        &self,
         mut file: AssetFile,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,

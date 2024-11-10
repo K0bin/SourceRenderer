@@ -2617,6 +2617,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "sourcerenderer_game"
+version = "0.1.0"
+dependencies = [
+ "bevy_app",
+ "bevy_core",
+ "bevy_ecs",
+ "bevy_hierarchy",
+ "bevy_input",
+ "bevy_log",
+ "bevy_math",
+ "bevy_tasks",
+ "bevy_time",
+ "bevy_transform",
+ "bevy_utils",
+ "sourcerenderer_core",
+ "sourcerenderer_engine",
+]
+
+[[package]]
 name = "sourcerenderer_mdl"
 version = "0.1.0"
 dependencies = [
@@ -2663,6 +2682,7 @@ dependencies = [
  "sourcerenderer_bsp",
  "sourcerenderer_core",
  "sourcerenderer_engine",
+ "sourcerenderer_game",
  "sourcerenderer_metal",
  "sourcerenderer_vulkan",
 ]

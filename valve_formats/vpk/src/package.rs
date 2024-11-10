@@ -156,7 +156,7 @@ impl<R> Package<R>
     (file_name_str.to_string(), false)
   }
 
-  pub fn read<F: 'static + Send + Sync + Fn(&str) -> IOResult<R>>(file_name: &str, mut input: R, open_file_callback: F) -> Result<Self, PackageError> {
+  pub fn read<F: Send + Sync + Fn(&str) -> IOResult<R>>(file_name: &str, mut input: R, open_file_callback: F) -> Result<Self, PackageError> {
     let (file_name, is_dir_vpk) = Self::sanitize_file_name(file_name);
 
     if input.read_u32().map_err(PackageError::IOError)? != MAGIC {

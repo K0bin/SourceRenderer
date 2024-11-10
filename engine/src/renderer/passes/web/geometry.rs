@@ -140,7 +140,7 @@ impl<P: Platform> GeometryPass<P> {
             },
             rasterizer: RasterizerInfo {
                 fill_mode: FillMode::Fill,
-                cull_mode: CullMode::Back,
+                cull_mode: CullMode::None,
                 front_face: FrontFace::Clockwise,
                 sample_count: SampleCount::Samples1,
             },
@@ -198,7 +198,7 @@ impl<P: Platform> GeometryPass<P> {
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         scene: &RendererScene<P::GPUBackend>,
         view: &View,
-        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
+        camera_buffer: &TransientBufferSlice<P::GPUBackend>,
         resources: &RendererResources<P::GPUBackend>,
         backbuffer: &Arc<TextureView<P::GPUBackend>>,
         backbuffer_handle: &<P::GPUBackend as GPUBackend>::Texture,
@@ -274,10 +274,11 @@ impl<P: Platform> GeometryPass<P> {
         }]);
 
         //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
-        cmd_buffer.bind_uniform_buffer(BindingFrequency::Frame, 0, BufferRef::Regular(camera_buffer), 0, WHOLE_BUFFER);
+        cmd_buffer.bind_uniform_buffer(BindingFrequency::Frame, 0, BufferRef::Transient(camera_buffer), 0, WHOLE_BUFFER);
 
         let drawables = scene.static_drawables();
         let parts = &view.drawable_parts;
+        println!("Parts: {}, drawables: {}", parts.len(), drawables.len());
         for part in parts {
             let drawable = &drawables[part.drawable_index];
             cmd_buffer.set_push_constant_data(&[drawable.transform], ShaderType::VertexShader);

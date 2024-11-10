@@ -7,6 +7,7 @@ use std::sync::{
     Condvar,
     Mutex
 };
+use std::time::Instant;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
@@ -33,8 +34,11 @@ use super::ecs::{
 };
 use super::light::DirectionalLight;
 use super::passes::modern::ModernRenderer;
-use super::render_path::RenderPath;
+use super::passes::web::WebRenderer;
+use super::render_path::{FrameInfo, RenderPath, SceneInfo, ZeroTextures};
 use super::renderer_assets::RendererAssets;
+use super::renderer_culling::update_visibility;
+use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
 use super::{PointLight, StaticRenderableComponent};
@@ -71,9 +75,14 @@ pub struct Renderer<P: Platform> {
     asset_manager: Arc<AssetManager<P>>,
     assets: RendererAssets<P>,
     shader_manager: ShaderManager<P>,
+    resources: RendererResources<P::GPUBackend>,
     scene: RendererScene<P::GPUBackend>,
     context: GraphicsContext<P::GPUBackend>,
-    render_path: Box<dyn RenderPath<P>>
+    swapchain: Arc<Swapchain<P::GPUBackend>>,
+    render_path: Box<dyn RenderPath<P>>,
+
+    last_frame: Instant,
+    frame: u64
 }
 
 impl<P: Platform> Renderer<P> {
@@ -87,7 +96,8 @@ impl<P: Platform> Renderer<P> {
 
         let mut context = device.create_context();
         let mut shader_manager = ShaderManager::new(device, asset_manager);
-        let render_path = Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
+        //let render_path = Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
+        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
 
         let renderer = Self {
             device: device.clone(),
@@ -98,11 +108,15 @@ impl<P: Platform> Renderer<P> {
             }),
             receiver,
             asset_manager: asset_manager.clone(),
+            resources: RendererResources::new(device),
             assets: RendererAssets::new(device),
             shader_manager,
             scene: RendererScene::new(),
+            swapchain: Arc::new(swapchain),
             context,
-            render_path
+            render_path,
+            last_frame: Instant::now(),
+            frame: 0u64
         };
         let renderer_sender = RendererSender {
             sender,
@@ -121,20 +135,75 @@ impl<P: Platform> Renderer<P> {
     }
 
     pub fn render(&mut self) {
-        P::thread_memory_management_pool(|| {
-            let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
-            while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
-                message_receiving_result = self.receive_messages();
-            }
+        let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
+        while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
+            message_receiving_result = self.receive_messages();
+        }
 
-            if message_receiving_result == ReceiveMessagesResult::Quit {
-                self.notify_stopped_running();
-                return;
-            }
+        if message_receiving_result == ReceiveMessagesResult::Quit {
+            self.notify_stopped_running();
+            return;
+        }
 
-            self.context.begin_frame();
-            self.context.end_frame();
-        });
+        let delta = Instant::now().duration_since(self.last_frame);
+        self.last_frame = Instant::now();
+
+        let frame_info = FrameInfo {
+            frame: self.frame,
+            delta: delta,
+        };
+
+        let zero_textures = ZeroTextures {
+            zero_texture_view: &self.assets.placeholder_texture().view,
+            zero_texture_view_black: &self.assets.placeholder_black().view,
+        };
+
+        update_visibility(&mut self.scene, &self.assets);
+
+        let scene_info = SceneInfo {
+            scene: &self.scene,
+            active_view_index: 0,
+            vertex_buffer: BufferRef::Regular(self.assets.vertex_buffer()),
+            index_buffer: BufferRef::Regular(self.assets.index_buffer()),
+            lightmap: None,
+        };
+
+        self.context.begin_frame();
+        let result_cmd_buffer = self.render_path.render(
+            &mut self.context,
+            &self.swapchain,
+            &scene_info,
+            &zero_textures,
+            &frame_info,
+            &self.shader_manager,
+            &self.assets
+        );
+        let frame_end_signal = self.context.end_frame();
+
+        match result_cmd_buffer {
+            Ok(cmd_buffer) => {
+                self.device.submit(QueueType::Graphics, QueueSubmission {
+                    command_buffer: cmd_buffer,
+                    wait_fences: &[],
+                    signal_fences: &[frame_end_signal],
+                    acquire_swapchain: Some(&self.swapchain),
+                    release_swapchain: Some(&self.swapchain)
+                });
+                self.device.present(QueueType::Graphics, &self.swapchain);
+
+                let c_device = self.device.clone();
+                bevy_tasks::ComputeTaskPool::get().spawn(async move {
+                    c_device.flush(QueueType::Graphics)
+                });
+            },
+            Err(_swapchain_err) => {
+                todo!("Handle swapchain recreation");
+            }
+        }
+
+
+        self.resources.swap_history_resources();
+        self.frame += 1;
 
         // Dec queued frame counter
         let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
@@ -144,6 +213,7 @@ impl<P: Platform> Renderer<P> {
 
     fn receive_messages(&mut self) -> ReceiveMessagesResult {
         while self.shader_manager.has_remaining_mandatory_compilations() {
+            // We're waiting for shader compilation on different threads, process some assets in the meantime.
             self.assets
                 .receive_assets(&self.asset_manager, &mut self.shader_manager);
         }
@@ -152,6 +222,7 @@ impl<P: Platform> Renderer<P> {
             || self.asset_manager.has_open_renderer_assets()
             || self.scene.static_drawables().is_empty()
         {
+            // No assets loaded or assets to process in the queue, check if there are renderer messages but don't block.
             let message_res = self.receiver.try_recv();
             if let Err(err) = &message_res {
                 if err.is_disconnected() {
@@ -166,6 +237,7 @@ impl<P: Platform> Renderer<P> {
             }
             message_res.ok()
         } else {
+            // No assets to process, wait for new messages.
             let message_res = self.receiver.recv_timeout(Duration::from_millis(16));
             if let Err(err) = &message_res {
                 if err.is_disconnected() {
@@ -181,6 +253,7 @@ impl<P: Platform> Renderer<P> {
             .receive_assets(&self.asset_manager, &mut self.shader_manager);
 
         if message_opt.is_none() {
+            // Don't even enter the loop below in case there have been messages pushed since then.
             return ReceiveMessagesResult::WaitForMessages;
         }
 
@@ -212,7 +285,7 @@ impl<P: Platform> Renderer<P> {
                         main_view.aspect_ratio,
                         main_view.near_plane,
                         main_view.far_plane,
-                    )
+                    );
                 }
 
                 RendererCommand::<P::GPUBackend>::UpdateTransform {
@@ -230,6 +303,7 @@ impl<P: Platform> Renderer<P> {
                     cast_shadows,
                     can_move,
                 } => {
+                    println!("Handling register msg");
                     let model = self.assets.get_or_create_model_handle(&model_path);
                     self.scene.add_static_drawable(
                         entity,

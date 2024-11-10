@@ -33,17 +33,13 @@ pub struct VPKContainer {
 }
 
 pub fn new_vpk_container<P: Platform>(
-    asset_manager: &Arc<AssetManager<P>>,
+    asset_manager: &AssetManager<P>,
     asset_file: AssetFile,
 ) -> Result<Box<dyn AssetContainer>, PackageError> {
     let path = asset_file.path.clone();
-    let asset_manager = Arc::downgrade(asset_manager);
 
     Package::read(&path, asset_file, move |path| {
-        let mgr = asset_manager
-            .upgrade()
-            .ok_or_else(|| IOError::new(ErrorKind::Other, "Manager dropped"))?;
-        mgr.load_file(path)
+        asset_manager.load_file(path)
             .ok_or_else(|| IOError::new(ErrorKind::NotFound, "File not found"))
     })
     .map(|package| Box::new(VPKContainer { package }) as Box<dyn AssetContainer>)
@@ -88,7 +84,7 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
     fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {

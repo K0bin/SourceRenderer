@@ -144,7 +144,7 @@ impl<P: Platform> Fsr2Pass<P> {
         motion_name: &str,
         frame: &FrameInfo,
     ) {
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
         cmd_buffer.begin_label("FSR2");
 

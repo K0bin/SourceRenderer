@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec4, Matrix4};
 
 use crate::graphics::GraphicsContext;
 use crate::input::Input;
@@ -19,6 +19,22 @@ use crate::graphics::*;
 mod geometry;
 
 use self::geometry::GeometryPass;
+
+#[derive(Clone)]
+#[repr(C)]
+struct CameraBuffer {
+    view_proj: Matrix4,
+    inv_proj: Matrix4,
+    view: Matrix4,
+    proj: Matrix4,
+    inv_view: Matrix4,
+    position: Vec4,
+    inv_proj_view: Matrix4,
+    z_near: f32,
+    z_far: f32,
+    aspect_ratio: f32,
+    fov: f32,
+}
 
 pub struct WebRenderer<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
@@ -88,22 +104,38 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>
-    ) -> Result<(), sourcerenderer_core::gpu::SwapchainError> {
+    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
         let back_buffer_res = swapchain.next_backbuffer();
         if back_buffer_res.is_err() {
             return Err(SwapchainError::Other);
         }
 
+        println!("Frame {}", frame_info.frame);
+
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
-        let view_ref = &scene.views[scene.active_view_index];
+        let main_view = &scene.scene.views()[scene.active_view_index];
 
-        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        /*let camera_buffer = cmd_buffer.upload_dynamic_data(&[CameraBuffer {
+            view_proj: main_view.view_matrix * main_view.proj_matrix,
+            inv_proj: main_view.proj_matrix.inverse(),
+            view: main_view.view_matrix,
+            proj: main_view.proj_matrix,
+            inv_view: main_view.view_matrix.inverse(),
+            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
+            inv_proj_view: (main_view.view_matrix * main_view.proj_matrix).inverse(),
+            z_near: main_view.near_plane,
+            z_far: main_view.far_plane,
+            aspect_ratio: main_view.aspect_ratio,
+            fov: main_view.camera_fov
+        }], BufferUsage::CONSTANT).unwrap();*/
+
+        let camera_buffer = cmd_buffer.upload_dynamic_data(&[Matrix4::IDENTITY], BufferUsage::CONSTANT).unwrap();
 
         self.geometry.execute(
             &mut cmd_buffer,
             scene.scene,
-            &view_ref,
+            main_view,
             &camera_buffer,
             &self.resources,
             swapchain.backbuffer(),
@@ -114,24 +146,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
             assets,
         );
 
-        let frame_end_signal = context.end_frame();
-
-        self.device.submit(
-            QueueType::Graphics,
-            QueueSubmission {
-                command_buffer: cmd_buffer.finish(),
-                wait_fences: &[],
-                signal_fences: &[frame_end_signal],
-                acquire_swapchain: Some(&swapchain),
-                release_swapchain: Some(&swapchain)
-            }
-        );
-        self.device.present(QueueType::Graphics, &swapchain);
-
-        let c_device = self.device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
-
-        Ok(())
+        return Ok(cmd_buffer.finish());
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

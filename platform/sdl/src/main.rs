@@ -26,12 +26,13 @@ pub(crate) use sdl_vulkan as sdl_gpu;
 mod sdl_vulkan;
 #[cfg(target_os = "linux")]
 pub(crate) use sdl_vulkan as sdl_gpu;
+use sourcerenderer_game::GamePlugin;
 
 pub fn main() {
     //std::thread::sleep(std::time::Duration::from_secs(20));
 
     let mut platform = SDLPlatform::new();
-    let mut engine = Box::new(Engine::run(platform.as_ref()));
+    let mut engine = Box::new(Engine::run(platform.as_ref(), GamePlugin::<SDLPlatform>::default()));
 
     'event_loop: loop {
         if !engine.is_running() {

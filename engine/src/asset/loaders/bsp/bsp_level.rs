@@ -407,7 +407,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     fn load(
         &self,
         asset_file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {

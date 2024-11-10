@@ -1,8 +1,8 @@
-use bevy_app::{App, FixedPostUpdate, Plugin, PostUpdate, Update};
-use bevy_ecs::{component::Component, entity::Entity, system::{Commands, Query, Res}};
+use bevy_app::{App, FixedPostUpdate, Plugin, PostUpdate, PreUpdate, Update};
+use bevy_ecs::{component::Component, entity::Entity, query::{Added, Without}, system::{Commands, Query, Res}};
 use bevy_math::{Affine3A, VectorSpace};
 use bevy_time::{Fixed, Time};
-use bevy_transform::components::GlobalTransform;
+use bevy_transform::components::{GlobalTransform, Transform};
 
 #[derive(Component)]
 pub struct PreviousGlobalTransform(pub Affine3A);
@@ -15,13 +15,14 @@ pub struct InterpolationPlugin;
 
 impl Plugin for InterpolationPlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(PreUpdate, add_global_transform);
         app.add_systems(FixedPostUpdate, update_previous_global_transform);
         app.add_systems(PostUpdate, interpolate_transform_matrix);
     }
 }
 
 fn update_previous_global_transform(
-    query: Query<(Entity, &GlobalTransform)>,
+    query: Query<(Entity, &GlobalTransform), Without<PreviousGlobalTransform>>,
     mut commands: Commands,
 ) {
     for (entity, transform) in query.iter() {
@@ -45,5 +46,14 @@ fn interpolate_transform_matrix(
                     old_scale.lerp(new_scale, s), old_rotation.lerp(new_rotation,s), old_translation.lerp(new_translation, s))
             )
         );
+    }
+}
+
+fn add_global_transform(
+    query: Query<(Entity, &Transform), (Added<Transform>)>,
+    mut commands: Commands
+) {
+    for (entity, transform) in query.iter() {
+        commands.entity(entity).insert(GlobalTransform::from(*transform));
     }
 }

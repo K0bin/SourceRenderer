@@ -55,7 +55,7 @@ const TICK_RATE: u32 = 5;
 pub struct Engine(App);
 
 impl Engine {
-    pub fn run<P: Platform /*, M*/>(platform: &P /*, game_plugins: impl Plugins<M>*/) -> Self {
+    pub fn run<P: Platform, M>(platform: &P, game_plugins: impl Plugins<M>) -> Self {
         let api_instance = platform
             .create_graphics(true)
             .expect("Failed to initialize graphics");
@@ -101,8 +101,12 @@ impl Engine {
             .insert_resource(gpu_swapchain_resource)
             .insert_resource(asset_manager_resource)
             .add_plugins(RendererPlugin::<P>::new())
-            //.add_plugins(game_plugins)
-            .run();
+            .add_plugins(game_plugins);
+
+        if app.plugins_state() == PluginsState::Ready {
+            app.finish();
+            app.cleanup();
+        }
 
         Self(app)
     }
@@ -129,7 +133,7 @@ impl Engine {
     }
 
     pub fn is_running(&self) -> bool {
-        self.0.should_exit().is_some()
+        !self.0.should_exit().is_some()
     }
 
     pub fn stop<P: Platform>(&self) {
@@ -140,5 +144,21 @@ impl Engine {
             .stop();
 
         RendererPlugin::<P>::stop(&self.0);
+    }
+
+    pub fn debug_world(&self) {
+        let entities = self.0.world().iter_entities();
+        println!("WORLD");
+        for entity in entities {
+            let components = entity.archetype().components();
+            for component in components {
+                let component_name = self.0.world().components().get_name(component);
+                println!("ENTITY: {:?}, COMPONENT: {:?}", entity.id(), component_name);
+            }
+        }
+    }
+
+    pub fn get_asset_manager<P: Platform>(app: &App) -> &AssetManager<P> {
+        &app.world().resource::<AssetManagerResource<P>>().0
     }
 }

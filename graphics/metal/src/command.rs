@@ -601,7 +601,16 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn clear_storage_buffer(&mut self, buffer: &MTLBuffer, offset: u64, length_in_u32s: u64, value: u32) {
-        todo!()
+        assert_eq!(value & 0xFF, value & 0x00FF);
+        assert_eq!(value & 0xFF, value & 0x0000FF);
+        assert_eq!(value & 0xFF, value & 0x000000FF); // Write compute shader fallback
+
+        let blit_encoder = self.get_blit_encoder();
+        blit_encoder.fill_buffer(
+            buffer.handle(),
+            metal::NSRange::new(offset, length_in_u32s / 4u64),
+            value as u8
+        );
     }
 
     unsafe fn begin_render_pass(&mut self, renderpass_info: &gpu::RenderPassBeginInfo<MTLBackend>, recording_mode: gpu::RenderpassRecordingMode) {

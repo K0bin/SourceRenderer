@@ -31,10 +31,10 @@ pub use self::engine::WindowState;
 /*#[cfg(feature = "threading")]*/
 mod engine;
 
-mod asset;
-mod camera;
+pub mod asset;
+pub mod camera;
 pub mod fps_camera;
-mod math;
+pub mod math;
 mod spinning_cube;
 pub mod transform;
 

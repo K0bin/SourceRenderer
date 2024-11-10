@@ -1,0 +1,19 @@
+[package]
+name = "sourcerenderer_game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sourcerenderer_core = { path = "../core" }
+sourcerenderer_engine = { path = "../engine" }
+bevy_app = "0.14.2"
+bevy_math = "0.14.2"
+bevy_ecs = "0.14.2"
+bevy_transform = "0.14.2"
+bevy_hierarchy = "0.14.2"
+bevy_log = "0.14.2"
+bevy_tasks = "0.14.2"
+bevy_utils = "0.14.2"
+bevy_core = "0.14.2"
+bevy_time = "0.14.2"
+bevy_input = "0.14.2"

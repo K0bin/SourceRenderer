@@ -11,9 +11,13 @@ use build_util::{
 fn main() {
     build_util::build_script_logger::init();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Copy shaders over
-    let mut shader_dest_dir = manifest_dir.clone();
+    let mut shader_dest_dir = out_dir.clone();
+    for i in 0..5 {
+        shader_dest_dir.pop();
+    }
     shader_dest_dir.push("shaders");
 
     if !shader_dest_dir.exists() {

@@ -322,7 +322,7 @@ impl<P: Platform> GeometryPass<P> {
 
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
         let chunks = view.drawable_parts.par_chunks(chunk_size);
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);

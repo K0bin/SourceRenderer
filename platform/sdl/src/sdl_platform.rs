@@ -94,7 +94,7 @@ impl SDLPlatform {
     }
 
     pub(crate) fn poll_events(&mut self, engine: &mut Engine) -> bool {
-        let mut event_opt = Some(self.event_pump.wait_event());
+        let mut event_opt = self.event_pump.poll_event();
         while let Some(event) = event_opt {
             match event {
                 SDLEvent::Quit { .. } => {

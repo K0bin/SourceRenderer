@@ -64,7 +64,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     fn load(
         &self,
         mut file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {

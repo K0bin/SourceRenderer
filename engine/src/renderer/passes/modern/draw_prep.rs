@@ -58,7 +58,7 @@ impl DrawPrepPass {
         pass_params: &RenderPassParameters<'_, P>
     ) {
         {
-            let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+            let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
             cmd_buffer.begin_label("Culling");
             let buffer = pass_params.resources.access_buffer(

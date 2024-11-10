@@ -9,6 +9,7 @@ mod render_path;
 mod renderer_resources;
 mod renderer_scene;
 mod renderer_plugin;
+mod renderer_culling;
 
 mod asset_buffer;
 pub(crate) mod passes;

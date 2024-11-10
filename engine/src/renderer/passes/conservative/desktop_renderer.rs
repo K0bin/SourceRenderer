@@ -160,7 +160,7 @@ impl<P: Platform> ConservativeRenderer<P> {
         frame: u64,
     ) -> FrameBindings<'a, P::GPUBackend>
         where 'a: 'b {
-        let view = &scene.views[scene.active_view_index];
+        let view = &scene.scene.views()[scene.active_view_index];
 
         let cluster_count = self.clustering_pass.cluster_count();
         let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
@@ -270,10 +270,10 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
-    ) -> Result<(), SwapchainError> {
+    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
-        let main_view = &scene.views[scene.active_view_index];
+        let main_view = &scene.scene.views()[scene.active_view_index];
 
         let camera_buffer = cmd_buf.upload_dynamic_data(&[CameraBuffer {
             view_proj: main_view.view_matrix * main_view.proj_matrix,
@@ -290,7 +290,6 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         }], BufferUsage::CONSTANT).unwrap();
 
         let camera_history_buffer = &camera_buffer;
-        let primary_view = &scene.views[scene.active_view_index];
 
         let empty_buffer = cmd_buf.create_temporary_buffer(
             &BufferInfo {
@@ -466,26 +465,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             queue_ownership: None
         }]);
 
-        self.barriers.swap_history_resources();
-
-        let frame_end_signal = context.end_frame();
-
-        self.device.submit(
-            QueueType::Graphics,
-            QueueSubmission {
-                command_buffer: cmd_buf.finish(),
-                wait_fences: &[],
-                signal_fences: &[frame_end_signal],
-                acquire_swapchain: Some(&swapchain),
-                release_swapchain: Some(&swapchain)
-            }
-        );
-        self.device.present(QueueType::Graphics, &swapchain);
-
-        let c_device = self.device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics) );
-
-        Ok(())
+        Ok(cmd_buf.finish())
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

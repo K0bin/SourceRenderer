@@ -19,7 +19,6 @@ use crate::graphics::*;
 
 pub struct SceneInfo<'a, B: GPUBackend> {
     pub scene: &'a RendererScene<B>,
-    pub views: &'a [View],
     pub active_view_index: usize,
     pub vertex_buffer: BufferRef<'a, B>,
     pub index_buffer: BufferRef<'a, B>,
@@ -60,5 +59,5 @@ pub(super) trait RenderPath<P: Platform> : Send {
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
-    ) -> Result<(), SwapchainError>;
+    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError>;
 }

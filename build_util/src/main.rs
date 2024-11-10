@@ -9,6 +9,8 @@ use build_util::{
 };
 
 fn main() {
+    // Only used to test it. See the respective build.rs for the actual usage.
+
     println!("Hello, world!");
 
     simple_logger::SimpleLogger::new().init().unwrap();

@@ -179,7 +179,7 @@ impl Prepass {
         camera_buffer: &TransientBufferSlice<P::GPUBackend>,
         camera_history_buffer: &TransientBufferSlice<P::GPUBackend>
     ) {
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
         cmd_buffer.begin_label("Depth prepass");
         let static_drawables = pass_params.scene.scene.static_drawables();

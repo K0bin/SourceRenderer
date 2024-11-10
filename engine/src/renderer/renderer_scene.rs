@@ -53,6 +53,14 @@ impl<B: GPUBackend> RendererScene<B> {
         &mut self.views[0]
     }
 
+    pub fn views(&self) -> &[View] {
+        &self.views
+    }
+
+    pub fn views_mut(&mut self) -> &mut [View] {
+        &mut self.views
+    }
+
     pub fn static_drawables(&self) -> &[RendererStaticDrawable] {
         &self.static_meshes[..]
     }
@@ -63,6 +71,10 @@ impl<B: GPUBackend> RendererScene<B> {
 
     pub fn directional_lights(&self) -> &[RendererDirectionalLight<B>] {
         &self.directional_lights
+    }
+
+    pub fn view_update_info(&mut self) -> (&mut [View], &[RendererStaticDrawable], &[RendererPointLight<B>], &[RendererDirectionalLight<B>]) {
+        (&mut self.views, &self.static_meshes, &self.point_lights, &self.directional_lights)
     }
 
     pub fn add_static_drawable(&mut self, entity: Entity, static_drawable: RendererStaticDrawable) {
