@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 
-use nalgebra::{Vector3, Quaternion, Matrix3x4};
+use bevy_math::{Mat4, Quat, Vec3};
 
 use crate::PrimitiveRead;
 
@@ -9,15 +9,15 @@ pub struct Bone {
   pub parent: i32,
   pub bone_controller: [i32; 6],
 
-  pub position: Vector3<f32>,
-  pub quaternion: Quaternion<f32>,
-  pub rotation: Vector3<f32>,
+  pub position: Vec3,
+  pub quaternion: Quat,
+  pub rotation: Vec3,
 
-  pub pos_scale: Vector3<f32>,
-  pub rot_scale: Vector3<f32>,
+  pub pos_scale: Vec3,
+  pub rot_scale: Vec3,
 
-  pub pose_to_bone: Matrix3x4<f32>,
-  pub alignment: Quaternion<f32>,
+  pub pose_to_bone: Mat4,
+  pub alignment: Quat,
 
   pub flags: i32,
   pub proc_type: i32,
@@ -35,21 +35,21 @@ impl Bone {
       bone_controller[i] = read.read_i32()?;
     }
 
-    let position = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let axis = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let position = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let axis = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let scale = read.read_f32()?;
-    let quaternion = Quaternion::from_parts(scale, axis);
-    let rotation = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let quaternion = Quat::from_scaled_axis(axis * scale);
+    let rotation = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
 
-    let pos_scale = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let rot_scale = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let pos_scale = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let rot_scale = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
 
-    let pose_to_bone = Matrix3x4::new(read.read_f32()?, read.read_f32()?, read.read_f32()?, read.read_f32()?,
+    let pose_to_bone = Mat4::from_cols_slice(&[read.read_f32()?, read.read_f32()?, read.read_f32()?, read.read_f32()?,
                                       read.read_f32()?, read.read_f32()?, read.read_f32()?, read.read_f32()?,
-                                      read.read_f32()?, read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let axis = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+                                      read.read_f32()?, read.read_f32()?, read.read_f32()?, read.read_f32()?]);
+    let axis = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let scale = read.read_f32()?;
-    let alignment = Quaternion::from_parts(scale, axis);
+    let alignment = Quat::from_scaled_axis(axis * scale);
 
     let flags = read.read_i32()?;
     let proc_type = read.read_i32()?;

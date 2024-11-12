@@ -124,9 +124,9 @@ fn compile_shader_glsl(
 
     for (key, value) in arguments {
         if !value.is_empty() {
-            command.arg("-D".to_string() + key + "=" + value);
+            command.arg("-D".to_string() + key.as_str() + "=" + value.as_str());
         } else {
-            command.arg("-D".to_string() + key);
+            command.arg("-D".to_string() + key.as_str());
         }
     }
 

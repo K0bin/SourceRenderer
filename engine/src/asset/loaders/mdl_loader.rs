@@ -7,12 +7,8 @@ use std::io::{
 use std::slice;
 use std::sync::Arc;
 
-use nalgebra::{
-    Vector2,
-    Vector3,
-};
 use sourcerenderer_core::platform::Platform;
-use sourcerenderer_core::Vec3;
+use sourcerenderer_core::{Vec2, Vec3};
 use sourcerenderer_mdl::{
     BodyPart,
     Header,
@@ -68,7 +64,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     fn load(
         &self,
         mut file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {
@@ -158,8 +154,10 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
         let mut texture_paths = Vec::<String>::with_capacity(textures.len());
         for texture in &textures {
             if !texture_dirs.is_empty() {
-                let path =
-                    "materials/".to_string() + texture_dirs.first().unwrap() + texture + ".vmt";
+                let mut path = "materials/".to_string();
+                path += texture_dirs.first().unwrap();
+                path += texture;
+                path += ".vmt";
                 texture_paths.push(path)
             } else {
                 texture_paths.push(texture.clone());
@@ -167,7 +165,10 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
 
             if texture_dirs.len() > 1 {
                 'dirs: for texture_dir in &texture_dirs {
-                    let path = "materials/".to_string() + texture_dir + texture + ".vmt";
+                    let mut path = "materials/".to_string();
+                    path += texture_dir;
+                    path += texture;
+                    path += ".vmt";
                     let path_exists = manager.file_exists(&path);
                     if path_exists {
                         *(texture_paths.last_mut().unwrap()) = path;
@@ -290,7 +291,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
                                     position: fixup_position(&vertex.vec_position),
                                     normal: fixup_normal(&vertex.vec_normal),
                                     uv: vertex.vec_tex_coord,
-                                    lightmap_uv: Vector2::<f32>::new(0f32, 0f32),
+                                    lightmap_uv: Vec2::new(0f32, 0f32),
                                     alpha: 0.0,
                                     ..Default::default()
                                 };
@@ -423,10 +424,10 @@ fn load_geometry<R: Read + Seek>(file: &mut R) -> IOResult<Box<[Vertex]>> {
     Ok(vertices.into_boxed_slice())
 }
 
-fn fixup_position(position: &Vector3<f32>) -> Vector3<f32> {
-    Vector3::<f32>::new(position.x, position.z, position.y) * SCALING_FACTOR
+fn fixup_position(position: &Vec3) -> Vec3 {
+    Vec3::new(position.x, position.z, position.y) * SCALING_FACTOR
 }
 
-fn fixup_normal(normal: &Vector3<f32>) -> Vector3<f32> {
-    Vector3::<f32>::new(normal.x, normal.z, normal.y)
+fn fixup_normal(normal: &Vec3) -> Vec3 {
+    Vec3::new(normal.x, normal.z, normal.y)
 }

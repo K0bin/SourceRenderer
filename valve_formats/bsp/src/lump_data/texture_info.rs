@@ -1,4 +1,5 @@
-use nalgebra::Vector4;
+use bevy_math::Vec4;
+
 use crate::{LumpData, LumpType, PrimitiveRead};
 use std::io::{Read, Result as IOResult};
 
@@ -25,10 +26,10 @@ bitflags! {
 }
 
 pub struct TextureInfo {
-  pub texture_vecs_s: Vector4<f32>,
-  pub texture_vecs_t: Vector4<f32>,
-  pub lightmap_vecs_s: Vector4<f32>,
-  pub lightmap_vecs_t: Vector4<f32>,
+  pub texture_vecs_s: Vec4,
+  pub texture_vecs_t: Vec4,
+  pub lightmap_vecs_s: Vec4,
+  pub lightmap_vecs_t: Vec4,
   pub flags: SurfaceFlags,
   pub texture_data: i32
 }
@@ -46,10 +47,10 @@ impl LumpData for TextureInfo {
   }
 
   fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let texture_vecs_s = Vector4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    let texture_vecs_t = Vector4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    let lightmap_vecs_s = Vector4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    let lightmap_vecs_t = Vector4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
+    let texture_vecs_s = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
+    let texture_vecs_t = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
+    let lightmap_vecs_s = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
+    let lightmap_vecs_t = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
     let flags_bits = reader.read_i32()?;
     let flags = SurfaceFlags::from_bits(flags_bits).unwrap();
     let texture_data = reader.read_i32()?;

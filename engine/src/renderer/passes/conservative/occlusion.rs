@@ -9,8 +9,6 @@ use std::sync::{
 };
 
 use bitset_core::BitSet;
-use rayon::iter::ParallelIterator;
-use rayon::slice::ParallelSlice;
 use smallvec::SmallVec;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::{

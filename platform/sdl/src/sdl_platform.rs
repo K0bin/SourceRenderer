@@ -25,7 +25,6 @@ use sdl2::{
     Sdl,
     VideoSubsystem,
 };
-use sourcerenderer_core::input::Key;
 use sourcerenderer_core::platform::{
     Event,
     FileWatcher,
@@ -33,27 +32,33 @@ use sourcerenderer_core::platform::{
     Platform,
     ThreadHandle,
     Window,
-    IO,
+    IO
 };
 use sourcerenderer_core::{
     Vec2I,
     Vec2UI,
+    Vec2
 };
 use crate::sdl_gpu;
-use sourcerenderer_engine::Engine;
+use sourcerenderer_engine::{Engine, WindowState};
+use bevy_input::keyboard::{KeyboardInput, KeyCode, Key};
+use bevy_input::ButtonState;
+use bevy_input::mouse::MouseMotion;
+use bevy_ecs::entity::Entity;
 
 lazy_static! {
-    pub static ref SCANCODE_TO_KEY: HashMap<Scancode, Key> = {
-        let mut key_to_scancode: HashMap<Scancode, Key> = HashMap::new();
-        key_to_scancode.insert(Scancode::W, Key::W);
-        key_to_scancode.insert(Scancode::A, Key::A);
-        key_to_scancode.insert(Scancode::S, Key::S);
-        key_to_scancode.insert(Scancode::D, Key::D);
-        key_to_scancode.insert(Scancode::Q, Key::Q);
-        key_to_scancode.insert(Scancode::E, Key::E);
-        key_to_scancode.insert(Scancode::Space, Key::Space);
-        key_to_scancode.insert(Scancode::LShift, Key::LShift);
-        key_to_scancode.insert(Scancode::LCtrl, Key::LCtrl);
+    pub static ref SCANCODE_TO_KEY: HashMap<Scancode, KeyCode> = {
+        let mut key_to_scancode: HashMap<Scancode, KeyCode> = HashMap::new();
+        key_to_scancode.insert(Scancode::W, KeyCode::KeyW);
+        key_to_scancode.insert(Scancode::A, KeyCode::KeyA);
+        key_to_scancode.insert(Scancode::S, KeyCode::KeyS);
+        key_to_scancode.insert(Scancode::D, KeyCode::KeyD);
+        key_to_scancode.insert(Scancode::Q, KeyCode::KeyQ);
+        key_to_scancode.insert(Scancode::E, KeyCode::KeyE);
+        key_to_scancode.insert(Scancode::Space, KeyCode::Space);
+        key_to_scancode.insert(Scancode::LShift, KeyCode::ShiftLeft);
+        key_to_scancode.insert(Scancode::LCtrl, KeyCode::ControlLeft);
+        key_to_scancode.insert(Scancode::Escape, KeyCode::Escape);
         key_to_scancode
     };
 }
@@ -88,16 +93,12 @@ impl SDLPlatform {
         })
     }
 
-    pub(crate) fn poll_events(&mut self, engine: &Engine<Self>) -> bool {
-        let mut event_opt = Some(self.event_pump.wait_event());
+    pub(crate) fn poll_events(&mut self, engine: &mut Engine) -> bool {
+        let mut event_opt = self.event_pump.poll_event();
         while let Some(event) = event_opt {
             match event {
-                SDLEvent::Quit { .. }
-                | SDLEvent::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => {
-                    engine.dispatch_event(Event::Quit);
+                SDLEvent::Quit { .. } => {
+                    engine.stop::<SDLPlatform>();
                     return false;
                 }
                 SDLEvent::KeyUp {
@@ -106,7 +107,12 @@ impl SDLPlatform {
                 } => {
                     let key = SCANCODE_TO_KEY.get(&keycode).copied();
                     if let Some(key) = key {
-                        engine.dispatch_event(Event::KeyUp(key));
+                        engine.dispatch_keyboard_input(KeyboardInput {
+                            key_code: key,
+                            logical_key: Key::Dead(None),
+                            state: ButtonState::Released,
+                            window: Entity::from_raw(0u32)
+                        });
                     }
                 }
                 SDLEvent::KeyDown {
@@ -115,18 +121,20 @@ impl SDLPlatform {
                 } => {
                     let key = SCANCODE_TO_KEY.get(&keycode).copied();
                     if let Some(key) = key {
-                        engine.dispatch_event(Event::KeyDown(key));
+                        engine.dispatch_keyboard_input(KeyboardInput {
+                            key_code: key,
+                            logical_key: Key::Dead(None),
+                            state: ButtonState::Pressed,
+                            window: Entity::from_raw(0u32)
+                        });
                     }
                 }
                 SDLEvent::MouseMotion {
                     x, y, xrel, yrel, ..
                 } => {
-                    if engine.is_mouse_locked() {
-                        self.mouse_pos += Vec2I::new(xrel, yrel);
-                        engine.dispatch_event(Event::MouseMoved(self.mouse_pos));
-                    } else {
-                        engine.dispatch_event(Event::MouseMoved(Vec2I::new(x, y)));
-                    }
+                    engine.dispatch_mouse_motion(MouseMotion {
+                        delta: Vec2::new(xrel as f32, yrel as f32)
+                    });
                 }
                 SDLEvent::Window {
                     window_id: _,
@@ -134,19 +142,19 @@ impl SDLPlatform {
                     win_event,
                 } => match win_event {
                     WindowEvent::Resized(width, height) => {
-                        engine.dispatch_event(Event::WindowSizeChanged(Vec2UI::new(
+                        engine.window_changed::<SDLPlatform>(WindowState::Window(Vec2UI::new(
                             width as u32,
                             height as u32,
                         )));
                     }
                     WindowEvent::SizeChanged(width, height) => {
-                        engine.dispatch_event(Event::WindowSizeChanged(Vec2UI::new(
+                        engine.window_changed::<SDLPlatform>(WindowState::Window(Vec2UI::new(
                             width as u32,
                             height as u32,
                         )));
                     }
                     WindowEvent::Close => {
-                        engine.dispatch_event(Event::Quit);
+                        engine.stop::<SDLPlatform>();
                     }
                     _ => {}
                 },

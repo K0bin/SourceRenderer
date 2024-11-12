@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use bevy_ecs::component::Component;
 use legion::systems::{
     Builder,
     CommandBuffer,
@@ -27,6 +28,7 @@ pub struct Transform {
 
 struct TransformDirty(bool);
 
+#[derive(Component)]
 pub struct GlobalTransform(pub Matrix4);
 
 pub struct Parent(pub Entity);

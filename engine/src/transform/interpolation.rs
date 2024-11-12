@@ -1,101 +1,59 @@
-use legion::systems::{
-    Builder,
-    CommandBuffer,
-};
-use legion::{
-    component,
-    maybe_changed,
-    Entity,
-};
-use nalgebra::Matrix3;
-use sourcerenderer_core::{
-    Matrix4,
-    Quaternion,
-    Vec3,
-};
+use bevy_app::{App, FixedPostUpdate, Plugin, PostUpdate, PreUpdate, Update};
+use bevy_ecs::{component::Component, entity::Entity, query::{Added, Without}, system::{Commands, Query, Res}};
+use bevy_math::{Affine3A, VectorSpace};
+use bevy_time::{Fixed, Time};
+use bevy_transform::components::{GlobalTransform, Transform};
 
-use super::GlobalTransform;
-use crate::game::{
-    TickDelta,
-    TickDuration,
-};
+#[derive(Component)]
+pub struct PreviousGlobalTransform(pub Affine3A);
 
-pub struct PreviousGlobalTransform(pub Matrix4);
-pub struct InterpolatedTransform(pub Matrix4);
+#[derive(Component)]
+pub struct InterpolatedTransform(pub Affine3A);
 
-pub fn install(fixed_rate_systems: &mut Builder, systems: &mut Builder) {
-    fixed_rate_systems.add_system(update_previous_global_transform_system());
+#[derive(Default)]
+pub struct InterpolationPlugin;
 
-    systems.add_system(interpolate_transform_system());
-    systems.add_system(interpolate_new_transform_system());
-    systems.flush();
-}
-
-#[system(for_each)]
-#[filter(maybe_changed::<GlobalTransform>())]
-fn update_previous_global_transform(
-    transform: &GlobalTransform,
-    entity: &Entity,
-    command_buffer: &mut CommandBuffer,
-) {
-    command_buffer.add_component(*entity, PreviousGlobalTransform(transform.0));
-}
-
-#[system(for_each)]
-fn interpolate_transform(
-    transform: &GlobalTransform,
-    previous_transform: &PreviousGlobalTransform,
-    interpolated_transform: &mut InterpolatedTransform,
-    #[resource] tick_duration: &TickDuration,
-    #[resource] tick_delta: &TickDelta,
-) {
-    if interpolated_transform.0 == transform.0 {
-        return;
+impl Plugin for InterpolationPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PreUpdate, add_global_transform);
+        app.add_systems(FixedPostUpdate, update_previous_global_transform);
+        app.add_systems(PostUpdate, interpolate_transform_matrix);
     }
-    let frac = tick_delta.0.as_secs_f32() / tick_duration.0.as_secs_f32();
-    let interpolated = interpolate_transform_matrix(&previous_transform.0, &transform.0, frac);
-    *interpolated_transform.0 = *interpolated;
 }
 
-#[system(for_each)]
-#[filter(!component::<PreviousGlobalTransform>())]
-fn interpolate_new_transform(
-    transform: &GlobalTransform,
-    entity: &Entity,
-    command_buffer: &mut CommandBuffer,
+fn update_previous_global_transform(
+    query: Query<(Entity, &GlobalTransform)>,
+    mut commands: Commands,
 ) {
-    command_buffer.add_component(*entity, InterpolatedTransform(transform.0));
+    for (entity, transform) in query.iter() {
+        commands.entity(entity).insert(PreviousGlobalTransform(transform.affine()));
+    }
 }
 
-pub(crate) fn deconstruct_transform(transform_mat: &Matrix4) -> (Vec3, Quaternion, Vec3) {
-    let scale = Vec3::new(
-        transform_mat.column(0).xyz().magnitude(),
-        transform_mat.column(1).xyz().magnitude(),
-        transform_mat.column(2).xyz().magnitude(),
-    );
-    let translation: Vec3 = transform_mat.column(3).xyz();
-    let rotation = Quaternion::from_matrix(&Matrix3::<f32>::from_columns(&[
-        transform_mat.column(0).xyz() / scale.x,
-        transform_mat.column(1).xyz() / scale.y,
-        transform_mat.column(2).xyz() / scale.z,
-    ]));
-    (translation, rotation, scale)
+fn interpolate_transform_matrix(
+    time: Res<Time<Fixed>>,
+    query: Query<(Entity, &PreviousGlobalTransform, &GlobalTransform)>,
+    mut commands: Commands,
+) {
+    for (entity, old_transform, new_transform) in query.iter() {
+        let (old_scale, old_rotation, old_translation) = old_transform.0.to_scale_rotation_translation();
+        let (new_scale, new_rotation, new_translation) = new_transform.to_scale_rotation_translation();
+        let s = time.overstep_fraction();
+
+        commands.entity(entity).insert(
+            InterpolatedTransform(
+                Affine3A::from_scale_rotation_translation(
+                    old_scale.lerp(new_scale, s), old_rotation.lerp(new_rotation,s), old_translation.lerp(new_translation, s))
+            )
+        );
+    }
 }
 
-fn interpolate_transform_matrix(from: &Matrix4, to: &Matrix4, frac: f32) -> Matrix4 {
-    let (from_position, from_rotation, from_scale) = deconstruct_transform(from);
-    let (to_position, to_rotation, to_scale) = deconstruct_transform(to);
-    let position = from_position.lerp(&to_position, frac);
-    let rotation: Quaternion = Quaternion::from_quaternion(from_rotation.lerp(&to_rotation, frac));
-    let scale = from_scale.lerp(&to_scale, frac);
-
-    Matrix4::new_translation(&position)
-        * Matrix4::new_rotation(
-            rotation
-                .axis_angle()
-                .map_or(Vec3::new(0.0f32, 0.0f32, 0.0f32), |(axis, amount)| {
-                    *axis * amount
-                }),
-        )
-        * Matrix4::new_nonuniform_scaling(&scale)
+fn add_global_transform(
+    query: Query<(Entity, &Transform), Added<Transform>>,
+    mut commands: Commands
+) {
+    for (entity, transform) in query.iter() {
+        commands.entity(entity).insert(GlobalTransform::from(*transform));
+    }
 }

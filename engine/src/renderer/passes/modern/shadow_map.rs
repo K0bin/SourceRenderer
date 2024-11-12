@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::{path::Path, sync::Arc};
 
-use nalgebra::Point3;
+use bevy_math::Vec4Swizzles as _;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
@@ -35,6 +35,8 @@ pub struct ShadowMapPass<P: Platform> {
     cascades: SmallVec<[ShadowMapCascade; 5]>,
     _marker: PhantomData<P>,
 }
+
+unsafe impl<P: Platform> Send for ShadowMapPass<P> {}
 
 #[derive(Debug, Default)]
 pub struct ShadowMapCascade {
@@ -182,7 +184,7 @@ impl<P: Platform> ShadowMapPass<P> {
         }
         let light: &RendererDirectionalLight<<P as Platform>::GPUBackend> = light.unwrap();
 
-        let view = &scene.views[scene.active_view_index];
+        let view = &scene.scene.views()[scene.active_view_index];
         let z_min = view.near_plane;
         let z_max = view.far_plane;
 
@@ -190,7 +192,7 @@ impl<P: Platform> ShadowMapPass<P> {
         let mut z_start = z_min;
         for cascade_index in 0..self.cascades.len() {
             let view_proj = view.proj_matrix * view.view_matrix;
-            let inv_camera_view_proj = view_proj.try_inverse().unwrap();
+            let inv_camera_view_proj = view_proj.inverse();
 
             let i = cascade_index as u32 + 1u32;
             let m = self.cascades.len() as u32;
@@ -398,23 +400,23 @@ impl<P: Platform> ShadowMapPass<P> {
 
         let mut radius = 0.0f32;
         for corner in &world_space_frustum_corners {
-            radius = radius.max((corner.xyz() - center).magnitude());
+            radius = radius.max((corner.xyz() - center).length());
         }
 
         let mut min = Vec3::new(-radius, -radius, -radius);
         let mut max = Vec3::new(radius, radius, radius);
 
-        let mut light_view = Matrix4::look_at_lh(&Point3::from(center - light.direction), &Point3::from(center), &Vec3::new(0f32, 1f32, 0f32));
+        let mut light_view = Matrix4::look_at_lh(center - light.direction, center, Vec3::new(0f32, 1f32, 0f32));
 
         // Snap center to texel
         let texels_per_unit = (shadow_map_res as f32) / (radius * 2.0f32);
-        let snapping_view = Matrix4::new_scaling(texels_per_unit) * light_view.clone();
-        let snapping_view_inv = snapping_view.try_inverse().unwrap();
-        let mut view_space_center = snapping_view.transform_vector(&center);
+        let snapping_view = Matrix4::from_scale(Vec3::new(texels_per_unit, texels_per_unit, texels_per_unit)) * light_view.clone();
+        let snapping_view_inv = snapping_view.inverse();
+        let mut view_space_center = snapping_view.transform_point3(center);
         view_space_center.x = view_space_center.x.floor();
         view_space_center.y = view_space_center.y.floor();
-        center = snapping_view_inv.transform_vector(&view_space_center);
-        light_view = Matrix4::look_at_lh(&Point3::from(center - light.direction), &Point3::from(center), &Vec3::new(0f32, 1f32, 0f32));
+        center = snapping_view_inv.transform_point3(view_space_center);
+        light_view = Matrix4::look_at_lh(center - light.direction, center, Vec3::new(0f32, 1f32, 0f32));
 
         // Snap left, right, top. bottom to texel
         let world_units_per_texel = (radius * 2f32) / (shadow_map_res as f32);
@@ -423,7 +425,7 @@ impl<P: Platform> ShadowMapPass<P> {
         max.x = (max.x / world_units_per_texel).ceil() * world_units_per_texel;
         max.y = (max.y / world_units_per_texel).ceil() * world_units_per_texel;
 
-        let light_proj = nalgebra_glm::ortho_lh_zo(min.x, max.x, min.y, max.y, 0.01f32, max.z - min.z);
+        let light_proj = Matrix4::orthographic_lh(min.x, max.x, min.y, max.y, 0.01f32, max.z - min.z);
         let light_mat = light_proj * light_view;
 
         ShadowMapCascade {

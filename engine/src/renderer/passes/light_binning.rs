@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
 use sourcerenderer_core::{
     Platform,
-    Vec3,
+    Vec3, Vec3UI,
 };
 
 use super::clustering::ClusteringPass;
@@ -68,10 +67,10 @@ impl LightBinningPass {
         &mut self,
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
-        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>
+        camera_buffer: &TransientBufferSlice<P::GPUBackend>
     ) {
         cmd_buffer.begin_label("Light binning");
-        let cluster_count = Vector3::<u32>::new(16, 9, 24);
+        let cluster_count = Vec3UI::new(16, 9, 24);
         let setup_info = SetupInfo {
             point_light_count: pass_params.scene.scene.point_lights().len() as u32,
             cluster_count: cluster_count.x * cluster_count.y * cluster_count.z,
@@ -96,7 +95,7 @@ impl LightBinningPass {
                 | BarrierSync::FRAGMENT_SHADER,
             old_access: BarrierAccess::STORAGE_WRITE,
             new_access: BarrierAccess::CONSTANT_READ | BarrierAccess::STORAGE_READ,
-            buffer: BufferRef::Regular(camera_buffer),
+            buffer: BufferRef::Transient(camera_buffer),
             queue_ownership: None
         }]);
 
@@ -120,7 +119,7 @@ impl LightBinningPass {
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            BufferRef::Regular(camera_buffer),
+            BufferRef::Transient(camera_buffer),
             0,
             WHOLE_BUFFER,
         );

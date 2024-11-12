@@ -1,0 +1,17 @@
+[workspace]
+exclude = [
+    "vendor/"
+]
+members = [
+    "core",
+    "engine",
+    "graphics/vulkan",
+    "graphics/metal",
+    "game",
+    "build_util",
+    "platform/sdl",
+]
+resolver = "2"
+default-members = [
+    "platform/sdl"
+]

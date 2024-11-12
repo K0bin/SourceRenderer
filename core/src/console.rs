@@ -1,7 +1,7 @@
-use std::{sync::RwLock, collections::HashMap};
+use std::{collections::{HashMap, VecDeque}, sync::{Mutex, MutexGuard}};
 
-use crossbeam_channel::Sender;
 use smallvec::SmallVec;
+use smartstring::alias::String;
 
 pub struct Command {
   cmd: String,
@@ -9,17 +9,14 @@ pub struct Command {
 }
 
 pub struct Console {
-  msgs: RwLock<HashMap<String, Sender<Command>>>
+  cmds: Mutex<HashMap<String, VecDeque<Command>>>,
 }
 
 impl Console {
   pub fn new() -> Self {
-    Self { msgs: RwLock::new(HashMap::new()) }
-  }
-
-  pub fn install_listener(&self, prefix: &str, sender: Sender<Command>) {
-    let mut lock = self.msgs.write().unwrap();
-    lock.insert(prefix.to_string().to_lowercase(), sender);
+    Self {
+      cmds: Mutex::new(HashMap::new()),
+    }
   }
 
   pub fn write_cmd(&self, cmd: &str) {
@@ -34,22 +31,46 @@ impl Console {
       return;
     }
     let dot_index = dot_index.unwrap();
-    let prefix = &base_cmd[..dot_index].to_lowercase();
+    let mut prefix = String::from(cmd);
+    prefix.make_ascii_lowercase();
     let mut args = SmallVec::<[String; 4]>::new();
     for arg in words {
-      args.push(arg.to_string());
+      args.push(arg.into());
     }
     let command = Command {
-      cmd: (&base_cmd[(dot_index + 1)..]).to_string(),
+      cmd: (&base_cmd[(dot_index + 1)..]).into(),
       args
     };
 
-    let lock = self.msgs.read().unwrap();
-    let listener = lock.get(prefix);
-    if listener.is_none() {
-      return;
+    let mut lock = self.cmds.lock().unwrap();
+    let cmds = lock.entry(prefix).or_default();
+    cmds.push_back(command);
+  }
+
+  pub fn get_cmds<'a, 'b>(&'a self, prefix: &'b str) -> ConsoleIter<'a, 'b> {
+    let lock = self.cmds.lock().unwrap();
+
+    ConsoleIter {
+      cmds: lock,
+      prefix,
     }
-    let listener = listener.unwrap();
-    listener.send(command).unwrap();
+  }
+}
+
+pub struct ConsoleIter<'a, 'b> {
+  cmds: MutexGuard<'a, HashMap<String, VecDeque<Command>>>,
+  prefix: &'b str
+}
+
+impl<'a, 'b, 'c> Iterator for ConsoleIter<'a, 'b> {
+  type Item = Command;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let cmds = self.cmds.get_mut(self.prefix);
+    if let Some(cmds) = cmds {
+      cmds.pop_front()
+    } else {
+      None
+    }
   }
 }

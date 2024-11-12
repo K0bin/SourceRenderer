@@ -41,6 +41,8 @@ pub struct Fsr2Pass<P: Platform> {
     scratch_context: *mut AtomicRefCell<ScratchContext<P::GPUBackend>>
 }
 
+unsafe impl<P: Platform> Send for Fsr2Pass<P> {}
+
 impl<P: Platform> Fsr2Pass<P> {
     pub const UPSCALED_TEXTURE_NAME: &'static str = "FSR2Upscaled";
 
@@ -142,7 +144,7 @@ impl<P: Platform> Fsr2Pass<P> {
         motion_name: &str,
         frame: &FrameInfo,
     ) {
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
         cmd_buffer.begin_label("FSR2");
 

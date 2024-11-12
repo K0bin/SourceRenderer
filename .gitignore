@@ -47,3 +47,5 @@ build_util/shaders/
 **/*.bak
 
 **/build_script_output.txt
+
+shaders/*

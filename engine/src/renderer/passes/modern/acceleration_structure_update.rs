@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Matrix4, Platform};
 
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_assets::ModelHandle;
@@ -130,7 +130,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
         {
             instances.push(AccelerationStructureInstance::<P::GPUBackend> {
                 acceleration_structure: bl,
-                transform: drawable.transform,
+                transform: Matrix4::from(drawable.transform),
                 front_face: FrontFace::Clockwise,
                 id: index as u32
             });

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use rayon::prelude::*;
+use bevy_math::Affine3A;
+use bevy_tasks::ParallelSlice;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -32,8 +33,8 @@ struct PrepassCameraCB {
 #[derive(Clone, Copy)]
 #[repr(C)]
 struct PrepassModelCB {
-    model: Matrix4,
-    old_model: Matrix4,
+    model: Affine3A,
+    old_model: Affine3A,
 }
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -48,8 +49,6 @@ pub struct Prepass {
 
 impl Prepass {
     pub const DEPTH_TEXTURE_NAME: &'static str = "PrepassDepth";
-    pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
-    pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
 
     const DRAWABLE_LABELS: bool = false;
 
@@ -71,40 +70,6 @@ impl Prepass {
             supports_srgb: false,
         };
         resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_info, true);
-
-        resources.create_texture(
-            Self::MOTION_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RG32Float,
-                width: resolution.x,
-                height: resolution.y,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
-                supports_srgb: false,
-            },
-            true,
-        );
-
-        resources.create_texture(
-            Self::NORMALS_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RGBA32Float,
-                width: resolution.x,
-                height: resolution.y,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
-                supports_srgb: false,
-            },
-            false,
-        );
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: &("shaders/prepass.vert.json"),
@@ -211,10 +176,10 @@ impl Prepass {
         pass_params: &RenderPassParameters<'_, P>,
         swapchain_transform: Matrix4,
         frame: u64,
-        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
-        camera_history_buffer: &Arc<BufferSlice<P::GPUBackend>>
+        camera_buffer: &TransientBufferSlice<P::GPUBackend>,
+        camera_history_buffer: &TransientBufferSlice<P::GPUBackend>
     ) {
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
         cmd_buffer.begin_label("Depth prepass");
         let static_drawables = pass_params.scene.scene.static_drawables();
@@ -230,41 +195,9 @@ impl Prepass {
             HistoryResourceEntry::Current,
         );
 
-        let motion = pass_params.resources.access_view(
-            cmd_buffer,
-            Self::MOTION_TEXTURE_NAME,
-            BarrierSync::RENDER_TARGET,
-            BarrierAccess::RENDER_TARGET_WRITE,
-            TextureLayout::RenderTarget,
-            true,
-            &TextureViewInfo::default(),
-            HistoryResourceEntry::Current,
-        );
-
-        let normals = pass_params.resources.access_view(
-            cmd_buffer,
-            Self::NORMALS_TEXTURE_NAME,
-            BarrierSync::RENDER_TARGET,
-            BarrierAccess::RENDER_TARGET_WRITE,
-            TextureLayout::RenderTarget,
-            true,
-            &TextureViewInfo::default(),
-            HistoryResourceEntry::Current,
-        );
-
         cmd_buffer.begin_render_pass(
             &RenderPassBeginInfo {
                 attachments: &[
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::RenderTarget(&*motion),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    },
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::RenderTarget(&*normals),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    },
                     RenderPassAttachment {
                         view: RenderPassAttachmentView::DepthStencil(&*depth_buffer),
                         load_op: LoadOp::Clear,
@@ -294,7 +227,7 @@ impl Prepass {
 
         let assets = pass_params.assets;
 
-        let info = motion.texture().unwrap().info();
+        let info = depth_buffer.texture().unwrap().info();
         let per_frame = FrameData {
             swapchain_transform,
             halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32 + 1),
@@ -305,10 +238,9 @@ impl Prepass {
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let chunks = view.drawable_parts.par_chunks(chunk_size);
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = chunks
-            .map(|chunk| {
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 let mut command_buffer = graphics_context.get_inner_command_buffer(inheritance);
 
                 command_buffer.set_pipeline(crate::graphics::PipelineBinding::Graphics(&pipeline));
@@ -333,14 +265,14 @@ impl Prepass {
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,
                     0,
-                    BufferRef::Regular(camera_buffer),
+                    BufferRef::Transient(camera_buffer),
                     0,
                     WHOLE_BUFFER,
                 );
                 command_buffer.bind_uniform_buffer(
                     BindingFrequency::Frequent,
                     1,
-                    BufferRef::Regular(camera_history_buffer),
+                    BufferRef::Transient(camera_history_buffer),
                     0,
                     WHOLE_BUFFER,
                 );
@@ -395,8 +327,7 @@ impl Prepass {
                     }
                 }
                 command_buffer.finish()
-            })
-            .collect();
+            });
 
         cmd_buffer.execute_inner(inner_cmd_buffers);
         cmd_buffer.end_render_pass();

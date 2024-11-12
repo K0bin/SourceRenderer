@@ -1,17 +1,11 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use nalgebra::Vector2;
-use rayon::prelude::*;
+use bevy_tasks::ParallelSlice;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::Submission;
 use sourcerenderer_core::{
-    Matrix4,
-    Platform,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-    Vec4,
+    Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4
 };
 
 use super::desktop_renderer::FrameBindings;
@@ -43,10 +37,10 @@ struct FrameData {
     halton_point: Vec2,
     z_near: f32,
     z_far: f32,
-    rt_size: Vector2<u32>,
+    rt_size: Vec2UI,
     cluster_z_bias: f32,
     cluster_z_scale: f32,
-    cluster_count: nalgebra::Vector3<u32>,
+    cluster_count: Vec3UI,
     point_light_count: u32,
     directional_light_count: u32,
 }
@@ -328,12 +322,11 @@ impl<P: Platform> GeometryPass<P> {
 
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
-        let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let chunks = view.drawable_parts.par_chunks(chunk_size);
         let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = chunks
-            .map(|chunk| {
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 P::thread_memory_management_pool(|| {
                     let mut command_buffer = context.get_inner_command_buffer(inheritance);
 
@@ -532,8 +525,7 @@ impl<P: Platform> GeometryPass<P> {
                     }
                     command_buffer.finish()
                 })
-            })
-            .collect();
+            });
 
         cmd_buffer.execute_inner(inner_cmd_buffers);
         cmd_buffer.end_render_pass();

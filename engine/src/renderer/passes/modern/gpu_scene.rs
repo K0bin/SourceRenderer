@@ -269,7 +269,7 @@ pub fn upload<P: Platform>(
                             },
                             sphere: GPUBoundingSphere {
                                 center: bb.min + (bb.max - bb.min) * 0.5f32,
-                                radius: (bb.max - (bb.min + (bb.max - bb.min) * 0.5f32)).magnitude(),
+                                radius: (bb.max - (bb.min + (bb.max - bb.min) * 0.5f32)).length(),
                             },
                         })
                         .unwrap_or_else(|| GPUMesh {
@@ -300,8 +300,8 @@ pub fn upload<P: Platform>(
             let drawable_index = drawables.len() as u16;
             {
                 let mut gpu_drawable = GPUDrawable {
-                    transform: drawable.transform,
-                    old_transform: drawable.old_transform,
+                    transform: Matrix4::from(drawable.transform),
+                    old_transform: Matrix4::from(drawable.old_transform),
                     mesh_index: model_entry.mesh_index,
                     flags: GPUDrawableFlags::empty(),
                     part_start: model_entry.part_start,

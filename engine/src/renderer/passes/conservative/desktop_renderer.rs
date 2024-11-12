@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
@@ -8,7 +7,7 @@ use sourcerenderer_core::{
     Platform,
     Vec2,
     Vec2UI,
-    Vec3,
+    Vec3, Vec3UI, Vec4,
 };
 
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
@@ -37,7 +36,6 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 
 use crate::graphics::*;
 
@@ -71,6 +69,22 @@ pub struct FrameBindings<'a, B: GPUBackend> {
     directional_lights: TransientBufferSlice<B>,
     point_lights: TransientBufferSlice<B>,
     setup_buffer: TransientBufferSlice<B>,
+}
+
+#[derive(Clone)]
+#[repr(C)]
+struct CameraBuffer {
+    view_proj: Matrix4,
+    inv_proj: Matrix4,
+    view: Matrix4,
+    proj: Matrix4,
+    inv_view: Matrix4,
+    position: Vec4,
+    inv_proj_view: Matrix4,
+    z_near: f32,
+    z_far: f32,
+    aspect_ratio: f32,
+    fov: f32,
 }
 
 impl<P: Platform> ConservativeRenderer<P> {
@@ -115,7 +129,8 @@ impl<P: Platform> ConservativeRenderer<P> {
             release_swapchain: None
         });
         let c_device = device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
 
         Self {
             device: device.clone(),
@@ -146,7 +161,7 @@ impl<P: Platform> ConservativeRenderer<P> {
         frame: u64,
     ) -> FrameBindings<'a, P::GPUBackend>
         where 'a: 'b {
-        let view = &scene.views[scene.active_view_index];
+        let view = &scene.scene.views()[scene.active_view_index];
 
         let cluster_count = self.clustering_pass.cluster_count();
         let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
@@ -159,7 +174,7 @@ impl<P: Platform> ConservativeRenderer<P> {
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
-            cluster_count: Vector3<u32>,
+            cluster_count: Vec3UI,
             _padding: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
@@ -253,18 +268,29 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
-    ) -> Result<(), SwapchainError> {
+    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
-        let late_latching_buffer = late_latching.unwrap().buffer();
-        let late_latching_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+        let main_view = &scene.scene.views()[scene.active_view_index];
 
-        let primary_view = &scene.views[scene.active_view_index];
+        let camera_buffer = cmd_buf.upload_dynamic_data(&[CameraBuffer {
+            view_proj: main_view.proj_matrix * main_view.view_matrix,
+            inv_proj: main_view.proj_matrix.inverse(),
+            view: main_view.view_matrix,
+            proj: main_view.proj_matrix,
+            inv_view: main_view.view_matrix.inverse(),
+            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
+            inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
+            z_near: main_view.near_plane,
+            z_far: main_view.far_plane,
+            aspect_ratio: main_view.aspect_ratio,
+            fov: main_view.camera_fov
+        }], BufferUsage::CONSTANT).unwrap();
+
+        let camera_history_buffer = &camera_buffer;
 
         let empty_buffer = cmd_buf.create_temporary_buffer(
             &BufferInfo {
@@ -290,8 +316,8 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             scene,
             swapchain,
             &gpu_scene,
-            BufferRef::Regular(&late_latching_buffer),
-            BufferRef::Regular(&late_latching_history_buffer),
+            BufferRef::Transient(&camera_buffer),
+            BufferRef::Transient(camera_history_buffer),
             &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame,
         );
@@ -317,19 +343,19 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &mut cmd_buf,
             &params,
             frame_info.frame,
-            &late_latching_buffer,
+            &camera_buffer,
             Prepass::DEPTH_TEXTURE_NAME,
         );*/
         self.clustering_pass.execute::<P>(
             &mut cmd_buf,
             &params,
             Vec2UI::new(swapchain.width(), swapchain.height()),
-            &late_latching_buffer
+            &camera_buffer
         );
         self.light_binning_pass.execute(
             &mut cmd_buf,
             &params,
-            &late_latching_buffer
+            &camera_buffer
         );
         self.prepass.execute(
             context,
@@ -337,15 +363,15 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &params,
             swapchain.transform(),
             frame_info.frame,
-            &late_latching_buffer,
-            &late_latching_history_buffer
+            &camera_buffer,
+            &camera_history_buffer
         );
         self.ssao.execute(
             &mut cmd_buf,
             &params,
             Prepass::DEPTH_TEXTURE_NAME,
-            Some(Prepass::MOTION_TEXTURE_NAME),
-            &late_latching_buffer,
+            Some("TODO"),
+            &camera_buffer,
             self.blue_noise.frame(frame_info.frame),
             self.blue_noise.sampler(),
             false
@@ -374,7 +400,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &params,
             GeometryPass::<P>::GEOMETRY_PASS_TEXTURE_NAME,
             Prepass::DEPTH_TEXTURE_NAME,
-            Some(Prepass::MOTION_TEXTURE_NAME),
+            Some("TODO"),
             false
         );
         self.sharpen
@@ -440,35 +466,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             queue_ownership: None
         }]);
 
-        self.barriers.swap_history_resources();
-
-        if let Some(late_latching) = late_latching {
-            let input_state = input.poll();
-            late_latching.before_submit(&input_state, primary_view);
-        }
-
-        let frame_end_signal = context.end_frame();
-
-        self.device.submit(
-            QueueType::Graphics,
-            QueueSubmission {
-                command_buffer: cmd_buf.finish(),
-                wait_fences: &[],
-                signal_fences: &[frame_end_signal],
-                acquire_swapchain: Some(&swapchain),
-                release_swapchain: Some(&swapchain)
-            }
-        );
-        self.device.present(QueueType::Graphics, &swapchain);
-
-        let c_device = self.device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics) );
-
-        if let Some(late_latching) = late_latching {
-            late_latching.after_submit(&self.device);
-        }
-
-        Ok(())
+        Ok(cmd_buf.finish())
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

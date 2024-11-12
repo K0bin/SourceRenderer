@@ -4,15 +4,13 @@ use std::sync::{
 };
 use std::time::Duration;
 
+use bevy_log::trace;
 use bitset_core::BitSet;
 use crossbeam_channel::{
     Receiver,
-    Sender,
     TryRecvError,
 };
 use instant::Instant;
-use log::trace;
-use rayon::prelude::*;
 use smallvec::SmallVec;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
@@ -29,13 +27,6 @@ use super::drawable::{
     make_camera_view,
 };
 use super::light::DirectionalLight;
-use super::passes::modern::ModernRenderer;
-//#[cfg(not(target_arch = "wasm32"))]
-use super::passes::conservative::desktop_renderer::ConservativeRenderer;
-use super::passes::path_tracing::PathTracingRenderer;
-use super::passes::web::WebRenderer;
-//#[cfg(not(target_arch = "wasm32"))]
-//use super::passes::modern::ModernRenderer;
 use super::render_path::RenderPath;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
@@ -60,7 +51,6 @@ use crate::renderer::{
     RendererStaticDrawable,
     View,
 };
-use crate::transform::interpolation::deconstruct_transform;
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 enum ReceiveMessagesResult {
@@ -76,7 +66,6 @@ pub(super) struct RendererInternal<P: Platform> {
     asset_manager: Arc<AssetManager<P>>,
     scene: RendererScene<P::GPUBackend>,
     views: Vec<View>,
-    sender: Sender<RendererCommand<P::GPUBackend>>,
     receiver: Receiver<RendererCommand<P::GPUBackend>>,
     window_event_receiver: Receiver<Event<P>>,
     last_frame: Instant,
@@ -92,7 +81,6 @@ impl<P: Platform> RendererInternal<P> {
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: Swapchain<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
-        sender: Sender<RendererCommand<P::GPUBackend>>,
         window_event_receiver: Receiver<Event<P>>,
         receiver: Receiver<RendererCommand<P::GPUBackend>>,
         console: &Arc<Console>,
@@ -145,7 +133,6 @@ impl<P: Platform> RendererInternal<P> {
             scene,
             asset_manager: asset_manager.clone(),
             views,
-            sender,
             receiver,
             window_event_receiver,
             last_frame: Instant::now(),
@@ -294,13 +281,13 @@ impl<P: Platform> RendererInternal<P> {
                 }
 
                 RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
-                    camera_transform_mat,
+                    camera_transform,
                     fov,
                 } => {
-                    main_view.camera_transform = camera_transform_mat;
+                    main_view.camera_transform = camera_transform;
                     main_view.camera_fov = fov;
                     main_view.old_camera_matrix = main_view.proj_matrix * main_view.view_matrix;
-                    let (position, rotation, _) = deconstruct_transform(&camera_transform_mat);
+                    let (_, rotation, position) = camera_transform.to_scale_rotation_translation();
                     main_view.camera_position = position;
                     main_view.camera_rotation = rotation;
                     main_view.view_matrix = make_camera_view(position, rotation);
@@ -314,9 +301,9 @@ impl<P: Platform> RendererInternal<P> {
 
                 RendererCommand::<P::GPUBackend>::UpdateTransform {
                     entity,
-                    transform_mat,
+                    transform,
                 } => {
-                    self.scene.update_transform(&entity, transform_mat);
+                    self.scene.update_transform(&entity, transform);
                 }
 
                 RendererCommand::<P::GPUBackend>::RegisterStatic {
@@ -353,7 +340,7 @@ impl<P: Platform> RendererInternal<P> {
                     self.scene.add_point_light(
                         entity,
                         PointLight {
-                            position: (transform * Vec4::new(0f32, 0f32, 0f32, 1f32)).xyz(),
+                            position: transform.transform_vector3(Vec3::new(0f32, 0f32, 0f32)),
                             intensity,
                         },
                     );
@@ -367,9 +354,9 @@ impl<P: Platform> RendererInternal<P> {
                     transform,
                     intensity,
                 } => {
-                    let (_, rotation, _) = deconstruct_transform(&transform);
+                    let (_, rotation, _) = transform.to_scale_rotation_translation();
                     let base_dir = Vec3::new(0f32, 0f32, 1f32);
-                    let dir = rotation.transform_vector(&base_dir);
+                    let dir = rotation.mul_vec3(base_dir);
                     self.scene.add_directional_light(
                         entity,
                         DirectionalLight {
@@ -400,7 +387,7 @@ impl<P: Platform> RendererInternal<P> {
     }
 
     #[profiling::function]
-    pub(super) fn render(&mut self, renderer: &Renderer<P>) {
+    pub(super) fn render(&mut self) {
         let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
         while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
             message_receiving_result = self.receive_messages();
@@ -453,8 +440,6 @@ impl<P: Platform> RendererInternal<P> {
                 self.swapchain.as_ref().expect("No swapchain"),
                 &scene_info,
                 &zero_textures,
-                renderer.late_latching(),
-                renderer.input(),
                 &frame_info,
                 &self.shader_manager,
                 &self.assets,
@@ -521,8 +506,6 @@ impl<P: Platform> RendererInternal<P> {
                             &new_swapchain,
                             &scene_info,
                             &zero_textures,
-                            renderer.late_latching(),
-                            renderer.input(),
                             &frame_info,
                             &self.shader_manager,
                             &self.assets,
@@ -533,7 +516,6 @@ impl<P: Platform> RendererInternal<P> {
             }
         }
         self.frame += 1;
-        renderer.dec_queued_frames_counter();
         profiling::finish_frame!();
     }
 
@@ -622,8 +604,8 @@ impl<P: Platform> RendererInternal<P> {
                             bb_scale.x = bb_scale.x.max(0.4f32);
                             bb_scale.y = bb_scale.y.max(0.4f32);
                             bb_scale.z = bb_scale.z.max(0.4f32);
-                            let bb_transform = Matrix4::new_translation(&bb_translation)
-                                * Matrix4::new_nonuniform_scaling(&bb_scale);
+                            let bb_transform = Matrix4::from_translation(bb_translation)
+                                * Matrix4::from_scale(bb_scale);
                             let transformed_bb = BoundingBox::new(
                                 Vec3::new(-0.5f32, -0.5f32, -0.5f32),
                                 Vec3::new(0.5f32, 0.5f32, 0.5f32),

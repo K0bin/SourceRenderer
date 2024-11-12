@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec4, Matrix4};
 
 use crate::graphics::GraphicsContext;
 use crate::input::Input;
@@ -13,13 +13,28 @@ use crate::renderer::render_path::{
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::RendererResources;
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 
 use crate::graphics::*;
 
 mod geometry;
 
 use self::geometry::GeometryPass;
+
+#[derive(Clone)]
+#[repr(C)]
+struct CameraBuffer {
+    view_proj: Matrix4,
+    inv_proj: Matrix4,
+    view: Matrix4,
+    proj: Matrix4,
+    inv_view: Matrix4,
+    position: Vec4,
+    inv_proj_view: Matrix4,
+    z_near: f32,
+    z_far: f32,
+    aspect_ratio: f32,
+    fov: f32,
+}
 
 pub struct WebRenderer<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
@@ -55,7 +70,8 @@ impl<P: Platform> WebRenderer<P> {
             release_swapchain: None
         });
         let c_device = device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
 
         Self {
             device: device.clone(),
@@ -86,12 +102,10 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>
-    ) -> Result<(), sourcerenderer_core::gpu::SwapchainError> {
+    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
         let back_buffer_res = swapchain.next_backbuffer();
         if back_buffer_res.is_err() {
             return Err(SwapchainError::Other);
@@ -99,13 +113,29 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
-        let view_ref = &scene.views[scene.active_view_index];
-        let late_latching_buffer = late_latching.unwrap().buffer();
+        let main_view = &scene.scene.views()[scene.active_view_index];
+
+        /*let camera_buffer = cmd_buffer.upload_dynamic_data(&[CameraBuffer {
+            view_proj: main_view.proj_matrix * main_view.view_matrix,
+            inv_proj: main_view.proj_matrix.inverse(),
+            view: main_view.view_matrix,
+            proj: main_view.proj_matrix,
+            inv_view: main_view.view_matrix.inverse(),
+            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
+            inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
+            z_near: main_view.near_plane,
+            z_far: main_view.far_plane,
+            aspect_ratio: main_view.aspect_ratio,
+            fov: main_view.camera_fov
+        }], BufferUsage::CONSTANT).unwrap();*/
+
+        let camera_buffer = cmd_buffer.upload_dynamic_data(&[main_view.proj_matrix * main_view.view_matrix], BufferUsage::CONSTANT).unwrap();
+
         self.geometry.execute(
             &mut cmd_buffer,
             scene.scene,
-            &view_ref,
-            &late_latching_buffer,
+            main_view,
+            &camera_buffer,
             &self.resources,
             swapchain.backbuffer(),
             swapchain.backbuffer_handle(),
@@ -115,33 +145,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
             assets,
         );
 
-        if let Some(late_latching) = late_latching {
-            let input_state = input.poll();
-            late_latching.before_submit(&input_state, &view_ref);
-        }
-
-        let frame_end_signal = context.end_frame();
-
-        self.device.submit(
-            QueueType::Graphics,
-            QueueSubmission {
-                command_buffer: cmd_buffer.finish(),
-                wait_fences: &[],
-                signal_fences: &[frame_end_signal],
-                acquire_swapchain: Some(&swapchain),
-                release_swapchain: Some(&swapchain)
-            }
-        );
-        self.device.present(QueueType::Graphics, &swapchain);
-
-        let c_device = self.device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
-
-        if let Some(late_latching) = late_latching {
-            late_latching.after_submit(&self.device);
-        }
-
-        Ok(())
+        return Ok(cmd_buffer.finish());
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

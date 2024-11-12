@@ -326,7 +326,7 @@ impl<B: GPUBackend> Transfer<B> {
             new_sync: BarrierSync::all(),
             old_access: BarrierAccess::empty(),
             new_access: BarrierAccess::MEMORY_READ,
-            old_layout: TextureLayout::Sampled,
+            old_layout: TextureLayout::CopyDst,
             new_layout: TextureLayout::Sampled,
             range: BarrierTextureRange {
               base_mip_level: mip_level,

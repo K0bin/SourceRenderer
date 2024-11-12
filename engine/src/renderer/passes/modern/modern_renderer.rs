@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use nalgebra::Vector3;
 use smallvec::SmallVec;
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, TextureInfo, Device, Swapchain, TextureLayout, WHOLE_BUFFER, SwapchainError, QueueSubmission, QueueType};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
 use sourcerenderer_core::{
     Matrix4,
     Platform,
     Vec2,
     Vec2UI,
-    Vec3,
+    Vec3, Vec3UI, Vec4,
 };
 
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
@@ -43,7 +42,6 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::shader_manager::ShaderManager;
-use crate::renderer::LateLatching;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
@@ -79,8 +77,24 @@ pub struct RTPasses<P: Platform> {
     shadows: RTShadowPass,
 }
 
+#[derive(Clone)]
+#[repr(C)]
+struct CameraBuffer {
+    view_proj: Matrix4,
+    inv_proj: Matrix4,
+    view: Matrix4,
+    proj: Matrix4,
+    inv_view: Matrix4,
+    position: Vec4,
+    inv_proj_view: Matrix4,
+    z_near: f32,
+    z_far: f32,
+    aspect_ratio: f32,
+    fov: f32,
+}
+
 impl<P: Platform> ModernRenderer<P> {
-    const USE_FSR2: bool = true;
+    const USE_FSR2: bool = false;
 
     pub fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
@@ -102,7 +116,7 @@ impl<P: Platform> ModernRenderer<P> {
         let clustering = ClusteringPass::new::<P>(&mut barriers, shader_manager);
         let light_binning = LightBinningPass::new::<P>(&mut barriers, shader_manager);
         let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, true);
-        let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
+        let rt_passes = (device.supports_ray_tracing() && false).then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(
                 device,
                 &mut init_cmd_buffer,
@@ -160,7 +174,8 @@ impl<P: Platform> ModernRenderer<P> {
             release_swapchain: None
         });
         let c_device = device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
 
         Self {
             device: device.clone(),
@@ -195,7 +210,7 @@ impl<P: Platform> ModernRenderer<P> {
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) {
-        let view = &scene.views[scene.active_view_index];
+        let view = &scene.scene.views()[scene.active_view_index];
 
         cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.scene_buffer.offset, gpu_scene_buffers.scene_buffer.length);
         cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 1, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.draws_buffer.offset, gpu_scene_buffers.draws_buffer.length);
@@ -246,7 +261,7 @@ impl<P: Platform> ModernRenderer<P> {
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
-            cluster_count: Vector3<u32>,
+            cluster_count: Vec3UI,
             _padding: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
@@ -347,18 +362,29 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
-        late_latching: Option<&dyn LateLatching<P::GPUBackend>>,
-        input: &Input,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
         assets: &RendererAssets<P>,
-    ) -> Result<(), SwapchainError> {
+    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
-        let main_view = &scene.views[scene.active_view_index];
+        let main_view = &scene.scene.views()[scene.active_view_index];
 
-        let camera_buffer = late_latching.unwrap().buffer();
-        let camera_history_buffer = late_latching.unwrap().history_buffer().unwrap();
+        let camera_buffer = cmd_buf.upload_dynamic_data(&[CameraBuffer {
+            view_proj: main_view.proj_matrix * main_view.view_matrix,
+            inv_proj: main_view.proj_matrix.inverse(),
+            view: main_view.view_matrix,
+            proj: main_view.proj_matrix,
+            inv_view: main_view.view_matrix.inverse(),
+            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
+            inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
+            z_near: main_view.near_plane,
+            z_far: main_view.far_plane,
+            aspect_ratio: main_view.aspect_ratio,
+            fov: main_view.camera_fov
+        }], BufferUsage::CONSTANT).unwrap();
+
+        let camera_history_buffer = &camera_buffer;
 
         let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
 
@@ -369,8 +395,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             scene,
             swapchain,
             scene_buffers,
-            BufferRef::Regular(&camera_buffer),
-            BufferRef::Regular(&camera_history_buffer),
+            BufferRef::Transient(&camera_buffer),
+            BufferRef::Transient(camera_history_buffer),
             &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame
         );
@@ -543,35 +569,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         }]);
         std::mem::drop(output_texture);
 
-        self.barriers.swap_history_resources();
-
-        if let Some(late_latching) = late_latching {
-            let input_state = input.poll();
-            late_latching.before_submit(&input_state, main_view);
-        }
-
-        let frame_end_signal = context.end_frame();
-
-        self.device.submit(
-            QueueType::Graphics,
-            QueueSubmission {
-                command_buffer: cmd_buf.finish(),
-                wait_fences: &[],
-                signal_fences: &[frame_end_signal],
-                acquire_swapchain: Some(&swapchain),
-                release_swapchain: Some(&swapchain)
-            }
-        );
-        self.device.present(QueueType::Graphics, &swapchain);
-
-        let c_device = self.device.clone();
-        rayon::spawn(move || c_device.flush(QueueType::Graphics));
-
-        if let Some(late_latching) = late_latching {
-            late_latching.after_submit(&self.device);
-        }
-
-        Ok(())
+        return Ok(cmd_buf.finish());
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

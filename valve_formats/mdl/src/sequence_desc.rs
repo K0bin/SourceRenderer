@@ -1,6 +1,6 @@
 use std::io::{Read, Result as IOResult};
 
-use nalgebra::Vector3;
+use bevy_math::Vec3;
 
 use crate::PrimitiveRead;
 
@@ -19,8 +19,8 @@ pub struct SequenceDesc {
   pub events_count: i32,
   pub event_index: i32,
 
-  pub bb_min: Vector3<f32>,
-  pub bb_max: Vector3<f32>,
+  pub bb_min: Vec3,
+  pub bb_max: Vec3,
 
   pub blends_count: i32,
   pub anim_index_index: i32,
@@ -81,8 +81,8 @@ impl SequenceDesc {
     let events_count = read.read_i32()?;
     let event_index = read.read_i32()?;
 
-    let bb_min = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let bb_max = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let bb_min = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let bb_max = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
 
     let blends_count = read.read_i32()?;
     let anim_index_index = read.read_i32()?;

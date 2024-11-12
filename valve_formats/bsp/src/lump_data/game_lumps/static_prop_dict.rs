@@ -1,6 +1,7 @@
 use std::io::{Read, Result as IOResult, Error as IOError, ErrorKind};
+use bevy_math::Vec3;
+
 use crate::{PrimitiveRead, StringRead};
-use nalgebra::Vector3;
 use crate::lump_data::leaf::ColorRGBExp32;
 
 pub struct StaticPropDict {
@@ -57,8 +58,8 @@ bitflags! {
 }
 
 pub struct StaticProp {
-  pub origin: Vector3<f32>,
-  pub angles: Vector3<f32>,
+  pub origin: Vec3,
+  pub angles: Vec3,
 
   pub prop_type: u16,
   pub first_leaf: u16,
@@ -68,7 +69,7 @@ pub struct StaticProp {
   pub skin: i32,
   pub fade_min_dist: f32,
   pub fade_max_dist: f32,
-  pub lighting_origin: Vector3<f32>,
+  pub lighting_origin: Vec3,
   pub forced_fade_scale: f32,
   pub min_dx_level: u16,
   pub max_dx_level: u16,
@@ -84,8 +85,8 @@ pub struct StaticProp {
 
 impl StaticProp {
   pub fn read(read: &mut dyn Read, version: u16) -> IOResult<Self> {
-    let origin = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
-    let angles = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let origin = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let angles = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let prop_type = read.read_u16()?;
     let first_leaf = read.read_u16()?;
     let leaf_count = read.read_u16()?;
@@ -94,7 +95,7 @@ impl StaticProp {
     let skin = read.read_i32()?;
     let fade_min_dist = read.read_f32()?;
     let fade_max_dist = read.read_f32()?;
-    let lighting_origin = Vector3::<f32>::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
+    let lighting_origin = Vec3::new(read.read_f32()?, read.read_f32()?, read.read_f32()?);
     let mut forced_fade_scale = 0f32;
     let mut min_dx_level = 0u16;
     let mut max_dx_level = 0u16;

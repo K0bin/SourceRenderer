@@ -3,13 +3,7 @@ use std::time::Duration;
 
 use crossbeam_channel::{Receiver, TryRecvError};
 use instant::Instant;
-use legion::{
-    Resources,
-    Schedule,
-    World,
-};
 use log::trace;
-use nalgebra::UnitQuaternion;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
     Platform,
@@ -27,10 +21,7 @@ use crate::game::{
     Game,
 };
 use crate::physics::PhysicsWorld;
-use crate::renderer::{
-    RendererInterface,
-    *,
-};
+use crate::renderer::*;
 use crate::ui::UI;
 use crate::{
     fps_camera,
@@ -39,8 +30,7 @@ use crate::{
     Tick,
     TickDelta,
     TickDuration,
-    TickRate,
-    Transform,
+    TickRate
 };
 
 pub struct GameInternal<P: Platform> {

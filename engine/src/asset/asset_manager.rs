@@ -23,12 +23,14 @@ use std::sync::{
     Weak,
 };
 
+use bevy_ecs::bundle::Bundle;
+use bevy_ecs::system::Resource;
+use bevy_ecs::world::World;
 use crossbeam_channel::{
     unbounded,
     Receiver,
     Sender,
 };
-use legion::World;
 use log::{
     error,
     trace,
@@ -40,6 +42,8 @@ use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
+
+use super::loaded_level::LoadedLevel;
 
 struct AssetLoadRequest {
     path: String,
@@ -169,7 +173,7 @@ impl AssetLoaderProgress {
 
 pub enum AssetLoaderResult {
     None,
-    Level(World),
+    Level(LoadedLevel),
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -184,7 +188,7 @@ pub trait AssetLoader<P: Platform>: Send + Sync {
     fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()>;
@@ -492,7 +496,7 @@ impl<P: Platform> AssetManager<P> {
         progress
     }
 
-    pub fn load_level(self: &Arc<Self>, path: &str) -> Option<World> {
+    pub fn load_level(&self, path: &str) -> Option<LoadedLevel> {
         let file_opt = self.load_file(path);
         if file_opt.is_none() {
             error!("Could not load file: {:?}", path);
@@ -537,7 +541,7 @@ impl<P: Platform> AssetManager<P> {
             }
         }
         if file_opt.is_none() {
-            error!("Could not find file: {:?}", path);
+            error!("Could not find file: {:?}, working dir: {:?}", path, std::env::current_dir());
             {
                 let mut inner = self.inner.lock().unwrap();
                 inner.requested_assets.remove(path);
@@ -572,7 +576,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     fn load_asset(
-        self: &Arc<Self>,
+        &self,
         mut file: AssetFile,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,

@@ -1,3 +1,4 @@
+use bevy_math::Vec4Swizzles;
 use sourcerenderer_core::{Platform, Vec4};
 
 use crate::math::Frustum;
@@ -57,7 +58,7 @@ impl DrawPrepPass {
         pass_params: &RenderPassParameters<'_, P>
     ) {
         {
-            let view = &pass_params.scene.views[pass_params.scene.active_view_index];
+            let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
             cmd_buffer.begin_label("Culling");
             let buffer = pass_params.resources.access_buffer(
@@ -89,7 +90,7 @@ impl DrawPrepPass {
                 HistoryResourceEntry::Current,
             );
 
-            #[repr(packed(16))]
+            #[repr(C)]
             #[derive(Clone, Debug)]
             struct GPUFrustum {
                 pub near_half_width: f32,
@@ -209,5 +210,5 @@ impl DrawPrepPass {
 }
 
 fn normalize_plane(p: Vec4) -> Vec4 {
-    p / p.xyz().magnitude()
+    p / p.xyz().length()
 }

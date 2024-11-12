@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use nalgebra_glm::Vec2;
 use smallvec::SmallVec;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, Vec2};
 
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
@@ -40,8 +39,6 @@ impl<P: Platform> HierarchicalZPass<P> {
         texture_info.format = Format::R32Float;
 
         resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
-
-        assert!(device.supports_min_max_filter()); // TODO: Implement variant that doesn't rely on min-max filter. PLS JUST ADD IT TO METAL @APPLE
 
         let ffx_pipeline =
             shader_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.json");

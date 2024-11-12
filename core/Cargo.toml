@@ -16,3 +16,7 @@ num_cpus = "1.16.0"
 rayon = "1.9.0"
 smallvec = { version = "1.13.1", features = [ "union", "const_generics", "const_new" ] }
 serde = { version = "1.0", features = ["derive"] }
+smartstring = "1.0.1"
+
+bevy_math = "0.14.2"
+bevy_log = "0.14.2"

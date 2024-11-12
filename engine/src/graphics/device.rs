@@ -7,6 +7,7 @@ use super::*;
 
 pub struct Device<B: GPUBackend> {
     device: Arc<B::Device>,
+    instance: Arc<Instance<B>>,
     allocator: ManuallyDrop<Arc<MemoryAllocator<B>>>,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
     buffer_allocator: ManuallyDrop<Arc<BufferAllocator<B>>>,
@@ -14,19 +15,19 @@ pub struct Device<B: GPUBackend> {
     transfer: ManuallyDrop<Transfer<B>>,
     prerendered_frames: u32,
     has_context: AtomicBool,
-    instance: Arc<B::Instance>,
     graphics_queue: Queue<B>,
     compute_queue: Option<Queue<B>>,
     transfer_queue: Option<Queue<B>>
 }
 
 impl<B: GPUBackend> Device<B> {
-    pub fn new(instance: &Arc<B::Instance>, device: B::Device) -> Self {
+    pub fn new(device: B::Device, instance: Arc<Instance<B>>) -> Self {
         let device = Arc::new(device);
         let memory_allocator = ManuallyDrop::new(Arc::new(MemoryAllocator::new(&device)));
         let destroyer = ManuallyDrop::new(Arc::new(DeferredDestroyer::new()));
         Self {
             device: device.clone(),
+            instance: instance,
             allocator: memory_allocator.clone(),
             destroyer: destroyer.clone(),
             buffer_allocator: ManuallyDrop::new(Arc::new(BufferAllocator::new(&device, &memory_allocator))),
@@ -34,7 +35,6 @@ impl<B: GPUBackend> Device<B> {
             transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer)),
             prerendered_frames: 3,
             has_context: AtomicBool::new(false),
-            instance: instance.clone(),
             graphics_queue: Queue::new(QueueType::Graphics),
             compute_queue: device.compute_queue().map(|_| Queue::new(QueueType::Compute)),
             transfer_queue: device.compute_queue().map(|_| Queue::new(QueueType::Transfer)),
@@ -43,6 +43,10 @@ impl<B: GPUBackend> Device<B> {
 
     pub fn handle(&self) -> &Arc<B::Device> {
         &self.device
+    }
+
+    pub fn instance(&self) -> &Arc<Instance<B>> {
+        &self.instance
     }
 
     pub(super) fn destroyer(&self) -> &Arc<DeferredDestroyer<B>> {

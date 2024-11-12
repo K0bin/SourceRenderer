@@ -138,7 +138,7 @@ impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
     }
 
     fn transform(&self) -> Matrix4 {
-        Matrix4::identity()
+        Matrix4::IDENTITY
     }
 
     fn width(&self) -> u32 {

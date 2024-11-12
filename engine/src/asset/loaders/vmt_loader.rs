@@ -41,7 +41,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     fn load(
         &self,
         mut asset_file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &AssetManager<P>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<AssetLoaderResult, ()> {

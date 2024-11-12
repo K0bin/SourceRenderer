@@ -970,7 +970,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             pending_memory_barriers[1].dst_stage_mask = vk::PipelineStageFlags2::empty();
             pending_memory_barriers[1].src_access_mask = vk::AccessFlags2::empty();
             pending_memory_barriers[1].dst_access_mask = vk::AccessFlags2::empty();
-            pending_image_barriers.clear();
             pending_buffer_barriers.clear();
             return;
         }

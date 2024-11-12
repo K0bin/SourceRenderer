@@ -1,5 +1,6 @@
 mod asset_manager;
 pub mod loaders;
+mod loaded_level;
 
 pub use asset_manager::{
     Asset,
@@ -15,3 +16,5 @@ pub use asset_manager::{
     Model,
     Texture,
 };
+
+pub use loaded_level::LoadedLevel;
