@@ -294,6 +294,10 @@ fn extract_directional_lights<P: Platform>(
 
 #[cfg(feature = "threading")]
 fn end_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
+    if renderer.sender.is_saturated() {
+        return;
+    }
+
     renderer.sender.end_frame();
 }
 
