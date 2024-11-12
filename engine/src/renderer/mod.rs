@@ -32,7 +32,5 @@ pub use self::ecs::{
 pub use self::light::PointLight;
 #[cfg(feature = "threading")]
 pub use self::renderer::Renderer;
-//#[cfg(feature = "threading")]
-//use self::renderer_internal::RendererInternal;
 pub use self::vertex::Vertex;
 pub use self::renderer_plugin::RendererPlugin;

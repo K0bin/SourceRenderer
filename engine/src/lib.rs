@@ -28,7 +28,6 @@ pub use camera::{
 pub use self::engine::Engine;
 pub use self::engine::WindowState;
 
-/*#[cfg(feature = "threading")]*/
 mod engine;
 
 pub mod asset;
@@ -38,7 +37,6 @@ pub mod math;
 mod spinning_cube;
 pub mod transform;
 
-//mod game_internal;
 mod input;
 //mod physics;
 pub mod renderer;
