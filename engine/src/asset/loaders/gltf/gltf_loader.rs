@@ -11,9 +11,6 @@ use std::{
     usize,
 };
 
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::{Mut, World};
-use bevy_hierarchy::BuildChildren;
 use bevy_math::{EulerRot, Quat};
 use bevy_transform::components::Transform;
 use gltf::buffer::{
@@ -43,6 +40,7 @@ use crate::asset::asset_manager::{
     AssetFile,
     AssetLoaderResult,
 };
+use crate::asset::loaded_level::{LoadedEntityParent, LoadedLevel};
 use crate::asset::loaders::BspVertex as Vertex;
 use crate::asset::{
     Asset,
@@ -71,9 +69,9 @@ impl GltfLoader {
 
     fn visit_node<P: Platform>(
         node: &Node,
-        world: &mut World,
+        world: &mut LoadedLevel,
         asset_mgr: &AssetManager<P>,
-        parent_entity: Option<Entity>,
+        parent_entity: Option<usize>,
         gltf_file_name: &str,
         buffer_cache: &mut HashMap<String, Vec<u8>>,
     ) {
@@ -106,17 +104,14 @@ impl GltfLoader {
         let rot_quat = Quat::from_vec4(fixed_rotation).normalize();
         let euler_angles = rot_quat.to_euler(EulerRot::XYZ);
         let rot_quat = Quat::from_euler(EulerRot::XYZ, euler_angles.0, -euler_angles.1, -euler_angles.2);
-        let entity_mut = world.spawn((Transform {
+        let entity = world.push_entity(3);
+        world.push_component(entity, Transform {
             translation: fixed_position,
             scale,
             rotation: rot_quat,
-        },));
-        let entity = entity_mut.flush();
-        {
-            let mut commands = world.commands();
-            if let Some(mut parent) = parent_entity.map(|e| commands.entity(e)) {
-                parent.push_children(&[entity]);
-            }
+        });
+        if let Some(parent) = parent_entity {
+            world.push_component(entity, LoadedEntityParent(parent));
         }
 
         if let Some(mesh) = node.mesh() {
@@ -241,13 +236,12 @@ impl GltfLoader {
                 AssetLoadPriority::Normal,
             );
 
-            let mut entry = world.entity_mut(entity);
-            entry.insert((StaticRenderableComponent {
+            world.push_component(entity, StaticRenderableComponent {
                 model_path,
                 receive_shadows: true,
                 cast_shadows: true,
                 can_move: false,
-            },));
+            });
         };
 
         if node.skin().is_some() {
@@ -271,21 +265,22 @@ impl GltfLoader {
 
         if let Some(light) = node.light() {
             println!("light is dir");
-            let mut entry = world.entity_mut(entity);
-            let mut transform: Mut<Transform> = entry.get_mut::<Transform>().unwrap();
-            let mut coords = Vec4::from(transform.rotation);
-            coords.z = -coords.z;
-            transform.rotation = Quat::from_vec4(coords).normalize();
+            {
+                let mut transform: &mut Transform = world.get_component_mut(entity).unwrap();
+                let mut coords = Vec4::from(transform.rotation);
+                coords.z = -coords.z;
+                transform.rotation = Quat::from_vec4(coords).normalize();
+            }
             match light.kind() {
                 gltf::khr_lights_punctual::Kind::Directional => {
-                    entry.insert((DirectionalLightComponent {
+                    world.push_component(entity, DirectionalLightComponent {
                         intensity: light.intensity() * 685f32, // Blender exports as W/m2, we need lux
-                    },));
+                    });
                 }
                 gltf::khr_lights_punctual::Kind::Point => {
-                    entry.insert((PointLightComponent {
+                    world.push_component(entity, PointLightComponent {
                         intensity: light.intensity(),
-                    },));
+                    });
                 }
                 gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
             }
@@ -307,8 +302,8 @@ impl GltfLoader {
         scene: &Scene,
         asset_mgr: &AssetManager<P>,
         gltf_file_name: &str,
-    ) -> World {
-        let mut world = World::new();
+    ) -> LoadedLevel {
+        let mut world = LoadedLevel::new(4096, 64);
         let mut buffer_cache = HashMap::<String, Vec<u8>>::new();
         let nodes = scene.nodes();
         for node in nodes {

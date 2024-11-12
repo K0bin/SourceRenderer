@@ -42,6 +42,8 @@ use sourcerenderer_core::Vec4;
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
 
+use super::loaded_level::LoadedLevel;
+
 struct AssetLoadRequest {
     path: String,
     asset_type: AssetType,
@@ -170,7 +172,7 @@ impl AssetLoaderProgress {
 
 pub enum AssetLoaderResult {
     None,
-    Level(World),
+    Level(LoadedLevel),
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -493,7 +495,7 @@ impl<P: Platform> AssetManager<P> {
         progress
     }
 
-    pub fn load_level(&self, path: &str) -> Option<World> {
+    pub fn load_level(&self, path: &str) -> Option<LoadedLevel> {
         let file_opt = self.load_file(path);
         if file_opt.is_none() {
             error!("Could not load file: {:?}", path);

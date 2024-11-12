@@ -78,19 +78,28 @@ impl<B: GPUBackend> RendererScene<B> {
     }
 
     pub fn add_static_drawable(&mut self, entity: Entity, static_drawable: RendererStaticDrawable) {
+        debug_assert!(self.drawable_entity_map.get(&entity).is_none());
+        if cfg!(debug_assertions) {
+            for (_entity, index) in &self.drawable_entity_map {
+                debug_assert_ne!(*index, self.static_meshes.len());
+            }
+        }
+        debug_assert_eq!(self.drawable_entity_map.len(), self.static_meshes.len());
+
         self.drawable_entity_map
             .insert(entity, self.static_meshes.len());
         self.static_meshes.push(static_drawable);
     }
 
     pub fn remove_static_drawable(&mut self, entity: &Entity) {
-        let index = self.drawable_entity_map.get(entity);
+        let index = self.drawable_entity_map.remove(entity);
         debug_assert!(index.is_some());
         if index.is_none() {
             return;
         }
-        let index = *index.unwrap();
+        let index = index.unwrap();
         self.static_meshes.remove(index);
+        debug_assert_eq!(self.drawable_entity_map.len(), self.static_meshes.len());
     }
 
     pub fn update_transform(&mut self, entity: &Entity, transform: Affine3A) {
@@ -112,6 +121,14 @@ impl<B: GPUBackend> RendererScene<B> {
     }
 
     pub fn add_point_light(&mut self, entity: Entity, light: PointLight) {
+        debug_assert!(self.point_light_entity_map.get(&entity).is_none());
+        if cfg!(debug_assertions) {
+            for (_entity, index) in &self.point_light_entity_map {
+                debug_assert_ne!(*index, self.point_lights.len());
+            }
+        }
+        debug_assert_eq!(self.point_light_entity_map.len(), self.point_lights.len());
+
         self.point_light_entity_map
             .insert(entity, self.point_lights.len());
         let renderer_point_light = RendererPointLight::new(light.position, light.intensity);
@@ -119,17 +136,26 @@ impl<B: GPUBackend> RendererScene<B> {
     }
 
     pub fn remove_point_light(&mut self, entity: &Entity) {
-        let index = self.point_light_entity_map.get(entity);
+        let index = self.point_light_entity_map.remove(entity);
         debug_assert!(index.is_some());
         if index.is_none() {
             return;
         }
-        let index = *index.unwrap();
+        let index = index.unwrap();
         self.point_lights.remove(index);
+        debug_assert_eq!(self.point_light_entity_map.len(), self.point_lights.len());
     }
 
     pub fn add_directional_light(&mut self, entity: Entity, light: DirectionalLight) {
-        self.point_light_entity_map
+        debug_assert!(self.directional_light_entity_map.get(&entity).is_none());
+        if cfg!(debug_assertions) {
+            for (_entity, index) in &self.directional_light_entity_map {
+                debug_assert_ne!(*index, self.directional_lights.len());
+            }
+        }
+        debug_assert_eq!(self.directional_light_entity_map.len(), self.directional_lights.len());
+
+        self.directional_light_entity_map
             .insert(entity, self.point_lights.len());
         let renderer_directional_light =
             RendererDirectionalLight::new(light.direction, light.intensity);
@@ -137,13 +163,14 @@ impl<B: GPUBackend> RendererScene<B> {
     }
 
     pub fn remove_directional_light(&mut self, entity: &Entity) {
-        let index = self.point_light_entity_map.get(entity);
+        let index = self.directional_light_entity_map.remove(entity);
         debug_assert!(index.is_some());
         if index.is_none() {
             return;
         }
-        let index = *index.unwrap();
+        let index = index.unwrap();
         self.point_lights.remove(index);
+        debug_assert_eq!(self.directional_light_entity_map.len(), self.directional_lights.len());
     }
 
     pub fn set_lightmap(&mut self, lightmap: Option<TextureHandle>) {

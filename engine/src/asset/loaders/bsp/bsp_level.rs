@@ -28,6 +28,7 @@ use sourcerenderer_core::{
     Vec4,
 };
 
+use crate::asset::loaded_level::LoadedLevel;
 use crate::graphics::*;
 
 use super::BspLumps;
@@ -464,7 +465,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
 
         let pakfile_container = Box::new(PakFileContainer::new(pakfile));
 
-        let mut world = World::new();
+        let mut world = LoadedLevel::new(4096, 64);
         let mut materials_to_load = HashSet::<String>::new();
         let mut lightmap_packer = LightmapPacker::new(2048, 2048);
 
@@ -577,19 +578,18 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
             };
             manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal);
 
-            world.spawn((
-                StaticRenderableComponent {
-                    model_path: model_name,
-                    receive_shadows: true,
-                    cast_shadows: true,
-                    can_move: false,
-                },
-                Transform {
-                    translation: brush_models[model_index].origin,
-                    scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-                    rotation: Quat::IDENTITY,
-                },
-            ));
+            let entity = world.push_entity(2);
+            world.push_component(entity, StaticRenderableComponent {
+                model_path: model_name,
+                receive_shadows: true,
+                cast_shadows: true,
+                can_move: false,
+            });
+            world.push_component(entity, Transform {
+                translation: brush_models[model_index].origin,
+                scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+                rotation: Quat::IDENTITY,
+            });
 
             model_index += 1;
         }
@@ -602,19 +602,18 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
                 AssetLoadPriority::Normal,
                 progress,
             );
-            world.spawn((
-                StaticRenderableComponent {
-                    model_path: name.clone(),
-                    receive_shadows: true,
-                    cast_shadows: true,
-                    can_move: false,
-                },
-                Transform {
-                    translation: Self::fixup_position(&prop.origin),
-                    scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-                    rotation: Self::fixup_rotation(&prop.angles),
-                },
-            ));
+            let entity = world.push_entity(2);
+            world.push_component(entity, StaticRenderableComponent {
+                model_path: name.clone(),
+                receive_shadows: true,
+                cast_shadows: true,
+                can_move: false,
+            });
+            world.push_component(entity, Transform {
+                translation: Self::fixup_position(&prop.origin),
+                scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+                rotation: Self::fixup_rotation(&prop.angles),
+            });
         }
 
         for material in materials_to_load {
@@ -653,9 +652,10 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
             AssetLoadPriority::Normal,
         );
 
-        world.spawn((Lightmap {
+        /*let lightmap_entity = world.push_entity(1);
+        world.push_component(lightmap_entity, Lightmap {
             path: "lightmap".to_string(),
-        },));
+        });*/
 
         Ok(AssetLoaderResult::Level(world))
     }

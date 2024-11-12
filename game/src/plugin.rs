@@ -19,7 +19,7 @@ impl<P: Platform> Default for GamePlugin<P> {
 
 impl<P: Platform> Plugin for GamePlugin<P> {
     fn build(&self, app: &mut App) {
-        /*{
+        {
             let asset_manager: &AssetManager<P> = Engine::get_asset_manager(app);
 
             asset_manager.add_container(Box::new(
@@ -27,9 +27,10 @@ impl<P: Platform> Plugin for GamePlugin<P> {
                     .unwrap(),
             ));
 
-            //let mut level = asset_manager.load_level("bistro_sun.glb/scene/Scene").unwrap();
-            let mut world = app.world_mut();
-        }*/
+            let level = asset_manager.load_level("bistro_sun.glb/scene/Scene").unwrap();
+            let world = app.world_mut();
+            level.import_into_world(world);
+        }
 
         //app.world_mut().entities_mut()
 

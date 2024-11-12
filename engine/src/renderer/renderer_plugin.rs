@@ -246,56 +246,48 @@ fn extract_static_renderables<P: Platform>(
 
 fn extract_point_lights<P: Platform>(
     renderer: Res<RendererResourceWrapper<P>>,
-    new_static_renderables: Query<
-        (Entity, &PointLightComponent, &InterpolatedTransform),
-        Added<PointLightComponent>,
-    >,
-    static_renderables: Query<(Entity, &InterpolatedTransform), With<PointLightComponent>>,
-    mut removed_static_renderables: RemovedComponents<PointLightComponent>,
+    point_lights: Query<(Entity, Ref<PointLightComponent>, Ref<InterpolatedTransform>)>,
+    mut removed_point_lights: RemovedComponents<PointLightComponent>,
 ) {
     if renderer.sender.is_saturated() {
         return;
     }
 
-    for (entity, light, transform) in new_static_renderables.iter() {
-        renderer
-            .sender
-            .register_point_light(entity, transform, light);
+    for (entity, light, transform) in point_lights.iter() {
+        if light.is_added() || transform.is_added() {
+            renderer
+                .sender
+                .register_point_light(entity, transform.as_ref(), light.as_ref());
+        } else {
+            renderer.sender.update_transform(entity, transform.0);
+        }
     }
 
-    for (entity, transform) in static_renderables.iter() {
-        renderer.sender.update_transform(entity, transform.0);
-    }
-
-    for entity in removed_static_renderables.read() {
+    for entity in removed_point_lights.read() {
         renderer.sender.unregister_point_light(entity);
     }
 }
 
 fn extract_directional_lights<P: Platform>(
     renderer: Res<RendererResourceWrapper<P>>,
-    new_static_renderables: Query<
-        (Entity, &DirectionalLightComponent, &InterpolatedTransform),
-        Added<DirectionalLightComponent>,
-    >,
-    static_renderables: Query<(Entity, &InterpolatedTransform), With<DirectionalLightComponent>>,
-    mut removed_static_renderables: RemovedComponents<DirectionalLightComponent>,
+    directional_lights: Query<(Entity, Ref<DirectionalLightComponent>, Ref<InterpolatedTransform>)>,
+    mut removed_directional_lights: RemovedComponents<DirectionalLightComponent>,
 ) {
     if renderer.sender.is_saturated() {
         return;
     }
 
-    for (entity, light, transform) in new_static_renderables.iter() {
-        renderer
-            .sender
-            .register_directional_light(entity, transform, light);
+    for (entity, light, transform) in directional_lights.iter() {
+        if light.is_added() || transform.is_added() {
+            renderer
+                .sender
+                .register_directional_light(entity, transform.as_ref(), light.as_ref());
+        } else {
+            //renderer.sender.update_transform(entity, transform.0);
+        }
     }
 
-    for (entity, transform) in static_renderables.iter() {
-        renderer.sender.update_transform(entity, transform.0);
-    }
-
-    for entity in removed_static_renderables.read() {
+    for entity in removed_directional_lights.read() {
         renderer.sender.unregister_directional_light(entity);
     }
 }
