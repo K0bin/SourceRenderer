@@ -225,16 +225,12 @@ fn extract_static_renderables<P: Platform>(
     static_renderables: Query<(Entity, Ref<StaticRenderableComponent>, Ref<InterpolatedTransform>)>,
     mut removed_static_renderables: RemovedComponents<StaticRenderableComponent>,
 ) {
-    if renderer.sender.is_saturated() {
-        return;
-    }
-
     for (entity, renderable, transform) in static_renderables.iter() {
         if renderable.is_added() || transform.is_added() {
             renderer
                 .sender
                 .register_static_renderable(entity, transform.as_ref(), renderable.as_ref());
-        } else {
+        } else if !renderer.sender.is_saturated() {
             renderer.sender.update_transform(entity, transform.0);
         }
     }
@@ -249,16 +245,12 @@ fn extract_point_lights<P: Platform>(
     point_lights: Query<(Entity, Ref<PointLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_point_lights: RemovedComponents<PointLightComponent>,
 ) {
-    if renderer.sender.is_saturated() {
-        return;
-    }
-
     for (entity, light, transform) in point_lights.iter() {
         if light.is_added() || transform.is_added() {
             renderer
                 .sender
                 .register_point_light(entity, transform.as_ref(), light.as_ref());
-        } else {
+        } else if !renderer.sender.is_saturated() {
             renderer.sender.update_transform(entity, transform.0);
         }
     }
@@ -273,16 +265,12 @@ fn extract_directional_lights<P: Platform>(
     directional_lights: Query<(Entity, Ref<DirectionalLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_directional_lights: RemovedComponents<DirectionalLightComponent>,
 ) {
-    if renderer.sender.is_saturated() {
-        return;
-    }
-
-    for (entity, light, transform) in directional_lights.iter() {
+        for (entity, light, transform) in directional_lights.iter() {
         if light.is_added() || transform.is_added() {
             renderer
                 .sender
                 .register_directional_light(entity, transform.as_ref(), light.as_ref());
-        } else {
+        } else if !renderer.sender.is_saturated() {
             //renderer.sender.update_transform(entity, transform.0);
         }
     }
