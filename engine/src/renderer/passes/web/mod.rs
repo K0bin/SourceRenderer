@@ -107,8 +107,8 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         assets: &RendererAssets<P>
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
         let back_buffer_res = swapchain.next_backbuffer();
-        if back_buffer_res.is_err() {
-            return Err(SwapchainError::Other);
+        if let Err(e) = back_buffer_res{
+            return Err(e);
         }
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
