@@ -15,3 +15,6 @@ resolver = "2"
 default-members = [
     "platform/sdl"
 ]
+
+[profile.release]
+debug = true
