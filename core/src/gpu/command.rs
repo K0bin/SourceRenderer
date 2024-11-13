@@ -92,7 +92,7 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
   unsafe fn blit(&mut self, src_texture: &B::Texture, src_array_layer: u32, src_mip_level: u32, dst_texture: &B::Texture, dst_array_layer: u32, dst_mip_level: u32);
 
-  unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>);
+  unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>);
   unsafe fn finish(&mut self);
 
   unsafe fn copy_buffer_to_texture(&mut self, src: &B::Buffer, dst: &B::Texture, region: &BufferTextureCopyRegion);

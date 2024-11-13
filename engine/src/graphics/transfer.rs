@@ -404,7 +404,7 @@ impl<B: GPUBackend> Transfer<B> {
         cmd_buffer.used_textures.extend(commands.used_textures.drain(..));
 
         unsafe {
-          cmd_buffer.cmd_buffer.begin(None);
+          cmd_buffer.cmd_buffer.begin(0u64, None);
         }
 
         if DEBUG_FORCE_FAT_BARRIER {

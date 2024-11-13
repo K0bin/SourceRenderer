@@ -375,9 +375,9 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
-    pub fn begin(&mut self, inheritance: Option<&<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance>) {
+    pub fn begin(&mut self, frame: u64, inheritance: Option<&<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance>) {
         unsafe {
-            self.inner.cmd_buffer.begin(inheritance)
+            self.inner.cmd_buffer.begin(frame, inheritance)
         }
     }
 

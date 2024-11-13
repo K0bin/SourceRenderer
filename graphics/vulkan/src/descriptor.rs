@@ -1273,10 +1273,15 @@ enum CacheMode {
     Everything,
 }
 
+struct DescriptorPools {
+    pools: Vec<Arc<VkDescriptorPool>>,
+    next_non_full_pool_index: u32
+}
+
 pub(crate) struct VkBindingManager {
     cache_mode: CacheMode,
-    transient_pools: RefCell<Vec<Arc<VkDescriptorPool>>>,
-    permanent_pools: RefCell<Vec<Arc<VkDescriptorPool>>>,
+    transient_pools: RefCell<DescriptorPools>,
+    permanent_pools: RefCell<DescriptorPools>,
     device: Arc<RawVkDevice>,
     current_sets: [Option<Arc<VkDescriptorSet>>; 4],
     dirty: DirtyDescriptorSets,
@@ -1291,13 +1296,18 @@ impl VkBindingManager {
         let transient_pool = Arc::new(VkDescriptorPool::new(device, true));
         let permanent_pool = Arc::new(VkDescriptorPool::new(device, false));
 
-        let cache_mode = CacheMode::None;
-        // TODO: determine based on driver, might be beneficial for mobile
+        let cache_mode = CacheMode::Everything;
 
         Self {
             cache_mode,
-            transient_pools: RefCell::new(vec![transient_pool]),
-            permanent_pools: RefCell::new(vec![permanent_pool]),
+            transient_pools: RefCell::new(DescriptorPools {
+                pools: vec![transient_pool],
+                next_non_full_pool_index: 0
+            }),
+            permanent_pools: RefCell::new(DescriptorPools {
+                pools: vec![permanent_pool],
+                next_non_full_pool_index: 0
+            }),
             device: device.clone(),
             current_sets: Default::default(),
             dirty: DirtyDescriptorSets::empty(),
@@ -1318,9 +1328,12 @@ impl VkBindingManager {
             transient_cache_mut.clear();
         }
         let mut transient_pools_mut = self.transient_pools.borrow_mut();
-        for pool in transient_pools_mut.iter_mut() {
+        transient_pools_mut.next_non_full_pool_index = 0u32;
+        for pool in transient_pools_mut.pools.iter_mut() {
             pool.reset();
         }
+        let mut permanent_pools_mut = self.permanent_pools.borrow_mut();
+        permanent_pools_mut.next_non_full_pool_index = 0u32;
     }
 
     pub(crate) fn bind(
@@ -1480,7 +1493,7 @@ impl VkBindingManager {
         } else {
             self.find_compatible_set(frame, layout, &bindings, !transient)
         };
-        let set = if let Some(cached_set) = cached_set {
+        let set: Arc<VkDescriptorSet> = if let Some(cached_set) = cached_set {
             cached_set
         } else {
             let mut pools = if !transient {
@@ -1489,7 +1502,9 @@ impl VkBindingManager {
                 self.transient_pools.borrow_mut()
             };
             let mut new_set = Option::<VkDescriptorSet>::None;
-            'pools_iter: for pool in pools.iter() {
+
+            'pools_iter: for i in (pools.next_non_full_pool_index as usize) .. pools.pools.len() {
+                let pool = &pools.pools[i];
                 let set_res = VkDescriptorSet::new(pool, &self.device, layout, transient, bindings);
                 match set_res {
                     Ok(set) => {
@@ -1497,14 +1512,19 @@ impl VkBindingManager {
                         break 'pools_iter;
                     }
                     Err(vk::Result::ERROR_OUT_OF_HOST_MEMORY) => panic!("Out of host memory."),
-                    _ => {}
+                    _ => {
+                        if i == pools.next_non_full_pool_index as usize {
+                            pools.next_non_full_pool_index += 1;
+                        }
+                    }
                 }
             }
+
             if new_set.is_none() {
                 let pool = Arc::new(VkDescriptorPool::new(&self.device, transient));
                 new_set =
                     VkDescriptorSet::new(&pool, &self.device, layout, transient, bindings).ok();
-                pools.push(pool);
+                    pools.pools.push(pool);
             }
             let new_set = Arc::new(new_set.unwrap());
 
@@ -1559,9 +1579,11 @@ impl VkBindingManager {
         set_bindings
     }
 
-    const FRAMES_BETWEEN_CLEANUP: u64 = 1;
-    const MAX_FRAMES_SET_UNUSED: u64 = 5;
+    const FRAMES_BETWEEN_CLEANUP: u64 = 0;
+    const MAX_FRAMES_SET_UNUSED: u64 = 16;
     fn clean_permanent_cache(&mut self, frame: u64) {
+        // TODO: I might need to make this more aggressive because of memory usage.
+
         if self.cache_mode != CacheMode::Everything
             || frame - self.last_cleanup_frame < Self::FRAMES_BETWEEN_CLEANUP
         {

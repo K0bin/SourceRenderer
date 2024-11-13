@@ -116,7 +116,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
         ))
     });
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.command_pool.sender.clone());
-    recorder.begin(None);
+    recorder.begin(self.current_frame, None);
     recorder
   }
 
@@ -135,7 +135,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
         ))
     });
     let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.secondary_command_pool.sender.clone());
-    recorder.begin(Some(inheritance));
+    recorder.begin(self.current_frame, Some(inheritance));
     recorder
   }
 

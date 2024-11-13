@@ -549,7 +549,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         }
     }
 
-    unsafe fn begin(&mut self, inheritance: Option<&Self::CommandBufferInheritance>) {
+    unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
         if let Some(handle) = self.command_buffer.as_ref() {
             handle.encode_wait_for_event(&self.pre_event, 1);
         }

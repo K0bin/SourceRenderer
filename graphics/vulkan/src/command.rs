@@ -538,7 +538,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             BoundPipeline::RayTracing { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::RAY_TRACING_KHR, *uses_bindless),
         };
 
-        let finished_sets = self.descriptor_manager.finish(0, pipeline_layout);
+        let finished_sets = self.descriptor_manager.finish(self.frame, pipeline_layout);
         for (index, set_option) in finished_sets.iter().enumerate() {
             match set_option {
                 None => {
@@ -1481,10 +1481,11 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.mark_all_dirty();
     }
 
-    unsafe fn begin(&mut self, inner_info: Option<&VkInnerCommandBufferInfo>) {
+    unsafe fn begin(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) {
         assert_eq!(self.state.load(), VkCommandBufferState::Ready);
 
         self.state.store(VkCommandBufferState::Recording);
+        self.frame = frame;
 
         let (flags, inhertiance_info) = if let Some(inner_info) = inner_info {
             (
