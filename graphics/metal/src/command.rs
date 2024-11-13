@@ -52,6 +52,13 @@ pub(crate) fn index_format_to_mtl(index_format: gpu::IndexFormat) -> metal::MTLI
     }
 }
 
+pub(crate) fn index_format_size(index_format: gpu::IndexFormat) -> usize {
+    match index_format {
+        gpu::IndexFormat::U16 => 2,
+        gpu::IndexFormat::U32 => 4
+    }
+}
+
 pub(crate) fn format_to_mtl_attribute_format(format: gpu::Format) -> metal::MTLAttributeFormat {
     match format {
         gpu::Format::R32Float => metal::MTLAttributeFormat::Float,
@@ -421,7 +428,13 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             .expect("No index buffer bound");
 
         self.get_render_pass_encoder()
-            .draw_indexed_primitives(self.primitive_type, indices as u64, index_format_to_mtl(index_buffer.format), &index_buffer.buffer, index_buffer.offset as u64);
+            .draw_indexed_primitives(
+                self.primitive_type,
+                indices as u64,
+                index_format_to_mtl(index_buffer.format),
+                &index_buffer.buffer,
+                index_buffer.offset as u64 + first_index as u64 * index_format_size(index_buffer.format) as u64
+            );
     }
 
     unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
