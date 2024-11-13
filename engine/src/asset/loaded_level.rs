@@ -31,6 +31,7 @@ impl Deref for BumpUnpin {
 }
 
 pub struct LoadedLevel {
+    total_component_count: usize,
     entities: Vec<'static, LoadedEntity<'static>>,
     bump: Pin<std::boxed::Box<BumpUnpin>>,
 }
@@ -42,6 +43,7 @@ impl LoadedLevel {
             std::mem::transmute(&bump)
         };
         let mut new_loaded_level = Self {
+            total_component_count: 0,
             bump: std::boxed::Box::pin(BumpUnpin {
                 _unpinned: PhantomPinned,
                 bump
@@ -80,6 +82,7 @@ impl LoadedLevel {
         let alloced_component: &'static mut T = static_bump.alloc(component);
         let boxed_component: Box<'static, dyn Any> = unsafe { Box::from_raw(alloced_component) };
         entity.components.push(boxed_component);
+        self.total_component_count += 1;
     }
 
     pub fn get_component_mut<T: Any>(&mut self, entity_index: usize) -> Option<&mut T> {
@@ -92,6 +95,18 @@ impl LoadedLevel {
             }
         }
         None
+    }
+
+    pub fn entity_count(&self) -> usize {
+        self.entities.len()
+    }
+
+    pub fn memory_usage(&self) -> usize {
+        self.bump.allocated_bytes()
+    }
+
+    pub fn component_count(&self) -> usize {
+        self.total_component_count
     }
 
     pub fn import_into_world(mut self, world: &mut World) {
