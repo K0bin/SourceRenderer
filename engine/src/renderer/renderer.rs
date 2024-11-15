@@ -33,7 +33,6 @@ use super::ecs::{
     PointLightComponent,
 };
 use super::light::DirectionalLight;
-use super::passes::modern::ModernRenderer;
 use super::passes::web::WebRenderer;
 use super::render_path::{FrameInfo, RenderPath, SceneInfo, ZeroTextures};
 use super::renderer_assets::RendererAssets;
@@ -49,6 +48,9 @@ use crate::renderer::command::RendererCommand;
 use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
 use crate::graphics::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+use super::passes::modern::ModernRenderer;
 
 struct RendererState {
     queued_frames_counter: Mutex<u32>, // we need the mutex for the condvar anyway
@@ -516,8 +518,8 @@ impl<B: GPUBackend> RendererSender<B> {
             })
             .unwrap();
         #[cfg(target_arch = "wasm32")]
-        let _ = self
-            .cond_var
+        let _lock = self
+            .state.cond_var
             .wait_while(queued_guard, |queued| *queued > 1)
             .unwrap();
     }
