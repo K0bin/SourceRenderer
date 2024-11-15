@@ -1,18 +1,18 @@
 use std::{sync::Arc, collections::HashMap};
 
-use imgui::{Context, internal::RawWrapper, FontSource, TextureId};
+//use imgui::{Context, internal::RawWrapper, FontSource, TextureId};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::graphics::*;
 
 pub struct UI<P: Platform> {
-    imgui: Context,
-    texture_map: HashMap<imgui::TextureId, Arc<TextureView<P::GPUBackend>>>,
+    //imgui: Context,
+    texture_map: HashMap</*imgui::TextureId*/ u32, Arc<TextureView<P::GPUBackend>>>,
     window_size: Vec2UI
 }
 
 impl<P: Platform> UI<P> {
     pub fn new(device: &Arc<Device<P::GPUBackend>>, window_size: Vec2UI) -> Self {
-        let mut imgui = imgui::Context::create();
+        /*let mut imgui = imgui::Context::create();
         imgui.set_platform_name(Some("Dreieck".to_string()));
         imgui.style_mut().use_dark_colors();
 
@@ -39,11 +39,11 @@ impl<P: Platform> UI<P> {
         let font_texture_view = device.create_texture_view(&font_texture, &TextureViewInfo::default(), Some("DearImguiFontMapView"));
 
         imgui.fonts().tex_id = TextureId::new(FONT_TEXTURE_ID);
-        texture_map.insert(imgui.fonts().tex_id, font_texture_view);
+        texture_map.insert(imgui.fonts().tex_id, font_texture_view);*/
 
         Self {
-            imgui,
-            texture_map,
+            //imgui,
+            texture_map: HashMap::new(),
             window_size
         }
     }
@@ -53,6 +53,7 @@ impl<P: Platform> UI<P> {
     }
 
     pub fn update(&mut self) {
+        /*
         let io = self.imgui.io_mut();
         io.display_size = [ self.window_size.x as f32, self.window_size.y as f32 ];
         io.display_framebuffer_scale = [ 1f32, 1f32 ];
@@ -60,10 +61,11 @@ impl<P: Platform> UI<P> {
         frame.text("Hi");
         let mut opened = false;
         frame.show_demo_window(&mut opened);
+        */
     }
 
     pub fn draw_data(&mut self, device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> UIDrawData<P::GPUBackend> {
-        let draw = self.imgui.render();
+        /*let draw = self.imgui.render();
         let mut draw_lists = Vec::<UICmdList<P::GPUBackend>>::with_capacity(draw.draw_lists_count());
 
         let fb_size = Vec2::new(draw.display_size[0] * draw.framebuffer_scale[0], draw.display_size[1] * draw.framebuffer_scale[1]);
@@ -130,7 +132,19 @@ impl<P: Platform> UI<P> {
             viewport,
             scale,
             translate,
-        };
+        };*/
+
+        UIDrawData {
+            draw_lists: vec![],
+            viewport: Viewport {
+                position: Vec2::new(0.0f32, 0.0f32),
+                extent: Vec2::new(0.0f32, 0.0f32),
+                min_depth: 0.0f32,
+                max_depth: 1.0f32
+            },
+            scale: Vec2::new(1.0f32, 1.0f32),
+            translate: Vec2::new(0.0f32, 0.0f32)
+        }
     }
 }
 
