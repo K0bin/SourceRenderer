@@ -427,14 +427,26 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let index_buffer = self.index_buffer.as_ref()
             .expect("No index buffer bound");
 
-        self.get_render_pass_encoder()
-            .draw_indexed_primitives(
-                self.primitive_type,
-                indices as u64,
-                index_format_to_mtl(index_buffer.format),
-                &index_buffer.buffer,
-                index_buffer.offset as u64 + first_index as u64 * index_format_size(index_buffer.format) as u64
-            );
+        if instances != 1 || first_instance != 0 || vertex_offset != 0 {
+            self.get_render_pass_encoder()
+                .draw_indexed_primitives_instanced_base_instance(
+                    self.primitive_type,
+                    indices as u64,
+                    index_format_to_mtl(index_buffer.format),
+                    &index_buffer.buffer,
+                    index_buffer.offset as u64 + first_index as u64 * index_format_size(index_buffer.format) as u64,
+                    instances as u64,
+                    vertex_offset as i64, first_instance as u64);
+        } else {
+            self.get_render_pass_encoder()
+                .draw_indexed_primitives(
+                    self.primitive_type,
+                    indices as u64,
+                    index_format_to_mtl(index_buffer.format),
+                    &index_buffer.buffer,
+                    index_buffer.offset as u64 + first_index as u64 * index_format_size(index_buffer.format) as u64
+                );
+        }
     }
 
     unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
