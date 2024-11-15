@@ -438,7 +438,7 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn unregister_point_light(&self, entity: Entity) {
         let result = self
             .sender
-            .send(RendererCommand::UnregisterPointLight(entity));
+            .send(RendererCommand::<B>::UnregisterPointLight(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -463,7 +463,7 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn unregister_directional_light(&self, entity: Entity) {
         let result = self
             .sender
-            .send(RendererCommand::UnregisterDirectionalLight(entity));
+            .send(RendererCommand::<B>::UnregisterDirectionalLight(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -532,7 +532,7 @@ impl<B: GPUBackend> RendererSender<B> {
     }
 
     pub fn update_ui(&self, ui_data: UIDrawData<B>) {
-        let result = self.sender.send(RendererCommand::RenderUI(ui_data));
+        let result = self.sender.send(RendererCommand::<B>::RenderUI(ui_data));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -562,7 +562,7 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn window_changed(&self, window_state: WindowState) {
         let result = self
             .sender
-            .send(RendererCommand::WindowChanged(window_state));
+            .send(RendererCommand::<B>::WindowChanged(window_state));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
