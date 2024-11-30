@@ -170,41 +170,10 @@ impl gpu::Device<VkBackend> for VkDevice {
     unsafe fn create_graphics_pipeline(
         &self,
         info: &gpu::GraphicsPipelineInfo<VkBackend>,
-        renderpass_info: &gpu::RenderPassInfo,
-        subpass: u32,
         name: Option<&str>,
     ) -> VkPipeline {
         let shared = &self.shared;
-        let rp_info = VkRenderPassInfo {
-            attachments: renderpass_info
-                .attachments
-                .iter()
-                .map(|a| VkAttachmentInfo {
-                    format: a.format,
-                    samples: a.samples,
-                    load_op: gpu::LoadOp::DontCare,
-                    store_op: gpu::StoreOp::DontCare,
-                    stencil_load_op: gpu::LoadOp::DontCare,
-                    stencil_store_op: gpu::StoreOp::DontCare,
-                })
-                .collect(),
-            subpasses: renderpass_info
-                .subpasses
-                .iter()
-                .map(|sp| VkSubpassInfo {
-                    input_attachments: sp.input_attachments.iter().cloned().collect(),
-                    output_color_attachments: sp.output_color_attachments.iter().cloned().collect(),
-                    depth_stencil_attachment: sp.depth_stencil_attachment.clone(),
-                })
-                .collect(),
-        };
-        let rp = shared.get_render_pass(rp_info);
-        let vk_info = VkGraphicsPipelineInfo {
-            info,
-            render_pass: &rp,
-            sub_pass: subpass,
-        };
-        VkPipeline::new_graphics(&self.device, &vk_info, shared, name)
+        VkPipeline::new_graphics(&self.device, info, shared, name)
     }
 
     unsafe fn create_fence(&self, _is_cpu_accessible: bool) -> VkTimelineSemaphore {

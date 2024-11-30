@@ -126,44 +126,12 @@ impl Prepass {
                     AttachmentBlendInfo::default(),
                 ],
             },
+            render_target_formats: &[
+                Format::RG32Float, Format::RGBA32Float
+            ],
+            depth_stencil_format: Format::D24S8
         };
-        let pipeline = shader_manager.request_graphics_pipeline(
-            &pipeline_info,
-            &RenderPassInfo {
-                attachments: &[
-                    AttachmentInfo {
-                        format: Format::RG32Float,
-                        samples: SampleCount::Samples1,
-                    },
-                    AttachmentInfo {
-                        format: Format::RGBA32Float,
-                        samples: SampleCount::Samples1,
-                    },
-                    AttachmentInfo {
-                        format: Format::D24S8,
-                        samples: SampleCount::Samples1,
-                    },
-                ],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef {
-                            index: 1,
-                            resolve_attachment_index: None,
-                        },
-                        OutputAttachmentRef {
-                            index: 0,
-                            resolve_attachment_index: None,
-                        },
-                    ],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 2,
-                        read_only: false,
-                    }),
-                }],
-            },
-            0,
-        );
+        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
     }
@@ -197,30 +165,12 @@ impl Prepass {
 
         cmd_buffer.begin_render_pass(
             &RenderPassBeginInfo {
-                attachments: &[
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::DepthStencil(&*depth_buffer),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    },
-                ],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef {
-                            index: 1,
-                            resolve_attachment_index: None,
-                        },
-                        OutputAttachmentRef {
-                            index: 0,
-                            resolve_attachment_index: None,
-                        },
-                    ],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 2,
-                        read_only: false,
-                    }),
-                }],
+                render_targets: &[],
+                depth_stencil: Some(&DepthStencilAttachment {
+                    view: &*depth_buffer,
+                    load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                    store_op: StoreOp::<P::GPUBackend>::Store
+                })
             },
             RenderpassRecordingMode::CommandBuffers,
         );

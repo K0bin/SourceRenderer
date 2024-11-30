@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use serde::Serialize;
+use smallvec::SmallVec;
 
 use super::*;
 
@@ -344,7 +345,9 @@ pub struct GraphicsPipelineInfo<'a, B: GPUBackend> {
   pub rasterizer: RasterizerInfo,
   pub depth_stencil: DepthStencilInfo,
   pub blend: BlendInfo<'a>,
-  pub primitive_type: PrimitiveType
+  pub primitive_type: PrimitiveType,
+  pub render_target_formats: &'a [Format],
+  pub depth_stencil_format: Format
 }
 
 impl<B: GPUBackend> Clone for GraphicsPipelineInfo<'_, B> {
@@ -356,7 +359,9 @@ impl<B: GPUBackend> Clone for GraphicsPipelineInfo<'_, B> {
       rasterizer: self.rasterizer.clone(),
       depth_stencil: self.depth_stencil.clone(),
       blend: self.blend.clone(),
-      primitive_type: self.primitive_type
+      primitive_type: self.primitive_type,
+      render_target_formats: self.render_target_formats,
+      depth_stencil_format: self.depth_stencil_format
     }
   }
 }

@@ -36,26 +36,9 @@ impl BlitPass {
                     constants: [1f32, 1f32, 1f32, 1f32],
                 },
                 primitive_type: PrimitiveType::Triangles,
-            },
-            &RenderPassInfo {
-                attachments: &[
-                    AttachmentInfo {
-                        format: dst_format,
-                        samples: SampleCount::Samples1,
-                    },
-                ],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef {
-                            index: 0,
-                            resolve_attachment_index: None,
-                        },
-                    ],
-                    depth_stencil_attachment: None,
-                }],
-            },
-            0,
+                render_target_formats: &[dst_format],
+                depth_stencil_format: Format::Unknown
+            }
         );
 
         Self {
@@ -75,22 +58,12 @@ impl BlitPass {
         dst_resolution: Vec2UI
     ) {
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
-            attachments: &[
-                RenderPassAttachment {
-                    view: RenderPassAttachmentView::RenderTarget(dst_view), load_op: LoadOp::DontCare, store_op: StoreOp::Store
-                }
-            ], subpasses: &[
-                SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef {
-                            index: 0,
-                            resolve_attachment_index: None
-                        }
-                    ], depth_stencil_attachment: None
-                }
-            ]
-
+            render_targets: &[RenderTarget {
+                view: dst_view,
+                load_op: LoadOpColor::DontCare,
+                store_op: StoreOp::<P::GPUBackend>::Store
+            }],
+            depth_stencil: None
         }, RenderpassRecordingMode::Commands);
 
         let pipeline = shader_manager.get_graphics_pipeline(self.pipeline_handle);

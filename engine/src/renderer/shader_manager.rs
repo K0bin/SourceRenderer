@@ -121,6 +121,8 @@ struct StoredGraphicsPipelineInfo {
     pub depth_stencil: DepthStencilInfo,
     pub blend: StoredBlendInfo,
     pub primitive_type: PrimitiveType,
+    pub render_target_formats: SmallVec<[Format; 8]>,
+    pub depth_stencil_format: Format
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +134,8 @@ pub struct GraphicsPipelineInfo<'a> {
     pub depth_stencil: DepthStencilInfo,
     pub blend: BlendInfo<'a>,
     pub primitive_type: PrimitiveType,
+    pub render_target_formats: &'a [Format],
+    pub depth_stencil_format: Format
 }
 
 struct StoredGraphicsPipeline<B: GPUBackend> {
@@ -139,24 +143,9 @@ struct StoredGraphicsPipeline<B: GPUBackend> {
     pipeline: Arc<B::GraphicsPipeline>,
 }
 
-#[derive(Debug, Clone)]
-pub struct StoredSubpassInfo {
-    pub input_attachments: SmallVec<[AttachmentRef; 4]>,
-    pub output_color_attachments: SmallVec<[OutputAttachmentRef; 4]>,
-    pub depth_stencil_attachment: Option<DepthStencilAttachmentRef>,
-}
-
-#[derive(Debug, Clone)]
-struct StoredRenderPassInfo {
-    attachments: SmallVec<[AttachmentInfo; 4]>,
-    subpasses: SmallVec<[StoredSubpassInfo; 4]>,
-}
-
 #[derive(Debug)]
 struct GraphicsCompileTask<P: Platform> {
     info: StoredGraphicsPipelineInfo,
-    renderpass: StoredRenderPassInfo,
-    subpass: u32,
     is_async: bool,
     _p: PhantomData<<P::GPUBackend as GPUBackend>::Device>,
 }
@@ -165,8 +154,6 @@ impl<P: Platform> Clone for GraphicsCompileTask<P> {
     fn clone(&self) -> Self {
         Self {
             info: self.info.clone(),
-            renderpass: self.renderpass.clone(),
-            subpass: self.subpass,
             is_async: self.is_async,
             _p: PhantomData
         }
@@ -259,22 +246,6 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
         shaders: Self::TShaders,
         device: &Arc<Device<P::GPUBackend>>,
     ) -> Arc<Self::TPipeline> {
-        let subpasses: SmallVec<[SubpassInfo; 4]> = self
-            .renderpass
-            .subpasses
-            .iter()
-            .map(|s| SubpassInfo {
-                input_attachments: &s.input_attachments[..],
-                output_color_attachments: &s.output_color_attachments[..],
-                depth_stencil_attachment: s.depth_stencil_attachment.clone(),
-            })
-            .collect();
-
-        let rp = RenderPassInfo {
-            attachments: &self.renderpass.attachments[..],
-            subpasses: &subpasses[..],
-        };
-
         let input_layout = VertexLayoutInfo {
             shader_inputs: &self.info.vertex_layout.shader_inputs[..],
             input_assembler: &self.info.vertex_layout.input_assembler[..],
@@ -296,9 +267,11 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
             depth_stencil: self.info.depth_stencil.clone(),
             blend: blend_info,
             primitive_type: self.info.primitive_type,
+            render_target_formats: &self.info.render_target_formats,
+            depth_stencil_format: self.info.depth_stencil_format
         };
 
-        device.create_graphics_pipeline(&info, &rp, self.subpass, None)
+        device.create_graphics_pipeline(&info, None)
     }
 
     fn is_async(&self) -> bool {
@@ -658,8 +631,6 @@ impl<P: Platform> ShaderManager<P> {
     pub fn request_graphics_pipeline(
         &mut self,
         info: &GraphicsPipelineInfo,
-        renderpass_info: &RenderPassInfo,
-        subpass_index: u32,
     ) -> GraphicsPipelineHandle {
         let stored_input_layout = StoredVertexLayoutInfo {
             shader_inputs: info.vertex_layout.shader_inputs.iter().cloned().collect(),
@@ -682,31 +653,14 @@ impl<P: Platform> ShaderManager<P> {
             depth_stencil: info.depth_stencil.clone(),
             blend: stored_blend,
             primitive_type: info.primitive_type,
-        };
-
-        let rp = StoredRenderPassInfo {
-            attachments: renderpass_info.attachments.iter().cloned().collect(),
-            subpasses: renderpass_info
-                .subpasses
-                .iter()
-                .map(|subpass| StoredSubpassInfo {
-                    input_attachments: subpass.input_attachments.iter().cloned().collect(),
-                    output_color_attachments: subpass
-                        .output_color_attachments
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    depth_stencil_attachment: subpass.depth_stencil_attachment.clone(),
-                })
-                .collect(),
+            render_target_formats: info.render_target_formats.iter().copied().collect(),
+            depth_stencil_format: info.depth_stencil_format
         };
 
         self.request_pipeline_internal(
             &self.graphics,
             GraphicsCompileTask::<P> {
                 info: stored,
-                renderpass: rp,
-                subpass: subpass_index,
                 is_async: false,
                 _p: PhantomData,
             },

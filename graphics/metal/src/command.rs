@@ -82,14 +82,12 @@ struct MTLMDIParams {
 enum MTLRenderPassState {
     Commands {
         render_encoder: metal::RenderCommandEncoder,
-        render_pass: Vec<metal::RenderPassDescriptor>,
-        subpass: u32,
+        render_pass: metal::RenderPassDescriptor,
     },
     Parallel {
         parallel_passes: Arc<Mutex<Vec<metal::RenderCommandEncoder>>>,
         parallel_encoder: metal::ParallelRenderCommandEncoder,
-        render_pass: Vec<metal::RenderPassDescriptor>,
-        subpass: u32,
+        render_pass: metal::RenderPassDescriptor,
     },
     None
 }
@@ -302,8 +300,8 @@ impl MTLCommandBuffer {
         }
         {
             match &mut self.render_pass {
-                MTLRenderPassState::Commands { render_encoder, render_pass, subpass } => {
-                    *render_encoder = self.command_buffer.as_ref().unwrap().new_render_command_encoder(&render_pass[*subpass as usize]).to_owned();
+                MTLRenderPassState::Commands { render_encoder, render_pass } => {
+                    *render_encoder = self.command_buffer.as_ref().unwrap().new_render_command_encoder(render_pass).to_owned();
                     Self::render_encoder_use_all_heaps(render_encoder, &self.shared);
                     render_encoder.execute_commands_in_buffer(&icb, metal::NSRange { location: 0u64, length: max_draw_count as u64});
                 },
@@ -569,7 +567,6 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             let mut guard = inheritance.lock().unwrap();
             self.render_pass = MTLRenderPassState::Commands {
                 render_encoder: guard.pop().expect("Ran out of inner encoders."),
-                subpass: 0,
                 render_pass: Vec::new()
             }
         }
@@ -641,15 +638,14 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn begin_render_pass(&mut self, renderpass_info: &gpu::RenderPassBeginInfo<MTLBackend>, recording_mode: gpu::RenderpassRecordingMode) {
         assert!(self.render_pass.is_none());
         self.end_non_rendering_encoders();
-        let descriptors = render_pass_to_descriptors(renderpass_info);
+        let descriptor = render_pass_to_descriptors(renderpass_info);
         let first_descriptor = descriptors[0].clone();
         if recording_mode == gpu::RenderpassRecordingMode::Commands {
             let encoder = self.handle().new_render_command_encoder(&first_descriptor).to_owned();
             Self::render_encoder_use_all_heaps(&encoder, &self.shared);
             self.render_pass = MTLRenderPassState::Commands {
                 render_encoder: encoder,
-                subpass: 0,
-                render_pass: descriptors,
+                render_pass: descriptor,
             };
         } else {
             assert_eq!(descriptors.len(), 1);
@@ -666,41 +662,8 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             self.render_pass = MTLRenderPassState::Parallel {
                 parallel_passes: encoders,
                 parallel_encoder: parallel_encoder,
-                subpass: 0,
-                render_pass: descriptors
+                render_pass: descriptor
             };
-        }
-    }
-
-    unsafe fn advance_subpass(&mut self) {
-        self.binding.dirty_all();
-        match &mut self.render_pass {
-            MTLRenderPassState::Commands { render_encoder, subpass, render_pass } => {
-                *subpass += 1;
-                render_encoder.end_encoding();
-                *render_encoder = self.command_buffer.as_ref().unwrap().new_render_command_encoder(&render_pass[*subpass as usize]).to_owned();
-                Self::render_encoder_use_all_heaps(render_encoder, &self.shared);
-            }
-            MTLRenderPassState::Parallel { parallel_passes, parallel_encoder, subpass, render_pass } => {
-                assert_eq!(Arc::strong_count(parallel_passes), 1);
-                *subpass += 1;
-                {
-                    let mut encoders_guard: std::sync::MutexGuard<Vec<metal::RenderCommandEncoder>> = parallel_passes.lock().unwrap();
-                    for encoder in encoders_guard.iter() {
-                        encoder.end_encoding();
-                    }
-                    encoders_guard.clear();
-                }
-                parallel_encoder.end_encoding();
-                *parallel_encoder = self.command_buffer.as_ref().unwrap().new_parallel_render_command_encoder(&render_pass[*subpass as usize]).to_owned();
-                {
-                    let mut encoders_guard: std::sync::MutexGuard<Vec<metal::RenderCommandEncoder>> = parallel_passes.lock().unwrap();
-                    for _ in 0..MAX_INNER_ENCODERS {
-                        encoders_guard.push(parallel_encoder.render_command_encoder().to_owned());
-                    }
-                }
-            },
-            MTLRenderPassState::None => panic!("No render pass started!"),
         }
     }
 

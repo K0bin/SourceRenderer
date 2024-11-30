@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    ffi::CString,
+    ffi::{c_void, CString},
     hash::Hash,
     sync::Arc,
 };
@@ -86,9 +86,9 @@ pub enum VkCommandBufferState {
 }
 
 pub struct VkInnerCommandBufferInfo {
-    pub render_pass: Arc<VkRenderPass>,
-    pub sub_pass: u32,
-    pub frame_buffer: Arc<VkFrameBuffer>,
+    pub rt_formats: SmallVec<[vk::Format; 8]>,
+    pub dsv_format: vk::Format,
+    pub sample_count: vk::SampleCountFlags
 }
 
 pub(super) enum BoundPipeline {
@@ -119,14 +119,13 @@ pub struct VkCommandBuffer {
     state: AtomicCell<VkCommandBufferState>,
     command_buffer_type: gpu::CommandBufferType,
     shared: Arc<VkShared>,
-    render_pass: Option<Arc<VkRenderPass>>,
     pipeline: Option<BoundPipeline>,
-    sub_pass: u32,
     queue_family_index: u32,
     descriptor_manager: VkBindingManager,
     inheritance: Option<VkInnerCommandBufferInfo>,
     frame: u64,
-    reset_individually: bool
+    reset_individually: bool,
+    is_in_render_pass: bool
 }
 
 impl VkCommandBuffer {
@@ -154,16 +153,15 @@ impl VkCommandBuffer {
             pool: pool.clone(),
             device: device.clone(),
             command_buffer_type,
-            render_pass: None,
             pipeline: None,
-            sub_pass: 0u32,
             shared: shared.clone(),
             state: AtomicCell::new(VkCommandBufferState::Ready),
             queue_family_index,
             descriptor_manager: VkBindingManager::new(device),
             inheritance: None,
             frame: 0u64,
-            reset_individually
+            reset_individually,
+            is_in_render_pass: false
         }
     }
 
@@ -284,24 +282,12 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn end_render_pass(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
-            self.device.cmd_end_render_pass(self.cmd_buffer);
+            self.device.cmd_end_rendering(self.cmd_buffer);
         }
-        self.render_pass = None;
-    }
-
-    unsafe fn advance_subpass(&mut self) {
-        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
-        );
-        unsafe {
-            self.device
-                .cmd_next_subpass(self.cmd_buffer, vk::SubpassContents::INLINE);
-        }
-        self.sub_pass += 1;
+        self.is_in_render_pass = false;
     }
 
     unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &VkBuffer, offset: u64) {
@@ -380,7 +366,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device.cmd_draw(self.cmd_buffer, vertices, 1, offset, 0);
@@ -401,7 +387,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device.cmd_draw_indexed(
@@ -653,7 +639,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
+        debug_assert!(!self.is_in_render_pass);
         debug_assert!(self.pipeline.is_some());
         debug_assert!(
             if let BoundPipeline::Compute { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
@@ -674,7 +660,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         dst_mip_level: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
+        debug_assert!(!self.is_in_render_pass);
         let src_info = src_texture.info();
         let dst_info = dst_texture.info();
         let mut src_aspect = vk::ImageAspectFlags::empty();
@@ -1017,97 +1003,29 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         recording_mode: gpu::RenderpassRecordingMode,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
 
-        let mut attachment_infos = SmallVec::<[VkAttachmentInfo; 16]>::with_capacity(
-            renderpass_begin_info.attachments.len(),
-        );
-        let mut width = 0u32;
-        let mut height = 0u32;
-        let mut attachment_views =
-            SmallVec::<[&VkTextureView; 8]>::with_capacity(renderpass_begin_info.attachments.len());
-        let mut clear_values =
-            SmallVec::<[vk::ClearValue; 8]>::with_capacity(renderpass_begin_info.attachments.len());
+        begin_render_pass(self.device.as_ref(), self.cmd_buffer, renderpass_begin_info, recording_mode);
+        self.is_in_render_pass = true;
 
-        for attachment in renderpass_begin_info.attachments {
-            let view = match &attachment.view {
-                gpu::RenderPassAttachmentView::RenderTarget(view) => *view,
-                gpu::RenderPassAttachmentView::DepthStencil(view) => *view,
-            };
+        if recording_mode == gpu::RenderpassRecordingMode::CommandBuffers {
+            let formats: SmallVec<[vk::Format; 8]> = renderpass_begin_info.render_targets.iter()
+                .map(|rt| format_to_vk(rt.view.info().format.unwrap_or(rt.view.texture_info().format), false))
+                .collect();
 
-            let info = view.texture_info();
-            attachment_infos.push(VkAttachmentInfo {
-                format: info.format,
-                samples: info.samples,
-                load_op: attachment.load_op,
-                store_op: attachment.store_op,
-                stencil_load_op: gpu::LoadOp::DontCare,
-                stencil_store_op: gpu::StoreOp::DontCare,
-            });
-            width = width.max(info.width);
-            height = height.max(info.height);
-            attachment_views.push(view);
-
-            clear_values.push(if info.format.is_depth() || info.format.is_stencil() {
-                vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue {
-                        depth: 1f32,
-                        stencil: 0u32,
-                    },
-                }
+            let dsv_format = renderpass_begin_info.depth_stencil.map(|dsv| format_to_vk(dsv.view.info().format.unwrap_or(dsv.view.texture_info().format), self.device.supports_d24)).unwrap_or_default();
+            let samples = if let Some(rt) = renderpass_begin_info.render_targets.first() {
+                samples_to_vk(rt.view.texture_info().samples)
+            } else if let Some(dsv) = renderpass_begin_info.depth_stencil.as_ref() {
+                samples_to_vk(dsv.view.texture_info().samples)
             } else {
-                vk::ClearValue {
-                    color: vk::ClearColorValue { float32: [0f32; 4] },
-                }
+                panic!("Render pass must have either render target or depth stencil attachment")
+            };
+            self.inheritance = Some(VkInnerCommandBufferInfo {
+                rt_formats: formats,
+                dsv_format,
+                sample_count: samples
             });
         }
-
-        let renderpass_info = VkRenderPassInfo {
-            attachments: attachment_infos,
-            subpasses: renderpass_begin_info
-                .subpasses
-                .iter()
-                .map(|sp| VkSubpassInfo {
-                    input_attachments: sp.input_attachments.iter().cloned().collect(),
-                    output_color_attachments: sp.output_color_attachments.iter().cloned().collect(),
-                    depth_stencil_attachment: sp.depth_stencil_attachment.clone(),
-                })
-                .collect(),
-        };
-
-        let renderpass = self.shared.get_render_pass(renderpass_info);
-        let framebuffer = self.shared.get_framebuffer(&renderpass, &attachment_views);
-
-        // TODO: begin info fields
-        unsafe {
-            let begin_info = vk::RenderPassBeginInfo {
-                framebuffer: framebuffer.handle(),
-                render_pass: renderpass.handle(),
-                render_area: vk::Rect2D {
-                    offset: vk::Offset2D { x: 0i32, y: 0i32 },
-                    extent: vk::Extent2D { width, height },
-                },
-                clear_value_count: clear_values.len() as u32,
-                p_clear_values: clear_values.as_ptr(),
-                ..Default::default()
-            };
-            self.device.cmd_begin_render_pass(
-                self.cmd_buffer,
-                &begin_info,
-                if recording_mode == gpu::RenderpassRecordingMode::Commands {
-                    vk::SubpassContents::INLINE
-                } else {
-                    vk::SubpassContents::SECONDARY_COMMAND_BUFFERS
-                },
-            );
-        }
-        self.sub_pass = 0;
-        self.render_pass = Some(renderpass.clone());
-        self.inheritance = Some(VkInnerCommandBufferInfo {
-            render_pass: renderpass,
-            sub_pass: 0,
-            frame_buffer: framebuffer,
-        });
     }
 
     unsafe fn inheritance(&self) -> &VkInnerCommandBufferInfo {
@@ -1124,7 +1042,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         scratch_buffer_offset: u64
     ) -> VkAccelerationStructure {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
+        debug_assert!(!self.is_in_render_pass);
         let acceleration_structure = VkAccelerationStructure::new_bottom_level(
             &self.device,
             info,
@@ -1157,7 +1075,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         scratch_buffer_offset: u64
     ) -> VkAccelerationStructure {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
+        debug_assert!(!self.is_in_render_pass);
         let acceleration_structure = VkAccelerationStructure::new_top_level(
             &self.device,
             info,
@@ -1173,7 +1091,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
+        debug_assert!(!self.is_in_render_pass);
 
         let (raygen_sbt_region, miss_sbt_region, closest_hit_sbt_region) = if let BoundPipeline::RayTracing {
             raygen_sbt_region, closest_hit_sbt_region, miss_sbt_region, ..
@@ -1261,7 +1179,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device
@@ -1292,7 +1210,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
         );
         debug_assert!(
-            self.render_pass.is_some() || self.command_buffer_type == gpu::CommandBufferType::Secondary
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             self.device
@@ -1344,7 +1262,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         values: [u32; 4],
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
+        debug_assert!(!self.is_in_render_pass);
 
         let format = texture.info().format;
         let mut aspect_mask = vk::ImageAspectFlags::empty();
@@ -1400,7 +1318,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         value: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.render_pass.is_none());
+        debug_assert!(!self.is_in_render_pass);
 
         let actual_length_in_u32s = if length_in_u32s == gpu::WHOLE_BUFFER {
             debug_assert_eq!((buffer.info().size - offset) % 4, 0);
@@ -1491,10 +1409,12 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             (
                 vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
                     | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
-                vk::CommandBufferInheritanceInfo {
-                    render_pass: inner_info.render_pass.handle(),
-                    subpass: inner_info.sub_pass,
-                    framebuffer: inner_info.frame_buffer.handle(),
+                vk::CommandBufferInheritanceRenderingInfo {
+                    color_attachment_count: inner_info.rt_formats.len() as u32,
+                    p_color_attachment_formats: inner_info.rt_formats.as_ptr(),
+                    depth_attachment_format: inner_info.dsv_format,
+                    stencil_attachment_format: inner_info.dsv_format,
+                    rasterization_samples: inner_info.sample_count,
                     ..Default::default()
                 },
             )
@@ -1511,8 +1431,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                     self.cmd_buffer,
                     &vk::CommandBufferBeginInfo {
                         flags,
-                        p_inheritance_info: &inhertiance_info
-                            as *const vk::CommandBufferInheritanceInfo,
+                        p_inheritance_info: std::ptr::null(),
+                        p_next: &inhertiance_info as *const vk::CommandBufferInheritanceRenderingInfo as *const c_void,
                         ..Default::default()
                     },
                 )
@@ -1567,7 +1487,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn finish(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        if self.render_pass.is_some() {
+        if self.is_in_render_pass {
             self.end_render_pass();
         }
 

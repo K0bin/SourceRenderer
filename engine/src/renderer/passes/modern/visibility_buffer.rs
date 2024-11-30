@@ -135,44 +135,10 @@ impl VisibilityBufferPass {
                     AttachmentBlendInfo::default(),
                 ],
             },
+            render_target_formats: &[primitive_id_texture_info.format, barycentrics_texture_info.format],
+            depth_stencil_format: depth_texture_info.format
         };
-        let pipeline = shader_manager.request_graphics_pipeline(
-            &pipeline_info,
-            &RenderPassInfo {
-                attachments: &[
-                    AttachmentInfo {
-                        format: primitive_id_texture_info.format,
-                        samples: primitive_id_texture_info.samples,
-                    },
-                    AttachmentInfo {
-                        format: barycentrics_texture_info.format,
-                        samples: barycentrics_texture_info.samples,
-                    },
-                    AttachmentInfo {
-                        format: depth_texture_info.format,
-                        samples: depth_texture_info.samples,
-                    },
-                ],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef {
-                            index: 0,
-                            resolve_attachment_index: None,
-                        },
-                        OutputAttachmentRef {
-                            index: 1,
-                            resolve_attachment_index: None,
-                        },
-                    ],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 2,
-                        read_only: false,
-                    }),
-                }],
-            },
-            0,
-        );
+        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
     }
@@ -227,40 +193,23 @@ impl VisibilityBufferPass {
 
         cmd_buffer.begin_render_pass(
             &RenderPassBeginInfo {
-                attachments: &[
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::RenderTarget(&primitive_id_rtv),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
+                render_targets: &[
+                    RenderTarget {
+                        view: &primitive_id_rtv,
+                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                        store_op: StoreOp::<P::GPUBackend>::Store,
                     },
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::RenderTarget(&barycentrics_rtv),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    },
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::DepthStencil(&dsv),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    },
+                    RenderTarget {
+                        view: &barycentrics_rtv,
+                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                        store_op: StoreOp::<P::GPUBackend>::Store,
+                    }
                 ],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef {
-                            index: 0,
-                            resolve_attachment_index: None,
-                        },
-                        OutputAttachmentRef {
-                            index: 1,
-                            resolve_attachment_index: None,
-                        },
-                    ],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 2,
-                        read_only: false,
-                    }),
-                }],
+                depth_stencil: Some(&DepthStencilAttachment {
+                    view: &dsv,
+                    load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                    store_op: StoreOp::<P::GPUBackend>::Store,
+                })
             },
             RenderpassRecordingMode::Commands,
         );

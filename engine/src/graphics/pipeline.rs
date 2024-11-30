@@ -9,9 +9,9 @@ pub struct GraphicsPipeline<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> GraphicsPipeline<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, info: &GraphicsPipelineInfo<B>, render_pass_info: &gpu::RenderPassInfo, subpass: u32, name: Option<&str>) -> Self {
+    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, info: &GraphicsPipelineInfo<B>, name: Option<&str>) -> Self {
         let pipeline = unsafe {
-            device.create_graphics_pipeline(info, render_pass_info, subpass, name)
+            device.create_graphics_pipeline(info, name)
         };
         Self {
             pipeline: ManuallyDrop::new(pipeline),

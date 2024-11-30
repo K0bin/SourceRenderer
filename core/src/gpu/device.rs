@@ -23,7 +23,7 @@ pub trait Device<B: GPUBackend> {
   unsafe fn create_texture_view(&self, texture: &B::Texture, info: &TextureViewInfo, name: Option<&str>) -> B::TextureView;
   unsafe fn create_compute_pipeline(&self, shader: &B::Shader, name: Option<&str>) -> B::ComputePipeline;
   unsafe fn create_sampler(&self, info: &SamplerInfo) -> B::Sampler;
-  unsafe fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> B::GraphicsPipeline;
+  unsafe fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, name: Option<&str>) -> B::GraphicsPipeline;
   unsafe fn wait_for_idle(&self);
   unsafe fn create_fence(&self, is_cpu_accessible: bool) -> B::Fence;
   unsafe fn memory_infos(&self) -> Vec<MemoryInfo>;

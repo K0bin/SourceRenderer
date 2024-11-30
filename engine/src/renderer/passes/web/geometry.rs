@@ -158,34 +158,10 @@ impl<P: Platform> GeometryPass<P> {
                 constants: [0f32, 0f32, 0f32, 0f32],
                 attachments: &[AttachmentBlendInfo::default()],
             },
+            render_target_formats: &[swapchain.format()],
+            depth_stencil_format: Format::D32
         };
-        let pipeline = shader_manager.request_graphics_pipeline(
-            &pipeline_info,
-            &RenderPassInfo {
-                attachments: &[
-                    AttachmentInfo {
-                        format: swapchain.format(),
-                        samples: swapchain.sample_count(),
-                    },
-                    AttachmentInfo {
-                        format: Format::D32,
-                        samples: SampleCount::Samples1,
-                    },
-                ],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[OutputAttachmentRef {
-                        index: 0,
-                        resolve_attachment_index: None,
-                    }],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 1,
-                        read_only: false,
-                    }),
-                }],
-            },
-            0,
-        );
+        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline, sampler: Arc::new(sampler) }
     }
@@ -230,29 +206,16 @@ impl<P: Platform> GeometryPass<P> {
         cmd_buffer.flush_barriers();
         cmd_buffer.begin_render_pass(
             &RenderPassBeginInfo {
-                attachments: &[
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::RenderTarget(&backbuffer),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    },
-                    RenderPassAttachment {
-                        view: RenderPassAttachmentView::DepthStencil(&dsv),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    },
-                ],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[OutputAttachmentRef {
-                        index: 0,
-                        resolve_attachment_index: None,
-                    }],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 1,
-                        read_only: false,
-                    }),
+                render_targets: &[RenderTarget {
+                    view: &backbuffer,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                    store_op: StoreOp::<P::GPUBackend>::Store,
                 }],
+                depth_stencil: Some(&DepthStencilAttachment {
+                    view: &dsv,
+                    load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                    store_op: StoreOp::<P::GPUBackend>::Store,
+                })
             },
             RenderpassRecordingMode::Commands,
         );

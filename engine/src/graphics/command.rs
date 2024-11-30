@@ -11,16 +11,17 @@ use super::*;
 use super::{BottomLevelAccelerationStructureInfo, AccelerationStructure};
 
 pub use sourcerenderer_core::gpu::{
-    SubpassInfo,
-    LoadOp,
-    StoreOp,
+    LoadOpColor,
+    LoadOpDepthStencil,
     BarrierSync,
     BarrierAccess,
     IndexFormat,
     ShaderType,
     Viewport,
     Scissor,
-    BindingFrequency
+    BindingFrequency,
+    ClearColor,
+    ClearDepthStencilValue
 };
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
@@ -569,26 +570,37 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             self.fat_barrier();
         }
 
-        let attachments: SmallVec<[gpu::RenderPassAttachment<B>; 5]> = renderpass_info.attachments.iter().map(|a| gpu::RenderPassAttachment {
-            view: match a.view {
-                RenderPassAttachmentView::RenderTarget(rt) => gpu::RenderPassAttachmentView::RenderTarget(rt.handle()),
-                RenderPassAttachmentView::DepthStencil(ds) => gpu::RenderPassAttachmentView::DepthStencil(ds.handle()),
-            },
+        let attachments: SmallVec<[gpu::RenderTarget<B>; 5]> = renderpass_info.render_targets.iter().map(|a| gpu::RenderTarget {
+            view: a.view.handle(),
             load_op: a.load_op,
-            store_op: a.store_op
+            store_op: match &a.store_op {
+                StoreOp::Store => gpu::StoreOp::Store,
+                StoreOp::DontCare => gpu::StoreOp::DontCare,
+                StoreOp::Resolve(resolve_attachment) => gpu::StoreOp::Resolve(gpu::ResolveAttachment {
+                    view: resolve_attachment.view.handle(),
+                    mode: resolve_attachment.mode
+                }),
+            },
         }).collect();
+
+        let depth_stencil = renderpass_info.depth_stencil.as_ref().map(|a| gpu::DepthStencilAttachment {
+            view: a.view.handle(),
+            load_op: a.load_op,
+            store_op: match &a.store_op {
+                StoreOp::Store => gpu::StoreOp::Store,
+                StoreOp::DontCare => gpu::StoreOp::DontCare,
+                StoreOp::Resolve(resolve_attachment) => gpu::StoreOp::Resolve(gpu::ResolveAttachment {
+                    view: resolve_attachment.view.handle(),
+                    mode: resolve_attachment.mode
+                }),
+            }
+        });
 
         unsafe {
             self.inner.cmd_buffer.begin_render_pass(&gpu::RenderPassBeginInfo {
-                attachments: &attachments,
-                subpasses: renderpass_info.subpasses
+                render_targets: &attachments,
+                depth_stencil: depth_stencil.as_ref()
             }, recording_mode);
-        }
-    }
-
-    pub fn advance_subpass(&mut self) {
-        unsafe {
-            self.inner.cmd_buffer.advance_subpass();
         }
     }
 
@@ -851,18 +863,30 @@ impl<B: GPUBackend> CommandBuffer<B> {
     }
 }
 
-pub enum RenderPassAttachmentView<'a, B: GPUBackend> {
-  RenderTarget(&'a super::TextureView<B>),
-  DepthStencil(&'a super::TextureView<B>)
+pub enum StoreOp<'a, B: GPUBackend> {
+  Store,
+  DontCare,
+  Resolve(ResolveAttachment<'a, B>)
 }
 
-pub struct RenderPassAttachment<'a, B: GPUBackend> {
-  pub view: RenderPassAttachmentView<'a, B>,
-  pub load_op: LoadOp,
-  pub store_op: StoreOp
-}
+pub struct ResolveAttachment<'a, B: GPUBackend> {
+    pub view: &'a super::TextureView<B>,
+    pub mode: ResolveMode
+  }
 
-pub struct RenderPassBeginInfo<'a, B: GPUBackend> {
-  pub attachments: &'a [RenderPassAttachment<'a, B>],
-  pub subpasses: &'a [SubpassInfo<'a>]
-}
+  pub struct RenderTarget<'a, B: GPUBackend> {
+    pub view: &'a super::TextureView<B>,
+    pub load_op: LoadOpColor,
+    pub store_op: StoreOp<'a, B>,
+  }
+
+  pub struct DepthStencilAttachment<'a, B: GPUBackend> {
+    pub view: &'a super::TextureView<B>,
+    pub load_op: LoadOpDepthStencil,
+    pub store_op: StoreOp<'a, B>,
+  }
+
+  pub struct RenderPassBeginInfo<'a, B: GPUBackend> {
+    pub render_targets: &'a [RenderTarget<'a, B>],
+    pub depth_stencil: Option<&'a DepthStencilAttachment<'a, B>>
+  }

@@ -89,23 +89,9 @@ impl<P: Platform> UIPass<P> {
                 ..Default::default()
             },
             primitive_type: PrimitiveType::Triangles,
-        }, &RenderPassInfo {
-            attachments: &[
-                AttachmentInfo {
-                    format: Format::RGBA8UNorm,
-                    samples: SampleCount::Samples1,
-                }
-            ],
-            subpasses: &[
-                SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef { index: 0, resolve_attachment_index: None }
-                    ],
-                    depth_stencil_attachment: None,
-                }
-            ]
-        }, 0, Some("DearImgui"));
+            render_target_formats: &[Format::RGBA8UNorm],
+            depth_stencil_format: Format::Unknown
+        }, Some("DearImgui"));
 
         Self {
             device: device.clone(),
@@ -153,22 +139,14 @@ impl<P: Platform> UIPass<P> {
         command_buffer.set_viewports(&[draw.viewport.clone()]);
 
         command_buffer.begin_render_pass(&RenderPassBeginInfo {
-            attachments: &[
-                RenderPassAttachment {
-                    view: RenderPassAttachmentView::RenderTarget(&rtv),
-                    load_op: LoadOp::Load,
-                    store_op: StoreOp::Store,
+            render_targets: &[
+                RenderTarget {
+                    view: &rtv,
+                    load_op: LoadOpColor::Load,
+                    store_op: StoreOp::<P::GPUBackend>::Store
                 }
             ],
-            subpasses: &[
-                SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        OutputAttachmentRef { index: 0, resolve_attachment_index: None }
-                    ],
-                    depth_stencil_attachment: None,
-                }
-            ],
+            depth_stencil: None
         }, RenderpassRecordingMode::Commands);
 
         for list in &draw.draw_lists {

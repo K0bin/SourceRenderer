@@ -5,7 +5,7 @@ use std::{
         Hash,
         Hasher,
     },
-    os::raw::c_char,
+    os::raw::{c_char, c_void},
     sync::Arc,
 };
 
@@ -314,17 +314,10 @@ pub(super) fn color_components_to_vk(color_components: gpu::ColorComponents) -> 
     vk::ColorComponentFlags::from_raw(colors)
 }
 
-#[derive(Hash, Eq, PartialEq)]
-pub struct VkGraphicsPipelineInfo<'a> {
-    pub info: &'a gpu::GraphicsPipelineInfo<'a, VkBackend>,
-    pub render_pass: &'a VkRenderPass,
-    pub sub_pass: u32,
-}
-
 impl VkPipeline {
     pub fn new_graphics(
         device: &Arc<RawVkDevice>,
-        info: &VkGraphicsPipelineInfo,
+        info: &gpu::GraphicsPipelineInfo<VkBackend>,
         shared: &VkShared,
         name: Option<&str>,
     ) -> Self {
@@ -340,7 +333,7 @@ impl VkPipeline {
         let mut dynamic_uniform_buffers = [0; 4];
 
         {
-            let shader = info.info.vs;
+            let shader = info.vs;
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
@@ -406,7 +399,7 @@ impl VkPipeline {
             uses_bindless_texture_set |= shader.uses_bindless_texture_set;
         }
 
-        if let Some(shader) = info.info.fs.clone() {
+        if let Some(shader) = info.fs.clone() {
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
@@ -474,7 +467,7 @@ impl VkPipeline {
 
         let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
         let mut binding_descriptions: Vec<vk::VertexInputBindingDescription> = Vec::new();
-        for element in info.info.vertex_layout.shader_inputs {
+        for element in info.vertex_layout.shader_inputs {
             attribute_descriptions.push(vk::VertexInputAttributeDescription {
                 location: element.location_vk_mtl,
                 binding: element.input_assembler_binding,
@@ -483,7 +476,7 @@ impl VkPipeline {
             });
         }
 
-        for element in info.info.vertex_layout.input_assembler {
+        for element in info.vertex_layout.input_assembler {
             binding_descriptions.push(vk::VertexInputBindingDescription {
                 binding: element.binding,
                 stride: element.stride as u32,
@@ -500,7 +493,7 @@ impl VkPipeline {
         };
 
         let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo {
-            topology: match info.info.primitive_type {
+            topology: match info.primitive_type {
                 gpu::PrimitiveType::Triangles => vk::PrimitiveTopology::TRIANGLE_LIST,
                 gpu::PrimitiveType::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
                 gpu::PrimitiveType::Lines => vk::PrimitiveTopology::LINE_LIST,
@@ -515,16 +508,16 @@ impl VkPipeline {
             flags: vk::PipelineRasterizationStateCreateFlags::empty(),
             depth_clamp_enable: vk::FALSE,
             rasterizer_discard_enable: vk::FALSE,
-            polygon_mode: match &info.info.rasterizer.fill_mode {
+            polygon_mode: match &info.rasterizer.fill_mode {
                 gpu::FillMode::Fill => vk::PolygonMode::FILL,
                 gpu::FillMode::Line => vk::PolygonMode::LINE,
             },
-            cull_mode: match &info.info.rasterizer.cull_mode {
+            cull_mode: match &info.rasterizer.cull_mode {
                 gpu::CullMode::Back => vk::CullModeFlags::BACK,
                 gpu::CullMode::Front => vk::CullModeFlags::FRONT,
                 gpu::CullMode::None => vk::CullModeFlags::NONE,
             },
-            front_face: match &info.info.rasterizer.front_face {
+            front_face: match &info.rasterizer.front_face {
                 gpu::FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
                 gpu::FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
             },
@@ -537,35 +530,35 @@ impl VkPipeline {
         };
 
         let multisample_create_info = vk::PipelineMultisampleStateCreateInfo {
-            rasterization_samples: samples_to_vk(info.info.rasterizer.sample_count),
-            alpha_to_coverage_enable: info.info.blend.alpha_to_coverage_enabled as u32,
+            rasterization_samples: samples_to_vk(info.rasterizer.sample_count),
+            alpha_to_coverage_enable: info.blend.alpha_to_coverage_enabled as u32,
             ..Default::default()
         };
 
         let depth_stencil_create_info = vk::PipelineDepthStencilStateCreateInfo {
-            depth_test_enable: info.info.depth_stencil.depth_test_enabled as u32,
-            depth_write_enable: info.info.depth_stencil.depth_write_enabled as u32,
-            depth_compare_op: compare_func_to_vk(info.info.depth_stencil.depth_func),
+            depth_test_enable: info.depth_stencil.depth_test_enabled as u32,
+            depth_write_enable: info.depth_stencil.depth_write_enabled as u32,
+            depth_compare_op: compare_func_to_vk(info.depth_stencil.depth_func),
             depth_bounds_test_enable: vk::FALSE,
-            stencil_test_enable: info.info.depth_stencil.stencil_enable as u32,
+            stencil_test_enable: info.depth_stencil.stencil_enable as u32,
             front: vk::StencilOpState {
-                pass_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.pass_op),
-                fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_front.fail_op),
+                pass_op: stencil_op_to_vk(info.depth_stencil.stencil_front.pass_op),
+                fail_op: stencil_op_to_vk(info.depth_stencil.stencil_front.fail_op),
                 depth_fail_op: stencil_op_to_vk(
-                    info.info.depth_stencil.stencil_front.depth_fail_op,
+                    info.depth_stencil.stencil_front.depth_fail_op,
                 ),
-                compare_op: compare_func_to_vk(info.info.depth_stencil.stencil_front.func),
-                write_mask: info.info.depth_stencil.stencil_write_mask as u32,
-                compare_mask: info.info.depth_stencil.stencil_read_mask as u32,
+                compare_op: compare_func_to_vk(info.depth_stencil.stencil_front.func),
+                write_mask: info.depth_stencil.stencil_write_mask as u32,
+                compare_mask: info.depth_stencil.stencil_read_mask as u32,
                 reference: 0u32,
             },
             back: vk::StencilOpState {
-                pass_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.pass_op),
-                fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.fail_op),
-                depth_fail_op: stencil_op_to_vk(info.info.depth_stencil.stencil_back.depth_fail_op),
-                compare_op: compare_func_to_vk(info.info.depth_stencil.stencil_back.func),
-                write_mask: info.info.depth_stencil.stencil_write_mask as u32,
-                compare_mask: info.info.depth_stencil.stencil_read_mask as u32,
+                pass_op: stencil_op_to_vk(info.depth_stencil.stencil_back.pass_op),
+                fail_op: stencil_op_to_vk(info.depth_stencil.stencil_back.fail_op),
+                depth_fail_op: stencil_op_to_vk(info.depth_stencil.stencil_back.depth_fail_op),
+                compare_op: compare_func_to_vk(info.depth_stencil.stencil_back.func),
+                write_mask: info.depth_stencil.stencil_write_mask as u32,
+                compare_mask: info.depth_stencil.stencil_read_mask as u32,
                 reference: 0u32,
             },
             min_depth_bounds: 0.0,
@@ -574,7 +567,7 @@ impl VkPipeline {
         };
 
         let mut blend_attachments: Vec<vk::PipelineColorBlendAttachmentState> = Vec::new();
-        for blend in info.info.blend.attachments {
+        for blend in info.blend.attachments {
             blend_attachments.push(vk::PipelineColorBlendAttachmentState {
                 blend_enable: blend.blend_enabled as u32,
                 src_color_blend_factor: blend_factor_to_vk(blend.src_color_blend_factor),
@@ -587,11 +580,11 @@ impl VkPipeline {
             });
         }
         let blend_create_info = vk::PipelineColorBlendStateCreateInfo {
-            logic_op_enable: info.info.blend.logic_op_enabled as u32,
-            logic_op: logic_op_to_vk(info.info.blend.logic_op),
+            logic_op_enable: info.blend.logic_op_enabled as u32,
+            logic_op: logic_op_to_vk(info.blend.logic_op),
             p_attachments: blend_attachments.as_ptr(),
             attachment_count: blend_attachments.len() as u32,
-            blend_constants: info.info.blend.constants,
+            blend_constants: info.blend.constants,
             ..Default::default()
         };
 
@@ -677,7 +670,22 @@ impl VkPipeline {
             ..Default::default()
         };
 
+        let color_attachment_formats: SmallVec<[vk::Format; 8]> = info.render_target_formats
+            .iter()
+            .map(|f| format_to_vk(*f, false))
+            .collect();
+
+        let pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo {
+            view_mask: 0u32,
+            color_attachment_count: color_attachment_formats.len() as u32,
+            p_color_attachment_formats: color_attachment_formats.as_ptr(),
+            depth_attachment_format: format_to_vk(info.depth_stencil_format, device.supports_d24),
+            stencil_attachment_format: format_to_vk(info.depth_stencil_format, device.supports_d24),
+            ..Default::default()
+        };
+
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo {
+            p_next: &pipeline_rendering_create_info as *const vk::PipelineRenderingCreateInfo as *const c_void,
             stage_count: shader_stages.len() as u32,
             p_stages: shader_stages.as_ptr(),
             p_vertex_input_state: &vertex_input_create_info,
@@ -690,8 +698,8 @@ impl VkPipeline {
             p_tessellation_state: &vk::PipelineTessellationStateCreateInfo::default(),
             p_dynamic_state: &dynamic_state_create_info,
             layout: layout.handle(),
-            render_pass: info.render_pass.handle(),
-            subpass: info.sub_pass,
+            render_pass: vk::RenderPass::null(),
+            subpass: 0,
             base_pipeline_handle: vk::Pipeline::null(),
             base_pipeline_index: 0i32,
             ..Default::default()

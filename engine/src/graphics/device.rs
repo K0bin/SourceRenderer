@@ -82,8 +82,8 @@ impl<B: GPUBackend> Device<B> {
         unsafe { self.device.create_shader(shader, name) }
     }
 
-    pub fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, renderpass_info: &RenderPassInfo, subpass: u32, name: Option<&str>) -> Arc<super::GraphicsPipeline<B>> {
-        Arc::new(super::GraphicsPipeline::new(&self.device, &self.destroyer, info, renderpass_info, subpass, name))
+    pub fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, name: Option<&str>) -> Arc<super::GraphicsPipeline<B>> {
+        Arc::new(super::GraphicsPipeline::new(&self.device, &self.destroyer, info, name))
     }
 
     pub fn create_compute_pipeline(&self, shader: &B::Shader, name: Option<&str>) -> Arc<super::ComputePipeline<B>> {

@@ -20,8 +20,6 @@ pub struct VkShared {
     device: Arc<RawVkDevice>,
     descriptor_set_layouts: RwLock<HashMap<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>>,
     pipeline_layouts: RwLock<HashMap<VkPipelineLayoutKey, Arc<VkPipelineLayout>>>,
-    render_passes: RwLock<HashMap<VkRenderPassInfo, Arc<VkRenderPass>>>,
-    frame_buffers: RwLock<HashMap<SmallVec<[u64; 8]>, Arc<VkFrameBuffer>>>,
     bindless_texture_descriptor_set: Option<VkBindlessDescriptorSet>,
     clear_buffer_meta_pipeline: VkPipeline,
 }
@@ -70,8 +68,6 @@ impl VkShared {
             device: device.clone(),
             descriptor_set_layouts: RwLock::new(descriptor_set_layouts),
             pipeline_layouts: RwLock::new(HashMap::new()),
-            render_passes: RwLock::new(HashMap::new()),
-            frame_buffers: RwLock::new(HashMap::new()),
             bindless_texture_descriptor_set,
             clear_buffer_meta_pipeline,
         }
@@ -129,52 +125,6 @@ impl VkShared {
         let mut cache = self.pipeline_layouts.write().unwrap();
         cache.insert(layout_key.clone(), pipeline_layout.clone());
         pipeline_layout
-    }
-
-    pub(super) fn get_render_pass(&self, info: VkRenderPassInfo) -> Arc<VkRenderPass> {
-        {
-            let cache = self.render_passes.read().unwrap();
-            if let Some(renderpass) = cache.get(&info) {
-                return renderpass.clone();
-            }
-        }
-        let renderpass = Arc::new(VkRenderPass::new(&self.device, &info));
-        let mut cache = self.render_passes.write().unwrap();
-        cache.insert(info, renderpass.clone());
-        renderpass
-    }
-
-    pub(super) fn get_framebuffer(
-        &self,
-        render_pass: &Arc<VkRenderPass>,
-        attachments: &[&VkTextureView],
-    ) -> Arc<VkFrameBuffer> {
-        let key: SmallVec<[u64; 8]> = attachments
-            .iter()
-            .map(|a| a.view_handle().as_raw())
-            .collect();
-        {
-            let cache = self.frame_buffers.read().unwrap();
-            if let Some(framebuffer) = cache.get(&key) {
-                return framebuffer.clone();
-            }
-        }
-        let (width, height) = attachments.iter().fold((0, 0), |old, a| {
-            (
-                a.texture_info().width.max(old.0),
-                a.texture_info().height.max(old.1),
-            )
-        });
-        let frame_buffer = Arc::new(VkFrameBuffer::new(
-            &self.device,
-            width,
-            height,
-            render_pass,
-            attachments,
-        ));
-        let mut cache = self.frame_buffers.write().unwrap();
-        cache.insert(key, frame_buffer.clone());
-        frame_buffer
     }
 
     #[inline]

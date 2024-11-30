@@ -142,22 +142,9 @@ impl<P: Platform> ShadowMapPass<P> {
                     constants: [0f32; 4],
                 },
                 primitive_type: PrimitiveType::Triangles,
-            },
-            &RenderPassInfo {
-                attachments: &[AttachmentInfo {
-                    format: Format::D24S8,
-                    samples: SampleCount::Samples1,
-                }],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 0,
-                        read_only: false,
-                    }),
-                }],
-            },
-            0,
+                render_target_formats: &[],
+                depth_stencil_format: Format::D24S8
+            }
         );
 
         let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
@@ -311,19 +298,12 @@ impl<P: Platform> ShadowMapPass<P> {
 
             cmd_buffer.begin_render_pass(
                 &RenderPassBeginInfo {
-                    attachments: &[RenderPassAttachment {
-                        view: RenderPassAttachmentView::DepthStencil(&shadow_map),
-                        load_op: LoadOp::Clear,
-                        store_op: StoreOp::Store,
-                    }],
-                    subpasses: &[SubpassInfo {
-                        input_attachments: &[],
-                        output_color_attachments: &[],
-                        depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                            index: 0,
-                            read_only: false,
-                        }),
-                    }],
+                    render_targets: &[],
+                    depth_stencil: Some(&DepthStencilAttachment {
+                        view: &shadow_map,
+                        load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                        store_op: StoreOp::<P::GPUBackend>::Store,
+                    })
                 },
                 RenderpassRecordingMode::Commands,
             );

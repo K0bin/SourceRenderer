@@ -44,6 +44,45 @@ pub enum CommandPoolType {
   InnerCommandBuffers
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum LoadOpColor {
+  Load,
+  Clear(ClearColor),
+  DontCare
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum LoadOpDepthStencil {
+  Load,
+  Clear(ClearDepthStencilValue),
+  DontCare
+}
+
+pub enum StoreOp<'a, B: GPUBackend> {
+  Store,
+  DontCare,
+  Resolve(ResolveAttachment<'a, B>)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum ImageLayout {
+  Undefined,
+  Common,
+  RenderTarget,
+  DepthWrite,
+  DepthRead,
+  ShaderResource,
+  CopySrcOptimal,
+  CopyDstOptimal,
+  Present
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RenderpassRecordingMode {
+  Commands,
+  CommandBuffers
+}
+
 #[derive(Debug)]
 pub struct BufferTextureCopyRegion {
   pub buffer_offset: u64,
@@ -102,7 +141,6 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn clear_storage_buffer(&mut self, buffer: &B::Buffer, offset: u64, length_in_u32s: u64, value: u32);
 
   unsafe fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode);
-  unsafe fn advance_subpass(&mut self);
   unsafe fn end_render_pass(&mut self);
   unsafe fn barrier(&mut self, barriers: &[Barrier<B>]);
 
@@ -148,15 +186,92 @@ pub enum RenderPassAttachmentView<'a, B: GPUBackend> {
   DepthStencil(&'a B::TextureView)
 }
 
-pub struct RenderPassAttachment<'a, B: GPUBackend> {
-  pub view: RenderPassAttachmentView<'a, B>,
-  pub load_op: LoadOp,
-  pub store_op: StoreOp
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ClearColor {
+  color: [u32; 4]
+}
+
+impl ClearColor {
+  pub const BLACK: ClearColor = ClearColor {
+    color: [0u32, 0u32, 0u32, 0u32]
+  };
+
+  pub fn from_u32(color: [u32; 4]) -> Self {
+    Self {
+      color
+    }
+  }
+
+  pub fn from_i32(color: [i32; 4]) -> Self {
+    Self {
+      color: unsafe { std::mem::transmute_copy(&color) }
+    }
+  }
+
+  pub fn from_f32(color: [f32; 4]) -> Self {
+    Self {
+      color: unsafe { std::mem::transmute_copy(&color) }
+    }
+  }
+
+  pub fn as_i32(&self) -> &[i32] {
+    unsafe { std::mem::transmute(&self.color[..]) }
+  }
+
+  pub fn as_u32(&self) -> &[u32] {
+    unsafe { std::mem::transmute(&self.color[..]) }
+  }
+
+  pub fn as_f32(&self) -> &[f32] {
+    unsafe { std::mem::transmute(&self.color[..]) }
+  }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ClearDepthStencilValue {
+  pub depth: f32,
+  pub stencil: u32
+}
+
+impl ClearDepthStencilValue {
+  pub const DEPTH_ONE: ClearDepthStencilValue = ClearDepthStencilValue {
+    depth: 1.0f32,
+    stencil: 0u32
+  };
+  pub const DEPTH_ZERO: ClearDepthStencilValue = ClearDepthStencilValue {
+    depth: 0.0f32,
+    stencil: 0u32
+  };
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ResolveMode {
+  Average,
+  Min,
+  Max,
+  SampleZero
+}
+
+pub struct ResolveAttachment<'a, B: GPUBackend> {
+  pub view: &'a B::TextureView,
+  pub mode: ResolveMode
+}
+
+pub struct RenderTarget<'a, B: GPUBackend> {
+  pub view: &'a B::TextureView,
+  pub load_op: LoadOpColor,
+  pub store_op: StoreOp<'a, B>,
+}
+
+pub struct DepthStencilAttachment<'a, B: GPUBackend> {
+  pub view: &'a B::TextureView,
+  pub load_op: LoadOpDepthStencil,
+  pub store_op: StoreOp<'a, B>,
 }
 
 pub struct RenderPassBeginInfo<'a, B: GPUBackend> {
-  pub attachments: &'a [RenderPassAttachment<'a, B>],
-  pub subpasses: &'a [SubpassInfo<'a>]
+  pub render_targets: &'a [RenderTarget<'a, B>],
+  pub depth_stencil: Option<&'a DepthStencilAttachment<'a, B>>
 }
 
 bitflags! {

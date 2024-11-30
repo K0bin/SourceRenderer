@@ -41,12 +41,8 @@ mod instance;
 mod util;
 
 pub use sourcerenderer_core::gpu::{
-    SubpassInfo,
-    AttachmentRef,
-    DepthStencilAttachmentRef,
-    OutputAttachmentRef,
-    LoadOp,
-    StoreOp,
+    LoadOpColor,
+    LoadOpDepthStencil,
     BarrierSync,
     BarrierAccess,
     IndexFormat,
@@ -85,8 +81,6 @@ pub use sourcerenderer_core::gpu::{
     RasterizerInfo,
     DepthStencilInfo,
     PrimitiveType,
-    AttachmentInfo,
-    RenderPassInfo,
     Filter,
     AddressMode,
     SamplerInfo,
@@ -102,5 +96,7 @@ pub use sourcerenderer_core::gpu::{
     BindingType,
     OutOfMemoryError,
     QueueOwnershipTransfer,
-    BindingInfo
+    BindingInfo,
+    ClearColor,
+    ClearDepthStencilValue,
 };
