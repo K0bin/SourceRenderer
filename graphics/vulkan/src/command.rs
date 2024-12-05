@@ -87,7 +87,8 @@ pub enum VkCommandBufferState {
 
 pub struct VkInnerCommandBufferInfo {
     pub rt_formats: SmallVec<[vk::Format; 8]>,
-    pub dsv_format: vk::Format,
+    pub depth_format: vk::Format,
+    pub stencil_format: vk::Format,
     pub sample_count: vk::SampleCountFlags
 }
 
@@ -1012,7 +1013,13 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 .map(|rt| format_to_vk(rt.view.info().format.unwrap_or(rt.view.texture_info().format), false))
                 .collect();
 
-            let dsv_format = renderpass_begin_info.depth_stencil.map(|dsv| format_to_vk(dsv.view.info().format.unwrap_or(dsv.view.texture_info().format), self.device.supports_d24)).unwrap_or_default();
+            let (depth_format, stencil_format) = renderpass_begin_info.depth_stencil.map(|dsv| {
+                let format = dsv.view.info().format.unwrap_or(dsv.view.texture_info().format);
+                let vk_format = format_to_vk(format, self.device.supports_d24);
+                let depth_format = if format.is_depth() { vk_format } else { vk::Format::UNDEFINED };
+                let stencil_format = if format.is_stencil() { vk_format } else { vk::Format::UNDEFINED };
+                (depth_format, stencil_format)
+            }).unwrap_or_default();
             let samples = if let Some(rt) = renderpass_begin_info.render_targets.first() {
                 samples_to_vk(rt.view.texture_info().samples)
             } else if let Some(dsv) = renderpass_begin_info.depth_stencil.as_ref() {
@@ -1022,7 +1029,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             };
             self.inheritance = Some(VkInnerCommandBufferInfo {
                 rt_formats: formats,
-                dsv_format,
+                depth_format,
+                stencil_format,
                 sample_count: samples
             });
         }
@@ -1405,15 +1413,15 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         self.state.store(VkCommandBufferState::Recording);
         self.frame = frame;
 
-        let (flags, inhertiance_info) = if let Some(inner_info) = inner_info {
+        let (flags, rendering_inhertiance_info) = if let Some(inner_info) = inner_info {
             (
                 vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
                     | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
                 vk::CommandBufferInheritanceRenderingInfo {
                     color_attachment_count: inner_info.rt_formats.len() as u32,
                     p_color_attachment_formats: inner_info.rt_formats.as_ptr(),
-                    depth_attachment_format: inner_info.dsv_format,
-                    stencil_attachment_format: inner_info.dsv_format,
+                    depth_attachment_format: inner_info.depth_format,
+                    stencil_attachment_format: inner_info.stencil_format,
                     rasterization_samples: inner_info.sample_count,
                     ..Default::default()
                 },
@@ -1425,14 +1433,25 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             )
         };
 
+        let inheritance_info = vk::CommandBufferInheritanceInfo {
+            s_type: vk::StructureType::COMMAND_BUFFER_INHERITANCE_INFO,
+            p_next: &rendering_inhertiance_info as *const vk::CommandBufferInheritanceRenderingInfo as *const c_void,
+            render_pass: vk::RenderPass::null(),
+            subpass: 0,
+            framebuffer: vk::Framebuffer::null(),
+            occlusion_query_enable: 0,
+            query_flags: vk::QueryControlFlags::empty(),
+            pipeline_statistics: vk::QueryPipelineStatisticFlags::empty(),
+            ..Default::default()
+        };
+
         unsafe {
             self.device
                 .begin_command_buffer(
                     self.cmd_buffer,
                     &vk::CommandBufferBeginInfo {
                         flags,
-                        p_inheritance_info: std::ptr::null(),
-                        p_next: &inhertiance_info as *const vk::CommandBufferInheritanceRenderingInfo as *const c_void,
+                        p_inheritance_info: &inheritance_info,
                         ..Default::default()
                     },
                 )

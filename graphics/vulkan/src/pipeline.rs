@@ -675,12 +675,14 @@ impl VkPipeline {
             .map(|f| format_to_vk(*f, false))
             .collect();
 
+        let dsv_format: vk::Format = format_to_vk(info.depth_stencil_format, device.supports_d24);
+
         let pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo {
             view_mask: 0u32,
             color_attachment_count: color_attachment_formats.len() as u32,
             p_color_attachment_formats: color_attachment_formats.as_ptr(),
-            depth_attachment_format: format_to_vk(info.depth_stencil_format, device.supports_d24),
-            stencil_attachment_format: format_to_vk(info.depth_stencil_format, device.supports_d24),
+            depth_attachment_format: if info.depth_stencil_format.is_depth() { dsv_format } else { vk::Format::UNDEFINED },
+            stencil_attachment_format: if info.depth_stencil_format.is_stencil() { dsv_format } else { vk::Format::UNDEFINED },
             ..Default::default()
         };
 

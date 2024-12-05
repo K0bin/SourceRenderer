@@ -93,6 +93,8 @@ pub(crate) fn begin_render_pass(
     };
 
     let mut depth_stencil_attachment = vk::RenderingAttachmentInfo::default();
+    let mut depth_attachment: *const vk::RenderingAttachmentInfo = std::ptr::null();
+    let mut stencil_attachment: *const vk::RenderingAttachmentInfo = std::ptr::null();
 
     if let Some(dsv) = render_pass.depth_stencil.as_ref() {
         let clear_value = if let LoadOpDepthStencil::Clear(clear_value) = dsv.load_op { clear_value } else { ClearDepthStencilValue::DEPTH_ONE };
@@ -111,6 +113,14 @@ pub(crate) fn begin_render_pass(
         }
         depth_stencil_attachment.load_op = load_op_ds_to_vk(dsv.load_op);
         depth_stencil_attachment.store_op = store_op_to_vk(&dsv.store_op);
+
+        let format = dsv.view.info().format.unwrap_or(dsv.view.texture_info().format);
+        if format.is_depth() {
+            depth_attachment = &depth_stencil_attachment as *const vk::RenderingAttachmentInfo;
+        }
+        if format.is_stencil() {
+            stencil_attachment = &depth_stencil_attachment as *const vk::RenderingAttachmentInfo;
+        }
     }
 
     let info = vk::RenderingInfo {
@@ -120,8 +130,8 @@ pub(crate) fn begin_render_pass(
         view_mask: 0u32,
         layer_count: 1u32,
         render_area,
-        p_depth_attachment: render_pass.depth_stencil.map(|_| &depth_stencil_attachment as *const vk::RenderingAttachmentInfo).unwrap_or(std::ptr::null()),
-        p_stencil_attachment: render_pass.depth_stencil.map(|_| &depth_stencil_attachment as *const vk::RenderingAttachmentInfo).unwrap_or(std::ptr::null()),
+        p_depth_attachment: depth_attachment,
+        p_stencil_attachment: stencil_attachment,
         ..Default::default()
     };
     unsafe {
