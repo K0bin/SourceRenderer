@@ -12,6 +12,5 @@ hlsl = []
 [dependencies]
 
 [build-dependencies]
-cc = "1.0.90"
-bindgen = "0.69.4"
-
+cc = "1.2.2"
+bindgen = "0.70.1"
