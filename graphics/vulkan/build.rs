@@ -13,6 +13,7 @@ fn main() {
         &meta_shader_dir,
         &meta_shader_dir,
         true,
+        false,
         &HashMap::new(),
         ShadingLanguage::SpirV,
         |_| true,

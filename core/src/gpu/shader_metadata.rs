@@ -35,4 +35,5 @@ pub struct PackedShader {
     pub shader_spirv: Box<[u8]>,
     pub shader_air: Box<[u8]>,
     pub shader_dxil: Box<[u8]>,
+    pub shader_wgsl: String,
 }

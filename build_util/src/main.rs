@@ -13,15 +13,13 @@ fn main() {
 
     println!("Hello, world!");
 
-    simple_logger::SimpleLogger::new().init().unwrap();
+    simple_logger::SimpleLogger::new().with_level(log::LevelFilter::Warn).init().unwrap();
 
     let manifest_dir = PathBuf::from(std::env::current_dir().unwrap());
 
     // Copy shaders over
     let mut shader_dest_dir = manifest_dir.clone();
     shader_dest_dir.pop();
-    shader_dest_dir.push("platform");
-    shader_dest_dir.push("sdl");
     shader_dest_dir.push("shaders");
 
     if !shader_dest_dir.exists() {
@@ -37,8 +35,9 @@ fn main() {
         &shader_dir,
         &shader_dest_dir,
         true,
+        true,
         &HashMap::new(),
-        ShadingLanguage::SpirV /*| ShadingLanguage::Dxil*/ | ShadingLanguage::Air,
+        ShadingLanguage::SpirV /*| ShadingLanguage::Dxil*/ | ShadingLanguage::Air | ShadingLanguage::Wgsl,
         |_| true,
     );
 }

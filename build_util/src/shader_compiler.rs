@@ -9,6 +9,9 @@ use std::process::Command;
 use bitflags::bitflags;
 
 use log::{error, info};
+use naga::back::wgsl::WriterFlags;
+use naga::front::spv::Options;
+use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use spirv_cross_sys;
 
 use sourcerenderer_core::gpu;
@@ -23,6 +26,7 @@ pub fn compile_shaders<F>(
     source_dir: &Path,
     out_dir: &Path,
     include_debug_info: bool,
+    dump_separate_files: bool,
     arguments: &HashMap<String, String>,
     shading_languages: ShadingLanguage,
     file_filter: F,
@@ -50,21 +54,21 @@ pub fn compile_shaders<F>(
         })
         .for_each(|file| {
             let file_path = file.path();
-            if shading_languages.intersects(ShadingLanguage::SpirV | ShadingLanguage::Air | ShadingLanguage::Dxil) {
+            if shading_languages.intersects(ShadingLanguage::SpirV | ShadingLanguage::Air | ShadingLanguage::Dxil | ShadingLanguage::Wgsl) {
                 compile_shader(
                     &file_path,
                     out_dir,
-                    shading_languages & (ShadingLanguage::SpirV | ShadingLanguage::Air | ShadingLanguage::Dxil),
+                    shading_languages & (ShadingLanguage::SpirV | ShadingLanguage::Air | ShadingLanguage::Dxil | ShadingLanguage::Wgsl),
                     CompiledShaderFileType::Packed,
                     include_debug_info,
                     arguments,
                 );
             }
-            if shading_languages.intersects(ShadingLanguage::Msl | ShadingLanguage::Hlsl) {
+            if dump_separate_files || shading_languages.intersects(ShadingLanguage::Msl | ShadingLanguage::Hlsl) {
                 compile_shader(
                     &file_path,
                     out_dir,
-                    shading_languages & (ShadingLanguage::Msl | ShadingLanguage::Hlsl),
+                    if dump_separate_files { shading_languages } else { shading_languages & (ShadingLanguage::Msl | ShadingLanguage::Hlsl) },
                     CompiledShaderFileType::Bytecode,
                     include_debug_info,
                     arguments,
@@ -100,14 +104,10 @@ fn compile_shader_glsl(
 ) -> Result<Vec<u8>, ()> {
     println!("cargo:rerun-if-changed={}", (file_path).to_str().unwrap());
 
-    let is_rt = shader_type == gpu::ShaderType::RayClosestHit
-        || shader_type == gpu::ShaderType::RayGen
-        || shader_type == gpu::ShaderType::RayMiss;
-
     let mut command = Command::new("glslangValidator");
     command
         .arg("--target-env")
-        .arg(if is_rt { "spirv1.4" } else { "spirv1.3" })
+        .arg("spirv1.6")
         .arg("-V");
 
     let mut compiled_spv_file_name = file_path.file_stem().unwrap().to_str().unwrap().to_string();
@@ -489,6 +489,7 @@ fn read_metadata(
         shader_spirv: Box::new([]),
         shader_air: Box::new([]),
         shader_dxil: Box::new([]),
+        shader_wgsl: String::new()
     }
 }
 
@@ -541,7 +542,7 @@ fn compile_shader_spirv_cross(
                     ShadingLanguage::Hlsl | ShadingLanguage::Dxil =>
                         spirv_cross_sys::spvc_backend_SPVC_BACKEND_HLSL,
                     ShadingLanguage::Msl | ShadingLanguage::Air => spirv_cross_sys::spvc_backend_SPVC_BACKEND_MSL,
-                    ShadingLanguage::Wgsl => unimplemented!(),
+                    ShadingLanguage::Wgsl => panic!("SPIRV-Cross does not support WGSL"),
                     _ => panic!("compile_shader_spirv_cross only supports one output shading language at a time")
                 },
                 ir,
@@ -872,25 +873,6 @@ fn compile_msl_to_air(
     Ok(air_bytecode.into_boxed_slice())
 }
 
-fn compile_spirv(
-    spirv: &[u8],
-    shader_name: &str,
-    shader_type: gpu::ShaderType,
-    metadata: &gpu::PackedShader,
-    output_shading_languages: ShadingLanguage,
-    include_debug_info: bool) -> Result<Box<[u8]>, ()> {
-    if output_shading_languages == ShadingLanguage::Air {
-        let msl = compile_shader_spirv_cross(spirv, shader_name, shader_type, metadata, ShadingLanguage::Msl)?;
-        return compile_msl_to_air(msl, shader_name, &std::env::temp_dir(), include_debug_info);
-    }
-    if output_shading_languages == ShadingLanguage::Dxil {
-        let _hlsl = compile_shader_spirv_cross(spirv, shader_name, shader_type, metadata, ShadingLanguage::Hlsl)?;
-        error!("Compiling HLSL to DXIL is unimplemented.");
-        return Err(());
-    }
-    panic!("compile_spirv only supports one shading language at a time and only supports MSL or DXIL as output")
-}
-
 pub fn compile_shader(
     file_path: &Path,
     output_dir: &Path,
@@ -937,6 +919,7 @@ pub fn compile_shader(
     //
     let spirv_bytecode_res = compile_shader_glsl(file_path, output_dir, shader_type, include_debug_info, arguments);
     if spirv_bytecode_res.is_err() {
+        error!("Failed to compile GLSL for {:?}", file_path);
         return;
     }
     let spirv_bytecode = spirv_bytecode_res.unwrap();
@@ -962,38 +945,66 @@ pub fn compile_shader(
             write_shader(file_path, output_dir, ShadingLanguage::Hlsl, CompiledShaderType::Source(&source));
         }
     }
-    if output_shading_languages.contains(ShadingLanguage::Air) && output_file_type == CompiledShaderFileType::Bytecode {
-        let bytecode = compile_spirv(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Air, include_debug_info);
+    if output_shading_languages.contains(ShadingLanguage::Air) {
+        let msl = compile_shader_spirv_cross(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Msl);
+        let bytecode = msl.and_then(|msl| compile_msl_to_air(msl, shader_name, &std::env::temp_dir(), include_debug_info));
         if let Ok(bytecode) = bytecode {
-            write_shader(file_path, output_dir, ShadingLanguage::Air, CompiledShaderType::Bytecode(&bytecode));
+            if output_file_type == CompiledShaderFileType::Bytecode {
+                write_shader(file_path, output_dir, ShadingLanguage::Air, CompiledShaderType::Bytecode(&bytecode));
+            } else if output_file_type == CompiledShaderFileType::Packed {
+                metadata.shader_air = bytecode;
+            }
         }
     }
-    if output_shading_languages.contains(ShadingLanguage::Dxil) && output_file_type == CompiledShaderFileType::Bytecode {
-        let bytecode = compile_spirv(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Dxil, include_debug_info);
+    if output_shading_languages.contains(ShadingLanguage::Dxil) {
+        let _hlsl = compile_shader_spirv_cross(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Hlsl);
+        error!("Compiling HLSL to DXIL is unimplemented.");
+        let bytecode = Result::<Box<[u8]>, ()>::Err(());
         if let Ok(bytecode) = bytecode {
-            write_shader(file_path, output_dir, ShadingLanguage::Dxil, CompiledShaderType::Bytecode(&bytecode));
+            if output_file_type == CompiledShaderFileType::Bytecode {
+                write_shader(file_path, output_dir, ShadingLanguage::Dxil, CompiledShaderType::Bytecode(&bytecode));
+            } else if output_file_type == CompiledShaderFileType::Packed {
+                metadata.shader_dxil = bytecode;
+            }
         }
     }
-    if output_shading_languages.contains(ShadingLanguage::SpirV) && output_file_type == CompiledShaderFileType::Bytecode {
-        write_shader(file_path, output_dir, ShadingLanguage::SpirV, CompiledShaderType::Bytecode(&spirv_bytecode_boxed));
+    if output_shading_languages.contains(ShadingLanguage::Wgsl) {
+        let wgsl = compile_shader_naga(shader_name, &spirv_bytecode_boxed);
+        if let Ok(bytecode) = wgsl {
+            if output_file_type == CompiledShaderFileType::Bytecode {
+                write_shader(file_path, output_dir, ShadingLanguage::Air, CompiledShaderType::Source(&bytecode));
+            } else if output_file_type == CompiledShaderFileType::Packed {
+                metadata.shader_wgsl = bytecode;
+            }
+        }
+    }
+    if output_shading_languages.contains(ShadingLanguage::SpirV) {
+        if output_file_type == CompiledShaderFileType::Bytecode {
+            write_shader(file_path, output_dir, ShadingLanguage::SpirV, CompiledShaderType::Bytecode(&spirv_bytecode_boxed));
+        } else if output_file_type == CompiledShaderFileType::Packed {
+            metadata.shader_spirv = spirv_bytecode_boxed;
+        }
     }
 
     if output_file_type == CompiledShaderFileType::Packed {
-        if output_shading_languages.contains(ShadingLanguage::Air) {
-            let bytecode = compile_spirv(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Air, include_debug_info);
-            if let Ok(bytecode) = bytecode {
-                metadata.shader_air = bytecode;
-            }
-        }
-        if output_shading_languages.contains(ShadingLanguage::Dxil) {
-            let bytecode = compile_spirv(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Dxil, include_debug_info);
-            if let Ok(bytecode) = bytecode {
-                metadata.shader_air = bytecode;
-            }
-        }
-        if output_shading_languages.contains(ShadingLanguage::SpirV) {
-            metadata.shader_spirv = spirv_bytecode_boxed;
-        }
         write_shader(file_path, output_dir, output_shading_languages, CompiledShaderType::Packed(&metadata));
     }
 }
+
+fn compile_shader_naga(
+    shader_name: &str,
+    spirv: &[u8]
+) -> Result<String, ()> {
+    let module = naga::front::spv::parse_u8_slice(spirv, &Options {
+        adjust_coordinate_space: true,
+        strict_capabilities: true,
+        block_ctx_dump_prefix: None,
+    }).map_err(|e| { error!("Error parsing SPIR-V when compiling WGSL: {} - {}", shader_name, e); ()})?;
+
+    let mut validator = Validator::new(ValidationFlags::all(), Capabilities::empty());
+    let module_info = validator.validate(&module).map_err(|e| { error!("Error validating module when compiling WGSL: {} - {}", shader_name, e); ()})?;
+
+    let wgsl = naga::back::wgsl::write_string(&module, &module_info, WriterFlags::empty()).map_err(|e| { error!("Error compiling WGSL: {} - {}", shader_name, e); ()})?;
+    Ok(wgsl)
+}
+

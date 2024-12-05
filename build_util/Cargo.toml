@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cargo_metadata = "0.18.1"
+cargo_metadata = "0.19.1"
 pathos = "0.3.0"
-log = "0.4.17"
+log = "0.4.22"
 spirv_cross_sys = { path = "../vendor/spirv-cross-sys", features = [ "msl", "hlsl" ] }
 serde_json = "1.0"
 sourcerenderer_core = { path = "../core" }
-bitflags = "2.5.0"
+bitflags = "2.6.0"
 simple_logger = "5.0.0"
+naga = { version = "23.0.0", features = ["spv-in", "wgsl-out" ] }
