@@ -263,27 +263,26 @@ impl gpu::Buffer for VkBuffer {
     }
 
     unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
-        assert!(self.map_ptr.is_some());
+        let map_ptr = self.map_ptr?;
         if invalidate && !self.is_coherent {
             self.device.invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
                 memory: self.memory,
                 offset: offset + self.memory_offset,
-                size: length.min(self.info.size),
+                size: length.min(self.info.size - offset),
                 ..Default::default()
             }]).unwrap();
         }
-        self.map_ptr.map(|ptr| ptr.add(offset as usize))
+        Some(map_ptr.add(offset as usize))
     }
 
     unsafe fn unmap(&self, offset: u64, length: u64, flush: bool) {
-        assert!(self.map_ptr.is_some());
-        if !flush || self.is_coherent {
+        if self.map_ptr.is_none() || !flush || self.is_coherent {
             return;
         }
         self.device.flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
             memory: self.memory,
             offset: offset + self.memory_offset,
-            size: length.min(self.info.size),
+            size: length.min(self.info.size - offset),
             ..Default::default()
         }]).unwrap();
     }
