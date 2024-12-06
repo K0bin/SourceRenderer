@@ -1,4 +1,4 @@
-use std::{cell::{Ref, RefCell}, hash::Hash, sync::atomic::AtomicBool};
+use std::{cell::RefCell, hash::Hash, sync::atomic::AtomicBool};
 
 use sourcerenderer_core::gpu::{Buffer, BufferInfo, BufferUsage};
 
