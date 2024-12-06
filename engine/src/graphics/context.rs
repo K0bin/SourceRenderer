@@ -14,7 +14,7 @@ use super::CommandBuffer;
 
 pub struct GraphicsContext<B: GPUBackend> {
   device: Arc<B::Device>,
-  allocator: Arc<MemoryAllocator<B>>,
+  memory_allocator: Arc<MemoryAllocator<B>>,
   fence: Arc<super::Fence<B>>,
   current_frame: u64,
   completed_frame: u64,
@@ -22,7 +22,6 @@ pub struct GraphicsContext<B: GPUBackend> {
   prerendered_frames: u32,
   destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
   global_buffer_allocator: Arc<BufferAllocator<B>>,
-  memory_allocator: Arc<MemoryAllocator<B>>
 }
 
 pub struct ThreadContext<B: GPUBackend> {
@@ -46,10 +45,10 @@ struct FrameContextCommandPool<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> GraphicsContext<B> {
-  pub(super) fn new(device: &Arc<B::Device>, allocator: &Arc<MemoryAllocator<B>>, buffer_allocator: &Arc<BufferAllocator<B>>, memory_allocator: &Arc<MemoryAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>, prerendered_frames: u32) -> Self {
+  pub(super) fn new(device: &Arc<B::Device>, memory_allocator: &Arc<MemoryAllocator<B>>, buffer_allocator: &Arc<BufferAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>, prerendered_frames: u32) -> Self {
     Self {
       device: device.clone(),
-      allocator: allocator.clone(),
+      memory_allocator: memory_allocator.clone(),
       destroyer: ManuallyDrop::new(destroyer.clone()),
       fence: Arc::new(super::Fence::<B>::new(device, destroyer)),
       current_frame: 0u64,
@@ -57,7 +56,6 @@ impl<B: GPUBackend> GraphicsContext<B> {
       thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
       prerendered_frames,
       global_buffer_allocator: buffer_allocator.clone(),
-      memory_allocator: memory_allocator.clone()
     }
   }
 
@@ -140,7 +138,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
   }
 
   fn get_thread_context(&self) -> &ThreadContext<B> {
-    self.thread_contexts.get_or(|| ThreadContext::new(&self.device, &self.allocator, &self.destroyer, self.prerendered_frames))
+    self.thread_contexts.get_or(|| ThreadContext::new(&self.device, &self.memory_allocator, &self.destroyer, self.prerendered_frames))
   }
 
   pub fn prerendered_frames(&self) -> u32 {
