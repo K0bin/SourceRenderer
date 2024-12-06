@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use super::ShaderType;
+use super::{texture::TextureDimension, Format, ShaderType};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum ResourceType {
@@ -14,17 +14,29 @@ pub enum ResourceType {
     AccelerationStructure
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum SamplingType {
+    Float,
+    Depth,
+    SInt,
+    UInt
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Resource {
     pub name: String,
     pub set: u32,
     pub binding: u32,
     pub array_size: u32,
     pub resource_type: ResourceType,
-    pub writable: bool
+    pub writable: bool,
+    pub texture_dimension: TextureDimension,
+    pub is_multisampled: bool,
+    pub sampling_type: SamplingType,
+    pub storage_format: Format
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PackedShader {
     pub push_constant_size: u32,
     pub stage_input_count: u32,

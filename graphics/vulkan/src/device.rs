@@ -322,7 +322,8 @@ impl gpu::Device<VkBackend> for VkDevice {
             usage: texture_usage_to_vk(info.usage),
             image_type: match info.dimension {
                 gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
-                gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
+                gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Dim2D
+                    | gpu::TextureDimension::Cube | gpu::TextureDimension::CubeArray => vk::ImageType::TYPE_2D,
                 gpu::TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
             },
             extent: vk::Extent3D {

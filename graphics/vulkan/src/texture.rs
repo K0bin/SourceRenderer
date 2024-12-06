@@ -42,7 +42,10 @@ impl VkTexture {
             usage: texture_usage_to_vk(info.usage),
             image_type: match info.dimension {
                 gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
-                gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Dim2D => vk::ImageType::TYPE_2D,
+                gpu::TextureDimension::Dim2DArray
+                    | gpu::TextureDimension::Dim2D
+                    | gpu::TextureDimension::Cube
+                    | gpu::TextureDimension::CubeArray => vk::ImageType::TYPE_2D,
                 gpu::TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
             },
             extent: vk::Extent3D {
@@ -361,7 +364,9 @@ impl VkTextureView {
                 gpu::TextureDimension::Dim2D => vk::ImageViewType::TYPE_2D,
                 gpu::TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
                 gpu::TextureDimension::Dim1DArray => vk::ImageViewType::TYPE_1D_ARRAY,
-                gpu::TextureDimension::Dim2DArray => vk::ImageViewType::TYPE_2D_ARRAY,
+                gpu::TextureDimension::Dim2DArray
+                    | gpu::TextureDimension::Cube
+                    | gpu::TextureDimension::CubeArray => vk::ImageViewType::TYPE_2D_ARRAY,
             },
             format: format_to_vk(format, device.supports_d24),
             components: vk::ComponentMapping {

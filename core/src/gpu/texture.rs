@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use super::*;
 
 bitflags! {
@@ -47,13 +49,15 @@ impl Default for TextureLayout {
   }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum TextureDimension {
   Dim1D,
   Dim2D,
   Dim3D,
   Dim1DArray,
   Dim2DArray,
+  Cube,
+  CubeArray
 }
 
 impl TextureDimension {
