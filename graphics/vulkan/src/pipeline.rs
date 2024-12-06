@@ -314,6 +314,125 @@ pub(super) fn color_components_to_vk(color_components: gpu::ColorComponents) -> 
     vk::ColorComponentFlags::from_raw(colors)
 }
 
+#[derive(Default)]
+struct DescriptorSetLayoutSetupContext {
+    descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
+    dynamic_storage_buffers: [u32; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
+    dynamic_uniform_buffers: [u32; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
+    push_constants_ranges: [Option<VkConstantRange>; 3],
+    uses_bindless_texture_set: bool,
+    shader_stages: vk::ShaderStageFlags
+}
+
+fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: &VkShader, context: &mut DescriptorSetLayoutSetupContext) {
+    for (index, shader_set) in &shader.descriptor_set_bindings {
+        let set = &mut context.descriptor_set_layouts[*index as usize];
+        for binding in shader_set {
+            let existing_binding_option = set
+                .bindings
+                .iter_mut()
+                .find(|existing_binding| existing_binding.index == binding.index);
+            if let Some(existing_binding) = existing_binding_option {
+                if existing_binding.descriptor_type
+                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
+                {
+                    assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
+                } else if existing_binding.descriptor_type
+                    == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+                {
+                    assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
+                } else {
+                    assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+                }
+                existing_binding.shader_stage |= binding.shader_stage;
+            } else {
+                let mut binding_clone = binding.clone();
+                if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
+                    && context.dynamic_storage_buffers[*index as usize] + binding_clone.count
+                        < device
+                            .properties
+                            .limits
+                            .max_descriptor_set_storage_buffers_dynamic
+                {
+                    context.dynamic_storage_buffers[*index as usize] += binding_clone.count;
+                    binding_clone.descriptor_type =
+                        vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+                }
+                if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
+                    && context.dynamic_uniform_buffers[*index as usize] + binding_clone.count
+                        < device
+                            .properties
+                            .limits
+                            .max_descriptor_set_uniform_buffers_dynamic
+                {
+                    context.dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+                    binding_clone.descriptor_type =
+                        vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+                }
+                set.bindings.push(binding_clone);
+            }
+        }
+    }
+    let shader_stage_flags = shader_type_to_vk(shader.shader_type());
+    if let Some(push_constants_range) = &shader.push_constants_range {
+        if let Some(index) = VkPipelineLayout::push_constant_range_index(shader.shader_type()) {
+            context.push_constants_ranges[index] = Some(VkConstantRange {
+                offset: push_constants_range.offset,
+                size: push_constants_range.size,
+                shader_stage: shader_stage_flags,
+            });
+        }
+    }
+    context.uses_bindless_texture_set |= shader.uses_bindless_texture_set;
+    context.shader_stages |= shader_stage_flags;
+}
+
+fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorSetLayoutSetupContext, pipeline_name: Option<&str>) {
+    if !context.uses_bindless_texture_set {
+        return;
+    }
+
+    if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+        panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", pipeline_name);
+    }
+
+    let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
+    bindless_bindings.push(VkDescriptorSetEntryInfo {
+        name: "bindless_textures".to_string(),
+        shader_stage: vk::ShaderStageFlags::VERTEX
+            | vk::ShaderStageFlags::FRAGMENT
+            | vk::ShaderStageFlags::COMPUTE,
+        index: 0,
+        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+        count: BINDLESS_TEXTURE_COUNT,
+        writable: false,
+        flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
+            | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
+            | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
+    });
+
+    context.descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
+        VkDescriptorSetLayoutKey {
+            bindings: bindless_bindings,
+            flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
+        };
+}
+
+fn remap_push_constant_ranges(context: &mut DescriptorSetLayoutSetupContext) {let mut offset = 0u32;
+    let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
+    for i in 0..context.push_constants_ranges.len() {
+        if let Some(range) = &context.push_constants_ranges[i] {
+            remapped_push_constant_ranges[i] = Some(VkConstantRange {
+                offset,
+                size: range.size,
+                shader_stage: range.shader_stage,
+            });
+            offset += range.size;
+        }
+    }
+    context.push_constants_ranges = remapped_push_constant_ranges;
+}
+
 impl VkPipeline {
     pub fn new_graphics(
         device: &Arc<RawVkDevice>,
@@ -323,14 +442,9 @@ impl VkPipeline {
     ) -> Self {
         let vk_device = &device.device;
         let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
-        let mut descriptor_set_layouts =
-            <[VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize]>::default();
-        let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
-        let mut uses_bindless_texture_set = false;
 
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
-        let mut dynamic_storage_buffers = [0; 4];
-        let mut dynamic_uniform_buffers = [0; 4];
+        let mut context = DescriptorSetLayoutSetupContext::default();
 
         {
             let shader = info.vs;
@@ -341,62 +455,7 @@ impl VkPipeline {
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            for (index, shader_set) in &shader.descriptor_set_bindings {
-                let set = &mut descriptor_set_layouts[*index as usize];
-                for binding in shader_set {
-                    let existing_binding_option = set
-                        .bindings
-                        .iter_mut()
-                        .find(|existing_binding| existing_binding.index == binding.index);
-                    if let Some(existing_binding) = existing_binding_option {
-                        if existing_binding.descriptor_type
-                            == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
-                        } else if existing_binding.descriptor_type
-                            == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
-                        } else {
-                            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-                        }
-                        existing_binding.shader_stage |= binding.shader_stage;
-                    } else {
-                        let mut binding_clone = binding.clone();
-                        if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                            && dynamic_storage_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_storage_buffers_dynamic
-                        {
-                            dynamic_storage_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
-                        }
-                        if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                            && dynamic_uniform_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_uniform_buffers_dynamic
-                        {
-                            dynamic_uniform_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
-                        }
-                        set.bindings.push(binding_clone);
-                    }
-                }
-            }
-            if let Some(push_constants_range) = &shader.push_constants_range {
-                push_constants_ranges[0] = Some(VkConstantRange {
-                    offset: push_constants_range.offset,
-                    size: push_constants_range.size,
-                    shader_stage: vk::ShaderStageFlags::VERTEX,
-                });
-            }
-            uses_bindless_texture_set |= shader.uses_bindless_texture_set;
+            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
 
         if let Some(shader) = info.fs.clone() {
@@ -407,62 +466,7 @@ impl VkPipeline {
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            for (index, shader_set) in &shader.descriptor_set_bindings {
-                let set = &mut descriptor_set_layouts[*index as usize];
-                for binding in shader_set {
-                    let existing_binding_option = set
-                        .bindings
-                        .iter_mut()
-                        .find(|existing_binding| existing_binding.index == binding.index);
-                    if let Some(existing_binding) = existing_binding_option {
-                        if existing_binding.descriptor_type
-                            == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
-                        } else if existing_binding.descriptor_type
-                            == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
-                        } else {
-                            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-                        }
-                        existing_binding.shader_stage |= binding.shader_stage;
-                    } else {
-                        let mut binding_clone = binding.clone();
-                        if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                            && dynamic_storage_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_storage_buffers_dynamic
-                        {
-                            dynamic_storage_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
-                        }
-                        if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                            && dynamic_uniform_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_uniform_buffers_dynamic
-                        {
-                            dynamic_uniform_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
-                        }
-                        set.bindings.push(binding_clone);
-                    }
-                }
-            }
-            if let Some(push_constants_range) = &shader.push_constants_range {
-                push_constants_ranges[1] = Some(VkConstantRange {
-                    offset: push_constants_range.offset,
-                    size: push_constants_range.size,
-                    shader_stage: vk::ShaderStageFlags::FRAGMENT,
-                });
-            }
-            uses_bindless_texture_set |= shader.uses_bindless_texture_set;
+            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
 
         let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
@@ -599,54 +603,12 @@ impl VkPipeline {
             ..Default::default()
         };
 
-        if uses_bindless_texture_set {
-            if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
-                panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", name);
-            }
-
-            let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
-            bindless_bindings.push(VkDescriptorSetEntryInfo {
-                name: "bindless_textures".to_string(),
-                shader_stage: vk::ShaderStageFlags::VERTEX
-                    | vk::ShaderStageFlags::FRAGMENT
-                    | vk::ShaderStageFlags::COMPUTE,
-                index: 0,
-                descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                count: BINDLESS_TEXTURE_COUNT,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-            });
-
-            descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
-                VkDescriptorSetLayoutKey {
-                    bindings: bindless_bindings,
-                    flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
-                };
-        }
-
-        let mut offset = 0u32;
-        let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
-        if let Some(range) = &push_constants_ranges[0] {
-            remapped_push_constant_ranges[0] = Some(VkConstantRange {
-                offset,
-                size: range.size,
-                shader_stage: vk::ShaderStageFlags::VERTEX,
-            });
-            offset += range.size;
-        }
-        if let Some(range) = &push_constants_ranges[1] {
-            remapped_push_constant_ranges[1] = Some(VkConstantRange {
-                offset,
-                size: range.size,
-                shader_stage: vk::ShaderStageFlags::FRAGMENT,
-            });
-        }
+        add_bindless_set_if_used(device, &mut context, name);
+        remap_push_constant_ranges(&mut context);
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-            descriptor_set_layouts,
-            push_constant_ranges: remapped_push_constant_ranges,
+            descriptor_set_layouts: context.descriptor_set_layouts,
+            push_constant_ranges: context.push_constants_ranges,
         });
 
         let viewport_info = vk::PipelineViewportStateCreateInfo {
@@ -736,7 +698,7 @@ impl VkPipeline {
             device: device.clone(),
             layout,
             pipeline_type: VkPipelineType::Graphics,
-            uses_bindless_texture_set,
+            uses_bindless_texture_set: context.uses_bindless_texture_set,
             sbt: None,
         }
     }
@@ -747,9 +709,8 @@ impl VkPipeline {
         shared: &VkShared,
         name: Option<&str>,
     ) -> Self {
-        let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey;
-            (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
+        let mut context = DescriptorSetLayoutSetupContext::default();
 
         let shader_stage = vk::PipelineShaderStageCreateInfo {
             module: shader.shader_module(),
@@ -758,94 +719,13 @@ impl VkPipeline {
             ..Default::default()
         };
 
-        let mut dynamic_storage_buffers = [0; 4];
-        let mut dynamic_uniform_buffers = [0; 4];
-        for (index, shader_set) in &shader.descriptor_set_bindings {
-            let set = &mut descriptor_set_layouts[*index as usize];
-            for binding in shader_set {
-                let existing_binding_option = set
-                    .bindings
-                    .iter_mut()
-                    .find(|existing_binding| existing_binding.index == binding.index);
-                if let Some(existing_binding) = existing_binding_option {
-                    if existing_binding.descriptor_type
-                        == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                    {
-                        assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
-                    } else if existing_binding.descriptor_type
-                        == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                    {
-                        assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
-                    } else {
-                        assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-                    }
-                    existing_binding.shader_stage |= binding.shader_stage;
-                } else {
-                    let mut binding_clone = binding.clone();
-                    if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                        && dynamic_storage_buffers[*index as usize] + binding_clone.count
-                            < device
-                                .properties
-                                .limits
-                                .max_descriptor_set_storage_buffers_dynamic
-                    {
-                        dynamic_storage_buffers[*index as usize] += binding_clone.count;
-                        binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
-                    }
-                    if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                        && dynamic_uniform_buffers[*index as usize] + binding_clone.count
-                            < device
-                                .properties
-                                .limits
-                                .max_descriptor_set_uniform_buffers_dynamic
-                    {
-                        dynamic_uniform_buffers[*index as usize] += binding_clone.count;
-                        binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
-                    }
-                    set.bindings.push(binding_clone);
-                }
-            }
-        }
-
-        if shader.uses_bindless_texture_set {
-            if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
-                panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", name);
-            }
-
-            let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
-            bindless_bindings.push(VkDescriptorSetEntryInfo {
-                name: "bindless_textures".to_string(),
-                shader_stage: vk::ShaderStageFlags::VERTEX
-                    | vk::ShaderStageFlags::FRAGMENT
-                    | vk::ShaderStageFlags::COMPUTE,
-                index: 0,
-                descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                count: BINDLESS_TEXTURE_COUNT,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-            });
-
-            descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
-                VkDescriptorSetLayoutKey {
-                    bindings: bindless_bindings,
-                    flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
-                };
-        }
-
-        let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
-        if let Some(push_constants_range) = &shader.push_constants_range {
-            push_constants_ranges[0] = Some(VkConstantRange {
-                offset: push_constants_range.offset,
-                size: push_constants_range.size,
-                shader_stage: vk::ShaderStageFlags::COMPUTE,
-            });
-        }
+        add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+        add_bindless_set_if_used(device, &mut context, name);
+        remap_push_constant_ranges(&mut context);
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-            descriptor_set_layouts,
-            push_constant_ranges: push_constants_ranges,
+            descriptor_set_layouts: context.descriptor_set_layouts,
+            push_constant_ranges: context.push_constants_ranges,
         });
 
         let pipeline_create_info = vk::ComputePipelineCreateInfo {
@@ -895,9 +775,8 @@ impl VkPipeline {
         shader: &VkShader,
         name: Option<&str>,
     ) -> Self {
-        let mut descriptor_set_layout_keys: [VkDescriptorSetLayoutKey;
-            (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
+        let mut context = DescriptorSetLayoutSetupContext::default();
 
         let shader_stage = vk::PipelineShaderStageCreateInfo {
             module: shader.shader_module(),
@@ -906,67 +785,11 @@ impl VkPipeline {
             ..Default::default()
         };
 
-        let mut dynamic_storage_buffers = [0; 4];
-        let mut dynamic_uniform_buffers = [0; 4];
-        for (index, shader_set) in &shader.descriptor_set_bindings {
-            let set = &mut descriptor_set_layout_keys[*index as usize];
-            for binding in shader_set {
-                let existing_binding_option = set
-                    .bindings
-                    .iter_mut()
-                    .find(|existing_binding| existing_binding.index == binding.index);
-                if let Some(existing_binding) = existing_binding_option {
-                    if existing_binding.descriptor_type
-                        == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                    {
-                        assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
-                    } else if existing_binding.descriptor_type
-                        == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                    {
-                        assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
-                    } else {
-                        assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-                    }
-                    existing_binding.shader_stage |= binding.shader_stage;
-                } else {
-                    let mut binding_clone = binding.clone();
-                    if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                        && dynamic_storage_buffers[*index as usize] + binding_clone.count
-                            < device
-                                .properties
-                                .limits
-                                .max_descriptor_set_storage_buffers_dynamic
-                    {
-                        dynamic_storage_buffers[*index as usize] += binding_clone.count;
-                        binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
-                    }
-                    if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                        && dynamic_uniform_buffers[*index as usize] + binding_clone.count
-                            < device
-                                .properties
-                                .limits
-                                .max_descriptor_set_uniform_buffers_dynamic
-                    {
-                        dynamic_uniform_buffers[*index as usize] += binding_clone.count;
-                        binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
-                    }
-                    set.bindings.push(binding_clone);
-                }
-            }
-        }
-
-        let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
-        if let Some(push_constants_range) = &shader.push_constants_range {
-            push_constants_ranges[0] = Some(VkConstantRange {
-                offset: push_constants_range.offset,
-                size: push_constants_range.size,
-                shader_stage: vk::ShaderStageFlags::COMPUTE,
-            });
-        }
+        add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
 
         let mut descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 5] =
             Default::default();
-        for (i, set_key) in descriptor_set_layout_keys.iter().enumerate() {
+        for (i, set_key) in context.descriptor_set_layouts.iter().enumerate() {
             descriptor_set_layouts[i] = Some(Arc::new(VkDescriptorSetLayout::new(
                 &set_key.bindings,
                 set_key.flags,
@@ -976,7 +799,7 @@ impl VkPipeline {
 
         let layout = Arc::new(VkPipelineLayout::new(
             &descriptor_set_layouts,
-            &push_constants_ranges,
+            &context.push_constants_ranges,
             device,
         ));
 
@@ -1051,13 +874,8 @@ impl VkPipeline {
 
         let mut stages = SmallVec::<[vk::PipelineShaderStageCreateInfo; 4]>::new();
         let mut groups = SmallVec::<[vk::RayTracingShaderGroupCreateInfoKHR; 4]>::new();
-        let mut descriptor_set_layouts: [VkDescriptorSetLayoutKey;
-            (BINDLESS_TEXTURE_SET_INDEX + 1) as usize] = Default::default();
-        let mut push_constants_ranges = <[Option<VkConstantRange>; 3]>::default();
 
-        let mut uses_bindless_texture_set = false;
-        let mut dynamic_storage_buffers = [0; 4];
-        let mut dynamic_uniform_buffers = [0; 4];
+        let mut context = DescriptorSetLayoutSetupContext::default();
 
         {
             let shader = info.ray_gen_shader;
@@ -1079,62 +897,7 @@ impl VkPipeline {
             };
             stages.push(stage_info);
             groups.push(group_info);
-            for (index, shader_set) in &shader.descriptor_set_bindings {
-                let set = &mut descriptor_set_layouts[*index as usize];
-                for binding in shader_set {
-                    let existing_binding_option = set
-                        .bindings
-                        .iter_mut()
-                        .find(|existing_binding| existing_binding.index == binding.index);
-                    if let Some(existing_binding) = existing_binding_option {
-                        if existing_binding.descriptor_type
-                            == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
-                        } else if existing_binding.descriptor_type
-                            == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
-                        } else {
-                            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-                        }
-                        existing_binding.shader_stage |= binding.shader_stage;
-                    } else {
-                        let mut binding_clone = binding.clone();
-                        if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                            && dynamic_storage_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_storage_buffers_dynamic
-                        {
-                            dynamic_storage_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
-                        }
-                        if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                            && dynamic_uniform_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_uniform_buffers_dynamic
-                        {
-                            dynamic_uniform_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
-                        }
-                        set.bindings.push(binding_clone);
-                    }
-                }
-            }
-            if let Some(push_constants_range) = &shader.push_constants_range {
-                push_constants_ranges[0] = Some(VkConstantRange {
-                    offset: push_constants_range.offset,
-                    size: push_constants_range.size,
-                    shader_stage: vk::ShaderStageFlags::RAYGEN_KHR,
-                });
-            }
-            uses_bindless_texture_set |= shader.uses_bindless_texture_set;
+            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
 
         for shader in info.closest_hit_shaders.iter() {
@@ -1156,62 +919,7 @@ impl VkPipeline {
             };
             stages.push(stage_info);
             groups.push(group_info);
-            for (index, shader_set) in &shader.descriptor_set_bindings {
-                let set = &mut descriptor_set_layouts[*index as usize];
-                for binding in shader_set {
-                    let existing_binding_option = set
-                        .bindings
-                        .iter_mut()
-                        .find(|existing_binding| existing_binding.index == binding.index);
-                    if let Some(existing_binding) = existing_binding_option {
-                        if existing_binding.descriptor_type
-                            == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
-                        } else if existing_binding.descriptor_type
-                            == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
-                        } else {
-                            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-                        }
-                        existing_binding.shader_stage |= binding.shader_stage;
-                    } else {
-                        let mut binding_clone = binding.clone();
-                        if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                            && dynamic_storage_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_storage_buffers_dynamic
-                        {
-                            dynamic_storage_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
-                        }
-                        if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                            && dynamic_uniform_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_uniform_buffers_dynamic
-                        {
-                            dynamic_uniform_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
-                        }
-                        set.bindings.push(binding_clone);
-                    }
-                }
-            }
-            if let Some(push_constants_range) = &shader.push_constants_range {
-                push_constants_ranges[0] = Some(VkConstantRange {
-                    offset: push_constants_range.offset,
-                    size: push_constants_range.size,
-                    shader_stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-                });
-            }
-            uses_bindless_texture_set |= shader.uses_bindless_texture_set;
+            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
 
         for shader in info.miss_shaders.iter() {
@@ -1233,105 +941,13 @@ impl VkPipeline {
             };
             stages.push(stage_info);
             groups.push(group_info);
-            for (index, shader_set) in &shader.descriptor_set_bindings {
-                let set = &mut descriptor_set_layouts[*index as usize];
-                for binding in shader_set {
-                    let existing_binding_option = set
-                        .bindings
-                        .iter_mut()
-                        .find(|existing_binding| existing_binding.index == binding.index);
-                    if let Some(existing_binding) = existing_binding_option {
-                        if existing_binding.descriptor_type
-                            == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
-                        } else if existing_binding.descriptor_type
-                            == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                        {
-                            assert_eq!(binding.descriptor_type, vk::DescriptorType::UNIFORM_BUFFER);
-                        } else {
-                            assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
-                        }
-                        existing_binding.shader_stage |= binding.shader_stage;
-                    } else {
-                        let mut binding_clone = binding.clone();
-                        if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                            && dynamic_storage_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_storage_buffers_dynamic
-                        {
-                            dynamic_storage_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
-                        }
-                        if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                            && dynamic_uniform_buffers[*index as usize] + binding_clone.count
-                                < device
-                                    .properties
-                                    .limits
-                                    .max_descriptor_set_uniform_buffers_dynamic
-                        {
-                            dynamic_uniform_buffers[*index as usize] += binding_clone.count;
-                            binding_clone.descriptor_type =
-                                vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
-                        }
-                        set.bindings.push(binding_clone);
-                    }
-                }
-            }
-            if let Some(push_constants_range) = &shader.push_constants_range {
-                push_constants_ranges[0] = Some(VkConstantRange {
-                    offset: push_constants_range.offset,
-                    size: push_constants_range.size,
-                    shader_stage: vk::ShaderStageFlags::MISS_KHR,
-                });
-            }
-            uses_bindless_texture_set |= shader.uses_bindless_texture_set;
+            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
-
-        let mut offset = 0u32;
-        let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
-        if let Some(range) = &push_constants_ranges[0] {
-            remapped_push_constant_ranges[0] = Some(VkConstantRange {
-                offset,
-                size: range.size,
-                shader_stage: vk::ShaderStageFlags::VERTEX,
-            });
-            offset += range.size;
-        }
-        if let Some(range) = &push_constants_ranges[1] {
-            remapped_push_constant_ranges[1] = Some(VkConstantRange {
-                offset,
-                size: range.size,
-                shader_stage: vk::ShaderStageFlags::FRAGMENT,
-            });
-        }
-
-        if uses_bindless_texture_set {
-            if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
-                panic!("RT Pipeline is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.");
-            }
-            let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; 16]>::new();
-            bindless_bindings.push(VkDescriptorSetEntryInfo {
-                name: "bindless_textures".to_string(),
-                shader_stage: vk::ShaderStageFlags::VERTEX
-                    | vk::ShaderStageFlags::FRAGMENT
-                    | vk::ShaderStageFlags::COMPUTE,
-                index: 0,
-                descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
-                count: BINDLESS_TEXTURE_COUNT,
-                writable: false,
-                flags: vk::DescriptorBindingFlags::UPDATE_AFTER_BIND_EXT
-                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING_EXT
-                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
-            });
-        }
+        add_bindless_set_if_used(device, &mut context, name);
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
-            descriptor_set_layouts,
-            push_constant_ranges: remapped_push_constant_ranges,
+            descriptor_set_layouts: context.descriptor_set_layouts,
+            push_constant_ranges: context.push_constants_ranges,
         });
 
         let vk_info = vk::RayTracingPipelineCreateInfoKHR {
@@ -1469,7 +1085,7 @@ impl VkPipeline {
             layout,
             device: device.clone(),
             pipeline_type: VkPipelineType::RayTracing,
-            uses_bindless_texture_set,
+            uses_bindless_texture_set: context.uses_bindless_texture_set,
             sbt: Some(VkShaderBindingTables {
                 buffer: sbt.handle(),
                 buffer_offset,
@@ -1601,7 +1217,7 @@ impl VkPipelineLayout {
 
         unsafe {
             if info.push_constant_range_count != 0 && (*(info.p_push_constant_ranges)).size == 0 {
-                panic!("aaaa");
+                panic!("Empty push constant range in pipeline layout");
             }
         }
 
@@ -1624,16 +1240,20 @@ impl VkPipelineLayout {
         self.descriptor_set_layouts[index as usize].as_ref()
     }
 
-    pub(super) fn push_constant_range(&self, shader_type: gpu::ShaderType) -> Option<&VkConstantRange> {
+    pub(super) fn push_constant_range_index(shader_type: gpu::ShaderType) -> Option<usize> {
         match shader_type {
-            gpu::ShaderType::VertexShader => self.push_constant_ranges[0].as_ref(),
-            gpu::ShaderType::FragmentShader => self.push_constant_ranges[1].as_ref(),
-            gpu::ShaderType::ComputeShader => self.push_constant_ranges[0].as_ref(),
-            gpu::ShaderType::RayGen => self.push_constant_ranges[0].as_ref(),
-            gpu::ShaderType::RayClosestHit => self.push_constant_ranges[1].as_ref(),
-            gpu::ShaderType::RayMiss => self.push_constant_ranges[2].as_ref(),
+            gpu::ShaderType::VertexShader => Some(0),
+            gpu::ShaderType::FragmentShader => Some(1),
+            gpu::ShaderType::ComputeShader => Some(0),
+            gpu::ShaderType::RayGen => Some(0),
+            gpu::ShaderType::RayClosestHit => Some(1),
+            gpu::ShaderType::RayMiss => Some(2),
             _ => None,
         }
+    }
+
+    pub(super) fn push_constant_range(&self, shader_type: gpu::ShaderType) -> Option<&VkConstantRange> {
+        Self::push_constant_range_index(shader_type).and_then(|index| self.push_constant_ranges[index].as_ref())
     }
 }
 
