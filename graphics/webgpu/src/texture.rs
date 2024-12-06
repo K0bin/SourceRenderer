@@ -81,11 +81,17 @@ impl WebGPUTexture {
         if info.usage.contains(TextureUsage::STORAGE) {
             usage |= web_sys::gpu_texture_usage::STORAGE_BINDING;
         }
-        if info.usage.intersects(TextureUsage::COPY_DST | TextureUsage::INITIAL_COPY) {
+        if info.usage.intersects(TextureUsage::COPY_DST | TextureUsage::INITIAL_COPY | TextureUsage::BLIT_DST) {
             usage |= web_sys::gpu_texture_usage::COPY_DST;
         }
-        if info.usage.contains(TextureUsage::COPY_SRC) {
+        if info.usage.intersects(TextureUsage::COPY_SRC | TextureUsage::BLIT_SRC) {
             usage |= web_sys::gpu_texture_usage::COPY_SRC;
+        }
+        if info.usage.contains(TextureUsage::RESOLVE_SRC) {
+            usage |= web_sys::gpu_texture_usage::COPY_SRC;
+        }
+        if info.usage.contains(TextureUsage::RESOLVE_DST) {
+            usage |= web_sys::gpu_texture_usage::COPY_DST;
         }
         let descriptor = GpuTextureDescriptor::new(format_to_webgpu(info.format), &JsValue::from(&size), usage);
         descriptor.set_mip_level_count(info.mip_levels);
@@ -121,6 +127,13 @@ impl WebGPUTexture {
             texture,
             info: info.clone()
         })
+    }
+
+    pub fn from_texture(_device: &GpuDevice, texture: GpuTexture, info: &TextureInfo) -> Self {
+        Self {
+            texture,
+            info: info.clone()
+        }
     }
 }
 
