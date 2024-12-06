@@ -11,6 +11,8 @@ fn texture_dimensions_to_mtl(dimensions: gpu::TextureDimension, samples: gpu::Sa
         gpu::TextureDimension::Dim1DArray => metal::MTLTextureType::D1Array,
         gpu::TextureDimension::Dim2D => if samples == gpu::SampleCount::Samples1 { metal::MTLTextureType::D2 } else { metal::MTLTextureType::D2Multisample },
         gpu::TextureDimension::Dim2DArray => if samples == gpu::SampleCount::Samples1 { metal::MTLTextureType::D2Array } else { metal::MTLTextureType::D2MultisampleArray },
+        gpu::TextureDimension::Cube => metal::MTLTextureType::Cube,
+        gpu::TextureDimension::CubeArray => metal::MTLTextureType::CubeArray,
         gpu::TextureDimension::Dim3D => metal::MTLTextureType::D3,
     }
 }
@@ -193,8 +195,8 @@ impl MTLTexture {
                 metal::MTLTextureType::D2 => gpu::TextureDimension::Dim2D,
                 metal::MTLTextureType::D2Array => gpu::TextureDimension::Dim2DArray,
                 metal::MTLTextureType::D2Multisample => gpu::TextureDimension::Dim2D,
-                metal::MTLTextureType::Cube => gpu::TextureDimension::Dim2DArray,
-                metal::MTLTextureType::CubeArray => todo!(),
+                metal::MTLTextureType::Cube => gpu::TextureDimension::Cube,
+                metal::MTLTextureType::CubeArray => gpu::TextureDimension::CubeArray,
                 metal::MTLTextureType::D3 => gpu::TextureDimension::Dim3D,
                 metal::MTLTextureType::D2MultisampleArray => gpu::TextureDimension::Dim2DArray,
             },

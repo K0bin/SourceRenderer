@@ -8,13 +8,13 @@ use std::process::Command;
 
 use bitflags::bitflags;
 
-use log::{error, info};
+use log::{error, info, warn};
 use naga::back::wgsl::WriterFlags;
 use naga::front::spv::Options;
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use spirv_cross_sys;
 
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, Format, SamplingType, TextureDimension};
 
 const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
@@ -278,6 +278,56 @@ fn read_metadata(
         }
     };
 
+    fn spvc_format_to_format(format: spirv_cross_sys::SpvImageFormat) -> Format {
+        match format {
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32f => Format::RGBA32Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16f => Format::RGBA16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR32f => Format::R32Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8 => Format::RGBA8UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8Snorm => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32f => Format::RG32Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16f => Format::RG16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR11fG11fB10f => Format::R11G11B10Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16f => Format::R16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16 => Format::RGBA16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10A2 => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16 => Format::RG16UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8 => Format::RG8UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16 => Format::R16UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8 => Format::R8Unorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16Snorm => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16Snorm => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8Snorm => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16Snorm => Format::R16SNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8Snorm => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR32i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR32ui => Format::R32UInt,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10a2ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16ui => Format::RG16UInt,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16ui => Format::R16UInt,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR64ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR64i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatMax => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatUnknown => Format::Unknown,
+            _ => panic!("Unrecognized format")
+        }
+
+    }
+
     unsafe fn read_resources(
         compiler: spirv_cross_sys::spvc_compiler,
         spv_resource_type: spirv_cross_sys::spvc_resource_type,
@@ -341,11 +391,12 @@ fn read_metadata(
                 false
             };
 
-            let array_size = unsafe {
-                let type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(
-                    compiler,
-                    resource.type_id,
-                );
+            let type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(
+                compiler,
+                resource.type_id,
+            );
+
+            let array_size = {
                 let array_dimensions =
                     spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
                 assert!(array_dimensions == 1 || array_dimensions == 0);
@@ -362,6 +413,55 @@ fn read_metadata(
                 }
             };
 
+            let spv_base_type = spirv_cross_sys::spvc_type_get_basetype(type_handle);
+            let is_image = spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_IMAGE
+                || spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_SAMPLED_IMAGE;
+
+            let mut dim = TextureDimension::Dim1D;
+            let mut multisampled = false;
+            let mut sampling_type = SamplingType::Float;
+            let mut storage_format = Format::Unknown;
+            if is_image {
+                let spvc_is_array = spirv_cross_sys::spvc_type_get_image_arrayed(type_handle) != 0;
+                let spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
+                let is_storage = spirv_cross_sys::spvc_type_get_image_is_storage(type_handle) != 0;
+                if is_storage {
+                    storage_format = spvc_format_to_format(spirv_cross_sys::spvc_type_get_image_storage_format(type_handle));
+                }
+                let spv_dim = spirv_cross_sys::spvc_type_get_image_storage_format(type_handle);
+                dim = match spv_dim {
+                    spirv_cross_sys::SpvDim__SpvDim1D => if !spvc_is_array { TextureDimension::Dim1D } else { TextureDimension::Dim1DArray },
+                    spirv_cross_sys::SpvDim__SpvDim2D => if !spvc_is_array { TextureDimension::Dim2D } else { TextureDimension::Dim2DArray },
+                    spirv_cross_sys::SpvDim__SpvDim3D => if !spvc_is_array { TextureDimension::Dim3D } else { panic!("3D Arrays are not supported") },
+                    spirv_cross_sys::SpvDim__SpvDimCube => if !spvc_is_array { TextureDimension::Cube } else { TextureDimension::CubeArray },
+                    _ => TextureDimension::Dim1D
+                };
+                multisampled = spirv_cross_sys::spvc_type_get_image_multisampled(type_handle) != 0;
+                let is_depth = spirv_cross_sys::spvc_type_get_image_is_depth(type_handle) != 0;
+                if is_depth {
+                    sampling_type = SamplingType::Depth;
+                } else {
+                    let spv_smapled_type_id = spirv_cross_sys::spvc_type_get_image_sampled_type(type_handle);
+                    let sampled_type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(compiler, spv_smapled_type_id);
+                    let sampled_base_type = spirv_cross_sys::spvc_type_get_basetype(sampled_type_handle);
+                    sampling_type = match sampled_base_type {
+                        spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP16
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP32
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP64 => SamplingType::Float,
+                        spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT16
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT8
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT32
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT64
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT_MAX => SamplingType::SInt,
+                        spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT16
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT8
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT32
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT64 => SamplingType::UInt,
+                        _ => SamplingType::Float
+                    };
+                }
+            }
+
             set.push(gpu::Resource {
                 name: name,
                 set: set_index,
@@ -369,6 +469,10 @@ fn read_metadata(
                 array_size,
                 writable,
                 resource_type,
+                texture_dimension: dim,
+                is_multisampled: multisampled,
+                sampling_type,
+                storage_format
             });
         }
     }
