@@ -16,12 +16,16 @@ bitflags! {
     const INITIAL_COPY                       = 0b100000000000;
 
     const GPU_WRITABLE = 0b100 | 0b1000000 | 0b100000000 | 0b1000000000;
+    const GPU_READABLE = 0b1 | 0b10 | 0b100 | 0b1000 | 0b100000 | 0b10000000 | 0b100000000 | 0b1000000000 | 0b10000000000;
   }
 }
 
 impl BufferUsage {
   pub fn gpu_writable(&self) -> bool {
     self.intersects(Self::GPU_WRITABLE)
+  }
+  pub fn gpu_readable(&self) -> bool {
+    self.intersects(Self::GPU_READABLE)
   }
 }
 
