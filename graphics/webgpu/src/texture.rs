@@ -1,6 +1,6 @@
 use std::hash::Hash;
-use sourcerenderer_core::gpu::{Format, SampleCount, Texture, TextureDimension, TextureInfo, TextureUsage};
-use web_sys::{js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture, GpuTextureDescriptor, GpuTextureFormat};
+use sourcerenderer_core::gpu::{self, Format, SampleCount, Texture, TextureDimension, TextureInfo, TextureUsage, TextureView, TextureViewInfo};
+use web_sys::{js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture, GpuTextureDescriptor, GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor, GpuTextureViewDimension};
 
 pub(crate) fn format_to_webgpu(format: Format) -> GpuTextureFormat {
     match format {
@@ -40,6 +40,18 @@ pub(crate) fn format_to_webgpu(format: Format) -> GpuTextureFormat {
     }
 }
 
+pub(crate) fn texture_dimension_to_webgpu_view(texture_dimension: TextureDimension) -> GpuTextureViewDimension {
+    match texture_dimension {
+        TextureDimension::Dim1D => GpuTextureViewDimension::N1d,
+        TextureDimension::Dim2D => GpuTextureViewDimension::N2d,
+        TextureDimension::Dim3D => GpuTextureViewDimension::N3d,
+        TextureDimension::Dim1DArray => panic!("1D texture arrays are unsupported by WebGPU"),
+        TextureDimension::Dim2DArray => GpuTextureViewDimension::N2dArray,
+        TextureDimension::Cube => GpuTextureViewDimension::Cube,
+        TextureDimension::CubeArray => GpuTextureViewDimension::CubeArray,
+    }
+}
+
 pub struct WebGPUTexture {
     texture: GpuTexture,
     info: TextureInfo
@@ -62,6 +74,12 @@ impl Hash for WebGPUTexture {
 
 unsafe impl Send for WebGPUTexture {}
 unsafe impl Sync for WebGPUTexture {}
+
+impl Drop for WebGPUTexture {
+    fn drop(&mut self) {
+        self.texture.destroy();
+    }
+}
 
 impl WebGPUTexture {
     pub fn new(device: &GpuDevice, info: &TextureInfo, name: Option<&str>) -> Result<Self, ()> {
@@ -103,7 +121,7 @@ impl WebGPUTexture {
         });
         descriptor.set_dimension(match info.dimension {
             TextureDimension::Dim1D | TextureDimension::Dim1DArray => web_sys::GpuTextureDimension::N1d,
-            TextureDimension::Dim2D | TextureDimension::Dim2DArray => web_sys::GpuTextureDimension::N2d,
+            TextureDimension::Dim2D | TextureDimension::Dim2DArray | TextureDimension::Cube | TextureDimension::CubeArray => web_sys::GpuTextureDimension::N2d,
             TextureDimension::Dim3D => web_sys::GpuTextureDimension::N3d,
         });
         if let Some(name) = name {
@@ -135,10 +153,75 @@ impl WebGPUTexture {
             info: info.clone()
         }
     }
+
+    pub fn handle(&self) -> &GpuTexture {
+        &self.texture
+    }
 }
 
 impl Texture for WebGPUTexture {
     fn info(&self) -> &TextureInfo {
+        &self.info
+    }
+}
+
+pub struct WebGPUTextureView {
+    view: GpuTextureView,
+    texture_info: TextureInfo,
+    info: TextureViewInfo
+}
+
+impl PartialEq for WebGPUTextureView {
+    fn eq(&self, other: &Self) -> bool {
+        self.view == other.view
+    }
+}
+
+impl Eq for WebGPUTextureView {}
+
+impl Hash for WebGPUTextureView {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let ptr_val: usize = unsafe { std::mem::transmute(&self.view as *const GpuTextureView) };
+        ptr_val.hash(state);
+    }
+}
+
+unsafe impl Send for WebGPUTextureView {}
+unsafe impl Sync for WebGPUTextureView {}
+
+impl WebGPUTextureView {
+    pub fn new(_device: &GpuDevice, texture: &WebGPUTexture, info: &TextureViewInfo, name: Option<&str>) -> Result<Self, ()> {
+        let descriptor = GpuTextureViewDescriptor::new();
+        descriptor.set_array_layer_count(info.array_layer_length);
+        descriptor.set_base_array_layer(info.base_array_layer);
+        descriptor.set_mip_level_count(info.mip_level_length);
+        descriptor.set_base_mip_level(info.base_mip_level);
+        descriptor.set_dimension(texture_dimension_to_webgpu_view(texture.info().dimension));
+        if let Some(format) = info.format {
+            descriptor.set_format(format_to_webgpu(format));
+        }
+        if let Some(name) = name {
+            descriptor.set_label(name);
+        }
+        let view = texture.handle().create_view_with_descriptor(&descriptor).map_err(|_| ())?;
+        Ok(Self {
+            view,
+            texture_info: texture.info().clone(),
+            info: info.clone()
+        })
+    }
+
+    pub fn handle(&self) -> &GpuTextureView {
+        &self.view
+    }
+}
+
+impl gpu::TextureView for WebGPUTextureView {
+    fn texture_info(&self) -> &TextureInfo {
+        &self.texture_info
+    }
+
+    fn info(&self) -> &TextureViewInfo {
         &self.info
     }
 }

@@ -10,6 +10,17 @@ pub struct WebGPUSurface {
     texture_info: TextureInfo
 }
 
+unsafe impl Send for WebGPUSurface {}
+unsafe impl Sync for WebGPUSurface {}
+
+impl PartialEq for WebGPUSurface {
+    fn eq(&self, other: &Self) -> bool {
+        self.canvas_context == other.canvas_context
+    }
+}
+
+impl Eq for WebGPUSurface {}
+
 impl WebGPUSurface {
     pub(crate) fn new(device: &GpuDevice, canvas: OffscreenCanvas) -> Result<Self, ()> {
         let context_obj: JsValue = canvas.get_context("webgpu")
