@@ -150,3 +150,4 @@ wasm-bindgen-futures = { version = "0.4.47", features = ["futures-core-03-stream
 js-sys = "0.3.74"
 log = "0.4.14"
 smallvec = "1.13.2"
+bitflags = "2.4.2"

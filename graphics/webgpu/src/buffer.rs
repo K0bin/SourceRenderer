@@ -1,4 +1,4 @@
-use std::{cell::RefCell, hash::Hash, sync::atomic::AtomicBool};
+use std::{cell::{Ref, RefCell}, hash::Hash, sync::atomic::AtomicBool};
 
 use log::{error, warn};
 use sourcerenderer_core::gpu::{Buffer, BufferInfo, BufferUsage};
@@ -110,7 +110,10 @@ impl WebGPUBuffer {
             info: info.clone(),
             mapped: AtomicBool::new(false)
         })
+    }
 
+    pub fn handle(&self) -> Ref<GpuBuffer> {
+        self.buffer.borrow()
     }
 }
 

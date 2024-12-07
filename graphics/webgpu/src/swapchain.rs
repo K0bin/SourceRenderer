@@ -13,6 +13,9 @@ pub struct WebGPUSwapchain {
     index: AtomicU32
 }
 
+unsafe impl Send for WebGPUSwapchain {}
+unsafe impl Sync for WebGPUSwapchain {}
+
 impl WebGPUSwapchain {
     pub fn new(device: &GpuDevice, surface: WebGPUSurface, buffer_count: u32) -> Self {
         let backbuffers = Self::create_backbuffers(device, surface.texture_info(), buffer_count);

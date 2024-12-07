@@ -1,27 +1,29 @@
 use sourcerenderer_core::gpu::GPUBackend;
 
+use crate::{adapter::WebGPUAdapter, buffer::WebGPUBuffer, pipeline::{WebGPUComputePipeline, WebGPUGraphicsPipeline, WebGPUShader}, queue::{WebGPUFence, WebGPUQueue}, sampler::WebGPUSampler, stubs::{WebGPUAccelerationStructure, WebGPUHeap}, surface::WebGPUSurface, swapchain::WebGPUSwapchain, texture::{WebGPUTexture, WebGPUTextureView}, WebGPUInstance};
+
 pub struct WebGPUBackend {
 
 }
 
-/*impl GPUBackend for WebGPUBackend {
-    type Instance;
-    type Adapter;
+impl GPUBackend for WebGPUBackend {
+    type Instance = WebGPUInstance;
+    type Adapter = WebGPUAdapter;
     type Device;
-    type Surface;
-    type Swapchain;
+    type Surface = WebGPUSurface;
+    type Swapchain = WebGPUSwapchain;
     type CommandPool;
     type CommandBuffer;
-    type Texture;
-    type TextureView;
-    type Sampler;
-    type Buffer;
-    type Shader;
-    type GraphicsPipeline;
-    type ComputePipeline;
-    type RayTracingPipeline;
-    type Fence;
-    type Queue;
-    type Heap;
-    type AccelerationStructure;
-}*/
+    type Texture = WebGPUTexture;
+    type TextureView = WebGPUTextureView;
+    type Sampler = WebGPUSampler;
+    type Buffer = WebGPUBuffer;
+    type Shader = WebGPUShader;
+    type GraphicsPipeline = WebGPUGraphicsPipeline;
+    type ComputePipeline = WebGPUComputePipeline;
+    type RayTracingPipeline = ();
+    type Fence = WebGPUFence;
+    type Queue = WebGPUQueue;
+    type Heap = WebGPUHeap;
+    type AccelerationStructure = WebGPUAccelerationStructure;
+}
