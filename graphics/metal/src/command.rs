@@ -85,11 +85,15 @@ enum MTLRenderPassState {
         render_pass: metal::RenderPassDescriptor,
     },
     Parallel {
-        parallel_passes: Arc<Mutex<Vec<metal::RenderCommandEncoder>>>,
+        parallel_passes: Arc<Mutex<MTLInnerCommandBufferInheritance>>,
         parallel_encoder: metal::ParallelRenderCommandEncoder,
-        render_pass: metal::RenderPassDescriptor,
     },
     None
+}
+
+pub struct MTLInnerCommandBufferInheritance {
+    encoders: Vec<metal::RenderCommandEncoder>,
+    descriptor: metal::RenderPassDescriptor
 }
 
 impl MTLRenderPassState {
@@ -565,9 +569,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         }
         if let Some(inheritance) = inheritance {
             let mut guard = inheritance.lock().unwrap();
+            let encoder = guard.encoders.pop().expect("Ran out of inner encoders.");
             self.render_pass = MTLRenderPassState::Commands {
-                render_encoder: guard.pop().expect("Ran out of inner encoders."),
-                render_pass: Vec::new()
+                render_encoder: encoder,
+                render_pass: guard.descriptor.clone()
             }
         }
     }
@@ -639,30 +644,28 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.render_pass.is_none());
         self.end_non_rendering_encoders();
         let descriptor = render_pass_to_descriptors(renderpass_info);
-        let first_descriptor = descriptors[0].clone();
         if recording_mode == gpu::RenderpassRecordingMode::Commands {
-            let encoder = self.handle().new_render_command_encoder(&first_descriptor).to_owned();
+            let encoder = self.handle().new_render_command_encoder(&descriptor).to_owned();
             Self::render_encoder_use_all_heaps(&encoder, &self.shared);
             self.render_pass = MTLRenderPassState::Commands {
                 render_encoder: encoder,
                 render_pass: descriptor,
             };
         } else {
-            assert_eq!(descriptors.len(), 1);
-            let parallel_encoder = self.handle().new_parallel_render_command_encoder(&first_descriptor).to_owned();
-            let encoders = Arc::new(Mutex::new(Vec::new()));
-            {
-                let mut encoders_guard = encoders.lock().unwrap();
-                for _ in 0..MAX_INNER_ENCODERS {
-                    let encoder = parallel_encoder.render_command_encoder().to_owned();
-                    Self::render_encoder_use_all_heaps(&encoder, &self.shared);
-                    encoders_guard.push(encoder);
-                }
+            let parallel_encoder = self.handle().new_parallel_render_command_encoder(&descriptor).to_owned();
+            let mut encoders = Vec::new();
+            for _ in 0..MAX_INNER_ENCODERS {
+                let encoder = parallel_encoder.render_command_encoder().to_owned();
+                Self::render_encoder_use_all_heaps(&encoder, &self.shared);
+                encoders.push(encoder);
             }
+            let inheritance = Arc::new(Mutex::new(MTLInnerCommandBufferInheritance {
+                descriptor: descriptor.clone(),
+                encoders
+            }));
             self.render_pass = MTLRenderPassState::Parallel {
-                parallel_passes: encoders,
+                parallel_passes: inheritance,
                 parallel_encoder: parallel_encoder,
-                render_pass: descriptor
             };
         }
     }
@@ -674,11 +677,11 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             },
             MTLRenderPassState::Parallel { parallel_passes, parallel_encoder, .. } => {
                 {
-                    let mut encoders_guard = parallel_passes.lock().unwrap();
-                    for encoder in encoders_guard.iter() {
+                    let mut inheritance_guard = parallel_passes.lock().unwrap();
+                    for encoder in inheritance_guard.encoders.iter() {
                         encoder.end_encoding();
                     }
-                    encoders_guard.clear();
+                    inheritance_guard.encoders.clear();
                 }
                 parallel_encoder.end_encoding();
                 assert_eq!(Arc::strong_count(parallel_passes), 1);
@@ -700,7 +703,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         }
     }
 
-    type CommandBufferInheritance = Arc<Mutex<Vec<metal::RenderCommandEncoder>>>;
+    type CommandBufferInheritance = Arc<Mutex<MTLInnerCommandBufferInheritance>>;
 
     unsafe fn execute_inner(&mut self, _submission: &[&MTLCommandBuffer]) {
         // Done automatically
@@ -784,11 +787,11 @@ impl Drop for MTLCommandBuffer {
             }
             MTLRenderPassState::Parallel { parallel_encoder, parallel_passes, .. } => {
                 {
-                    let mut encoders_guard = parallel_passes.lock().unwrap();
-                    for encoder in encoders_guard.iter() {
+                    let mut inheritance_guard = parallel_passes.lock().unwrap();
+                    for encoder in inheritance_guard.encoders.iter() {
                         encoder.end_encoding();
                     }
-                    encoders_guard.clear();
+                    inheritance_guard.encoders.clear();
                 }
                 parallel_encoder.end_encoding();
             },

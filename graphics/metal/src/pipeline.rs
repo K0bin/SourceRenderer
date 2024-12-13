@@ -275,8 +275,7 @@ pub struct MTLGraphicsPipeline {
 }
 
 impl MTLGraphicsPipeline {
-    pub(crate) fn new(device: &metal::DeviceRef, info: &gpu::GraphicsPipelineInfo<MTLBackend>, renderpass_info: &gpu::RenderPassInfo, subpass: u32, name: Option<&str>) -> Self {
-        let subpass = &renderpass_info.subpasses[subpass as usize];
+    pub(crate) fn new(device: &metal::DeviceRef, info: &gpu::GraphicsPipelineInfo<MTLBackend>, name: Option<&str>) -> Self {
         let descriptor = metal::RenderPipelineDescriptor::new();
 
         if let Some(name) = name {
@@ -328,19 +327,12 @@ impl MTLGraphicsPipeline {
         descriptor.set_alpha_to_coverage_enabled(info.blend.alpha_to_coverage_enabled);
 
 
-        for (idx, attachment_ref) in subpass.output_color_attachments.iter().enumerate() {
+        for (idx, &format) in info.render_target_formats.iter().enumerate() {
             let attachment_desc = descriptor.color_attachments().object_at(idx as u64).unwrap();
-            let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
-            descriptor.set_raster_sample_count(samples_to_mtl(attachment.samples));
-            attachment_desc.set_pixel_format(format_to_mtl(attachment.format));
-        }
-
-        if let Some(attachment_ref) = subpass.depth_stencil_attachment.as_ref() {
-            let attachment = &renderpass_info.attachments[attachment_ref.index as usize];
-            descriptor.set_depth_attachment_pixel_format(format_to_mtl(attachment.format));
-            descriptor.set_raster_sample_count(samples_to_mtl(attachment.samples));
-            if attachment.format.is_stencil() {
-                descriptor.set_stencil_attachment_pixel_format(format_to_mtl(attachment.format));
+            descriptor.set_raster_sample_count(samples_to_mtl(info.rasterizer.sample_count));
+            attachment_desc.set_pixel_format(format_to_mtl(format));
+            if info.depth_stencil_format.is_stencil() {
+                descriptor.set_stencil_attachment_pixel_format(format_to_mtl(info.depth_stencil_format));
             }
         }
 

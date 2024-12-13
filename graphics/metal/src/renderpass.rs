@@ -22,7 +22,7 @@ fn load_action_color_to_mtl(action: gpu::LoadOpColor) -> metal::MTLLoadAction {
     }
 }
 
-fn load_action_depth_stencil_to_mtl(action: gpu::LoadOpColor) -> metal::MTLLoadAction {
+fn load_action_depth_stencil_to_mtl(action: gpu::LoadOpDepthStencil) -> metal::MTLLoadAction {
     match action {
         gpu::LoadOpDepthStencil::Load => metal::MTLLoadAction::Load,
         gpu::LoadOpDepthStencil::Clear(_) => metal::MTLLoadAction::Clear,
@@ -39,7 +39,7 @@ pub(crate) fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<MTLBack
         attachment_desc.set_texture(Some(rt.view.handle()));
         attachment_desc.set_level(rt.view.info().base_mip_level as u64);
         attachment_desc.set_slice(rt.view.info().base_array_layer as u64);
-        if let StoreOp::Resolve(resolve_view) = &dsv.store_op {
+        if let StoreOp::Resolve(resolve_view) = &rt.store_op {
             attachment_desc.set_texture(Some(resolve_view.view.handle()));
             attachment_desc.set_level(resolve_view.view.info().base_mip_level as u64);
             attachment_desc.set_slice(resolve_view.view.info().base_array_layer as u64);
@@ -67,9 +67,9 @@ pub(crate) fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<MTLBack
             attachment_desc.set_slice(resolve_view.view.info().base_array_layer as u64);
         }
         if let LoadOpDepthStencil::Clear(value) = dsv.load_op {
-            attachment_desc.set_clear_depth(value.depth);
+            attachment_desc.set_clear_depth(value.depth as f64);
         }
     }
-    descriptor
+    descriptor.to_owned()
 }
 

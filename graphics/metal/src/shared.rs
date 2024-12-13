@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock};
 
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, Format};
 
 use crate::{MTLBindlessArgumentBuffer, MTLGraphicsPipeline, MTLShader};
 
@@ -53,26 +53,9 @@ impl MTLShared {
                     constants: [1f32, 1f32, 1f32, 1f32],
                 },
                 primitive_type: gpu::PrimitiveType::Triangles,
-            },
-            &gpu::RenderPassInfo {
-                attachments: &[
-                    gpu::AttachmentInfo {
-                        format: gpu::Format::BGRA8UNorm,
-                        samples: gpu::SampleCount::Samples1,
-                    },
-                ],
-                subpasses: &[gpu::SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[
-                        gpu::OutputAttachmentRef {
-                            index: 0,
-                            resolve_attachment_index: None,
-                        },
-                    ],
-                    depth_stencil_attachment: None,
-                }],
-            },
-            0, Some("Blit Pipeline")
+                render_target_formats: &[gpu::Format::BGRA8UNorm],
+                depth_stencil_format: Format::Unknown
+            }, Some("Blit Pipeline")
         );
 
         let mdi_shader_bytes = include_bytes!("../meta_shaders/mdi.metallib");

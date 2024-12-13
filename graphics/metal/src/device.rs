@@ -203,8 +203,8 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         MTLSampler::new(&self.device, info)
     }
 
-    unsafe fn create_graphics_pipeline(&self, info: &gpu::GraphicsPipelineInfo<MTLBackend>, renderpass_info: &gpu::RenderPassInfo, subpass: u32, name: Option<&str>) -> MTLGraphicsPipeline {
-        MTLGraphicsPipeline::new(&self.device, info, renderpass_info, subpass, name)
+    unsafe fn create_graphics_pipeline(&self, info: &gpu::GraphicsPipelineInfo<MTLBackend>, name: Option<&str>) -> MTLGraphicsPipeline {
+        MTLGraphicsPipeline::new(&self.device, info, name)
     }
 
     unsafe fn wait_for_idle(&self) {
