@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use metal;
 
 use sourcerenderer_core::gpu::{self, LoadOpColor, LoadOpDepthStencil, StoreOp, TextureView};

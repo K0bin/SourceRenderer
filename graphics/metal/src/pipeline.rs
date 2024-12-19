@@ -40,9 +40,7 @@ pub struct MTLShader {
     shader_type: gpu::ShaderType,
     library: metal::Library,
     function: metal::Function,
-    data: Box<[u8]>,
     resource_map: ShaderResourceMap,
-    name: Option<String>
 }
 
 const METAL_DEBUGGER_WORKAROUND: bool = true;
@@ -68,6 +66,10 @@ impl MTLShader {
         } else {
             device.new_library_with_data(&data).unwrap()
         };
+
+        if let Some(name) = name {
+            library.set_label(name);
+        }
 
         let mut resource_map = ShaderResourceMap {
             resources: HashMap::new(),
@@ -124,14 +126,8 @@ impl MTLShader {
             shader_type: shader.shader_type,
             library,
             resource_map,
-            data,
-            name: name.map(|name| name.to_string()),
             function
         }
-    }
-
-    pub(crate) fn handle(&self) -> &metal::LibraryRef {
-        &self.library
     }
 
     pub(crate) fn function_handle(&self) -> &metal::FunctionRef {
@@ -229,7 +225,6 @@ pub(crate) fn blend_op_to_mtl(blend_op: gpu::BlendOp) -> metal::MTLBlendOperatio
 }
 
 pub(super) fn color_components_to_mtl(color_components: gpu::ColorComponents) -> metal::MTLColorWriteMask {
-    let components_bits = color_components.bits() as u64;
     let mut colors = metal::MTLColorWriteMask::empty();
     if color_components.contains(gpu::ColorComponents::RED) {
         colors |= metal::MTLColorWriteMask::Red;
@@ -516,7 +511,7 @@ impl MTLComputePipeline {
 }
 
 impl gpu::ComputePipeline for MTLComputePipeline {
-    fn binding_info(&self, set: gpu::BindingFrequency, slot: u32) -> Option<gpu::BindingInfo> {
+    fn binding_info(&self, _set: gpu::BindingFrequency, _slot: u32) -> Option<gpu::BindingInfo> {
         todo!()
     }
 }

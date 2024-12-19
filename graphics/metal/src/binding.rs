@@ -1,13 +1,10 @@
 use metal;
 use metal::foreign_types::{ForeignType, ForeignTypeRef};
 
-use objc::Encode;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Texture as _};
+use sourcerenderer_core::gpu;
 
 use super::*;
-
-use bitflags::bitflags;
 
 pub const PER_SET_BINDINGS: usize = 32;
 
@@ -64,6 +61,7 @@ impl Default for MTLBoundResource {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub(crate) enum MTLBoundResourceRef<'a> {
     None,

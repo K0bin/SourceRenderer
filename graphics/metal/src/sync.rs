@@ -9,11 +9,8 @@ use metal::EventRef;
 use metal::SharedEventRef;
 use objc::class;
 use objc::msg_send;
-use metal::foreign_types::ForeignTypeRef;
 
 use sourcerenderer_core::gpu;
-
-use super::*;
 
 enum MTLEventType {
     Shared(metal::SharedEvent),
@@ -57,6 +54,7 @@ impl MTLFence {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn event_set_label(event: &EventRef, label: &str) {
         fn nsstring_from_str(string: &str) -> *mut objc::runtime::Object {
             const UTF8_ENCODING: usize = 4;

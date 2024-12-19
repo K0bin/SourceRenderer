@@ -1,12 +1,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 
 use metal::{self, MetalDrawable};
 use metal::foreign_types::ForeignTypeRef;
 
-use objc::rc::autoreleasepool;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Swapchain, Texture};
+use sourcerenderer_core::gpu::{self, Texture};
 use sourcerenderer_core::Matrix4;
 
 use super::*;
@@ -16,7 +14,7 @@ pub struct MTLSurface {
 }
 
 impl MTLSurface {
-    pub fn new(instance: &MTLInstance, layer: &metal::MetalLayerRef) -> Self {
+    pub fn new(_instance: &MTLInstance, layer: &metal::MetalLayerRef) -> Self {
         Self {
             layer: layer.to_owned()
         }
@@ -40,24 +38,26 @@ pub struct MTLSwapchain {
     device: metal::Device,
     backbuffers: SmallVec<[MTLTexture; 5]>,
     current_backbuffer_index: AtomicUsize,
-    present_states: SmallVec<[Arc<Mutex<PresentState>>; 5]>
-}
-
-pub(crate) struct PresentState {
-    pub(crate) swapchain_release_scheduled: bool,
-    pub(crate) present_called: bool,
-    pub(crate) drawable: Option<metal::MetalDrawable>
 }
 
 const IMAGE_COUNT: u32 = 3;
 
 impl MTLSwapchain {
-    pub fn new(surface: MTLSurface, device: &metal::DeviceRef) -> Self {
+    pub fn new(surface: MTLSurface, device: &metal::DeviceRef, extends: Option<(u32, u32)>) -> Self {
         surface.layer.set_device(device);
         assert!(IMAGE_COUNT == 2 || IMAGE_COUNT == 3);
         surface.layer.set_maximum_drawable_count(IMAGE_COUNT as u64);
         let mut backbuffers = SmallVec::<[MTLTexture; 5]>::with_capacity(IMAGE_COUNT as usize);
-        let mut present_states = SmallVec::<[Arc<Mutex<PresentState>>; 5]>::with_capacity(IMAGE_COUNT as usize);
+
+        let width: u32;
+        let height: u32;
+        if let Some((param_width, param_height)) = extends {
+            width = param_width;
+            height = param_height;
+        } else {
+            width = surface.handle().drawable_size().width as u32;
+            height = surface.handle().drawable_size().height as u32;
+        }
 
         for i in 0..IMAGE_COUNT {
             let texture = MTLTexture::new(
@@ -65,8 +65,8 @@ impl MTLSwapchain {
                 &gpu::TextureInfo {
                     dimension: gpu::TextureDimension::Dim2D,
                     format: gpu::Format::BGRA8UNorm,
-                    width: surface.layer.drawable_size().width as u32,
-                    height: surface.layer.drawable_size().height as u32,
+                    width,
+                    height,
                     depth: 1,
                     mip_levels: 1,
                     array_length: 1,
@@ -75,37 +75,27 @@ impl MTLSwapchain {
                     supports_srgb: false,
                 }, Some(&format!("Backbuffer {}", i))).unwrap();
             backbuffers.push(texture);
-            present_states.push(Arc::new(Mutex::new(PresentState {
-                swapchain_release_scheduled: false,
-                present_called: false,
-                drawable: None
-            })));
         }
         Self {
             surface,
             backbuffers: backbuffers,
             device: device.to_owned(),
             current_backbuffer_index: AtomicUsize::new(0usize),
-            present_states
         }
     }
 
     pub(crate) fn take_drawable(&self) -> MetalDrawable {
         self.surface.layer.next_drawable().unwrap().to_owned()
     }
-
-    pub(crate) fn present_state(&self) -> &Arc<Mutex<PresentState>> {
-        &self.present_states[self.backbuffer_index() as usize]
-    }
 }
 
 impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
     unsafe fn recreate(old: Self, width: u32, height: u32) -> Result<Self, gpu::SwapchainError> {
-        Ok(Self::new(old.surface, &old.device))
+        Ok(Self::new(old.surface, &old.device, Some((width, height))))
     }
 
     unsafe fn recreate_on_surface(old: Self, surface: MTLSurface, width: u32, height: u32) -> Result<Self, gpu::SwapchainError> {
-        Ok(Self::new(surface, &old.device))
+        Ok(Self::new(surface, &old.device, Some((width, height))))
     }
 
     unsafe fn next_backbuffer(&self) -> Result<(), gpu::SwapchainError> {

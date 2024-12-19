@@ -6,7 +6,7 @@ use metal;
 use block::ConcreteBlock;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, CommandBuffer, Swapchain};
+use sourcerenderer_core::gpu::{self, Swapchain};
 
 use super::*;
 
@@ -36,10 +36,6 @@ impl MTLQueue {
                 cond_var: Condvar::new()
             })
         }
-    }
-
-    pub(crate) fn handle(&self) -> &metal::CommandQueueRef {
-        &self.queue
     }
 
     pub fn wait_for_idle(&self) {

@@ -4,7 +4,7 @@ use metal::{self, NSRange};
 
 use objc::{msg_send, runtime::Object, sel, sel_impl};
 use smallvec::SmallVec;
-use sourcerenderer_core::{align_up_32, gpu::{self, BindingFrequency, Texture}};
+use sourcerenderer_core::{align_up_32, gpu::{self, Texture}};
 
 use super::*;
 
@@ -71,6 +71,7 @@ pub(crate) fn format_to_mtl_attribute_format(format: gpu::Format) -> metal::MTLA
     }
 }
 
+#[allow(dead_code)] // Read by the GPU
 struct MTLMDIParams {
     indirect_cmd_buffer: metal::MTLResourceID,
     draw_buffer: u64,
@@ -315,13 +316,13 @@ impl MTLCommandBuffer {
         }
     }
 
-    fn enable_error_tracking(command_buffer: &metal::CommandBufferRef) {
+    fn enable_error_tracking(_command_buffer: &metal::CommandBufferRef) {
         //let _: ()  = unsafe { msg_send![command_buffer, setErrorOptions: 1] };
     }
 
     fn print_error(command_buffer: &metal::CommandBufferRef) {
         unsafe {
-            let error: *mut Object  = unsafe { msg_send![command_buffer, error] };
+            let error: *mut Object  = msg_send![command_buffer, error];
             let desc: *mut Object = msg_send![error, localizedDescription];
             let compile_error: *const std::os::raw::c_char = msg_send![desc, UTF8String];
             let message = CStr::from_ptr(compile_error).to_string_lossy().into_owned();
@@ -476,7 +477,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn bind_storage_view_array(&mut self, frequency: gpu::BindingFrequency, binding: u32, textures: &[&MTLTextureView]) {
-        let handles: SmallVec<[(&metal::TextureRef); 8]> = textures
+        let handles: SmallVec<[&metal::TextureRef; 8]> = textures
             .iter()
             .map(|tv| tv.handle())
             .collect();
@@ -563,7 +564,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         }
     }
 
-    unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
+    unsafe fn begin(&mut self, _frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
         if let Some(handle) = self.command_buffer.as_ref() {
             handle.encode_wait_for_event(&self.pre_event, 1);
         }
@@ -623,7 +624,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         blit_encoder.copy_from_buffer(src.handle(), region.src_offset, dst.handle(), region.dst_offset, region.size);
     }
 
-    unsafe fn clear_storage_texture(&mut self, view: &MTLTexture, array_layer: u32, mip_level: u32, values: [u32; 4]) {
+    unsafe fn clear_storage_texture(&mut self, _view: &MTLTexture, _array_layer: u32, _mip_level: u32, _values: [u32; 4]) {
         todo!()
     }
 
@@ -709,7 +710,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         // Done automatically
     }
 
-    unsafe fn reset(&mut self, frame: u64) {
+    unsafe fn reset(&mut self, _frame: u64) {
         self.end_non_rendering_encoders();
         assert!(self.render_pass.is_none());
         assert!(self.compute_encoder.is_none());
@@ -774,7 +775,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         MTLAccelerationStructure::new_top_level(&encoder, &self.shared, size, target_buffer, target_buffer_offset, scratch_buffer, scratch_buffer_offset, info, self.command_buffer.as_ref().unwrap())
     }
 
-    unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32) {
+    unsafe fn trace_ray(&mut self, _width: u32, _height: u32, _depth: u32) {
         panic!("Metal does not support ray tracing pipelines")
     }
 }

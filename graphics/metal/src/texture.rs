@@ -284,6 +284,10 @@ impl MTLTextureView {
                 })
         };
 
+        if let Some(name) = name {
+            view.set_label(name);
+        }
+
         Self {
             view,
             info: info.clone(),

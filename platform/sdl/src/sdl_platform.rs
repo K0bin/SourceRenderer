@@ -16,19 +16,14 @@ use sdl2::event::{
     Event as SDLEvent,
     WindowEvent,
 };
-use sdl2::keyboard::{
-    Keycode,
-    Scancode,
-};
+use sdl2::keyboard::Scancode;
 use sdl2::{
     EventPump,
     Sdl,
     VideoSubsystem,
 };
 use sourcerenderer_core::platform::{
-    Event,
     FileWatcher,
-    GraphicsApi,
     Platform,
     ThreadHandle,
     Window,
@@ -130,7 +125,7 @@ impl SDLPlatform {
                     }
                 }
                 SDLEvent::MouseMotion {
-                    x, y, xrel, yrel, ..
+                    x: _x, y: _y, xrel, yrel, ..
                 } => {
                     engine.dispatch_mouse_motion(MouseMotion {
                         delta: Vec2::new(xrel as f32, yrel as f32)

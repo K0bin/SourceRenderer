@@ -17,7 +17,7 @@ pub struct MTLDevice {
 }
 
 impl MTLDevice {
-    pub(crate) fn new(device: &metal::DeviceRef, surface: &MTLSurface) -> Self {
+    pub(crate) fn new(device: &metal::DeviceRef, _surface: &MTLSurface) -> Self {
         let mut infos: SmallVec<[gpu::MemoryTypeInfo; 3]> = smallvec![
             gpu::MemoryTypeInfo {
                 is_cached: false,
@@ -288,11 +288,11 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         (instances.len() * std::mem::size_of::<metal::MTLAccelerationStructureUserIDInstanceDescriptor>()) as u64
     }
 
-    unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &gpu::RayTracingPipelineInfo<MTLBackend>) -> u64 {
+    unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, _info: &gpu::RayTracingPipelineInfo<MTLBackend>) -> u64 {
         panic!("The Metal backend does not support RT pipelines.")
     }
 
-    unsafe fn create_raytracing_pipeline(&self, info: &gpu::RayTracingPipelineInfo<MTLBackend>, sbt_buffer: &MTLBuffer, sbt_buffer_offset: u64, name: Option<&str>) -> MTLRayTracingPipeline {
+    unsafe fn create_raytracing_pipeline(&self, _info: &gpu::RayTracingPipelineInfo<MTLBackend>, _sbt_buffer: &MTLBuffer, _sbt_buffer_offset: u64, _name: Option<&str>) -> MTLRayTracingPipeline {
         panic!("The Metal backend does not support RT pipelines.")
     }
 }

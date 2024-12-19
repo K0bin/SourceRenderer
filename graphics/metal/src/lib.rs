@@ -1,9 +1,7 @@
-pub use self::{
+pub(crate) use self::{
     backend::*,
-    device::*,
     instance::*,
     buffer::*,
-    swapchain::*,
     heap::*,
     texture::*,
     format::*,
@@ -16,6 +14,13 @@ pub use self::{
     renderpass::*,
     shared::*,
     bindless::*,
+};
+
+pub use self::{
+    swapchain::{MTLSurface, MTLSwapchain},
+    instance::MTLInstance,
+    device::MTLDevice,
+    backend::MTLBackend
 };
 
 mod backend;

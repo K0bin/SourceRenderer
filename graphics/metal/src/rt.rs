@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::HashMap, sync::Arc};
 
 use metal;
 use metal::foreign_types::ForeignType;
@@ -119,7 +119,7 @@ impl MTLAccelerationStructure {
         }
     }
 
-    pub(crate) fn new_bottom_level(encoder: &metal::AccelerationStructureCommandEncoderRef, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>, cmd_buffer: &metal::CommandBuffer) -> Self {
+    pub(crate) fn new_bottom_level(encoder: &metal::AccelerationStructureCommandEncoderRef, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>, _cmd_buffer: &metal::CommandBuffer) -> Self {
         let descriptor = Self::bottom_level_descriptor(info);
         let heap = target_buffer.handle().heap();
         let acceleration_structure: metal::AccelerationStructure = unsafe { msg_send![heap, newAccelerationStructureWithSize: size offset:target_buffer_offset] };
@@ -135,7 +135,7 @@ impl MTLAccelerationStructure {
         }
     }
 
-    pub(crate) fn new_top_level(encoder: &metal::AccelerationStructureCommandEncoderRef, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>, cmd_buffer: &metal::CommandBuffer) -> Self {
+    pub(crate) fn new_top_level(encoder: &metal::AccelerationStructureCommandEncoderRef, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>, _cmd_buffer: &metal::CommandBuffer) -> Self {
         let guard = shared.acceleration_structure_list.lock().unwrap();
         let descriptor = Self::top_level_descriptor(info, &guard);
         let heap = target_buffer.handle().heap();
