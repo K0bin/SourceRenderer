@@ -1,7 +1,7 @@
 use sourcerenderer_core::gpu;
 use web_sys::{GpuDevice, GpuQueue};
 
-use crate::WebGPUBackend;
+use crate::{swapchain::WebGPUSwapchain, WebGPUBackend};
 
 pub struct WebGPUQueue {
     queue: GpuQueue
@@ -24,11 +24,11 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
         todo!()
     }
 
-    unsafe fn submit(&self, submissions: &[gpu::Submission<B>]) {
+    unsafe fn submit(&self, submissions: &[gpu::Submission<WebGPUBackend>]) {
         todo!()
     }
 
-    unsafe fn present(&self, swapchain: &B::Swapchain) {
+    unsafe fn present(&self, swapchain: &WebGPUSwapchain) {
         todo!()
     }
 }

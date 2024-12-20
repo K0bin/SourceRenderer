@@ -11,6 +11,7 @@ mod queue;
 mod stubs;
 mod command;
 mod binding;
+mod shared;
 
 pub use backend::WebGPUBackend;
 pub use instance::WebGPUInstance;
