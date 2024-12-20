@@ -340,7 +340,11 @@ fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: 
                 } else {
                     assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
                 }
+                assert!(!existing_binding.writable);
+                assert!(!binding.writable);
+                assert_eq!(existing_binding.count, binding.count);
                 existing_binding.shader_stage |= binding.shader_stage;
+                existing_binding.flags |= binding.flags;
             } else {
                 let mut binding_clone = binding.clone();
                 if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
