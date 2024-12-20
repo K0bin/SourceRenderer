@@ -46,8 +46,6 @@ pub struct MTLShader {
 const METAL_DEBUGGER_WORKAROUND: bool = true;
 
 impl MTLShader {
-    pub const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
-
     pub(crate) fn new(device: &metal::DeviceRef, shader: gpu::PackedShader, name: Option<&str>) -> Self {
         let data = shader.shader_air.clone(); // Need to keep this alive because of a bug in metal-rs
 
@@ -76,7 +74,7 @@ impl MTLShader {
             push_constants: None,
             bindless_argument_buffer_binding: None
         };
-        let mut buffer_count: u32 = if shader.uses_bindless_texture_set { Self::BINDLESS_TEXTURE_SET_INDEX + 1 } else { 0 };
+        let mut buffer_count: u32 = if shader.uses_bindless_texture_set { gpu::TOTAL_SET_COUNT } else { 0 };
         buffer_count += if shader.shader_type == gpu::ShaderType::VertexShader { shader.max_stage_input + 1 } else { 0 };
         let mut texture_count: u32 = 0;
         let mut sampler_count: u32 = 0;
@@ -117,7 +115,7 @@ impl MTLShader {
             });
         }
         if shader.uses_bindless_texture_set {
-            resource_map.bindless_argument_buffer_binding = Some(Self::BINDLESS_TEXTURE_SET_INDEX);
+            resource_map.bindless_argument_buffer_binding = Some(gpu::BINDLESS_TEXTURE_SET_INDEX);
         }
 
         let function = library.get_function(SHADER_ENTRY_POINT_NAME, None).unwrap();

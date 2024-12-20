@@ -1258,7 +1258,7 @@ impl PartialEq<VkBoundResource> for VkBoundResourceRef<'_> {
 pub(crate) struct VkDescriptorSetBinding {
     pub(crate) set: Arc<VkDescriptorSet>,
     pub(crate) dynamic_offset_count: u32,
-    pub(crate) dynamic_offsets: [u64; 16],
+    pub(crate) dynamic_offsets: [u64; gpu::PER_SET_BINDINGS],
 }
 
 struct VkDescriptorSetCacheEntry {

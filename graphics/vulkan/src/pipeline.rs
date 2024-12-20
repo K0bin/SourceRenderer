@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     ffi::CString,
     hash::{
         Hash,
@@ -14,9 +13,6 @@ use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Buffer as _, Shader as _};
 
 use super::*;
-use crate::adapter::BINDLESS_TEXTURE_COUNT;
-
-const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
 #[inline]
 pub(super) fn input_rate_to_vk(input_rate: gpu::InputRate) -> vk::VertexInputRate {
@@ -30,7 +26,7 @@ pub struct VkShader {
     shader_type: gpu::ShaderType,
     shader_module: vk::ShaderModule,
     device: Arc<RawVkDevice>,
-    descriptor_set_bindings: HashMap<u32, Vec<VkDescriptorSetEntryInfo>>,
+    descriptor_set_bindings: [SmallVec<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     push_constants_range: Option<vk::PushConstantRange>,
     uses_bindless_texture_set: bool,
 }
@@ -65,11 +61,11 @@ impl VkShader {
         };
         let vk_device = &device.device;
         let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
-        let mut sets: HashMap<u32, Vec<VkDescriptorSetEntryInfo>> = HashMap::new();
+        let mut sets: [SmallVec<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         let vk_shader_stage = shader_type_to_vk(shader.shader_type);
 
         for (set_index, set_metadata) in shader.resources.iter().enumerate() {
-            let set = sets.entry(set_index as u32).or_insert_with(Vec::new);
+            let set = &mut sets[set_index];
             for binding_metadata in set_metadata.iter() {
                 assert_eq!(binding_metadata.set, set_index as u32);
                 set.push(VkDescriptorSetEntryInfo {
@@ -316,17 +312,17 @@ pub(super) fn color_components_to_vk(color_components: gpu::ColorComponents) -> 
 
 #[derive(Default)]
 struct DescriptorSetLayoutSetupContext {
-    descriptor_set_layouts: [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
-    dynamic_storage_buffers: [u32; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
-    dynamic_uniform_buffers: [u32; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
+    descriptor_set_layouts: [VkDescriptorSetLayoutKey; gpu::TOTAL_SET_COUNT as usize],
+    dynamic_storage_buffers: [u32; gpu::TOTAL_SET_COUNT as usize],
+    dynamic_uniform_buffers: [u32; gpu::TOTAL_SET_COUNT as usize],
     push_constants_ranges: [Option<VkConstantRange>; 3],
     uses_bindless_texture_set: bool,
     shader_stages: vk::ShaderStageFlags
 }
 
 fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: &VkShader, context: &mut DescriptorSetLayoutSetupContext) {
-    for (index, shader_set) in &shader.descriptor_set_bindings {
-        let set = &mut context.descriptor_set_layouts[*index as usize];
+    for (index, shader_set) in shader.descriptor_set_bindings.iter().enumerate() {
+        let set = &mut context.descriptor_set_layouts[index as usize];
         for binding in shader_set {
             let existing_binding_option = set
                 .bindings
@@ -348,24 +344,24 @@ fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: 
             } else {
                 let mut binding_clone = binding.clone();
                 if binding_clone.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
-                    && context.dynamic_storage_buffers[*index as usize] + binding_clone.count
+                    && context.dynamic_storage_buffers[index as usize] + binding_clone.count
                         < device
                             .properties
                             .limits
                             .max_descriptor_set_storage_buffers_dynamic
                 {
-                    context.dynamic_storage_buffers[*index as usize] += binding_clone.count;
+                    context.dynamic_storage_buffers[index as usize] += binding_clone.count;
                     binding_clone.descriptor_type =
                         vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
                 }
                 if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                    && context.dynamic_uniform_buffers[*index as usize] + binding_clone.count
+                    && context.dynamic_uniform_buffers[index as usize] + binding_clone.count
                         < device
                             .properties
                             .limits
                             .max_descriptor_set_uniform_buffers_dynamic
                 {
-                    context.dynamic_uniform_buffers[*index as usize] += binding_clone.count;
+                    context.dynamic_uniform_buffers[index as usize] += binding_clone.count;
                     binding_clone.descriptor_type =
                         vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
                 }
@@ -411,7 +407,7 @@ fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorS
             | vk::DescriptorBindingFlags::PARTIALLY_BOUND_EXT,
     });
 
-    context.descriptor_set_layouts[BINDLESS_TEXTURE_SET_INDEX as usize] =
+    context.descriptor_set_layouts[gpu::BINDLESS_TEXTURE_SET_INDEX as usize] =
         VkDescriptorSetLayoutKey {
             bindings: bindless_bindings,
             flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,

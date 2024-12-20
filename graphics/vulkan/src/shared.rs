@@ -30,12 +30,10 @@ pub(super) struct VkDescriptorSetLayoutKey {
     pub(super) flags: vk::DescriptorSetLayoutCreateFlags,
 }
 
-const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub(super) struct VkPipelineLayoutKey {
     pub(super) descriptor_set_layouts:
-        [VkDescriptorSetLayoutKey; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize],
+        [VkDescriptorSetLayoutKey; gpu::TOTAL_SET_COUNT as usize],
     pub(super) push_constant_ranges: [Option<VkConstantRange>; 3],
 }
 
@@ -117,7 +115,7 @@ impl VkShared {
             }
         }
 
-        let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; 5] = Default::default();
+        let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT] = Default::default();
         for i in 0..layout_key.descriptor_set_layouts.len() {
             let set_key = &layout_key.descriptor_set_layouts[i];
             descriptor_sets[i] = Some(self.get_descriptor_set_layout(set_key));
