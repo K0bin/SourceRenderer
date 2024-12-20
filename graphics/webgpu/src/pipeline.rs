@@ -1,7 +1,7 @@
 use js_sys::{wasm_bindgen::JsValue, Array};
 use log::warn;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, SampleCount};
 use web_sys::{GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState, GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode, GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState, GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline, GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState, GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat, GpuVertexState, GpuVertexStepMode};
 use std::hash::Hash;
 
@@ -204,6 +204,15 @@ fn blend_attachment_to_webgpu(blend_attachment: &gpu::AttachmentBlendInfo, color
     blend_component
 }
 
+pub(crate) fn sample_count_to_webgpu(sample_count: SampleCount) -> u32 {
+    match sample_count {
+        gpu::SampleCount::Samples1 => 1,
+        gpu::SampleCount::Samples2 => 2,
+        gpu::SampleCount::Samples4 => 4,
+        gpu::SampleCount::Samples8 => 8,
+    }
+}
+
 impl WebGPUGraphicsPipeline {
     pub fn new(device: &GpuDevice, info: &gpu::GraphicsPipelineInfo<WebGPUBackend>, shared: &WebGPUShared, name: Option<&str>) -> Result<Self, ()> {
         let vertex_buffers = Array::new_with_length(info.vertex_layout.input_assembler.len() as u32);
@@ -311,12 +320,7 @@ impl WebGPUGraphicsPipeline {
 
         let multisample_state = GpuMultisampleState::new();
         multisample_state.set_alpha_to_coverage_enabled(info.blend.alpha_to_coverage_enabled);
-        multisample_state.set_count(match info.rasterizer.sample_count {
-            gpu::SampleCount::Samples1 => 1,
-            gpu::SampleCount::Samples2 => 2,
-            gpu::SampleCount::Samples4 => 4,
-            gpu::SampleCount::Samples8 => 8,
-        });
+        multisample_state.set_count(sample_count_to_webgpu(info.rasterizer.sample_count));
         descriptor.set_multisample(&multisample_state);
 
         let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
