@@ -3,13 +3,11 @@ use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc
 use bitflags::bitflags;
 use js_sys::{wasm_bindgen::JsValue, Array};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Format, SamplingType, TextureDimension};
-use web_sys::{GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout, GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding, GpuBufferBindingLayout, GpuBufferBindingType, GpuDevice, GpuSampler, GpuSamplerBindingLayout, GpuSamplerBindingType, GpuStorageTextureAccess, GpuStorageTextureBindingLayout, GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView, GpuTextureViewDimension};
+use sourcerenderer_core::gpu;
+use web_sys::{GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout, GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding, GpuBufferBindingLayout, GpuBufferBindingType, GpuDevice, GpuPipelineLayout, GpuPipelineLayoutDescriptor, GpuSampler, GpuSamplerBindingLayout, GpuSamplerBindingType, GpuStorageTextureAccess, GpuStorageTextureBindingLayout, GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView, GpuTextureViewDimension};
 
 use crate::{sampler::WebGPUSampler, texture::{format_to_webgpu, texture_dimension_to_webgpu_view, WebGPUTextureView}};
 
-
-pub const PER_SET_BINDINGS: usize = 32;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -50,38 +48,37 @@ pub(crate) struct WebGPUBindGroupEntryInfo {
     pub(crate) writable: bool,
     pub(crate) descriptor_type: WebGPUResourceBindingType,
     pub(crate) has_dynamic_offset: bool,
-    pub(crate) sampling_type: SamplingType,
-    pub(crate) texture_dimension: TextureDimension,
+    pub(crate) sampling_type: gpu::SamplingType,
+    pub(crate) texture_dimension: gpu::TextureDimension,
     pub(crate) is_multisampled: bool,
-    pub(crate) storage_format: Format
+    pub(crate) storage_format: gpu::Format
 }
 
 pub struct WebGPUBindGroupLayout {
     bind_group_layout: GpuBindGroupLayout,
-    binding_infos: [Option<WebGPUBindGroupEntryInfo>; PER_SET_BINDINGS],
+    binding_infos: [Option<WebGPUBindGroupEntryInfo>; gpu::PER_SET_BINDINGS as usize],
     is_empty: bool,
 }
 
 unsafe impl Send for WebGPUBindGroupLayout {}
 unsafe impl Sync for WebGPUBindGroupLayout {}
 
-fn sampling_type_to_webgpu(sampling_type: SamplingType) -> GpuTextureSampleType {
+fn sampling_type_to_webgpu(sampling_type: gpu::SamplingType) -> GpuTextureSampleType {
     match sampling_type {
-        SamplingType::Float => GpuTextureSampleType::Float,
-        SamplingType::Depth => GpuTextureSampleType::Depth,
-        SamplingType::SInt => GpuTextureSampleType::Sint,
-        SamplingType::UInt => GpuTextureSampleType::Uint,
+        gpu::SamplingType::Float => GpuTextureSampleType::Float,
+        gpu::SamplingType::Depth => GpuTextureSampleType::Depth,
+        gpu::SamplingType::SInt => GpuTextureSampleType::Sint,
+        gpu::SamplingType::UInt => GpuTextureSampleType::Uint,
     }
 }
 
-pub type WebGPUPipelineLayout = [Option<Arc<WebGPUBindGroupLayout>>; 4];
 
 impl WebGPUBindGroupLayout {
     pub fn new(
         bindings: &[WebGPUBindGroupEntryInfo],
         device: &GpuDevice
     ) -> Result<Self, ()> {
-        let mut binding_infos: [Option<WebGPUBindGroupEntryInfo>; PER_SET_BINDINGS] =
+        let mut binding_infos: [Option<WebGPUBindGroupEntryInfo>; gpu::PER_SET_BINDINGS as usize] =
         Default::default();
         let entries = Array::new_with_length(bindings.len() as u32);
         for i in 0..bindings.len() {
@@ -173,11 +170,48 @@ impl PartialEq for WebGPUBindGroupLayout {
 
 impl Eq for WebGPUBindGroupLayout {}
 
+pub struct WebGPUPipelineLayout {
+    layout: GpuPipelineLayout,
+    bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize]
+}
+
+unsafe impl Send for WebGPUPipelineLayout {}
+unsafe impl Sync for WebGPUPipelineLayout {}
+
+impl WebGPUPipelineLayout {
+    pub(crate) fn new(device: &GpuDevice, bind_group_layouts: &[Option<Arc<WebGPUBindGroupLayout>>]) -> Self {
+        let mut owned_bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let bind_group_layouts_js: Array = Array::new_with_length(gpu::NON_BINDLESS_SET_COUNT);
+        for (index, bind_group_layout_opt) in bind_group_layouts.iter().enumerate() {
+            if let Some(bind_group_layout) = bind_group_layout_opt {
+                bind_group_layouts_js.push(bind_group_layout.handle());
+                owned_bind_group_layouts[index] = Some(bind_group_layout.clone());
+            } else {
+                bind_group_layouts_js.push(&JsValue::null());
+            }
+        }
+        let descriptor = GpuPipelineLayoutDescriptor::new(&bind_group_layouts_js);
+        let handle = device.create_pipeline_layout(&descriptor);
+        Self {
+            layout: handle,
+            bind_group_layouts: owned_bind_group_layouts
+        }
+    }
+
+    pub(crate) fn handle(&self) -> &GpuPipelineLayout {
+        &self.layout
+    }
+
+    pub(crate) fn bind_group_layout(&self, index: u32) -> Option<&Arc<WebGPUBindGroupLayout>> {
+        self.bind_group_layouts[index as usize].as_ref()
+    }
+}
+
 pub struct WebGPUBindGroup {
     bind_group: GpuBindGroup,
     layout: Arc<WebGPUBindGroupLayout>,
     is_transient: bool,
-    bindings: [WebGPUBoundResource; PER_SET_BINDINGS],
+    bindings: [WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize],
 }
 
 impl WebGPUBindGroup {
@@ -185,13 +219,13 @@ impl WebGPUBindGroup {
         device: &GpuDevice,
         layout: &Arc<WebGPUBindGroupLayout>,
         is_transient: bool,
-        bindings: &'a [T; PER_SET_BINDINGS],
+        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
     ) -> Result<Self, ()>
     where
         WebGPUBoundResource: From<&'a T>,
     {
-        let entries = Array::new_with_length(PER_SET_BINDINGS as u32);
-        let mut stored_bindings = <[WebGPUBoundResource; PER_SET_BINDINGS]>::default();
+        let entries = Array::new_with_length(gpu::PER_SET_BINDINGS);
+        let mut stored_bindings = <[WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize]>::default();
         for (index, binding) in bindings.iter().enumerate() {
             stored_bindings[index] = binding.into();
         }
@@ -258,7 +292,7 @@ impl WebGPUBindGroup {
     pub(crate) fn is_compatible<T>(
         &self,
         layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &[T; PER_SET_BINDINGS],
+        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
     ) -> bool
     where
         WebGPUBoundResource: BindingCompare<T>,
@@ -367,15 +401,15 @@ impl Deref for WebGPUHashableSampler {
 pub(crate) enum WebGPUBoundResource {
     None,
     UniformBuffer(WebGPUBufferBindingInfo),
-    UniformBufferArray(SmallVec<[WebGPUBufferBindingInfo; PER_SET_BINDINGS]>),
+    UniformBufferArray(SmallVec<[WebGPUBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
     StorageBuffer(WebGPUBufferBindingInfo),
-    StorageBufferArray(SmallVec<[WebGPUBufferBindingInfo; PER_SET_BINDINGS]>),
+    StorageBufferArray(SmallVec<[WebGPUBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
     StorageTexture(WebGPUHashableTextureView),
-    StorageTextureArray(SmallVec<[WebGPUHashableTextureView; PER_SET_BINDINGS]>),
+    StorageTextureArray(SmallVec<[WebGPUHashableTextureView; gpu::PER_SET_BINDINGS as usize]>),
     SampledTexture(WebGPUHashableTextureView),
-    SampledTextureArray(SmallVec<[WebGPUHashableTextureView; PER_SET_BINDINGS]>),
+    SampledTextureArray(SmallVec<[WebGPUHashableTextureView; gpu::PER_SET_BINDINGS as usize]>),
     SampledTextureAndSampler(WebGPUHashableTextureView, WebGPUHashableSampler),
-    SampledTextureAndSamplerArray(SmallVec<[(WebGPUHashableTextureView, WebGPUHashableSampler); PER_SET_BINDINGS]>),
+    SampledTextureAndSamplerArray(SmallVec<[(WebGPUHashableTextureView, WebGPUHashableSampler); gpu::PER_SET_BINDINGS as usize]>),
     Sampler(WebGPUHashableSampler),
 }
 
@@ -671,7 +705,7 @@ impl BindingCompare<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
 pub(crate) struct WebGPUBindGroupBinding {
     pub(crate) set: Arc<WebGPUBindGroup>,
     pub(crate) dynamic_offset_count: u32,
-    pub(crate) dynamic_offsets: [u64; 16],
+    pub(crate) dynamic_offsets: [u64; gpu::PER_SET_BINDINGS as usize],
 }
 
 struct WebGPUBindGroupCacheEntry {
@@ -691,7 +725,7 @@ pub(crate) struct WebGPUBindingManager {
     device: GpuDevice,
     current_sets: [Option<Arc<WebGPUBindGroup>>; 4],
     dirty: DirtyBindGroups,
-    bindings: [[WebGPUBoundResource; PER_SET_BINDINGS]; 4],
+    bindings: [[WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize]; 4],
     transient_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -745,7 +779,7 @@ impl WebGPUBindingManager {
         &self,
         frame: u64,
         layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &[T; PER_SET_BINDINGS],
+        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
         use_permanent_cache: bool,
     ) -> Option<Arc<WebGPUBindGroup>>
     where
@@ -773,7 +807,7 @@ impl WebGPUBindingManager {
         pipeline_layout: &WebGPUPipelineLayout,
         frequency: gpu::BindingFrequency,
     ) -> Option<WebGPUBindGroupBinding> {
-        let layout_option = pipeline_layout[frequency as usize].as_ref();
+        let layout_option = pipeline_layout.bind_group_layout(frequency as u32);
         if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() {
             return None;
         }
@@ -796,7 +830,7 @@ impl WebGPUBindingManager {
     pub fn get_descriptor_set_binding_info(
         &self,
         set: Arc<WebGPUBindGroup>,
-        bindings: &[WebGPUBoundResource; PER_SET_BINDINGS],
+        bindings: &[WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize],
     ) -> WebGPUBindGroupBinding {
         let mut set_binding = WebGPUBindGroupBinding {
             set: set.clone(),
@@ -862,7 +896,7 @@ impl WebGPUBindingManager {
         &self,
         frame: u64,
         layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &'a [T; PER_SET_BINDINGS],
+        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
     ) -> Option<Arc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<T>,

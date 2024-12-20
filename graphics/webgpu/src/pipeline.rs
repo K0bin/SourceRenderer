@@ -1,16 +1,17 @@
 use js_sys::{wasm_bindgen::JsValue, Array};
 use log::warn;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, BindingFrequency, Format, GraphicsPipelineInfo, Shader, ShaderType, StencilInfo};
-use web_sys::{Gpu, GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState, GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode, GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState, GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline, GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState, GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat, GpuVertexState, GpuVertexStepMode};
+use sourcerenderer_core::gpu;
+use web_sys::{GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState, GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode, GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState, GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline, GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState, GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat, GpuVertexState, GpuVertexStepMode};
 use std::hash::Hash;
 
-use crate::{texture::format_to_webgpu, WebGPUBackend};
+use crate::{binding::{WebGPUBindGroupEntryInfo, WebGPUResourceBindingType}, shared::{WebGPUBindGroupLayoutKey, WebGPUShared}, texture::format_to_webgpu, WebGPUBackend};
 
 pub struct WebGPUShader {
     module: GpuShaderModule,
-    shader_type: ShaderType,
-    resources: [Box<[gpu::Resource]>; 4],
+    shader_type: gpu::ShaderType,
+    resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    bindings: [SmallVec<[WebGPUBindGroupEntryInfo; gpu::PER_SET_BINDINGS as usize]>; gpu::NON_BINDLESS_SET_COUNT as usize]
 }
 
 impl PartialEq for WebGPUShader {
@@ -38,10 +39,49 @@ impl WebGPUShader {
             descriptor.set_label(name);
         }
         let module = device.create_shader_module(&descriptor);
+
+        let mut binding_infos: [SmallVec<[WebGPUBindGroupEntryInfo; gpu::PER_SET_BINDINGS as usize]>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        for (set_index, bindings) in shader.resources.iter().enumerate() {
+            for binding in bindings {
+                let binding_info = WebGPUBindGroupEntryInfo {
+                    name: binding.name.clone(),
+                    shader_stage: match shader.shader_type {
+                        gpu::ShaderType::VertexShader => web_sys::gpu_shader_stage::VERTEX,
+                        gpu::ShaderType::FragmentShader => web_sys::gpu_shader_stage::FRAGMENT,
+                        gpu::ShaderType::ComputeShader => web_sys::gpu_shader_stage::COMPUTE,
+                        _ => panic!("Unsupported shader type in WebGPU")
+                    },
+                    index: binding.binding,
+                    writable: binding.writable,
+                    descriptor_type: match binding.resource_type {
+                        gpu::ResourceType::UniformBuffer => WebGPUResourceBindingType::UniformBuffer,
+                        gpu::ResourceType::StorageBuffer => WebGPUResourceBindingType::StorageBuffer,
+                        gpu::ResourceType::SubpassInput => panic!("Unsupported"),
+                        gpu::ResourceType::SampledTexture => WebGPUResourceBindingType::SampledTexture,
+                        gpu::ResourceType::StorageTexture => WebGPUResourceBindingType::StorageTexture,
+                        gpu::ResourceType::Sampler => WebGPUResourceBindingType::Sampler,
+                        gpu::ResourceType::CombinedTextureSampler => WebGPUResourceBindingType::SampledTextureAndSampler,
+                        gpu::ResourceType::AccelerationStructure => panic!("WebGPU does not support ray tracing"),
+                    },
+                    has_dynamic_offset: match binding.resource_type {
+                        gpu::ResourceType::UniformBuffer
+                        | gpu::ResourceType::StorageBuffer => true,
+                        _ => false
+                    },
+                    sampling_type: binding.sampling_type,
+                    texture_dimension: binding.texture_dimension,
+                    is_multisampled: binding.is_multisampled,
+                    storage_format: binding.storage_format,
+                };
+                binding_infos[set_index].push(binding_info);
+            }
+        }
+
         Self {
             module,
             shader_type: shader.shader_type,
-            resources: shader.resources.clone()
+            resources: shader.resources.clone(),
+            bindings: binding_infos
         }
     }
 
@@ -49,12 +89,12 @@ impl WebGPUShader {
         &self.module
     }
 
-    pub(crate) fn resources(&self) -> &[Box<[gpu::Resource]>; 4] {
+    pub(crate) fn resources(&self) -> &[Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize] {
         &self.resources
     }
 }
 
-impl Shader for WebGPUShader {
+impl gpu::Shader for WebGPUShader {
     fn shader_type(&self) -> gpu::ShaderType {
         self.shader_type
     }
@@ -67,41 +107,41 @@ pub struct WebGPUGraphicsPipeline {
 unsafe impl Send for WebGPUGraphicsPipeline {}
 unsafe impl Sync for WebGPUGraphicsPipeline {}
 
-fn format_to_vertex_format(format: Format) -> GpuVertexFormat {
+fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
     match format {
-        Format::Unknown => GpuVertexFormat::__Invalid,
-        Format::R32UNorm => panic!("Unsupported vertex format"),
-        Format::R16UNorm => GpuVertexFormat::Unorm16,
-        Format::R8Unorm => GpuVertexFormat::Unorm8,
-        Format::RGBA8UNorm => GpuVertexFormat::Unorm8x4,
-        Format::RGBA8Srgb => panic!("Unsupported vertex format"),
-        Format::BGR8UNorm => panic!("Unsupported vertex format"),
-        Format::BGRA8UNorm => GpuVertexFormat::Unorm8x4Bgra,
-        Format::BC1 => panic!("Unsupported vertex format"),
-        Format::BC1Alpha => panic!("Unsupported vertex format"),
-        Format::BC2 => panic!("Unsupported vertex format"),
-        Format::BC3 => panic!("Unsupported vertex format"),
-        Format::R16Float => GpuVertexFormat::Float16,
-        Format::R32Float => GpuVertexFormat::Float32,
-        Format::RG32Float => GpuVertexFormat::Float32x2,
-        Format::RG16Float => GpuVertexFormat::Float16x2,
-        Format::RGB32Float => GpuVertexFormat::Float32x3,
-        Format::RGBA32Float => GpuVertexFormat::Float32x4,
-        Format::RG16UNorm => GpuVertexFormat::Unorm16x2,
-        Format::RG8UNorm => GpuVertexFormat::Unorm8x2,
-        Format::R32UInt => GpuVertexFormat::Uint32,
-        Format::RGBA16Float => GpuVertexFormat::Float16x4,
-        Format::R11G11B10Float => panic!("Unsupported vertex format"),
-        Format::RG16UInt => GpuVertexFormat::Uint16x2,
-        Format::RG16SInt => GpuVertexFormat::Sint16x2,
-        Format::R16UInt => GpuVertexFormat::Uint16,
-        Format::R16SNorm => GpuVertexFormat::Snorm16,
-        Format::R16SInt => GpuVertexFormat::Sint16,
-        Format::D16 => panic!("Unsupported vertex format"),
-        Format::D16S8 => panic!("Unsupported vertex format"),
-        Format::D32 => panic!("Unsupported vertex format"),
-        Format::D32S8 => panic!("Unsupported vertex format"),
-        Format::D24S8 => panic!("Unsupported vertex format"),
+        gpu::Format::Unknown => GpuVertexFormat::__Invalid,
+        gpu::Format::R32UNorm => panic!("Unsupported vertex format"),
+        gpu::Format::R16UNorm => GpuVertexFormat::Unorm16,
+        gpu::Format::R8Unorm => GpuVertexFormat::Unorm8,
+        gpu::Format::RGBA8UNorm => GpuVertexFormat::Unorm8x4,
+        gpu::Format::RGBA8Srgb => panic!("Unsupported vertex format"),
+        gpu::Format::BGR8UNorm => panic!("Unsupported vertex format"),
+        gpu::Format::BGRA8UNorm => GpuVertexFormat::Unorm8x4Bgra,
+        gpu::Format::BC1 => panic!("Unsupported vertex format"),
+        gpu::Format::BC1Alpha => panic!("Unsupported vertex format"),
+        gpu::Format::BC2 => panic!("Unsupported vertex format"),
+        gpu::Format::BC3 => panic!("Unsupported vertex format"),
+        gpu::Format::R16Float => GpuVertexFormat::Float16,
+        gpu::Format::R32Float => GpuVertexFormat::Float32,
+        gpu::Format::RG32Float => GpuVertexFormat::Float32x2,
+        gpu::Format::RG16Float => GpuVertexFormat::Float16x2,
+        gpu::Format::RGB32Float => GpuVertexFormat::Float32x3,
+        gpu::Format::RGBA32Float => GpuVertexFormat::Float32x4,
+        gpu::Format::RG16UNorm => GpuVertexFormat::Unorm16x2,
+        gpu::Format::RG8UNorm => GpuVertexFormat::Unorm8x2,
+        gpu::Format::R32UInt => GpuVertexFormat::Uint32,
+        gpu::Format::RGBA16Float => GpuVertexFormat::Float16x4,
+        gpu::Format::R11G11B10Float => panic!("Unsupported vertex format"),
+        gpu::Format::RG16UInt => GpuVertexFormat::Uint16x2,
+        gpu::Format::RG16SInt => GpuVertexFormat::Sint16x2,
+        gpu::Format::R16UInt => GpuVertexFormat::Uint16,
+        gpu::Format::R16SNorm => GpuVertexFormat::Snorm16,
+        gpu::Format::R16SInt => GpuVertexFormat::Sint16,
+        gpu::Format::D16 => panic!("Unsupported vertex format"),
+        gpu::Format::D16S8 => panic!("Unsupported vertex format"),
+        gpu::Format::D32 => panic!("Unsupported vertex format"),
+        gpu::Format::D32S8 => panic!("Unsupported vertex format"),
+        gpu::Format::D24S8 => panic!("Unsupported vertex format"),
     }
 }
 
@@ -165,7 +205,7 @@ fn blend_attachment_to_webgpu(blend_attachment: &gpu::AttachmentBlendInfo, color
 }
 
 impl WebGPUGraphicsPipeline {
-    pub fn new(device: &GpuDevice, info: &GraphicsPipelineInfo<WebGPUBackend>, name: Option<&str>) -> Result<Self, ()> {
+    pub fn new(device: &GpuDevice, info: &gpu::GraphicsPipelineInfo<WebGPUBackend>, shared: &WebGPUShared, name: Option<&str>) -> Result<Self, ()> {
         let vertex_buffers = Array::new_with_length(info.vertex_layout.input_assembler.len() as u32);
         for vb_info in info.vertex_layout.input_assembler {
             let mut attributes_count = 0;
@@ -214,7 +254,7 @@ impl WebGPUGraphicsPipeline {
         }
         descriptor.set_primitive(&primitive);
 
-        if info.depth_stencil_format != Format::Unknown {
+        if info.depth_stencil_format != gpu::Format::Unknown {
             let depth_stencil = GpuDepthStencilState::new(format_to_webgpu(info.depth_stencil_format));
             depth_stencil.set_depth_write_enabled(info.depth_stencil.depth_write_enabled);
             depth_stencil.set_depth_compare(if !info.depth_stencil.depth_test_enabled {
@@ -279,6 +319,55 @@ impl WebGPUGraphicsPipeline {
         });
         descriptor.set_multisample(&multisample_state);
 
+        let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        for (set_index, shader_set) in info.vs.bindings.iter().enumerate() {
+            let set = &mut bind_group_layout_keys[set_index];
+            for binding in shader_set {
+                let existing_binding_option = set
+                .iter_mut()
+                .find(|existing_binding| existing_binding.index == binding.index);
+                if let Some(existing_binding) = existing_binding_option {
+                    assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+                    assert_eq!(existing_binding.is_multisampled, binding.is_multisampled);
+                    assert_eq!(existing_binding.sampling_type, binding.sampling_type);
+                    assert_eq!(existing_binding.storage_format, binding.storage_format);
+                    assert_eq!(existing_binding.texture_dimension, binding.texture_dimension);
+                    assert!(!existing_binding.writable);
+                    assert!(!binding.writable);
+                    existing_binding.shader_stage |= binding.shader_stage;
+                    existing_binding.has_dynamic_offset = existing_binding.has_dynamic_offset || binding.has_dynamic_offset;
+                } else {
+                    set.push(binding.clone());
+                }
+            }
+        }
+        if let Some(fs) = info.fs.as_ref() {
+            for (set_index, shader_set) in fs.bindings.iter().enumerate() {
+                let set = &mut bind_group_layout_keys[set_index];
+                for binding in shader_set {
+                    let existing_binding_option = set
+                    .iter_mut()
+                    .find(|existing_binding| existing_binding.index == binding.index);
+                    if let Some(existing_binding) = existing_binding_option {
+                        assert_eq!(existing_binding.descriptor_type, binding.descriptor_type);
+                        assert_eq!(existing_binding.is_multisampled, binding.is_multisampled);
+                        assert_eq!(existing_binding.sampling_type, binding.sampling_type);
+                        assert_eq!(existing_binding.storage_format, binding.storage_format);
+                        assert_eq!(existing_binding.texture_dimension, binding.texture_dimension);
+                        assert!(!existing_binding.writable);
+                        assert!(!binding.writable);
+                        existing_binding.shader_stage |= binding.shader_stage;
+                        existing_binding.has_dynamic_offset = existing_binding.has_dynamic_offset || binding.has_dynamic_offset;
+                    } else {
+                        set.push(binding.clone());
+                    }
+                }
+            }
+        }
+
+        let layout = shared.get_pipeline_layout(&bind_group_layout_keys);
+        descriptor.set_layout(layout.handle());
+
         if let Some(name) = name {
             descriptor.set_label(name);
         }
@@ -297,7 +386,7 @@ impl WebGPUGraphicsPipeline {
 
 pub struct WebGPUComputePipeline {
     pipeline: GpuComputePipeline,
-    resources: [Box<[gpu::Resource]>; 4]
+    resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize]
 }
 
 unsafe impl Send for WebGPUComputePipeline {}
@@ -310,6 +399,44 @@ impl WebGPUComputePipeline {
         if let Some(name) = name {
             descriptor.set_label(name);
         }
+
+        let mut binding_infos: [SmallVec<[WebGPUBindGroupEntryInfo; gpu::PER_SET_BINDINGS as usize]>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        for (set_index, bindings) in shader.resources.iter().enumerate() {
+            for binding in bindings {
+                let binding_info = WebGPUBindGroupEntryInfo {
+                    name: binding.name.clone(),
+                    shader_stage: match shader.shader_type {
+                        gpu::ShaderType::VertexShader => web_sys::gpu_shader_stage::VERTEX,
+                        gpu::ShaderType::FragmentShader => web_sys::gpu_shader_stage::FRAGMENT,
+                        gpu::ShaderType::ComputeShader => web_sys::gpu_shader_stage::COMPUTE,
+                        _ => panic!("Unsupported shader type in WebGPU")
+                    },
+                    index: binding.binding,
+                    writable: binding.writable,
+                    descriptor_type: match binding.resource_type {
+                        gpu::ResourceType::UniformBuffer => WebGPUResourceBindingType::UniformBuffer,
+                        gpu::ResourceType::StorageBuffer => WebGPUResourceBindingType::StorageBuffer,
+                        gpu::ResourceType::SubpassInput => panic!("Unsupported"),
+                        gpu::ResourceType::SampledTexture => WebGPUResourceBindingType::SampledTexture,
+                        gpu::ResourceType::StorageTexture => WebGPUResourceBindingType::StorageTexture,
+                        gpu::ResourceType::Sampler => WebGPUResourceBindingType::Sampler,
+                        gpu::ResourceType::CombinedTextureSampler => WebGPUResourceBindingType::SampledTextureAndSampler,
+                        gpu::ResourceType::AccelerationStructure => panic!("WebGPU does not support ray tracing"),
+                    },
+                    has_dynamic_offset: match binding.resource_type {
+                        gpu::ResourceType::UniformBuffer
+                        | gpu::ResourceType::StorageBuffer => true,
+                        _ => false
+                    },
+                    sampling_type: binding.sampling_type,
+                    texture_dimension: binding.texture_dimension,
+                    is_multisampled: binding.is_multisampled,
+                    storage_format: binding.storage_format,
+                };
+                binding_infos[set_index].push(binding_info);
+            }
+        }
+
         let pipeline = device.create_compute_pipeline(&descriptor);
 
         Ok(Self {
