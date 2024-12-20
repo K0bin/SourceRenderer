@@ -26,7 +26,7 @@ pub struct VkShared {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
 pub(super) struct VkDescriptorSetLayoutKey {
-    pub(super) bindings: SmallVec<[VkDescriptorSetEntryInfo; 16]>,
+    pub(super) bindings: SmallVec<[VkDescriptorSetEntryInfo; PER_SET_BINDINGS]>,
     pub(super) flags: vk::DescriptorSetLayoutCreateFlags,
 }
 
@@ -87,6 +87,12 @@ impl VkShared {
             if let Some(layout) = cache.get(layout_key) {
                 return layout.clone();
             }
+        }
+
+        let mut largest_index = 0;
+        for binding in &layout_key.bindings {
+            assert!(binding.index > largest_index);
+            largest_index = binding.index;
         }
 
         let layout = Arc::new(VkDescriptorSetLayout::new(
