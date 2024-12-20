@@ -12,9 +12,6 @@ use smallvec::SmallVec;
 
 use super::*;
 
-pub(super) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
-pub(super) const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
-
 pub struct VkBindlessDescriptorSet {
     device: Arc<RawVkDevice>,
     inner: Mutex<VkBindlessInner>,

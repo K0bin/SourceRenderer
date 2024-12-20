@@ -123,7 +123,7 @@ impl VkAdapter {
 
 // Vulkan physical devices are implicitly freed with the instance
 
-pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
+pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = gpu::BINDLESS_TEXTURE_COUNT;
 
 impl gpu::Adapter<VkBackend> for VkAdapter {
     fn create_device(&self, surface: &VkSurface) -> VkDevice {

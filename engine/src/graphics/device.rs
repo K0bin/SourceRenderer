@@ -31,7 +31,7 @@ impl<B: GPUBackend> Device<B> {
             allocator: memory_allocator.clone(),
             destroyer: destroyer.clone(),
             buffer_allocator: ManuallyDrop::new(Arc::new(BufferAllocator::new(&device, &memory_allocator))),
-            bindless_slot_allocator: BindlessSlotAllocator::new(500_000),
+            bindless_slot_allocator: BindlessSlotAllocator::new(gpu::BINDLESS_TEXTURE_COUNT),
             transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer)),
             prerendered_frames: 3,
             has_context: AtomicBool::new(false),

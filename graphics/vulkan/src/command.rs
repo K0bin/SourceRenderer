@@ -12,8 +12,6 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
-const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
-
 #[allow(clippy::vec_box)]
 pub struct VkCommandPool {
     raw: Arc<RawVkCommandPool>,
@@ -515,7 +513,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
         let mut offsets = SmallVec::<[u32; PER_SET_BINDINGS]>::new();
         let mut descriptor_sets =
-            SmallVec::<[vk::DescriptorSet; (BINDLESS_TEXTURE_SET_INDEX + 1) as usize]>::new();
+            SmallVec::<[vk::DescriptorSet; gpu::TOTAL_SET_COUNT as usize]>::new();
         let mut base_index = 0;
 
         let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
@@ -555,7 +553,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
 
         if !descriptor_sets.is_empty()
-            && base_index + descriptor_sets.len() as u32 != BINDLESS_TEXTURE_SET_INDEX
+            && base_index + descriptor_sets.len() as u32 != gpu::NON_BINDLESS_SET_COUNT
         {
             unsafe {
                 self.device.cmd_bind_descriptor_sets(
@@ -569,7 +567,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             }
             offsets.clear();
             descriptor_sets.clear();
-            base_index = BINDLESS_TEXTURE_SET_INDEX;
+            base_index = gpu::BINDLESS_TEXTURE_SET_INDEX;
         }
 
         if uses_bindless {

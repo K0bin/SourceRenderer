@@ -16,6 +16,12 @@ pub trait Adapter<B: GPUBackend> {
 
 pub const WHOLE_BUFFER: u64 = u64::MAX;
 
+pub const PER_SET_BINDINGS: u32 = 32;
+pub const NON_BINDLESS_SET_COUNT: u32 = 3;
+pub const TOTAL_SET_COUNT: u32 = NON_BINDLESS_SET_COUNT + 1;
+pub const BINDLESS_TEXTURE_SET_INDEX: u32 = NON_BINDLESS_SET_COUNT;
+pub const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
+
 pub trait Device<B: GPUBackend> {
   unsafe fn create_buffer(&self, info: &BufferInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Buffer, OutOfMemoryError>;
   unsafe fn create_texture(&self, info: &TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Texture, OutOfMemoryError>;

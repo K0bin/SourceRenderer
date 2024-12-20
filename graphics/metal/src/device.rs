@@ -47,7 +47,7 @@ impl MTLDevice {
             infos[2].memory_kind = gpu::MemoryKind::VRAM;
         }
 
-        let bindless = MTLBindlessArgumentBuffer::new(&device, 500_000);
+        let bindless = MTLBindlessArgumentBuffer::new(&device, gpu::BINDLESS_TEXTURE_COUNT);
         let shared = Arc::new(MTLShared::new(device, bindless));
 
         Self {
