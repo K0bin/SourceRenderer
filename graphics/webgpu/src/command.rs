@@ -42,8 +42,8 @@ enum WebGPUCommandBufferHandle {
     Recording(WebGPURecordingCommandBuffer),
     Finished(WebGPUFinishedCommandBuffer),
     Secondary(WebGPURenderBundleCommandBuffer),
-    SecondaryFinished(WebGPUFinishedRenderBundleCommandBuffer)
-
+    SecondaryFinished(WebGPUFinishedRenderBundleCommandBuffer),
+    SecondaryUninit
 }
 
 pub struct WebGPUCommandBuffer {
@@ -83,6 +83,32 @@ fn store_op_to_webgpu<'a>(store_op: &'a gpu::StoreOp<'a, WebGPUBackend>) -> (Gpu
 }
 
 impl WebGPUCommandBuffer {
+    fn new(device: &GpuDevice, is_inner: bool) -> Self {
+        Self {
+            device: device.clone(),
+            handle: if is_inner {
+                WebGPUCommandBufferHandle::SecondaryUninit
+            } else {
+                let cmd_buffer = device.create_command_encoder();
+                WebGPUCommandBufferHandle::Recording(WebGPURecordingCommandBuffer {
+                    command_encoder: cmd_buffer,
+                    pass_encoder: WebGPUPassEncoder::None,
+                    pipeline_layout: None
+                })
+            },
+            binding_manager: WebGPUBindingManager::new(device),
+            is_inner,
+            frame: 0u64
+        }
+    }
+
+    pub(crate) fn handle(&self) -> &GpuCommandBuffer {
+        match &self.handle {
+            WebGPUCommandBufferHandle::Finished(command_buffer) => &command_buffer.command_buffer,
+            _ => panic!("Invalid state for retrieving the command buffer")
+        }
+    }
+
     fn get_recording(&self) -> &WebGPURecordingCommandBuffer {
         match &self.handle {
             WebGPUCommandBufferHandle::Recording(cmd_buffer) => cmd_buffer,
@@ -495,7 +521,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         cmd_buffer.command_encoder.copy_texture_to_texture_with_gpu_extent_3d_dict(&src_info, &dst_info, &copy_size);
     }
 
-    unsafe fn begin(&mut self, _frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
+    unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
         if let &WebGPUCommandBufferHandle::Recording(_) = &self.handle {
             assert!(!self.is_inner);
             panic!("Command buffer was not finished");
@@ -509,6 +535,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         } else if inheritance.is_some() && !self.is_inner {
             panic!("Primary command buffers cannot inherit");
         }
+        self.frame = frame;
 
         if let Some(inheritance) = inheritance {
             let bundle_encoder = self.device.create_render_bundle_encoder(&inheritance.descriptor).unwrap();
@@ -688,6 +715,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 WebGPUCommandBufferHandle::Finished(_) => panic!("execute_inner can only execute inner command buffers"),
                 WebGPUCommandBufferHandle::Secondary(_) => panic!("Inner command buffer is not finished yet."),
                 WebGPUCommandBufferHandle::SecondaryFinished(inner) => array.set(i as u32, JsValue::from(&inner.bundle)),
+                WebGPUCommandBufferHandle::SecondaryUninit => panic!("Inner command buffer is unused")
             }
         }
         render_pass_encoder.execute_bundles(&array);
@@ -744,3 +772,30 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         panic!("WebGPU does not support ray tracing.");
     }
 }
+
+pub struct WebGPUCommandPool {
+    device: GpuDevice,
+    pool_type: gpu::CommandPoolType
+}
+
+unsafe impl Send for WebGPUCommandPool {}
+unsafe impl Sync for WebGPUCommandPool {}
+
+impl WebGPUCommandPool {
+    pub(crate) fn new(device: &GpuDevice, pool_type: gpu::CommandPoolType) -> Self {
+        Self {
+            device: device.clone(),
+            pool_type
+        }
+    }
+}
+
+impl gpu::CommandPool<WebGPUBackend> for WebGPUCommandPool {
+    unsafe fn create_command_buffer(&mut self) -> WebGPUCommandBuffer {
+        WebGPUCommandBuffer::new(&self.device, self.pool_type == gpu::CommandPoolType::InnerCommandBuffers)
+    }
+
+    unsafe fn reset(&mut self) {}
+}
+
+
