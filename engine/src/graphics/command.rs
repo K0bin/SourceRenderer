@@ -123,7 +123,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
         }
     }
 
-    pub fn set_vertex_buffer(&mut self, buffer: BufferRef<B>, offset: u64) {
+    pub fn set_vertex_buffer(&mut self, index: u32, buffer: BufferRef<B>, offset: u64) {
         let buffer_handle: &B::Buffer;
         let buffer_offset: u64;
 
@@ -139,7 +139,7 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
             }
         }
         unsafe {
-            self.inner.cmd_buffer.set_vertex_buffer(buffer_handle, buffer_offset + offset);
+            self.inner.cmd_buffer.set_vertex_buffer(index, buffer_handle, buffer_offset + offset);
         }
     }
 

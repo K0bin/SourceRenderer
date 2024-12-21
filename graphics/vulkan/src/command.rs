@@ -289,12 +289,12 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         self.is_in_render_pass = false;
     }
 
-    unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &VkBuffer, offset: u64) {
+    unsafe fn set_vertex_buffer(&mut self, index: u32, vertex_buffer: &VkBuffer, offset: u64) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         unsafe {
             self.device.cmd_bind_vertex_buffers(
                 self.cmd_buffer,
-                0,
+                index,
                 &[vertex_buffer.handle()],
                 &[offset as u64],
             );

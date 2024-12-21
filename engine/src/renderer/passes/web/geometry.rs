@@ -276,7 +276,7 @@ impl<P: Platform> GeometryPass<P> {
             }
             cmd_buffer.finish_binding();
 
-            cmd_buffer.set_vertex_buffer(BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
+            cmd_buffer.set_vertex_buffer(0, BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
             if let Some(indices) = mesh.indices.as_ref() {
                 cmd_buffer.set_index_buffer(
                     BufferRef::Regular(indices.buffer()),

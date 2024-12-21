@@ -465,7 +465,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 9, BufferRef::Transient(gpu_scene), 0, WHOLE_BUFFER);
 
-        cmd_buffer.set_vertex_buffer(BufferRef::Regular(vertex_buffer), 0);
+        cmd_buffer.set_vertex_buffer(0, BufferRef::Regular(vertex_buffer), 0);
         cmd_buffer.set_index_buffer(BufferRef::Regular(index_buffer), 0, IndexFormat::U32);
 
         cmd_buffer.finish_binding();

@@ -354,9 +354,9 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         }
     }
 
-    unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &MTLBuffer, offset: u64) {
+    unsafe fn set_vertex_buffer(&mut self, index: u32, vertex_buffer: &MTLBuffer, offset: u64) {
         let encoder = self.get_render_pass_encoder();
-        encoder.set_vertex_buffer(0, Some(vertex_buffer.handle()), offset);
+        encoder.set_vertex_buffer(index as u64, Some(vertex_buffer.handle()), offset);
     }
 
     unsafe fn set_index_buffer(&mut self, index_buffer: &MTLBuffer, offset: u64, format: gpu::IndexFormat) {

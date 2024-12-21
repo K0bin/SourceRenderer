@@ -228,7 +228,7 @@ impl VisibilityBufferPass {
             extent: Vec2UI::new(rtv_info.width, rtv_info.height),
         }]);
 
-        cmd_buffer.set_vertex_buffer(params.scene.vertex_buffer, 0);
+        cmd_buffer.set_vertex_buffer(0, params.scene.vertex_buffer, 0);
         cmd_buffer.set_index_buffer(params.scene.index_buffer, 0, IndexFormat::U32);
 
         cmd_buffer.finish_binding();

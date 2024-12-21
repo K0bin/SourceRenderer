@@ -256,7 +256,7 @@ impl Prepass {
                     let mesh = mesh.unwrap();
 
                     command_buffer
-                        .set_vertex_buffer(BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
+                        .set_vertex_buffer(0, BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
                     if let Some(indices) = mesh.indices.as_ref() {
                         command_buffer.set_index_buffer(
                             BufferRef::Regular(indices.buffer()),

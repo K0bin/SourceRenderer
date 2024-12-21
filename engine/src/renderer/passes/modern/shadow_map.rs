@@ -322,7 +322,7 @@ impl<P: Platform> ShadowMapPass<P> {
                 extent: Vec2UI::new(dsv_info.width, dsv_info.height),
             }]);
 
-            cmd_buffer.set_vertex_buffer(pass_params.scene.vertex_buffer, 0);
+            cmd_buffer.set_vertex_buffer(0,pass_params.scene.vertex_buffer, 0);
             cmd_buffer.set_index_buffer(pass_params.scene.index_buffer, 0, IndexFormat::U32);
 
             cmd_buffer.set_push_constant_data(&[cascade.view_proj], ShaderType::VertexShader);

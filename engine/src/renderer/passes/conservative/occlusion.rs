@@ -284,7 +284,7 @@ impl<P: Platform> OcclusionPass<P> {
                         min_depth: 0f32,
                         max_depth: 1f32,
                     }]);
-                    command_buffer.set_vertex_buffer(BufferRef::Regular(&self.occluder_vb), 0);
+                    command_buffer.set_vertex_buffer(0, BufferRef::Regular(&self.occluder_vb), 0);
                     command_buffer.set_index_buffer(BufferRef::Regular(&self.occluder_ib), 0, IndexFormat::U32);
                     command_buffer.bind_uniform_buffer(
                         BindingFrequency::VeryFrequent,
