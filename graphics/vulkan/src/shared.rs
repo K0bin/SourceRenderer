@@ -115,7 +115,7 @@ impl VkShared {
             }
         }
 
-        let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT] = Default::default();
+        let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize] = Default::default();
         for i in 0..layout_key.descriptor_set_layouts.len() {
             let set_key = &layout_key.descriptor_set_layouts[i];
             descriptor_sets[i] = Some(self.get_descriptor_set_layout(set_key));

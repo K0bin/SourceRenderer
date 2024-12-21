@@ -787,7 +787,7 @@ impl VkPipeline {
 
         add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
 
-        let mut descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 5] =
+        let mut descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize] =
             Default::default();
         for (i, set_key) in context.descriptor_set_layouts.iter().enumerate() {
             descriptor_set_layouts[i] = Some(Arc::new(VkDescriptorSetLayout::new(
@@ -1178,13 +1178,13 @@ impl gpu::ComputePipeline for VkPipeline {
 pub(super) struct VkPipelineLayout {
     device: Arc<RawVkDevice>,
     layout: vk::PipelineLayout,
-    descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; 5],
+    descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize],
     push_constant_ranges: [Option<VkConstantRange>; 3],
 }
 
 impl VkPipelineLayout {
     pub fn new(
-        descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; 5],
+        descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize],
         push_constant_ranges: &[Option<VkConstantRange>; 3],
         device: &Arc<RawVkDevice>,
     ) -> Self {

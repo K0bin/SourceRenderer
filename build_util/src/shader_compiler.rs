@@ -188,7 +188,7 @@ fn read_metadata(
     shader_name: &str,
     shader_type: gpu::ShaderType,
 ) -> gpu::PackedShader {
-    let mut resources: [Vec<gpu::Resource>; 4] = Default::default();
+    let mut resources: [Vec<gpu::Resource>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
     let mut push_constant_size = 0u32;
     let mut uses_bindless_texture_set = false;
     let mut stage_input_count = 0u32;
@@ -333,7 +333,7 @@ fn read_metadata(
         spv_resource_type: spirv_cross_sys::spvc_resource_type,
         resource_type: gpu::ResourceType,
         can_be_writable: bool,
-        resources: &mut [Vec<gpu::Resource>; 4],
+        resources: &mut [Vec<gpu::Resource>; gpu::NON_BINDLESS_SET_COUNT as usize],
         uses_bindless_texture_set: &mut bool
     ) {
         let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
@@ -375,11 +375,11 @@ fn read_metadata(
             .to_str()
             .unwrap()
             .to_string();
-            let set = &mut resources[set_index as usize];
             if set_index == BINDLESS_TEXTURE_SET_INDEX {
                 *uses_bindless_texture_set = true;
                 continue;
             }
+            let set = &mut resources[set_index as usize];
 
             let writable = if can_be_writable {
                 spirv_cross_sys::spvc_compiler_get_decoration(
