@@ -25,8 +25,6 @@ use super::*;
 
 // TODO: this shit is really slow. rewrite all of it.
 
-pub const PER_SET_BINDINGS: usize = 32;
-
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct DirtyDescriptorSets: u32 {
@@ -68,7 +66,7 @@ pub(crate) struct VkConstantRange {
 pub(crate) struct VkDescriptorSetLayout {
     pub device: Arc<RawVkDevice>,
     layout: vk::DescriptorSetLayout,
-    binding_infos: [Option<VkDescriptorSetEntryInfo>; PER_SET_BINDINGS],
+    binding_infos: [Option<VkDescriptorSetEntryInfo>; gpu::PER_SET_BINDINGS as usize],
     is_empty: bool,
     template: Option<vk::DescriptorUpdateTemplate>,
 }
@@ -82,7 +80,7 @@ impl VkDescriptorSetLayout {
         let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
         let mut vk_binding_flags: Vec<vk::DescriptorBindingFlags> = Vec::new();
         let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
-        let mut binding_infos: [Option<VkDescriptorSetEntryInfo>; PER_SET_BINDINGS] =
+        let mut binding_infos: [Option<VkDescriptorSetEntryInfo>; gpu::PER_SET_BINDINGS as usize] =
             Default::default();
 
         for binding in bindings.iter() {
@@ -302,7 +300,7 @@ pub(crate) struct VkDescriptorSet {
     pool: Arc<VkDescriptorPool>,
     layout: Arc<VkDescriptorSetLayout>,
     is_transient: bool,
-    bindings: [VkBoundResource; PER_SET_BINDINGS],
+    bindings: [VkBoundResource; gpu::PER_SET_BINDINGS as usize],
     device: Arc<RawVkDevice>,
 }
 
@@ -312,7 +310,7 @@ impl VkDescriptorSet {
         device: &Arc<RawVkDevice>,
         layout: &Arc<VkDescriptorSetLayout>,
         is_transient: bool,
-        bindings: &'a [T; PER_SET_BINDINGS],
+        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
     ) -> ash::prelude::VkResult<Self>
     where
         VkBoundResource: From<&'a T>,
@@ -328,18 +326,18 @@ impl VkDescriptorSet {
             .pop()
             .unwrap();
 
-        let mut stored_bindings = <[VkBoundResource; PER_SET_BINDINGS]>::default();
+        let mut stored_bindings = <[VkBoundResource; gpu::PER_SET_BINDINGS as usize]>::default();
         for (index, binding) in bindings.iter().enumerate() {
             stored_bindings[index] = binding.into();
         }
 
         match Option::<vk::DescriptorUpdateTemplate>::None {
             None => {
-                let mut writes: SmallVec<[vk::WriteDescriptorSet; PER_SET_BINDINGS]> =
+                let mut writes: SmallVec<[vk::WriteDescriptorSet; gpu::PER_SET_BINDINGS as usize]> =
                     Default::default();
-                let mut image_writes: SmallVec<[vk::DescriptorImageInfo; PER_SET_BINDINGS]> =
+                let mut image_writes: SmallVec<[vk::DescriptorImageInfo; gpu::PER_SET_BINDINGS as usize]> =
                     Default::default();
-                let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; PER_SET_BINDINGS]> =
+                let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; gpu::PER_SET_BINDINGS as usize]> =
                     Default::default();
                 let mut acceleration_structures: SmallVec<[vk::AccelerationStructureKHR; 2]> =
                     Default::default();
@@ -661,7 +659,7 @@ impl VkDescriptorSet {
                 }
             }
             Some(template) => {
-                let mut entries: SmallVec<[VkDescriptorEntry; PER_SET_BINDINGS]> =
+                let mut entries: SmallVec<[VkDescriptorEntry; gpu::PER_SET_BINDINGS as usize]> =
                     Default::default();
 
                 for (binding, resource) in stored_bindings.iter().enumerate() {
@@ -900,7 +898,7 @@ impl VkDescriptorSet {
     pub(crate) fn is_compatible<T>(
         &self,
         layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &[T; PER_SET_BINDINGS],
+        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
     ) -> bool
     where
         VkBoundResource: BindingCompare<T>,
@@ -940,15 +938,15 @@ pub(crate) struct VkBufferBindingInfo {
 pub(crate) enum VkBoundResource {
     None,
     UniformBuffer(VkBufferBindingInfo),
-    UniformBufferArray(SmallVec<[VkBufferBindingInfo; PER_SET_BINDINGS]>),
+    UniformBufferArray(SmallVec<[VkBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
     StorageBuffer(VkBufferBindingInfo),
-    StorageBufferArray(SmallVec<[VkBufferBindingInfo; PER_SET_BINDINGS]>),
+    StorageBufferArray(SmallVec<[VkBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
     StorageTexture(vk::ImageView),
-    StorageTextureArray(SmallVec<[vk::ImageView; PER_SET_BINDINGS]>),
+    StorageTextureArray(SmallVec<[vk::ImageView; gpu::PER_SET_BINDINGS as usize]>),
     SampledTexture(vk::ImageView),
-    SampledTextureArray(SmallVec<[vk::ImageView; PER_SET_BINDINGS]>),
+    SampledTextureArray(SmallVec<[vk::ImageView; gpu::PER_SET_BINDINGS as usize]>),
     SampledTextureAndSampler(vk::ImageView, vk::Sampler),
-    SampledTextureAndSamplerArray(SmallVec<[(vk::ImageView, vk::Sampler); PER_SET_BINDINGS]>),
+    SampledTextureAndSamplerArray(SmallVec<[(vk::ImageView, vk::Sampler); gpu::PER_SET_BINDINGS as usize]>),
     Sampler(vk::Sampler),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -1285,7 +1283,7 @@ pub(crate) struct VkBindingManager {
     device: Arc<RawVkDevice>,
     current_sets: [Option<Arc<VkDescriptorSet>>; 4],
     dirty: DirtyDescriptorSets,
-    bindings: [[VkBoundResource; PER_SET_BINDINGS]; 4],
+    bindings: [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; 4],
     transient_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -1357,7 +1355,7 @@ impl VkBindingManager {
         &self,
         frame: u64,
         layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &[T; PER_SET_BINDINGS],
+        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
         use_permanent_cache: bool,
     ) -> Option<Arc<VkDescriptorSet>>
     where
@@ -1408,7 +1406,7 @@ impl VkBindingManager {
     pub fn get_descriptor_set_binding_info(
         &self,
         set: Arc<VkDescriptorSet>,
-        bindings: &[VkBoundResource; PER_SET_BINDINGS],
+        bindings: &[VkBoundResource; gpu::PER_SET_BINDINGS as usize],
     ) -> VkDescriptorSetBinding {
         let mut set_binding = VkDescriptorSetBinding {
             set: set.clone(),
@@ -1476,7 +1474,7 @@ impl VkBindingManager {
         &self,
         frame: u64,
         layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &'a [T; PER_SET_BINDINGS],
+        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
     ) -> Option<Arc<VkDescriptorSet>>
     where
         VkBoundResource: BindingCompare<T>,
