@@ -6,8 +6,6 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
-pub const PER_SET_BINDINGS: usize = 32;
-
 #[derive(Clone, Debug)]
 pub(crate) struct MTLBufferBindingInfo {
     pub(crate) buffer: metal::Buffer,
@@ -42,15 +40,15 @@ impl PartialEq<MTLBufferBindingInfoRef<'_>> for MTLBufferBindingInfo {
 pub(crate) enum MTLBoundResource {
     None,
     UniformBuffer(MTLBufferBindingInfo),
-    UniformBufferArray(SmallVec<[MTLBufferBindingInfo; PER_SET_BINDINGS]>),
+    UniformBufferArray(SmallVec<[MTLBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
     StorageBuffer(MTLBufferBindingInfo),
-    StorageBufferArray(SmallVec<[MTLBufferBindingInfo; PER_SET_BINDINGS]>),
+    StorageBufferArray(SmallVec<[MTLBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
     StorageTexture(metal::Texture),
-    StorageTextureArray(SmallVec<[metal::Texture; PER_SET_BINDINGS]>),
+    StorageTextureArray(SmallVec<[metal::Texture; gpu::PER_SET_BINDINGS as usize]>),
     SampledTexture(metal::Texture),
-    SampledTextureArray(SmallVec<[metal::Texture; PER_SET_BINDINGS]>),
+    SampledTextureArray(SmallVec<[metal::Texture; gpu::PER_SET_BINDINGS as usize]>),
     SampledTextureAndSampler(metal::Texture, metal::SamplerState),
-    SampledTextureAndSamplerArray(SmallVec<[(metal::Texture, metal::SamplerState); PER_SET_BINDINGS]>),
+    SampledTextureAndSamplerArray(SmallVec<[(metal::Texture, metal::SamplerState); gpu::PER_SET_BINDINGS as usize]>),
     Sampler(metal::SamplerState),
     AccelerationStructure(metal::AccelerationStructure),
 }
@@ -217,7 +215,7 @@ pub(crate) enum MTLEncoderRef<'a> {
 }
 
 pub(crate) struct MTLBindingManager {
-    bindings: [[MTLBoundResource; PER_SET_BINDINGS]; 4],
+    bindings: [[MTLBoundResource; gpu::PER_SET_BINDINGS as usize]; 4],
     dirty: [u64; 4]
 }
 

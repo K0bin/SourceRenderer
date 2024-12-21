@@ -687,14 +687,15 @@ fn compile_shader_spirv_cross(
                     spirv_cross_sys::spvc_compiler_options_set_uint(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_MSL_ARGUMENT_BUFFERS_TIER, 2),
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
-                for i in 0..3 {
+                for i in 0..gpu::NON_BINDLESS_SET_COUNT {
                     assert_eq!(
                         spirv_cross_sys::spvc_compiler_msl_add_discrete_descriptor_set(compiler, i),
                         spirv_cross_sys::spvc_result_SPVC_SUCCESS
                     );
                 }
+                // The bindless argument buffer will get remapped to the first buffer after the stage inputs
                 assert_eq!(
-                    spirv_cross_sys::spvc_compiler_msl_set_argument_buffer_device_address_space(compiler, BINDLESS_TEXTURE_SET_INDEX, 1),
+                    spirv_cross_sys::spvc_compiler_msl_set_argument_buffer_device_address_space(compiler, metadata.max_stage_input + 1, 1),
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
             },
@@ -707,10 +708,50 @@ fn compile_shader_spirv_cross(
         );
 
         if output_shading_language == ShadingLanguage::Msl {
-            // SPIRV-CROSS has no way to remap the argument buffer, so reserve buffer bindings 0-4
-            buffer_count = if metadata.uses_bindless_texture_set { BINDLESS_TEXTURE_SET_INDEX + 1 } else { 0 };
             // Metal vertex buffers share buffer binding slots
-            buffer_count += if metadata.shader_type == gpu::ShaderType::VertexShader { metadata.max_stage_input + 1 } else { 0 };
+            if metadata.shader_type == gpu::ShaderType::VertexShader {
+                // Vertex buffers need to come first so their indices are consistent across shaders.
+                // I don't want to rebind those with each pipeline change while that's the expectation
+                // for bound resources anyway.
+                // We assume the worst case: every input attribute uses a separate vertex buffer.
+                buffer_count += metadata.max_stage_input + 1;
+            }
+
+            // Remap argument buffer for bindless texture set to the first buffer after the stage inputs
+            if metadata.uses_bindless_texture_set {
+                let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
+                spirv_cross_sys::spvc_compiler_create_shader_resources(
+                    compiler,
+                    &mut spv_resources_ptr,
+                );
+                let spv_resources = {
+                    let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
+                        std::ptr::null();
+                    let mut resources_count: usize = 0;
+                    assert_eq!(
+                        spirv_cross_sys::spvc_resources_get_resource_list_for_type(
+                            spv_resources_ptr,
+                            spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SEPARATE_IMAGE,
+                            &mut resources_list,
+                            &mut resources_count
+                        ),
+                        spirv_cross_sys::spvc_result_SPVC_SUCCESS
+                    );
+                    std::slice::from_raw_parts(resources_list, resources_count as usize)
+                };
+                for resource in spv_resources {
+                    let set_index = spirv_cross_sys::spvc_compiler_get_decoration(
+                        compiler,
+                        resource.id,
+                        spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
+                    );
+                    if set_index == BINDLESS_TEXTURE_SET_INDEX {
+                        spirv_cross_sys::spvc_compiler_set_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet, buffer_count);
+                        buffer_count += 1;
+                        break;
+                    }
+                }
+            }
 
             for set in &metadata.resources {
                 for resource in set.iter() {
