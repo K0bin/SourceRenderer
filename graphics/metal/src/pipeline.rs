@@ -282,7 +282,7 @@ impl MTLGraphicsPipeline {
         for (idx, a) in info.vertex_layout.shader_inputs.iter().enumerate() {
             let adesc = metal::VertexAttributeDescriptor::new();
             adesc.set_offset(a.offset as u64);
-            adesc.set_buffer_index(a.input_assembler_binding as u64 + info.vs.resource_map.bindless_argument_buffer_binding.map_or(0u64, |i| i as u64 + 1u64));
+            adesc.set_buffer_index(a.input_assembler_binding as u64);
             adesc.set_format(match a.format {
                 gpu::Format::R32Float => metal::MTLVertexFormat::Float,
                 gpu::Format::RG32Float => metal::MTLVertexFormat::Float2,
