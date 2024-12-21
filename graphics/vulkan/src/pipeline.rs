@@ -396,7 +396,7 @@ fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorS
         panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", pipeline_name);
     }
 
-    let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; PER_SET_BINDINGS]>::new();
+    let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
     bindless_bindings.push(VkDescriptorSetEntryInfo {
         name: "bindless_textures".to_string(),
         shader_stage: vk::ShaderStageFlags::VERTEX

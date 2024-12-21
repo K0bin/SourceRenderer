@@ -10,6 +10,8 @@ use ash::vk::{
 };
 use smallvec::SmallVec;
 
+use sourcerenderer_core::gpu;
+
 use super::*;
 
 pub struct VkBindlessDescriptorSet {
@@ -27,7 +29,7 @@ pub struct VkBindlessInner {
 
 impl VkBindlessDescriptorSet {
     pub fn new(device: &Arc<RawVkDevice>) -> Self {
-        let mut bindings = SmallVec::<[VkDescriptorSetEntryInfo; PER_SET_BINDINGS]>::new();
+        let mut bindings = SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
         bindings.push(VkDescriptorSetEntryInfo {
             name: "bindless_textures".to_string(),
             shader_stage: vk::ShaderStageFlags::VERTEX

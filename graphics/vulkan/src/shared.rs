@@ -26,7 +26,7 @@ pub struct VkShared {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
 pub(super) struct VkDescriptorSetLayoutKey {
-    pub(super) bindings: SmallVec<[VkDescriptorSetEntryInfo; PER_SET_BINDINGS]>,
+    pub(super) bindings: SmallVec<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>,
     pub(super) flags: vk::DescriptorSetLayoutCreateFlags,
 }
 
