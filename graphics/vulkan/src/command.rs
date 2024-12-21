@@ -511,7 +511,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
 
-        let mut offsets = SmallVec::<[u32; PER_SET_BINDINGS]>::new();
+        let mut offsets = SmallVec::<[u32; gpu::PER_SET_BINDINGS as usize]>::new();
         let mut descriptor_sets =
             SmallVec::<[vk::DescriptorSet; gpu::TOTAL_SET_COUNT as usize]>::new();
         let mut base_index = 0;
@@ -1346,7 +1346,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         };
 
         let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline();
-        let mut bindings = <[VkBoundResourceRef; PER_SET_BINDINGS]>::default();
+        let mut bindings = <[VkBoundResourceRef; gpu::PER_SET_BINDINGS as usize]>::default();
         let binding_offsets = [offset as u32];
         let is_dynamic_binding = meta_pipeline
             .layout()
