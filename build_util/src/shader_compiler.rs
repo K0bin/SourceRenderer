@@ -8,13 +8,13 @@ use std::process::Command;
 
 use bitflags::bitflags;
 
-use log::{error, info, warn};
+use log::{error, info};
 use naga::back::wgsl::WriterFlags;
 use naga::front::spv::Options;
-use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
+use naga::valid::{Capabilities, ValidationFlags, Validator};
 use spirv_cross_sys;
 
-use sourcerenderer_core::gpu::{self, Format, SamplingType, TextureDimension};
+use sourcerenderer_core::gpu;
 
 const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
 
@@ -51,6 +51,7 @@ pub fn compile_shaders<F>(
                     .map(|s| s.contains(".inc"))
                     .unwrap_or(false)
                 && file_filter(&file.path())
+                && file.file_name().to_str().map(|name| name.contains("web_geometry")).unwrap_or(false)
         })
         .for_each(|file| {
             let file_path = file.path();
@@ -278,27 +279,27 @@ fn read_metadata(
         }
     };
 
-    fn spvc_format_to_format(format: spirv_cross_sys::SpvImageFormat) -> Format {
+    fn spvc_format_to_format(format: spirv_cross_sys::SpvImageFormat) -> gpu::Format {
         match format {
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32f => Format::RGBA32Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16f => Format::RGBA16Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR32f => Format::R32Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8 => Format::RGBA8UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32f => gpu::Format::RGBA32Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16f => gpu::Format::RGBA16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR32f => gpu::Format::R32Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8 => gpu::Format::RGBA8UNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8Snorm => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32f => Format::RG32Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16f => Format::RG16Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR11fG11fB10f => Format::R11G11B10Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16f => Format::R16Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16 => Format::RGBA16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32f => gpu::Format::RG32Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16f => gpu::Format::RG16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR11fG11fB10f => gpu::Format::R11G11B10Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16f => gpu::Format::R16Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16 => gpu::Format::RGBA16Float,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10A2 => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16 => Format::RG16UNorm,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8 => Format::RG8UNorm,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16 => Format::R16UNorm,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8 => Format::R8Unorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16 => gpu::Format::RG16UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8 => gpu::Format::RG8UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16 => gpu::Format::R16UNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8 => gpu::Format::R8Unorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16Snorm => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16Snorm => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8Snorm => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16Snorm => Format::R16SNorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16Snorm => gpu::Format::R16SNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR8Snorm => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32i => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16i => panic!("Unimplemented format"),
@@ -312,17 +313,17 @@ fn read_metadata(
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32ui => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16ui => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8ui => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR32ui => Format::R32UInt,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR32ui => gpu::Format::R32UInt,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10a2ui => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32ui => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16ui => Format::RG16UInt,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16ui => gpu::Format::RG16UInt,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8ui => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16ui => Format::R16UInt,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR16ui => gpu::Format::R16UInt,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR8ui => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR64ui => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR64i => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatMax => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatUnknown => Format::Unknown,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatUnknown => gpu::Format::Unknown,
             _ => panic!("Unrecognized format")
         }
 
@@ -417,29 +418,29 @@ fn read_metadata(
             let is_image = spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_IMAGE
                 || spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_SAMPLED_IMAGE;
 
-            let mut dim = TextureDimension::Dim1D;
+            let mut dim = gpu::TextureDimension::Dim1D;
             let mut multisampled = false;
-            let mut sampling_type = SamplingType::Float;
-            let mut storage_format = Format::Unknown;
+            let mut sampling_type = gpu::SamplingType::Float;
+            let mut storage_format = gpu::Format::Unknown;
             if is_image {
                 let spvc_is_array = spirv_cross_sys::spvc_type_get_image_arrayed(type_handle) != 0;
-                let spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
+                let _spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
                 let is_storage = spirv_cross_sys::spvc_type_get_image_is_storage(type_handle) != 0;
                 if is_storage {
                     storage_format = spvc_format_to_format(spirv_cross_sys::spvc_type_get_image_storage_format(type_handle));
                 }
                 let spv_dim = spirv_cross_sys::spvc_type_get_image_storage_format(type_handle);
                 dim = match spv_dim {
-                    spirv_cross_sys::SpvDim__SpvDim1D => if !spvc_is_array { TextureDimension::Dim1D } else { TextureDimension::Dim1DArray },
-                    spirv_cross_sys::SpvDim__SpvDim2D => if !spvc_is_array { TextureDimension::Dim2D } else { TextureDimension::Dim2DArray },
-                    spirv_cross_sys::SpvDim__SpvDim3D => if !spvc_is_array { TextureDimension::Dim3D } else { panic!("3D Arrays are not supported") },
-                    spirv_cross_sys::SpvDim__SpvDimCube => if !spvc_is_array { TextureDimension::Cube } else { TextureDimension::CubeArray },
-                    _ => TextureDimension::Dim1D
+                    spirv_cross_sys::SpvDim__SpvDim1D => if !spvc_is_array { gpu::TextureDimension::Dim1D } else { gpu::TextureDimension::Dim1DArray },
+                    spirv_cross_sys::SpvDim__SpvDim2D => if !spvc_is_array { gpu::TextureDimension::Dim2D } else { gpu::TextureDimension::Dim2DArray },
+                    spirv_cross_sys::SpvDim__SpvDim3D => if !spvc_is_array { gpu::TextureDimension::Dim3D } else { panic!("3D Arrays are not supported") },
+                    spirv_cross_sys::SpvDim__SpvDimCube => if !spvc_is_array { gpu::TextureDimension::Cube } else { gpu::TextureDimension::CubeArray },
+                    _ => gpu::TextureDimension::Dim1D
                 };
                 multisampled = spirv_cross_sys::spvc_type_get_image_multisampled(type_handle) != 0;
                 let is_depth = spirv_cross_sys::spvc_type_get_image_is_depth(type_handle) != 0;
                 if is_depth {
-                    sampling_type = SamplingType::Depth;
+                    sampling_type = gpu::SamplingType::Depth;
                 } else {
                     let spv_smapled_type_id = spirv_cross_sys::spvc_type_get_image_sampled_type(type_handle);
                     let sampled_type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(compiler, spv_smapled_type_id);
@@ -447,17 +448,17 @@ fn read_metadata(
                     sampling_type = match sampled_base_type {
                         spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP16
                             | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP32
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP64 => SamplingType::Float,
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP64 => gpu::SamplingType::Float,
                         spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT16
                             | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT8
                             | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT32
                             | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT64
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT_MAX => SamplingType::SInt,
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT_MAX => gpu::SamplingType::SInt,
                         spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT16
                             | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT8
                             | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT32
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT64 => SamplingType::UInt,
-                        _ => SamplingType::Float
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT64 => gpu::SamplingType::UInt,
+                        _ => gpu::SamplingType::Float
                     };
                 }
             }
@@ -774,8 +775,8 @@ fn compile_shader_spirv_cross(
                         msl_sampler: u32::MAX,
                     };
                     assert_ne!(resource.array_size, 0);
-                    assert!(resource.binding < 32);
-                    assert!(resource.set < 4);
+                    assert!(resource.binding < gpu::PER_SET_BINDINGS);
+                    assert!(resource.set < gpu::TOTAL_SET_COUNT);
                     match resource.resource_type {
                         gpu::ResourceType::UniformBuffer | gpu::ResourceType::StorageBuffer
                             | gpu::ResourceType::AccelerationStructure => {
@@ -1114,7 +1115,21 @@ pub fn compile_shader(
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Wgsl) {
-        let wgsl = compile_shader_naga(shader_name, &spirv_bytecode_boxed);
+        let non_debug_spirv = if include_debug_info {
+            // WORKAROUND: Naga stumbles over debug instructions. So compile the shader again without debug information.
+            let spirv_bytecode_res = compile_shader_glsl(file_path, output_dir, shader_type, false, arguments);
+            if spirv_bytecode_res.is_err() {
+                error!("Failed to compile GLSL for {:?}", file_path);
+                return;
+            }
+            let spirv_bytecode = spirv_bytecode_res.unwrap();
+            Some(spirv_bytecode.into_boxed_slice())
+        } else {
+            None
+        };
+        let non_debug_spirv_ref = non_debug_spirv.as_ref().unwrap_or(&spirv_bytecode_boxed);
+
+        let wgsl = compile_shader_naga(shader_name, non_debug_spirv_ref);
         if let Ok(bytecode) = wgsl {
             if output_file_type == CompiledShaderFileType::Bytecode {
                 write_shader(file_path, output_dir, ShadingLanguage::Air, CompiledShaderType::Source(&bytecode));
