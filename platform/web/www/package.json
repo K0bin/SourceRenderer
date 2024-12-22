@@ -1,0 +1,28 @@
+{
+  "name": "sourcerenderer_web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "clean-build": "rimraf dist ../lib/pkg && tsc && vite build",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/K0bin/SourceRenderer.git"
+  },
+  "author": "Robin Kertels <robin.kertels@gmail.com>",
+  "license": "(MIT)",
+  "bugs": {
+    "url": "https://github.com/K0bin/SourceRenderer/issues"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "sourcerenderer_web": "file:../lib/pkg",
+    "vite-plugin-wasm": "~3.4.1",
+    "rimraf": "^3.0.0"
+  }
+}

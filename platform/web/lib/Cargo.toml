@@ -1,0 +1,71 @@
+[package]
+name = "sourcerenderer_web"
+version = "0.1.0"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+edition = "2018"
+# build = "build.rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["console_error_panic_hook"]
+
+[dependencies]
+js-sys = "0.3.76"
+wasm-bindgen = { version = "0.2.99", features = ["serde-serialize"] }
+sourcerenderer_core = { path = "../../../core" }
+sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["web"] }
+sourcerenderer_webgpu = { path = "../../../graphics/webgpu" }
+sourcerenderer_game = { path = "../../../game" }
+serde = "1.0.216"
+serde_derive = "1.0.216"
+rayon = "1.10.0"
+lazy_static = "1.5.0"
+crossbeam-channel = "0.5.14"
+async-channel = "2.3.1"
+wasm-bindgen-futures = "0.4.29"
+log = "0.4.22"
+console_log = "1.0.0"
+
+# The `console_error_panic_hook` crate provides better debugging of panics by
+# logging them with `console.error`. This is great for development, but requires
+# all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
+# code size when deploying.
+console_error_panic_hook = { version = "0.1.7", optional = true }
+
+[dependencies.web-sys]
+version = "0.3.76"
+features = [
+  'Document',
+  'Element',
+  'HtmlCanvasElement',
+  'Window',
+  'Worker',
+  'DedicatedWorkerGlobalScope',
+  'Navigator',
+  'ErrorEvent',
+  'Response',
+  'WorkerOptions'
+]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.49"
+
+[build-dependencies]
+spirv_cross_sys = { path = "../../../vendor/spirv-cross-sys" }
+build-util = { path = "../../../build_util" }
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
+lto = true
+debug = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.release.wasm-bindgen]
+debug-js-glue = true
+demangle-name-section = true
+dwarf-debug-info = true

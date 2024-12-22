@@ -42,7 +42,6 @@ pub struct WebGPUInstance {
 impl WebGPUInstance {
     pub async fn async_init(navigator: Navigator) -> Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError> {
         let gpu = navigator.gpu();
-        warn!("GPU: {:?}, is obj: {:?}, null? {:?}, undefined? {:?}", gpu, gpu.is_object(), gpu.is_null(), gpu.is_undefined());
         if !gpu.is_object() || gpu.is_null() || gpu.is_undefined() {
             return Err(WebGPUInstanceInitError::new("Browser does not support WebGPU"));
         }
