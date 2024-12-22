@@ -53,6 +53,9 @@ use crate::{
     Camera,
 };
 
+#[cfg(not(feature = "threading"))]
+use bevy_utils::synccell::SyncCell;
+
 #[derive(Event)]
 struct WindowSizeChangedEvent {
     size: Vec2UI,
@@ -118,9 +121,10 @@ struct RendererResourceWrapper<P: Platform> {
 fn install_renderer<P: Platform>(
     app: &mut App,
     renderer: Renderer<P>,
-    _sender: RendererSender<P::GPUBackend>,
+    sender: RendererSender<P::GPUBackend>,
 ) {
     let wrapper = RendererResourceWrapper {
+        sender,
         renderer: SyncCell::new(renderer),
     };
     app.insert_resource(wrapper);
@@ -134,12 +138,7 @@ fn install_renderer<P: Platform>(
         )
             .in_set(ExtractSet),
     );
-    app.add_systems(Last, run_renderer::<P>.after(ExtractSet));
-}
-
-#[cfg(not(feature = "threading"))]
-fn run_renderer<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
-    renderer.renderer.get().render();
+    app.add_systems(Last, end_frame::<P>.after(ExtractSet));
 }
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -280,13 +279,16 @@ fn extract_directional_lights<P: Platform>(
     }
 }
 
-#[cfg(feature = "threading")]
-fn end_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
+fn end_frame<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
     if renderer.sender.is_saturated() {
         return;
     }
 
     renderer.sender.end_frame();
+
+    if cfg!(not(feature = "threading")) {
+        renderer.renderer.get().render();
+    }
 }
 
 fn begin_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {

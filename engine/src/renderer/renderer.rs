@@ -16,7 +16,7 @@ use crossbeam_channel::{
     unbounded, Receiver, Sender
 };
 use instant::Duration;
-use log::trace;
+use log::{trace, warn};
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::{
     Event,
@@ -33,7 +33,6 @@ use super::ecs::{
     PointLightComponent,
 };
 use super::light::DirectionalLight;
-use super::passes::modern::ModernRenderer;
 use super::passes::web::WebRenderer;
 use super::render_path::{FrameInfo, RenderPath, SceneInfo, ZeroTextures};
 use super::renderer_assets::RendererAssets;
@@ -49,6 +48,9 @@ use crate::renderer::command::RendererCommand;
 use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
 use crate::graphics::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+use super::passes::modern::ModernRenderer;
 
 struct RendererState {
     queued_frames_counter: Mutex<u32>, // we need the mutex for the condvar anyway
@@ -136,8 +138,16 @@ impl<P: Platform> Renderer<P> {
 
     pub fn render(&mut self) {
         let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
-        while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
+        if cfg!(feature = "threading") {
+            while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
+                message_receiving_result = self.receive_messages();
+            }
+        } else {
             message_receiving_result = self.receive_messages();
+            if message_receiving_result == ReceiveMessagesResult::WaitForMessages {
+                warn!("No finished frame yet.");
+                return;
+            }
         }
 
         if message_receiving_result == ReceiveMessagesResult::Quit {
@@ -514,11 +524,6 @@ impl<B: GPUBackend> RendererSender<B> {
             .wait_timeout_while(queued_guard, timeout, |queued| {
                 *queued > 1 || !self.state.is_running.load(Ordering::Acquire)
             })
-            .unwrap();
-        #[cfg(target_arch = "wasm32")]
-        let _ = self
-            .cond_var
-            .wait_while(queued_guard, |queued| *queued > 1)
             .unwrap();
     }
 

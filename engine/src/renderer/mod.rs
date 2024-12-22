@@ -1,4 +1,3 @@
-#[cfg(feature = "threading")]
 mod renderer;
 
 mod command;
@@ -30,7 +29,6 @@ pub use self::ecs::{
     StaticRenderableComponent,
 };
 pub use self::light::PointLight;
-#[cfg(feature = "threading")]
 pub use self::renderer::Renderer;
 pub use self::vertex::Vertex;
 pub use self::renderer_plugin::RendererPlugin;
