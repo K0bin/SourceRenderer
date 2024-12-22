@@ -14,21 +14,19 @@ mod binding;
 mod shared;
 mod device;
 
-pub use backend::WebGPUBackend;
-pub use instance::WebGPUInstance;
+pub use backend::*;
+pub use instance::*;
+pub use surface::*;
+pub use swapchain::*;
+pub use adapter::*;
+pub use device::*;
 
-pub(crate) use backend::*;
-pub(crate) use instance::*;
-pub(crate) use adapter::*;
 pub(crate) use buffer::*;
 pub(crate) use texture::*;
 pub(crate) use sampler::*;
-pub(crate) use surface::*;
-pub(crate) use swapchain::*;
 pub(crate) use pipeline::*;
 pub(crate) use queue::*;
 pub(crate) use command::*;
 pub(crate) use binding::*;
 pub(crate) use shared::*;
-pub(crate) use device::*;
 pub(crate) use stubs::*;

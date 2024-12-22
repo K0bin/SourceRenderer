@@ -15,6 +15,10 @@ impl WebGPUAdapter {
             device,
         }
     }
+
+    pub(crate) fn device(&self) -> &GpuDevice {
+        &self.device
+    }
 }
 
 unsafe impl Send for WebGPUAdapter {}

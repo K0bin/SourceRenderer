@@ -22,7 +22,7 @@ impl PartialEq for WebGPUSurface {
 impl Eq for WebGPUSurface {}
 
 impl WebGPUSurface {
-    pub(crate) fn new(device: &GpuDevice, canvas: OffscreenCanvas) -> Result<Self, ()> {
+    pub fn new(device: &GpuDevice, canvas: OffscreenCanvas) -> Result<Self, ()> {
         let context_obj: JsValue = canvas.get_context("webgpu")
             .map_err(|_| {
                 error!("Failed to retrieve context from OffscreenCanvas");
@@ -52,7 +52,7 @@ impl WebGPUSurface {
 
         let config = GpuCanvasConfiguration::new(device, format_to_webgpu(texture_info.format));
         config.set_usage(gpu_texture_usage::RENDER_ATTACHMENT | gpu_texture_usage::COPY_DST);
-        context.configure(&config);
+        context.configure(&config).unwrap();
 
         Ok(Self {
             canvas_context: context,

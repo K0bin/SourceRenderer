@@ -51,6 +51,9 @@ impl WebGPUDevice {
         }
     }
 
+    pub fn handle(&self) -> &GpuDevice {
+        &self.device
+    }
 }
 
 impl gpu::Device<WebGPUBackend> for WebGPUDevice {
