@@ -190,14 +190,14 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         }
     }
 
-    unsafe fn set_vertex_buffer(&mut self, vertex_buffer: &WebGPUBuffer, offset: u64) {
+    unsafe fn set_vertex_buffer(&mut self, index: u32,vertex_buffer: &WebGPUBuffer, offset: u64) {
         if !self.is_inner {
             let cmd_buffer = self.get_recording_mut();
             let render_pass_encoder = cmd_buffer.get_render_encoder();
-            render_pass_encoder.set_vertex_buffer_with_u32_and_u32(0, Some(&vertex_buffer.handle()), offset as u32, vertex_buffer.info().size as u32 - offset as u32);
+            render_pass_encoder.set_vertex_buffer_with_u32_and_u32(index, Some(&vertex_buffer.handle()), offset as u32, vertex_buffer.info().size as u32 - offset as u32);
         } else {
             let render_bundle_encoder = self.get_encoder_inner();
-            render_bundle_encoder.set_vertex_buffer_with_u32_and_u32(0, Some(&vertex_buffer.handle()), offset as u32, vertex_buffer.info().size as u32 - offset as u32);
+            render_bundle_encoder.set_vertex_buffer_with_u32_and_u32(index, Some(&vertex_buffer.handle()), offset as u32, vertex_buffer.info().size as u32 - offset as u32);
         }
     }
 
