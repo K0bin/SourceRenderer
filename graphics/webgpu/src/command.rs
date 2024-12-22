@@ -25,7 +25,7 @@ struct WebGPUFinishedCommandBuffer {
 
 struct WebGPURenderBundleCommandBuffer {
     bundle: GpuRenderBundleEncoder,
-    inheritance: WebGPURenderBundleInheritance,
+    _inheritance: WebGPURenderBundleInheritance,
     pipeline_layout: Option<Arc<WebGPUPipelineLayout>>,
 }
 
@@ -34,7 +34,7 @@ struct WebGPUFinishedRenderBundleCommandBuffer {
 }
 
 #[derive(Clone)]
-struct WebGPURenderBundleInheritance {
+pub struct WebGPURenderBundleInheritance {
     descriptor: GpuRenderBundleEncoderDescriptor
 }
 
@@ -381,7 +381,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                                 &dynamic_offsets_js,
                                 (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
                                 0
-                            );
+                            ).unwrap();
                             continue;
                         }
                         let binding = binding.as_ref().unwrap();
@@ -391,7 +391,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                             &dynamic_offsets_js,
                             (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
                             binding.dynamic_offset_count
-                        );
+                        ).unwrap();
                     }
                 },
                 WebGPUPassEncoder::Compute(gpu_compute_pass_encoder) => {
@@ -403,7 +403,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                                 &dynamic_offsets_js,
                                 (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
                                 0
-                            );
+                            ).unwrap();
                             continue;
                         }
                         let binding = binding.as_ref().unwrap();
@@ -413,7 +413,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                             &dynamic_offsets_js,
                             (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
                             binding.dynamic_offset_count
-                        );
+                        ).unwrap();
                     }
                 },
             }
@@ -427,7 +427,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                         &dynamic_offsets_js,
                         (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
                         0
-                    );
+                    ).unwrap();
                     continue;
                 }
                 let binding: &binding::WebGPUBindGroupBinding = binding.as_ref().unwrap();
@@ -437,7 +437,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     &dynamic_offsets_js,
                     (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
                     binding.dynamic_offset_count
-                );
+                ).unwrap();
             }
         }
     }
@@ -518,7 +518,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             assert_eq!(src_texture.info().depth, 1);
         }
 
-        cmd_buffer.command_encoder.copy_texture_to_texture_with_gpu_extent_3d_dict(&src_info, &dst_info, &copy_size);
+        cmd_buffer.command_encoder.copy_texture_to_texture_with_gpu_extent_3d_dict(&src_info, &dst_info, &copy_size).unwrap();
     }
 
     unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
@@ -542,7 +542,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             self.handle = WebGPUCommandBufferHandle::Secondary(WebGPURenderBundleCommandBuffer {
                 bundle: bundle_encoder,
                 pipeline_layout: None,
-                inheritance: inheritance.clone()
+                _inheritance: inheritance.clone()
             });
         }
     }
@@ -588,7 +588,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             origin.push(&JsValue::from(region.texture_subresource.array_layer as f64));
         }
         dst_info.set_origin(&origin);
-        recording.command_encoder.copy_buffer_to_texture_with_gpu_extent_3d_dict(&src_info, &dst_info, &copy_size);
+        recording.command_encoder.copy_buffer_to_texture_with_gpu_extent_3d_dict(&src_info, &dst_info, &copy_size).unwrap();
     }
 
     unsafe fn copy_buffer(&mut self, src: &WebGPUBuffer, dst: &WebGPUBuffer, region: &gpu::BufferCopyRegion) {
@@ -600,7 +600,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             &dst.handle(),
             region.dst_offset as u32,
             region.size as u32
-        );
+        ).unwrap();
     }
 
     unsafe fn clear_storage_texture(&mut self, _view: &WebGPUTexture, _array_layer: u32, _mip_level: u32, _values: [u32; 4]) {

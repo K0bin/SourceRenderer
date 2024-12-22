@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::{Arc, RwLock}};
 use smallvec::SmallVec;
 use web_sys::GpuDevice;
 
-use crate::binding::{WebGPUBindGroup, WebGPUBindGroupEntryInfo, WebGPUBindGroupLayout, WebGPUPipelineLayout};
+use crate::binding::{WebGPUBindGroupEntryInfo, WebGPUBindGroupLayout, WebGPUPipelineLayout};
 
 use sourcerenderer_core::gpu;
 
@@ -17,6 +17,14 @@ pub struct WebGPUShared {
 }
 
 impl WebGPUShared {
+    pub(crate) fn new(device: &GpuDevice) -> Self {
+        Self {
+            device: device.clone(),
+            bind_group_layouts: RwLock::new(HashMap::new()),
+            pipeline_layouts: RwLock::new(HashMap::new())
+        }
+    }
+
     pub(crate) fn get_bind_group_layout(&self, layout_key: &WebGPUBindGroupLayoutKey) -> Arc<WebGPUBindGroupLayout> {
         {
             let cache = self.bind_group_layouts.read().unwrap();

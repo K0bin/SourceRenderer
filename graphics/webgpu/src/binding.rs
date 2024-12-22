@@ -420,6 +420,7 @@ impl Default for WebGPUBoundResource {
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
+#[allow(unused)]
 pub(crate) enum WebGPUBoundResourceRef<'a> {
     None,
     UniformBuffer(WebGPUBufferBindingInfo),

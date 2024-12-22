@@ -1,6 +1,6 @@
 use log::error;
 use sourcerenderer_core::gpu::Instance;
-use web_sys::{GpuAdapter, Navigator};
+use web_sys::{GpuAdapter, GpuDevice, Navigator};
 use wasm_bindgen_futures::*;
 
 use crate::{adapter::WebGPUAdapter, WebGPUBackend};
@@ -22,8 +22,14 @@ impl WebGPUInstance {
             .map_err(|_| ())?
             .into();
 
+        let device_future = JsFuture::from(adapter.request_device());
+        let device: GpuDevice = device_future
+            .await
+            .map_err(|_| ())?
+            .into();
+
         Ok(Self {
-            adapter: [WebGPUAdapter::new(adapter)]
+            adapter: [WebGPUAdapter::new(adapter, device)]
         })
     }
 }

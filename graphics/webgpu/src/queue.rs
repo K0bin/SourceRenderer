@@ -32,7 +32,7 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<WebGPUBackend>]) {
         for submission in submissions {
-            let is_ready = submission.wait_fences.iter().all(|pair| pair.fence.value.load(Ordering::Release) >= pair.value);
+            let is_ready = submission.wait_fences.iter().all(|pair| pair.fence.value.load(Ordering::Acquire) >= pair.value);
             assert!(is_ready);
 
             let array = Array::new_with_length(submission.command_buffers.len() as u32);
@@ -53,6 +53,14 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
 
 pub struct WebGPUFence {
     value: AtomicU64,
+}
+
+impl WebGPUFence {
+    pub(crate) fn new(_gpu: &GpuDevice) -> Self {
+        Self {
+            value: AtomicU64::new(0u64)
+        }
+    }
 }
 
 impl gpu::Fence for WebGPUFence {

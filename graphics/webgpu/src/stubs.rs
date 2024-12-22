@@ -10,11 +10,23 @@ impl gpu::AccelerationStructure for WebGPUAccelerationStructure {}
 pub struct WebGPUHeap {
     device: GpuDevice,
     memory_type_index: u32,
-    mappable: bool
+    mappable: bool,
+    _size: u64,
 }
 
 unsafe impl Send for WebGPUHeap {}
 unsafe impl Sync for WebGPUHeap {}
+
+impl WebGPUHeap {
+    pub(crate) fn new(device: &GpuDevice, memory_type_index: u32, size: u64, mappable: bool) -> Self {
+        Self {
+            device: device.clone(),
+            memory_type_index,
+            mappable,
+            _size: size
+        }
+    }
+}
 
 impl Heap<WebGPUBackend> for WebGPUHeap {
     fn memory_type_index(&self) -> u32 {

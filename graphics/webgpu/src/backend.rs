@@ -1,15 +1,13 @@
 use sourcerenderer_core::gpu::GPUBackend;
 
-use crate::{adapter::WebGPUAdapter, buffer::WebGPUBuffer, command::{WebGPUCommandBuffer, WebGPUCommandPool}, pipeline::{WebGPUComputePipeline, WebGPUGraphicsPipeline, WebGPUShader}, queue::{WebGPUFence, WebGPUQueue}, sampler::WebGPUSampler, stubs::{WebGPUAccelerationStructure, WebGPUHeap}, surface::WebGPUSurface, swapchain::WebGPUSwapchain, texture::{WebGPUTexture, WebGPUTextureView}, WebGPUInstance};
+use crate::{adapter::WebGPUAdapter, buffer::WebGPUBuffer, command::{WebGPUCommandBuffer, WebGPUCommandPool}, pipeline::{WebGPUComputePipeline, WebGPUGraphicsPipeline, WebGPUShader}, queue::{WebGPUFence, WebGPUQueue}, sampler::WebGPUSampler, stubs::{WebGPUAccelerationStructure, WebGPUHeap}, surface::WebGPUSurface, swapchain::WebGPUSwapchain, texture::{WebGPUTexture, WebGPUTextureView}, WebGPUDevice, WebGPUInstance};
 
-pub struct WebGPUBackend {
-
-}
+pub struct WebGPUBackend();
 
 impl GPUBackend for WebGPUBackend {
     type Instance = WebGPUInstance;
     type Adapter = WebGPUAdapter;
-    type Device;
+    type Device = WebGPUDevice;
     type Surface = WebGPUSurface;
     type Swapchain = WebGPUSwapchain;
     type CommandPool = WebGPUCommandPool;
