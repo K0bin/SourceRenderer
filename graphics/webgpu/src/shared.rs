@@ -35,7 +35,7 @@ impl WebGPUShared {
 
         let mut largest_index = 0;
         for binding in layout_key {
-            assert!(binding.index > largest_index);
+            assert!(binding.index > largest_index || largest_index == 0);
             largest_index = binding.index;
         }
 
