@@ -1,10 +1,10 @@
 use std::{sync::Arc, collections::HashMap};
 
-use imgui::{Context, internal::RawWrapper, FontSource, TextureId};
+//use imgui::{Context, internal::RawWrapper, FontSource, TextureId};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::graphics::*;
 
-pub struct UI<P: Platform> {
+/*pub struct UI<P: Platform> {
     imgui: Context,
     texture_map: HashMap<imgui::TextureId, Arc<TextureView<P::GPUBackend>>>,
     window_size: Vec2UI
@@ -132,7 +132,7 @@ impl<P: Platform> UI<P> {
             translate,
         };
     }
-}
+}*/
 
 pub struct UIDrawData<B: GPUBackend> {
     pub draw_lists: Vec<UICmdList<B>>,

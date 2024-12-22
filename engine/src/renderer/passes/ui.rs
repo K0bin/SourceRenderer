@@ -150,7 +150,7 @@ impl<P: Platform> UIPass<P> {
         }, RenderpassRecordingMode::Commands);
 
         for list in &draw.draw_lists {
-            command_buffer.set_index_buffer(BufferRef::Regular(&list.index_buffer), 0, if std::mem::size_of::<imgui::DrawIdx>() == 2 { IndexFormat::U16 } else { IndexFormat::U32 });
+            command_buffer.set_index_buffer(BufferRef::Regular(&list.index_buffer), 0, IndexFormat::U32); //if std::mem::size_of::<imgui::DrawIdx>() == 2 { IndexFormat::U16 } else { IndexFormat::U32 });
             command_buffer.set_vertex_buffer(0, BufferRef::Regular(&list.vertex_buffer), 0);
 
             for draw in &list.draws {
