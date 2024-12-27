@@ -35,7 +35,7 @@ use sourcerenderer_vvd::{
 
 use crate::asset::asset_manager::{
     AssetFile,
-    AssetLoaderResult,
+    DirectlyLoadedAsset,
     MeshRange,
 };
 use crate::asset::loaders::bsp::Vertex as BspVertex;
@@ -64,10 +64,10 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     fn load(
         &self,
         mut file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<DirectlyLoadedAsset, ()> {
         if file.path.contains("autocombine") {
             print!("Model: {} is auto combined", &file.path);
         }
@@ -376,7 +376,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
             AssetLoadPriority::Normal,
         );
 
-        Ok(AssetLoaderResult::None)
+        Ok(DirectlyLoadedAsset::None)
     }
 }
 

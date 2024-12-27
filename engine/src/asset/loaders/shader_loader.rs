@@ -1,19 +1,16 @@
-use std::io::Read;
 use std::sync::Arc;
+
+use bevy_tasks::futures_lite::{AsyncBufReadExt, AsyncRead, AsyncReadExt};
 
 use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::Platform;
 
 use crate::asset::asset_manager::{
     AssetFile,
-    AssetLoaderResult,
+    DirectlyLoadedAsset
 };
 use crate::asset::{
-    Asset,
-    AssetLoadPriority,
-    AssetLoader,
-    AssetLoaderProgress,
-    AssetManager,
+    Asset, AssetLoadPriority, AssetLoader, AssetLoaderAsync, AssetLoaderProgress, AssetManager
 };
 
 pub struct ShaderLoader {}
@@ -24,7 +21,7 @@ impl ShaderLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for ShaderLoader {
+impl<P: Platform> AssetLoaderAsync<P> for ShaderLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         if cfg!(target_arch = "wasm32") {
             file.path.ends_with(".glsl")
@@ -33,16 +30,16 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
         }
     }
 
-    fn load(
+    async fn load(
         &self,
         mut file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<DirectlyLoadedAsset, ()> {
         println!("Loading shader: {:?}", &file.path);
         let mut buffer = Vec::<u8>::new();
-        let res = file.data.read_to_end(&mut buffer);
+        let res = file.read_to_end(&mut buffer).await;
         if res.is_err() {
             println!("WTF {:?}", res);
         }
@@ -54,6 +51,6 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
             Some(progress),
             priority,
         );
-        Ok(AssetLoaderResult::None)
+        Ok(DirectlyLoadedAsset::None)
     }
 }

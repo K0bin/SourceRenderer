@@ -26,7 +26,7 @@ use sourcerenderer_core::{
 use crate::asset::loaders::{
     FSContainer, GltfLoader, ImageLoader, ShaderLoader
 };
-use crate::asset::AssetManager;
+use crate::asset::{AssetContainer, AssetLoader, AssetManager};
 use crate::graphics::*;
 use crate::input::Input;
 use crate::renderer::{Renderer, RendererPlugin};
@@ -72,12 +72,12 @@ impl Engine {
         let core_swapchain = platform.window().create_swapchain(true, gpu_device.handle(), surface);
         let gpu_swapchain = Swapchain::new(core_swapchain, &gpu_device);
 
-        let asset_manager = AssetManager::<P>::new(platform, &gpu_device);
-        asset_manager.add_container(Box::new(FSContainer::new(platform, &asset_manager)));
-        asset_manager.add_loader(Box::new(ShaderLoader::new()));
+        let asset_manager: Arc<AssetManager<P>> = AssetManager::<P>::new(&gpu_device);
+        asset_manager.add_container(FSContainer::new(platform, &asset_manager));
+        asset_manager.add_loader(ShaderLoader::new());
 
-        asset_manager.add_loader(Box::new(GltfLoader::new()));
-        asset_manager.add_loader(Box::new(ImageLoader::new()));
+        asset_manager.add_loader(GltfLoader::new());
+        asset_manager.add_loader(ImageLoader::new());
         let asset_manager_resource = AssetManagerResource(asset_manager);
 
         let gpu_resource = GPUDeviceResource::<P::GPUBackend>(gpu_device);

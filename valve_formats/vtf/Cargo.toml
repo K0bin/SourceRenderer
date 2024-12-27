@@ -7,3 +7,5 @@ edition = "2018"
 [dependencies]
 bitflags = "2.6.0"
 lazy_static = "1.4.0"
+futures-io = "0.3.31"
+io_util = { path = "../../io_util" }

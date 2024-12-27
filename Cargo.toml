@@ -12,6 +12,7 @@ members = [
     "platform/sdl",
     "platform/web/lib",
     "graphics/webgpu",
+    "io_util",
 ]
 resolver = "2"
 default-members = [

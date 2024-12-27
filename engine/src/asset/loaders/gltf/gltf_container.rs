@@ -1,26 +1,17 @@
-use std::io::{
-    BufReader,
-    Cursor,
-    Error as IOError,
-    ErrorKind,
-    Read,
-    Result as IOResult,
-    Seek,
-    SeekFrom,
-};
+use std::io::{Error as IOError, ErrorKind, Result as IOResult, SeekFrom};
 use std::path::Path;
 use std::sync::Mutex;
 use std::usize;
 
+use bevy_tasks::futures_lite::io::{BufReader, Cursor};
+use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt};
 use log::warn;
 use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::Platform;
 
-use crate::asset::asset_manager::{
-    AssetContainer,
-    AssetFile,
-};
+use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaders::gltf::glb;
+use crate::asset::AssetContainerAsync;
 
 pub struct GltfContainer<P: Platform> {
     json_offset: u64,
@@ -33,20 +24,20 @@ pub struct GltfContainer<P: Platform> {
 }
 
 impl<P: Platform> GltfContainer<P> {
-    pub fn load(path: &str, external: bool) -> IOResult<Self> {
+    pub async fn load(path: &str, external: bool) -> IOResult<Self> {
         let mut file = BufReader::new(if external {
-            P::IO::open_external_asset(path)?
+            P::IO::open_external_asset(path).await?
         } else {
-            P::IO::open_asset(path)?
+            P::IO::open_asset(path).await?
         });
-        let header = glb::GlbHeader::read(&mut file)?;
+        let header = glb::GlbHeader::read(&mut file).await?;
 
-        let json_chunk_header = glb::GlbChunkHeader::read(&mut file)?;
-        let json_offset = file.seek(SeekFrom::Current(0))?;
-        file.seek_relative(json_chunk_header.length as i64)?;
+        let json_chunk_header = glb::GlbChunkHeader::read(&mut file).await?;
+        let json_offset = file.seek(SeekFrom::Current(0)).await?;
+        file.seek(SeekFrom::Current(json_chunk_header.length as i64)).await?;
 
-        let data_chunk_header = glb::GlbChunkHeader::read(&mut file)?;
-        let data_offset = file.seek(SeekFrom::Current(0))?;
+        let data_chunk_header = glb::GlbChunkHeader::read(&mut file).await?;
+        let data_offset = file.seek(SeekFrom::Current(0)).await?;
 
         if data_offset + data_chunk_header.length as u64 != header.length as u64 {
             warn!("GLB file contains more than 3 chunks. This is currently unsupported.");
@@ -77,8 +68,8 @@ impl<P: Platform> GltfContainer<P> {
     }
 }
 
-impl<P: Platform> AssetContainer for GltfContainer<P> {
-    fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
+impl<P: Platform> AssetContainerAsync for GltfContainer<P> {
+    async fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
         let mut reader = self.reader.lock().unwrap();
         if path.starts_with(&self.scene_base_path) {
             let length =
@@ -87,8 +78,8 @@ impl<P: Platform> AssetContainer for GltfContainer<P> {
             unsafe {
                 buffer.set_len(length);
             }
-            reader.seek(SeekFrom::Start(self.json_offset)).ok()?;
-            reader.read_exact(&mut buffer).ok()?;
+            reader.seek(SeekFrom::Start(self.json_offset)).await.ok()?;
+            reader.read_exact(&mut buffer).await.ok()?;
             return Some(AssetFile {
                 path: path.to_string(),
                 data: Cursor::new(buffer.into_boxed_slice()),
@@ -116,8 +107,9 @@ impl<P: Platform> AssetContainer for GltfContainer<P> {
             }
             reader
                 .seek(SeekFrom::Start(self.data_offset + offset))
+                .await
                 .ok()?;
-            reader.read_exact(&mut buffer).ok()?;
+            reader.read_exact(&mut buffer).await.ok()?;
 
             return Some(AssetFile {
                 path: path.to_string(),

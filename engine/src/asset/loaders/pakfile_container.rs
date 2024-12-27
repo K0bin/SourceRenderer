@@ -1,6 +1,6 @@
-use std::io::Cursor;
 use std::sync::Mutex;
 
+use bevy_tasks::futures_lite::io::Cursor;
 use sourcerenderer_bsp::PakFile;
 
 use crate::asset::asset_manager::{

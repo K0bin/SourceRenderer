@@ -1,26 +1,21 @@
 use std::io::BufReader;
 use std::sync::Arc;
 
-use image::io::Reader as ImageReader;
 use image::{
+    ImageReader,
     GenericImageView,
     ImageFormat,
 };
+
+use bevy_tasks::futures_lite::AsyncReadExt;
+
 use sourcerenderer_core::Platform;
 
 use crate::graphics::*;
 
-use crate::asset::asset_manager::{
-    AssetFile,
-    AssetLoaderResult,
-};
+use crate::asset::asset_manager::{AssetFile, AssetLoaderAsync};
 use crate::asset::{
-    Asset,
-    AssetLoadPriority,
-    AssetLoader,
-    AssetLoaderProgress,
-    AssetManager,
-    Texture,
+    Asset, AssetLoadPriority, AssetLoaderProgress, AssetManager, DirectlyLoadedAsset, Texture
 };
 
 pub struct ImageLoader {}
@@ -31,21 +26,24 @@ impl ImageLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for ImageLoader {
+impl<P: Platform> AssetLoaderAsync<P> for ImageLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         file.path.ends_with(".png") || file.path.ends_with(".jpg") || file.path.ends_with(".jpeg")
     }
 
-    fn load(
+    async fn load(
         &self,
-        file: AssetFile,
-        manager: &AssetManager<P>,
+        mut file: AssetFile,
+        manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<DirectlyLoadedAsset, ()> {
         let is_png = file.path.ends_with(".png");
 
         let path = file.path.clone();
+        let mut data = Vec::<u8>::new();
+        let _bytes_read = file.read_to_end(&mut data).await.map_err(|_| ())?;
+
         let buf_read = BufReader::new(file);
         let image_reader = ImageReader::with_format(
             buf_read,
@@ -90,6 +88,6 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
             priority,
         );
 
-        Ok(AssetLoaderResult::None)
+        Ok(DirectlyLoadedAsset::None)
     }
 }

@@ -43,7 +43,7 @@ impl Platform for WebPlatform {
         callback()
     }
 
-    fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
+    fn start_thread<F>(&self, _name: &str, _callback: F) -> Self::ThreadHandle
       where
           F: FnOnce(),
           F: Send + 'static {

@@ -264,7 +264,7 @@ impl IO for StdIO {
     type File = std::fs::File;
     type FileWatcher = NotifyFileWatcher;
 
-    fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+    async fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
         std::fs::File::open(path)
     }
 

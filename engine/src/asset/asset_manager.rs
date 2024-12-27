@@ -2,14 +2,18 @@ use std::collections::{
     HashMap,
     VecDeque,
 };
+use std::future::Future;
 use std::hash::Hash;
 use std::io::{
-    Cursor,
     Read,
     Result as IOResult,
     Seek,
     SeekFrom,
 };
+use std::iter::FusedIterator;
+use std::marker::PhantomData;
+use std::pin::Pin;
+use std::process::Output;
 use std::sync::atomic::{
     AtomicBool,
     AtomicU32,
@@ -24,18 +28,25 @@ use std::sync::{
 };
 
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::query::Has;
+use bevy_ecs::schedule::Condition;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
+use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
+use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt, FutureExt};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
 use crossbeam_channel::{
     unbounded,
     Receiver,
     Sender,
 };
+use futures_io::{AsyncRead, AsyncSeek};
 use log::{
     error,
     trace,
     warn,
 };
+use smallvec::SmallVec;
 use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
@@ -44,12 +55,13 @@ use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
 
 use super::loaded_level::LoadedLevel;
+use super::loaders::{BspLevelLoader, CSGODirectoryContainer, FSContainer, GltfContainer, GltfLoader, ImageLoader, MDLModelLoader, PakFileContainer, ShaderLoader, VMTMaterialLoader, VPKContainer, VPKContainerLoader, VTFTextureLoader};
 
-struct AssetLoadRequest {
-    path: String,
-    asset_type: AssetType,
-    progress: Arc<AssetLoaderProgress>,
-    priority: AssetLoadPriority,
+pub struct AssetLoadRequest {
+    pub path: String,
+    pub asset_type: AssetType,
+    pub progress: Arc<AssetLoaderProgress>,
+    pub priority: AssetLoadPriority,
 }
 
 pub struct LoadedAsset {
@@ -141,23 +153,95 @@ pub struct AssetFile {
     pub data: Cursor<Box<[u8]>>,
 }
 
+impl AsyncRead for AssetFile {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut [u8],
+    ) -> std::task::Poll<IOResult<usize>> {
+        AsyncRead::poll_read(Pin::new(&mut self.as_mut().data), cx, buf)
+    }
+}
+
+impl AsyncSeek for AssetFile {
+    fn poll_seek(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        pos: SeekFrom,
+    ) -> std::task::Poll<IOResult<u64>> {
+        AsyncSeek::poll_seek(Pin::new(&mut self.as_mut().data), cx, pos)
+    }
+}
+
 impl Read for AssetFile {
     fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
-        self.data.read(buf)
+        let waker = waker_fn::waker_fn(|| {});
+        let mut context = std::task::Context::from_waker(&waker);
+        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.data);
+        as_sync.read(buf)
     }
 }
 
 impl Seek for AssetFile {
     fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
-        self.data.seek(pos)
+        let waker = waker_fn::waker_fn(|| {});
+        let mut context = std::task::Context::from_waker(&waker);
+        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.data);
+        as_sync.seek(pos)
     }
 }
 
-pub trait AssetContainer: Send + Sync {
+pub trait AssetContainerAsync: Send + Sync + 'static {
+    async fn contains(&self, path: &str) -> bool {
+        self.load(path).await.is_some()
+    }
+    async fn load(&self, path: &str) -> Option<AssetFile>;
+}
+
+pub trait ErasedAssetContainerAsync: Send + Sync {
+    fn contains<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + 'a>>;
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + 'a>>;
+}
+
+impl<T> ErasedAssetContainerAsync for T
+    where T: AssetContainerAsync {
+    fn contains<'a> (&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + 'a>> {
+        Box::pin(AssetContainerAsync::contains(self, path))
+    }
+
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + 'a>> {
+        Box::pin(AssetContainerAsync::load(self, path))
+    }
+}
+
+pub trait AssetContainer: Send + Sync + 'static {
     fn contains(&self, path: &str) -> bool {
         self.load(path).is_some()
     }
     fn load(&self, path: &str) -> Option<AssetFile>;
+}
+
+struct SyncAssetContainerWrapper<T: AssetContainer + 'static>(Arc<T>);
+
+#[cfg(feature = "threading")]
+impl<T: AssetContainer + 'static> AssetContainerAsync for SyncAssetContainerWrapper<T> {
+     fn contains(&self, path: &str) -> impl Future<Output = bool> {
+        let c_inner = self.0.clone();
+        let c_path = path.to_string();
+        let task_pool = IoTaskPool::get();
+        task_pool.spawn(async move {
+            c_inner.contains(&c_path)
+        }).await
+    }
+
+    async fn load(&self, path: &str) -> Option<AssetFile> {
+        let c_inner = self.0.clone();
+        let c_path = path.to_string();
+        let task_pool = IoTaskPool::get();
+        task_pool.spawn(async move {
+            c_inner.load(&c_path)
+        }).await
+    }
 }
 
 pub struct AssetLoaderProgress {
@@ -171,9 +255,16 @@ impl AssetLoaderProgress {
     }
 }
 
-pub enum AssetLoaderResult {
+pub enum DirectlyLoadedAsset {
     None,
     Level(LoadedLevel),
+}
+
+pub struct AssetLoaderAsyncResult {
+    pub file_requests: SmallVec<[String; 1]>,
+    pub requests: SmallVec<[AssetLoadRequest; 4]>,
+    pub primary_asset: DirectlyLoadedAsset,
+    pub loaded_assets: SmallVec<[LoadedAsset; 4]>
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -183,15 +274,83 @@ pub enum AssetLoadPriority {
     Low,
 }
 
-pub trait AssetLoader<P: Platform>: Send + Sync {
+pub trait AssetLoaderAsync<P: Platform>: Send + Sync + 'static {
+    fn matches(&self, file: &mut AssetFile) -> bool;
+    async fn load(
+        &self,
+        file: AssetFile,
+        manager: &Arc<AssetManager<P>>,
+        priority: AssetLoadPriority,
+        progress: &Arc<AssetLoaderProgress>,
+    ) -> Result<DirectlyLoadedAsset, ()>;
+}
+
+pub trait ErasedAssetLoaderAsync<P: Platform>: Send + Sync {
+    fn matches(&self, file: &mut AssetFile) -> bool;
+    fn load<'a>(
+        &'a self,
+        file: AssetFile,
+        manager: &'a Arc<AssetManager<P>>,
+        priority: AssetLoadPriority,
+        progress: &'a Arc<AssetLoaderProgress>,
+    ) -> Pin<Box<dyn Future<Output = Result<DirectlyLoadedAsset, ()>> + 'a>>;
+}
+
+impl<T, P: Platform> ErasedAssetLoaderAsync<P> for T
+    where T: AssetLoaderAsync<P> {
+    fn matches(&self, file: &mut AssetFile) -> bool {
+        AssetLoaderAsync::<P>::matches(self, file)
+    }
+
+    fn load<'a>(
+        &'a self,
+        file: AssetFile,
+        manager: &'a Arc<AssetManager<P>>,
+        priority: AssetLoadPriority,
+        progress: &'a Arc<AssetLoaderProgress>,
+    ) -> Pin<Box<dyn Future<Output = Result<DirectlyLoadedAsset, ()>> + 'a>> {
+        Box::pin(AssetLoaderAsync::<P>::load(self, file, manager, priority, progress))
+    }
+}
+
+pub trait AssetLoader<P: Platform>: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
     fn load(
         &self,
         file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()>;
+    ) -> Result<DirectlyLoadedAsset, ()>;
+}
+
+struct SyncAssetLoaderWrapper<P: Platform, T: AssetLoader<P> + 'static>(Arc<T>, PhantomData<P>);
+
+unsafe impl<P: Platform, T: AssetLoader<P> + 'static> Send for SyncAssetLoaderWrapper<P, T> {}
+unsafe impl<P: Platform, T: AssetLoader<P> + 'static> Sync for SyncAssetLoaderWrapper<P, T> {}
+
+#[cfg(feature = "threading")]
+impl<P: Platform, T: AssetLoader<P> + 'static> AssetLoaderAsync<P> for SyncAssetLoaderWrapper<P, T> {
+    fn matches(&self, file: &mut AssetFile) -> bool {
+        self.0.matches(file)
+    }
+
+    async fn load(
+        &self,
+        file: AssetFile,
+        manager: &Arc<AssetManager<P>>,
+        priority: AssetLoadPriority,
+        progress: &Arc<AssetLoaderProgress>,
+    ) -> Result<DirectlyLoadedAsset, ()> {
+        let c_inner = self.0.clone();
+        let c_manager = manager.clone();
+        let c_progress = progress.clone();
+        let task_pool = bevy_tasks::IoTaskPool::get();
+        task_pool.spawn(async move {
+            c_inner.load(file, &c_manager, priority, &c_progress)
+        }).await;
+        Ok(DirectlyLoadedAsset::None)
+    }
 }
 
 pub enum Asset {
@@ -205,56 +364,35 @@ pub enum Asset {
 
 pub struct AssetManager<P: Platform> {
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
-    inner: Mutex<AssetManagerInner>,
-    containers: RwLock<Vec<Box<dyn AssetContainer>>>,
-    loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
-    renderer_sender: Sender<LoadedAsset>,
     renderer_receiver: Receiver<LoadedAsset>,
-    cond_var: Arc<Condvar>,
-    is_running: AtomicBool,
+    containers: RwLock<Vec<Box<dyn ErasedAssetContainerAsync>>>,
+    loaders: RwLock<Vec<Box<dyn ErasedAssetLoaderAsync<P>>>>,
+    renderer_sender: Sender<LoadedAsset>,
+    assets: Mutex<AssetManagerAssets>,
 }
 
-struct AssetManagerInner {
-    load_queue: VecDeque<AssetLoadRequest>,
-    low_priority_load_queue: VecDeque<AssetLoadRequest>,
-    high_priority_load_queue: VecDeque<AssetLoadRequest>,
+struct AssetManagerAssets {
     requested_assets: HashMap<String, AssetType>,
     loaded_assets: HashMap<String, AssetType>,
 }
 
 impl<P: Platform> AssetManager<P> {
     pub fn new(
-        platform: &P,
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
     ) -> Arc<Self> {
         let (renderer_sender, renderer_receiver) = unbounded();
 
-        let cond_var = Arc::new(Condvar::new());
-
         let manager = Arc::new(Self {
             device: device.clone(),
-            inner: Mutex::new(AssetManagerInner {
-                load_queue: VecDeque::new(),
-                low_priority_load_queue: VecDeque::new(),
-                high_priority_load_queue: VecDeque::new(),
-                loaded_assets: HashMap::new(),
-                requested_assets: HashMap::new(),
-            }),
             loaders: RwLock::new(Vec::new()),
             containers: RwLock::new(Vec::new()),
             renderer_sender,
+            assets: Mutex::new(AssetManagerAssets {
+                requested_assets: HashMap::new(),
+                loaded_assets: HashMap::new(),
+            }),
             renderer_receiver,
-            cond_var,
-            is_running: AtomicBool::new(true),
         });
-
-        let thread_count = 4;
-        for _ in 0..thread_count {
-            let c_manager = Arc::downgrade(&manager);
-            platform.start_thread("AssetManagerThread", move || {
-                asset_manager_thread_fn(c_manager)
-            });
-        }
 
         manager
     }
@@ -264,7 +402,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub fn add_mesh(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         vertex_buffer_data: Box<[u8]>,
         vertex_count: u32,
@@ -287,17 +425,17 @@ impl<P: Platform> AssetManager<P> {
         self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
     }
 
-    pub fn add_material(&self, path: &str, albedo: &str, roughness: f32, metalness: f32) {
+    pub fn add_material(self: &Arc<Self>, path: &str, albedo: &str, roughness: f32, metalness: f32) {
         let material = Material::new_pbr(albedo, roughness, metalness);
         self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
     }
 
-    pub fn add_material_color(&self, path: &str, albedo: Vec4, roughness: f32, metalness: f32) {
+    pub fn add_material_color(self: &Arc<Self>, path: &str, albedo: Vec4, roughness: f32, metalness: f32) {
         let material = Material::new_pbr_color(albedo, roughness, metalness);
         self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
     }
 
-    pub fn add_model(&self, path: &str, mesh_path: &str, material_paths: &[&str]) {
+    pub fn add_model(self: &Arc<Self>, path: &str, mesh_path: &str, material_paths: &[&str]) {
         let model = Model {
             mesh_path: mesh_path.to_string(),
             material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect(),
@@ -305,7 +443,7 @@ impl<P: Platform> AssetManager<P> {
         self.add_asset(path, Asset::Model(model), AssetLoadPriority::Normal);
     }
 
-    pub fn add_texture(&self, path: &str, info: &TextureInfo, texture_data: Box<[u8]>) {
+    pub fn add_texture(self: &Arc<Self>, path: &str, info: &TextureInfo, texture_data: Box<[u8]>) {
         self.add_asset(
             path,
             Asset::Texture(Texture {
@@ -316,33 +454,53 @@ impl<P: Platform> AssetManager<P> {
         );
     }
 
-    pub fn add_container(&self, container: Box<dyn AssetContainer>) {
+    pub fn add_container(self: &Arc<Self>, container: impl AssetContainerAsync) {
         self.add_container_with_progress(container, None)
     }
 
+    #[cfg(feature = "threading")]
+    pub fn add_container_sync(self: &Arc<Self>, container: impl AssetContainer) {
+        self.add_container_with_progress(SyncAssetContainerWrapper(Arc::new(container)), None)
+    }
+
+    #[cfg(feature = "threading")]
+    pub fn add_container_with_progress_sync(
+        self: &Arc<Self>,
+        container: impl AssetContainer,
+        progress: Option<&Arc<AssetLoaderProgress>>,
+    ) {
+        self.add_container_with_progress(SyncAssetContainerWrapper(Arc::new(container)), progress)
+    }
+
     pub fn add_container_with_progress(
-        &self,
-        container: Box<dyn AssetContainer>,
+        self: &Arc<Self>,
+        container: impl AssetContainerAsync,
         progress: Option<&Arc<AssetLoaderProgress>>,
     ) {
         let mut containers = self.containers.write().unwrap();
-        containers.push(container);
+        containers.push(Box::new(container));
         if let Some(progress) = progress {
             progress.finished.fetch_add(1, Ordering::SeqCst);
         }
     }
 
-    pub fn add_loader(&self, loader: Box<dyn AssetLoader<P>>) {
+    pub fn add_loader(self: &Arc<Self>, loader: impl AssetLoaderAsync<P>) {
         let mut loaders = self.loaders.write().unwrap();
-        loaders.push(loader);
+        loaders.push(Box::new(loader));
     }
 
-    pub fn add_asset(&self, path: &str, asset: Asset, priority: AssetLoadPriority) {
+    #[cfg(feature = "threading")]
+    pub fn add_sync_loader(self: &Arc<Self>, loader: impl AssetLoader<P>) {
+        let mut loaders = self.loaders.write().unwrap();
+        loaders.push(Box::new(SyncAssetLoaderWrapper(Arc::new(loader), PhantomData)));
+    }
+
+    pub fn add_asset(self: &Arc<Self>, path: &str, asset: Asset, priority: AssetLoadPriority) {
         self.add_asset_with_progress(path, asset, None, priority)
     }
 
     pub fn add_asset_with_progress(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         asset: Asset,
         progress: Option<&Arc<AssetLoaderProgress>>,
@@ -358,9 +516,9 @@ impl<P: Platform> AssetManager<P> {
         };
 
         {
-            let mut inner = self.inner.lock().unwrap();
-            inner.loaded_assets.insert(path.to_string(), asset_type);
-            inner.requested_assets.remove(path);
+            let mut assets = self.assets.lock().unwrap();
+            assets.loaded_assets.insert(path.to_string(), asset_type);
+            assets.requested_assets.remove(path);
         }
 
         if let Some(progress) = progress {
@@ -417,11 +575,11 @@ impl<P: Platform> AssetManager<P> {
         }
     }
 
-    pub fn request_asset_update(&self, path: &str) {
+    pub fn request_asset_update(self: &Arc<Self>, path: &str) {
         log::info!("Reloading: {}", path);
         let asset_type = {
-            let inner = self.inner.lock().unwrap();
-            inner.loaded_assets.get(path).copied()
+            let assets = self.assets.lock().unwrap();
+            assets.loaded_assets.get(path).copied()
         };
         if let Some(asset_type) = asset_type {
             self.request_asset_internal(path, asset_type, AssetLoadPriority::Low, None, true);
@@ -431,7 +589,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub fn request_asset(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         asset_type: AssetType,
         priority: AssetLoadPriority,
@@ -440,7 +598,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub fn request_asset_with_progress(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         asset_type: AssetType,
         priority: AssetLoadPriority,
@@ -450,7 +608,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     fn request_asset_internal(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         asset_type: AssetType,
         priority: AssetLoadPriority,
@@ -469,35 +627,47 @@ impl<P: Platform> AssetManager<P> {
         progress.expected.fetch_add(1, Ordering::SeqCst);
 
         {
-            let mut inner = self.inner.lock().unwrap();
-            if (inner.loaded_assets.contains_key(path) && !refresh)
-                || inner.requested_assets.contains_key(path)
+            let mut assets = self.assets.lock().unwrap();
+            if (assets.loaded_assets.contains_key(path) && !refresh)
+                || assets.requested_assets.contains_key(path)
             {
                 progress.finished.fetch_add(1, Ordering::SeqCst);
                 return progress;
             }
-            inner.requested_assets.insert(path.to_owned(), asset_type);
-
-            let queue = match priority {
-                AssetLoadPriority::High => &mut inner.high_priority_load_queue,
-                AssetLoadPriority::Normal => &mut inner.load_queue,
-                AssetLoadPriority::Low => &mut inner.low_priority_load_queue,
-            };
-
-            queue.push_back(AssetLoadRequest {
-                asset_type,
-                path: path.to_owned(),
-                progress: progress.clone(),
-                priority,
-            });
+            assets.requested_assets.insert(path.to_owned(), asset_type);
         }
-        self.cond_var.notify_one();
 
+        let load_request = AssetLoadRequest {
+            asset_type,
+            path: path.to_owned(),
+            progress: progress.clone(),
+            priority,
+        };
+
+
+        let asset_mgr = self.clone();
+        IoTaskPool::get().spawn(async move {
+            let containers = asset_mgr.containers.read().unwrap();
+            let file_opt = asset_mgr.load_file(&load_request.path).await;
+            if file_opt.is_none() {
+                load_request.progress.finished.fetch_add(1, Ordering::SeqCst);
+                return;
+            }
+            std::mem::drop(containers);
+            let file = file_opt.unwrap();
+            AsyncComputeTaskPool::get().spawn(async move {
+                asset_mgr.load_asset(file, priority, &load_request.progress);
+            });
+        });
         progress
     }
 
-    pub fn load_level(&self, path: &str) -> Option<LoadedLevel> {
-        let file_opt = self.load_file(path);
+    pub fn load_level(self: &Arc<Self>, path: &str) -> Option<LoadedLevel> {
+        None
+
+        /*
+        let containers = self.containers.read().unwrap();
+        let file_opt = AssetManager::<P>::load_file(&containers, path);
         if file_opt.is_none() {
             error!("Could not load file: {:?}", path);
             return None;
@@ -505,7 +675,7 @@ impl<P: Platform> AssetManager<P> {
         let mut file = file_opt.unwrap();
 
         let loaders = self.loaders.read().unwrap();
-        let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
+        let loader_opt = AssetManager::find_loader(&mut file, &loaders);
         if loader_opt.is_none() {
             error!("Could not find loader for file: {:?}", path);
             return None;
@@ -516,25 +686,26 @@ impl<P: Platform> AssetManager<P> {
             finished: AtomicU32::new(0),
         });
         let loader = loader_opt.unwrap();
-        let assets_opt = loader.load(file, self, AssetLoadPriority::Normal, &progress);
-        if assets_opt.is_err() {
+        let result = loader.load(file, AssetLoadPriority::Normal, &progress);
+        if result.is_err() {
             error!("Could not load file: {:?}", path);
             return None;
         }
-        let result = assets_opt.unwrap();
+        let result = result.unwrap();
         let level = match result {
-            AssetLoaderResult::Level(level) => Some(level),
+            AssetLoaderAsyncResult::Level(level) => Some(level),
             _ => None,
         };
         progress.finished.fetch_add(1, Ordering::SeqCst);
         level
+        */
     }
 
-    pub fn load_file(&self, path: &str) -> Option<AssetFile> {
+    pub async fn load_file(self: &Arc<Self>, path: &str) -> Option<AssetFile> {
         let containers = self.containers.read().unwrap();
         let mut file_opt: Option<AssetFile> = None;
         for container in containers.iter().rev() {
-            let container_file_opt = container.load(path);
+            let container_file_opt = container.load(path).await;
             if container_file_opt.is_some() {
                 file_opt = container_file_opt;
                 break;
@@ -543,40 +714,44 @@ impl<P: Platform> AssetManager<P> {
         if file_opt.is_none() {
             error!("Could not find file: {:?}, working dir: {:?}", path, std::env::current_dir());
             {
-                let mut inner = self.inner.lock().unwrap();
-                inner.requested_assets.remove(path);
+                let mut assets = self.assets.lock().unwrap();
+                assets.requested_assets.remove(path);
             }
         }
         file_opt
     }
 
-    pub fn file_exists(&self, path: &str) -> bool {
+    pub async fn file_exists(&self, path: &str) -> bool {
         let containers = self.containers.read().unwrap();
         for container in containers.iter() {
-            if container.contains(path) {
+            if container.contains(path).await {
                 return true;
             }
         }
         false
     }
 
-    fn find_loader<'a>(
+    async fn find_loader<'a>(
         file: &mut AssetFile,
-        loaders: &'a [Box<dyn AssetLoader<P>>],
-    ) -> Option<&'a dyn AssetLoader<P>> {
-        let start = file
-            .seek(SeekFrom::Current(0))
+        loaders: &'a [Box<dyn ErasedAssetLoaderAsync<P>>],
+    ) -> Option<&'a dyn ErasedAssetLoaderAsync<P>> {
+        let start = AsyncSeekExt::seek(file, SeekFrom::Current(0)).await
             .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
-        let loader_opt = loaders.iter().find(|loader| {
+
+        let mut loader_opt = Option::<&Box<dyn ErasedAssetLoaderAsync<P>>>::None;
+        for loader in loaders {
             let loader_matches = loader.matches(file);
-            file.seek(SeekFrom::Start(start)).unwrap();
-            loader_matches
-        });
+            AsyncSeekExt::seek(file, SeekFrom::Start(start)).await.unwrap();
+            if loader_matches {
+                loader_opt = Some(loader);
+                break;
+            }
+        }
         loader_opt.map(|b| b.as_ref())
     }
 
-    fn load_asset(
-        &self,
+    async fn load_asset(
+        self: &Arc<Self>,
         mut file: AssetFile,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
@@ -584,24 +759,24 @@ impl<P: Platform> AssetManager<P> {
         let path = file.path.clone();
 
         let loaders = self.loaders.read().unwrap();
-        let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
+        let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref()).await;
         if loader_opt.is_none() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
             {
-                let mut inner = self.inner.lock().unwrap();
-                inner.requested_assets.remove(&path);
+                let mut assets = self.assets.lock().unwrap();
+                assets.requested_assets.remove(&path);
             }
             error!("Could not find loader for file: {:?}", path.as_str());
             return;
         }
         let loader = loader_opt.unwrap();
 
-        let assets_opt = loader.load(file, self, priority, progress);
+        let assets_opt = loader.load(file, self, priority, progress).await;
         if assets_opt.is_err() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
             {
-                let mut inner = self.inner.lock().unwrap();
-                inner.requested_assets.remove(&path);
+                let mut assets = self.assets.lock().unwrap();
+                assets.requested_assets.remove(&path);
             }
             error!("Could not load file: {:?}", path.as_str());
         }
@@ -615,85 +790,19 @@ impl<P: Platform> AssetManager<P> {
         self.renderer_receiver.try_recv().ok()
     }
 
-    pub fn notify_loaded(&self, path: &str) {
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(asset_type) = inner.requested_assets.remove(path) {
-            inner.loaded_assets.insert(path.to_string(), asset_type);
+    pub fn notify_loaded(self: &Arc<Self>, path: &str) {
+        let mut assets = self.assets.lock().unwrap();
+        if let Some(asset_type) = assets.requested_assets.remove(path) {
+            assets.loaded_assets.insert(path.to_string(), asset_type);
         }
     }
 
-    pub fn notify_unloaded(&self, path: &str) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.loaded_assets.remove(path);
+    pub fn notify_unloaded(self: &Arc<Self>, path: &str) {
+        let mut assets = self.assets.lock().unwrap();
+        assets.loaded_assets.remove(path);
     }
 
     pub fn stop(&self) {
         trace!("Stopping asset manager");
-        let was_running = self.is_running.swap(false, Ordering::SeqCst);
-        if !was_running {
-            return;
-        }
-        self.cond_var.notify_all();
     }
-}
-
-fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
-    trace!("Started asset manager thread");
-    let cond_var = {
-        let mgr_opt = asset_manager.upgrade();
-        if mgr_opt.is_none() {
-            return;
-        }
-        let mgr = mgr_opt.unwrap();
-        mgr.cond_var.clone()
-    };
-
-    'asset_loop: loop {
-        let mut break_loop = false;
-        P::thread_memory_management_pool(|| {
-            let mgr_opt = asset_manager.upgrade();
-            if mgr_opt.is_none() {
-                break_loop = true;
-            }
-            let mgr = mgr_opt.unwrap();
-            if !mgr.is_running.load(Ordering::SeqCst) {
-                break_loop = true;
-            }
-            let request = {
-                let mut inner = mgr.inner.lock().unwrap();
-                let mut request_opt = inner.high_priority_load_queue.pop_front();
-                request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
-                request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
-                while request_opt.is_none() {
-                    if !mgr.is_running.load(Ordering::SeqCst) {
-                        break_loop = true;
-                    }
-
-                    inner = cond_var.wait(inner).unwrap();
-                    request_opt = inner.high_priority_load_queue.pop_front();
-                    request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
-                    request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
-                }
-                match request_opt {
-                    Some(request) => request,
-                    None => return
-                }
-            };
-            println!("Loading: {:?}", &request.path);
-
-            {
-                let file_opt = mgr.load_file(&request.path);
-                if file_opt.is_none() {
-                    request.progress.finished.fetch_add(1, Ordering::SeqCst);
-                    return;
-                }
-                let file = file_opt.unwrap();
-                mgr.load_asset(file, request.priority, &request.progress);
-            }
-        });
-        if break_loop {
-            break;
-        }
-    }
-    trace!("Stopped asset manager thread");
 }

@@ -15,6 +15,10 @@ pub use asset_manager::{
     MeshRange,
     Model,
     Texture,
+    AssetContainer,
+    DirectlyLoadedAsset,
+    AssetContainerAsync,
+    AssetLoaderAsync
 };
 
 pub use loaded_level::LoadedLevel;

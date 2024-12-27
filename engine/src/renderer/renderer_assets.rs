@@ -672,7 +672,7 @@ impl<P: Platform> RendererAssets<P> {
 
     pub(super) fn receive_assets(
         &mut self,
-        asset_manager: &AssetManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         shader_manager: &mut ShaderManager<P>,
     ) {
         let mut retained_delayed_assets = Vec::<DelayedAsset<P::GPUBackend>>::new();

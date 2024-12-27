@@ -2,7 +2,7 @@ use crate::header::Header;
 use std::io::{Read, Seek, Result as IOResult, SeekFrom};
 use crate::thumbnail::Thumbnail;
 use std::collections::HashMap;
-use crate::read_util::{PrimitiveRead, RawDataRead};
+use io_util::{PrimitiveRead, RawDataRead};
 use crate::image_format::{is_image_format_supported, calculate_image_size};
 use crate::{MipMap, Face, Slice};
 use std::cmp::max;

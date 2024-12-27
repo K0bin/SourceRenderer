@@ -31,12 +31,12 @@ extern crate md5;
 extern crate rsa;
 extern crate crc;
 extern crate rand;
+extern crate io_util;
 
 mod utilities;
 mod package;
 mod archive_md5_section_entry;
 mod package_entry;
-mod read_util;
 
 pub use self::package::Package;
 pub use self::package::PackageError;

@@ -13,7 +13,7 @@ use crate::asset::asset_manager::{
     AssetFile,
     AssetLoadPriority,
     AssetLoaderProgress,
-    AssetLoaderResult,
+    DirectlyLoadedAsset,
     Texture,
 };
 use crate::asset::{
@@ -41,10 +41,10 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
     fn load(
         &self,
         file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<DirectlyLoadedAsset, ()> {
         let path = file.path.clone();
         let mut vtf_texture = VtfTexture::new(BufReader::new(file)).unwrap();
         let mut data = Vec::<Box<[u8]>>::new();
@@ -74,7 +74,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
 
         manager.add_asset_with_progress(&path, Asset::Texture(texture), Some(progress), priority);
 
-        Ok(AssetLoaderResult::None)
+        Ok(DirectlyLoadedAsset::None)
     }
 }
 

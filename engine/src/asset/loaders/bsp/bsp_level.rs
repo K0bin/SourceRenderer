@@ -33,12 +33,7 @@ use crate::graphics::*;
 
 use super::BspLumps;
 use crate::asset::asset_manager::{
-    AssetFile,
-    AssetLoadPriority,
-    AssetLoaderProgress,
-    AssetLoaderResult,
-    MeshRange,
-    Texture,
+    AssetFile, AssetLoadPriority, AssetLoaderProgress, DirectlyLoadedAsset, MeshRange, Texture
 };
 use crate::asset::loaders::bsp::lightmap_packer::LightmapPacker;
 use crate::asset::loaders::csgo_loader::CSGO_MAP_NAME_PATTERN;
@@ -408,10 +403,10 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     fn load(
         &self,
         asset_file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<DirectlyLoadedAsset, ()> {
         let path = asset_file.path.clone();
         let name = Path::new(&path).file_name().unwrap().to_str().unwrap();
         let buf_reader = BufReader::new(asset_file);
@@ -463,7 +458,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
             entities,
         };
 
-        let pakfile_container = Box::new(PakFileContainer::new(pakfile));
+        let pakfile_container = PakFileContainer::new(pakfile);
 
         let mut world = LoadedLevel::new(4096, 64);
         let mut materials_to_load = HashSet::<String>::new();
@@ -620,7 +615,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
             manager.request_asset(&material, AssetType::Material, AssetLoadPriority::Low);
         }
 
-        manager.add_container(pakfile_container);
+        manager.add_container_sync(pakfile_container);
 
         let lightmap_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -657,6 +652,6 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
             path: "lightmap".to_string(),
         });*/
 
-        Ok(AssetLoaderResult::Level(world))
+        Ok(DirectlyLoadedAsset::Level(world))
     }
 }

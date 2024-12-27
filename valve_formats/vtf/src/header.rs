@@ -1,7 +1,7 @@
 use crate::image_format::ImageFormat;
 use crate::texture_flags::TextureFlags;
 use std::io::{Read, Result as IOResult, Error as IOError, Seek, SeekFrom, ErrorKind};
-use crate::read_util::PrimitiveRead;
+use io_util::PrimitiveRead;
 
 const EXPECTED_SIGNATURE: u32 = 0x00465456;
 

@@ -38,20 +38,12 @@ use sourcerenderer_core::{
 
 use crate::asset::asset_manager::{
     AssetFile,
-    AssetLoaderResult,
+    DirectlyLoadedAsset,
 };
 use crate::asset::loaded_level::{LoadedEntityParent, LoadedLevel};
 use crate::asset::loaders::BspVertex as Vertex;
 use crate::asset::{
-    Asset,
-    AssetLoadPriority,
-    AssetLoader,
-    AssetLoaderProgress,
-    AssetManager,
-    AssetType,
-    Mesh,
-    MeshRange,
-    Model,
+    Asset, AssetLoadPriority, AssetLoader, AssetLoaderAsync, AssetLoaderProgress, AssetManager, AssetType, Mesh, MeshRange, Model
 };
 use crate::math::BoundingBox;
 use crate::renderer::{
@@ -70,7 +62,7 @@ impl GltfLoader {
     fn visit_node<P: Platform>(
         node: &Node,
         world: &mut LoadedLevel,
-        asset_mgr: &AssetManager<P>,
+        asset_mgr: &Arc<AssetManager<P>>,
         parent_entity: Option<usize>,
         gltf_file_name: &str,
         buffer_cache: &mut HashMap<String, Vec<u8>>,
@@ -300,7 +292,7 @@ impl GltfLoader {
 
     fn load_scene<P: Platform>(
         scene: &Scene,
-        asset_mgr: &AssetManager<P>,
+        asset_mgr: &Arc<AssetManager<P>>,
         gltf_file_name: &str,
     ) -> LoadedLevel {
         let mut world = LoadedLevel::new(4096, 64);
@@ -321,7 +313,7 @@ impl GltfLoader {
 
     fn load_primitive<P: Platform>(
         primitive: &Primitive,
-        asset_mgr: &AssetManager<P>,
+        asset_mgr: &Arc<AssetManager<P>>,
         vertices: &mut Vec<Vertex>,
         indices: &mut Vec<u32>,
         gltf_file_name: &str,
@@ -330,7 +322,7 @@ impl GltfLoader {
         fn load_buffer<'a, P: Platform>(
             gltf_file_name: &str,
             gltf_path: &str,
-            asset_mgr: &AssetManager<P>,
+            asset_mgr: &Arc<AssetManager<P>>,
             buffer_cache: &'a mut HashMap<String, Vec<u8>>,
             view: &View<'_>,
         ) -> Vec<u8> {
@@ -349,7 +341,7 @@ impl GltfLoader {
                 Source::Uri(uri) => {
                     let url = gltf_path.to_string() + uri;
                     let cached_data = buffer_cache.entry(url.clone()).or_insert_with(|| {
-                        let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
+                        let mut file = asset_mgr.load_file(&url).await.expect("Failed to load buffer");
                         let start = file.seek(SeekFrom::Current(0)).unwrap();
                         let mut file_data =
                             vec![0u8; (file.seek(SeekFrom::End(0)).unwrap() - start) as usize];
@@ -580,7 +572,7 @@ impl GltfLoader {
 
     fn load_material<P: Platform>(
         material: &Material,
-        asset_mgr: &AssetManager<P>,
+        asset_mgr: &Arc<AssetManager<P>>,
         gltf_file_name: &str,
     ) -> String {
         let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
@@ -665,20 +657,20 @@ impl GltfLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for GltfLoader {
+impl<P: Platform> AssetLoaderAsync<P> for GltfLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         (file.path.contains("gltf") || file.path.contains("glb"))
             && file.path.contains("/scene/")
             && Gltf::from_reader(file).is_ok()
     }
 
-    fn load(
+    async fn load(
         &self,
         file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         _priority: AssetLoadPriority,
         _progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<DirectlyLoadedAsset, ()> {
         let path = file.path.clone();
         let gltf = Gltf::from_reader(file).unwrap();
         const PUNCTUAL_LIGHT_EXTENSION: &'static str = "KHR_lights_punctual";
@@ -705,7 +697,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
                     == scene_name
                 {
                     let world = GltfLoader::load_scene(&scene, manager, gltf_name);
-                    return Ok(AssetLoaderResult::Level(world));
+                    return Ok(DirectlyLoadedAsset::Level(world));
                 }
             }
         }

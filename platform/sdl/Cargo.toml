@@ -20,6 +20,7 @@ crossbeam-channel = "0.5.12"
 log = "0.4.17"
 bevy_input = "0.14.2"
 bevy_ecs = "0.14.2"
+bevy_tasks = "0.14.2"
 sourcerenderer_game = { path = "../../game" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
