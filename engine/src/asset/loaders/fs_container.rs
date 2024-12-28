@@ -1,7 +1,3 @@
-use std::io::{
-    Cursor,
-    Read,
-};
 use std::path::{
     Path,
     PathBuf,
@@ -12,6 +8,7 @@ use std::sync::{
     Weak,
 };
 
+use bevy_tasks::futures_lite::io::Cursor;
 use bevy_tasks::futures_lite::AsyncReadExt;
 use crossbeam_channel::{
     unbounded,

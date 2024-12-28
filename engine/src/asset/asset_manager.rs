@@ -1,7 +1,4 @@
-use std::collections::{
-    HashMap,
-    VecDeque,
-};
+use std::collections::HashMap;
 use std::future::Future;
 use std::hash::Hash;
 use std::io::{
@@ -10,30 +7,20 @@ use std::io::{
     Seek,
     SeekFrom,
 };
-use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::process::Output;
 use std::sync::atomic::{
-    AtomicBool,
     AtomicU32,
     Ordering,
 };
 use std::sync::{
     Arc,
-    Condvar,
     Mutex,
     RwLock,
-    Weak,
 };
 
-use bevy_ecs::bundle::Bundle;
-use bevy_ecs::query::Has;
-use bevy_ecs::schedule::Condition;
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::World;
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
-use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt, FutureExt};
+use bevy_tasks::futures_lite::AsyncSeekExt;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
 use crossbeam_channel::{
     unbounded,
@@ -55,7 +42,6 @@ use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
 
 use super::loaded_level::LoadedLevel;
-use super::loaders::{BspLevelLoader, CSGODirectoryContainer, FSContainer, GltfContainer, GltfLoader, ImageLoader, MDLModelLoader, PakFileContainer, ShaderLoader, VMTMaterialLoader, VPKContainer, VPKContainerLoader, VTFTextureLoader};
 
 pub struct AssetLoadRequest {
     pub path: String,

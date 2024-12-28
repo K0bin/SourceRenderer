@@ -1,5 +1,5 @@
 use std::io::{Read, Result as IOResult, Seek, SeekFrom, Cursor, Error as IOError, ErrorKind};
-use crate::read_util::PrimitiveRead;
+use crate::io_util::PrimitiveRead;
 use crate::lump_data::game_lumps::StaticPropDict;
 
 pub struct GameLumps {

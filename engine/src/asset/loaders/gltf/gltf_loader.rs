@@ -1,10 +1,5 @@
 use std::collections::HashMap;
-use std::io::{
-    Cursor,
-    Read,
-    Seek,
-    SeekFrom,
-};
+use std::io::SeekFrom;
 use std::sync::Arc;
 use std::{
     slice,
@@ -12,6 +7,8 @@ use std::{
 };
 
 use bevy_math::{EulerRot, Quat};
+use bevy_tasks::futures_lite::io::Cursor;
+use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt};
 use bevy_transform::components::Transform;
 use gltf::buffer::{
     Source,
@@ -41,9 +38,8 @@ use crate::asset::asset_manager::{
     DirectlyLoadedAsset,
 };
 use crate::asset::loaded_level::{LoadedEntityParent, LoadedLevel};
-use crate::asset::loaders::BspVertex as Vertex;
 use crate::asset::{
-    Asset, AssetLoadPriority, AssetLoader, AssetLoaderAsync, AssetLoaderProgress, AssetManager, AssetType, Mesh, MeshRange, Model
+    Asset, AssetLoadPriority, AssetLoader, AssetLoaderAsync, AssetLoaderProgress, AssetManager, AssetType, Mesh, MeshRange, Model, Vertex
 };
 use crate::math::BoundingBox;
 use crate::renderer::{
@@ -311,15 +307,15 @@ impl GltfLoader {
         world
     }
 
-    fn load_primitive<P: Platform>(
-        primitive: &Primitive,
-        asset_mgr: &Arc<AssetManager<P>>,
-        vertices: &mut Vec<Vertex>,
-        indices: &mut Vec<u32>,
-        gltf_file_name: &str,
-        buffer_cache: &mut HashMap<String, Vec<u8>>,
+    async fn load_primitive<'a, P: Platform>(
+        primitive: &'a Primitive<'a>,
+        asset_mgr: &'a Arc<AssetManager<P>>,
+        vertices: &'a mut Vec<Vertex>,
+        indices: &'a mut Vec<u32>,
+        gltf_file_name: &'a str,
+        buffer_cache: &'a mut HashMap<String, Vec<u8>>,
     ) {
-        fn load_buffer<'a, P: Platform>(
+        async fn load_buffer<'a, P: Platform>(
             gltf_file_name: &str,
             gltf_path: &str,
             asset_mgr: &Arc<AssetManager<P>>,
@@ -335,23 +331,25 @@ impl GltfLoader {
                         view.offset(),
                         view.length()
                     );
-                    let mut file = asset_mgr.load_file(&url).expect("Failed to load buffer");
-                    let _ = file.read_exact(&mut data).unwrap();
+                    let mut file = asset_mgr.load_file(&url).await.expect("Failed to load buffer");
+                    let _ = file.read_exact(&mut data).await.unwrap();
                 }
                 Source::Uri(uri) => {
                     let url = gltf_path.to_string() + uri;
-                    let cached_data = buffer_cache.entry(url.clone()).or_insert_with(|| {
+                    if let Some(cached_data) = buffer_cache.get_mut(&url) {
+                        data.copy_from_slice(
+                            &cached_data[view.offset()..(view.offset() + view.length())],
+                        );
+                    } else {
                         let mut file = asset_mgr.load_file(&url).await.expect("Failed to load buffer");
-                        let start = file.seek(SeekFrom::Current(0)).unwrap();
+                        let start = file.seek(SeekFrom::Current(0)).await.unwrap();
                         let mut file_data =
-                            vec![0u8; (file.seek(SeekFrom::End(0)).unwrap() - start) as usize];
-                        let _ = file.seek(SeekFrom::Start(start)).unwrap();
-                        let _ = file.read_exact(&mut file_data).unwrap();
-                        file_data
-                    });
-                    data.copy_from_slice(
-                        &cached_data[view.offset()..(view.offset() + view.length())],
-                    );
+                            vec![0u8; (file.seek(SeekFrom::End(0)).await.unwrap() - start) as usize];
+                        let _ = file.seek(SeekFrom::Start(start)).await.unwrap();
+                        let _ = file.read_exact(&mut file_data).await.unwrap();
+                        data.copy_from_slice(&file_data[view.offset()..(view.offset() + view.length())]);
+                        buffer_cache.insert(url.clone(), file_data);
+                    }
                 }
             };
             data
@@ -374,7 +372,7 @@ impl GltfLoader {
                 asset_mgr,
                 buffer_cache,
                 &positions_view,
-            );
+            ).await;
             let mut positions_buffer_cursor = Cursor::new(&positions_data[..]);
             let positions_stride = if let Some(stride) = positions_view.stride() {
                 stride
@@ -407,7 +405,7 @@ impl GltfLoader {
                     asset_mgr,
                     buffer_cache,
                     &normals_view,
-                );
+                ).await;
                 Cursor::new(&normals_data[..])
             };
             let normals_stride = if let Some(stride) = normals_view.stride() {
@@ -441,7 +439,7 @@ impl GltfLoader {
                     asset_mgr,
                     buffer_cache,
                     &texcoords_view,
-                );
+                ).await;
                 Cursor::new(&texcoords_data[..])
             };
             let texcoords_stride = if let Some(stride) = texcoords_view.stride() {
@@ -452,12 +450,15 @@ impl GltfLoader {
 
             positions_buffer_cursor
                 .seek(SeekFrom::Start(positions.offset() as u64))
+                .await
                 .unwrap();
             normals_buffer_cursor
                 .seek(SeekFrom::Start(normals.offset() as u64))
+                .await
                 .unwrap();
             texcoords_buffer_cursor
                 .seek(SeekFrom::Start(texcoords.offset() as u64))
+                .await
                 .unwrap();
 
             assert_eq!(positions.count(), normals.count());
@@ -466,10 +467,12 @@ impl GltfLoader {
                     .seek(SeekFrom::Start(
                         positions.offset() as u64 + (i * positions_stride) as u64,
                     ))
+                    .await
                     .unwrap();
                 let mut position_data = vec![0; positions.size()];
                 positions_buffer_cursor
                     .read_exact(&mut position_data)
+                    .await
                     .unwrap();
                 assert_eq!(position_data.len(), std::mem::size_of::<Vec3>());
 
@@ -477,19 +480,24 @@ impl GltfLoader {
                     .seek(SeekFrom::Start(
                         normals.offset() as u64 + (i * normals_stride) as u64,
                     ))
+                    .await
                     .unwrap();
                 let mut normal_data = vec![0; normals.size()];
-                normals_buffer_cursor.read_exact(&mut normal_data).unwrap();
+                normals_buffer_cursor.read_exact(&mut normal_data)
+                    .await
+                    .unwrap();
                 assert_eq!(normal_data.len(), std::mem::size_of::<Vec3>());
 
                 texcoords_buffer_cursor
                     .seek(SeekFrom::Start(
                         texcoords.offset() as u64 + (i * texcoords_stride) as u64,
                     ))
+                    .await
                     .unwrap();
                 let mut texcoords_data = vec![0; texcoords.size()];
                 texcoords_buffer_cursor
                     .read_exact(&mut texcoords_data)
+                    .await
                     .unwrap();
                 assert_eq!(texcoords_data.len(), std::mem::size_of::<Vec2>());
 
@@ -504,23 +512,21 @@ impl GltfLoader {
                     vertices.push(Vertex {
                         position,
                         normal,
-                        uv: *texcoord_vec_ptr,
-                        lightmap_uv: Vec2::new(0f32, 0f32),
-                        alpha: 1.0f32,
-                        ..Default::default()
+                        tex_coord: *texcoord_vec_ptr,
+                        color: [255, 255, 255, 255],
                     });
                 }
 
                 debug_assert!(
-                    positions_buffer_cursor.seek(SeekFrom::Current(0)).unwrap()
+                    positions_buffer_cursor.seek(SeekFrom::Current(0)).await.unwrap()
                         <= (positions_view.offset() + positions_view.length()) as u64
                 );
                 debug_assert!(
-                    normals_buffer_cursor.seek(SeekFrom::Current(0)).unwrap()
+                    normals_buffer_cursor.seek(SeekFrom::Current(0)).await.unwrap()
                         <= (normals_view.offset() + normals_view.length()) as u64
                 );
                 debug_assert!(
-                    texcoords_buffer_cursor.seek(SeekFrom::Current(0)).unwrap()
+                    texcoords_buffer_cursor.seek(SeekFrom::Current(0)).await.unwrap()
                         <= (texcoords_view.offset() + texcoords_view.length()) as u64
                 );
             }
@@ -530,17 +536,18 @@ impl GltfLoader {
         if let Some(indices_accessor) = indices_accessor {
             assert!(indices_accessor.sparse().is_none());
             let view = indices_accessor.view().unwrap();
-            let data = load_buffer(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &view);
+            let data = load_buffer(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &view).await;
             let mut buffer_cursor = Cursor::new(&data);
             buffer_cursor
                 .seek(SeekFrom::Start(indices_accessor.offset() as u64))
+                .await
                 .unwrap();
 
             for _ in 0..indices_accessor.count() {
-                let start = buffer_cursor.seek(SeekFrom::Current(0)).unwrap();
+                let start = buffer_cursor.seek(SeekFrom::Current(0)).await.unwrap();
 
                 let mut attr_data = vec![0; indices_accessor.size()];
-                buffer_cursor.read_exact(&mut attr_data).unwrap();
+                buffer_cursor.read_exact(&mut attr_data).await.unwrap();
 
                 assert!(indices_accessor.size() <= std::mem::size_of::<u32>());
 
@@ -560,11 +567,12 @@ impl GltfLoader {
                     assert!(stride > indices_accessor.size());
                     buffer_cursor
                         .seek(SeekFrom::Start(start + stride as u64))
+                        .await
                         .unwrap();
                 }
             }
             assert!(
-                buffer_cursor.seek(SeekFrom::Current(0)).unwrap()
+                buffer_cursor.seek(SeekFrom::Current(0)).await.unwrap()
                     <= (view.offset() + view.length()) as u64
             );
         }

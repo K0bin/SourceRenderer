@@ -8,3 +8,4 @@ edition = "2018"
 bitflags = "2.6.0"
 bevy_math = "0.14.2"
 futures-io = "0.3.31"
+io_util = { path = "../../io_util" }
