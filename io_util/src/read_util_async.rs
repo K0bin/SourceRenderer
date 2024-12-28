@@ -1,4 +1,4 @@
-use std::io::Result as IOResult;
+use std::{future::Future, io::Result as IOResult};
 
 use futures_lite::{AsyncRead, AsyncReadExt};
 
