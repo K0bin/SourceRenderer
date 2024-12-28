@@ -912,6 +912,10 @@ fn compile_msl_to_air(
 ) -> Result<Box<[u8]>, ()> {
     // xcrun -sdk macosx metal -o Shadow.ir  -c Shadow.metal
 
+    if cfg!(not(any(target_os = "macos", target_os = "ios"))) {
+        return Err(());
+    }
+
     let mut temp_file_name = shader_name.to_string();
     temp_file_name.push_str(".temp.metal");
 
