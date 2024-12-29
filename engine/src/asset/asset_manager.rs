@@ -265,7 +265,7 @@ impl<P: Platform> RendererAssets<P> {
         }
     }
 
-    fn get_handle(&mut self, path: &str, asset_type: AssetType) -> Option<AssetHandle> {
+    pub(crate) fn get_handle(&self, path: &str, asset_type: AssetType) -> Option<AssetHandle> {
         match asset {
             AssetWithHandle::Texture(handle, asset) => self.textures.get_handle(path).map(|handle| AssetHandle::Texture(handle)),
             AssetWithHandle::Material(handle, asset) => self.materials.get_handle(path).map(|handle| AssetHandle::Material(handle)),
@@ -276,7 +276,18 @@ impl<P: Platform> RendererAssets<P> {
         }
     }
 
-    fn contains(&self, path: &str, asset_type: AssetType) -> bool {
+    pub(crate) fn get(&self, handle: AssetHandle) -> Option<&Asset<P>> {
+        match asset {
+            AssetWithHandle::Texture(handle, asset) => self.textures.get_value(handle).map(|asset| Asset::<P>::Texture(asset)),
+            AssetWithHandle::Material(handle, asset) => self.materials.get_value(handle).map(|asset| Asset::<P>::Material(asset)),
+            AssetWithHandle::Model(handle, asset) => self.models.get_value(handle).map(|asset| Asset::<P>::Model(asset)),
+            AssetWithHandle::Mesh(handle, asset) => self.meshes.get_value(handle).map(|hasset| Asset::<P>::Mesh(asset)),
+            AssetWithHandle::Shader(handle, asset) => self.shaders.get_value(handle).map(|asset| Asset::<P>::Shader(asset)),
+            _ => panic!("Unsupported asset type"),
+        }
+    }
+
+    pub(crate) fn contains(&self, path: &str, asset_type: AssetType) -> bool {
         match asset_type {
             AssetType::Texture => self.textures.contains_path(path),
             AssetType::Model => self.models.contains_path(path),
@@ -287,7 +298,7 @@ impl<P: Platform> RendererAssets<P> {
         }
     }
 
-    fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.textures.is_empty()
             && self.materials.is_empty()
             && self.models.is_empty()
