@@ -25,7 +25,7 @@ pub trait ThreadHandle : Send + Sync {
   fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>>;
 }
 
-pub trait Platform: 'static + Sized {
+pub trait Platform: 'static + Sized + Send + Sync {
   type GPUBackend: GPUBackend;
   type Window: Window<Self>;
   type IO: io::IO;

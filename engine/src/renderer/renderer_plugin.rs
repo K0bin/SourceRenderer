@@ -27,6 +27,7 @@ use bevy_ecs::system::{
 };
 use bevy_ecs::world::{Ref, World};
 use bevy_log::trace;
+use bevy_tasks::ComputeTaskPool;
 use bevy_transform::components::GlobalTransform;
 use sourcerenderer_core::{
     Platform,

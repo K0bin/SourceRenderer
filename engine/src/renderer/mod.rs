@@ -12,9 +12,10 @@ mod renderer_culling;
 
 mod asset_buffer;
 pub(crate) mod passes;
-mod renderer_assets;
+mod asset_integrator;
 mod shader_manager;
 mod vertex;
+pub mod asset;
 
 pub use self::command::RendererCommand;
 pub use self::drawable::DrawablePart;

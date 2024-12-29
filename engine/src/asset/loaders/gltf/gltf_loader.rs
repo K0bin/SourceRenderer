@@ -39,7 +39,7 @@ use crate::asset::asset_manager::{
 };
 use crate::asset::loaded_level::{LoadedEntityParent, LoadedLevel};
 use crate::asset::{
-    Asset, AssetLoadPriority, AssetLoader, AssetLoaderAsync, AssetLoaderProgress, AssetManager, AssetType, Mesh, MeshRange, Model, Vertex
+    Asset, AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex
 };
 use crate::math::BoundingBox;
 use crate::renderer::{
@@ -200,9 +200,9 @@ impl GltfLoader {
                 bounding_box.max.x = -bb_min_x;
             }
 
-            asset_mgr.add_asset(
+            asset_mgr.add_asset_data(
                 &mesh_path,
-                Asset::Mesh(Mesh {
+                AssetData::Mesh(MeshData {
                     indices: (indices_count > 0).then(|| indices_data),
                     vertices: vertices_data,
                     bounding_box: bounding_box,
@@ -215,9 +215,9 @@ impl GltfLoader {
             let mut model_path = gltf_file_name.to_string();
             model_path += "/model/";
             model_path += &model_name;
-            asset_mgr.add_asset(
+            asset_mgr.add_asset_data(
                 &model_path,
-                Asset::Model(Model {
+                AssetData::Model(ModelData {
                     mesh_path: mesh_path.clone(),
                     material_paths: materials,
                 }),
@@ -665,7 +665,7 @@ impl GltfLoader {
     }
 }
 
-impl<P: Platform> AssetLoaderAsync<P> for GltfLoader {
+impl<P: Platform> AssetLoader<P> for GltfLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         (file.path.contains("gltf") || file.path.contains("glb"))
             && file.path.contains("/scene/")

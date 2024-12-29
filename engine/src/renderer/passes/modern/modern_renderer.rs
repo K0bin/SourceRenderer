@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
+use crate::asset::{AssetManager, SimpleAssetLoadRequest};
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
 use sourcerenderer_core::{
     Matrix4,
@@ -354,6 +355,10 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
     ) {
         // TODO: resize render targets
     }
+
+    fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>) {}
+
+    fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>) {}
 
     #[profiling::function]
     fn render(

@@ -27,6 +27,7 @@ use widestring::{
     WideCString,
 };
 
+use crate::asset::{AssetManager, AssetType, SimpleAssetLoadRequest};
 use crate::renderer::passes::taa::halton_point;
 use crate::renderer::render_path::{FrameInfo, RenderPassParameters};
 use crate::renderer::renderer_resources::{
@@ -38,7 +39,8 @@ use crate::graphics::*;
 pub struct Fsr2Pass<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
     context: FfxFsr2Context,
-    scratch_context: *mut AtomicRefCell<ScratchContext<P::GPUBackend>>
+    scratch_context: *mut AtomicRefCell<ScratchContext<P::GPUBackend>>,
+    shaders: HashMap<>
 }
 
 unsafe impl<P: Platform> Send for Fsr2Pass<P> {}
@@ -312,6 +314,41 @@ impl<P: Platform> Fsr2Pass<P> {
             );
             jitter
         }
+    }
+
+    pub(crate) fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>) {
+        asset_load_requests.push(SimpleAssetLoadRequest {
+            path: "ffx_fsr2_depth_clip_pass".to_string(),
+            asset_type: AssetType::Shader
+        });
+        asset_load_requests.push(SimpleAssetLoadRequest {
+            path: "ffx_fsr2_reconstruct_previous_depth_pass".to_string(),
+            asset_type: AssetType::Shader
+        });
+        asset_load_requests.push(SimpleAssetLoadRequest {
+            path: "ffx_fsr2_lock_pass".to_string(),
+            asset_type: AssetType::Shader
+        });
+        asset_load_requests.push(SimpleAssetLoadRequest {
+            path: "ffx_fsr2_accumulate_pass".to_string(),
+            asset_type: AssetType::Shader
+        });
+        asset_load_requests.push(SimpleAssetLoadRequest {
+            path: "ffx_fsr2_rcas_pass".to_string(),
+            asset_type: AssetType::Shader
+        });
+        asset_load_requests.push(SimpleAssetLoadRequest {
+            path: "ffx_fsr2_compute_luminance_pyramid_pass".to_string(),
+            asset_type: AssetType::Shader
+        });
+        asset_load_requests.push(SimpleAssetLoadRequest {
+            path: "ffx_fsr2_autogen_reactive_pass".to_string(),
+            asset_type: AssetType::Shader
+        });
+    }
+
+    pub(crate) fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>) {
+
     }
 }
 
@@ -1073,7 +1110,7 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
 
     println!("shader: {:?}", path);
 
-    let shader = {
+    let shader: <<P as Platform>::GPUBackend as GPUBackend>::Shader = {
         let mut file = <P::IO as IO>::open_asset(path).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         file.read_to_end(&mut bytes).unwrap();

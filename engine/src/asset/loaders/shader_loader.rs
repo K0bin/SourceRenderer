@@ -10,7 +10,7 @@ use crate::asset::asset_manager::{
     DirectlyLoadedAsset
 };
 use crate::asset::{
-    Asset, AssetLoadPriority, AssetLoader, AssetLoaderAsync, AssetLoaderProgress, AssetManager
+    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager
 };
 
 pub struct ShaderLoader {}
@@ -21,7 +21,7 @@ impl ShaderLoader {
     }
 }
 
-impl<P: Platform> AssetLoaderAsync<P> for ShaderLoader {
+impl<P: Platform> AssetLoader<P> for ShaderLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         if cfg!(target_arch = "wasm32") {
             file.path.ends_with(".glsl")
@@ -45,9 +45,9 @@ impl<P: Platform> AssetLoaderAsync<P> for ShaderLoader {
         }
         res.map_err(|_e| ())?;
         let shader: PackedShader = serde_json::from_slice(&buffer).map_err(|_e| ())?;
-        manager.add_asset_with_progress(
+        manager.add_asset_data_with_progress(
             &file.path,
-            Asset::Shader(shader),
+            AssetData::Shader(shader),
             Some(progress),
             priority,
         );

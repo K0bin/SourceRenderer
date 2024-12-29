@@ -4,16 +4,12 @@ use std::time::Duration;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::Platform;
 
-use super::drawable::View;
-use super::renderer_assets::{
-    RendererAssets,
-    RendererTexture,
-};
+use super::asset::RendererTexture;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
+use crate::asset::{AssetManager, SimpleAssetLoadRequest};
 use crate::graphics::{BufferRef, GraphicsContext, TextureView};
-use crate::input::Input;
 use crate::ui::UIDrawData;
 use crate::graphics::*;
 
@@ -42,7 +38,7 @@ pub struct RenderPassParameters<'a, P: Platform> {
     pub shader_manager: &'a ShaderManager<P>,
     pub resources: &'a mut RendererResources<P::GPUBackend>,
     pub zero_textures: &'a ZeroTextures<'a, P::GPUBackend>,
-    pub assets: &'a RendererAssets<P>
+    pub assets: &'a AssetManager<P>
 }
 
 pub(super) trait RenderPath<P: Platform> : Send {
@@ -50,6 +46,8 @@ pub(super) trait RenderPath<P: Platform> : Send {
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain<P::GPUBackend>);
     fn set_ui_data(&mut self, data: UIDrawData<P::GPUBackend>);
+    fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>);
+    fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>);
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
@@ -58,6 +56,6 @@ pub(super) trait RenderPath<P: Platform> : Send {
         zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
+        assets: &AssetManager<P>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError>;
 }

@@ -128,6 +128,10 @@ impl<P: Platform> Renderer<P> {
         (renderer, renderer_sender)
     }
 
+    pub async fn try_init(&mut self) {
+        
+    }
+
     pub(crate) fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {
         self.device.instance()
     }

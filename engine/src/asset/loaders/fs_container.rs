@@ -21,7 +21,7 @@ use sourcerenderer_core::platform::{
 use sourcerenderer_core::Platform;
 
 use crate::asset::asset_manager::{
-    AssetContainerAsync,
+    AssetContainer,
     AssetFile,
 };
 use crate::asset::AssetManager;
@@ -32,7 +32,7 @@ pub struct FSContainer<P: Platform> {
     watcher: Option<Mutex<<P::IO as IO>::FileWatcher>>,
 }
 
-impl<P: Platform> AssetContainerAsync for FSContainer<P> {
+impl<P: Platform> AssetContainer for FSContainer<P> {
     // TODO: write path URI struct to handle getting the path without metadata more elegantly
     // TODO: replace / with platform specific separator
 

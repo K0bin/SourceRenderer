@@ -11,7 +11,7 @@ use sourcerenderer_core::Platform;
 
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaders::gltf::glb;
-use crate::asset::AssetContainerAsync;
+use crate::asset::AssetContainer;
 
 pub struct GltfContainer<P: Platform> {
     json_offset: u64,
@@ -68,7 +68,7 @@ impl<P: Platform> GltfContainer<P> {
     }
 }
 
-impl<P: Platform> AssetContainerAsync for GltfContainer<P> {
+impl<P: Platform> AssetContainer for GltfContainer<P> {
     async fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
         let mut reader = self.reader.lock().unwrap();
         if path.starts_with(&self.scene_base_path) {

@@ -13,9 +13,9 @@ use sourcerenderer_core::Platform;
 
 use crate::graphics::*;
 
-use crate::asset::asset_manager::{AssetFile, AssetLoaderAsync};
+use crate::asset::asset_manager::{AssetFile, AssetLoader};
 use crate::asset::{
-    Asset, AssetLoadPriority, AssetLoaderProgress, AssetManager, DirectlyLoadedAsset, Texture
+    AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, DirectlyLoadedAsset, TextureData
 };
 
 pub struct ImageLoader {}
@@ -26,7 +26,7 @@ impl ImageLoader {
     }
 }
 
-impl<P: Platform> AssetLoaderAsync<P> for ImageLoader {
+impl<P: Platform> AssetLoader<P> for ImageLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         file.path.ends_with(".png") || file.path.ends_with(".jpg") || file.path.ends_with(".jpeg")
     }
@@ -67,9 +67,9 @@ impl<P: Platform> AssetLoaderAsync<P> for ImageLoader {
             ),
         };
 
-        manager.add_asset_with_progress(
+        manager.add_asset_data_with_progress(
             &path,
-            Asset::Texture(Texture {
+            AssetData::Texture(TextureData {
                 info: TextureInfo {
                     dimension: TextureDimension::Dim2D,
                     format,
