@@ -326,6 +326,17 @@ impl<P: Platform> AssetManager<P> {
         }
     }
 
+    pub fn reserve_handle_without_path(
+        self: &Arc<Self>,
+        asset_type: AssetType
+    ) -> AssetHandle {
+        if asset_type.is_renderer_asset() {
+            return self.renderer.reserve_handle_without_path(asset_type);
+        } else {
+            unimplemented!()
+        }
+    }
+
     pub fn add_asset(
         self: &Arc<Self>,
         path: &str,
@@ -401,7 +412,7 @@ impl<P: Platform> AssetManager<P> {
 
         if asset_type.is_renderer_asset() {
             let request_key = (path.to_string(), asset_type);
-            if !self.renderer.insert_request(&request_key) {
+            if !self.renderer.insert_request(&request_key, refresh) {
                 progress.finished.fetch_add(1, Ordering::SeqCst);
                 return progress;
             }

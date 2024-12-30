@@ -1,6 +1,6 @@
 use sourcerenderer_core::Platform;
 
-use crate::renderer::asset as renderer_assets;
+use crate::renderer::asset::{self as renderer_assets, ComputePipelineHandle, GraphicsPipelineHandle, RayTracingPipelineHandle, RendererComputePipeline, RendererGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
 
 use super::handle_map::IndexHandle;
 
@@ -43,16 +43,22 @@ pub enum AssetHandle {
     Model(ModelHandle),
     Mesh(MeshHandle),
     Sound(SoundHandle),
-    Shader(ShaderHandle)
+    Shader(ShaderHandle),
+    GraphicsPipeline(GraphicsPipelineHandle),
+    ComputePipeline(ComputePipelineHandle),
+    RayTracingPipeline(RayTracingPipelineHandle)
 }
 
 impl AssetHandle {
     pub fn is_renderer_asset(self) -> bool {
         match self {
-            AssetHandle::Texture(texture_handle) => true,
-            AssetHandle::Material(material_handle) => true,
-            AssetHandle::Model(model_handle) => true,
-            AssetHandle::Shader(shader_handle) => true,
+            AssetHandle::Texture(_) => true,
+            AssetHandle::Material(_) => true,
+            AssetHandle::Model(_) => true,
+            AssetHandle::Shader(_) => true,
+            AssetHandle::GraphicsPipeline(_) => true,
+            AssetHandle::ComputePipeline(_) => true,
+            AssetHandle::RayTracingPipeline(_) => true,
             _ => false
         }
     }
@@ -65,10 +71,12 @@ impl AssetHandle {
             AssetHandle::Sound(_) => AssetType::Sound,
             AssetHandle::Material(_) => AssetType::Material,
             AssetHandle::Shader(_) => AssetType::Shader,
+            AssetHandle::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
+            AssetHandle::ComputePipeline(_) => AssetType::ComputePipeline,
+            AssetHandle::RayTracingPipeline(_) => AssetType::RayTracingPipeline
         }
     }
 }
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum AssetType {
@@ -103,11 +111,14 @@ impl AssetType {
 }
 
 pub enum AssetWithHandle<P: Platform> {
-    Texture(TextureHandle, renderer_assets::RendererTexture<P::GPUBackend>),
-    Material(MaterialHandle, renderer_assets::RendererMaterial),
-    Model(ModelHandle, renderer_assets::RendererModel),
-    Mesh(MeshHandle, renderer_assets::RendererMesh<P::GPUBackend>),
-    Shader(ShaderHandle, renderer_assets::RendererShader<P::GPUBackend>),
+    Texture(TextureHandle, RendererTexture<P::GPUBackend>),
+    Material(MaterialHandle, RendererMaterial),
+    Model(ModelHandle, RendererModel),
+    Mesh(MeshHandle, RendererMesh<P::GPUBackend>),
+    Shader(ShaderHandle, RendererShader<P::GPUBackend>),
+    GraphicsPipeline(GraphicsPipelineHandle, RendererGraphicsPipeline<P::GPUBackend>),
+    ComputePipeline(ComputePipelineHandle, RendererComputePipeline<P::GPUBackend>),
+    RayTracingPipeline(RayTracingPipelineHandle, RendererRayTracingPipeline<P::GPUBackend>),
     Sound(SoundHandle, ())
 }
 
@@ -119,6 +130,9 @@ impl<P: Platform> AssetWithHandle<P> {
             AssetWithHandle::Mesh(_,_) => true,
             AssetWithHandle::Material(_,_) => true,
             AssetWithHandle::Shader(_,_) => true,
+            AssetWithHandle::GraphicsPipeline(_, _) => true,
+            AssetWithHandle::ComputePipeline(_, _) => true,
+            AssetWithHandle::RayTracingPipeline(_, _) => true,
             _ => false
         }
     }
@@ -131,6 +145,9 @@ impl<P: Platform> AssetWithHandle<P> {
             AssetWithHandle::Sound(_,_) => AssetType::Sound,
             AssetWithHandle::Material(_,_) => AssetType::Material,
             AssetWithHandle::Shader(_,_) => AssetType::Shader,
+            AssetWithHandle::GraphicsPipeline(_, _) => AssetType::GraphicsPipeline,
+            AssetWithHandle::ComputePipeline(_, _) => AssetType::ComputePipeline,
+            AssetWithHandle::RayTracingPipeline(_, _) => AssetType::RayTracingPipeline,
         }
     }
 
@@ -142,6 +159,9 @@ impl<P: Platform> AssetWithHandle<P> {
             AssetWithHandle::Mesh(handle, _) => AssetHandle::Mesh(*handle),
             AssetWithHandle::Shader(handle, _) => AssetHandle::Shader(*handle),
             AssetWithHandle::Sound(handle, _) => AssetHandle::Sound(*handle),
+            AssetWithHandle::GraphicsPipeline(handle, _) => AssetHandle::GraphicsPipeline(*handle),
+            AssetWithHandle::ComputePipeline(handle, _) => AssetHandle::ComputePipeline(*handle),
+            AssetWithHandle::RayTracingPipeline(handle, _) => AssetHandle::RayTracingPipeline(*handle),
         }
     }
 
@@ -158,12 +178,15 @@ impl<P: Platform> AssetWithHandle<P> {
 }
 
 pub enum Asset<P: Platform> {
-    Texture(renderer_assets::RendererTexture<P::GPUBackend>),
-    Material(renderer_assets::RendererMaterial),
-    Model(renderer_assets::RendererModel),
-    Mesh(renderer_assets::RendererMesh<P::GPUBackend>),
-    Shader(renderer_assets::RendererShader<P::GPUBackend>),
-    Sound(())
+    Texture(RendererTexture<P::GPUBackend>),
+    Material(RendererMaterial),
+    Model(RendererModel),
+    Mesh(RendererMesh<P::GPUBackend>),
+    Shader(RendererShader<P::GPUBackend>),
+    Sound(()),
+    GraphicsPipeline(RendererGraphicsPipeline<P::GPUBackend>),
+    ComputePipeline(RendererComputePipeline<P::GPUBackend>),
+    RayTracingPipeline(RendererRayTracingPipeline<P::GPUBackend>),
 }
 
 impl<P: Platform> Asset<P> {
@@ -174,6 +197,9 @@ impl<P: Platform> Asset<P> {
             Asset::Mesh(_) => true,
             Asset::Material(_) => true,
             Asset::Shader(_) => true,
+            Asset::GraphicsPipeline(_) => true,
+            Asset::ComputePipeline(_) => true,
+            Asset::RayTracingPipeline(_) => true,
             _ => false
         }
     }
@@ -186,17 +212,23 @@ impl<P: Platform> Asset<P> {
             Asset::Sound(_) => AssetType::Sound,
             Asset::Material(_) => AssetType::Material,
             Asset::Shader(_) => AssetType::Shader,
+            Asset::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
+            Asset::ComputePipeline(_) => AssetType::ComputePipeline,
+            Asset::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
         }
     }
 }
 
 pub enum AssetRef<'a, P: Platform> {
-    Texture(&'a renderer_assets::RendererTexture<P::GPUBackend>),
-    Material(&'a renderer_assets::RendererMaterial),
-    Model(&'a renderer_assets::RendererModel),
-    Mesh(&'a renderer_assets::RendererMesh<P::GPUBackend>),
-    Shader(&'a renderer_assets::RendererShader<P::GPUBackend>),
-    Sound(())
+    Texture(&'a RendererTexture<P::GPUBackend>),
+    Material(&'a RendererMaterial),
+    Model(&'a RendererModel),
+    Mesh(&'a RendererMesh<P::GPUBackend>),
+    Shader(&'a RendererShader<P::GPUBackend>),
+    GraphicsPipeline(&'a RendererGraphicsPipeline<P>),
+    ComputePipeline(&'a RendererComputePipeline<P>),
+    RayTracingPipeline(&'a RendererRayTracingPipeline<P>),
+    Sound(()),
 }
 
 impl<P: Platform> AssetRef<'_, P> {
@@ -207,6 +239,9 @@ impl<P: Platform> AssetRef<'_, P> {
             AssetRef::Mesh(_) => true,
             AssetRef::Material(_) => true,
             AssetRef::Shader(_) => true,
+            AssetRef::GraphicsPipeline(_) => true,
+            AssetRef::ComputePipeline(_) => true,
+            AssetRef::RayTracingPipeline(_) => true,
             _ => false
         }
     }
@@ -219,6 +254,9 @@ impl<P: Platform> AssetRef<'_, P> {
             AssetRef::Sound(_) => AssetType::Sound,
             AssetRef::Material(_) => AssetType::Material,
             AssetRef::Shader(_) => AssetType::Shader,
+            AssetRef::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
+            AssetRef::ComputePipeline(_) => AssetType::ComputePipeline,
+            AssetRef::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
         }
     }
 }

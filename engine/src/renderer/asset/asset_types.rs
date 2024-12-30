@@ -9,7 +9,7 @@ use super::*;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::Vec4;
+use sourcerenderer_core::{Platform, Vec4};
 
 pub struct RendererTexture<B: GPUBackend> {
     pub(super) view: Arc<TextureView<B>>,
@@ -211,6 +211,9 @@ impl RendererModel {
 }
 
 pub type RendererShader<B: GPUBackend> = Arc<B::Shader>;
+pub type RendererGraphicsPipeline<P: Platform> = CompiledPipeline<P, GraphicsCompileTask<P>>;
+pub type RendererComputePipeline<P: Platform> = CompiledPipeline<P, ComputeCompileTask<P>>;
+pub type RendererRayTracingPipeline<P: Platform> = CompiledPipeline<P, StoredRayTracingPipelineInfo<P>>;
 
 pub struct RendererMesh<B: GPUBackend> {
     pub vertices: AssetBufferSlice<B>,

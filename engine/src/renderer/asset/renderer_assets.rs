@@ -1,5 +1,7 @@
-use std::{collections::HashSet, marker::PhantomData, sync::{Arc, RwLock, RwLockReadGuard}};
+use std::{collections::{hash_map::Values, HashSet}, iter::Map, marker::PhantomData, sync::{Arc, RwLock, RwLockReadGuard}};
 
+use gltf::json::extensions::mesh;
+use smallvec::SmallVec;
 use sourcerenderer_core::Platform;
 
 use crate::asset::*;
@@ -23,6 +25,9 @@ impl<P: Platform> RendererAssets<P> {
                 meshes: HandleMap::new(),
                 models: HandleMap::new(),
                 shaders: HandleMap::new(),
+                graphics_pipelines: SimpleHandleMap::new(),
+                compute_pipelines: SimpleHandleMap::new(),
+                ray_tracing_pipelines: SimpleHandleMap::new(),
                 requested_assets: HashSet::new()
             }),
             placeholders: AssetPlaceholders::new(device),
@@ -47,6 +52,11 @@ impl<P: Platform> RendererAssets<P> {
         assets.reserve_handle(path, asset_type)
     }
 
+    pub(crate) fn reserve_handle_without_path(&self, asset_type: AssetType) -> AssetHandle {
+        let mut assets = self.assets.write().unwrap();
+        assets.reserve_handle_without_path(asset_type)
+    }
+
     pub(crate) fn remove_by_key(&self, asset_type: AssetType, path: &str) -> bool {
         let mut assets = self.assets.write().unwrap();
         assets.remove_by_key(asset_type, path)
@@ -62,9 +72,9 @@ impl<P: Platform> RendererAssets<P> {
         assets.add_asset(asset)
     }
 
-    pub(crate) fn insert_request(&self, request: &(String, AssetType)) -> bool {
+    pub(crate) fn insert_request(&self, request: &(String, AssetType), refresh: bool) -> bool {
         let mut assets = self.assets.write().unwrap();
-        assets.insert_request(request)
+        assets.insert_request(request, refresh)
     }
 
     pub fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {
@@ -82,6 +92,9 @@ struct RendererAssetMaps<P: Platform> {
     meshes: HandleMap<String, MeshHandle, RendererMesh<P::GPUBackend>>,
     models: HandleMap<String, ModelHandle, RendererModel>,
     shaders: HandleMap<String, ShaderHandle, RendererShader<P::GPUBackend>>,
+    graphics_pipelines: SimpleHandleMap<GraphicsPipelineHandle, RendererGraphicsPipeline<P>>,
+    compute_pipelines: SimpleHandleMap<ComputePipelineHandle, RendererComputePipeline<P>>,
+    ray_tracing_pipelines: SimpleHandleMap<RayTracingPipelineHandle, RendererRayTracingPipeline<P>>,
     requested_assets: HashSet<(String, AssetType)>,
 }
 
@@ -125,6 +138,15 @@ impl<P: Platform> RendererAssetMaps<P> {
             AssetType::Shader => AssetHandle::Shader(self.shaders.get_or_create_handle(path)),
             _ => panic!("Unsupported asset type")
         };
+    }
+
+    pub(crate) fn reserve_handle_without_path(&mut self, asset_type: AssetType) -> AssetHandle {
+        return match asset_type {
+            AssetType::GraphicsPipeline => AssetHandle::GraphicsPipeline(self.graphics_pipelines.create_handle()),
+            AssetType::ComputePipeline => AssetHandle::ComputePipeline(self.compute_pipelines.create_handle()),
+            AssetType::RayTracingPipeline => todo!(),
+            _ => panic!("Asset type cannot reserve handle without a path")
+        }
     }
 
     fn add_asset(&mut self, asset: AssetWithHandle<P>) -> bool {
@@ -175,8 +197,8 @@ impl<P: Platform> RendererAssetMaps<P> {
         self.requested_assets.contains(request)
     }
 
-    fn insert_request(&mut self, request: &(String, AssetType)) -> bool {
-        if self.contains(&request.0, request.1) || self.requested_assets.contains(request) {
+    fn insert_request(&mut self, request: &(String, AssetType), refresh: bool) -> bool {
+        if (self.contains(&request.0, request.1) && !refresh) || self.requested_assets.contains(request) {
             return false;
         }
         self.requested_assets.insert(request.clone());
@@ -240,10 +262,71 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
     }
 
     pub fn get_shader_by_path(&self, path: &str) -> Option<&RendererShader<P::GPUBackend>> {
-        self.maps.shaders.get_value_by_path(path)
+        self.maps.shaders.get_value_by_key(path)
+    }
+
+    pub fn get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Option<&RendererGraphicsPipeline<P>> {
+        self.maps.graphics_pipelines.get_value(handle)
+    }
+
+    pub fn get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Option<&RendererComputePipeline<P>> {
+        self.maps.compute_pipelines.get_value(handle)
+    }
+
+    pub fn get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Option<&RendererRayTracingPipeline<P>> {
+        self.maps.ray_tracing_pipelines.get_value(handle)
     }
 
     pub fn contains_shader_by_path(&self, path: &str) -> bool {
         self.maps.shaders.contains_value_for_key(path)
+    }
+
+    pub fn all_graphics_pipelines(&self) -> Values<'_, GraphicsPipelineHandle, RendererGraphicsPipeline<P>> {
+        self.maps.graphics_pipelines.values()
+    }
+
+    pub fn all_compute_pipelines(&self) -> Values<'_, ComputePipelineHandle, RendererComputePipeline<P>> {
+        self.maps.compute_pipelines.values()
+    }
+
+    pub fn all_ray_tracing_pipelines(&self) -> Values<'_, RayTracingPipelineHandle, RendererRayTracingPipeline<P>> {
+        self.maps.ray_tracing_pipelines.values()
+    }
+
+    pub fn get(&self, handle: AssetHandle) -> Option<AssetRef<P>> {
+        match handle {
+            AssetHandle::Texture(texture_handle) => Some(AssetRef::Texture(self.get_texture(texture_handle))),
+            AssetHandle::Material(material_handle) => Some(AssetRef::Material(self.get_material(material_handle))),
+            AssetHandle::Model(model_handle) => self.get_model(model_handle).map(|model| AssetRef::Model(model)),
+            AssetHandle::Mesh(mesh_handle) => self.get_mesh(mesh_handle).map(|mesh| AssetRef::Mesh(mesh)),
+            AssetHandle::Shader(shader_handle) => self.get_shader(shader_handle).map(|shader| AssetRef::Shader(shader)),
+            AssetHandle::GraphicsPipeline(graphics_pipeline_handle) => self.get_graphics_pipeline(graphics_pipeline_handle).map(|pipeline| AssetRef::GraphicsPipeline(pipeline)),
+            AssetHandle::ComputePipeline(compute_pipeline_handle) => self.get_compute_pipeline(compute_pipeline_handle).map(|pipeline| AssetRef::ComputePipeline(pipeline)),
+            AssetHandle::RayTracingPipeline(ray_tracing_pipeline_handle) => self.get_ray_tracing_pipeline(ray_tracing_pipeline_handle).map(|pipeline| AssetRef::RayTracingPipeline(pipeline)),
+            _ => panic!("Asset type is not a renderer asset")
+        }
+    }
+
+    pub fn all_pipeline_handles(&self, asset_type: AssetType) -> SmallVec<[AssetHandle; 16]> {
+        let mut handles = SmallVec::<[AssetHandle; 16]>::new();
+        match asset_type {
+            AssetType::GraphicsPipeline => {
+                for handle in self.maps.graphics_pipelines.handles() {
+                    handles.push(AssetHandle::GraphicsPipeline(*handle));
+                }
+            },
+            AssetType::ComputePipeline => {
+                for handle in self.maps.compute_pipelines.handles() {
+                    handles.push(AssetHandle::ComputePipeline(*handle));
+                }
+            },
+            AssetType::RayTracingPipeline => {
+                for handle in self.maps.ray_tracing_pipelines.handles() {
+                    handles.push(AssetHandle::RayTracingPipeline(*handle));
+                }
+            },
+            _ => panic!("Asset type is not a pipeline type")
+        }
+        handles
     }
 }

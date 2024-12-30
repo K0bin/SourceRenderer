@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, collections::HashMap, hash::Hash};
+use std::{borrow::Borrow, collections::{hash_map::{Keys, Values}, HashMap}, hash::Hash};
 
 pub(crate) trait IndexHandle {
     fn new(index: u64) -> Self;
@@ -50,7 +50,7 @@ where
         self.handle_to_val.get(&handle)
     }
 
-    pub(crate) fn get_value_by_path<TKeyRef>(&self, key: &TKeyRef) -> Option<&TValue>
+    pub(crate) fn get_value_by_key<TKeyRef>(&self, key: &TKeyRef) -> Option<&TValue>
     where TKey: Borrow<TKeyRef>,
         TKeyRef: Eq + Hash + ?Sized {
         let handle = self.key_to_handle.get(key);
@@ -144,5 +144,74 @@ where
 
     pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub(crate) fn values(&self) -> Values<'_, THandle, TValue> {
+        self.handle_to_val.values()
+    }
+
+    pub(crate) fn handles(&self) -> Keys<'_, THandle, TValue> {
+        self.handle_to_val.keys()
+    }
+}
+
+
+#[derive(Debug, Default)]
+pub(crate) struct SimpleHandleMap<THandle, TValue>
+where
+    THandle: std::hash::Hash + PartialEq + Eq + Copy + IndexHandle,
+{
+    handle_to_val: HashMap<THandle, TValue>,
+    next_handle_index: u64,
+}
+
+impl<THandle, TValue> SimpleHandleMap<THandle, TValue>
+where
+    THandle: std::hash::Hash + Eq + Copy + IndexHandle,
+{
+    pub(crate) fn new() -> Self {
+        Self {
+            handle_to_val: HashMap::new(),
+            next_handle_index: 1u64,
+        }
+    }
+
+    pub(crate) fn get_value(&self, handle: THandle) -> Option<&TValue> {
+        self.handle_to_val.get(&handle)
+    }
+
+    pub(crate) fn contains(&self, handle: THandle) -> bool {
+        self.handle_to_val.contains_key(&handle)
+    }
+
+    pub(crate) fn create_handle(&mut self) -> THandle {
+        let handle = THandle::new(self.next_handle_index);
+        self.next_handle_index += 1;
+        handle
+    }
+
+    pub(crate) fn set(&mut self, handle: THandle, value: TValue) -> bool {
+        self.handle_to_val.insert(handle, value);
+        return true;
+    }
+
+    pub(crate) fn remove(&mut self, handle: THandle) {
+        self.handle_to_val.remove(&handle);
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.handle_to_val.len()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub(crate) fn values(&self) -> Values<'_, THandle, TValue> {
+        self.handle_to_val.values()
+    }
+
+    pub(crate) fn handles(&self) -> Keys<'_, THandle, TValue> {
+        self.handle_to_val.keys()
     }
 }
