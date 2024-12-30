@@ -16,7 +16,7 @@ use std::sync::atomic::{
 use std::sync::{
     Arc,
     Mutex,
-    RwLock,
+    RwLock, RwLockReadGuard,
 };
 
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
@@ -41,10 +41,10 @@ use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
-use crate::renderer::asset::{self as renderer_asset, AssetIntegrator as RendererAssetIntegrator, RendererMaterial, RendererMesh, RendererModel, RendererShader, RendererTexture};
+use crate::renderer::asset::{AssetIntegrator as RendererAssetIntegrator, AssetPlaceholders as RendererAssetPlaceholders, RendererAssetMaps, RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMesh, RendererModel, RendererShader, RendererTexture};
 
 use super::loaded_level::LoadedLevel;
-use super::{Asset, AssetData, AssetHandle, AssetType, AssetWithHandle, HandleMap, MaterialData, MaterialHandle, MeshData, MeshHandle, MeshRange, ModelData, ModelHandle, ShaderData, ShaderHandle, SoundHandle, TextureData, TextureHandle};
+use super::{Asset, AssetData, AssetHandle, AssetRef, AssetType, AssetWithHandle, HandleMap, MaterialData, MaterialHandle, MeshData, MeshHandle, MeshRange, ModelData, ModelHandle, ShaderData, ShaderHandle, SoundHandle, TextureData, TextureHandle};
 
 pub struct AssetLoadRequest {
     pub path: String,
@@ -198,113 +198,7 @@ pub struct AssetManager<P: Platform> {
     containers: RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     loaders: RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
 
-    renderer_assets: RwLock<RendererAssets<P>>,
-    renderer_integrator: RendererAssetIntegrator<P>,
-}
-
-pub struct RendererAssets<P: Platform> {
-    textures: HandleMap<TextureHandle, RendererTexture<P::GPUBackend>>,
-    materials: HandleMap<MaterialHandle, RendererMaterial>,
-    meshes: HandleMap<MeshHandle, RendererMesh<P::GPUBackend>>,
-    models: HandleMap<ModelHandle, RendererModel>,
-    shaders: HandleMap<ShaderHandle, RendererShader<P::GPUBackend>>,
-    requested_assets: HashSet<(String, AssetType)>,
-    _platform: PhantomData<P>
-}
-
-impl<P: Platform> RendererAssets<P> {
-    fn remove_by_path(&mut self, asset_type: AssetType, path: &str) -> bool {
-        let mut found = true;
-        match asset_type {
-            AssetType::Texture => {
-                self.textures.remove_by_path(&path);
-            },
-            AssetType::Model => {
-                self.models.remove_by_path(&path);
-            },
-            AssetType::Mesh => {
-                self.meshes.remove_by_path(&path);
-            },
-            AssetType::Material => {
-                self.materials.remove_by_path(&path);
-            },
-            AssetType::Shader => {
-                self.shaders.remove_by_path(&path);
-            },
-            _ => {
-                found = false;
-            }
-        }
-        found = self.requested_assets.remove(&(path.to_string(), asset_type)) || found;
-        found
-    }
-
-    fn remove_request_by_path(&mut self, asset_type: AssetType, path: &str) -> bool {
-        return self.requested_assets.remove(&(path.to_string(), asset_type));
-    }
-
-    fn reserve_handle(&mut self, path: &str, asset_type: AssetType) -> AssetHandle {
-        return match asset_type {
-            AssetType::Texture => AssetHandle::Texture(self.textures.get_or_create_handle(path)),
-            AssetType::Model => AssetHandle::Model(self.models.get_or_create_handle(path)),
-            AssetType::Mesh => AssetHandle::Mesh(self.meshes.get_or_create_handle(path)),
-            AssetType::Material => AssetHandle::Material(self.materials.get_or_create_handle(path)),
-            AssetType::Shader => AssetHandle::Shader(self.shaders.get_or_create_handle(path)),
-            _ => panic!("Unsupported asset type")
-        };
-    }
-
-    fn add_asset(&mut self, asset: AssetWithHandle<P>) -> bool {
-        match asset {
-            AssetWithHandle::Texture(handle, asset) => self.textures.set(handle, asset),
-            AssetWithHandle::Material(handle, asset) => self.materials.set(handle, asset),
-            AssetWithHandle::Model(handle, asset) => self.models.set(handle, asset),
-            AssetWithHandle::Mesh(handle, asset) => self.meshes.set(handle, asset),
-            AssetWithHandle::Shader(handle, asset) => self.shaders.set(handle, asset),
-            _ => panic!("Unsupported asset type"),
-        }
-    }
-
-    pub(crate) fn get_handle(&self, path: &str, asset_type: AssetType) -> Option<AssetHandle> {
-        match asset {
-            AssetWithHandle::Texture(handle, asset) => self.textures.get_handle(path).map(|handle| AssetHandle::Texture(handle)),
-            AssetWithHandle::Material(handle, asset) => self.materials.get_handle(path).map(|handle| AssetHandle::Material(handle)),
-            AssetWithHandle::Model(handle, asset) => self.models.get_handle(path).map(|handle| AssetHandle::Model(handle)),
-            AssetWithHandle::Mesh(handle, asset) => self.meshes.get_handle(path).map(|handle| AssetHandle::Mesh(handle)),
-            AssetWithHandle::Shader(handle, asset) => self.shaders.get_handle(path).map(|handle| AssetHandle::Shader(handle)),
-            _ => panic!("Unsupported asset type"),
-        }
-    }
-
-    pub(crate) fn get(&self, handle: AssetHandle) -> Option<&Asset<P>> {
-        match asset {
-            AssetWithHandle::Texture(handle, asset) => self.textures.get_value(handle).map(|asset| Asset::<P>::Texture(asset)),
-            AssetWithHandle::Material(handle, asset) => self.materials.get_value(handle).map(|asset| Asset::<P>::Material(asset)),
-            AssetWithHandle::Model(handle, asset) => self.models.get_value(handle).map(|asset| Asset::<P>::Model(asset)),
-            AssetWithHandle::Mesh(handle, asset) => self.meshes.get_value(handle).map(|hasset| Asset::<P>::Mesh(asset)),
-            AssetWithHandle::Shader(handle, asset) => self.shaders.get_value(handle).map(|asset| Asset::<P>::Shader(asset)),
-            _ => panic!("Unsupported asset type"),
-        }
-    }
-
-    pub(crate) fn contains(&self, path: &str, asset_type: AssetType) -> bool {
-        match asset_type {
-            AssetType::Texture => self.textures.contains_path(path),
-            AssetType::Model => self.models.contains_path(path),
-            AssetType::Mesh => self.meshes.contains_path(path),
-            AssetType::Material => self.materials.contains_path(path),
-            AssetType::Shader => self.shaders.contains_path(path),
-            _ => panic!("Unsupported asset type"),
-        }
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.textures.is_empty()
-            && self.materials.is_empty()
-            && self.models.is_empty()
-            && self.meshes.is_empty()
-            && self.shaders.is_empty()
-    }
+    renderer: RendererAssets<P>
 }
 
 impl<P: Platform> AssetManager<P> {
@@ -315,16 +209,7 @@ impl<P: Platform> AssetManager<P> {
             device: device.clone(),
             loaders: RwLock::new(Vec::new()),
             containers: RwLock::new(Vec::new()),
-            renderer_assets: RwLock::new(RendererAssets {
-                textures: HandleMap::new(),
-                materials: HandleMap::new(),
-                meshes: HandleMap::new(),
-                models: HandleMap::new(),
-                shaders: HandleMap::new(),
-                requested_assets: HashSet::new(),
-                _platform: PhantomData,
-            }),
-            renderer_integrator: RendererAssetIntegrator::new(device)
+            renderer: RendererAssets::<P>::new(device)
         });
 
         manager
@@ -415,24 +300,15 @@ impl<P: Platform> AssetManager<P> {
     pub fn add_asset_data_with_progress(
         self: &Arc<Self>,
         path: &str,
-        asset: AssetData,
+        asset_data: AssetData,
         progress: Option<&Arc<AssetLoaderProgress>>,
         priority: AssetLoadPriority,
     ) {
-        let asset_type = match &asset {
-            AssetData::Texture(_) => AssetType::Texture,
-            AssetData::Material(_) => AssetType::Material,
-            AssetData::Mesh(_) => AssetType::Mesh,
-            AssetData::Model(_) => AssetType::Model,
-            AssetData::Sound(_) => AssetType::Sound,
-            AssetData::Shader(_) => AssetType::Shader,
-        };
-
         if let Some(progress) = progress {
             progress.finished.fetch_add(1, Ordering::SeqCst);
         }
-        if asset.is_renderer_asset() {
-            self.renderer_integrator.integrate(self, path, asset_data, priority);
+        if asset_data.is_renderer_asset() {
+            self.renderer.integrate(self, path, &asset_data, priority);
         } else {
             unimplemented!();
         }
@@ -444,8 +320,7 @@ impl<P: Platform> AssetManager<P> {
         asset_type: AssetType
     ) -> AssetHandle {
         if asset_type.is_renderer_asset() {
-            let mut renderer_assets = self.renderer_assets.write().unwrap();
-            return renderer_assets.reserve_handle(path, asset_type);
+            return self.renderer.reserve_handle(path, asset_type);
         } else {
             unimplemented!()
         }
@@ -465,8 +340,7 @@ impl<P: Platform> AssetManager<P> {
         asset: AssetWithHandle<P>
     ) {
         if asset.is_renderer_asset() {
-            let mut renderer_assets = self.renderer_assets.write().unwrap();
-            renderer_assets.add_asset(asset);
+            self.renderer.add_asset(asset);
         } else {
             unimplemented!();
         }
@@ -474,24 +348,10 @@ impl<P: Platform> AssetManager<P> {
 
     pub fn request_asset_update(self: &Arc<Self>, path: &str) {
         log::info!("Reloading: {}", path);
+        let mut asset_type = Option::<AssetType>::None;
         {
-            let mut renderer_assets = self.renderer_assets.write().unwrap();
-            let mut asset_type = Option::<AssetType>::None;
-            if let Some(handle) = renderer_assets.textures.get_handle(path) {
-                asset_type = Some(AssetType::Texture);
-            }
-            if let Some(handle) = renderer_assets.materials.get_handle(path) {
-                asset_type = Some(AssetType::Material);
-            }
-            if let Some(handle) = renderer_assets.models.get_handle(path) {
-                asset_type = Some(AssetType::Model);
-            }
-            if let Some(handle) = renderer_assets.meshes.get_handle(path) {
-                asset_type = Some(AssetType::Mesh);
-            }
-            if let Some(handle) = renderer_assets.shaders.get_handle(path) {
-                asset_type = Some(AssetType::Shader);
-            }
+            let renderer_assets = self.renderer.read_asset_maps();
+            asset_type = renderer_assets.contains_just_path(path);
         }
 
         if let Some(asset_type) = asset_type {
@@ -541,12 +401,10 @@ impl<P: Platform> AssetManager<P> {
 
         if asset_type.is_renderer_asset() {
             let request_key = (path.to_string(), asset_type);
-            let mut renderer_assets = self.renderer_assets.write().unwrap();
-            if (renderer_assets.contains(path, asset_type) && !refresh) || renderer_assets.requested_assets.contains(&request_key) {
+            if !self.renderer.insert_request(&request_key) {
                 progress.finished.fetch_add(1, Ordering::SeqCst);
                 return progress;
             }
-            renderer_assets.requested_assets.insert(request_key);
         } else {
             unimplemented!()
         }
@@ -659,8 +517,7 @@ impl<P: Platform> AssetManager<P> {
         if loader_opt.is_none() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
             if asset_type.is_renderer_asset() {
-                let mut renderer_assets = self.renderer_assets.write().unwrap();
-                renderer_assets.remove_request_by_path(asset_type, &path);
+                self.renderer.remove_request_by_path(asset_type, &path);
             } else {
                 unimplemented!();
             }
@@ -673,8 +530,7 @@ impl<P: Platform> AssetManager<P> {
         if assets_opt.is_err() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
             if asset_type.is_renderer_asset() {
-                let mut renderer_assets = self.renderer_assets.write().unwrap();
-                renderer_assets.remove_request_by_path(asset_type, &path);
+                self.renderer.remove_request_by_path(asset_type, &path);
             } else {
                 unimplemented!();
             }
@@ -686,5 +542,9 @@ impl<P: Platform> AssetManager<P> {
 
     pub fn stop(&self) {
         trace!("Stopping asset manager");
+    }
+
+    pub fn read_renderer_assets(&self) -> RendererAssetsReadOnly<P> {
+        self.renderer.read()
     }
 }

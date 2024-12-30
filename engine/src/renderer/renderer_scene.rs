@@ -8,13 +8,14 @@ use sourcerenderer_core::{
 };
 use bevy_math::Affine3A;
 
+use crate::asset::TextureHandle;
+
 use super::drawable::View;
 use super::light::{
     DirectionalLight,
     RendererDirectionalLight,
     RendererPointLight,
 };
-use super::renderer_assets::TextureHandle;
 use super::{
     PointLight,
     RendererStaticDrawable,

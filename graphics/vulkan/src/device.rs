@@ -136,7 +136,7 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     unsafe fn create_shader(
         &self,
-        shader: gpu::PackedShader,
+        shader: &gpu::PackedShader,
         name: Option<&str>,
     ) -> VkShader {
         VkShader::new(&self.device, shader, name)

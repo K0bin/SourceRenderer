@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use gltf::json::extensions::asset;
 use gltf::texture::{
     MagFilter,
     MinFilter,
@@ -10,12 +11,9 @@ use sourcerenderer_core::{
     Matrix4, Platform, Quaternion, Vec2, Vec2I, Vec2UI, Vec3
 };
 
+use crate::asset::AssetManager;
+use crate::renderer::asset::{RendererMaterial, RendererMaterialValue};
 use crate::renderer::drawable::View;
-use crate::renderer::renderer_assets::{
-    RendererAssets,
-    RendererMaterial,
-    RendererMaterialValue,
-};
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -178,7 +176,7 @@ impl<P: Platform> GeometryPass<P> {
         width: u32,
         height: u32,
         shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
+        asset_manager: &AssetManager<P>,
     ) {
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -238,6 +236,7 @@ impl<P: Platform> GeometryPass<P> {
 
         let drawables = scene.static_drawables();
         let parts = &view.drawable_parts;
+        let assets = asset_manager.read_renderer_assets();
         for part in parts {
             let drawable = &drawables[part.drawable_index];
             cmd_buffer.set_push_constant_data(&[Matrix4::from(drawable.transform)], ShaderType::VertexShader);

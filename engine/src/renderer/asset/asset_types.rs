@@ -1,11 +1,11 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::asset::*;
 use crate::graphics::{BindlessSlot, TextureView};
 use crate::math::BoundingBox;
 
-use super::asset_buffer::AssetBufferSlice;
-pub use super::asset_integrator::*;
+use super::*;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
@@ -210,7 +210,7 @@ impl RendererModel {
     }
 }
 
-pub type RendererShader<B: GPUBackend> = B::Shader;
+pub type RendererShader<B: GPUBackend> = Arc<B::Shader>;
 
 pub struct RendererMesh<B: GPUBackend> {
     pub vertices: AssetBufferSlice<B>,

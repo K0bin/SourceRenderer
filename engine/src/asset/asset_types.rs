@@ -1,5 +1,7 @@
 use sourcerenderer_core::Platform;
 
+use crate::renderer::asset as renderer_assets;
+
 use super::handle_map::IndexHandle;
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
@@ -79,6 +81,9 @@ pub enum AssetType {
     Chunk,
     Container,
     Shader,
+    GraphicsPipeline,
+    ComputePipeline,
+    RayTracingPipeline,
 }
 
 impl AssetType {
@@ -89,6 +94,9 @@ impl AssetType {
             AssetType::Mesh => true,
             AssetType::Material => true,
             AssetType::Shader => true,
+            AssetType::GraphicsPipeline => true,
+            AssetType::ComputePipeline => true,
+            AssetType::RayTracingPipeline => true,
             _ => false
         }
     }
@@ -178,6 +186,39 @@ impl<P: Platform> Asset<P> {
             Asset::Sound(_) => AssetType::Sound,
             Asset::Material(_) => AssetType::Material,
             Asset::Shader(_) => AssetType::Shader,
+        }
+    }
+}
+
+pub enum AssetRef<'a, P: Platform> {
+    Texture(&'a renderer_assets::RendererTexture<P::GPUBackend>),
+    Material(&'a renderer_assets::RendererMaterial),
+    Model(&'a renderer_assets::RendererModel),
+    Mesh(&'a renderer_assets::RendererMesh<P::GPUBackend>),
+    Shader(&'a renderer_assets::RendererShader<P::GPUBackend>),
+    Sound(())
+}
+
+impl<P: Platform> AssetRef<'_, P> {
+    pub fn is_renderer_asset(&self) -> bool {
+        match self {
+            AssetRef::Texture(_) => true,
+            AssetRef::Model(_) => true,
+            AssetRef::Mesh(_) => true,
+            AssetRef::Material(_) => true,
+            AssetRef::Shader(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn asset_type(&self) -> AssetType {
+        match self {
+            AssetRef::Texture(_) => AssetType::Texture,
+            AssetRef::Mesh(_) => AssetType::Mesh,
+            AssetRef::Model(_) => AssetType::Model,
+            AssetRef::Sound(_) => AssetType::Sound,
+            AssetRef::Material(_) => AssetType::Material,
+            AssetRef::Shader(_) => AssetType::Shader,
         }
     }
 }

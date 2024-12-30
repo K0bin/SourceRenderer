@@ -31,7 +31,6 @@ use crate::renderer::render_path::{
     SceneInfo,
     ZeroTextures, RenderPassParameters,
 };
-use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -275,7 +274,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
         shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
+        assets: &AssetManager<P>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 

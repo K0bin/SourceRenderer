@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform};
 
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_assets::ModelHandle;
+use crate::asset::ModelHandle;
 use crate::graphics::*;
 
 pub struct AccelerationStructureUpdatePass<P: Platform> {

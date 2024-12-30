@@ -299,7 +299,7 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
         .into_boxed_slice();
         let bounding_box =
             BoundingBox::new(Vec3::new(-1f32, -1f32, -1f32), Vec3::new(1f32, 1f32, 1f32));
-        asset_manager.add_mesh(
+        asset_manager.add_mesh_data(
             "cube_mesh",
             triangle_data,
             triangle.len() as u32,
@@ -312,8 +312,8 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
             Some(bounding_box),
         );
         //asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
-        asset_manager.add_material("cube_material", "cube_texture_albedo", 0f32, 0f32);
-        asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
+        asset_manager.add_material_data("cube_material", "cube_texture_albedo", 0f32, 0f32);
+        asset_manager.add_model_data("cube_model", "cube_mesh", &["cube_material"]);
 
         app.world_mut().spawn((
             StaticRenderableComponent {

@@ -20,7 +20,8 @@ pub use asset_manager::{
     AssetManager,
     AssetContainer,
     DirectlyLoadedAsset,
-    SimpleAssetLoadRequest
+    SimpleAssetLoadRequest,
+    RendererAssets
 };
 pub use self::asset_types::*;
 pub(crate) use self::handle_map::*;

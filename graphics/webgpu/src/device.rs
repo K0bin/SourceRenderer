@@ -67,7 +67,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         WebGPUTexture::new(&self.device, info, name).map_err(|_e| gpu::OutOfMemoryError {})
     }
 
-    unsafe fn create_shader(&self, shader: gpu::PackedShader, name: Option<&str>) -> WebGPUShader {
+    unsafe fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> WebGPUShader {
         WebGPUShader::new(&self.device, shader, name)
     }
 

@@ -17,7 +17,8 @@ use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::{
     RenderPassParameters,
 };
-use crate::renderer::renderer_assets::*;
+use crate::renderer::asset::*;
+use crate::asset::*;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,

@@ -18,7 +18,8 @@ use crate::renderer::light::DirectionalLight;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::taa::scaled_halton_point;
-use crate::renderer::renderer_assets::*;
+use crate::renderer::asset::*;
+use crate::asset::*;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,

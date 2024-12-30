@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLockReadGuard};
 use std::time::Duration;
 
 use sourcerenderer_core::gpu::GPUBackend;
@@ -8,7 +8,7 @@ use super::asset::RendererTexture;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
-use crate::asset::{AssetManager, SimpleAssetLoadRequest};
+use crate::asset::{AssetManager, SimpleAssetLoadRequest, RendererAssets};
 use crate::graphics::{BufferRef, GraphicsContext, TextureView};
 use crate::ui::UIDrawData;
 use crate::graphics::*;
@@ -38,7 +38,7 @@ pub struct RenderPassParameters<'a, P: Platform> {
     pub shader_manager: &'a ShaderManager<P>,
     pub resources: &'a mut RendererResources<P::GPUBackend>,
     pub zero_textures: &'a ZeroTextures<'a, P::GPUBackend>,
-    pub assets: &'a AssetManager<P>
+    pub assets: RwLockReadGuard<'a, RendererAssets<P>>
 }
 
 pub(super) trait RenderPath<P: Platform> : Send {

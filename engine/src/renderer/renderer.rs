@@ -35,13 +35,12 @@ use super::ecs::{
 use super::light::DirectionalLight;
 use super::passes::web::WebRenderer;
 use super::render_path::{FrameInfo, RenderPath, SceneInfo, ZeroTextures};
-use super::renderer_assets::RendererAssets;
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::shader_manager::ShaderManager;
 use super::{PointLight, StaticRenderableComponent};
-use crate::asset::AssetManager;
+use crate::asset::{AssetHandle, AssetManager, AssetType};
 use crate::engine::WindowState;
 use crate::input::Input;
 use crate::renderer::command::RendererCommand;
@@ -75,8 +74,6 @@ pub struct Renderer<P: Platform> {
     state: Arc<RendererState>,
     receiver: Receiver<RendererCommand<P::GPUBackend>>,
     asset_manager: Arc<AssetManager<P>>,
-    assets: RendererAssets<P>,
-    shader_manager: ShaderManager<P>,
     resources: RendererResources<P::GPUBackend>,
     scene: RendererScene<P::GPUBackend>,
     context: GraphicsContext<P::GPUBackend>,
@@ -97,7 +94,6 @@ impl<P: Platform> Renderer<P> {
         let (sender, receiver) = unbounded::<RendererCommand<P::GPUBackend>>();
 
         let mut context = device.create_context();
-        let mut shader_manager = ShaderManager::new(device, asset_manager);
         //let render_path = Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
         let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
 
@@ -111,7 +107,6 @@ impl<P: Platform> Renderer<P> {
             receiver,
             asset_manager: asset_manager.clone(),
             resources: RendererResources::new(device),
-            assets: RendererAssets::new(device),
             shader_manager,
             scene: RendererScene::new(),
             swapchain: Arc::new(swapchain),
@@ -168,17 +163,17 @@ impl<P: Platform> Renderer<P> {
         };
 
         let zero_textures = ZeroTextures {
-            zero_texture_view: &self.assets.placeholder_texture().view,
-            zero_texture_view_black: &self.assets.placeholder_black().view,
+            zero_texture_view: &self.asset_manager.placeholder_texture().view,
+            zero_texture_view_black: &self.asset_manager.placeholder_black().view,
         };
 
-        update_visibility(&mut self.scene, &self.assets);
+        update_visibility(&mut self.scene, &self.asset_manager);
 
         let scene_info = SceneInfo {
             scene: &self.scene,
             active_view_index: 0,
-            vertex_buffer: BufferRef::Regular(self.assets.vertex_buffer()),
-            index_buffer: BufferRef::Regular(self.assets.index_buffer()),
+            vertex_buffer: BufferRef::Regular(self.asset_manager.vertex_buffer()),
+            index_buffer: BufferRef::Regular(self.asset_manager.index_buffer()),
             lightmap: None,
         };
 
@@ -190,7 +185,7 @@ impl<P: Platform> Renderer<P> {
             &zero_textures,
             &frame_info,
             &self.shader_manager,
-            &self.assets
+            &self.asset_manager
         );
         let frame_end_signal = self.context.end_frame();
 
@@ -228,11 +223,11 @@ impl<P: Platform> Renderer<P> {
     fn receive_messages(&mut self) -> ReceiveMessagesResult {
         while self.shader_manager.has_remaining_mandatory_compilations() {
             // We're waiting for shader compilation on different threads, process some assets in the meantime.
-            self.assets
-                .receive_assets(&self.asset_manager, &mut self.shader_manager);
+            self.asset_manager
+                .flush(&self.asset_manager, &mut self.shader_manager);
         }
 
-        let mut message_opt = if self.assets.is_empty()
+        let mut message_opt = if self.asset_manager.is_empty()
             || self.asset_manager.has_open_renderer_assets()
             || self.scene.static_drawables().is_empty()
         {
@@ -263,7 +258,7 @@ impl<P: Platform> Renderer<P> {
 
         // recv blocks, so do the preparation after receiving the first event
         //self.receive_window_events();
-        self.assets
+        self.asset_manager
             .receive_assets(&self.asset_manager, &mut self.shader_manager);
 
         if message_opt.is_none() {
@@ -317,7 +312,12 @@ impl<P: Platform> Renderer<P> {
                     cast_shadows,
                     can_move,
                 } => {
-                    let model = self.assets.get_or_create_model_handle(&model_path);
+                    let handle = self.asset_manager.reserve_handle(&model_path, AssetType::Model);
+                    let model = if let AssetHandle::Model(handle) = handle {
+                        handle
+                    } else {
+                        unreachable!()
+                    };
                     self.scene.add_static_drawable(
                         entity,
                         RendererStaticDrawable {
@@ -372,8 +372,12 @@ impl<P: Platform> Renderer<P> {
                     self.scene.remove_directional_light(&entity);
                 }
                 RendererCommand::<P::GPUBackend>::SetLightmap(path) => {
-                    let handle = self.assets.get_or_create_texture_handle(&path);
-                    self.scene.set_lightmap(Some(handle));
+                    let handle = self.asset_manager.reserve_handle(&path, AssetType::Texture);
+                    if let AssetHandle::Texture(handle) = handle {
+                        self.scene.set_lightmap(Some(handle));
+                    } else {
+                        unreachable!()
+                    }
                 }
                 RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
 

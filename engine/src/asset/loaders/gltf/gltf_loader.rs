@@ -39,7 +39,7 @@ use crate::asset::asset_manager::{
 };
 use crate::asset::loaded_level::{LoadedEntityParent, LoadedLevel};
 use crate::asset::{
-    Asset, AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex
+    Asset, AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex
 };
 use crate::math::BoundingBox;
 use crate::renderer::{
@@ -646,7 +646,7 @@ impl GltfLoader {
 
         if let Some(albedo_path) = albedo_path {
             asset_mgr.request_asset(&albedo_path, AssetType::Material, AssetLoadPriority::Low);
-            asset_mgr.add_material(
+            asset_mgr.add_material_data(
                 &material_path,
                 &albedo_path,
                 pbr.roughness_factor(),
@@ -654,7 +654,7 @@ impl GltfLoader {
             );
         } else {
             let color = pbr.base_color_factor();
-            asset_mgr.add_material_color(
+            asset_mgr.add_material_data_color(
                 &material_path,
                 Vec4::new(color[0], color[1], color[2], color[3]),
                 pbr.roughness_factor(),

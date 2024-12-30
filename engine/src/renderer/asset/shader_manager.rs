@@ -10,17 +10,17 @@ use std::sync::{
 };
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::PackedShader;
+use sourcerenderer_core::gpu::{PackedShader, Shader as _};
 use sourcerenderer_core::Platform;
 
 use crate::asset::{
-    AssetLoadPriority,
-    AssetManager,
-    AssetType,
+    Asset, AssetLoadPriority, AssetManager, AssetType
 };
 use crate::graphics::*;
 use crate::graphics::GraphicsPipelineInfo as ActualGraphicsPipelineInfo;
 use crate::graphics::RayTracingPipelineInfo as ActualRayTracingPipelineInfo;
+
+use super::{RendererAssetsReadOnly, RendererShader};
 
 //
 // COMMON
@@ -34,18 +34,17 @@ trait PipelineCompileTask<P: Platform>: Send + Sync + Clone {
     fn request_shaders(&self, asset_manager: &Arc<AssetManager<P>>);
     fn request_remaining_shaders(
         &self,
-        loaded_shader_path: &str,
-        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
         asset_manager: &Arc<AssetManager<P>>,
+        loaded_shader_path: &str,
     );
     fn can_compile(
         &self,
+        asset_manager: &Arc<AssetManager<P>>,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool;
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self::TShaders;
     fn compile(
         &self,
@@ -192,15 +191,16 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
 
     fn can_compile(
         &self,
+        asset_manager: &Arc<AssetManager<P>>,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool {
-        (loaded_shader_path.map_or(false, |s| s == &self.info.vs) || shaders.contains_key(&self.info.vs))
+        let asset_read = asset_manager.read_renderer_assets();
+        (loaded_shader_path.map_or(false, |s| s == &self.info.vs) || asset_read.contains_shader_by_path(&self.info.vs))
             && self
                 .info
                 .fs
                 .as_ref()
-                .map(|fs| loaded_shader_path.map_or(false, |s| s == fs) || shaders.contains_key(fs))
+                .map(|fs| loaded_shader_path.map_or(false, |s| s == fs) || asset_read.contains_shader_by_path(fs))
                 .unwrap_or(true)
     }
 
@@ -213,15 +213,15 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
 
     fn request_remaining_shaders(
         &self,
-        loaded_shader_path: &str,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
         asset_manager: &Arc<AssetManager<P>>,
+        loaded_shader_path: &str,
     ) {
-        if &self.info.vs != loaded_shader_path && !shaders.contains_key(&self.info.vs) {
+        let asset_read = asset_manager.read_renderer_assets();
+        if &self.info.vs != loaded_shader_path && !asset_read.contains_shader_by_path(&self.info.vs) {
             asset_manager.request_asset(&self.info.vs, AssetType::Shader, AssetLoadPriority::High);
         }
         if let Some(fs) = self.info.fs.as_ref() {
-            if fs != loaded_shader_path && !shaders.contains_key(fs) {
+            if fs != loaded_shader_path && !asset_read.contains_shader_by_path(fs) {
                 asset_manager.request_asset(fs, AssetType::Shader, AssetLoadPriority::High);
             }
         }
@@ -229,15 +229,16 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
 
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self::TShaders {
+        let asset_read = asset_manager.read_renderer_assets();
         GraphicsShaders {
-            vs: shaders.get(&self.info.vs).cloned().unwrap(),
+            vs: asset_read.get_shader_by_path(&self.info.vs).cloned().unwrap(),
             fs: self
                 .info
                 .fs
                 .as_ref()
-                .map(|fs| shaders.get(fs).cloned().unwrap()),
+                .map(|fs| asset_read.get_shader_by_path(fs).cloned().unwrap()),
         }
     }
 
@@ -337,25 +338,26 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
 
     fn request_remaining_shaders(
         &self,
-        _loaded_shader_path: &str,
-        _shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
         _asset_manager: &Arc<AssetManager<P>>,
+        _loaded_shader_path: &str,
     ) {
     }
 
     fn can_compile(
         &self,
+        asset_manager: &Arc<AssetManager<P>>,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool {
-        loaded_shader_path.map_or(false, |s| s == &self.path) || shaders.contains_key(&self.path)
+        let asset_read = asset_manager.read_renderer_assets();
+        loaded_shader_path.map_or(false, |s| s == &self.path) || asset_read.contains_shader_by_path(&self.path)
     }
 
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self::TShaders {
-        shaders.get(&self.path).cloned().unwrap()
+        let asset_read = asset_manager.read_renderer_assets();
+        asset_read.get_shader_by_path(&self.path).cloned().unwrap()
     }
 
     fn compile(
@@ -466,11 +468,11 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 
     fn request_remaining_shaders(
         &self,
-        loaded_shader_path: &str,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
         asset_manager: &Arc<AssetManager<P>>,
+        loaded_shader_path: &str,
     ) {
-        if loaded_shader_path != &self.ray_gen_shader && !shaders.contains_key(&self.ray_gen_shader)
+        let asset_read = asset_manager.read_renderer_assets();
+        if loaded_shader_path != &self.ray_gen_shader && !asset_read.contains_shader_by_path(&self.ray_gen_shader)
         {
             asset_manager.request_asset(
                 &self.ray_gen_shader,
@@ -479,12 +481,12 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
             );
         }
         for shader in &self.closest_hit_shaders {
-            if loaded_shader_path != shader && !shaders.contains_key(shader) {
+            if loaded_shader_path != shader && !asset_read.contains_shader_by_path(shader) {
                 asset_manager.request_asset(shader, AssetType::Shader, AssetLoadPriority::High);
             }
         }
         for shader in &self.miss_shaders {
-            if loaded_shader_path != shader && !shaders.contains_key(shader) {
+            if loaded_shader_path != shader && !asset_read.contains_shader_by_path(shader) {
                 asset_manager.request_asset(shader, AssetType::Shader, AssetLoadPriority::High);
             }
         }
@@ -492,20 +494,21 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 
     fn can_compile(
         &self,
+        asset_manager: &Arc<AssetManager<P>>,
         loaded_shader_path: Option<&str>,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
     ) -> bool {
-        if !loaded_shader_path.map_or(false, |s| s == &self.ray_gen_shader) && !shaders.contains_key(&self.ray_gen_shader)
+        let asset_read = asset_manager.read_renderer_assets();
+        if !loaded_shader_path.map_or(false, |s| s == &self.ray_gen_shader) && !asset_read.contains_shader_by_path(&self.ray_gen_shader)
         {
             return false;
         }
         for shader in &self.closest_hit_shaders {
-            if !loaded_shader_path.map_or(false, |s| s == shader) && !shaders.contains_key(shader) {
+            if !loaded_shader_path.map_or(false, |s| s == shader) && !asset_read.contains_shader_by_path(shader) {
                 return false;
             }
         }
         for shader in &self.miss_shaders {
-            if !loaded_shader_path.map_or(false, |s| s == shader) && !shaders.contains_key(shader) {
+            if !loaded_shader_path.map_or(false, |s| s == shader) && !asset_read.contains_shader_by_path(shader) {
                 return false;
             }
         }
@@ -514,19 +517,20 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 
     fn collect_shaders_for_compilation(
         &self,
-        shaders: &HashMap<String, Arc<<<P as Platform>::GPUBackend as GPUBackend>::Shader>>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self::TShaders {
+        let asset_read: RendererAssetsReadOnly<'_, P> = asset_manager.read_renderer_assets();
         Self::TShaders {
-            ray_gen_shader: shaders.get(&self.ray_gen_shader).cloned().unwrap(),
+            ray_gen_shader: asset_read.get_shader_by_path(&self.ray_gen_shader).cloned().unwrap(),
             closest_hit_shaders: self
                 .closest_hit_shaders
                 .iter()
-                .map(|shader| shaders.get(shader).cloned().unwrap())
+                .map(|shader| asset_read.get_shader_by_path(shader).cloned().unwrap())
                 .collect(),
             miss_shaders: self
                 .miss_shaders
                 .iter()
-                .map(|shader| shaders.get(shader).cloned().unwrap())
+                .map(|shader| asset_read.get_shader_by_path(shader).cloned().unwrap())
                 .collect(),
         }
     }
@@ -563,7 +567,6 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 
 pub struct ShaderManager<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
-    asset_manager: Arc<AssetManager<P>>,
     graphics: Arc<PipelineTypeManager<P, GraphicsPipelineHandle, GraphicsCompileTask<P>>>,
     compute: Arc<PipelineTypeManager<P, ComputePipelineHandle, ComputeCompileTask<P>>>,
     rt: Arc<
@@ -589,7 +592,6 @@ where
     T: PipelineCompileTask<P>,
 {
     next_handle_index: u64,
-    shaders: HashMap<String, Arc<<P::GPUBackend as GPUBackend>::Shader>>,
     compiled_pipelines: HashMap<THandle, CompiledPipeline<P, T>>,
     remaining_compilations: HashMap<THandle, T>,
 }
@@ -604,7 +606,6 @@ where
         Self {
             inner: Mutex::new(PipelineTypeManagerInner {
                 next_handle_index: 1u64,
-                shaders: HashMap::new(),
                 compiled_pipelines: HashMap::new(),
                 remaining_compilations: HashMap::new(),
             }),
@@ -616,11 +617,9 @@ where
 impl<P: Platform> ShaderManager<P> {
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
-        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         Self {
             device: device.clone(),
-            asset_manager: asset_manager.clone(),
             graphics: Arc::new(PipelineTypeManager::new()),
             compute: Arc::new(PipelineTypeManager::new()),
             rt: Arc::new(PipelineTypeManager::new()),
@@ -630,6 +629,7 @@ impl<P: Platform> ShaderManager<P> {
 
     pub fn request_graphics_pipeline(
         &mut self,
+        asset_manager: &Arc<AssetManager<P>>,
         info: &GraphicsPipelineInfo,
     ) -> GraphicsPipelineHandle {
         let stored_input_layout = StoredVertexLayoutInfo {
@@ -658,6 +658,7 @@ impl<P: Platform> ShaderManager<P> {
         };
 
         self.request_pipeline_internal(
+            asset_manager,
             &self.graphics,
             GraphicsCompileTask::<P> {
                 info: stored,
@@ -667,8 +668,12 @@ impl<P: Platform> ShaderManager<P> {
         )
     }
 
-    pub fn request_compute_pipeline(&mut self, path: &str) -> ComputePipelineHandle {
+    pub fn request_compute_pipeline(
+        &mut self,
+        asset_manager: &Arc<AssetManager<P>>,
+        path: &str) -> ComputePipelineHandle {
         self.request_pipeline_internal(
+            asset_manager,
             &self.compute,
             ComputeCompileTask::<P> {
                 path: path.to_string(),
@@ -680,9 +685,11 @@ impl<P: Platform> ShaderManager<P> {
 
     pub fn request_ray_tracing_pipeline(
         &mut self,
+        asset_manager: &Arc<AssetManager<P>>,
         info: &RayTracingPipelineInfo,
     ) -> RayTracingPipelineHandle {
         self.request_pipeline_internal(
+            asset_manager,
             &self.rt,
             StoredRayTracingPipelineInfo::<P> {
                 closest_hit_shaders: info
@@ -700,6 +707,7 @@ impl<P: Platform> ShaderManager<P> {
 
     fn request_pipeline_internal<T, THandle>(
         &self,
+        asset_manager: &Arc<AssetManager<P>>,
         pipeline_type_manager: &Arc<PipelineTypeManager<P, THandle, T>>,
         task: T,
     ) -> THandle
@@ -710,16 +718,17 @@ impl<P: Platform> ShaderManager<P> {
         let mut inner = pipeline_type_manager.inner.lock().unwrap();
         let handle = THandle::new(inner.next_handle_index);
         inner.next_handle_index += 1;
-        task.request_shaders(&self.asset_manager);
+        task.request_shaders(asset_manager);
         inner.remaining_compilations.insert(handle, task);
         handle
     }
 
     fn add_shader_type<THandle, T>(
         &self,
+        asset_manager: &Arc<AssetManager<P>>,
         pipeline_type_manager: &Arc<PipelineTypeManager<P, THandle, T>>,
         path: &str,
-        shader: PackedShader
+        shader: &RendererShader<P::GPUBackend>
     ) -> bool
     where
         THandle: IndexHandle + Hash + PartialEq + Eq + Clone + Copy + Send + Sync + 'static,
@@ -728,7 +737,6 @@ impl<P: Platform> ShaderManager<P> {
         {
             println!("Integrating shader {:?}", path);
             let mut ready_handles = SmallVec::<[THandle; 1]>::new();
-            let mut found = false;
             {
                 let mut inner = pipeline_type_manager.inner.lock().unwrap();
 
@@ -741,12 +749,10 @@ impl<P: Platform> ShaderManager<P> {
                 for (handle, pipeline) in &inner.compiled_pipelines {
                     let existing_pipeline_match = pipeline.task.contains_shader(path);
                     if let Some(shader_type) = existing_pipeline_match {
-                        assert!(shader_type  == shader.shader_type);
-                        found = true;
+                        assert!(shader_type  == shader.shader_type());
                         pipeline.task.request_remaining_shaders(
+                            asset_manager,
                             path,
-                            &inner.shaders,
-                            &self.asset_manager,
                         );
                         if !inner.remaining_compilations.contains_key(handle) {
                             let mut task: T = pipeline.task.clone();
@@ -759,25 +765,17 @@ impl<P: Platform> ShaderManager<P> {
                 for (handle, task) in &inner.remaining_compilations {
                     let remaining_compile_match = task.contains_shader(path);
                     if let Some(shader_type) = remaining_compile_match {
-                        assert!(shader_type  == shader.shader_type);
-                        found = true;
-                        if task.can_compile(Some(path), &inner.shaders) {
+                        assert!(shader_type  == shader.shader_type());
+                        if task.can_compile(asset_manager, Some(path)) {
                             ready_handles.push(*handle);
                         }
                     }
                 }
 
-                if found {
-                    let shader =
-                        self.device
-                            .create_shader(shader, Some(path));
-                    inner.shaders.insert(path.to_string(), Arc::new(shader));
+                asset_manager.add_asset(path, Asset::Shader(shader.clone()));
 
-                    for (handle, task) in tasks_to_add.drain(..) {
-                        inner.remaining_compilations.insert(handle, task);
-                    }
-                } else {
-                    return false;
+                for (handle, task) in tasks_to_add.drain(..) {
+                    inner.remaining_compilations.insert(handle, task);
                 }
             }
 
@@ -787,6 +785,7 @@ impl<P: Platform> ShaderManager<P> {
 
             let c_device = self.device.clone();
             let c_manager = pipeline_type_manager.clone();
+            let c_asset_manager = asset_manager.clone();
             c_manager.cond_var.notify_all();
             let task_pool = bevy_tasks::ComputeTaskPool::get();
             task_pool.spawn(async move {
@@ -797,7 +796,7 @@ impl<P: Platform> ShaderManager<P> {
                     {
                         let mut inner = c_manager.inner.lock().unwrap();
                         task = inner.remaining_compilations.remove(&handle).unwrap();
-                        shaders = task.collect_shaders_for_compilation(&inner.shaders);
+                        shaders = task.collect_shaders_for_compilation(&c_asset_manager);
                     };
                     let pipeline = task.compile(shaders, &c_device);
                     {
@@ -817,12 +816,12 @@ impl<P: Platform> ShaderManager<P> {
         }
     }
 
-    pub fn add_shader(&mut self, path: &str, shader: PackedShader) {
-        if !match shader.shader_type {
-            ShaderType::ComputeShader => self.add_shader_type(&self.compute, path, shader),
-            ShaderType::RayGen | ShaderType::RayClosestHit | ShaderType::RayMiss => self.add_shader_type(&self.rt, path, shader),
+    pub fn add_shader(&self, asset_manager: &Arc<AssetManager<P>>, path: &str, shader: &RendererShader<P::GPUBackend>) {
+        if !match shader.shader_type() {
+            ShaderType::ComputeShader => self.add_shader_type(asset_manager, &self.compute, path, shader),
+            ShaderType::RayGen | ShaderType::RayClosestHit | ShaderType::RayMiss => self.add_shader_type(asset_manager, &self.rt, path, shader),
             ShaderType::FragmentShader | ShaderType::VertexShader | ShaderType::GeometryShader | ShaderType::TessellationControlShader | ShaderType::TessellationEvaluationShader =>
-                self.add_shader_type(&self.graphics, path, shader),
+                self.add_shader_type(asset_manager, &self.graphics, path, shader),
         } {
             panic!("Unhandled shader. {}", path);
         }

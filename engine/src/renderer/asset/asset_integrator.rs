@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use smallvec::SmallVec;
 
@@ -8,10 +8,9 @@ use sourcerenderer_core::{
     Vec4,
 };
 
-use super::asset_buffer::AssetBuffer;
-use super::shader_manager::ShaderManager;
+use super::*;
 use crate::asset::{
-    Asset, AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, AssetWithHandle, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, TextureData, TextureHandle
+    Asset, AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, AssetWithHandle, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, TextureData, TextureHandle
 };
 use crate::graphics::*;
 
@@ -22,80 +21,13 @@ struct DelayedAsset<P: Platform> {
 
 pub struct AssetIntegrator<P: Platform> {
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
-    asset_queue: Vec<DelayedAsset<P>>,
+    asset_queue: Mutex<Vec<DelayedAsset<P>>>,
     vertex_buffer: AssetBuffer<P::GPUBackend>,
     index_buffer: AssetBuffer<P::GPUBackend>,
 }
 
 impl<P: Platform> AssetIntegrator<P> {
     pub(crate) fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> Self {
-        let zero_data = [255u8; 16];
-        let zero_texture = device.create_texture(
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RGBA8UNorm,
-                width: 2,
-                height: 2,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
-                supports_srgb: false,
-            },
-            Some("AssetManagerZeroTexture"),
-        ).unwrap();
-        device.init_texture(&zero_data, &zero_texture, 0, 0).unwrap();
-        let zero_view = device.create_texture_view(
-            &zero_texture,
-            &TextureViewInfo::default(),
-            Some("AssetManagerZeroTextureView"),
-        );
-        let zero_index = if device.supports_bindless() {
-            device.insert_texture_into_bindless_heap(&zero_view)
-        } else {
-            None
-        };
-        let zero_rtexture = RendererTexture {
-            view: zero_view,
-            bindless_index: zero_index,
-        };
-
-        let zero_data_black = [
-            0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8,
-        ];
-        let zero_texture_black = device.create_texture(
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RGBA8UNorm,
-                width: 2,
-                height: 2,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
-                supports_srgb: false,
-            },
-            Some("AssetManagerZeroTextureBlack"),
-        ).unwrap();
-        device.init_texture(&zero_data_black, &zero_texture_black, 0, 0).unwrap();
-        let zero_view_black = device.create_texture_view(
-            &zero_texture_black,
-            &TextureViewInfo::default(),
-            Some("AssetManagerZeroTextureBlackView"),
-        );
-        let zero_black_index = if device.supports_bindless() {
-            device.insert_texture_into_bindless_heap(&zero_view_black)
-        } else {
-            None
-        };
-        let zero_rtexture_black = RendererTexture {
-            view: zero_view_black,
-            bindless_index: zero_black_index,
-        };
-        let placeholder_material =
-            RendererMaterial::new_pbr_color(Vec4::new(1f32, 1f32, 1f32, 1f32));
 
         let vertex_buffer = AssetBuffer::<P::GPUBackend>::new(
             device,
@@ -112,22 +44,23 @@ impl<P: Platform> AssetIntegrator<P> {
 
         Self {
             device: device.clone(),
-            asset_queue: Vec::new(),
+            asset_queue: Mutex::new(Vec::new()),
             vertex_buffer,
             index_buffer,
         }
     }
 
     pub fn integrate(
-        &mut self,
+        &self,
         asset_manager: &Arc<AssetManager<P>>,
+        shader_manager: &ShaderManager<P>,
         path: &str,
-        asset_data: AssetData,
+        asset_data: &AssetData,
         priority: AssetLoadPriority
     ) {
         let handle = asset_manager.reserve_handle(path, asset_data.asset_type());
 
-        let (asset, fence) = match &asset_data {
+        let (asset, fence) = match asset_data {
             AssetData::Texture(texture_data) => {
                 let (renderer_texture, fence) = self.integrate_texture(path, priority, texture_data);
                 (Asset::<P>::Texture(renderer_texture), fence)
@@ -135,35 +68,18 @@ impl<P: Platform> AssetIntegrator<P> {
             AssetData::Mesh(mesh_data) => (Asset::<P>::Mesh(self.integrate_mesh(mesh_data)), None),
             AssetData::Model(model_data) => (Asset::<P>::Model(self.integrate_model(asset_manager, model_data)), None),
             AssetData::Material(material_data) => (Asset::<P>::Material(self.integrate_material(asset_manager, material_data)), None),
-            AssetData::Shader(packed_shader) => unimplemented!(),
+            AssetData::Shader(shader_data) => (Asset::<P>::Shader(self.integrate_shader(asset_manager, shader_manager, path, shader_data)), None),
             _ => panic!("Asset type is not a renderer asset")
         };
 
-        self.asset_queue.push(DelayedAsset {
+        let mut queue = self.asset_queue.lock().unwrap();
+        queue.push(DelayedAsset {
             fence, asset: AssetWithHandle::combine(handle, asset)
         });
     }
 
-    fn finish_integrating_texture_aync(
+    fn integrate_texture(
         &self,
-        asset_manager: &Arc<AssetManager<P>>,
-        handle: TextureHandle,
-        texture: Arc<TextureView<<P as Platform>::GPUBackend>>
-    ) {
-        let bindless_index: Option<BindlessSlot<<P as Platform>::GPUBackend>> = if self.device.supports_bindless() {
-            self.device.insert_texture_into_bindless_heap(&texture)
-        } else {
-            None
-        };
-        let renderer_texture: RendererTexture<<P as Platform>::GPUBackend> = RendererTexture {
-            view: texture.clone(),
-            bindless_index,
-        };
-        asset_manager.add_asset_with_handle( AssetWithHandle::Texture(handle, renderer_texture));
-    }
-
-    pub fn integrate_texture(
-        &mut self,
         path: &str,
         priority: AssetLoadPriority,
         texture_data: &TextureData
@@ -181,8 +97,8 @@ impl<P: Platform> AssetIntegrator<P> {
         (renderer_texture, fence)
     }
 
-    pub fn integrate_mesh(
-        &mut self,
+    fn integrate_mesh(
+        &self,
         mesh: &MeshData
     ) -> RendererMesh<P::GPUBackend> {
         assert_ne!(mesh.vertex_count, 0);
@@ -197,7 +113,7 @@ impl<P: Platform> AssetIntegrator<P> {
             vertex_buffer.offset() as u64
         ).unwrap();
 
-        let index_buffer = mesh.indices.map(|indices| {
+        let index_buffer = mesh.indices.as_ref().map(|indices| {
             let buffer = self.index_buffer.get_slice(
                 std::mem::size_of_val(&indices[..]),
                 std::mem::size_of::<u32>(),
@@ -214,13 +130,13 @@ impl<P: Platform> AssetIntegrator<P> {
             vertices: vertex_buffer,
             indices: index_buffer,
             parts: mesh.parts.iter().cloned().collect(), // TODO: change base type to boxed slice
-            bounding_box: mesh.bounding_box,
+            bounding_box: mesh.bounding_box.clone(),
             vertex_count: mesh.vertex_count,
         }
     }
 
-    pub fn upload_texture(
-        &mut self,
+    fn upload_texture(
+        &self,
         path: &str,
         texture: &TextureData,
         do_async: bool,
@@ -263,8 +179,8 @@ impl<P: Platform> AssetIntegrator<P> {
         (view, fence)
     }
 
-    pub fn integrate_material(
-        &mut self,
+    fn integrate_material(
+        &self,
         asset_manager: &Arc<AssetManager<P>>,
         material: &MaterialData,
     ) -> RendererMaterial {
@@ -295,12 +211,17 @@ impl<P: Platform> AssetIntegrator<P> {
         }
     }
 
-    pub fn integrate_model(
-        &mut self,
+    fn integrate_model(
+        &self,
         asset_manager: &Arc<AssetManager<P>>,
         model: &ModelData
     ) -> RendererModel {
-        let mesh = asset_manager.reserve_handle(&model.mesh_path, AssetType::Mesh);
+        let handle = asset_manager.reserve_handle(&model.mesh_path, AssetType::Mesh);
+        let mesh = if let AssetHandle::Mesh(mesh) = handle {
+            mesh
+        } else {
+            unreachable!()
+        };
 
         let mut renderer_materials =
             SmallVec::<[MaterialHandle; 16]>::with_capacity(model.material_paths.len());
@@ -316,25 +237,40 @@ impl<P: Platform> AssetIntegrator<P> {
         RendererModel::new(mesh, renderer_materials)
     }
 
+    fn integrate_shader(
+        &self,
+        asset_manager: &Arc<AssetManager<P>>,
+        shader_manager: &ShaderManager<P>,
+        path: &str,
+        shader: &ShaderData
+    ) -> RendererShader<P::GPUBackend> {
+        let shader = Arc::new(self.device.create_shader(shader, Some(path)));
+        shader_manager.add_shader(asset_manager, path, &shader);
+        shader
+    }
+
     pub(super) fn flush(
         &mut self,
         asset_manager: &Arc<AssetManager<P>>,
-        shader_manager: &mut ShaderManager<P>,
+        _shader_manager: &mut ShaderManager<P>,
     ) {
         let mut retained_delayed_assets = SmallVec::<[DelayedAsset<P>; 2]>::new();
         let mut ready_delayed_assets = SmallVec::<[DelayedAsset<P>; 2]>::new();
-        for delayed_asset in self.asset_queue.drain(..) {
-            if let Some(fence) = delayed_asset.fence.as_ref() {
-                if fence.is_signalled() {
-                    ready_delayed_assets.push(delayed_asset);
+        {
+            let mut queue = self.asset_queue.lock().unwrap();
+            for delayed_asset in queue.drain(..) {
+                if let Some(fence) = delayed_asset.fence.as_ref() {
+                    if fence.is_signalled() {
+                        ready_delayed_assets.push(delayed_asset);
+                    } else {
+                        retained_delayed_assets.push(delayed_asset);
+                    }
                 } else {
                     retained_delayed_assets.push(delayed_asset);
                 }
-            } else {
-                retained_delayed_assets.push(delayed_asset);
             }
+            queue.extend(retained_delayed_assets);
         }
-        self.asset_queue.extend(retained_delayed_assets);
 
         for delayed_asset in ready_delayed_assets.drain(..) {
             asset_manager.add_asset_with_handle(delayed_asset.asset);
