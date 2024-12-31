@@ -155,7 +155,7 @@ impl<P: Platform> GeometryPass<P> {
             render_target_formats: &[swapchain.format()],
             depth_stencil_format: Format::D32
         };
-        let pipeline = asset_manager.request_asset((&pipeline_info);
+        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline, sampler: Arc::new(sampler) }
     }
@@ -171,7 +171,6 @@ impl<P: Platform> GeometryPass<P> {
         backbuffer_handle: &<P::GPUBackend as GPUBackend>::Texture,
         width: u32,
         height: u32,
-        shader_manager: &ShaderManager<P>,
         asset_manager: &AssetManager<P>,
     ) {
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
@@ -214,7 +213,8 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::Commands,
         );
 
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+        let assets = asset_manager.read_renderer_assets();
+        let pipeline = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
@@ -232,7 +232,6 @@ impl<P: Platform> GeometryPass<P> {
 
         let drawables = scene.static_drawables();
         let parts = &view.drawable_parts;
-        let assets = asset_manager.read_renderer_assets();
         for part in parts {
             let drawable = &drawables[part.drawable_index];
             cmd_buffer.set_push_constant_data(&[Matrix4::from(drawable.transform)], ShaderType::VertexShader);

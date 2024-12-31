@@ -47,11 +47,13 @@ impl<P: Platform> WebRenderer<P> {
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: &Swapchain<P::GPUBackend>,
         context: &mut GraphicsContext<P::GPUBackend>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let mut resources = RendererResources::<P::GPUBackend>::new(device);
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let geometry_pass = GeometryPass::<P>::new(
             device,
+            asset_manager,
             swapchain,
             &mut init_cmd_buffer,
             &mut resources,
@@ -143,7 +145,6 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
             swapchain.backbuffer_handle(),
             swapchain.width(),
             swapchain.height(),
-            shader_manager,
             assets,
         );
 

@@ -41,7 +41,7 @@ use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
-use crate::renderer::asset::{AssetIntegrator as RendererAssetIntegrator, AssetPlaceholders as RendererAssetPlaceholders, RendererAssetMaps, RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMesh, RendererModel, RendererShader, RendererTexture};
+use crate::renderer::asset::{AssetIntegrator as RendererAssetIntegrator, AssetPlaceholders as RendererAssetPlaceholders, ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMesh, RendererModel, RendererShader, RendererTexture};
 
 use super::loaded_level::LoadedLevel;
 use super::{Asset, AssetData, AssetHandle, AssetRef, AssetType, AssetWithHandle, HandleMap, MaterialData, MaterialHandle, MeshData, MeshHandle, MeshRange, ModelData, ModelHandle, ShaderData, ShaderHandle, SoundHandle, TextureData, TextureHandle};
@@ -272,6 +272,18 @@ impl<P: Platform> AssetManager<P> {
         );
     }
 
+    pub fn request_graphics_pipeline(self: &Arc<Self>, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
+        self.renderer.request_graphics_pipeline(self, info)
+    }
+
+    pub fn request_compute_pipeline(self: &Arc<Self>, shader_path: &str) -> ComputePipelineHandle {
+        self.renderer.request_compute_pipeline(self, shader_path)
+    }
+
+    pub fn request_ray_tracing_pipeline(self: &Arc<Self>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
+        self.renderer.request_ray_tracing_pipeline(self, info)
+    }
+
     pub fn add_container(self: &Arc<Self>, container: impl AssetContainer) {
         self.add_container_with_progress(container, None)
     }
@@ -359,7 +371,7 @@ impl<P: Platform> AssetManager<P> {
 
     pub fn request_asset_update(self: &Arc<Self>, path: &str) {
         log::info!("Reloading: {}", path);
-        let mut asset_type = Option::<AssetType>::None;
+        let asset_type: Option<AssetType>;
         {
             let renderer_assets = self.renderer.read();
             asset_type = renderer_assets.contains_just_path(path);

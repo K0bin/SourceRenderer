@@ -4,11 +4,10 @@ use std::time::Duration;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::Platform;
 
-use super::asset::RendererTexture;
+use super::asset::{RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use super::shader_manager::ShaderManager;
-use crate::asset::{AssetManager, SimpleAssetLoadRequest, RendererAssets};
+use crate::asset::{AssetManager, SimpleAssetLoadRequest};
 use crate::graphics::{BufferRef, GraphicsContext, TextureView};
 use crate::ui::UIDrawData;
 use crate::graphics::*;
@@ -35,10 +34,9 @@ pub struct FrameInfo {
 pub struct RenderPassParameters<'a, P: Platform> {
     pub device: &'a Device<P::GPUBackend>,
     pub scene: &'a SceneInfo<'a, P::GPUBackend>,
-    pub shader_manager: &'a ShaderManager<P>,
     pub resources: &'a mut RendererResources<P::GPUBackend>,
     pub zero_textures: &'a ZeroTextures<'a, P::GPUBackend>,
-    pub assets: RwLockReadGuard<'a, RendererAssets<P>>
+    pub assets: RendererAssetsReadOnly<'a, P>
 }
 
 pub(super) trait RenderPath<P: Platform> : Send {
@@ -55,7 +53,6 @@ pub(super) trait RenderPath<P: Platform> : Send {
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        shader_manager: &ShaderManager<P>,
-        assets: &AssetManager<P>,
+        assets: &Arc<AssetManager<P>>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError>;
 }

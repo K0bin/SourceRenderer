@@ -12,8 +12,8 @@ use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{Platform, Vec4};
 
 pub struct RendererTexture<B: GPUBackend> {
-    pub(super) view: Arc<TextureView<B>>,
-    pub(super) bindless_index: Option<BindlessSlot<B>>,
+    pub(crate) view: Arc<TextureView<B>>,
+    pub(crate) bindless_index: Option<BindlessSlot<B>>,
 }
 
 impl<B: GPUBackend> PartialEq for RendererTexture<B> {

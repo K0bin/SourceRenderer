@@ -4,7 +4,7 @@ use gltf::json::extensions::mesh;
 use smallvec::SmallVec;
 use sourcerenderer_core::Platform;
 
-use crate::asset::*;
+use crate::{asset::*, graphics::{ComputePipeline, GraphicsPipeline, RayTracingPipeline}};
 
 use super::*;
 
@@ -75,6 +75,18 @@ impl<P: Platform> RendererAssets<P> {
     pub(crate) fn insert_request(&self, request: &(String, AssetType), refresh: bool) -> bool {
         let mut assets = self.assets.write().unwrap();
         assets.insert_request(request, refresh)
+    }
+
+    pub(crate) fn request_graphics_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
+        self.shader_manager.request_graphics_pipeline(asset_manager, info)
+    }
+
+    pub(crate) fn request_compute_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, shader_path: &str) -> ComputePipelineHandle {
+        self.shader_manager.request_compute_pipeline(asset_manager, shader_path)
+    }
+
+    pub(crate) fn request_ray_tracing_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
+        self.shader_manager.request_ray_tracing_pipeline(asset_manager, info)
     }
 
     pub fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {
@@ -265,20 +277,39 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
         self.maps.shaders.get_value_by_key(path)
     }
 
-    pub fn get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Option<&RendererGraphicsPipeline<P>> {
-        self.maps.graphics_pipelines.get_value(handle)
+    pub fn get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Option<&Arc<GraphicsPipeline<P::GPUBackend>>> {
+        self.maps.graphics_pipelines.get_value(handle).map(|c| &c.pipeline)
     }
 
-    pub fn get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Option<&RendererComputePipeline<P>> {
-        self.maps.compute_pipelines.get_value(handle)
+    pub fn get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Option<&Arc<ComputePipeline<P::GPUBackend>>> {
+        self.maps.compute_pipelines.get_value(handle).map(|c| &c.pipeline)
     }
 
-    pub fn get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Option<&RendererRayTracingPipeline<P>> {
-        self.maps.ray_tracing_pipelines.get_value(handle)
+    pub fn get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Option<&Arc<RayTracingPipeline<P::GPUBackend>>> {
+        self.maps.ray_tracing_pipelines.get_value(handle).map(|c| &c.pipeline)
     }
 
     pub fn contains_shader_by_path(&self, path: &str) -> bool {
         self.maps.shaders.contains_value_for_key(path)
+    }
+
+    pub(crate) fn contains_just_path(&self, path: &str) -> Option<AssetType> {
+        if self.maps.textures.contains_value_for_key(path) {
+            return Some(AssetType::Texture);
+        }
+        if self.maps.materials.contains_value_for_key(path) {
+            return Some(AssetType::Material);
+        }
+        if self.maps.meshes.contains_value_for_key(path) {
+            return Some(AssetType::Mesh);
+        }
+        if self.maps.models.contains_value_for_key(path) {
+            return Some(AssetType::Model);
+        }
+        if self.maps.shaders.contains_value_for_key(path) {
+            return Some(AssetType::Shader);
+        }
+        None
     }
 
     pub fn all_graphics_pipelines(&self) -> Values<'_, GraphicsPipelineHandle, RendererGraphicsPipeline<P>> {
@@ -300,9 +331,9 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
             AssetHandle::Model(model_handle) => self.get_model(model_handle).map(|model| AssetRef::Model(model)),
             AssetHandle::Mesh(mesh_handle) => self.get_mesh(mesh_handle).map(|mesh| AssetRef::Mesh(mesh)),
             AssetHandle::Shader(shader_handle) => self.get_shader(shader_handle).map(|shader| AssetRef::Shader(shader)),
-            AssetHandle::GraphicsPipeline(graphics_pipeline_handle) => self.get_graphics_pipeline(graphics_pipeline_handle).map(|pipeline| AssetRef::GraphicsPipeline(pipeline)),
-            AssetHandle::ComputePipeline(compute_pipeline_handle) => self.get_compute_pipeline(compute_pipeline_handle).map(|pipeline| AssetRef::ComputePipeline(pipeline)),
-            AssetHandle::RayTracingPipeline(ray_tracing_pipeline_handle) => self.get_ray_tracing_pipeline(ray_tracing_pipeline_handle).map(|pipeline| AssetRef::RayTracingPipeline(pipeline)),
+            AssetHandle::GraphicsPipeline(graphics_pipeline_handle) => self.maps.graphics_pipelines.get_value(graphics_pipeline_handle).map(|pipeline| AssetRef::GraphicsPipeline(pipeline)),
+            AssetHandle::ComputePipeline(compute_pipeline_handle) => self.maps.compute_pipelines.get_value(compute_pipeline_handle).map(|pipeline| AssetRef::ComputePipeline(pipeline)),
+            AssetHandle::RayTracingPipeline(ray_tracing_pipeline_handle) => self.maps.ray_tracing_pipelines.get_value(ray_tracing_pipeline_handle).map(|pipeline| AssetRef::RayTracingPipeline(pipeline)),
             _ => panic!("Asset type is not a renderer asset")
         }
     }

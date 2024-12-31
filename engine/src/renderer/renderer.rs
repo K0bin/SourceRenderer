@@ -38,7 +38,6 @@ use super::render_path::{FrameInfo, RenderPath, SceneInfo, ZeroTextures};
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use super::shader_manager::ShaderManager;
 use super::{PointLight, StaticRenderableComponent};
 use crate::asset::{AssetHandle, AssetManager, AssetType};
 use crate::engine::WindowState;

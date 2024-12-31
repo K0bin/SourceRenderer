@@ -65,7 +65,7 @@ pub trait PipelineCompileTask<P: Platform>: Send + Sync + Clone {
 
 pub struct CompiledPipeline<P: Platform, T: PipelineCompileTask<P>> {
     task: T,
-    pipeline: Arc<T::TPipeline>,
+    pub(crate) pipeline: Arc<T::TPipeline>,
 }
 
 //
@@ -704,7 +704,7 @@ impl<P: Platform> ShaderManager<P> {
     }
 
     pub fn request_graphics_pipeline(
-        &mut self,
+        &self,
         asset_manager: &Arc<AssetManager<P>>,
         info: &GraphicsPipelineInfo,
     ) -> GraphicsPipelineHandle {
@@ -745,7 +745,7 @@ impl<P: Platform> ShaderManager<P> {
     }
 
     pub fn request_compute_pipeline(
-        &mut self,
+        &self,
         asset_manager: &Arc<AssetManager<P>>,
         path: &str) -> ComputePipelineHandle {
         self.request_pipeline_internal(
@@ -760,7 +760,7 @@ impl<P: Platform> ShaderManager<P> {
     }
 
     pub fn request_ray_tracing_pipeline(
-        &mut self,
+        &self,
         asset_manager: &Arc<AssetManager<P>>,
         info: &RayTracingPipelineInfo,
     ) -> RayTracingPipelineHandle {
@@ -798,28 +798,6 @@ impl<P: Platform> ShaderManager<P> {
         handle
     }
 
-    fn find_compiled_pipelines_containing_shader<THandle, T>(
-        &self,
-        compiled_pipelines: Values<'_, THandle, CompiledPipeline<P, T>>,
-        pipeline_type_manager: &Arc<PipelineTypeManager<P, THandle, T>>,
-        path: &str,
-        shader: &RendererShader<P::GPUBackend>
-    ) -> SmallVec<[T; 1]>
-    where
-        THandle: IndexHandle + Hash + PartialEq + Eq + Clone + Copy + Send + Sync + From<AssetHandle> + 'static,
-        T: PipelineCompileTask<P> + 'static {
-        let mut tasks_containing_shader = SmallVec::<[T; 1]>::new();
-        for pipeline in compiled_pipelines {
-            let task = T::get_task(pipeline);
-            let existing_pipeline_match = task.contains_shader(path);
-            if let Some(shader_type) = existing_pipeline_match {
-                assert!(shader_type  == shader.shader_type());
-                tasks_containing_shader.push(task.clone());
-            }
-        }
-        tasks_containing_shader
-    }
-
     fn add_shader_type<THandle, T>(
         &self,
         asset_manager: &Arc<AssetManager<P>>,
@@ -841,8 +819,6 @@ impl<P: Platform> ShaderManager<P> {
                 // all remaining shaders of a pipeline and recompile it.
 
                 let mut remaining_compilations: std::sync::MutexGuard<'_, HashMap<THandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
-                let mut tasks_to_add: SmallVec<[(THandle, T); 1]> = SmallVec::new();
-
                 let assets_read = asset_manager.read_renderer_assets();
                 let compiled_pipeline_handles = assets_read.all_pipeline_handles(T::asset_type());
                 for handle in compiled_pipeline_handles {
