@@ -19,11 +19,7 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::renderer_scene::RendererScene;
-use crate::renderer::shader_manager::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    ShaderManager,
-};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo};
 
 use crate::graphics::*;
 
@@ -37,10 +33,10 @@ impl<P: Platform> GeometryPass<P> {
 
     pub(super) fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        asset_manager: &Arc<AssetManager<P>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
         _init_cmd_buffer: &mut crate::graphics::CommandBufferRecorder<P::GPUBackend>,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
@@ -159,7 +155,7 @@ impl<P: Platform> GeometryPass<P> {
             render_target_formats: &[swapchain.format()],
             depth_stencil_format: Format::D32
         };
-        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = asset_manager.request_asset((&pipeline_info);
 
         Self { pipeline, sampler: Arc::new(sampler) }
     }

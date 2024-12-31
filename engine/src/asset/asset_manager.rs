@@ -361,7 +361,7 @@ impl<P: Platform> AssetManager<P> {
         log::info!("Reloading: {}", path);
         let mut asset_type = Option::<AssetType>::None;
         {
-            let renderer_assets = self.renderer.read_asset_maps();
+            let renderer_assets = self.renderer.read();
             asset_type = renderer_assets.contains_just_path(path);
         }
 

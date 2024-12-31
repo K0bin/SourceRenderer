@@ -116,9 +116,9 @@ pub enum AssetWithHandle<P: Platform> {
     Model(ModelHandle, RendererModel),
     Mesh(MeshHandle, RendererMesh<P::GPUBackend>),
     Shader(ShaderHandle, RendererShader<P::GPUBackend>),
-    GraphicsPipeline(GraphicsPipelineHandle, RendererGraphicsPipeline<P::GPUBackend>),
-    ComputePipeline(ComputePipelineHandle, RendererComputePipeline<P::GPUBackend>),
-    RayTracingPipeline(RayTracingPipelineHandle, RendererRayTracingPipeline<P::GPUBackend>),
+    GraphicsPipeline(GraphicsPipelineHandle, RendererGraphicsPipeline<P>),
+    ComputePipeline(ComputePipelineHandle, RendererComputePipeline<P>),
+    RayTracingPipeline(RayTracingPipelineHandle, RendererRayTracingPipeline<P>),
     Sound(SoundHandle, ())
 }
 
@@ -184,9 +184,9 @@ pub enum Asset<P: Platform> {
     Mesh(RendererMesh<P::GPUBackend>),
     Shader(RendererShader<P::GPUBackend>),
     Sound(()),
-    GraphicsPipeline(RendererGraphicsPipeline<P::GPUBackend>),
-    ComputePipeline(RendererComputePipeline<P::GPUBackend>),
-    RayTracingPipeline(RendererRayTracingPipeline<P::GPUBackend>),
+    GraphicsPipeline(RendererGraphicsPipeline<P>),
+    ComputePipeline(RendererComputePipeline<P>),
+    RayTracingPipeline(RendererRayTracingPipeline<P>),
 }
 
 impl<P: Platform> Asset<P> {

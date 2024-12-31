@@ -95,7 +95,7 @@ impl<P: Platform> Renderer<P> {
 
         let mut context = device.create_context();
         //let render_path = Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
-        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
+        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context));
 
         let renderer = Self {
             device: device.clone(),

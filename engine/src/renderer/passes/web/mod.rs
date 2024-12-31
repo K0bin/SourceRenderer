@@ -47,7 +47,6 @@ impl<P: Platform> WebRenderer<P> {
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: &Swapchain<P::GPUBackend>,
         context: &mut GraphicsContext<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let mut resources = RendererResources::<P::GPUBackend>::new(device);
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
@@ -56,7 +55,6 @@ impl<P: Platform> WebRenderer<P> {
             swapchain,
             &mut init_cmd_buffer,
             &mut resources,
-            shader_manager,
         );
 
         init_cmd_buffer.flush_barriers();
