@@ -1,6 +1,6 @@
-use std::{collections::{hash_map::Values, HashSet}, iter::Map, marker::PhantomData, sync::{Arc, RwLock, RwLockReadGuard}};
+use std::{collections::{hash_map::Values, HashSet}, marker::PhantomData, sync::Arc};
+use parking_lot::{RwLock, RwLockReadGuard}; // The parking lot variant is fair (write-preferring) and consistent across platforms.
 
-use gltf::json::extensions::mesh;
 use smallvec::SmallVec;
 use sourcerenderer_core::Platform;
 
@@ -48,32 +48,32 @@ impl<P: Platform> RendererAssets<P> {
     }
 
     pub(crate) fn reserve_handle(&self, path: &str, asset_type: AssetType) -> AssetHandle {
-        let mut assets = self.assets.write().unwrap();
+        let mut assets = self.assets.write();
         assets.reserve_handle(path, asset_type)
     }
 
     pub(crate) fn reserve_handle_without_path(&self, asset_type: AssetType) -> AssetHandle {
-        let mut assets = self.assets.write().unwrap();
+        let mut assets = self.assets.write();
         assets.reserve_handle_without_path(asset_type)
     }
 
     pub(crate) fn remove_by_key(&self, asset_type: AssetType, path: &str) -> bool {
-        let mut assets = self.assets.write().unwrap();
+        let mut assets = self.assets.write();
         assets.remove_by_key(asset_type, path)
     }
 
     pub(crate) fn remove_request_by_path(&self, asset_type: AssetType, path: &str) -> bool {
-        let mut assets = self.assets.write().unwrap();
+        let mut assets = self.assets.write();
         assets.remove_request_by_path(asset_type, path)
     }
 
     pub(crate) fn add_asset(&self, asset: AssetWithHandle<P>) -> bool {
-        let mut assets = self.assets.write().unwrap();
+        let mut assets = self.assets.write();
         assets.add_asset(asset)
     }
 
     pub(crate) fn insert_request(&self, request: &(String, AssetType), refresh: bool) -> bool {
-        let mut assets = self.assets.write().unwrap();
+        let mut assets = self.assets.write();
         assets.insert_request(request, refresh)
     }
 
@@ -91,7 +91,7 @@ impl<P: Platform> RendererAssets<P> {
 
     pub fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {
         RendererAssetsReadOnly {
-            maps: self.assets.read().unwrap(),
+            maps: self.assets.read(),
             placeholders: &self.placeholders,
             shader_manager: &self.shader_manager
         }

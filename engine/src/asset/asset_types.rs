@@ -1,6 +1,6 @@
 use sourcerenderer_core::Platform;
 
-use crate::renderer::asset::{self as renderer_assets, ComputePipelineHandle, GraphicsPipelineHandle, RayTracingPipelineHandle, RendererComputePipeline, RendererGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
+use crate::renderer::asset::{ComputePipelineHandle, GraphicsPipelineHandle, RayTracingPipelineHandle, RendererComputePipeline, RendererGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
 
 use super::handle_map::IndexHandle;
 
@@ -50,6 +50,7 @@ pub enum AssetHandle {
 }
 
 impl AssetHandle {
+    #[inline]
     pub fn is_renderer_asset(self) -> bool {
         match self {
             AssetHandle::Texture(_) => true,
@@ -63,6 +64,7 @@ impl AssetHandle {
         }
     }
 
+    #[inline]
     pub fn asset_type(self) -> AssetType {
         match self {
             AssetHandle::Texture(_) => AssetType::Texture,
@@ -95,6 +97,7 @@ pub enum AssetType {
 }
 
 impl AssetType {
+    #[inline]
     pub fn is_renderer_asset(self) -> bool {
         match self {
             AssetType::Texture => true,
@@ -123,6 +126,7 @@ pub enum AssetWithHandle<P: Platform> {
 }
 
 impl<P: Platform> AssetWithHandle<P> {
+    #[inline]
     pub fn is_renderer_asset(&self) -> bool {
         match self {
             AssetWithHandle::Texture(_,_) => true,
@@ -137,6 +141,7 @@ impl<P: Platform> AssetWithHandle<P> {
         }
     }
 
+    #[inline]
     pub fn asset_type(&self) -> AssetType {
         match self {
             AssetWithHandle::Texture(_,_) => AssetType::Texture,
@@ -151,6 +156,7 @@ impl<P: Platform> AssetWithHandle<P> {
         }
     }
 
+    #[inline]
     pub fn handle(&self) -> AssetHandle {
         match self {
             AssetWithHandle::Texture(handle, _) => AssetHandle::Texture(*handle),
@@ -165,6 +171,7 @@ impl<P: Platform> AssetWithHandle<P> {
         }
     }
 
+    #[inline]
     pub fn combine(handle: AssetHandle, asset: Asset<P>) -> AssetWithHandle<P> {
         match (handle, asset) {
             (AssetHandle::Texture(handle), Asset::Texture(texture)) => AssetWithHandle::Texture(handle, texture),
@@ -190,6 +197,7 @@ pub enum Asset<P: Platform> {
 }
 
 impl<P: Platform> Asset<P> {
+    #[inline]
     pub fn is_renderer_asset(&self) -> bool {
         match self {
             Asset::Texture(_) => true,
@@ -204,6 +212,7 @@ impl<P: Platform> Asset<P> {
         }
     }
 
+    #[inline]
     pub fn asset_type(&self) -> AssetType {
         match self {
             Asset::Texture(_) => AssetType::Texture,
@@ -232,6 +241,7 @@ pub enum AssetRef<'a, P: Platform> {
 }
 
 impl<P: Platform> AssetRef<'_, P> {
+    #[inline]
     pub fn is_renderer_asset(&self) -> bool {
         match self {
             AssetRef::Texture(_) => true,
@@ -246,6 +256,7 @@ impl<P: Platform> AssetRef<'_, P> {
         }
     }
 
+    #[inline]
     pub fn asset_type(&self) -> AssetType {
         match self {
             AssetRef::Texture(_) => AssetType::Texture,
@@ -260,4 +271,3 @@ impl<P: Platform> AssetRef<'_, P> {
         }
     }
 }
-

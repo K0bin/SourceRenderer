@@ -41,6 +41,7 @@ smartstring = "1.0.1"
 bumpalo = { version = "3.16.0", features = [ "collections", "boxed" ] }
 futures-io = "0.3.31"
 waker-fn = "1.2.0"
+parking_lot = "0.12.3"
 
 bevy_app = "0.14.2"
 bevy_math = "0.14.2"

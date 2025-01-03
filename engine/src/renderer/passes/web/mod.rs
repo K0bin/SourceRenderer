@@ -12,7 +12,6 @@ use crate::renderer::render_path::{
     ZeroTextures,
 };
 use crate::renderer::renderer_resources::RendererResources;
-use crate::renderer::shader_manager::ShaderManager;
 
 use crate::graphics::*;
 
@@ -107,8 +106,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        shader_manager: &ShaderManager<P>,
-        assets: &AssetManager<P>
+        assets: &Arc<AssetManager<P>>
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
         let back_buffer_res = swapchain.next_backbuffer();
         if let Err(e) = back_buffer_res{
