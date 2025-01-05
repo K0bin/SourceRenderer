@@ -12,7 +12,7 @@ use sourcerenderer_core::{
 };
 
 use crate::asset::AssetManager;
-use crate::renderer::asset::{RendererMaterial, RendererMaterialValue};
+use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
 use crate::renderer::drawable::View;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -171,7 +171,7 @@ impl<P: Platform> GeometryPass<P> {
         backbuffer_handle: &<P::GPUBackend as GPUBackend>::Texture,
         width: u32,
         height: u32,
-        asset_manager: &AssetManager<P>,
+        assets: &RendererAssetsReadOnly<'_, P>
     ) {
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -213,7 +213,6 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::Commands,
         );
 
-        let assets = asset_manager.read_renderer_assets();
         let pipeline = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {

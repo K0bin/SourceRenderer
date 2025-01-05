@@ -20,12 +20,6 @@ pub struct SceneInfo<'a, B: GPUBackend> {
     pub lightmap: Option<&'a RendererTexture<B>>,
 }
 
-#[derive(Clone)]
-pub struct ZeroTextures<'a, B: GPUBackend> {
-    pub zero_texture_view: &'a Arc<TextureView<B>>,
-    pub zero_texture_view_black: &'a Arc<TextureView<B>>,
-}
-
 pub struct FrameInfo {
     pub frame: u64,
     pub delta: Duration,
@@ -35,9 +29,7 @@ pub struct RenderPassParameters<'a, P: Platform> {
     pub device: &'a Device<P::GPUBackend>,
     pub scene: &'a SceneInfo<'a, P::GPUBackend>,
     pub resources: &'a mut RendererResources<P::GPUBackend>,
-    pub zero_textures: &'a ZeroTextures<'a, P::GPUBackend>,
-    pub asset_manager: &'a Arc<AssetManager<P>>,
-    pub assets: RendererAssetsReadOnly<'a, P>
+    pub assets: &'a RendererAssetsReadOnly<'a, P>
 }
 
 pub(super) trait RenderPath<P: Platform> : Send {
@@ -52,8 +44,7 @@ pub(super) trait RenderPath<P: Platform> : Send {
         context: &mut GraphicsContext<P::GPUBackend>,
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        assets: &Arc<AssetManager<P>>,
+        assets: &RendererAssetsReadOnly<'_, P>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError>;
 }

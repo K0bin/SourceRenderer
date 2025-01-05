@@ -3,14 +3,11 @@ use std::sync::{Arc, Mutex};
 
 use smallvec::SmallVec;
 
-use sourcerenderer_core::{
-    Platform,
-    Vec4,
-};
+use sourcerenderer_core::Platform;
 
 use super::*;
 use crate::asset::{
-    Asset, AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, AssetWithHandle, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, TextureData, TextureHandle
+    Asset, AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, AssetWithHandle, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, TextureData
 };
 use crate::graphics::*;
 
@@ -250,9 +247,9 @@ impl<P: Platform> AssetIntegrator<P> {
     }
 
     pub(super) fn flush(
-        &mut self,
+        &self,
         asset_manager: &Arc<AssetManager<P>>,
-        _shader_manager: &mut ShaderManager<P>,
+        _shader_manager: &ShaderManager<P>,
     ) {
         let mut retained_delayed_assets = SmallVec::<[DelayedAsset<P>; 2]>::new();
         let mut ready_delayed_assets = SmallVec::<[DelayedAsset<P>; 2]>::new();
@@ -281,16 +278,16 @@ impl<P: Platform> AssetIntegrator<P> {
         self.device.free_completed_transfers();
     }
 
-    pub fn bump_frame(&self, context: &GraphicsContext<P::GPUBackend>) {
+    pub(crate) fn bump_frame(&self, context: &GraphicsContext<P::GPUBackend>) {
         self.vertex_buffer.bump_frame(context);
         self.index_buffer.bump_frame(context);
     }
 
-    pub fn vertex_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
+    pub(crate) fn vertex_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
         self.vertex_buffer.buffer()
     }
 
-    pub fn index_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
+    pub(crate) fn index_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
         self.index_buffer.buffer()
     }
 }

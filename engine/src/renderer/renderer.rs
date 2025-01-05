@@ -13,7 +13,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
 use bevy_math::Affine3A;
 use crossbeam_channel::{
-    unbounded, Receiver, Sender
+    unbounded, Receiver, Sender, TryRecvError
 };
 use instant::Duration;
 use log::{trace, warn};
@@ -34,7 +34,7 @@ use super::ecs::{
 };
 use super::light::DirectionalLight;
 use super::passes::web::WebRenderer;
-use super::render_path::{FrameInfo, RenderPath, SceneInfo, ZeroTextures};
+use super::render_path::{FrameInfo, RenderPath, SceneInfo};
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
@@ -94,7 +94,7 @@ impl<P: Platform> Renderer<P> {
 
         let mut context = device.create_context();
         //let render_path = Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
-        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context));
+        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, asset_manager));
 
         let renderer = Self {
             device: device.clone(),
@@ -106,7 +106,6 @@ impl<P: Platform> Renderer<P> {
             receiver,
             asset_manager: asset_manager.clone(),
             resources: RendererResources::new(device),
-            shader_manager,
             scene: RendererScene::new(),
             swapchain: Arc::new(swapchain),
             context,
@@ -161,18 +160,14 @@ impl<P: Platform> Renderer<P> {
             delta: delta,
         };
 
-        let zero_textures = ZeroTextures {
-            zero_texture_view: &self.asset_manager.placeholder_texture().view,
-            zero_texture_view_black: &self.asset_manager.placeholder_black().view,
-        };
-
         update_visibility(&mut self.scene, &self.asset_manager);
 
+        let assets = self.asset_manager.read_renderer_assets();
         let scene_info = SceneInfo {
             scene: &self.scene,
             active_view_index: 0,
-            vertex_buffer: BufferRef::Regular(self.asset_manager.vertex_buffer()),
-            index_buffer: BufferRef::Regular(self.asset_manager.index_buffer()),
+            vertex_buffer: BufferRef::Regular(assets.vertex_buffer()),
+            index_buffer: BufferRef::Regular(assets.index_buffer()),
             lightmap: None,
         };
 
@@ -181,10 +176,8 @@ impl<P: Platform> Renderer<P> {
             &mut self.context,
             &self.swapchain,
             &scene_info,
-            &zero_textures,
             &frame_info,
-            &self.shader_manager,
-            &self.asset_manager
+            &assets
         );
         let frame_end_signal = self.context.end_frame();
 
@@ -220,49 +213,20 @@ impl<P: Platform> Renderer<P> {
     }
 
     fn receive_messages(&mut self) -> ReceiveMessagesResult {
-        while self.shader_manager.has_remaining_mandatory_compilations() {
-            // We're waiting for shader compilation on different threads, process some assets in the meantime.
-            self.asset_manager
-                .flush(&self.asset_manager, &mut self.shader_manager);
-        }
-
-        let mut message_opt = if self.asset_manager.is_empty()
-            || self.asset_manager.has_open_renderer_assets()
-            || self.scene.static_drawables().is_empty()
-        {
-            // No assets loaded or assets to process in the queue, check if there are renderer messages but don't block.
-            let message_res = self.receiver.try_recv();
-            if let Err(err) = &message_res {
-                if err.is_disconnected() {
-                    panic!("Rendering channel closed {:?}", err);
-                }
-            }
-            message_res.ok()
-        } else if cfg!(target_arch = "wasm32") {
-            let message_res = self.receiver.recv();
-            if let Err(err) = &message_res {
-                panic!("Rendering channel closed {:?}", err);
-            }
-            message_res.ok()
-        } else {
-            // No assets to process, wait for new messages.
-            let message_res = self.receiver.recv_timeout(Duration::from_millis(16));
-            if let Err(err) = &message_res {
-                if err.is_disconnected() {
-                    panic!("Rendering channel closed {:?}", err);
-                }
-            }
-            message_res.ok()
-        };
-
-        // recv blocks, so do the preparation after receiving the first event
-        //self.receive_window_events();
         self.asset_manager
-            .receive_assets(&self.asset_manager, &mut self.shader_manager);
+            .flush_renderer_assets();
 
-        if message_opt.is_none() {
-            // Don't even enter the loop below in case there have been messages pushed since then.
-            return ReceiveMessagesResult::WaitForMessages;
+        let message_res = self.receiver.try_recv();
+        let mut message_opt: Option<RendererCommand<<P as Platform>::GPUBackend>>;
+        match message_res {
+            Ok(message) => { message_opt = Some(message); },
+            Err(err) => {
+                if err == TryRecvError::Disconnected {
+                    panic!("Rendering channel closed {:?}", err);
+                } else {
+                    return ReceiveMessagesResult::WaitForMessages;
+                }
+            }
         }
 
         while message_opt.is_some() {

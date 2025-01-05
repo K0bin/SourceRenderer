@@ -4,6 +4,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{TextureUsage, TextureViewInfo};
 use crate::asset::{AssetManager, SimpleAssetLoadRequest};
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
+use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
 use sourcerenderer_core::{
     gpu, Matrix4, Platform, Vec2, Vec2UI, Vec3, Vec3UI
@@ -17,7 +18,7 @@ use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
     SceneInfo,
-    ZeroTextures, RenderPassParameters,
+    RenderPassParameters,
 };
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -246,9 +247,8 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         context: &mut GraphicsContext<P::GPUBackend>,
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        asset_manager: &Arc<AssetManager<P>>,
+        assets: &RendererAssetsReadOnly<'_, P>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
@@ -257,7 +257,6 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
         let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
 
-        let assets = asset_manager.read_renderer_assets();
         let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
 
         self.setup_frame(
@@ -271,14 +270,11 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
             frame_info.frame
         );
 
-        let assets: crate::renderer::asset::RendererAssetsReadOnly<'_, P> = asset_manager.read_renderer_assets();
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
             resources: &mut self.barriers,
-            zero_textures,
             assets,
-            asset_manager
         };
 
         self

@@ -4,7 +4,7 @@ use parking_lot::{RwLock, RwLockReadGuard}; // The parking lot variant is fair (
 use smallvec::SmallVec;
 use sourcerenderer_core::Platform;
 
-use crate::{asset::*, graphics::{ComputePipeline, GraphicsPipeline, RayTracingPipeline}};
+use crate::{asset::*, graphics::{BufferSlice, ComputePipeline, GraphicsPipeline, RayTracingPipeline}};
 
 use super::*;
 
@@ -17,7 +17,7 @@ pub struct RendererAssets<P: Platform> {
 }
 
 impl<P: Platform> RendererAssets<P> {
-    pub fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> Self {
+    pub(crate) fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> Self {
         Self {
             assets: RwLock::new(RendererAssetMaps {
                 textures: HandleMap::new(),
@@ -37,7 +37,7 @@ impl<P: Platform> RendererAssets<P> {
         }
     }
 
-    pub fn integrate(
+    pub(crate) fn integrate(
         &self,
         asset_manager: &Arc<AssetManager<P>>,
         path: &str,
@@ -89,12 +89,18 @@ impl<P: Platform> RendererAssets<P> {
         self.shader_manager.request_ray_tracing_pipeline(asset_manager, info)
     }
 
-    pub fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {
+    pub(crate) fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {
         RendererAssetsReadOnly {
             maps: self.assets.read(),
             placeholders: &self.placeholders,
-            shader_manager: &self.shader_manager
+            shader_manager: &self.shader_manager,
+            vertex_buffer: self.integrator.vertex_buffer(),
+            index_buffer: self.integrator.index_buffer()
         }
+    }
+
+    pub(crate) fn flush(&self, asset_manager: &Arc<AssetManager<P>>) {
+        self.integrator.flush(asset_manager, &self.shader_manager);
     }
 }
 
@@ -249,7 +255,9 @@ impl<P: Platform> RendererAssetMaps<P> {
 pub struct RendererAssetsReadOnly<'a, P: Platform> {
     maps: RwLockReadGuard<'a, RendererAssetMaps<P>>,
     placeholders: &'a AssetPlaceholders<P>,
-    shader_manager: &'a ShaderManager<P>
+    shader_manager: &'a ShaderManager<P>,
+    vertex_buffer: &'a Arc<BufferSlice<P::GPUBackend>>,
+    index_buffer: &'a Arc<BufferSlice<P::GPUBackend>>,
 }
 
 impl<P: Platform> RendererAssetsReadOnly<'_, P> {
@@ -265,8 +273,24 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
         self.maps.materials.get_value(handle).unwrap_or(self.placeholders.material())
     }
 
+    pub fn get_placeholder_material(&self) -> &RendererMaterial {
+        self.placeholders.material()
+    }
+
     pub fn get_texture(&self, handle: TextureHandle, ) -> &RendererTexture<P::GPUBackend> {
         self.maps.textures.get_value(handle).unwrap_or(self.placeholders.texture_white())
+    }
+
+    pub fn get_texture_opt(&self, handle: TextureHandle, ) -> Option<&RendererTexture<P::GPUBackend>> {
+        self.maps.textures.get_value(handle)
+    }
+
+    pub fn get_placeholder_texture_black(&self) -> &RendererTexture<P::GPUBackend> {
+        self.placeholders.texture_black()
+    }
+
+    pub fn get_placeholder_texture_white(&self) -> &RendererTexture<P::GPUBackend> {
+        self.placeholders.texture_white()
     }
 
     pub fn get_shader(&self, handle: ShaderHandle) -> Option<&RendererShader<P::GPUBackend>> {
@@ -359,5 +383,13 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
             _ => panic!("Asset type is not a pipeline type")
         }
         handles
+    }
+
+    pub fn vertex_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
+        self.vertex_buffer
+    }
+
+    pub fn index_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
+        self.index_buffer
     }
 }

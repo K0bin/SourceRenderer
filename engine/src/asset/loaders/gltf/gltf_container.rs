@@ -69,6 +69,10 @@ impl<P: Platform> GltfContainer<P> {
 }
 
 impl<P: Platform> AssetContainer for GltfContainer<P> {
+    async fn contains(&self, path: &str) -> bool {
+        self.load(path).await.is_some()
+    }
+
     async fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
         let mut reader = self.reader.lock().unwrap();
         if path.starts_with(&self.scene_base_path) {

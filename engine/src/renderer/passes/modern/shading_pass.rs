@@ -161,9 +161,9 @@ impl<P: Platform> ShadingPass<P> {
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
             );
-            &*rt_shadows
+            Some(&*rt_shadows)
         } else {
-            pass_params.zero_textures.zero_texture_view
+            None
         };
 
         let cascade_count = {
@@ -207,12 +207,14 @@ impl<P: Platform> ShadingPass<P> {
             &pass_params.scene.lightmap.unwrap().view,
             pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::VeryFrequent,
-            7,
-            shadows,
-            pass_params.resources.linear_sampler(),
-        );
+        if let Some(shadows) = shadows {
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::VeryFrequent,
+                7,
+                shadows,
+                pass_params.resources.linear_sampler(),
+            );
+        }
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             8,

@@ -2,35 +2,20 @@ use std::{sync::Arc, io::Read};
 
 use sourcerenderer_core::{gpu::PackedShader, platform::IO, Platform, Vec2};
 
-use crate::{renderer::{renderer_resources::HistoryResourceEntry, render_path::RenderPassParameters}, ui::UIDrawData};
+use crate::{asset::AssetManager, renderer::{asset::GraphicsPipelineHandle, render_path::RenderPassParameters, renderer_resources::HistoryResourceEntry}, ui::UIDrawData};
 use crate::graphics::*;
+use crate::renderer::asset::GraphicsPipelineInfo;
 
 pub struct UIPass<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
-    pipeline: Arc<GraphicsPipeline<P::GPUBackend>>,
+    pipeline: GraphicsPipelineHandle,
 }
 
 impl<P: Platform> UIPass<P> {
-    pub fn new(device: &Arc<Device<P::GPUBackend>>) -> Self {
-        let vs = {
-            let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.vert.json").unwrap();
-            let mut bytes: Vec<u8> = Vec::new();
-            file.read_to_end(&mut bytes).unwrap();
-            let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
-            device.create_shader(&shader, Some("DearImguiVS"))
-        };
-
-        let ps = {
-            let mut file = <P::IO as IO>::open_asset("shaders/dear_imgui.frag.json").unwrap();
-            let mut bytes: Vec<u8> = Vec::new();
-            file.read_to_end(&mut bytes).unwrap();
-            let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
-            device.create_shader(&shader, Some("DearImguiPS"))
-        };
-
-        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineInfo {
-            vs: &vs,
-            fs: Some(&ps),
+    pub fn new(device: &Arc<Device<P::GPUBackend>>, asset_manager: &Arc<AssetManager<P>>) -> Self {
+        let pipeline = asset_manager.request_graphics_pipeline(&GraphicsPipelineInfo {
+            vs: "shaders/dear_imgui.vert.json",
+            fs: Some("shaders/dear_imgui.frag.json"),
             vertex_layout: VertexLayoutInfo {
                 shader_inputs: &[
                     ShaderInputElement {
@@ -91,7 +76,7 @@ impl<P: Platform> UIPass<P> {
             primitive_type: PrimitiveType::Triangles,
             render_target_formats: &[Format::RGBA8UNorm],
             depth_stencil_format: Format::Unknown
-        }, Some("DearImgui"));
+        });
 
         Self {
             device: device.clone(),
@@ -119,7 +104,8 @@ impl<P: Platform> UIPass<P> {
 
         command_buffer.flush_barriers();
 
-        command_buffer.set_pipeline(PipelineBinding::Graphics(&self.pipeline));
+        let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
+        command_buffer.set_pipeline(PipelineBinding::Graphics(pipeline));
 
         if draw.viewport.extent.x <= 0f32 || draw.viewport.extent.y <= 0f32 {
             return;
@@ -161,7 +147,7 @@ impl<P: Platform> UIPass<P> {
                 if let Some(texture) = &draw.texture {
                     command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, texture, pass_params.resources.linear_sampler());
                 } else {
-                    command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, pass_params.zero_textures.zero_texture_view, pass_params.resources.linear_sampler());
+                    command_buffer.bind_sampling_view_and_sampler(BindingFrequency::VeryFrequent, 0, &pass_params.assets.get_placeholder_texture_white().view, pass_params.resources.linear_sampler());
                 }
 
                 command_buffer.finish_binding();

@@ -22,6 +22,7 @@ use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use crate::asset::{AssetManager, SimpleAssetLoadRequest};
 use crate::input::Input;
+use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
@@ -29,7 +30,7 @@ use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
     SceneInfo,
-    ZeroTextures, RenderPassParameters,
+    RenderPassParameters,
 };
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -270,9 +271,8 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         context: &mut GraphicsContext<P::GPUBackend>,
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        asset_manager: &Arc<AssetManager<P>>,
+        assets: &RendererAssetsReadOnly<'_, P>
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
@@ -325,13 +325,10 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         );
         setup_frame::<P::GPUBackend>(&mut cmd_buf, &frame_bindings);
 
-        let assets = asset_manager.read_renderer_assets();
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
             resources: &mut self.barriers,
-            zero_textures,
-            asset_manager,
             assets
         };
 

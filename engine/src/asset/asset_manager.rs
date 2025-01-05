@@ -102,10 +102,8 @@ impl Seek for AssetFile {
 }
 
 pub trait AssetContainer: Send + Sync + 'static {
-    async fn contains(&self, path: &str) -> bool {
-        self.load(path).await.is_some()
-    }
-    async fn load(&self, path: &str) -> Option<AssetFile>;
+    fn contains(&self, path: &str) -> impl Future<Output = bool>;
+    fn load(&self, path: &str) -> impl Future<Output = Option<AssetFile>>;
 }
 
 pub trait ErasedAssetContainer: Send + Sync {
@@ -567,7 +565,11 @@ impl<P: Platform> AssetManager<P> {
         trace!("Stopping asset manager");
     }
 
-    pub fn read_renderer_assets(&self) -> RendererAssetsReadOnly<P> {
+    pub(crate) fn read_renderer_assets(&self) -> RendererAssetsReadOnly<P> {
         self.renderer.read()
+    }
+
+    pub(crate) fn flush_renderer_assets(self: &Arc<Self>) {
+        self.renderer.flush(self);
     }
 }

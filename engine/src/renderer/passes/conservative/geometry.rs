@@ -244,9 +244,9 @@ impl<P: Platform> GeometryPass<P> {
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
             );
-            &*rt_shadows
+            Some(&*rt_shadows)
         } else {
-            pass_params.zero_textures.zero_texture_view
+            None
         };
 
         let clusters = pass_params.resources.access_buffer(
@@ -276,7 +276,6 @@ impl<P: Platform> GeometryPass<P> {
         );
 
         let assets = &pass_params.assets;
-        let zero_textures = pass_params.zero_textures;
         let lightmap = pass_params.scene.lightmap;
 
         let inheritance = cmd_buffer.inheritance();
@@ -304,16 +303,18 @@ impl<P: Platform> GeometryPass<P> {
                     command_buffer.bind_sampling_view_and_sampler(
                         BindingFrequency::Frequent,
                         0,
-                        if let Some(lightmap) = lightmap { &lightmap.view } else { zero_textures.zero_texture_view },
+                        if let Some(lightmap) = lightmap { &lightmap.view } else { &assets.get_placeholder_texture_white().view },
                         &self.sampler,
                     );
                     command_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);
-                    command_buffer.bind_sampling_view_and_sampler(
-                        BindingFrequency::Frequent,
-                        2,
-                        &shadows,
-                        &self.sampler,
-                    );
+                    if let Some(shadows) = shadows {
+                        command_buffer.bind_sampling_view_and_sampler(
+                            BindingFrequency::Frequent,
+                            2,
+                            &shadows,
+                            &self.sampler,
+                        );
+                    }
                     command_buffer.bind_storage_buffer(
                         BindingFrequency::Frequent,
                         3,
@@ -394,19 +395,19 @@ impl<P: Platform> GeometryPass<P> {
                             command_buffer.bind_sampling_view_and_sampler(
                                 BindingFrequency::VeryFrequent,
                                 0,
-                                zero_textures.zero_texture_view,
+                                &assets.get_placeholder_texture_white().view,
                                 &self.sampler,
                             );
                             command_buffer.bind_sampling_view_and_sampler(
                                 BindingFrequency::VeryFrequent,
                                 1,
-                                zero_textures.zero_texture_view,
+                                &assets.get_placeholder_texture_white().view,
                                 &self.sampler,
                             );
                             command_buffer.bind_sampling_view_and_sampler(
                                 BindingFrequency::VeryFrequent,
                                 2,
-                                zero_textures.zero_texture_view,
+                                &assets.get_placeholder_texture_white().view,
                                 &self.sampler,
                             );
 
@@ -445,7 +446,7 @@ impl<P: Platform> GeometryPass<P> {
                             let metalness_value = material.get("metalness");
                             match metalness_value {
                                 Some(RendererMaterialValue::Texture(handle)) => {
-                                    let metalness_view = &assets.get_texture(*handle).view;
+                                    let metalness_view = &assets.get_texture_opt(*handle).unwrap_or(assets.get_placeholder_texture_black()).view;
                                     command_buffer.bind_sampling_view_and_sampler(
                                         BindingFrequency::VeryFrequent,
                                         2,

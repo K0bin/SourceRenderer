@@ -3,6 +3,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use crate::asset::{AssetManager, SimpleAssetLoadRequest};
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
+use crate::renderer::asset::RendererAssetsReadOnly;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -35,7 +36,7 @@ use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
     SceneInfo,
-    ZeroTextures, RenderPassParameters,
+    RenderPassParameters,
 };
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -150,6 +151,7 @@ impl<P: Platform> ModernRenderer<P> {
                 &mut barriers,
                 resolution,
                 swapchain,
+                asset_manager
             );
             AntiAliasing::FSR2 { fsr: fsr_pass }
         } else {
@@ -160,7 +162,7 @@ impl<P: Platform> ModernRenderer<P> {
 
         let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, asset_manager);
 
-        let ui_pass = UIPass::new(device);
+        let ui_pass = UIPass::new(device, asset_manager);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -364,9 +366,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         context: &mut GraphicsContext<P::GPUBackend>,
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        asset_manager: &Arc<AssetManager<P>>,
+        assets: &RendererAssetsReadOnly<'_, P>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
@@ -388,7 +389,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let camera_history_buffer = &camera_buffer;
 
-        let assets = asset_manager.read_renderer_assets();
         let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
 
         self.shadow_map_pass.calculate_cascades(scene);
@@ -415,8 +415,6 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             device: self.device.as_ref(),
             scene,
             resources: &mut self.barriers,
-            zero_textures,
-            asset_manager,
             assets
         };
 

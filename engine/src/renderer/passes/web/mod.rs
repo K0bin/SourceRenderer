@@ -5,11 +5,11 @@ use sourcerenderer_core::{Platform, Vec4, Matrix4};
 use crate::asset::{AssetManager, SimpleAssetLoadRequest};
 use crate::graphics::GraphicsContext;
 use crate::input::Input;
+use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::render_path::{
     FrameInfo,
     RenderPath,
     SceneInfo,
-    ZeroTextures,
 };
 use crate::renderer::renderer_resources::RendererResources;
 
@@ -104,9 +104,8 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         context: &mut GraphicsContext<P::GPUBackend>,
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        assets: &Arc<AssetManager<P>>
+        assets: &RendererAssetsReadOnly<'_, P>
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
         let back_buffer_res = swapchain.next_backbuffer();
         if let Err(e) = back_buffer_res{

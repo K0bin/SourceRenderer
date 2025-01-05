@@ -182,7 +182,7 @@ struct GraphicsPipeline<P: Platform> {
     pipeline: Arc<<P::GPUBackend as GPUBackend>::GraphicsPipeline>,
 }
 
-struct GraphicsShaders<B: GPUBackend> {
+pub struct GraphicsShaders<B: GPUBackend> {
     vs: Arc<B::Shader>,
     fs: Option<Arc<B::Shader>>,
 }
@@ -501,7 +501,7 @@ impl Into<AssetHandle> for RayTracingPipelineHandle {
     }
 }
 
-struct RayTracingShaders<B: GPUBackend> {
+pub struct RayTracingShaders<B: GPUBackend> {
     pub ray_gen_shader: Arc<B::Shader>,
     pub closest_hit_shaders: SmallVec<[Arc<B::Shader>; 4]>,
     pub miss_shaders: SmallVec<[Arc<B::Shader>; 4]>,
