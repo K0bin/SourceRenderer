@@ -20,7 +20,7 @@ use super::rt_shadows::RTShadowPass;
 use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
-use crate::asset::{AssetManager, SimpleAssetLoadRequest};
+use crate::asset::AssetManager;
 use crate::input::Input;
 use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
@@ -260,10 +260,6 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     ) {
         // TODO: resize render targets
     }
-
-    fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>) {}
-
-    fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>) {}
 
     #[profiling::function]
     fn render(

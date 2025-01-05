@@ -210,10 +210,10 @@ impl RendererModel {
     }
 }
 
-pub type RendererShader<B: GPUBackend> = Arc<B::Shader>;
-pub type RendererGraphicsPipeline<P: Platform> = CompiledPipeline<P, GraphicsCompileTask<P>>;
-pub type RendererComputePipeline<P: Platform> = CompiledPipeline<P, ComputeCompileTask<P>>;
-pub type RendererRayTracingPipeline<P: Platform> = CompiledPipeline<P, StoredRayTracingPipelineInfo<P>>;
+pub type RendererShader<B> = Arc<<B as GPUBackend>::Shader>;
+pub type RendererGraphicsPipeline<P> = CompiledPipeline<P, GraphicsCompileTask<P>>;
+pub type RendererComputePipeline<P> = CompiledPipeline<P, ComputeCompileTask<P>>;
+pub type RendererRayTracingPipeline<P> = CompiledPipeline<P, StoredRayTracingPipelineInfo<P>>;
 
 pub struct RendererMesh<B: GPUBackend> {
     pub vertices: AssetBufferSlice<B>,

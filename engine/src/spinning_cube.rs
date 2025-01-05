@@ -21,7 +21,7 @@ use crate::asset::{
     MeshRange,
 };
 use crate::camera::ActiveCamera;
-use crate::engine::AssetManagerResource;
+use crate::asset::AssetManagerECSResource;
 use crate::fps_camera::FPSCameraComponent;
 use crate::input::InputState;
 use crate::math::BoundingBox;
@@ -47,7 +47,7 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
         app.insert_resource(PlaceLightsState { was_space_down: false });
         app.add_systems(SpawnScene, (place_lights, spin::<P>,));
 
-        let asset_manager_res = app.world().resource::<AssetManagerResource<P>>();
+        let asset_manager_res = app.world().resource::<AssetManagerECSResource<P>>();
         let asset_manager = &asset_manager_res.0;
 
         let indices: [u32; 36] = [

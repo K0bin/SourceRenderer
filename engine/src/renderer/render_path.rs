@@ -7,7 +7,7 @@ use sourcerenderer_core::Platform;
 use super::asset::{RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use crate::asset::{AssetManager, SimpleAssetLoadRequest};
+use crate::asset::AssetManager;
 use crate::graphics::{BufferRef, GraphicsContext, TextureView};
 use crate::ui::UIDrawData;
 use crate::graphics::*;
@@ -37,8 +37,6 @@ pub(super) trait RenderPath<P: Platform> : Send {
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain<P::GPUBackend>);
     fn set_ui_data(&mut self, data: UIDrawData<P::GPUBackend>);
-    fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>);
-    fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>);
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
@@ -47,4 +45,26 @@ pub(super) trait RenderPath<P: Platform> : Send {
         frame_info: &FrameInfo,
         assets: &RendererAssetsReadOnly<'_, P>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError>;
+}
+
+pub struct NoOpRenderPath(());
+
+impl<P: Platform> RenderPath<P> for NoOpRenderPath {
+    fn is_gpu_driven(&self) -> bool {
+        false
+    }
+    fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
+    fn on_swapchain_changed(&mut self, _swapchain: &Swapchain<<P as Platform>::GPUBackend>) {}
+    fn set_ui_data(&mut self, _data: UIDrawData<<P as Platform>::GPUBackend>) {}
+    fn render(
+        &mut self,
+        context: &mut GraphicsContext<<P as Platform>::GPUBackend>,
+        _swapchain: &Arc<Swapchain<<P as Platform>::GPUBackend>>,
+        _scene: &SceneInfo<<P as Platform>::GPUBackend>,
+        _frame_info: &FrameInfo,
+        _assets: &RendererAssetsReadOnly<'_, P>,
+    ) -> Result<FinishedCommandBuffer<<P as Platform>::GPUBackend>, SwapchainError> {
+        let cmd_buffer = context.get_command_buffer(QueueType::Graphics);
+        Ok(cmd_buffer.finish())
+    }
 }

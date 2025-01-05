@@ -67,7 +67,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
         manager: &Arc<AssetManager<P>>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+    ) -> Result<(), ()> {
         if file.path.contains("autocombine") {
             print!("Model: {} is auto combined", &file.path);
         }
@@ -376,7 +376,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
             AssetLoadPriority::Normal,
         );
 
-        Ok(DirectlyLoadedAsset::None)
+        Ok(())
     }
 }
 

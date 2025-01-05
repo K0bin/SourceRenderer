@@ -33,11 +33,8 @@ use sourcerenderer_core::{
     Vec4,
 };
 
-use crate::asset::asset_manager::{
-    AssetFile,
-    DirectlyLoadedAsset,
-};
-use crate::asset::loaded_level::{LoadedEntityParent, LoadedLevel};
+use crate::asset::asset_manager::AssetFile;
+use crate::asset::loaded_level::{LoadedEntityParent, LevelData};
 use crate::asset::{
     Asset, AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex
 };
@@ -57,7 +54,7 @@ impl GltfLoader {
 
     fn visit_node<P: Platform>(
         node: &Node,
-        world: &mut LoadedLevel,
+        world: &mut LevelData,
         asset_mgr: &Arc<AssetManager<P>>,
         parent_entity: Option<usize>,
         gltf_file_name: &str,
@@ -290,8 +287,8 @@ impl GltfLoader {
         scene: &Scene,
         asset_mgr: &Arc<AssetManager<P>>,
         gltf_file_name: &str,
-    ) -> LoadedLevel {
-        let mut world = LoadedLevel::new(4096, 64);
+    ) -> LevelData {
+        let mut world: LevelData = LevelData::new(4096, 64);
         let mut buffer_cache = HashMap::<String, Vec<u8>>::new();
         let nodes = scene.nodes();
         for node in nodes {
@@ -676,9 +673,9 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
         &self,
         file: AssetFile,
         manager: &Arc<AssetManager<P>>,
-        _priority: AssetLoadPriority,
-        _progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+        priority: AssetLoadPriority,
+        progress: &Arc<AssetLoaderProgress>,
+    ) -> Result<(), ()> {
         let path = file.path.clone();
         let gltf = Gltf::from_reader(file).unwrap();
         const PUNCTUAL_LIGHT_EXTENSION: &'static str = "KHR_lights_punctual";
@@ -705,12 +702,11 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
                     == scene_name
                 {
                     let world = GltfLoader::load_scene(&scene, manager, gltf_name);
-                    return Ok(DirectlyLoadedAsset::Level(world));
+                    manager.add_asset_data_with_progress(&path, AssetData::Level(world), Some(progress), priority);
                 }
             }
         }
-
-        unimplemented!()
+        Ok(())
     }
 }
 

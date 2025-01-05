@@ -86,9 +86,9 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
         manager: &Arc<AssetManager<P>>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+    ) -> Result<(), ()> {
         let container = new_vpk_container::<P>(manager, file).unwrap();
         manager.add_container_with_progress(container, Some(progress));
-        Ok(DirectlyLoadedAsset::None)
+        Ok(())
     }
 }

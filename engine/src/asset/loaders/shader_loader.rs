@@ -5,10 +5,7 @@ use bevy_tasks::futures_lite::{AsyncBufReadExt, AsyncRead, AsyncReadExt};
 use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::Platform;
 
-use crate::asset::asset_manager::{
-    AssetFile,
-    DirectlyLoadedAsset
-};
+use crate::asset::asset_manager::AssetFile;
 use crate::asset::{
     AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager
 };
@@ -36,7 +33,7 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+    ) -> Result<(), ()> {
         println!("Loading shader: {:?}", &file.path);
         let mut buffer = Vec::<u8>::new();
         let res = file.read_to_end(&mut buffer).await;
@@ -51,6 +48,6 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
             Some(progress),
             priority,
         );
-        Ok(DirectlyLoadedAsset::None)
+        Ok(())
     }
 }

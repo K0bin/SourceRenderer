@@ -28,7 +28,7 @@ use sourcerenderer_core::{
     Vec4,
 };
 
-use crate::asset::loaded_level::LoadedLevel;
+use crate::asset::loaded_level::LevelData;
 use crate::graphics::*;
 
 use super::BspLumps;
@@ -406,7 +406,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
         manager: &Arc<AssetManager<P>>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+    ) -> Result<(), ()> {
         let path = asset_file.path.clone();
         let name = Path::new(&path).file_name().unwrap().to_str().unwrap();
         let buf_reader = BufReader::new(asset_file);

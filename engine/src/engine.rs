@@ -26,20 +26,11 @@ use sourcerenderer_core::{
 use crate::asset::loaders::{
     FSContainer, GltfLoader, ImageLoader, ShaderLoader
 };
-use crate::asset::{AssetContainer, AssetLoader, AssetManager};
+use crate::asset::{AssetContainer, AssetLoader, AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::graphics::*;
 use crate::input::Input;
 use crate::renderer::{Renderer, RendererPlugin};
 use crate::transform::InterpolationPlugin;
-
-#[derive(Resource)]
-pub struct GPUDeviceResource<B: GPUBackend>(pub Arc<Device<B>>);
-
-#[derive(Resource)]
-pub struct GPUSwapchainResource<B: GPUBackend>(pub Swapchain<B>);
-
-#[derive(Resource)]
-pub struct AssetManagerResource<P: Platform>(pub Arc<AssetManager<P>>);
 
 #[derive(Resource)]
 pub struct ConsoleResource(pub Arc<Console>);
@@ -56,34 +47,11 @@ pub struct Engine(App);
 
 impl Engine {
     pub fn run<P: Platform, M>(platform: &P, game_plugins: impl Plugins<M>) -> Self {
-        let api_instance = platform
-            .create_graphics(true)
-            .expect("Failed to initialize graphics");
-        let gpu_instance = Instance::<P::GPUBackend>::new(api_instance);
-
-        let surface = platform.window().create_surface(gpu_instance.handle());
-
         let console = Arc::new(Console::new());
         let console_resource = ConsoleResource(console);
 
-        let gpu_adapters = gpu_instance.list_adapters();
-        let gpu_device = gpu_adapters.first().expect("No suitable GPU found").create_device(&surface);
-
-        let core_swapchain = platform.window().create_swapchain(true, gpu_device.handle(), surface);
-        let gpu_swapchain = Swapchain::new(core_swapchain, &gpu_device);
-
-        let asset_manager: Arc<AssetManager<P>> = AssetManager::<P>::new(&gpu_device);
-        asset_manager.add_container(FSContainer::new(platform, &asset_manager));
-        asset_manager.add_loader(ShaderLoader::new());
-
-        asset_manager.add_loader(GltfLoader::new());
-        asset_manager.add_loader(ImageLoader::new());
-        let asset_manager_resource = AssetManagerResource(asset_manager);
-
-        let gpu_resource = GPUDeviceResource::<P::GPUBackend>(gpu_device);
-        let gpu_swapchain_resource = GPUSwapchainResource::<P::GPUBackend>(gpu_swapchain);
-
         let mut app = App::new();
+        initialize_graphics(platform, &mut app);
 
         app
             .add_plugins(PanicHandlerPlugin::default())
@@ -96,10 +64,8 @@ impl Engine {
             .add_plugins(HierarchyPlugin::default())
             .add_plugins(InterpolationPlugin::default())
             .add_plugins(InputPlugin::default())
+            .add_plugins(AssetManagerPlugin::<P>::default())
             .insert_resource(console_resource)
-            .insert_resource(gpu_resource)
-            .insert_resource(gpu_swapchain_resource)
-            .insert_resource(asset_manager_resource)
             .add_plugins(RendererPlugin::<P>::new())
             .add_plugins(game_plugins);
 
@@ -138,10 +104,6 @@ impl Engine {
 
     pub fn stop<P: Platform>(&self) {
         trace!("Stopping engine");
-        self.0
-            .world()
-            .resource::<AssetManagerResource<P>>().0
-            .stop();
 
         RendererPlugin::<P>::stop(&self.0);
     }
@@ -158,7 +120,7 @@ impl Engine {
         }
     }
 
-    pub fn get_asset_manager<P: Platform>(app: &App) -> &AssetManager<P> {
-        &app.world().resource::<AssetManagerResource<P>>().0
+    pub fn get_asset_manager<P: Platform>(app: &App) -> &Arc<AssetManager<P>> {
+        &app.world().resource::<AssetManagerECSResource<P>>().0
     }
 }

@@ -1,8 +1,8 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use bevy_app::{App, FixedUpdate, Plugin, Update};
 use sourcerenderer_core::Platform;
-use sourcerenderer_engine::{asset::{loaders::GltfContainer, AssetManager}, Engine};
+use sourcerenderer_engine::{asset::{loaders::GltfContainer, AssetLoadPriority, AssetManager, AssetType}, Engine};
 
 use crate::{fps_camera::{fps_camera_movement, retrieve_fps_camera_rotation}, spinning_cube::SpinningCubePlugin};
 
@@ -20,19 +20,15 @@ impl<P: Platform> Default for GamePlugin<P> {
 impl<P: Platform> Plugin for GamePlugin<P> {
     fn build(&self, app: &mut App) {
         {
-            let asset_manager: &AssetManager<P> = Engine::get_asset_manager(app);
+            let asset_manager: &Arc<AssetManager<P>> = Engine::get_asset_manager(app);
 
             asset_manager.add_container(Box::new(
                 GltfContainer::<P>::load("bistro_sun.glb", true)
                     .unwrap(),
             ));
 
-            let level = asset_manager.load_level("bistro_sun.glb/scene/Scene").unwrap();
-            let world = app.world_mut();
-            level.import_into_world(world);
+            let level = asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);
         }
-
-        //app.world_mut().entities_mut()
 
         app
             .add_systems(FixedUpdate, fps_camera_movement::<P>)

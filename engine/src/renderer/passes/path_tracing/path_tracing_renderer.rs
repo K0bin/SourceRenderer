@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{TextureUsage, TextureViewInfo};
-use crate::asset::{AssetManager, SimpleAssetLoadRequest};
+use crate::asset::AssetManager;
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
 use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
@@ -236,10 +236,6 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
     ) {
         // TODO: resize render targets
     }
-
-    fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>) {}
-
-    fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>) {}
 
     #[profiling::function]
     fn render(

@@ -41,13 +41,12 @@ use super::{
     Renderer,
     StaticRenderableComponent,
 };
+use crate::asset::AssetManagerECSResource;
 use crate::engine::{
-    AssetManagerResource,
     ConsoleResource,
-    GPUDeviceResource,
-    GPUSwapchainResource,
     WindowState, TICK_RATE,
 };
+use crate::graphics::{GPUDeviceResource, GPUSwapchainResource};
 use crate::transform::InterpolatedTransform;
 use crate::{
     ActiveCamera,
@@ -74,14 +73,14 @@ unsafe impl<P: Platform> Sync for RendererPlugin<P> {}
 
 impl<P: Platform> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
-        let swapchain = app
+        let swapchain: crate::graphics::Swapchain<<P as Platform>::GPUBackend> = app
             .world_mut()
             .remove_resource::<GPUSwapchainResource<P::GPUBackend>>()
             .unwrap()
             .0;
         let gpu_resources = app.world().resource::<GPUDeviceResource<P::GPUBackend>>();
         let console_resource = app.world().resource::<ConsoleResource>();
-        let asset_manager_resource = app.world().resource::<AssetManagerResource<P>>();
+        let asset_manager_resource = app.world().resource::<AssetManagerECSResource<P>>();
 
         let (renderer, sender) = Renderer::new(
             &gpu_resources.0,

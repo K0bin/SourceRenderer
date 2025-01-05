@@ -36,11 +36,6 @@ pub trait Platform: 'static + Sized + Send + Sync {
 
   fn thread_memory_management_pool<F, T>(callback: F) -> T
     where F: FnOnce() -> T;
-
-  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
-  where
-      F: FnOnce(),
-      F: Send + 'static;
 }
 
 #[derive(PartialEq)]

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Platform, Vec4, Matrix4};
 
-use crate::asset::{AssetManager, SimpleAssetLoadRequest};
+use crate::asset::AssetManager;
 use crate::graphics::GraphicsContext;
 use crate::input::Input;
 use crate::renderer::asset::RendererAssetsReadOnly;
@@ -94,10 +94,6 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         _swapchain: &Swapchain<P::GPUBackend>,
     ) {
     }
-
-    fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>) {}
-
-    fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>) {}
 
     fn render(
         &mut self,

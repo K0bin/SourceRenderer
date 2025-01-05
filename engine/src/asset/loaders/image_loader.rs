@@ -15,7 +15,7 @@ use crate::graphics::*;
 
 use crate::asset::asset_manager::{AssetFile, AssetLoader};
 use crate::asset::{
-    AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, DirectlyLoadedAsset, TextureData
+    AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, TextureData
 };
 
 pub struct ImageLoader {}
@@ -37,7 +37,7 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+    ) -> Result<(), ()> {
         let is_png = file.path.ends_with(".png");
 
         let path = file.path.clone();
@@ -88,6 +88,6 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
             priority,
         );
 
-        Ok(DirectlyLoadedAsset::None)
+        Ok(())
     }
 }

@@ -27,7 +27,7 @@ use widestring::{
     WideCString,
 };
 
-use crate::asset::{AssetManager, AssetType, SimpleAssetLoadRequest};
+use crate::asset::AssetManager;
 use crate::renderer::asset::ComputePipelineHandle;
 use crate::renderer::passes::taa::halton_point;
 use crate::renderer::render_path::{FrameInfo, RenderPassParameters};
@@ -329,41 +329,6 @@ impl<P: Platform> Fsr2Pass<P> {
             );
             jitter
         }
-    }
-
-    pub(crate) fn get_asset_requirements(&self, asset_load_requests: &mut Vec<SimpleAssetLoadRequest>) {
-        asset_load_requests.push(SimpleAssetLoadRequest {
-            path: "ffx_fsr2_depth_clip_pass".to_string(),
-            asset_type: AssetType::Shader
-        });
-        asset_load_requests.push(SimpleAssetLoadRequest {
-            path: "ffx_fsr2_reconstruct_previous_depth_pass".to_string(),
-            asset_type: AssetType::Shader
-        });
-        asset_load_requests.push(SimpleAssetLoadRequest {
-            path: "ffx_fsr2_lock_pass".to_string(),
-            asset_type: AssetType::Shader
-        });
-        asset_load_requests.push(SimpleAssetLoadRequest {
-            path: "ffx_fsr2_accumulate_pass".to_string(),
-            asset_type: AssetType::Shader
-        });
-        asset_load_requests.push(SimpleAssetLoadRequest {
-            path: "ffx_fsr2_rcas_pass".to_string(),
-            asset_type: AssetType::Shader
-        });
-        asset_load_requests.push(SimpleAssetLoadRequest {
-            path: "ffx_fsr2_compute_luminance_pyramid_pass".to_string(),
-            asset_type: AssetType::Shader
-        });
-        asset_load_requests.push(SimpleAssetLoadRequest {
-            path: "ffx_fsr2_autogen_reactive_pass".to_string(),
-            asset_type: AssetType::Shader
-        });
-    }
-
-    pub(crate) fn init_asset_requirements(&mut self, asset_manager: &Arc<AssetManager<P>>) {
-
     }
 }
 

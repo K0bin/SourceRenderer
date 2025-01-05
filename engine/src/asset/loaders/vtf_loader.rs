@@ -44,7 +44,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+    ) -> Result<(), ()> {
         let path = file.path.clone();
         let mut vtf_texture = VtfTexture::new(BufReader::new(file)).unwrap();
         let mut data = Vec::<Box<[u8]>>::new();
@@ -74,7 +74,7 @@ impl<P: Platform> AssetLoader<P> for VTFTextureLoader {
 
         manager.add_asset_with_progress(&path, Asset::Texture(texture), Some(progress), priority);
 
-        Ok(DirectlyLoadedAsset::None)
+        Ok(())
     }
 }
 

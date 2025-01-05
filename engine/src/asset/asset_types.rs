@@ -17,6 +17,9 @@ pub struct SoundHandle(u64);
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub struct ShaderHandle(u64);
 
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct LevelHandle(u64);
+
 impl IndexHandle for TextureHandle {
     fn new(index: u64) -> Self { Self(index) }
 }
@@ -35,6 +38,9 @@ impl IndexHandle for SoundHandle {
 impl IndexHandle for ShaderHandle {
     fn new(index: u64) -> Self { Self(index) }
 }
+impl IndexHandle for LevelHandle {
+    fn new(index: u64) -> Self { Self(index) }
+}
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub enum AssetHandle {
@@ -46,7 +52,8 @@ pub enum AssetHandle {
     Shader(ShaderHandle),
     GraphicsPipeline(GraphicsPipelineHandle),
     ComputePipeline(ComputePipelineHandle),
-    RayTracingPipeline(RayTracingPipelineHandle)
+    RayTracingPipeline(RayTracingPipelineHandle),
+    Level(LevelHandle)
 }
 
 impl AssetHandle {
@@ -75,7 +82,8 @@ impl AssetHandle {
             AssetHandle::Shader(_) => AssetType::Shader,
             AssetHandle::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
             AssetHandle::ComputePipeline(_) => AssetType::ComputePipeline,
-            AssetHandle::RayTracingPipeline(_) => AssetType::RayTracingPipeline
+            AssetHandle::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
+            AssetHandle::Level(_) => AssetType::Level
         }
     }
 }
@@ -179,6 +187,9 @@ impl<P: Platform> AssetWithHandle<P> {
             (AssetHandle::Model(handle), Asset::Model(asset)) => AssetWithHandle::Model(handle, asset),
             (AssetHandle::Mesh(handle), Asset::Mesh(asset)) => AssetWithHandle::Mesh(handle, asset),
             (AssetHandle::Shader(handle), Asset::Shader(asset)) => AssetWithHandle::Shader(handle, asset),
+            (AssetHandle::GraphicsPipeline(handle), Asset::GraphicsPipeline(asset)) => AssetWithHandle::GraphicsPipeline(handle, asset),
+            (AssetHandle::ComputePipeline(handle), Asset::ComputePipeline(asset)) => AssetWithHandle::ComputePipeline(handle, asset),
+            (AssetHandle::RayTracingPipeline(handle), Asset::RayTracingPipeline(asset)) => AssetWithHandle::RayTracingPipeline(handle, asset),
             _ => panic!("Invalid combination")
         }
     }

@@ -371,6 +371,10 @@ impl<P: Platform> Renderer<P> {
     pub fn notify_stopped_running(&self) {
         self.state.is_running.store(false, Ordering::Release);
     }
+
+    pub fn set_render_path(&mut self, render_path: Box<dyn RenderPath<P>>) {
+        self.render_path = render_path;
+    }
 }
 
 impl<B: GPUBackend> RendererSender<B> {

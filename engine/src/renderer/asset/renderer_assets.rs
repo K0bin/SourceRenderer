@@ -57,7 +57,7 @@ impl<P: Platform> RendererAssets<P> {
         assets.reserve_handle_without_path(asset_type)
     }
 
-    pub(crate) fn remove_by_key(&self, asset_type: AssetType, path: &str) -> bool {
+    pub(crate) fn remove_by_handle(&self, asset_type: AssetType, path: &str) -> bool {
         let mut assets = self.assets.write();
         assets.remove_by_key(asset_type, path)
     }
@@ -87,6 +87,16 @@ impl<P: Platform> RendererAssets<P> {
 
     pub(crate) fn request_ray_tracing_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
         self.shader_manager.request_ray_tracing_pipeline(asset_manager, info)
+    }
+
+    pub(crate) fn contains(&self, path: &str, asset_type: AssetType) -> bool {
+        let assets = self.assets.read();
+        assets.contains(path, asset_type)
+    }
+
+    pub(crate) fn contains_just_path(&self, path: &str) -> Option<AssetType> {
+        let assets = self.assets.read();
+        assets.contains_just_path(path)
     }
 
     pub(crate) fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::hash::Hash;
 use std::io::{
@@ -19,6 +19,7 @@ use std::sync::{
     RwLock, RwLockReadGuard,
 };
 
+use bevy_ecs::world::World;
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
@@ -43,19 +44,13 @@ use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
 use crate::renderer::asset::{AssetIntegrator as RendererAssetIntegrator, AssetPlaceholders as RendererAssetPlaceholders, ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMesh, RendererModel, RendererShader, RendererTexture};
 
-use super::loaded_level::LoadedLevel;
-use super::{Asset, AssetData, AssetHandle, AssetRef, AssetType, AssetWithHandle, HandleMap, MaterialData, MaterialHandle, MeshData, MeshHandle, MeshRange, ModelData, ModelHandle, ShaderData, ShaderHandle, SoundHandle, TextureData, TextureHandle};
+use super::loaded_level::LevelData;
+use super::{Asset, AssetData, AssetHandle, AssetRef, AssetType, AssetWithHandle, HandleMap, IndexHandle, LevelHandle, MaterialData, MaterialHandle, MeshData, MeshHandle, MeshRange, ModelData, ModelHandle, ShaderData, ShaderHandle, SoundHandle, TextureData, TextureHandle};
 
 pub struct AssetLoadRequest {
     pub path: String,
-    pub asset_type: AssetType,
     pub progress: Arc<AssetLoaderProgress>,
     pub priority: AssetLoadPriority,
-}
-
-pub struct SimpleAssetLoadRequest {
-    pub path: String,
-    pub asset_type: AssetType,
 }
 
 pub struct AssetFile {
@@ -133,18 +128,6 @@ impl AssetLoaderProgress {
     }
 }
 
-pub enum DirectlyLoadedAsset {
-    None,
-    Level(LoadedLevel),
-}
-
-pub struct AssetLoaderResult {
-    pub file_requests: SmallVec<[String; 1]>,
-    pub requests: SmallVec<[AssetLoadRequest; 4]>,
-    pub primary_asset: DirectlyLoadedAsset,
-    pub loaded_assets: SmallVec<[AssetData; 4]>
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum AssetLoadPriority {
     High,
@@ -160,7 +143,7 @@ pub trait AssetLoader<P: Platform>: Send + Sync + 'static {
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()>;
+    ) -> Result<(), ()>;
 }
 
 pub trait ErasedAssetLoader<P: Platform>: Send + Sync {
@@ -171,7 +154,7 @@ pub trait ErasedAssetLoader<P: Platform>: Send + Sync {
         manager: &'a Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
-    ) -> Pin<Box<dyn Future<Output = Result<DirectlyLoadedAsset, ()>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + 'a>>;
 }
 
 impl<T, P: Platform> ErasedAssetLoader<P> for T
@@ -186,7 +169,7 @@ impl<T, P: Platform> ErasedAssetLoader<P> for T
         manager: &'a Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
-    ) -> Pin<Box<dyn Future<Output = Result<DirectlyLoadedAsset, ()>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + 'a>> {
         Box::pin(AssetLoader::<P>::load(self, file, manager, priority, progress))
     }
 }
@@ -195,7 +178,8 @@ pub struct AssetManager<P: Platform> {
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
     containers: RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     loaders: RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
-
+    requested_assets: Mutex<HashMap<String, AssetType>>,
+    unintegrated_assets: Mutex<HashMap<String, AssetData>>,
     renderer: RendererAssets<P>
 }
 
@@ -207,7 +191,9 @@ impl<P: Platform> AssetManager<P> {
             device: device.clone(),
             loaders: RwLock::new(Vec::new()),
             containers: RwLock::new(Vec::new()),
-            renderer: RendererAssets::<P>::new(device)
+            unintegrated_assets: Mutex::new(HashMap::new()),
+            renderer: RendererAssets::<P>::new(device),
+            requested_assets: Mutex::new(HashMap::new()),
         });
 
         manager
@@ -317,10 +303,20 @@ impl<P: Platform> AssetManager<P> {
         if let Some(progress) = progress {
             progress.finished.fetch_add(1, Ordering::SeqCst);
         }
-        if asset_data.is_renderer_asset() {
+        let integrated = if asset_data.is_renderer_asset() {
             self.renderer.integrate(self, path, &asset_data, priority);
+            true
+        } else if let AssetData::Level(_level) = &asset_data {
+            // Remove unintegrated level before loading a new one
+            let _ = self.take_any_unintegrated_asset_data_of_type(AssetType::Level);
+            false
         } else {
-            unimplemented!();
+            unimplemented!()
+        };
+
+        if !integrated {
+            let mut unintegrated_list = self.unintegrated_assets.lock().unwrap();
+            unintegrated_list.insert(path.to_string(), asset_data);
         }
     }
 
@@ -369,16 +365,8 @@ impl<P: Platform> AssetManager<P> {
 
     pub fn request_asset_update(self: &Arc<Self>, path: &str) {
         log::info!("Reloading: {}", path);
-        let asset_type: Option<AssetType>;
-        {
-            let renderer_assets = self.renderer.read();
-            asset_type = renderer_assets.contains_just_path(path);
-        }
-
-        if let Some(asset_type) = asset_type {
+        if let Some(asset_type) = self.renderer.contains_just_path(path) {
             self.request_asset_internal(path, asset_type, AssetLoadPriority::Low, None, true);
-        } else {
-            warn!("Cannot reload unloaded asset {}", path);
         }
     }
 
@@ -420,18 +408,30 @@ impl<P: Platform> AssetManager<P> {
         );
         progress.expected.fetch_add(1, Ordering::SeqCst);
 
-        if asset_type.is_renderer_asset() {
-            let request_key = (path.to_string(), asset_type);
-            if !self.renderer.insert_request(&request_key, refresh) {
-                progress.finished.fetch_add(1, Ordering::SeqCst);
-                return progress;
+        if asset_type == AssetType::Level {
+            // Remove unintegrated level before loading a new one
+            let _ = self.take_any_unintegrated_asset_data_of_type(AssetType::Level);
+        }
+
+        let mut skip = false;
+        {
+            // Already requested?
+            let requests = self.requested_assets.lock().unwrap();
+            if let Some(requested_asset_type) = requests.get(path) {
+                if *requested_asset_type != asset_type {
+                    error!("Requested an asset with the same path as a previously requested asset but with a different asset type");
+                    skip = true;
+                }
             }
-        } else {
-            unimplemented!()
+        };
+
+        skip = skip || (!refresh && self.contains(path, asset_type));
+        if skip {
+            progress.finished.fetch_add(1, Ordering::SeqCst);
+            return progress;
         }
 
         let load_request = AssetLoadRequest {
-            asset_type,
             path: path.to_owned(),
             progress: progress.clone(),
             priority,
@@ -449,37 +449,21 @@ impl<P: Platform> AssetManager<P> {
             std::mem::drop(containers);
             let file = file_opt.unwrap();
             AsyncComputeTaskPool::get().spawn(async move {
-                asset_mgr.load_asset(file, asset_type, priority, &load_request.progress).await;
+                let _ = asset_mgr.load_asset(file, asset_type, priority, &load_request.progress).await;
             });
         });
         progress
     }
 
-    async fn directly_load_asset(
-        self: &Arc<Self>,
-        path: &str,
-        asset_type: AssetType
-    ) -> Result<DirectlyLoadedAsset, ()> {
-        assert_eq!(asset_type, AssetType::Level);
-
-        let progress = Arc::new(AssetLoaderProgress {
-            expected: AtomicU32::new(1),
-            finished: AtomicU32::new(0)
-        });
-        let file = self.load_file(path).await;
-        if file.is_none() {
-            return Err(());
-        }
-        let file: AssetFile = file.unwrap();
-        self.load_asset(file, asset_type, AssetLoadPriority::High, &progress).await
+    pub(crate) fn take_unintegrated_asset_data(self: &Arc<Self>, path: &str) -> Option<AssetData> {
+        let mut unintegrated = self.unintegrated_assets.lock().unwrap();
+        unintegrated.remove(path)
     }
 
-    pub async fn load_level(self: &Arc<Self>, path: &str) -> Option<LoadedLevel> {
-        let directly_loaded = self.directly_load_asset(path, AssetType::Level).await.ok()?;
-        match directly_loaded {
-            DirectlyLoadedAsset::Level(level) => Some(level),
-            _ => None
-        }
+    pub(crate) fn take_any_unintegrated_asset_data_of_type(self: &Arc<Self>, asset_type: AssetType) -> Option<AssetData> {
+        let mut unintegrated = self.unintegrated_assets.lock().unwrap();
+        let path = unintegrated.iter().find_map(|(path, asset)| (asset.asset_type() == asset_type).then(|| path.clone()));
+        path.and_then(|path| unintegrated.remove(&path))
     }
 
     pub async fn load_file(self: &Arc<Self>, path: &str) -> Option<AssetFile> {
@@ -530,39 +514,63 @@ impl<P: Platform> AssetManager<P> {
         asset_type: AssetType,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
-        let path = file.path.clone();
+    ) -> Result<(), ()> {
+        {
+            let mut requests = self.requested_assets.lock().unwrap();
+            requests.remove(&file.path);
+        }
 
         let loaders = self.loaders.read().unwrap();
         let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref()).await;
         if loader_opt.is_none() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
-            if asset_type.is_renderer_asset() {
-                self.renderer.remove_request_by_path(asset_type, &path);
-            } else {
-                unimplemented!();
-            }
-            error!("Could not find loader for file: {:?}", path.as_str());
+            error!("Could not find loader for file: {:?}", &file.path);
             return Err(());
         }
         let loader = loader_opt.unwrap();
 
+        let path = file.path.clone();
         let assets_opt = loader.load(file, self, priority, progress).await;
         if assets_opt.is_err() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
-            if asset_type.is_renderer_asset() {
-                self.renderer.remove_request_by_path(asset_type, &path);
-            } else {
-                unimplemented!();
-            }
-            error!("Could not load file: {:?}", path.as_str());
+            error!("Could not load file: {:?}", &path);
             return Err(());
         }
-        Ok(assets_opt.unwrap())
+        if !self.contains(&path, asset_type) {
+            error!("Loader did not load requested asset from file: {:?}", &path);
+            return Err(());
+        }
+        Ok(())
     }
 
-    pub fn stop(&self) {
-        trace!("Stopping asset manager");
+    pub fn contains(&self, path: &str, asset_type: AssetType) -> bool {
+        if asset_type.is_renderer_asset() {
+            return self.renderer.contains(path, asset_type);
+        }
+
+        {
+            let unintegrated = self.unintegrated_assets.lock().unwrap();
+            if let Some(asset) = unintegrated.get(path) {
+                return asset_type == asset.asset_type();
+            }
+        }
+
+        false
+    }
+
+    pub fn contains_just_path(&self, path: &str) -> Option<AssetType> {
+        if let Some(asset_type) = self.renderer.contains_just_path(path) {
+            return Some(asset_type);
+        }
+
+        {
+            let unintegrated = self.unintegrated_assets.lock().unwrap();
+            if let Some(asset) = unintegrated.get(path) {
+                return Some(asset.asset_type());
+            }
+        }
+
+        None
     }
 
     pub(crate) fn read_renderer_assets(&self) -> RendererAssetsReadOnly<P> {

@@ -7,6 +7,7 @@ use std::sync::{
     Mutex,
     Weak,
 };
+use std::thread;
 
 use bevy_tasks::futures_lite::io::Cursor;
 use bevy_tasks::futures_lite::AsyncReadExt;
@@ -84,13 +85,18 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
 }
 
 impl<P: Platform> FSContainer<P> {
-    pub fn new(platform: &P, asset_manager: &Arc<AssetManager<P>>) -> Self {
+    pub fn new(asset_manager: &Arc<AssetManager<P>>) -> Self {
         let (sender, receiver) = unbounded();
         let file_watcher = <P::IO as IO>::new_file_watcher(sender);
         let asset_mgr_weak = Arc::downgrade(asset_manager);
-        let _thread_handle = platform.start_thread("AssetManagerWatchThread", move || {
-            fs_container_watch_thread_fn(asset_mgr_weak, receiver)
-        });
+
+        if cfg!(feature = "threading") {
+            let mut thread_builder = thread::Builder::new();
+            thread_builder = thread_builder.name("AssetManagerWatchThread".to_string());
+            thread_builder.spawn(move || {
+                fs_container_watch_thread_fn(asset_mgr_weak, receiver)
+            });
+        }
         Self {
             path: PathBuf::from(""),
             external: false,

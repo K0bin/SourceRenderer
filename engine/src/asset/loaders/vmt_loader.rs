@@ -44,7 +44,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<DirectlyLoadedAsset, ()> {
+    ) -> Result<(), ()> {
         let path = asset_file.path.clone();
         let mut vmt_material = {
             let current = asset_file.seek(SeekFrom::Current(0)).unwrap();
@@ -115,6 +115,6 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
             );
         }
 
-        Ok(DirectlyLoadedAsset::None)
+        Ok(())
     }
 }

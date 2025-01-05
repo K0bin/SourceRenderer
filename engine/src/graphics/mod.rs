@@ -17,6 +17,7 @@ pub use swapchain::*;
 pub use instance::*;
 pub use pipeline::*;
 pub use util::*;
+pub use graphics_plugin::*;
 
 pub use command::PipelineBinding; // why is this necessary?
 
@@ -39,6 +40,7 @@ mod pipeline;
 mod swapchain;
 mod instance;
 mod util;
+mod graphics_plugin;
 
 pub use sourcerenderer_core::gpu::{
     LoadOpColor,

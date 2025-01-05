@@ -4,7 +4,7 @@ use sourcerenderer_core::{gpu::{PackedShader, TextureInfo}, Vec4};
 
 use crate::math::BoundingBox;
 
-use super::AssetType;
+use super::{loaded_level::LevelData, AssetType};
 
 #[derive(Clone)]
 pub struct MeshRange {
@@ -82,6 +82,7 @@ pub enum AssetData {
     Sound(SoundData),
     Material(MaterialData),
     Shader(ShaderData),
+    Level(LevelData)
 }
 
 impl AssetData {
@@ -104,6 +105,7 @@ impl AssetData {
             AssetData::Sound(_) => AssetType::Sound,
             AssetData::Material(_) => AssetType::Material,
             AssetData::Shader(_) => AssetType::Shader,
+            AssetData::Level(_) => AssetType::Level
         }
     }
 }

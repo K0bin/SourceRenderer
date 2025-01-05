@@ -4,6 +4,7 @@ mod loaded_level;
 mod handle_map;
 mod asset_types;
 mod asset_data;
+mod asset_manager_plugin;
 
 #[derive(Clone, Debug)]
 pub struct Vertex {
@@ -19,13 +20,11 @@ pub use asset_manager::{
     AssetLoaderProgress,
     AssetManager,
     AssetContainer,
-    DirectlyLoadedAsset,
-    SimpleAssetLoadRequest,
 };
 pub use self::asset_types::*;
 pub(crate) use self::handle_map::*;
 pub use self::asset_data::*;
+pub use self::asset_manager_plugin::*;
 
 use bevy_math::Vec2;
-pub use loaded_level::LoadedLevel;
 use sourcerenderer_core::Vec3;
