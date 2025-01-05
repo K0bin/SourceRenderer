@@ -6,16 +6,15 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
+use crate::asset::AssetManager;
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
+use crate::renderer::asset::*;
+use crate::renderer::asset::ComputePipelineHandle;
 
 use crate::graphics::*;
 
@@ -29,7 +28,7 @@ impl SsrPass {
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         _visibility_buffer: bool,
     ) -> Self {
         resources.create_texture(
@@ -49,7 +48,7 @@ impl SsrPass {
             false,
         );
 
-        let pipeline = shader_manager.request_compute_pipeline("shaders/ssr.comp.json");
+        let pipeline = asset_manager.request_compute_pipeline("shaders/ssr.comp.json");
 
         Self { pipeline }
     }
@@ -127,7 +126,7 @@ impl SsrPass {
             ));
         }
 
-        let pipeline = params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = params.assets.get_compute_pipeline(self.pipeline).unwrap();
         cmd_buffer.begin_label("SSR pass");
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();

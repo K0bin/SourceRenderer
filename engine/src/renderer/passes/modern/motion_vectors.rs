@@ -1,18 +1,18 @@
+use std::sync::Arc;
+
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
 };
 
+use crate::asset::AssetManager;
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
+use crate::renderer::asset::ComputePipelineHandle;
 use crate::graphics::*;
 
 pub struct MotionVectorPass {
@@ -25,10 +25,10 @@ impl MotionVectorPass {
     pub fn new<P: Platform>(
         resources: &mut RendererResources<P::GPUBackend>,
         renderer_resolution: Vec2UI,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let pipeline =
-            shader_manager.request_compute_pipeline("shaders/motion_vectors_vis_buf.comp.json");
+            asset_manager.request_compute_pipeline("shaders/motion_vectors_vis_buf.comp.json");
 
         resources.create_texture(
             Self::MOTION_TEXTURE_NAME,
@@ -54,7 +54,7 @@ impl MotionVectorPass {
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>
     ) {
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
 
         cmd_buffer.begin_label("Motion Vectors");
 

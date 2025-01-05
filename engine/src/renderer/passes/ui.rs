@@ -17,7 +17,7 @@ impl<P: Platform> UIPass<P> {
             let mut bytes: Vec<u8> = Vec::new();
             file.read_to_end(&mut bytes).unwrap();
             let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
-            device.create_shader(shader, Some("DearImguiVS"))
+            device.create_shader(&shader, Some("DearImguiVS"))
         };
 
         let ps = {
@@ -25,7 +25,7 @@ impl<P: Platform> UIPass<P> {
             let mut bytes: Vec<u8> = Vec::new();
             file.read_to_end(&mut bytes).unwrap();
             let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
-            device.create_shader(shader, Some("DearImguiPS"))
+            device.create_shader(&shader, Some("DearImguiPS"))
         };
 
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineInfo {

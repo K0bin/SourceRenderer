@@ -2,6 +2,7 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use rand::random;
+use crate::asset::AssetManager;
 use crate::graphics::*;
 use sourcerenderer_core::{
     Platform,
@@ -14,10 +15,7 @@ use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
+use crate::renderer::asset::*;
 
 pub struct SsaoPass<P: Platform> {
     pipeline: ComputePipelineHandle,
@@ -37,7 +35,7 @@ impl<P: Platform> SsaoPass<P> {
         device: &Arc<Device<P::GPUBackend>>,
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         visibility_buffer: bool,
     ) -> Self {
         resources.create_texture(
@@ -74,13 +72,13 @@ impl<P: Platform> SsaoPass<P> {
             true,
         );
 
-        let pipeline = shader_manager.request_compute_pipeline("shaders/ssao.comp.json");
+        let pipeline = asset_manager.request_compute_pipeline("shaders/ssao.comp.json");
 
         // TODO: Clear history texture
 
         let kernel = Self::create_hemisphere(device, 64);
 
-        let blur_pipeline = shader_manager.request_compute_pipeline(if !visibility_buffer {
+        let blur_pipeline = asset_manager.request_compute_pipeline(if !visibility_buffer {
             "shaders/ssao_blur.comp.json"
         } else {
             "shaders/ssao_blur_vis_buf.comp.json"
@@ -202,7 +200,7 @@ impl<P: Platform> SsaoPass<P> {
         }
 
         cmd_buffer.begin_label("SSAO pass");
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.bind_uniform_buffer(
@@ -268,7 +266,7 @@ impl<P: Platform> SsaoPass<P> {
             HistoryResourceEntry::Past,
         );
 
-        let blur_pipeline = pass_params.shader_manager.get_compute_pipeline(self.blur_pipeline);
+        let blur_pipeline = pass_params.assets.get_compute_pipeline(self.blur_pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&blur_pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &*blurred_uav);

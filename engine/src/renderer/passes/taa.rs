@@ -7,16 +7,15 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
+use crate::asset::AssetManager;
+use crate::renderer::asset::ComputePipelineHandle;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
 use crate::graphics::*;
+use crate::asset::*;
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
     let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -57,10 +56,10 @@ impl TAAPass {
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         visibility_buffer: bool,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline(if !visibility_buffer {
+        let pipeline = asset_manager.request_compute_pipeline(if !visibility_buffer {
             "shaders/taa.comp.json"
         } else {
             "shaders/taa_vis_buf.comp.json"
@@ -180,7 +179,7 @@ impl TAAPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
         cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buf.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,

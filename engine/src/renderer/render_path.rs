@@ -36,6 +36,7 @@ pub struct RenderPassParameters<'a, P: Platform> {
     pub scene: &'a SceneInfo<'a, P::GPUBackend>,
     pub resources: &'a mut RendererResources<P::GPUBackend>,
     pub zero_textures: &'a ZeroTextures<'a, P::GPUBackend>,
+    pub asset_manager: &'a Arc<AssetManager<P>>,
     pub assets: RendererAssetsReadOnly<'a, P>
 }
 

@@ -41,7 +41,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
         // We never reuse handles, so this works.
         let mut removed_models = SmallVec::<[ModelHandle; 4]>::new();
         for (handle, _) in &self.blas_map {
-            if !pass_params.assets.has_model(*handle) {
+            if pass_params.assets.get_model(*handle).is_none() {
                 removed_models.push(*handle);
             }
         }

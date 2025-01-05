@@ -31,7 +31,7 @@ impl ClusteringPass {
 
     pub fn new<P: Platform>(
         barriers: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &mut Arc<AssetManager<P>>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         let pipeline = asset_manager.request_compute_pipeline("shaders/clustering.comp.json");
 

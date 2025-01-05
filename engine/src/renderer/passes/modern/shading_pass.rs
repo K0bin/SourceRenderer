@@ -8,16 +8,14 @@ use sourcerenderer_core::{
 use super::rt_shadows::RTShadowPass;
 use super::shadow_map::ShadowMapPass;
 use super::visibility_buffer::VisibilityBufferPass;
+use crate::asset::AssetManager;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
+use crate::renderer::asset::ComputePipelineHandle;
 use crate::graphics::*;
 
 pub struct ShadingPass<P: Platform> {
@@ -33,10 +31,10 @@ impl<P: Platform> ShadingPass<P> {
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/shading.comp.json");
+        let pipeline = asset_manager.request_compute_pipeline("shaders/shading.comp.json");
 
         let sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
@@ -190,7 +188,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);

@@ -3,15 +3,13 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Platform, Vec2};
 
+use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
+use crate::renderer::asset::ComputePipelineHandle;
 use crate::graphics::*;
 
 pub struct HierarchicalZPass<P: Platform> {
@@ -28,7 +26,7 @@ impl<P: Platform> HierarchicalZPass<P> {
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         depth_name: &str,
     ) -> Self {
@@ -41,8 +39,8 @@ impl<P: Platform> HierarchicalZPass<P> {
         resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
         let ffx_pipeline =
-            shader_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
-        let copy_pipeline = shader_manager.request_compute_pipeline("shaders/hi_z_copy.comp.json");
+            asset_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
+        let copy_pipeline = asset_manager.request_compute_pipeline("shaders/hi_z_copy.comp.json");
 
         let sampler = if device.supports_min_max_filter() {
             Arc::new(device.create_sampler(&SamplerInfo {
@@ -130,7 +128,7 @@ impl<P: Platform> HierarchicalZPass<P> {
                 HistoryResourceEntry::Current,
             )
             .clone();
-        let copy_pipeline = pass_params.shader_manager.get_compute_pipeline(self.copy_pipeline);
+        let copy_pipeline = pass_params.assets.get_compute_pipeline(self.copy_pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&copy_pipeline));
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
@@ -183,7 +181,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             texture_refs.push(&dst_texture_views[0]); // fill the rest of the array with views that never get used, so the validation layers shut up
         }
 
-        let ffx_pipeline = pass_params.shader_manager.get_compute_pipeline(self.ffx_pipeline);
+        let ffx_pipeline = pass_params.assets.get_compute_pipeline(self.ffx_pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&ffx_pipeline));
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,

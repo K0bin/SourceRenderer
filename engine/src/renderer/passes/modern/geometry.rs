@@ -25,10 +25,9 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::renderer::renderer_scene::RendererScene;
-use crate::renderer::shader_manager::{
+use crate::renderer::asset::{
     GraphicsPipelineHandle,
     GraphicsPipelineInfo,
-    ShaderManager,
 };
 use crate::renderer::PointLight;
 
@@ -64,7 +63,7 @@ impl<P: Platform> GeometryPass<P> {
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: &Arc<Swapchain<P::GPUBackend>>,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -211,7 +210,7 @@ impl<P: Platform> GeometryPass<P> {
             depth_stencil_format: Format::D24S8
         };
 
-        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { sampler, pipeline }
     }
@@ -234,7 +233,7 @@ impl<P: Platform> GeometryPass<P> {
         camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
         vertex_buffer: &Arc<BufferSlice<P::GPUBackend>>,
         index_buffer: &Arc<BufferSlice<P::GPUBackend>>,
-        shader_manager: &ShaderManager<P>,
+        assets: &RendererAssetsReadOnly<'_, P>,
     ) {
         cmd_buffer.begin_label("Geometry pass");
         let draw_buffer = barriers.access_buffer(
@@ -403,7 +402,7 @@ impl<P: Platform> GeometryPass<P> {
             WHOLE_BUFFER,
         );
 
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = assets.get_graphics_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),

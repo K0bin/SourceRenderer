@@ -184,8 +184,8 @@ impl Prepass {
         const CHUNK_SIZE: usize = 128;
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
         let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
-        //let c_asset_manager = 
         let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let assets = &pass_params.assets;
         let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 let mut command_buffer = graphics_context.get_inner_command_buffer(inheritance);
 
@@ -238,7 +238,7 @@ impl Prepass {
                         ShaderType::VertexShader,
                     );
 
-                    let model = assets.get_model(drawable.model);
+                    let model: Option<&crate::renderer::asset::RendererModel> = assets.get_model(drawable.model);
                     if model.is_none() {
                         log::info!("Skipping draw because of missing model");
                         continue;

@@ -41,7 +41,6 @@ use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
@@ -100,7 +99,7 @@ impl<P: Platform> ModernRenderer<P> {
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
         context: &mut GraphicsContext<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = if Self::USE_FSR2 {
@@ -113,37 +112,37 @@ impl<P: Platform> ModernRenderer<P> {
 
         let blue_noise = BlueNoise::new::<P>(device);
 
-        let clustering = ClusteringPass::new::<P>(&mut barriers, shader_manager);
-        let light_binning = LightBinningPass::new::<P>(&mut barriers, shader_manager);
-        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, true);
+        let clustering = ClusteringPass::new::<P>(&mut barriers, asset_manager);
+        let light_binning = LightBinningPass::new::<P>(&mut barriers, asset_manager);
+        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, asset_manager, true);
         let rt_passes = (device.supports_ray_tracing() && false).then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager),
+            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, asset_manager),
         });
         let visibility_buffer =
-            VisibilityBufferPass::new::<P>(resolution, &mut barriers, shader_manager);
-        let draw_prep = DrawPrepPass::new::<P>(&mut barriers, shader_manager);
+            VisibilityBufferPass::new::<P>(resolution, &mut barriers, asset_manager);
+        let draw_prep = DrawPrepPass::new::<P>(&mut barriers, asset_manager);
         let hi_z_pass = HierarchicalZPass::<P>::new(
             device,
             &mut barriers,
-            shader_manager,
+            asset_manager,
             &mut init_cmd_buffer,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
         );
-        let ssr_pass = SsrPass::new::<P>(resolution, &mut barriers, shader_manager, true);
+        let ssr_pass = SsrPass::new::<P>(resolution, &mut barriers, asset_manager, true);
         let shading_pass = ShadingPass::<P>::new(
             device,
             resolution,
             &mut barriers,
-            shader_manager,
+            asset_manager,
             &mut init_cmd_buffer,
         );
-        let compositing_pass = CompositingPass::new::<P>(resolution, &mut barriers, shader_manager);
+        let compositing_pass = CompositingPass::new::<P>(resolution, &mut barriers, asset_manager);
         let motion_vector_pass =
-            MotionVectorPass::new::<P>(&mut barriers, resolution, shader_manager);
+            MotionVectorPass::new::<P>(&mut barriers, resolution, asset_manager);
 
         let anti_aliasing = if Self::USE_FSR2 {
             let fsr_pass = Fsr2Pass::<P>::new(
@@ -154,12 +153,12 @@ impl<P: Platform> ModernRenderer<P> {
             );
             AntiAliasing::FSR2 { fsr: fsr_pass }
         } else {
-            let taa = TAAPass::new::<P>(resolution, &mut barriers, shader_manager, true);
-            let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, shader_manager);
+            let taa = TAAPass::new::<P>(resolution, &mut barriers, asset_manager, true);
+            let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, asset_manager);
             AntiAliasing::TAA { taa, sharpen }
         };
 
-        let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, shader_manager);
+        let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, asset_manager);
 
         let ui_pass = UIPass::new(device);
 
@@ -367,8 +366,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         scene: &SceneInfo<P::GPUBackend>,
         zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        shader_manager: &ShaderManager<P>,
-        assets: &AssetManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
@@ -390,7 +388,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let camera_history_buffer = &camera_buffer;
 
-        let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
+        let assets = asset_manager.read_renderer_assets();
+        let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
 
         self.shadow_map_pass.calculate_cascades(scene);
 
@@ -415,9 +414,9 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
-            shader_manager,
             resources: &mut self.barriers,
             zero_textures,
+            asset_manager,
             assets
         };
 
@@ -532,7 +531,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         self.ui_pass.execute(&mut cmd_buf, &params, output_texture_name, &self.ui_data);
 
-        let output_texture = self.barriers.access_texture(
+        let output_texture = params.resources.access_texture(
             &mut cmd_buf,
             output_texture_name,
             &BarrierTextureRange::default(),

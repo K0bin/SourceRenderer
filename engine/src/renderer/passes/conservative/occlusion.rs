@@ -51,7 +51,7 @@ pub struct OcclusionPass<P: Platform> {
 impl<P: Platform> OcclusionPass<P> {
     pub fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         let buffer_info = BufferInfo {
             size: (std::mem::size_of::<u32>() * QUERY_COUNT) as u64,

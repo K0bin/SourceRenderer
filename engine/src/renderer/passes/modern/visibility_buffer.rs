@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sourcerenderer_core::{
     Platform,
     Vec2,
@@ -7,15 +9,15 @@ use sourcerenderer_core::{
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
+use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
+use crate::renderer::asset::{
     GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    ShaderManager,
+    GraphicsPipelineInfo
 };
 
 use crate::graphics::*;
@@ -32,7 +34,7 @@ impl VisibilityBufferPass {
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         let barycentrics_texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -138,7 +140,7 @@ impl VisibilityBufferPass {
             render_target_formats: &[primitive_id_texture_info.format, barycentrics_texture_info.format],
             depth_stencil_format: depth_texture_info.format
         };
-        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
     }
@@ -215,7 +217,7 @@ impl VisibilityBufferPass {
         );
 
         let rtv_info = barycentrics_rtv.texture().unwrap().info();
-        let pipeline = params.shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = params.assets.get_graphics_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),

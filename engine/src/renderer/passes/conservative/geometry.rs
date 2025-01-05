@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use bevy_tasks::ParallelSlice;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::Submission;
 use sourcerenderer_core::{
     Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4
 };
@@ -14,19 +13,13 @@ use crate::renderer::passes::conservative::desktop_renderer::setup_frame;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::rt_shadows::RTShadowPass;
 use crate::renderer::passes::ssao::SsaoPass;
-use crate::renderer::render_path::{
-    RenderPassParameters,
-};
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::asset::*;
 use crate::asset::*;
+use crate::renderer::asset::GraphicsPipelineInfo;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
-};
-use crate::renderer::shader_manager::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    ShaderManager,
 };
 
 use crate::graphics::*;
@@ -60,7 +53,7 @@ impl<P: Platform> GeometryPass<P> {
         device: &Arc<Device<P::GPUBackend>>,
         resolution: Vec2UI,
         barriers: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -172,7 +165,7 @@ impl<P: Platform> GeometryPass<P> {
             render_target_formats: &[texture_info.format],
             depth_stencil_format: Format::D24S8
         };
-        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { sampler, pipeline }
     }
@@ -282,7 +275,7 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::CommandBuffers,
         );
 
-        let assets = pass_params.assets;
+        let assets = &pass_params.assets;
         let zero_textures = pass_params.zero_textures;
         let lightmap = pass_params.scene.lightmap;
 
@@ -290,7 +283,7 @@ impl<P: Platform> GeometryPass<P> {
         const CHUNK_SIZE: usize = 128;
         let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
         let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 P::thread_memory_management_pool(|| {

@@ -9,8 +9,8 @@ use sourcerenderer_core::{
 use bitflags::bitflags;
 
 use crate::graphics::*;
-use crate::asset::{AssetManager, MaterialHandle, MeshHandle, ModelHandle};
-use crate::renderer::asset::{RendererMaterial, RendererMaterialValue};
+use crate::asset::{MaterialHandle, MeshHandle, ModelHandle};
+use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
 use crate::renderer::renderer_scene::RendererScene;
 
 pub const DRAWABLE_CAPACITY: u32 = 4096;
@@ -140,7 +140,7 @@ pub fn upload<P: Platform>(
     cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
     scene: &RendererScene<P::GPUBackend>,
     zero_view_index: u32,
-    assets: &AssetManager<P>,
+    assets: &RendererAssetsReadOnly<'_, P>,
 ) -> SceneBuffers<P::GPUBackend> {
     let mut local = GPUScene {
         drawable_count: 0,
