@@ -22,12 +22,12 @@ impl MTLShared {
         let blit_shader_packed: gpu::PackedShader = serde_json::from_slice(blit_shader_bytes).unwrap();
         let fullscreen_vs = MTLShader::new(
             device,
-            fullscreen_vs_packed,
+            &fullscreen_vs_packed,
             Some("Fullscreen"),
         );
         let blit_fs = MTLShader::new(
             device,
-            blit_shader_packed,
+            &blit_shader_packed,
             Some("Blit")
         );
         let blit_pipeline = MTLGraphicsPipeline::new(
