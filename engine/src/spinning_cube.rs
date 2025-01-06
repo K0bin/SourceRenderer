@@ -10,10 +10,7 @@ use bevy_transform::components::Transform;
 use log::trace;
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::{
-    Platform,
-    Quaternion,
-    Vec2,
-    Vec3,
+    Platform, PlatformPhantomData, Quaternion, Vec2, Vec3
 };
 
 use crate::asset::{
@@ -33,14 +30,11 @@ use crate::renderer::{
 use crate::Camera;
 
 struct SpinningCubePlugin<P: Platform> {
-    _p: PhantomData<P>
+    _p: PlatformPhantomData<P>
 }
 
 #[derive(Component)]
 struct SpinningCube {}
-
-unsafe impl<P: Platform> Send for SpinningCubePlugin<P> {}
-unsafe impl<P: Platform> Sync for SpinningCubePlugin<P> {}
 
 impl<P: Platform> Plugin for SpinningCubePlugin<P> {
     fn build(&self, app: &mut App) {

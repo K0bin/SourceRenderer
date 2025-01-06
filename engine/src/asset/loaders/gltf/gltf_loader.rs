@@ -52,8 +52,8 @@ impl GltfLoader {
         Self {}
     }
 
-    fn visit_node<P: Platform>(
-        node: &Node,
+    async fn visit_node<P: Platform>(
+        node: &Node<'_>,
         world: &mut LevelData,
         asset_mgr: &Arc<AssetManager<P>>,
         parent_entity: Option<usize>,
@@ -121,7 +121,7 @@ impl GltfLoader {
                     &mut indices,
                     gltf_file_name,
                     buffer_cache,
-                );
+                ).await;
                 let material_path =
                     GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
                 materials.push(material_path);
@@ -272,19 +272,19 @@ impl GltfLoader {
         }
 
         for child in node.children() {
-            GltfLoader::visit_node(
+            Box::pin(GltfLoader::visit_node(
                 &child,
                 world,
                 asset_mgr,
                 Some(entity),
                 gltf_file_name,
                 buffer_cache,
-            );
+            )).await;
         }
     }
 
-    fn load_scene<P: Platform>(
-        scene: &Scene,
+    async fn load_scene<P: Platform>(
+        scene: &Scene<'_>,
         asset_mgr: &Arc<AssetManager<P>>,
         gltf_file_name: &str,
     ) -> LevelData {
@@ -299,7 +299,7 @@ impl GltfLoader {
                 None,
                 gltf_file_name,
                 &mut buffer_cache,
-            );
+            ).await;
         }
         world
     }
@@ -701,7 +701,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
                     .map_or_else(|| scene.index().to_string(), |name| name.to_string())
                     == scene_name
                 {
-                    let world = GltfLoader::load_scene(&scene, manager, gltf_name);
+                    let world = GltfLoader::load_scene(&scene, manager, gltf_name).await;
                     manager.add_asset_data_with_progress(&path, AssetData::Level(world), Some(progress), priority);
                 }
             }

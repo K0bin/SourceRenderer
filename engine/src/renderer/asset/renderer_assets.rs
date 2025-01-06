@@ -2,7 +2,7 @@ use std::{collections::{hash_map::Values, HashSet}, marker::PhantomData, sync::A
 use parking_lot::{RwLock, RwLockReadGuard}; // The parking lot variant is fair (write-preferring) and consistent across platforms.
 
 use smallvec::SmallVec;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, PlatformPhantomData};
 
 use crate::{asset::*, graphics::{BufferSlice, ComputePipeline, GraphicsPipeline, RayTracingPipeline}};
 
@@ -13,7 +13,7 @@ pub struct RendererAssets<P: Platform> {
     placeholders: AssetPlaceholders<P>,
     shader_manager: ShaderManager<P>,
     integrator: AssetIntegrator<P>,
-    _platform: PhantomData<P>
+    _platform: PlatformPhantomData<P>
 }
 
 impl<P: Platform> RendererAssets<P> {
@@ -33,7 +33,7 @@ impl<P: Platform> RendererAssets<P> {
             placeholders: AssetPlaceholders::new(device),
             shader_manager: ShaderManager::new(device),
             integrator: AssetIntegrator::new(device),
-            _platform: PhantomData
+            _platform: Default::default()
         }
     }
 

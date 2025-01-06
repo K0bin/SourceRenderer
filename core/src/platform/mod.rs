@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::marker::PhantomData;
 
 use crate::{Vec2, Vec2I, Vec2UI, gpu::GPUBackend};
 use crate::input::Key;
@@ -25,7 +26,7 @@ pub trait ThreadHandle : Send + Sync {
   fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>>;
 }
 
-pub trait Platform: 'static + Sized + Send + Sync {
+pub trait Platform: 'static + Sized {
   type GPUBackend: GPUBackend;
   type Window: Window<Self>;
   type IO: io::IO;
@@ -37,6 +38,12 @@ pub trait Platform: 'static + Sized + Send + Sync {
   fn thread_memory_management_pool<F, T>(callback: F) -> T
     where F: FnOnce() -> T;
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub struct PlatformPhantomData<P: Platform>(PhantomData<P>);
+unsafe impl<P: Platform> Send for PlatformPhantomData<P> {}
+unsafe impl<P: Platform> Sync for PlatformPhantomData<P> {}
+impl<P: Platform> Default for PlatformPhantomData<P> { fn default() -> Self { Self(PhantomData) } }
 
 #[derive(PartialEq)]
 pub enum Event<P: Platform> {

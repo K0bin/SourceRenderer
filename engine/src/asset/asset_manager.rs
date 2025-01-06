@@ -137,13 +137,13 @@ pub enum AssetLoadPriority {
 
 pub trait AssetLoader<P: Platform>: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
-    async fn load(
+    fn load(
         &self,
         file: AssetFile,
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<(), ()>;
+    ) -> impl Future<Output = Result<(), ()>>;
 }
 
 pub trait ErasedAssetLoader<P: Platform>: Send + Sync {

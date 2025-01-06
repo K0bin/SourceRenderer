@@ -30,8 +30,7 @@ use bevy_log::trace;
 use bevy_tasks::ComputeTaskPool;
 use bevy_transform::components::GlobalTransform;
 use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
+    Platform, PlatformPhantomData, Vec2UI
 };
 
 use super::renderer::RendererSender;
@@ -65,11 +64,8 @@ struct WindowSizeChangedEvent {
 struct WindowMinimized {}
 
 pub struct RendererPlugin<P: Platform> {
-    _a: PhantomData<P>,
+    _a: PlatformPhantomData<P>,
 }
-
-unsafe impl<P: Platform> Send for RendererPlugin<P> {}
-unsafe impl<P: Platform> Sync for RendererPlugin<P> {}
 
 impl<P: Platform> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
@@ -95,7 +91,7 @@ impl<P: Platform> Plugin for RendererPlugin<P> {
 
 impl<P: Platform> RendererPlugin<P> {
     pub fn new() -> Self {
-        Self { _a: PhantomData }
+        Self { _a: Default::default() }
     }
 
     pub fn stop(app: &App) {

@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::io::Result as IOResult;
+use std::io::{Read, Result as IOResult};
 use std::path::{
     Path,
     PathBuf,
 };
 
+use bevy_tasks::futures_lite::AsyncRead;
 use crossbeam_channel::Sender;
 use notify::{
     recommended_watcher,
@@ -207,19 +208,6 @@ impl Platform for SDLPlatform {
         sdl_gpu::create_instance(debug_layers, &self.window)
     }
 
-    fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
-    where
-        F: FnOnce(),
-        F: Send + 'static,
-    {
-        StdThreadHandle(
-            std::thread::Builder::new()
-                .name(name.to_string())
-                .spawn(callback)
-                .unwrap(),
-        )
-    }
-
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn thread_memory_management_pool<F, T>(callback: F) -> T
         where F: FnOnce() -> T {
@@ -261,22 +249,22 @@ impl Window<SDLPlatform> for SDLWindow {
 pub struct StdIO {}
 
 impl IO for StdIO {
-    type File = std::fs::File;
+    type File = async_fs::File; // TODO: Replace with an implementation that uses Bevys IOTaskPool as executor
     type FileWatcher = NotifyFileWatcher;
 
-    async fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
-        std::fs::File::open(path)
+    async fn open_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
+        async_fs::File::open(path).await
     }
 
-    fn asset_exists<P: AsRef<Path>>(path: P) -> bool {
+    async fn asset_exists<P: AsRef<Path> + Send>(path: P) -> bool {
         path.as_ref().exists()
     }
 
-    fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
-        std::fs::File::open(path)
+    async fn open_external_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
+        async_fs::File::open(path).await
     }
 
-    fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
+    async fn external_asset_exists<P: AsRef<Path> + Send>(path: P) -> bool {
         path.as_ref().exists()
     }
 

@@ -34,7 +34,7 @@ use super::ecs::{
 };
 use super::light::DirectionalLight;
 use super::passes::web::WebRenderer;
-use super::render_path::{FrameInfo, RenderPath, SceneInfo};
+use super::render_path::{FrameInfo, NoOpRenderPath, RenderPath, SceneInfo};
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
@@ -88,13 +88,10 @@ impl<P: Platform> Renderer<P> {
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: Swapchain<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
-        console: &Arc<Console>,
+        _console: &Arc<Console>,
     ) -> (Renderer<P>, RendererSender<P::GPUBackend>) {
         let (sender, receiver) = unbounded::<RendererCommand<P::GPUBackend>>();
-
-        let mut context = device.create_context();
-        //let render_path = Box::new(ModernRenderer::new(device, &swapchain, &mut context, &mut shader_manager));
-        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, asset_manager));
+        let context: GraphicsContext<<P as Platform>::GPUBackend> = device.create_context();
 
         let renderer = Self {
             device: device.clone(),
@@ -109,7 +106,7 @@ impl<P: Platform> Renderer<P> {
             scene: RendererScene::new(),
             swapchain: Arc::new(swapchain),
             context,
-            render_path,
+            render_path: Box::new(NoOpRenderPath),
             last_frame: Instant::now(),
             frame: 0u64
         };
@@ -119,10 +116,6 @@ impl<P: Platform> Renderer<P> {
         };
 
         (renderer, renderer_sender)
-    }
-
-    pub async fn try_init(&mut self) {
-        
     }
 
     pub(crate) fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {

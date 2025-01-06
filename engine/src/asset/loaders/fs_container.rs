@@ -93,9 +93,9 @@ impl<P: Platform> FSContainer<P> {
         if cfg!(feature = "threading") {
             let mut thread_builder = thread::Builder::new();
             thread_builder = thread_builder.name("AssetManagerWatchThread".to_string());
-            thread_builder.spawn(move || {
+            let _ = thread_builder.spawn(move || {
                 fs_container_watch_thread_fn(asset_mgr_weak, receiver)
-            });
+            }).unwrap();
         }
         Self {
             path: PathBuf::from(""),

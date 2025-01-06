@@ -12,7 +12,7 @@ use std::sync::{
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{PackedShader, Shader as _};
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, PlatformPhantomData};
 
 use crate::asset::{
     Asset, AssetHandle, AssetLoadPriority, AssetManager, AssetRef, AssetType, AssetWithHandle, IndexHandle
@@ -673,7 +673,7 @@ where
 {
     remaining_compilations: Mutex<HashMap<THandle, T>>,
     cond_var: Condvar,
-    _platform: PhantomData<P>
+    _platform: PlatformPhantomData<P>
 }
 
 impl<P, THandle, T> PipelineTypeManager<P, THandle, T>
@@ -686,7 +686,7 @@ where
         Self {
             remaining_compilations: Mutex::new(HashMap::new()),
             cond_var: Condvar::new(),
-            _platform: PhantomData
+            _platform: Default::default()
         }
     }
 }

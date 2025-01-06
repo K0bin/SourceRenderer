@@ -22,12 +22,12 @@ impl<P: Platform> Plugin for GamePlugin<P> {
         {
             let asset_manager: &Arc<AssetManager<P>> = Engine::get_asset_manager(app);
 
-            asset_manager.add_container(Box::new(
+            /*asset_manager.add_container(Box::new(
                 GltfContainer::<P>::load("bistro_sun.glb", true)
                     .unwrap(),
             ));
 
-            let level = asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);
+            asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);*/
         }
 
         app

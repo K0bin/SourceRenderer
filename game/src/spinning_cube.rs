@@ -13,10 +13,7 @@ use bevy_transform::components::Transform;
 use bevy_log::*;
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::{
-    Platform,
-    Quaternion,
-    Vec2,
-    Vec3,
+    Platform, PlatformPhantomData, Quaternion, Vec2, Vec3
 };
 use sourcerenderer_engine::Engine;
 
@@ -34,18 +31,14 @@ use sourcerenderer_engine::renderer::{
 };
 use sourcerenderer_engine::Camera;
 
-pub(crate) struct SpinningCubePlugin<P: Platform> {
-    _p: PhantomData<P>
+pub(crate) struct SpinningCubePlugin<P: Platform>(PlatformPhantomData<P>);
+
+impl<P: Platform> Default for SpinningCubePlugin<P> {
+    fn default() -> Self { Self(Default::default()) }
 }
 
 #[derive(Component)]
 struct SpinningCube {}
-
-impl<P: Platform> Default for SpinningCubePlugin<P> {
-    fn default() -> Self {
-        Self { _p: PhantomData::default() }
-    }
-}
 
 unsafe impl<P: Platform> Send for SpinningCubePlugin<P> {}
 unsafe impl<P: Platform> Sync for SpinningCubePlugin<P> {}

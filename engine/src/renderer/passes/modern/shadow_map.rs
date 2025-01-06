@@ -3,7 +3,7 @@ use std::{path::Path, sync::Arc};
 
 use bevy_math::Vec4Swizzles as _;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Matrix4, Platform, PlatformPhantomData, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
 use crate::asset::AssetManager;
 use crate::renderer::light::RendererDirectionalLight;
@@ -34,10 +34,8 @@ pub struct ShadowMapPass<P: Platform> {
     draw_prep_pipeline: ComputePipelineHandle,
     shadow_map_res: u32,
     cascades: SmallVec<[ShadowMapCascade; 5]>,
-    _marker: PhantomData<P>,
+    _marker: PlatformPhantomData<P>,
 }
-
-unsafe impl<P: Platform> Send for ShadowMapPass<P> {}
 
 #[derive(Debug, Default)]
 pub struct ShadowMapCascade {
@@ -158,7 +156,7 @@ impl<P: Platform> ShadowMapPass<P> {
             draw_prep_pipeline: prep_pipeline,
             shadow_map_res,
             cascades,
-            _marker: PhantomData,
+            _marker: Default::default(),
         }
     }
 

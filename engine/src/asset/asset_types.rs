@@ -96,8 +96,6 @@ pub enum AssetType {
     Material,
     Sound,
     Level,
-    Chunk,
-    Container,
     Shader,
     GraphicsPipeline,
     ComputePipeline,

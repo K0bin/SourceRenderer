@@ -20,6 +20,7 @@ pub use console::{Console, Command};
 pub mod atomic_refcell;
 
 pub use crate::platform::Platform;
+pub use crate::platform::PlatformPhantomData;
 
 pub type Vec2 = bevy_math::Vec2;
 pub type Vec3 = bevy_math::Vec3;

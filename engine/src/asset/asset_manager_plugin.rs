@@ -4,7 +4,7 @@ use bevy_app::{Plugin, PreUpdate};
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::system::{Res, Resource};
 use bevy_ecs::world::World;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::{Platform, PlatformPhantomData};
 
 use crate::graphics::GPUDeviceResource;
 use crate::asset::*;
@@ -15,13 +15,9 @@ use super::AssetManager;
 #[derive(Resource)]
 pub struct AssetManagerECSResource<P: Platform>(pub Arc<AssetManager<P>>);
 
-pub struct AssetManagerPlugin<P: Platform>(PhantomData<P>);
+pub struct AssetManagerPlugin<P: Platform>(PlatformPhantomData<P>);
 
-impl<P: Platform> Default for AssetManagerPlugin<P> {
-    fn default() -> Self {
-        Self(PhantomData)
-    }
-}
+impl<P: Platform> Default for AssetManagerPlugin<P>{ fn default() -> Self { Self(Default::default()) } }
 
 impl<P: Platform> Plugin for AssetManagerPlugin<P> {
     fn build(&self, app: &mut bevy_app::App) {
