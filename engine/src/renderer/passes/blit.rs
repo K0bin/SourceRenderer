@@ -46,6 +46,10 @@ impl BlitPass {
         }
     }
 
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline_handle).is_some()
+    }
+
     #[profiling::function]
     pub(super) fn execute<P: Platform>(
         &mut self,

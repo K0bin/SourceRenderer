@@ -130,7 +130,7 @@ impl<P: Platform> ConservativeRenderer<P> {
         });
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
 
         Self {
             device: device.clone(),
@@ -259,6 +259,19 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         swapchain: &Swapchain<P::GPUBackend>,
     ) {
         // TODO: resize render targets
+    }
+
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+        let assets = asset_manager.read_renderer_assets();
+        self.clustering_pass.is_ready(&assets)
+        && self.light_binning_pass.is_ready(&assets)
+        && self.prepass.is_ready(&assets)
+        && self.ssao.is_ready(&assets)
+        && self.rt_passes.as_ref().map(|passes| passes.shadows.is_ready(&assets)).unwrap_or(true)
+        && self.geometry.is_ready(&assets)
+        && self.blit_pass.is_ready(&assets)
+        && self.taa.is_ready(&assets)
+        && self.sharpen.is_ready(&assets)
     }
 
     #[profiling::function]

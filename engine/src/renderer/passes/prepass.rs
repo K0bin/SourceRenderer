@@ -12,7 +12,7 @@ use sourcerenderer_core::{
 use crate::asset::AssetManager;
 use crate::graphics::CommandBufferRecorder;
 
-use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly};
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
@@ -131,6 +131,10 @@ impl Prepass {
         let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]

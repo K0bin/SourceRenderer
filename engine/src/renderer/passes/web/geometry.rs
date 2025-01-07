@@ -5,6 +5,7 @@ use gltf::texture::{
     MagFilter,
     MinFilter,
 };
+use log::{debug, trace};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
@@ -160,6 +161,10 @@ impl<P: Platform> GeometryPass<P> {
         Self { pipeline, sampler: Arc::new(sampler) }
     }
 
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
+    }
+
     pub(super) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
@@ -213,7 +218,7 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::Commands,
         );
 
-        let pipeline = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
+        let pipeline: &Arc<GraphicsPipeline<<P as Platform>::GPUBackend>> = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),

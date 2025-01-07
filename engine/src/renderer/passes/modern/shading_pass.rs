@@ -15,7 +15,7 @@ use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::ComputePipelineHandle;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::graphics::*;
 
 pub struct ShadingPass<P: Platform> {
@@ -82,6 +82,10 @@ impl<P: Platform> ShadingPass<P> {
         }));
 
         Self { sampler, shadow_sampler, pipeline }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]

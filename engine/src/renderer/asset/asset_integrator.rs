@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use log::trace;
 use smallvec::SmallVec;
 
 use sourcerenderer_core::Platform;
@@ -55,6 +56,7 @@ impl<P: Platform> AssetIntegrator<P> {
         asset_data: &AssetData,
         priority: AssetLoadPriority
     ) {
+        trace!("Integrating asset: {:?} {}", asset_data.asset_type(), path);
         let handle = asset_manager.reserve_handle(path, asset_data.asset_type());
 
         let (asset, fence) = match asset_data {
@@ -69,7 +71,7 @@ impl<P: Platform> AssetIntegrator<P> {
             _ => panic!("Asset type is not a renderer asset")
         };
 
-        let mut queue = self.asset_queue.lock().unwrap();
+        let mut queue: std::sync::MutexGuard<'_, Vec<DelayedAsset<P>>> = self.asset_queue.lock().unwrap();
         queue.push(DelayedAsset {
             fence, asset: AssetWithHandle::combine(handle, asset)
         });
@@ -242,6 +244,7 @@ impl<P: Platform> AssetIntegrator<P> {
         shader: &ShaderData
     ) -> RendererShader<P::GPUBackend> {
         let shader = Arc::new(self.device.create_shader(shader, Some(path)));
+        asset_manager.add_asset(path, Asset::Shader(shader.clone()));
         shader_manager.add_shader(asset_manager, path, &shader);
         shader
     }
@@ -263,7 +266,7 @@ impl<P: Platform> AssetIntegrator<P> {
                         retained_delayed_assets.push(delayed_asset);
                     }
                 } else {
-                    retained_delayed_assets.push(delayed_asset);
+                    ready_delayed_assets.push(delayed_asset);
                 }
             }
             queue.extend(retained_delayed_assets);

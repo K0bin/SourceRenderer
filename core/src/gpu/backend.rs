@@ -24,4 +24,6 @@ pub trait GPUBackend: 'static + Sized {
   type Heap : Heap<Self>;
   //type QueryRange : Send + Sync;
   type AccelerationStructure : AccelerationStructure + Send + Sync;
+
+  fn name() -> &'static str;
 }

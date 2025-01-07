@@ -24,4 +24,8 @@ impl GPUBackend for WebGPUBackend {
     type Queue = WebGPUQueue;
     type Heap = WebGPUHeap;
     type AccelerationStructure = WebGPUAccelerationStructure;
+
+    fn name() -> &'static str {
+        "WebGPU"
+    }
 }

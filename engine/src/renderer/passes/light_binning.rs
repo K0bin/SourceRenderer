@@ -7,7 +7,7 @@ use sourcerenderer_core::{
 
 use super::clustering::ClusteringPass;
 use crate::asset::AssetManager;
-use crate::renderer::asset::ComputePipelineHandle;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -59,6 +59,10 @@ impl LightBinningPass {
         Self {
             light_binning_pipeline: pipeline,
         }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.light_binning_pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(

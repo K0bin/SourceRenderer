@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 bitflags = "2.4.2"
-bevy_math = "0.14.2"
+bevy_math = "0.15.1"
 io_util = { path = "../../io_util" }

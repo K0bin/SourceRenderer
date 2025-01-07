@@ -176,7 +176,7 @@ impl<P: Platform> ModernRenderer<P> {
         });
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
 
         Self {
             device: device.clone(),
@@ -354,6 +354,27 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         swapchain: &Swapchain<P::GPUBackend>,
     ) {
         // TODO: resize render targets
+    }
+
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+        let assets = asset_manager.read_renderer_assets();
+        self.clustering_pass.is_ready(&assets)
+        && self.light_binning_pass.is_ready(&assets)
+        && self.geometry_draw_prep.is_ready(&assets)
+        && self.ssao.is_ready(&assets)
+        && self.rt_passes.as_ref().map(|passes| passes.shadows.is_ready(&assets)).unwrap_or(true)
+        && self.hi_z_pass.is_ready(&assets)
+        && self.ssr_pass.is_ready(&assets)
+        && self.visibility_buffer.is_ready(&assets)
+        && self.shading_pass.is_ready(&assets)
+        && self.compositing_pass.is_ready(&assets)
+        && self.motion_vector_pass.is_ready(&assets)
+        && match &self.anti_aliasing {
+            AntiAliasing::TAA { taa, sharpen } => taa.is_ready(&assets) && sharpen.is_ready(&assets),
+            AntiAliasing::FSR2 { fsr } => fsr.is_ready(&assets),
+        }
+        && self.shadow_map_pass.is_ready(&assets)
+        && self.ui_pass.is_ready(&assets)
     }
 
     #[profiling::function]

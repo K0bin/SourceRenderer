@@ -1,4 +1,5 @@
 use std::{collections::{hash_map::Values, HashSet}, marker::PhantomData, sync::Arc};
+use log::trace;
 use parking_lot::{RwLock, RwLockReadGuard}; // The parking lot variant is fair (write-preferring) and consistent across platforms.
 
 use smallvec::SmallVec;
@@ -164,7 +165,8 @@ impl<P: Platform> RendererAssetMaps<P> {
             AssetType::Mesh => AssetHandle::Mesh(self.meshes.get_or_create_handle(path)),
             AssetType::Material => AssetHandle::Material(self.materials.get_or_create_handle(path)),
             AssetType::Shader => AssetHandle::Shader(self.shaders.get_or_create_handle(path)),
-            _ => panic!("Unsupported asset type")
+            AssetType::GraphicsPipeline | AssetType::ComputePipeline | AssetType::RayTracingPipeline => panic!("Asset type {:?} cannot be reserved WITH a path.", asset_type),
+            _ => panic!("Unsupported asset type {:?}", asset_type)
         };
     }
 
@@ -172,8 +174,8 @@ impl<P: Platform> RendererAssetMaps<P> {
         return match asset_type {
             AssetType::GraphicsPipeline => AssetHandle::GraphicsPipeline(self.graphics_pipelines.create_handle()),
             AssetType::ComputePipeline => AssetHandle::ComputePipeline(self.compute_pipelines.create_handle()),
-            AssetType::RayTracingPipeline => todo!(),
-            _ => panic!("Asset type cannot reserve handle without a path")
+            AssetType::RayTracingPipeline => AssetHandle::RayTracingPipeline(self.ray_tracing_pipelines.create_handle()),
+            _ => panic!("Asset type cannot reserve handle without a path: {:?}", asset_type)
         }
     }
 
@@ -184,7 +186,10 @@ impl<P: Platform> RendererAssetMaps<P> {
             AssetWithHandle::Model(handle, asset) => self.models.set(handle, asset),
             AssetWithHandle::Mesh(handle, asset) => self.meshes.set(handle, asset),
             AssetWithHandle::Shader(handle, asset) => self.shaders.set(handle, asset),
-            _ => panic!("Unsupported asset type"),
+            AssetWithHandle::GraphicsPipeline(handle, asset) => self.graphics_pipelines.set(handle, asset),
+            AssetWithHandle::ComputePipeline(handle, asset) => self.compute_pipelines.set(handle, asset),
+            AssetWithHandle::RayTracingPipeline(handle, asset) => self.ray_tracing_pipelines.set(handle, asset),
+            _ => panic!("Unsupported asset type {:?}", asset.asset_type()),
         }
     }
 
@@ -195,7 +200,8 @@ impl<P: Platform> RendererAssetMaps<P> {
             AssetType::Model => self.models.get_handle(path).map(|handle| AssetHandle::Model(handle)),
             AssetType::Mesh => self.meshes.get_handle(path).map(|handle| AssetHandle::Mesh(handle)),
             AssetType::Shader => self.shaders.get_handle(path).map(|handle| AssetHandle::Shader(handle)),
-            _ => panic!("Unsupported asset type"),
+            AssetType::GraphicsPipeline | AssetType::ComputePipeline | AssetType::RayTracingPipeline => panic!("Asset type {:?} does not use paths.", asset_type),
+            _ => panic!("Unsupported asset type {:?}", asset_type),
         }
     }
 
@@ -206,7 +212,10 @@ impl<P: Platform> RendererAssetMaps<P> {
             AssetHandle::Model(handle) => self.models.get_value(handle).map(|asset| AssetRef::<P>::Model(asset)),
             AssetHandle::Mesh(handle) => self.meshes.get_value(handle).map(|asset| AssetRef::<P>::Mesh(asset)),
             AssetHandle::Shader(handle) => self.shaders.get_value(handle).map(|asset| AssetRef::<P>::Shader(asset)),
-            _ => panic!("Unsupported asset type"),
+            AssetHandle::GraphicsPipeline(handle) => self.graphics_pipelines.get_value(handle).map(|asset| AssetRef::<P>::GraphicsPipeline(asset)),
+            AssetHandle::ComputePipeline(handle) => self.compute_pipelines.get_value(handle).map(|asset| AssetRef::<P>::ComputePipeline(asset)),
+            AssetHandle::RayTracingPipeline(handle) => self.ray_tracing_pipelines.get_value(handle).map(|asset| AssetRef::<P>::RayTracingPipeline(asset)),
+            _ => panic!("Unsupported asset type {:?}", handle.asset_type()),
         }
     }
 
@@ -217,7 +226,8 @@ impl<P: Platform> RendererAssetMaps<P> {
             AssetType::Mesh => self.meshes.contains_key(path),
             AssetType::Material => self.materials.contains_key(path),
             AssetType::Shader => self.shaders.contains_key(path),
-            _ => panic!("Unsupported asset type"),
+            AssetType::GraphicsPipeline | AssetType::ComputePipeline | AssetType::RayTracingPipeline => panic!("Asset type {:?} does not use paths.", asset_type),
+            _ => panic!("Unsupported asset type {:?}", asset_type),
         }
     }
 

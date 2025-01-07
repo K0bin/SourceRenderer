@@ -45,7 +45,7 @@ pub fn main() {
 
         platform.update_mouse_lock(engine.is_mouse_locked());
 
-        engine.frame();
+        engine.frame::<SDLPlatform>();
     }
     engine.stop::<SDLPlatform>();
 }

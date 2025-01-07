@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use bevy_tasks::futures_lite::{AsyncBufReadExt, AsyncRead, AsyncReadExt};
 
+use log::trace;
 use sourcerenderer_core::gpu::PackedShader;
 use sourcerenderer_core::Platform;
 
@@ -34,7 +35,7 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        println!("Loading shader: {:?}", &file.path);
+        trace!("Loading shader: {:?}", &file.path);
         let mut buffer = Vec::<u8>::new();
         let res = file.read_to_end(&mut buffer).await;
         if res.is_err() {

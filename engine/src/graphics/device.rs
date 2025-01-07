@@ -1,5 +1,6 @@
 use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, mem::ManuallyDrop};
 
+use log::trace;
 use sourcerenderer_core::gpu::{self, Device as GPUDevice};
 use sourcerenderer_core::gpu::RayTracingPipelineInfo;
 
@@ -54,6 +55,7 @@ impl<B: GPUBackend> Device<B> {
     }
 
     pub fn create_context(&self) -> GraphicsContext<B> {
+        trace!("Creating graphics context");
         assert!(!self.has_context.swap(true, Ordering::AcqRel));
         GraphicsContext::new(&self.device, &self.allocator, &self.buffer_allocator, &self.destroyer, self.prerendered_frames)
     }

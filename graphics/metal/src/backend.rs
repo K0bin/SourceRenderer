@@ -20,11 +20,15 @@ impl gpu::GPUBackend for MTLBackend {
     type Surface = MTLSurface;
     type Swapchain = MTLSwapchain;
     type Fence = MTLFence;
-    type Heap = MTLHeap;    
+    type Heap = MTLHeap;
     type Shader = MTLShader;
     type GraphicsPipeline = MTLGraphicsPipeline;
     type ComputePipeline = MTLComputePipeline;
 
     type RayTracingPipeline = MTLRayTracingPipeline;
     type AccelerationStructure = MTLAccelerationStructure;
+
+    fn name() -> &'static str {
+        "Metal"
+    }
 }

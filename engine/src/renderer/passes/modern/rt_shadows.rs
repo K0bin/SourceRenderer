@@ -13,7 +13,7 @@ use crate::renderer::renderer_resources::{
 };
 use crate::renderer::asset::{
     RayTracingPipelineHandle,
-    RayTracingPipelineInfo
+    RayTracingPipelineInfo, RendererAssetsReadOnly
 };
 use crate::graphics::*;
 
@@ -53,6 +53,10 @@ impl RTShadowPass {
         });
 
         Self { pipeline }
+    }
+
+    pub(crate) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_ray_tracing_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(

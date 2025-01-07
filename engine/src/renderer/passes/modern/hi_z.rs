@@ -9,7 +9,7 @@ use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::ComputePipelineHandle;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::graphics::*;
 
 pub struct HierarchicalZPass<P: Platform> {
@@ -90,6 +90,10 @@ impl<P: Platform> HierarchicalZPass<P> {
             sampler,
             device: device.clone(),
         }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.copy_pipeline).is_some() && assets.get_compute_pipeline(self.ffx_pipeline).is_some()
     }
 
     pub fn execute(

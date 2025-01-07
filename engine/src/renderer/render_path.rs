@@ -37,6 +37,7 @@ pub trait RenderPath<P: Platform> : Send {
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain<P::GPUBackend>);
     fn set_ui_data(&mut self, data: UIDrawData<P::GPUBackend>);
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool;
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
@@ -56,6 +57,7 @@ impl<P: Platform> RenderPath<P> for NoOpRenderPath {
     fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
     fn on_swapchain_changed(&mut self, _swapchain: &Swapchain<<P as Platform>::GPUBackend>) {}
     fn set_ui_data(&mut self, _data: UIDrawData<<P as Platform>::GPUBackend>) {}
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool { true }
     fn render(
         &mut self,
         context: &mut GraphicsContext<<P as Platform>::GPUBackend>,

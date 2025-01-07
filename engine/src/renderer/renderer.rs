@@ -16,7 +16,7 @@ use crossbeam_channel::{
     unbounded, Receiver, Sender, TryRecvError
 };
 use instant::Duration;
-use log::{trace, warn};
+use log::{info, trace, warn};
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::{
     Event,
@@ -90,8 +90,13 @@ impl<P: Platform> Renderer<P> {
         asset_manager: &Arc<AssetManager<P>>,
         _console: &Arc<Console>,
     ) -> (Renderer<P>, RendererSender<P::GPUBackend>) {
+        info!("Initializing renderer with {} backend", P::GPUBackend::name());
+
         let (sender, receiver) = unbounded::<RendererCommand<P::GPUBackend>>();
-        let context: GraphicsContext<<P as Platform>::GPUBackend> = device.create_context();
+        let mut context: GraphicsContext<<P as Platform>::GPUBackend> = device.create_context();
+
+        trace!("Initializing render path");
+        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, asset_manager));
 
         let renderer = Self {
             device: device.clone(),
@@ -106,7 +111,7 @@ impl<P: Platform> Renderer<P> {
             scene: RendererScene::new(),
             swapchain: Arc::new(swapchain),
             context,
-            render_path: Box::new(NoOpRenderPath),
+            render_path,
             last_frame: Instant::now(),
             frame: 0u64
         };
@@ -127,6 +132,9 @@ impl<P: Platform> Renderer<P> {
     }
 
     pub fn render(&mut self) {
+        self.asset_manager
+            .flush_renderer_assets();
+
         let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
         if cfg!(feature = "threading") {
             while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
@@ -141,6 +149,7 @@ impl<P: Platform> Renderer<P> {
         }
 
         if message_receiving_result == ReceiveMessagesResult::Quit {
+            info!("Quitting renderer.");
             self.notify_stopped_running();
             return;
         }
@@ -188,7 +197,7 @@ impl<P: Platform> Renderer<P> {
                 let c_device = self.device.clone();
                 bevy_tasks::ComputeTaskPool::get().spawn(async move {
                     c_device.flush(QueueType::Graphics)
-                });
+                }).detach();
             },
             Err(_swapchain_err) => {
                 todo!("Handle swapchain recreation");
@@ -206,9 +215,6 @@ impl<P: Platform> Renderer<P> {
     }
 
     fn receive_messages(&mut self) -> ReceiveMessagesResult {
-        self.asset_manager
-            .flush_renderer_assets();
-
         let message_res = self.receiver.try_recv();
         let mut message_opt: Option<RendererCommand<<P as Platform>::GPUBackend>>;
         match message_res {
@@ -367,6 +373,10 @@ impl<P: Platform> Renderer<P> {
 
     pub fn set_render_path(&mut self, render_path: Box<dyn RenderPath<P>>) {
         self.render_path = render_path;
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.render_path.is_ready(&self.asset_manager)
     }
 }
 

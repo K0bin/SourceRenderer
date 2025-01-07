@@ -9,7 +9,7 @@ use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACIT
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::renderer::asset::ComputePipelineHandle;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 
 use crate::graphics::*;
 
@@ -53,6 +53,10 @@ impl DrawPrepPass {
             culling_pipeline,
             prep_pipeline,
         }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.culling_pipeline).is_some() && assets.get_compute_pipeline(self.prep_pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(

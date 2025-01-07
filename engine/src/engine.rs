@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 use bevy_input::keyboard::KeyboardInput;
 use bevy_app::*;
@@ -8,6 +10,7 @@ use bevy_core::{FrameCountPlugin, TaskPoolPlugin};
 use bevy_input::mouse::MouseMotion;
 use bevy_input::InputPlugin;
 use bevy_log::LogPlugin;
+use bevy_tasks::{ComputeTaskPool, IoTaskPool};
 use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use bevy_hierarchy::HierarchyPlugin;
@@ -16,7 +19,7 @@ use log::trace;
 use sourcerenderer_core::platform::{
     Event,
     Platform,
-    Window,
+    Window, IO,
 };
 use sourcerenderer_core::{
     Console,
@@ -77,8 +80,24 @@ impl Engine {
         Self(app)
     }
 
-    pub fn frame(&mut self) {
-        self.0.update();
+    pub fn frame<P: Platform>(&mut self) {
+        let app = &mut self.0;
+        let plugins_state = app.plugins_state();
+        if plugins_state == PluginsState::Ready {
+            app.finish();
+            app.cleanup();
+            assert_eq!(app.plugins_state(), PluginsState::Cleaned);
+        } else if plugins_state != PluginsState::Cleaned {
+            if cfg!(not(target_arch = "wasm32")) {
+                // We only need to call it manually before the app is ready.
+                // After that the TaskPoolPlugin takes care of it.
+                bevy_tasks::tick_global_task_pools_on_main_thread();
+                std::thread::sleep(Duration::from_millis(16u64));
+            }
+            return;
+        }
+
+        app.update();
     }
 
     pub fn is_mouse_locked(&self) -> bool {

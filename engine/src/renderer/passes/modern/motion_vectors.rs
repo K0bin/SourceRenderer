@@ -12,7 +12,7 @@ use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::ComputePipelineHandle;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::graphics::*;
 
 pub struct MotionVectorPass {
@@ -47,6 +47,10 @@ impl MotionVectorPass {
             false,
         );
         Self { pipeline }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(

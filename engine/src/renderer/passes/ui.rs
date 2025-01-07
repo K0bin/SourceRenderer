@@ -2,7 +2,7 @@ use std::{sync::Arc, io::Read};
 
 use sourcerenderer_core::{gpu::PackedShader, platform::IO, Platform, Vec2};
 
-use crate::{asset::AssetManager, renderer::{asset::GraphicsPipelineHandle, render_path::RenderPassParameters, renderer_resources::HistoryResourceEntry}, ui::UIDrawData};
+use crate::{asset::AssetManager, renderer::{asset::{GraphicsPipelineHandle, RendererAssetsReadOnly}, render_path::RenderPassParameters, renderer_resources::HistoryResourceEntry}, ui::UIDrawData};
 use crate::graphics::*;
 use crate::renderer::asset::GraphicsPipelineInfo;
 
@@ -82,6 +82,10 @@ impl<P: Platform> UIPass<P> {
             device: device.clone(),
             pipeline,
         }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute(

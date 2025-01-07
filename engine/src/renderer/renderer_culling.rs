@@ -1,5 +1,6 @@
 use bevy_tasks::ParallelSlice;
 use bitset_core::BitSet;
+use log::trace;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec3};
 

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::usize;
 
 use bevy_ecs::entity::Entity;
+use log::warn;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4, Vec3, Vec4
@@ -117,6 +118,8 @@ impl<B: GPUBackend> RendererScene<B> {
             point_light.position = transform.transform_point3(Vec3::new(0f32, 0f32, 0f32));
             return;
         }
+
+        warn!("Found no entity on the renderer for ecs entity: {:?}", entity);
 
         debug_assert!(false); // debug unreachable
     }

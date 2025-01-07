@@ -300,6 +300,7 @@ impl<P: Platform> AssetManager<P> {
         progress: Option<&Arc<AssetLoaderProgress>>,
         priority: AssetLoadPriority,
     ) {
+        trace!("Adding asset data for path: {:?} {}", asset_data.asset_type(), path);
         if let Some(progress) = progress {
             progress.finished.fetch_add(1, Ordering::SeqCst);
         }
@@ -325,11 +326,13 @@ impl<P: Platform> AssetManager<P> {
         path: &str,
         asset_type: AssetType
     ) -> AssetHandle {
-        if asset_type.is_renderer_asset() {
-            return self.renderer.reserve_handle(path, asset_type);
+        let handle = if asset_type.is_renderer_asset() {
+            self.renderer.reserve_handle(path, asset_type)
         } else {
             unimplemented!()
-        }
+        };
+        trace!("Reserving handle {:?} for path {}", handle, path);
+        handle
     }
 
     pub fn reserve_handle_without_path(
@@ -348,6 +351,7 @@ impl<P: Platform> AssetManager<P> {
         path: &str,
         asset: Asset<P>
     ) {
+        trace!("Adding asset of type {:?} with path {}", asset.asset_type(), path);
         let handle = self.reserve_handle(path, asset.asset_type());
         self.add_asset_with_handle(AssetWithHandle::combine(handle, asset));
     }
@@ -356,6 +360,7 @@ impl<P: Platform> AssetManager<P> {
         self: &Arc<Self>,
         asset: AssetWithHandle<P>
     ) {
+        trace!("Adding asset of type {:?} with handle {:?}", asset.asset_type(), asset.handle());
         if asset.is_renderer_asset() {
             self.renderer.add_asset(asset);
         } else {
@@ -397,6 +402,7 @@ impl<P: Platform> AssetManager<P> {
         progress: Option<&Arc<AssetLoaderProgress>>,
         refresh: bool,
     ) -> Arc<AssetLoaderProgress> {
+        log::trace!("Requesting asset: {}", path);
         let progress = progress.map_or_else(
             || {
                 Arc::new(AssetLoaderProgress {
@@ -419,13 +425,17 @@ impl<P: Platform> AssetManager<P> {
             let requests = self.requested_assets.lock().unwrap();
             if let Some(requested_asset_type) = requests.get(path) {
                 if *requested_asset_type != asset_type {
-                    error!("Requested an asset with the same path as a previously requested asset but with a different asset type");
+                    error!("Requested an asset with the same path as a previously requested asset but with a different asset type. Path: {}", path);
                     skip = true;
                 }
             }
         };
-
-        skip = skip || (!refresh && self.contains(path, asset_type));
+        if !skip {
+            if !refresh && self.contains(path, asset_type) {
+                trace!("Skipping asset request because it is already loaded and request did not specify that it should be refreshed. Path: {}", path);
+                skip = true;
+            }
+        }
         if skip {
             progress.finished.fetch_add(1, Ordering::SeqCst);
             return progress;
@@ -439,19 +449,22 @@ impl<P: Platform> AssetManager<P> {
 
 
         let asset_mgr = self.clone();
-        IoTaskPool::get().spawn(async move {
-            let containers = asset_mgr.containers.read().unwrap();
+        let io_task = IoTaskPool::get().spawn(async move {
+            trace!("Loading file for {}", &load_request.path);
             let file_opt = asset_mgr.load_file(&load_request.path).await;
             if file_opt.is_none() {
+                error!("Could not find file at path: {}", &load_request.path);
                 load_request.progress.finished.fetch_add(1, Ordering::SeqCst);
                 return;
             }
-            std::mem::drop(containers);
             let file = file_opt.unwrap();
-            AsyncComputeTaskPool::get().spawn(async move {
+            let load_task = AsyncComputeTaskPool::get().spawn(async move {
+                trace!("Loading asset at path: {:?} {}", asset_type, &file.path);
                 let _ = asset_mgr.load_asset(file, asset_type, priority, &load_request.progress).await;
             });
+            load_task.detach();
         });
+        io_task.detach();
         progress
     }
 

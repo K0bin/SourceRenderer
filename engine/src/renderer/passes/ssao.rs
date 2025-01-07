@@ -126,6 +126,10 @@ impl<P: Platform> SsaoPass<P> {
         buffer
     }
 
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.blur_pipeline).is_some()
+    }
+
     pub fn execute(
         &mut self,
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,

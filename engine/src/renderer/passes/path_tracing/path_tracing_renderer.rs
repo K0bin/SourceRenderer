@@ -77,7 +77,7 @@ impl<P: Platform> PathTracingRenderer<P> {
         });
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
         Self {
             device: device.clone(),
             barriers,
@@ -235,6 +235,11 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         swapchain: &Swapchain<P::GPUBackend>,
     ) {
         // TODO: resize render targets
+    }
+
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+        let assets = asset_manager.read_renderer_assets();
+        self.path_tracer.is_ready(&assets)
     }
 
     #[profiling::function]

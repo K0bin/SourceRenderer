@@ -358,7 +358,7 @@ fn spin<P: Platform>(mut query: Query<&mut Transform, With<SpinningCube>>, delta
     for mut transform in query.iter_mut() {
         transform.rotation *= Quaternion::from_axis_angle(
             Vec3::new(0.0f32, 1.0f32, 0.0f32),
-            1.0f32 * delta_time.delta_seconds(),
+            1.0f32 * delta_time.delta_secs(),
         );
     }
 }

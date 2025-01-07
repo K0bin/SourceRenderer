@@ -188,7 +188,7 @@ impl<P: Platform> AssetWithHandle<P> {
             (AssetHandle::GraphicsPipeline(handle), Asset::GraphicsPipeline(asset)) => AssetWithHandle::GraphicsPipeline(handle, asset),
             (AssetHandle::ComputePipeline(handle), Asset::ComputePipeline(asset)) => AssetWithHandle::ComputePipeline(handle, asset),
             (AssetHandle::RayTracingPipeline(handle), Asset::RayTracingPipeline(asset)) => AssetWithHandle::RayTracingPipeline(handle, asset),
-            _ => panic!("Invalid combination")
+            (handle, asset) => panic!("Invalid combination: Handle type: {:?} + Asset type: {:?}", handle.asset_type(), asset.asset_type())
         }
     }
 }

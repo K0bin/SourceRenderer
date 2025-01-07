@@ -215,6 +215,10 @@ impl<P: Platform> GeometryPass<P> {
         Self { sampler, pipeline }
     }
 
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
+    }
+
     #[profiling::function]
     pub(super) fn execute(
         &mut self,

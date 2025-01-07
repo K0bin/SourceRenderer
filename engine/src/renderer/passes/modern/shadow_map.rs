@@ -10,7 +10,7 @@ use crate::renderer::light::RendererDirectionalLight;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
 use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
 use crate::renderer::asset::{
-    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo,
+    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly,
 };
 use crate::renderer::{
     renderer_resources::{HistoryResourceEntry, RendererResources},
@@ -252,6 +252,10 @@ impl<P: Platform> ShadowMapPass<P> {
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((pass_params.scene.scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
         cmd_buffer.end_label();
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.draw_prep_pipeline).is_some()
     }
 
     pub fn execute(

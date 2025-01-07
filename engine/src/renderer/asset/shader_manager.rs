@@ -10,6 +10,7 @@ use std::sync::{
     Mutex,
 };
 
+use log::trace;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{PackedShader, Shader as _};
 use sourcerenderer_core::{Platform, PlatformPhantomData};
@@ -810,7 +811,7 @@ impl<P: Platform> ShaderManager<P> {
         T: PipelineCompileTask<P> + 'static,
     {
         {
-            println!("Integrating shader {:?}", path);
+            trace!("Integrating shader {:?} {}", shader.shader_type(), path);
             let mut ready_handles = SmallVec::<[THandle; 1]>::new();
             {
 
@@ -826,6 +827,7 @@ impl<P: Platform> ShaderManager<P> {
                     let pipeline: &CompiledPipeline<P, T> = T::pipeline_from_asset_ref(asset_ref);
                     let existing_pipeline_match = pipeline.task.contains_shader(path);
                     if let Some(shader_type) = existing_pipeline_match {
+                        trace!("Found pipeline that contains shader {:?} {}. Queing remaining shaders if necessary.", shader.shader_type(), path);
                         assert!(shader_type  == shader.shader_type());
                         pipeline.task.request_remaining_shaders(
                             asset_manager,
@@ -843,26 +845,28 @@ impl<P: Platform> ShaderManager<P> {
                 for (handle, task) in remaining_compilations.iter() {
                     let remaining_compile_match = task.contains_shader(path);
                     if let Some(shader_type) = remaining_compile_match {
-                        assert!(shader_type  == shader.shader_type());
+                        trace!("Found pipeline that contains shader {:?} {}. Testing if its ready to compile.", shader.shader_type(), path);
+                        assert!(shader_type == shader.shader_type());
                         if task.can_compile(asset_manager, Some(path)) {
+                            trace!("Pipeline that contains shader {:?} {} is ready to compile.", shader.shader_type(), path);
                             ready_handles.push(*handle);
                         }
                     }
                 }
-
-                asset_manager.add_asset(path, Asset::Shader(shader.clone()));
             }
 
             if ready_handles.is_empty() {
+                trace!("Nothing to do with shader {:?} {}", shader.shader_type(), path);
                 return true;
             }
 
+            trace!("Queuing compile tasks for pipelines with {:?} {}", shader.shader_type(), path);
             let c_device = self.device.clone();
             let c_manager: Arc<PipelineTypeManager<P, THandle, T>> = pipeline_type_manager.clone();
             let c_asset_manager = asset_manager.clone();
             c_manager.cond_var.notify_all();
             let task_pool = bevy_tasks::ComputeTaskPool::get();
-            task_pool.spawn(async move {
+            let task = task_pool.spawn(async move {
                 for handle in ready_handles.drain(..) {
                     let task: T;
                     let shaders: T::TShaders;
@@ -878,6 +882,7 @@ impl<P: Platform> ShaderManager<P> {
                 }
                 c_manager.cond_var.notify_all();
             });
+            task.detach();
             true
         }
     }

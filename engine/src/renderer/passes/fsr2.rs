@@ -28,7 +28,7 @@ use widestring::{
 };
 
 use crate::asset::AssetManager;
-use crate::renderer::asset::ComputePipelineHandle;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::renderer::passes::taa::halton_point;
 use crate::renderer::render_path::{FrameInfo, RenderPassParameters};
 use crate::renderer::renderer_resources::{
@@ -82,6 +82,8 @@ impl<P: Platform> Fsr2Pass<P> {
         let context_size = std::mem::size_of::<ScratchContext<P>>();
         let context_ptr = Box::into_raw(scratch_context);
 
+        // TODO WTF did I do with the scratch buffer
+        // WTF
         let interface: FfxFsr2Interface = FfxFsr2Interface {
             fpCreateBackendContext: Some(create_backend_context::<P>),
             fpDestroyBackendContext: Some(destroy_backend_context::<P>),
@@ -150,6 +152,10 @@ impl<P: Platform> Fsr2Pass<P> {
             context,
             scratch_context: context_ptr,
         }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        false
     }
 
     pub fn execute(

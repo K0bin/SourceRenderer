@@ -53,6 +53,10 @@ impl SsrPass {
         Self { pipeline }
     }
 
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
+    }
+
     pub fn execute<P: Platform>(
         &mut self,
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,

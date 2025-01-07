@@ -1,5 +1,7 @@
 use std::{borrow::Borrow, collections::{hash_map::{Keys, Values}, HashMap}, hash::Hash};
 
+use log::error;
+
 pub(crate) trait IndexHandle {
     fn new(index: u64) -> Self;
 }
@@ -48,6 +50,10 @@ where
 
     pub(crate) fn get_value(&self, handle: THandle) -> Option<&TValue> {
         self.handle_to_val.get(&handle)
+    }
+
+    pub(crate) fn get_key(&self, handle: THandle) -> Option<&TKey> {
+        self.handle_to_key.get(&handle)
     }
 
     pub(crate) fn get_value_by_key<TKeyRef>(&self, key: &TKeyRef) -> Option<&TValue>
@@ -113,6 +119,7 @@ where
 
     pub(crate) fn set(&mut self, handle: THandle, value: TValue) -> bool {
         if !self.handle_to_key.contains_key(&handle) {
+            error!("Handle does not exist in HandleMap.");
             return false;
         }
         self.handle_to_val.insert(handle, value);

@@ -183,6 +183,10 @@ impl<P: Platform> OcclusionPass<P> {
         }
     }
 
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
+    }
+
     pub fn execute(
         &mut self,
         context: &GraphicsContext<P::GPUBackend>,

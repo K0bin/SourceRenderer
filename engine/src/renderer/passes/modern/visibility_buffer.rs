@@ -17,7 +17,7 @@ use crate::renderer::renderer_resources::{
 };
 use crate::renderer::asset::{
     GraphicsPipelineHandle,
-    GraphicsPipelineInfo
+    GraphicsPipelineInfo, RendererAssetsReadOnly
 };
 
 use crate::graphics::*;
@@ -143,6 +143,10 @@ impl VisibilityBufferPass {
         let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
