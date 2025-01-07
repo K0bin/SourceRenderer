@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::future::Future;
+use std::future::{poll_fn, Future};
 use std::hash::Hash;
 use std::io::{
     Read,
@@ -18,11 +18,12 @@ use std::sync::{
     Mutex,
     RwLock, RwLockReadGuard,
 };
+use std::task::Poll;
 
 use bevy_ecs::world::World;
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
-use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
+use bevy_tasks::{poll_once, AsyncComputeTaskPool, IoTaskPool};
 use crossbeam_channel::{
     unbounded,
     Receiver,
@@ -97,22 +98,22 @@ impl Seek for AssetFile {
 }
 
 pub trait AssetContainer: Send + Sync + 'static {
-    fn contains(&self, path: &str) -> impl Future<Output = bool>;
-    fn load(&self, path: &str) -> impl Future<Output = Option<AssetFile>>;
+    fn contains(&self, path: &str) -> impl Future<Output = bool> + Send;
+    fn load(&self, path: &str) -> impl Future<Output = Option<AssetFile>> + Send;
 }
 
 pub trait ErasedAssetContainer: Send + Sync {
-    fn contains<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + 'a>>;
-    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + 'a>>;
+    fn contains<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>>;
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + Send + 'a>>;
 }
 
 impl<T> ErasedAssetContainer for T
     where T: AssetContainer {
-    fn contains<'a> (&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + 'a>> {
+    fn contains<'a> (&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
         Box::pin(AssetContainer::contains(self, path))
     }
 
-    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + 'a>> {
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + Send + 'a>> {
         Box::pin(AssetContainer::load(self, path))
     }
 }
@@ -143,7 +144,7 @@ pub trait AssetLoader<P: Platform>: Send + Sync + 'static {
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> impl Future<Output = Result<(), ()>>;
+    ) -> impl Future<Output = Result<(), ()>> + Send;
 }
 
 pub trait ErasedAssetLoader<P: Platform>: Send + Sync {
@@ -154,7 +155,7 @@ pub trait ErasedAssetLoader<P: Platform>: Send + Sync {
         manager: &'a Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>>;
 }
 
 impl<T, P: Platform> ErasedAssetLoader<P> for T
@@ -169,18 +170,20 @@ impl<T, P: Platform> ErasedAssetLoader<P> for T
         manager: &'a Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>> {
         Box::pin(AssetLoader::<P>::load(self, file, manager, priority, progress))
     }
 }
 
 pub struct AssetManager<P: Platform> {
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
-    containers: RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
-    loaders: RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
+    containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
+    pending_containers_count: AtomicU32,
+    loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
+    pending_loaders_count: AtomicU32,
     requested_assets: Mutex<HashMap<String, AssetType>>,
     unintegrated_assets: Mutex<HashMap<String, AssetData>>,
-    renderer: RendererAssets<P>
+    renderer: RendererAssets<P>,
 }
 
 impl<P: Platform> AssetManager<P> {
@@ -189,11 +192,13 @@ impl<P: Platform> AssetManager<P> {
     ) -> Arc<Self> {
         let manager = Arc::new(Self {
             device: device.clone(),
-            loaders: RwLock::new(Vec::new()),
-            containers: RwLock::new(Vec::new()),
+            loaders: async_rwlock::RwLock::new(Vec::new()),
+            containers: async_rwlock::RwLock::new(Vec::new()),
             unintegrated_assets: Mutex::new(HashMap::new()),
             renderer: RendererAssets::<P>::new(device),
             requested_assets: Mutex::new(HashMap::new()),
+            pending_containers_count: AtomicU32::new(0u32),
+            pending_loaders_count: AtomicU32::new(0u32)
         });
 
         manager
@@ -269,7 +274,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub fn add_container(self: &Arc<Self>, container: impl AssetContainer) {
-        self.add_container_with_progress(container, None)
+        self.add_container_with_progress(container, None);
     }
 
     pub fn add_container_with_progress(
@@ -277,16 +282,31 @@ impl<P: Platform> AssetManager<P> {
         container: impl AssetContainer,
         progress: Option<&Arc<AssetLoaderProgress>>,
     ) {
-        let mut containers = self.containers.write().unwrap();
-        containers.push(Box::new(container));
-        if let Some(progress) = progress {
-            progress.finished.fetch_add(1, Ordering::SeqCst);
-        }
+        self.pending_containers_count.fetch_add(1, Ordering::Acquire);
+
+        let c_progress = progress.cloned();
+        let c_self = self.clone();
+        IoTaskPool::get().spawn(async move {
+            let mut containers = c_self.containers.write().await;
+            containers.push(Box::new(container));
+            if let Some(progress) = c_progress {
+                progress.finished.fetch_add(1, Ordering::SeqCst);
+            }
+
+            c_self.pending_containers_count.fetch_sub(1, Ordering::Release);
+        }).detach();
     }
 
     pub fn add_loader(self: &Arc<Self>, loader: impl AssetLoader<P>) {
-        let mut loaders = self.loaders.write().unwrap();
-        loaders.push(Box::new(loader));
+        self.pending_loaders_count.fetch_add(1, Ordering::Acquire);
+
+        let c_self = self.clone();
+        IoTaskPool::get().spawn(async move {
+            let mut loaders = c_self.loaders.write().await;
+            loaders.push(Box::new(loader));
+
+            c_self.pending_loaders_count.fetch_sub(1, Ordering::Release);
+        }).detach();
     }
 
     pub fn add_asset_data(self: &Arc<Self>, path: &str, asset: AssetData, priority: AssetLoadPriority) {
@@ -480,7 +500,17 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub async fn load_file(self: &Arc<Self>, path: &str) -> Option<AssetFile> {
-        let containers = self.containers.read().unwrap();
+        // Make sure there is no add_container task queued that hasn't been finished yet.
+        let no_pending = poll_fn(|_ctx| {
+            if self.pending_containers_count.load(Ordering::Acquire) == 0 {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        });
+        no_pending.await;
+
+        let containers = self.containers.read().await;
         let mut file_opt: Option<AssetFile> = None;
         for container in containers.iter().rev() {
             let container_file_opt = container.load(path).await;
@@ -493,7 +523,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub async fn file_exists(&self, path: &str) -> bool {
-        let containers = self.containers.read().unwrap();
+        let containers = self.containers.read().await;
         for container in containers.iter() {
             if container.contains(path).await {
                 return true;
@@ -505,9 +535,20 @@ impl<P: Platform> AssetManager<P> {
     async fn find_loader<'a>(
         file: &mut AssetFile,
         loaders: &'a [Box<dyn ErasedAssetLoader<P>>],
+        pending_count: &AtomicU32
     ) -> Option<&'a dyn ErasedAssetLoader<P>> {
         let start = AsyncSeekExt::seek(file, SeekFrom::Current(0)).await
             .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
+
+        // Make sure there is no add_loader task queued that hasn't been finished yet.
+        let no_pending = poll_fn(|_ctx| {
+            if pending_count.load(Ordering::Acquire) == 0 {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        });
+        no_pending.await;
 
         let mut loader_opt = Option::<&Box<dyn ErasedAssetLoader<P>>>::None;
         for loader in loaders {
@@ -533,8 +574,8 @@ impl<P: Platform> AssetManager<P> {
             requests.remove(&file.path);
         }
 
-        let loaders = self.loaders.read().unwrap();
-        let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref()).await;
+        let loaders = self.loaders.read().await;
+        let loader_opt: Option<&dyn ErasedAssetLoader<P>> = AssetManager::find_loader(&mut file, loaders.as_ref(), &self.pending_loaders_count).await;
         if loader_opt.is_none() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
             error!("Could not find loader for file: {:?}", &file.path);

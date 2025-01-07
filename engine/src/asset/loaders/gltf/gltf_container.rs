@@ -16,7 +16,7 @@ use crate::asset::AssetContainer;
 pub struct GltfContainer<P: Platform> {
     json_offset: u64,
     data_offset: u64,
-    reader: Mutex<BufReader<<P::IO as IO>::File>>,
+    reader: async_mutex::Mutex<BufReader<<P::IO as IO>::File>>,
     base_path: String,
     scene_base_path: String,
     buffer_base_path: String,
@@ -57,7 +57,7 @@ impl<P: Platform> GltfContainer<P> {
         let texture_base_path = base_path.clone() + "texture/";
 
         Ok(Self {
-            reader: Mutex::new(file),
+            reader: async_mutex::Mutex::new(file),
             json_offset,
             data_offset,
             base_path,
@@ -70,11 +70,13 @@ impl<P: Platform> GltfContainer<P> {
 
 impl<P: Platform> AssetContainer for GltfContainer<P> {
     async fn contains(&self, path: &str) -> bool {
-        self.load(path).await.is_some()
+        path.starts_with(&self.scene_base_path)
+            || path.starts_with(&self.texture_base_path)
+            || path.starts_with(&self.buffer_base_path)
     }
 
     async fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
-        let mut reader = self.reader.lock().unwrap();
+        let mut reader = self.reader.lock().await;
         if path.starts_with(&self.scene_base_path) {
             let length =
                 (self.data_offset - self.json_offset - glb::GlbChunkHeader::size()) as usize;

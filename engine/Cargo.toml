@@ -42,6 +42,8 @@ bumpalo = { version = "3.16.0", features = [ "collections", "boxed" ] }
 futures-io = "0.3.31"
 waker-fn = "1.2.0"
 parking_lot = "0.12.3"
+async-mutex = "1.4.0"
+async-rwlock = "1.3.0"
 
 bevy_app = "0.15.1"
 bevy_math = "0.15.1"
@@ -63,10 +65,8 @@ slab = "=0.4.9"
 fsr2 = { path = "../vendor/fsr2" }
 
 [features]
-default = ["late-latching"]
-late-latching = []
-threading = []
-# threading = [] Legion relies on thread parking atm
+default = [ "threading" ]
+threading = [ "bevy_tasks/multi_threaded", "bevy_ecs/multi_threaded" ]
 web = ["instant/wasm-bindgen", "instant/inaccurate", "rapier3d/wasm-bindgen"]
 profile = [ "profiling/profile-with-optick" ]
 

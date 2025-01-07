@@ -11,7 +11,7 @@ pub trait FileWatcher {
 }
 
 pub trait IO {
-  type File: AsyncRead + AsyncSeek + Send + Unpin;
+  type File: AsyncRead + AsyncSeek + Send + Sync + Unpin;
   type FileWatcher : FileWatcher + Send;
   fn open_asset<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = IOResult<Self::File>> + Send;
   fn asset_exists<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = bool> + Send;

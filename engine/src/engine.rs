@@ -88,12 +88,13 @@ impl Engine {
             app.cleanup();
             assert_eq!(app.plugins_state(), PluginsState::Cleaned);
         } else if plugins_state != PluginsState::Cleaned {
-            if cfg!(not(target_arch = "wasm32")) {
+            #[cfg(not(target_arch = "wasm32"))] {
                 // We only need to call it manually before the app is ready.
                 // After that the TaskPoolPlugin takes care of it.
                 bevy_tasks::tick_global_task_pools_on_main_thread();
                 std::thread::sleep(Duration::from_millis(16u64));
             }
+
             return;
         }
 

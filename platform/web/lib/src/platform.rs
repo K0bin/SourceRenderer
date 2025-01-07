@@ -42,13 +42,6 @@ impl Platform for WebPlatform {
         where F: FnOnce() -> T {
         callback()
     }
-
-    fn start_thread<F>(&self, _name: &str, _callback: F) -> Self::ThreadHandle
-      where
-          F: FnOnce(),
-          F: Send + 'static {
-        panic!("The web platform does not support threads at the moment")
-    }
 }
 
 pub struct NoThreadsThreadHandle {}

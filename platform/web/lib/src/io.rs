@@ -27,7 +27,7 @@ impl IO for WebIO {
   type File = WebFile;
   type FileWatcher = NopWatcher;
 
-  fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+  fn open_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
     info!("Opening asset: {:?}", path.as_ref().to_str().unwrap());
     /*let task = AsyncIOTask::new(path.as_ref().to_str().unwrap());
     unsafe {
@@ -42,15 +42,15 @@ impl IO for WebIO {
     })
   }
 
-  fn asset_exists<P: AsRef<Path>>(_path: P) -> bool {
+  fn asset_exists<P: AsRef<Path> + Send>(_path: P) -> bool {
     false
   }
 
-  fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
+  fn open_external_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
     Self::open_asset(path)
   }
 
-  fn external_asset_exists<P: AsRef<Path>>(_path: P) -> bool {
+  fn external_asset_exists<P: AsRef<Path> + Send>(_path: P) -> bool {
     false
   }
 

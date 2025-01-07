@@ -30,6 +30,7 @@ use bevy_ecs::world::{Ref, World};
 use bevy_log::trace;
 use bevy_tasks::ComputeTaskPool;
 use bevy_transform::components::GlobalTransform;
+use bevy_utils::synccell::SyncCell;
 use log::{debug, info};
 use sourcerenderer_core::{
     Platform, PlatformPhantomData, Vec2UI
@@ -189,9 +190,6 @@ struct ExtractSet;
 fn install_renderer_systems<P: Platform>(
     app: &mut App,
 ) {
-
-    let wrapper = RendererResourceWrapper::<P> { sender: sender };
-    app.insert_resource(wrapper);
     app.add_systems(
         Last,
         (begin_frame::<P>,).in_set(SyncSet)
@@ -216,10 +214,10 @@ fn insert_renderer_resource<P: Platform>(
     renderer: Renderer<P>,
     sender: RendererSender<P::GPUBackend>
 ) {
-    start_render_thread(renderer);
-
     let wrapper = RendererResourceWrapper::<P> { sender };
     app.insert_resource(wrapper);
+
+    start_render_thread(renderer);
 }
 
 #[cfg(feature = "threading")]
@@ -321,7 +319,7 @@ fn extract_directional_lights<P: Platform>(
                 .sender
                 .register_directional_light(entity, transform.as_ref(), light.as_ref());
         } else if !renderer.sender.is_saturated() {
-            //renderer.sender.update_transform(entity, transform.0);
+            renderer.sender.update_transform(entity, transform.0);
         }
     }
 
@@ -337,9 +335,8 @@ fn end_frame<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
 
     renderer.sender.end_frame();
 
-    if cfg!(not(feature = "threading")) {
-        renderer.renderer.get().render();
-    }
+    #[cfg(not(feature = "threading"))]
+    renderer.renderer.get().render();
 }
 
 fn begin_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
