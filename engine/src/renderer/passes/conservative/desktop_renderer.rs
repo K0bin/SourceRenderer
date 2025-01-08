@@ -20,22 +20,19 @@ use super::rt_shadows::RTShadowPass;
 use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
+use crate::asset::AssetManager;
 use crate::input::Input;
+use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
-    ZeroTextures, RenderPassParameters,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
 };
-use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::ShaderManager;
 
 use crate::graphics::*;
 
@@ -92,7 +89,7 @@ impl<P: Platform> ConservativeRenderer<P> {
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
         context: &mut GraphicsContext<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
@@ -101,22 +98,22 @@ impl<P: Platform> ConservativeRenderer<P> {
 
         let blue_noise = BlueNoise::new::<P>(device);
 
-        let clustering = ClusteringPass::new::<P>(&mut barriers, shader_manager);
-        let light_binning = LightBinningPass::new::<P>(&mut barriers, shader_manager);
-        let prepass = Prepass::new::<P>(&mut barriers, shader_manager, resolution);
-        let geometry = GeometryPass::<P>::new(device, resolution, &mut barriers, shader_manager);
-        let taa = TAAPass::new::<P>(resolution, &mut barriers, shader_manager, false);
-        let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, shader_manager);
-        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, false);
+        let clustering = ClusteringPass::new::<P>(&mut barriers, asset_manager);
+        let light_binning = LightBinningPass::new::<P>(&mut barriers, asset_manager);
+        let prepass = Prepass::new::<P>(&mut barriers, asset_manager, resolution);
+        let geometry = GeometryPass::<P>::new(device, resolution, &mut barriers, asset_manager);
+        let taa = TAAPass::new::<P>(resolution, &mut barriers, asset_manager, false);
+        let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, asset_manager);
+        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, asset_manager, false);
         //let occlusion = OcclusionPass::<P>::new(device, shader_manager);
         let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager),
+            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, asset_manager),
         });
-        let blit = BlitPass::new::<P>(&mut barriers, shader_manager, swapchain.format());
+        let blit = BlitPass::new::<P>(&mut barriers, asset_manager, swapchain.format());
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -130,7 +127,7 @@ impl<P: Platform> ConservativeRenderer<P> {
         });
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
 
         Self {
             device: device.clone(),
@@ -261,17 +258,28 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         // TODO: resize render targets
     }
 
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+        let assets = asset_manager.read_renderer_assets();
+        self.clustering_pass.is_ready(&assets)
+        && self.light_binning_pass.is_ready(&assets)
+        && self.prepass.is_ready(&assets)
+        && self.ssao.is_ready(&assets)
+        && self.rt_passes.as_ref().map(|passes| passes.shadows.is_ready(&assets)).unwrap_or(true)
+        && self.geometry.is_ready(&assets)
+        && self.blit_pass.is_ready(&assets)
+        && self.taa.is_ready(&assets)
+        && self.sharpen.is_ready(&assets)
+    }
+
     #[profiling::function]
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
+        assets: &RendererAssetsReadOnly<'_, P>
+    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -326,9 +334,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
-            shader_manager,
             resources: &mut self.barriers,
-            zero_textures,
             assets
         };
 
@@ -406,7 +412,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         self.sharpen
             .execute(&mut cmd_buf, &params);
 
-        let sharpened_texture = self.barriers.access_texture(
+        let sharpened_texture = params.resources.access_texture(
             &mut cmd_buf,
             SharpenPass::SHAPENED_TEXTURE_NAME,
             &BarrierTextureRange::default(),
@@ -417,10 +423,9 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             HistoryResourceEntry::Current,
         );
 
-        let back_buffer_res = swapchain.next_backbuffer();
-        if back_buffer_res.is_err() {
-            return Err(SwapchainError::Other);
-        }
+        let backbuffer = swapchain.next_backbuffer()?;
+        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -429,14 +434,14 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             new_access: BarrierAccess::RENDER_TARGET_WRITE, // BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::RenderTarget, // TextureLayout::CopyDst,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
         //cmd_buf.flush_barriers();
         //cmd_buf.blit_to_handle(&*sharpened_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
         std::mem::drop(sharpened_texture);
-        let sharpened_view = self.barriers.access_view(&mut cmd_buf, SharpenPass::SHAPENED_TEXTURE_NAME,
+        let sharpened_view = params.resources.access_view(&mut cmd_buf, SharpenPass::SHAPENED_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -448,11 +453,11 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
                 array_layer_length: 1,
                 format: None
             }, HistoryResourceEntry::Current);
-        let sampler = self.barriers.linear_sampler();
+        let sampler = params.resources.linear_sampler();
         cmd_buf.flush_barriers();
 
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute::<P>(context, &mut cmd_buf, shader_manager, &sharpened_view, swapchain.backbuffer(), sampler, resolution);
+        self.blit_pass.execute::<P>(context, &mut cmd_buf, &params.assets, &sharpened_view, backbuffer_view, sampler, resolution);
         std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,
@@ -461,12 +466,15 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::RenderTarget, // TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
 
-        Ok(cmd_buf.finish())
+        Ok(RenderPathResult {
+            cmd_buffer: cmd_buf.finish(),
+            backbuffer: Some(backbuffer)
+        })
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

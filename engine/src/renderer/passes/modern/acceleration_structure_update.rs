@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform};
 
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_assets::ModelHandle;
+use crate::asset::ModelHandle;
 use crate::graphics::*;
 
 pub struct AccelerationStructureUpdatePass<P: Platform> {
@@ -41,7 +41,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
         // We never reuse handles, so this works.
         let mut removed_models = SmallVec::<[ModelHandle; 4]>::new();
         for (handle, _) in &self.blas_map {
-            if !pass_params.assets.has_model(*handle) {
+            if pass_params.assets.get_model(*handle).is_none() {
                 removed_models.push(*handle);
             }
         }

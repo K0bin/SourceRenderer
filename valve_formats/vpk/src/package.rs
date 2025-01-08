@@ -2,7 +2,7 @@ use std::io::{Read, BufReader, Seek, Error as IOError, Result as IOResult, SeekF
 use package_entry::PackageEntry;
 use std::collections::HashMap;
 use archive_md5_section_entry::ArchiveMD5SectionEntry;
-use read_util::{PrimitiveRead, StringRead, StringReadError, RawDataRead};
+use io_util::{PrimitiveRead, StringRead, StringReadError, RawDataRead};
 use crc::{self, Crc};
 use utilities::AsnKeyParser;
 use rsa::{BigUint, Pkcs1v15Encrypt};

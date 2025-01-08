@@ -7,6 +7,7 @@ use block::ConcreteBlock;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Swapchain};
+use swapchain::MTLBackbuffer;
 
 use super::*;
 
@@ -141,17 +142,10 @@ impl gpu::Queue<MTLBackend> for MTLQueue {
         }
     }
 
-    unsafe fn present(&self, swapchain: &MTLSwapchain) {
-        let drawable = swapchain.take_drawable();
-        let backbuffer = swapchain.backbuffer(swapchain.backbuffer_index());
-
-        let drawable_mtl_texture = drawable.texture();
-        let dst = MTLTexture::from_mtl_texture(drawable_mtl_texture, false);
+    unsafe fn present(&self, swapchain: &mut MTLSwapchain, backbuffer: &MTLBackbuffer) {
         let cmd_buffer = self.queue.new_command_buffer().to_owned();
         cmd_buffer.set_label("Present helper");
-        // Begin/End are not actually necessary
-        MTLCommandBuffer::blit_rp(&cmd_buffer, &self.shared, backbuffer, 0, 0, &dst, 0, 0);
-        cmd_buffer.present_drawable(&drawable);
+        swapchain.present(&cmd_buffer, backbuffer);
         cmd_buffer.commit();
     }
 }

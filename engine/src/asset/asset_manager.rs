@@ -1,139 +1,57 @@
-use std::collections::{
-    HashMap,
-    VecDeque,
-};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::{poll_fn, Future};
 use std::hash::Hash;
 use std::io::{
-    Cursor,
     Read,
     Result as IOResult,
     Seek,
     SeekFrom,
 };
+use std::marker::PhantomData;
+use std::pin::Pin;
 use std::sync::atomic::{
-    AtomicBool,
     AtomicU32,
     Ordering,
 };
 use std::sync::{
     Arc,
-    Condvar,
     Mutex,
-    RwLock,
-    Weak,
+    RwLock, RwLockReadGuard,
 };
+use std::task::Poll;
 
-use bevy_ecs::bundle::Bundle;
-use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
+use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
+use bevy_tasks::futures_lite::AsyncSeekExt;
+use bevy_tasks::{poll_once, AsyncComputeTaskPool, IoTaskPool};
 use crossbeam_channel::{
     unbounded,
     Receiver,
     Sender,
 };
+use futures_io::{AsyncRead, AsyncSeek};
+use gltf::json::extensions::asset;
 use log::{
     error,
     trace,
     warn,
 };
-use sourcerenderer_core::gpu::PackedShader;
+use smallvec::SmallVec;
+use sourcerenderer_core::gpu::{GPUBackend, PackedShader};
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
+use crate::renderer::asset::{AssetIntegrator as RendererAssetIntegrator, AssetPlaceholders as RendererAssetPlaceholders, ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMesh, RendererModel, RendererShader, RendererTexture};
 
-use super::loaded_level::LoadedLevel;
+use super::loaded_level::LevelData;
+use super::{Asset, AssetData, AssetHandle, AssetRef, AssetType, AssetWithHandle, HandleMap, IndexHandle, LevelHandle, MaterialData, MaterialHandle, MeshData, MeshHandle, MeshRange, ModelData, ModelHandle, ShaderData, ShaderHandle, SoundHandle, TextureData, TextureHandle};
 
-struct AssetLoadRequest {
-    path: String,
-    asset_type: AssetType,
-    progress: Arc<AssetLoaderProgress>,
-    priority: AssetLoadPriority,
-}
-
-pub struct LoadedAsset {
+pub struct AssetLoadRequest {
     pub path: String,
-    pub asset: Asset,
+    pub progress: Arc<AssetLoaderProgress>,
     pub priority: AssetLoadPriority,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AssetType {
-    Texture,
-    Model,
-    Mesh,
-    Material,
-    Sound,
-    Level,
-    Chunk,
-    Container,
-    Shader,
-}
-
-#[derive(Clone)]
-pub struct MeshRange {
-    pub start: u32,
-    pub count: u32,
-}
-
-pub struct Texture {
-    pub info: TextureInfo,
-    pub data: Box<[Box<[u8]>]>,
-}
-
-pub struct Mesh {
-    pub indices: Option<Box<[u8]>>,
-    pub vertices: Box<[u8]>,
-    pub parts: Box<[MeshRange]>,
-    pub bounding_box: Option<BoundingBox>,
-    pub vertex_count: u32,
-}
-
-#[derive(Clone)]
-pub struct Model {
-    pub mesh_path: String,
-    pub material_paths: Vec<String>,
-}
-
-#[derive(Clone)]
-pub struct Material {
-    pub shader_name: String,
-    pub properties: HashMap<String, MaterialValue>,
-}
-
-impl Material {
-    pub fn new_pbr(albedo_texture_path: &str, roughness: f32, metalness: f32) -> Self {
-        let mut props = HashMap::new();
-        props.insert(
-            "albedo".to_string(),
-            MaterialValue::Texture(albedo_texture_path.to_string()),
-        );
-        props.insert("roughness".to_string(), MaterialValue::Float(roughness));
-        props.insert("metalness".to_string(), MaterialValue::Float(metalness));
-        Self {
-            shader_name: "pbr".to_string(),
-            properties: props,
-        }
-    }
-
-    pub fn new_pbr_color(albedo: Vec4, roughness: f32, metalness: f32) -> Self {
-        let mut props = HashMap::new();
-        props.insert("albedo".to_string(), MaterialValue::Vec4(albedo));
-        props.insert("roughness".to_string(), MaterialValue::Float(roughness));
-        props.insert("metalness".to_string(), MaterialValue::Float(metalness));
-        Self {
-            shader_name: "pbr".to_string(),
-            properties: props,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum MaterialValue {
-    Texture(String),
-    Float(f32),
-    Vec4(Vec4),
 }
 
 pub struct AssetFile {
@@ -141,23 +59,63 @@ pub struct AssetFile {
     pub data: Cursor<Box<[u8]>>,
 }
 
+impl AsyncRead for AssetFile {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut [u8],
+    ) -> std::task::Poll<IOResult<usize>> {
+        AsyncRead::poll_read(Pin::new(&mut self.as_mut().data), cx, buf)
+    }
+}
+
+impl AsyncSeek for AssetFile {
+    fn poll_seek(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        pos: SeekFrom,
+    ) -> std::task::Poll<IOResult<u64>> {
+        AsyncSeek::poll_seek(Pin::new(&mut self.as_mut().data), cx, pos)
+    }
+}
+
 impl Read for AssetFile {
     fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
-        self.data.read(buf)
+        let waker = waker_fn::waker_fn(|| {});
+        let mut context = std::task::Context::from_waker(&waker);
+        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.data);
+        as_sync.read(buf)
     }
 }
 
 impl Seek for AssetFile {
     fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
-        self.data.seek(pos)
+        let waker = waker_fn::waker_fn(|| {});
+        let mut context = std::task::Context::from_waker(&waker);
+        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.data);
+        as_sync.seek(pos)
     }
 }
 
-pub trait AssetContainer: Send + Sync {
-    fn contains(&self, path: &str) -> bool {
-        self.load(path).is_some()
+pub trait AssetContainer: Send + Sync + 'static {
+    fn contains(&self, path: &str) -> impl Future<Output = bool> + Send;
+    fn load(&self, path: &str) -> impl Future<Output = Option<AssetFile>> + Send;
+}
+
+pub trait ErasedAssetContainer: Send + Sync {
+    fn contains<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>>;
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + Send + 'a>>;
+}
+
+impl<T> ErasedAssetContainer for T
+    where T: AssetContainer {
+    fn contains<'a> (&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
+        Box::pin(AssetContainer::contains(self, path))
     }
-    fn load(&self, path: &str) -> Option<AssetFile>;
+
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + Send + 'a>> {
+        Box::pin(AssetContainer::load(self, path))
+    }
 }
 
 pub struct AssetLoaderProgress {
@@ -171,11 +129,6 @@ impl AssetLoaderProgress {
     }
 }
 
-pub enum AssetLoaderResult {
-    None,
-    Level(LoadedLevel),
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum AssetLoadPriority {
     High,
@@ -183,78 +136,70 @@ pub enum AssetLoadPriority {
     Low,
 }
 
-pub trait AssetLoader<P: Platform>: Send + Sync {
+pub trait AssetLoader<P: Platform>: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
     fn load(
         &self,
         file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()>;
+    ) -> impl Future<Output = Result<(), ()>> + Send;
 }
 
-pub enum Asset {
-    Texture(Texture),
-    Mesh(Mesh),
-    Model(Model),
-    Sound,
-    Material(Material),
-    Shader(PackedShader),
+pub trait ErasedAssetLoader<P: Platform>: Send + Sync {
+    fn matches(&self, file: &mut AssetFile) -> bool;
+    fn load<'a>(
+        &'a self,
+        file: AssetFile,
+        manager: &'a Arc<AssetManager<P>>,
+        priority: AssetLoadPriority,
+        progress: &'a Arc<AssetLoaderProgress>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>>;
+}
+
+impl<T, P: Platform> ErasedAssetLoader<P> for T
+    where T: AssetLoader<P> {
+    fn matches(&self, file: &mut AssetFile) -> bool {
+        AssetLoader::<P>::matches(self, file)
+    }
+
+    fn load<'a>(
+        &'a self,
+        file: AssetFile,
+        manager: &'a Arc<AssetManager<P>>,
+        priority: AssetLoadPriority,
+        progress: &'a Arc<AssetLoaderProgress>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>> {
+        Box::pin(AssetLoader::<P>::load(self, file, manager, priority, progress))
+    }
 }
 
 pub struct AssetManager<P: Platform> {
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
-    inner: Mutex<AssetManagerInner>,
-    containers: RwLock<Vec<Box<dyn AssetContainer>>>,
-    loaders: RwLock<Vec<Box<dyn AssetLoader<P>>>>,
-    renderer_sender: Sender<LoadedAsset>,
-    renderer_receiver: Receiver<LoadedAsset>,
-    cond_var: Arc<Condvar>,
-    is_running: AtomicBool,
-}
-
-struct AssetManagerInner {
-    load_queue: VecDeque<AssetLoadRequest>,
-    low_priority_load_queue: VecDeque<AssetLoadRequest>,
-    high_priority_load_queue: VecDeque<AssetLoadRequest>,
-    requested_assets: HashMap<String, AssetType>,
-    loaded_assets: HashMap<String, AssetType>,
+    containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
+    pending_containers_count: AtomicU32,
+    loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
+    pending_loaders_count: AtomicU32,
+    requested_assets: Mutex<HashMap<String, AssetType>>,
+    unintegrated_assets: Mutex<HashMap<String, AssetData>>,
+    renderer: RendererAssets<P>,
 }
 
 impl<P: Platform> AssetManager<P> {
     pub fn new(
-        platform: &P,
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
     ) -> Arc<Self> {
-        let (renderer_sender, renderer_receiver) = unbounded();
-
-        let cond_var = Arc::new(Condvar::new());
-
         let manager = Arc::new(Self {
             device: device.clone(),
-            inner: Mutex::new(AssetManagerInner {
-                load_queue: VecDeque::new(),
-                low_priority_load_queue: VecDeque::new(),
-                high_priority_load_queue: VecDeque::new(),
-                loaded_assets: HashMap::new(),
-                requested_assets: HashMap::new(),
-            }),
-            loaders: RwLock::new(Vec::new()),
-            containers: RwLock::new(Vec::new()),
-            renderer_sender,
-            renderer_receiver,
-            cond_var,
-            is_running: AtomicBool::new(true),
+            loaders: async_rwlock::RwLock::new(Vec::new()),
+            containers: async_rwlock::RwLock::new(Vec::new()),
+            unintegrated_assets: Mutex::new(HashMap::new()),
+            renderer: RendererAssets::<P>::new(device),
+            requested_assets: Mutex::new(HashMap::new()),
+            pending_containers_count: AtomicU32::new(0u32),
+            pending_loaders_count: AtomicU32::new(0u32)
         });
-
-        let thread_count = 4;
-        for _ in 0..thread_count {
-            let c_manager = Arc::downgrade(&manager);
-            platform.start_thread("AssetManagerThread", move || {
-                asset_manager_thread_fn(c_manager)
-            });
-        }
 
         manager
     }
@@ -263,8 +208,8 @@ impl<P: Platform> AssetManager<P> {
         &self.device
     }
 
-    pub fn add_mesh(
-        &self,
+    pub fn add_mesh_data(
+        self: &Arc<Self>,
         path: &str,
         vertex_buffer_data: Box<[u8]>,
         vertex_count: u32,
@@ -273,7 +218,7 @@ impl<P: Platform> AssetManager<P> {
         bounding_box: Option<BoundingBox>,
     ) {
         assert_ne!(vertex_count, 0);
-        let mesh = Mesh {
+        let mesh = MeshData {
             vertices: vertex_buffer_data,
             indices: if !index_buffer_data.is_empty() {
                 Some(index_buffer_data)
@@ -284,31 +229,31 @@ impl<P: Platform> AssetManager<P> {
             bounding_box,
             vertex_count,
         };
-        self.add_asset(path, Asset::Mesh(mesh), AssetLoadPriority::Normal);
+        self.add_asset_data(path, AssetData::Mesh(mesh), AssetLoadPriority::Normal);
     }
 
-    pub fn add_material(&self, path: &str, albedo: &str, roughness: f32, metalness: f32) {
-        let material = Material::new_pbr(albedo, roughness, metalness);
-        self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
+    pub fn add_material_data(self: &Arc<Self>, path: &str, albedo: &str, roughness: f32, metalness: f32) {
+        let material = MaterialData::new_pbr(albedo, roughness, metalness);
+        self.add_asset_data(path, AssetData::Material(material), AssetLoadPriority::Normal);
     }
 
-    pub fn add_material_color(&self, path: &str, albedo: Vec4, roughness: f32, metalness: f32) {
-        let material = Material::new_pbr_color(albedo, roughness, metalness);
-        self.add_asset(path, Asset::Material(material), AssetLoadPriority::Normal);
+    pub fn add_material_data_color(self: &Arc<Self>, path: &str, albedo: Vec4, roughness: f32, metalness: f32) {
+        let material: MaterialData = MaterialData::new_pbr_color(albedo, roughness, metalness);
+        self.add_asset_data(path, AssetData::Material(material), AssetLoadPriority::Normal);
     }
 
-    pub fn add_model(&self, path: &str, mesh_path: &str, material_paths: &[&str]) {
-        let model = Model {
+    pub fn add_model_data(self: &Arc<Self>, path: &str, mesh_path: &str, material_paths: &[&str]) {
+        let model = ModelData {
             mesh_path: mesh_path.to_string(),
             material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect(),
         };
-        self.add_asset(path, Asset::Model(model), AssetLoadPriority::Normal);
+        self.add_asset_data(path, AssetData::Model(model), AssetLoadPriority::Normal);
     }
 
-    pub fn add_texture(&self, path: &str, info: &TextureInfo, texture_data: Box<[u8]>) {
-        self.add_asset(
+    pub fn add_texture_data(self: &Arc<Self>, path: &str, info: &TextureInfo, texture_data: Box<[u8]>) {
+        self.add_asset_data(
             path,
-            Asset::Texture(Texture {
+            AssetData::Texture(TextureData {
                 info: info.clone(),
                 data: Box::new([texture_data.to_vec().into_boxed_slice()]),
             }),
@@ -316,122 +261,142 @@ impl<P: Platform> AssetManager<P> {
         );
     }
 
-    pub fn add_container(&self, container: Box<dyn AssetContainer>) {
-        self.add_container_with_progress(container, None)
+    pub fn request_graphics_pipeline(self: &Arc<Self>, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
+        self.renderer.request_graphics_pipeline(self, info)
+    }
+
+    pub fn request_compute_pipeline(self: &Arc<Self>, shader_path: &str) -> ComputePipelineHandle {
+        self.renderer.request_compute_pipeline(self, shader_path)
+    }
+
+    pub fn request_ray_tracing_pipeline(self: &Arc<Self>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
+        self.renderer.request_ray_tracing_pipeline(self, info)
+    }
+
+    pub fn add_container(self: &Arc<Self>, container: impl AssetContainer) {
+        self.add_container_with_progress(container, None);
     }
 
     pub fn add_container_with_progress(
-        &self,
-        container: Box<dyn AssetContainer>,
+        self: &Arc<Self>,
+        container: impl AssetContainer,
         progress: Option<&Arc<AssetLoaderProgress>>,
     ) {
-        let mut containers = self.containers.write().unwrap();
-        containers.push(container);
-        if let Some(progress) = progress {
-            progress.finished.fetch_add(1, Ordering::SeqCst);
-        }
+        self.pending_containers_count.fetch_add(1, Ordering::Acquire);
+
+        let c_progress = progress.cloned();
+        let c_self = self.clone();
+        IoTaskPool::get().spawn(async move {
+            let mut containers = c_self.containers.write().await;
+            containers.push(Box::new(container));
+            if let Some(progress) = c_progress {
+                progress.finished.fetch_add(1, Ordering::SeqCst);
+            }
+
+            c_self.pending_containers_count.fetch_sub(1, Ordering::Release);
+        }).detach();
     }
 
-    pub fn add_loader(&self, loader: Box<dyn AssetLoader<P>>) {
-        let mut loaders = self.loaders.write().unwrap();
-        loaders.push(loader);
+    pub fn add_loader(self: &Arc<Self>, loader: impl AssetLoader<P>) {
+        self.pending_loaders_count.fetch_add(1, Ordering::Acquire);
+
+        let c_self = self.clone();
+        IoTaskPool::get().spawn(async move {
+            let mut loaders = c_self.loaders.write().await;
+            loaders.push(Box::new(loader));
+
+            c_self.pending_loaders_count.fetch_sub(1, Ordering::Release);
+        }).detach();
     }
 
-    pub fn add_asset(&self, path: &str, asset: Asset, priority: AssetLoadPriority) {
-        self.add_asset_with_progress(path, asset, None, priority)
+    pub fn add_asset_data(self: &Arc<Self>, path: &str, asset: AssetData, priority: AssetLoadPriority) {
+        self.add_asset_data_with_progress(path, asset, None, priority)
     }
 
-    pub fn add_asset_with_progress(
-        &self,
+    pub fn add_asset_data_with_progress(
+        self: &Arc<Self>,
         path: &str,
-        asset: Asset,
+        asset_data: AssetData,
         progress: Option<&Arc<AssetLoaderProgress>>,
         priority: AssetLoadPriority,
     ) {
-        let asset_type = match &asset {
-            Asset::Texture(_) => AssetType::Texture,
-            Asset::Material(_) => AssetType::Material,
-            Asset::Mesh(_) => AssetType::Mesh,
-            Asset::Model(_) => AssetType::Model,
-            Asset::Sound => AssetType::Sound,
-            Asset::Shader(_) => AssetType::Shader,
-        };
-
-        {
-            let mut inner = self.inner.lock().unwrap();
-            inner.loaded_assets.insert(path.to_string(), asset_type);
-            inner.requested_assets.remove(path);
-        }
-
+        trace!("Adding asset data for path: {:?} {}", asset_data.asset_type(), path);
         if let Some(progress) = progress {
             progress.finished.fetch_add(1, Ordering::SeqCst);
         }
-        match asset {
-            Asset::Material(material) => {
-                self.renderer_sender
-                    .send(LoadedAsset {
-                        asset: Asset::Material(material),
-                        path: path.to_owned(),
-                        priority,
-                    })
-                    .unwrap();
-            }
-            Asset::Mesh(mesh) => {
-                assert_ne!(mesh.vertex_count, 0);
-                self.renderer_sender
-                    .send(LoadedAsset {
-                        asset: Asset::Mesh(mesh),
-                        path: path.to_owned(),
-                        priority,
-                    })
-                    .unwrap();
-            }
-            Asset::Texture(texture) => {
-                self.renderer_sender
-                    .send(LoadedAsset {
-                        asset: Asset::Texture(texture),
-                        path: path.to_owned(),
-                        priority,
-                    })
-                    .unwrap();
-            }
-            Asset::Model(model) => {
-                self.renderer_sender
-                    .send(LoadedAsset {
-                        asset: Asset::Model(model),
-                        path: path.to_owned(),
-                        priority,
-                    })
-                    .unwrap();
-            }
-            Asset::Shader(shader) => {
-                self.renderer_sender
-                    .send(LoadedAsset {
-                        asset: Asset::Shader(shader),
-                        path: path.to_owned(),
-                        priority,
-                    })
-                    .unwrap();
-            }
-            _ => unimplemented!(),
+        let integrated = if asset_data.is_renderer_asset() {
+            self.renderer.integrate(self, path, &asset_data, priority);
+            true
+        } else if let AssetData::Level(_level) = &asset_data {
+            // Remove unintegrated level before loading a new one
+            let _ = self.take_any_unintegrated_asset_data_of_type(AssetType::Level);
+            false
+        } else {
+            unimplemented!()
+        };
+
+        if !integrated {
+            let mut unintegrated_list = self.unintegrated_assets.lock().unwrap();
+            unintegrated_list.insert(path.to_string(), asset_data);
         }
     }
 
-    pub fn request_asset_update(&self, path: &str) {
-        log::info!("Reloading: {}", path);
-        let asset_type = {
-            let inner = self.inner.lock().unwrap();
-            inner.loaded_assets.get(path).copied()
-        };
-        if let Some(asset_type) = asset_type {
-            self.request_asset_internal(path, asset_type, AssetLoadPriority::Low, None, true);
+    pub fn reserve_handle(
+        self: &Arc<Self>,
+        path: &str,
+        asset_type: AssetType
+    ) -> AssetHandle {
+        let handle = if asset_type.is_renderer_asset() {
+            self.renderer.reserve_handle(path, asset_type)
         } else {
-            warn!("Cannot reload unloaded asset {}", path);
+            unimplemented!()
+        };
+        trace!("Reserving handle {:?} for path {}", handle, path);
+        handle
+    }
+
+    pub fn reserve_handle_without_path(
+        self: &Arc<Self>,
+        asset_type: AssetType
+    ) -> AssetHandle {
+        if asset_type.is_renderer_asset() {
+            return self.renderer.reserve_handle_without_path(asset_type);
+        } else {
+            unimplemented!()
+        }
+    }
+
+    pub fn add_asset(
+        self: &Arc<Self>,
+        path: &str,
+        asset: Asset<P>
+    ) {
+        trace!("Adding asset of type {:?} with path {}", asset.asset_type(), path);
+        let handle = self.reserve_handle(path, asset.asset_type());
+        self.add_asset_with_handle(AssetWithHandle::combine(handle, asset));
+    }
+
+    pub fn add_asset_with_handle(
+        self: &Arc<Self>,
+        asset: AssetWithHandle<P>
+    ) {
+        trace!("Adding asset of type {:?} with handle {:?}", asset.asset_type(), asset.handle());
+        if asset.is_renderer_asset() {
+            self.renderer.add_asset(asset);
+        } else {
+            unimplemented!();
+        }
+    }
+
+    pub fn request_asset_update(self: &Arc<Self>, path: &str) {
+        log::info!("Reloading: {}", path);
+        if let Some(asset_type) = self.renderer.contains_just_path(path) {
+            self.request_asset_internal(path, asset_type, AssetLoadPriority::Low, None, true);
         }
     }
 
     pub fn request_asset(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         asset_type: AssetType,
         priority: AssetLoadPriority,
@@ -440,7 +405,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub fn request_asset_with_progress(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         asset_type: AssetType,
         priority: AssetLoadPriority,
@@ -450,13 +415,14 @@ impl<P: Platform> AssetManager<P> {
     }
 
     fn request_asset_internal(
-        &self,
+        self: &Arc<Self>,
         path: &str,
         asset_type: AssetType,
         priority: AssetLoadPriority,
         progress: Option<&Arc<AssetLoaderProgress>>,
         refresh: bool,
     ) -> Arc<AssetLoaderProgress> {
+        log::trace!("Requesting asset: {}", path);
         let progress = progress.map_or_else(
             || {
                 Arc::new(AssetLoaderProgress {
@@ -468,232 +434,204 @@ impl<P: Platform> AssetManager<P> {
         );
         progress.expected.fetch_add(1, Ordering::SeqCst);
 
-        {
-            let mut inner = self.inner.lock().unwrap();
-            if (inner.loaded_assets.contains_key(path) && !refresh)
-                || inner.requested_assets.contains_key(path)
-            {
-                progress.finished.fetch_add(1, Ordering::SeqCst);
-                return progress;
-            }
-            inner.requested_assets.insert(path.to_owned(), asset_type);
-
-            let queue = match priority {
-                AssetLoadPriority::High => &mut inner.high_priority_load_queue,
-                AssetLoadPriority::Normal => &mut inner.load_queue,
-                AssetLoadPriority::Low => &mut inner.low_priority_load_queue,
-            };
-
-            queue.push_back(AssetLoadRequest {
-                asset_type,
-                path: path.to_owned(),
-                progress: progress.clone(),
-                priority,
-            });
+        if asset_type == AssetType::Level {
+            // Remove unintegrated level before loading a new one
+            let _ = self.take_any_unintegrated_asset_data_of_type(AssetType::Level);
         }
-        self.cond_var.notify_one();
 
+        let mut skip = false;
+        {
+            // Already requested?
+            let requests = self.requested_assets.lock().unwrap();
+            if let Some(requested_asset_type) = requests.get(path) {
+                if *requested_asset_type != asset_type {
+                    error!("Requested an asset with the same path as a previously requested asset but with a different asset type. Path: {}", path);
+                    skip = true;
+                }
+            }
+        };
+        if !skip {
+            if !refresh && self.contains(path, asset_type) {
+                trace!("Skipping asset request because it is already loaded and request did not specify that it should be refreshed. Path: {}", path);
+                skip = true;
+            }
+        }
+        if skip {
+            progress.finished.fetch_add(1, Ordering::SeqCst);
+            return progress;
+        }
+
+        let load_request = AssetLoadRequest {
+            path: path.to_owned(),
+            progress: progress.clone(),
+            priority,
+        };
+
+
+        let asset_mgr = self.clone();
+        let io_task = IoTaskPool::get().spawn(async move {
+            trace!("Loading file for {}", &load_request.path);
+            let file_opt = asset_mgr.load_file(&load_request.path).await;
+            if file_opt.is_none() {
+                error!("Could not find file at path: {}", &load_request.path);
+                load_request.progress.finished.fetch_add(1, Ordering::SeqCst);
+                return;
+            }
+            let file = file_opt.unwrap();
+            let load_task = AsyncComputeTaskPool::get().spawn(async move {
+                trace!("Loading asset at path: {:?} {}", asset_type, &file.path);
+                let _ = asset_mgr.load_asset(file, asset_type, priority, &load_request.progress).await;
+            });
+            load_task.detach();
+        });
+        io_task.detach();
         progress
     }
 
-    pub fn load_level(&self, path: &str) -> Option<LoadedLevel> {
-        let file_opt = self.load_file(path);
-        if file_opt.is_none() {
-            error!("Could not load file: {:?}", path);
-            return None;
-        }
-        let mut file = file_opt.unwrap();
-
-        let loaders = self.loaders.read().unwrap();
-        let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
-        if loader_opt.is_none() {
-            error!("Could not find loader for file: {:?}", path);
-            return None;
-        }
-
-        let progress = Arc::new(AssetLoaderProgress {
-            expected: AtomicU32::new(1),
-            finished: AtomicU32::new(0),
-        });
-        let loader = loader_opt.unwrap();
-        let assets_opt = loader.load(file, self, AssetLoadPriority::Normal, &progress);
-        if assets_opt.is_err() {
-            error!("Could not load file: {:?}", path);
-            return None;
-        }
-        let result = assets_opt.unwrap();
-        let level = match result {
-            AssetLoaderResult::Level(level) => Some(level),
-            _ => None,
-        };
-        progress.finished.fetch_add(1, Ordering::SeqCst);
-        level
+    pub(crate) fn take_unintegrated_asset_data(self: &Arc<Self>, path: &str) -> Option<AssetData> {
+        let mut unintegrated = self.unintegrated_assets.lock().unwrap();
+        unintegrated.remove(path)
     }
 
-    pub fn load_file(&self, path: &str) -> Option<AssetFile> {
-        let containers = self.containers.read().unwrap();
+    pub(crate) fn take_any_unintegrated_asset_data_of_type(self: &Arc<Self>, asset_type: AssetType) -> Option<AssetData> {
+        let mut unintegrated = self.unintegrated_assets.lock().unwrap();
+        let path = unintegrated.iter().find_map(|(path, asset)| (asset.asset_type() == asset_type).then(|| path.clone()));
+        path.and_then(|path| unintegrated.remove(&path))
+    }
+
+    pub async fn load_file(self: &Arc<Self>, path: &str) -> Option<AssetFile> {
+        // Make sure there is no add_container task queued that hasn't been finished yet.
+        let no_pending = poll_fn(|_ctx| {
+            if self.pending_containers_count.load(Ordering::Acquire) == 0 {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        });
+        no_pending.await;
+
+        let containers = self.containers.read().await;
         let mut file_opt: Option<AssetFile> = None;
         for container in containers.iter().rev() {
-            let container_file_opt = container.load(path);
+            let container_file_opt = container.load(path).await;
             if container_file_opt.is_some() {
                 file_opt = container_file_opt;
                 break;
             }
         }
-        if file_opt.is_none() {
-            error!("Could not find file: {:?}, working dir: {:?}", path, std::env::current_dir());
-            {
-                let mut inner = self.inner.lock().unwrap();
-                inner.requested_assets.remove(path);
-            }
-        }
         file_opt
     }
 
-    pub fn file_exists(&self, path: &str) -> bool {
-        let containers = self.containers.read().unwrap();
+    pub async fn file_exists(&self, path: &str) -> bool {
+        let containers = self.containers.read().await;
         for container in containers.iter() {
-            if container.contains(path) {
+            if container.contains(path).await {
                 return true;
             }
         }
         false
     }
 
-    fn find_loader<'a>(
+    async fn find_loader<'a>(
         file: &mut AssetFile,
-        loaders: &'a [Box<dyn AssetLoader<P>>],
-    ) -> Option<&'a dyn AssetLoader<P>> {
-        let start = file
-            .seek(SeekFrom::Current(0))
+        loaders: &'a [Box<dyn ErasedAssetLoader<P>>],
+        pending_count: &AtomicU32
+    ) -> Option<&'a dyn ErasedAssetLoader<P>> {
+        let start = AsyncSeekExt::seek(file, SeekFrom::Current(0)).await
             .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
-        let loader_opt = loaders.iter().find(|loader| {
-            let loader_matches = loader.matches(file);
-            file.seek(SeekFrom::Start(start)).unwrap();
-            loader_matches
+
+        // Make sure there is no add_loader task queued that hasn't been finished yet.
+        let no_pending = poll_fn(|_ctx| {
+            if pending_count.load(Ordering::Acquire) == 0 {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
         });
+        no_pending.await;
+
+        let mut loader_opt = Option::<&Box<dyn ErasedAssetLoader<P>>>::None;
+        for loader in loaders {
+            let loader_matches = loader.matches(file);
+            AsyncSeekExt::seek(file, SeekFrom::Start(start)).await.unwrap();
+            if loader_matches {
+                loader_opt = Some(loader);
+                break;
+            }
+        }
         loader_opt.map(|b| b.as_ref())
     }
 
-    fn load_asset(
-        &self,
+    async fn load_asset(
+        self: &Arc<Self>,
         mut file: AssetFile,
+        asset_type: AssetType,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) {
-        let path = file.path.clone();
+    ) -> Result<(), ()> {
+        {
+            let mut requests = self.requested_assets.lock().unwrap();
+            requests.remove(&file.path);
+        }
 
-        let loaders = self.loaders.read().unwrap();
-        let loader_opt = AssetManager::find_loader(&mut file, loaders.as_ref());
+        let loaders = self.loaders.read().await;
+        let loader_opt: Option<&dyn ErasedAssetLoader<P>> = AssetManager::find_loader(&mut file, loaders.as_ref(), &self.pending_loaders_count).await;
         if loader_opt.is_none() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
-            {
-                let mut inner = self.inner.lock().unwrap();
-                inner.requested_assets.remove(&path);
-            }
-            error!("Could not find loader for file: {:?}", path.as_str());
-            return;
+            error!("Could not find loader for file: {:?}", &file.path);
+            return Err(());
         }
         let loader = loader_opt.unwrap();
 
-        let assets_opt = loader.load(file, self, priority, progress);
+        let path = file.path.clone();
+        let assets_opt = loader.load(file, self, priority, progress).await;
         if assets_opt.is_err() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
-            {
-                let mut inner = self.inner.lock().unwrap();
-                inner.requested_assets.remove(&path);
+            error!("Could not load file: {:?}", &path);
+            return Err(());
+        }
+        if !self.contains(&path, asset_type) {
+            error!("Loader did not load requested asset from file: {:?}", &path);
+            return Err(());
+        }
+        Ok(())
+    }
+
+    pub fn contains(&self, path: &str, asset_type: AssetType) -> bool {
+        if asset_type.is_renderer_asset() {
+            return self.renderer.contains(path, asset_type);
+        }
+
+        {
+            let unintegrated = self.unintegrated_assets.lock().unwrap();
+            if let Some(asset) = unintegrated.get(path) {
+                return asset_type == asset.asset_type();
             }
-            error!("Could not load file: {:?}", path.as_str());
         }
+
+        false
     }
 
-    pub fn has_open_renderer_assets(&self) -> bool {
-        !self.renderer_receiver.is_empty()
-    }
-
-    pub fn receive_render_asset(&self) -> Option<LoadedAsset> {
-        self.renderer_receiver.try_recv().ok()
-    }
-
-    pub fn notify_loaded(&self, path: &str) {
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(asset_type) = inner.requested_assets.remove(path) {
-            inner.loaded_assets.insert(path.to_string(), asset_type);
+    pub fn contains_just_path(&self, path: &str) -> Option<AssetType> {
+        if let Some(asset_type) = self.renderer.contains_just_path(path) {
+            return Some(asset_type);
         }
-    }
 
-    pub fn notify_unloaded(&self, path: &str) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.loaded_assets.remove(path);
-    }
-
-    pub fn stop(&self) {
-        trace!("Stopping asset manager");
-        let was_running = self.is_running.swap(false, Ordering::SeqCst);
-        if !was_running {
-            return;
-        }
-        self.cond_var.notify_all();
-    }
-}
-
-fn asset_manager_thread_fn<P: Platform>(asset_manager: Weak<AssetManager<P>>) {
-    trace!("Started asset manager thread");
-    let cond_var = {
-        let mgr_opt = asset_manager.upgrade();
-        if mgr_opt.is_none() {
-            return;
-        }
-        let mgr = mgr_opt.unwrap();
-        mgr.cond_var.clone()
-    };
-
-    'asset_loop: loop {
-        let mut break_loop = false;
-        P::thread_memory_management_pool(|| {
-            let mgr_opt = asset_manager.upgrade();
-            if mgr_opt.is_none() {
-                break_loop = true;
+        {
+            let unintegrated = self.unintegrated_assets.lock().unwrap();
+            if let Some(asset) = unintegrated.get(path) {
+                return Some(asset.asset_type());
             }
-            let mgr = mgr_opt.unwrap();
-            if !mgr.is_running.load(Ordering::SeqCst) {
-                break_loop = true;
-            }
-            let request = {
-                let mut inner = mgr.inner.lock().unwrap();
-                let mut request_opt = inner.high_priority_load_queue.pop_front();
-                request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
-                request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
-                while request_opt.is_none() {
-                    if !mgr.is_running.load(Ordering::SeqCst) {
-                        break_loop = true;
-                    }
-
-                    inner = cond_var.wait(inner).unwrap();
-                    request_opt = inner.high_priority_load_queue.pop_front();
-                    request_opt = request_opt.or_else(|| inner.load_queue.pop_front());
-                    request_opt = request_opt.or_else(|| inner.low_priority_load_queue.pop_front());
-                }
-                match request_opt {
-                    Some(request) => request,
-                    None => return
-                }
-            };
-            println!("Loading: {:?}", &request.path);
-
-            {
-                let file_opt = mgr.load_file(&request.path);
-                if file_opt.is_none() {
-                    request.progress.finished.fetch_add(1, Ordering::SeqCst);
-                    return;
-                }
-                let file = file_opt.unwrap();
-                mgr.load_asset(file, request.priority, &request.progress);
-            }
-        });
-        if break_loop {
-            break;
         }
+
+        None
     }
-    trace!("Stopped asset manager thread");
+
+    pub(crate) fn read_renderer_assets(&self) -> RendererAssetsReadOnly<P> {
+        self.renderer.read()
+    }
+
+    pub(crate) fn flush_renderer_assets(self: &Arc<Self>) {
+        self.renderer.flush(self);
+    }
 }

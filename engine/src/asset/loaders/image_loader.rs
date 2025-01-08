@@ -1,26 +1,21 @@
 use std::io::BufReader;
 use std::sync::Arc;
 
-use image::io::Reader as ImageReader;
 use image::{
+    ImageReader,
     GenericImageView,
     ImageFormat,
 };
+
+use bevy_tasks::futures_lite::AsyncReadExt;
+
 use sourcerenderer_core::Platform;
 
 use crate::graphics::*;
 
-use crate::asset::asset_manager::{
-    AssetFile,
-    AssetLoaderResult,
-};
+use crate::asset::asset_manager::{AssetFile, AssetLoader};
 use crate::asset::{
-    Asset,
-    AssetLoadPriority,
-    AssetLoader,
-    AssetLoaderProgress,
-    AssetManager,
-    Texture,
+    AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, TextureData
 };
 
 pub struct ImageLoader {}
@@ -36,16 +31,19 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
         file.path.ends_with(".png") || file.path.ends_with(".jpg") || file.path.ends_with(".jpeg")
     }
 
-    fn load(
+    async fn load(
         &self,
-        file: AssetFile,
-        manager: &AssetManager<P>,
+        mut file: AssetFile,
+        manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<(), ()> {
         let is_png = file.path.ends_with(".png");
 
         let path = file.path.clone();
+        let mut data = Vec::<u8>::new();
+        let _bytes_read = file.read_to_end(&mut data).await.map_err(|_| ())?;
+
         let buf_read = BufReader::new(file);
         let image_reader = ImageReader::with_format(
             buf_read,
@@ -69,9 +67,9 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
             ),
         };
 
-        manager.add_asset_with_progress(
+        manager.add_asset_data_with_progress(
             &path,
-            Asset::Texture(Texture {
+            AssetData::Texture(TextureData {
                 info: TextureInfo {
                     dimension: TextureDimension::Dim2D,
                     format,
@@ -90,6 +88,6 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
             priority,
         );
 
-        Ok(AssetLoaderResult::None)
+        Ok(())
     }
 }

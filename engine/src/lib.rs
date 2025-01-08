@@ -14,7 +14,7 @@ extern crate sourcerenderer_vvd;
 extern crate bitset_core;
 extern crate bitvec;
 extern crate gltf;
-extern crate instant;
+extern crate web_time;
 extern crate rand;
 extern crate rayon;
 extern crate regex;

@@ -1,22 +1,25 @@
+use std::hash::Hash;
+
 use crate::Matrix4;
 
 use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SwapchainError {
-  ZeroExtents,
-  SurfaceLost,
-  Other
+  Other,
+  NeedsRecreation
+}
+
+pub trait Backbuffer {
+  fn key(&self) -> u64;
 }
 
 pub trait Swapchain<B: GPUBackend> : Sized {
-  unsafe fn recreate(old: Self, width: u32, height: u32) -> Result<Self, SwapchainError>;
-  unsafe fn recreate_on_surface(old: Self, surface: B::Surface, width: u32, height: u32) -> Result<Self, SwapchainError>;
-  unsafe fn next_backbuffer(&self) -> Result<(), SwapchainError>;
-  fn backbuffer(&self, index: u32) -> &B::Texture;
-  fn backbuffer_index(&self) -> u32;
-  fn backbuffer_count(&self) -> u32;
-  fn sample_count(&self) -> SampleCount;
+  type Backbuffer : Backbuffer + Send + Sync;
+
+  unsafe fn next_backbuffer(&mut self) -> Result<Self::Backbuffer, SwapchainError>;
+  unsafe fn recreate(&mut self);
+  unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a Self::Backbuffer) -> &'a B::Texture;
   fn format(&self) -> Format;
   fn surface(&self) -> &B::Surface;
   fn transform(&self) -> Matrix4;

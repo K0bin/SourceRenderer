@@ -1,17 +1,17 @@
+use std::sync::Arc;
+
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
 };
 
 use super::ssr::SsrPass;
+use crate::asset::AssetManager;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
-};
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
 };
 
 use crate::graphics::*;
@@ -28,9 +28,9 @@ impl CompositingPass {
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/compositing.comp.json");
+        let pipeline = asset_manager.request_compute_pipeline("shaders/compositing.comp.json");
 
         resources.create_texture(
             Self::COMPOSITION_TEXTURE_NAME,
@@ -50,6 +50,10 @@ impl CompositingPass {
         );
 
         Self { pipeline }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(
@@ -93,7 +97,7 @@ impl CompositingPass {
 
         cmd_buffer.begin_label("Compositing pass");
 
-        let pipeline = params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = params.assets.get_compute_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
 
         #[repr(C)]

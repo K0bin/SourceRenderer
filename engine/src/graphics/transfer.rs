@@ -582,7 +582,7 @@ impl<B: GPUBackend> Transfer<B> {
 
         let mut guard = self.inner.lock().unwrap();
         if let Some(transfer) = guard.transfer.as_mut() {
-            let cmd_buffer_opt = self.flush_commands(transfer);
+            let cmd_buffer_opt: Option<Box<TransferCommandBuffer<B>>> = self.flush_commands(transfer);
             if let Some(mut cmd_buffer) = cmd_buffer_opt {
                 unsafe {
                     self.device.transfer_queue()

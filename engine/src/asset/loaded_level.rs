@@ -30,13 +30,16 @@ impl Deref for BumpUnpin {
     }
 }
 
-pub struct LoadedLevel {
+pub struct LevelData {
     total_component_count: usize,
     entities: Vec<'static, LoadedEntity<'static>>,
     bump: Pin<std::boxed::Box<BumpUnpin>>,
 }
 
-impl LoadedLevel {
+unsafe impl Send for LevelData {}
+unsafe impl Sync for LevelData {}
+
+impl LevelData {
     pub fn new(estimated_allocation_size: usize, estimated_entity_count: usize) -> Self {
         let bump = Bump::with_capacity(estimated_allocation_size);
         let static_bump: &'static Bump = unsafe {
@@ -128,7 +131,7 @@ impl LoadedLevel {
                 } else if component_type_id == TypeId::of::<PointLightComponent>() {
                     entity.insert(Self::loaded_component_into::<PointLightComponent>(loaded_component));
                 } else {
-                    panic!("Unsupported type in LoadedLevel");
+                    panic!("Unsupported type in LevelData");
                 }
             }
             ecs_entities.push((entity.flush(), parent));

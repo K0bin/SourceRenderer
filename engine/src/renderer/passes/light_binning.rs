@@ -6,14 +6,12 @@ use sourcerenderer_core::{
 };
 
 use super::clustering::ClusteringPass;
+use crate::asset::AssetManager;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
-};
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
 };
 
 use crate::graphics::*;
@@ -43,9 +41,9 @@ impl LightBinningPass {
 
     pub fn new<P: Platform>(
         barriers: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/light_binning.comp.json");
+        let pipeline = asset_manager.request_compute_pipeline("shaders/light_binning.comp.json");
 
         barriers.create_buffer(
             Self::LIGHT_BINNING_BUFFER_NAME,
@@ -61,6 +59,10 @@ impl LightBinningPass {
         Self {
             light_binning_pipeline: pipeline,
         }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.light_binning_pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(
@@ -114,7 +116,7 @@ impl LightBinningPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.light_binning_pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.light_binning_pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,

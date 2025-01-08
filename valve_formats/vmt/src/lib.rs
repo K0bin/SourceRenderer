@@ -1,8 +1,8 @@
-mod read_util;
+use io_util;
 
 use std::collections::HashMap;
 use std::io::{Read, Error as IOError};
-use crate::read_util::RawDataRead;
+use io_util::RawDataRead;
 
 pub const SHADER_LIGHT_MAPPED_GENERIC: &str = "lightmappedgeneric";
 pub const SHADER_VERTEX_LIT_GENERIC: &str = "vertexlitgeneric";

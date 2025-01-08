@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate bitflags;
+extern crate io_util;
 
 mod header;
 mod body_part_header;
@@ -9,9 +10,8 @@ mod mesh_header;
 mod strip_group_header;
 mod strip_header;
 mod vertex;
-mod read_util;
 
-pub use self::read_util::*;
+pub use self::io_util::*;
 pub use self::header::Header;
 pub use self::body_part_header::BodyPartHeader;
 pub use self::model_header::ModelHeader;

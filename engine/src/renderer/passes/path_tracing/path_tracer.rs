@@ -5,14 +5,14 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
+use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle, RayTracingPipelineHandle, RayTracingPipelineInfo, ShaderManager
-};
+use crate::renderer::asset::*;
+use crate::renderer::asset::ComputePipelineHandle;
 use crate::graphics::*;
 
 pub struct PathTracerPass<P: Platform> {
@@ -27,7 +27,7 @@ impl<P: Platform> PathTracerPass<P> {
         device: &Device<P::GPUBackend>,
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
     ) -> Self {
         resources.create_texture(
@@ -47,7 +47,7 @@ impl<P: Platform> PathTracerPass<P> {
             true,
         );
 
-        let pipeline = shader_manager.request_compute_pipeline("shaders/path_tracer.comp.json");
+        let pipeline = asset_manager.request_compute_pipeline("shaders/path_tracer.comp.json");
 
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
@@ -67,6 +67,10 @@ impl<P: Platform> PathTracerPass<P> {
             pipeline,
             sampler
         }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute(
@@ -98,7 +102,7 @@ impl<P: Platform> PathTracerPass<P> {
             HistoryResourceEntry::Past,
         );
 
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_acceleration_structure(
             BindingFrequency::Frequent,

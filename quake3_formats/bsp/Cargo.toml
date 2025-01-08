@@ -8,3 +8,4 @@ edition = "2018"
 bitflags = "2.6.0"
 nalgebra = "0.33.0"
 zip = "2.1.3"
+io_util = { path = "../../io_util" }

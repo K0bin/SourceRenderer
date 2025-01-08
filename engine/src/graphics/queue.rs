@@ -1,17 +1,24 @@
-use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::{Arc, Condvar, Mutex}};
+use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::{Arc, Condvar, Mutex, MutexGuard}};
 
 use crossbeam_channel::Sender;
+use log::trace;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Queue as GPUQueue};
 
 use super::*;
 
+type SharedSwapchain<B> = Arc<Mutex<super::Swapchain<B>>>;
+type SharedSwapchainPtr<B> = *const Mutex<super::Swapchain<B>>;
+type GPUSwapchain<B> = <B as GPUBackend>::Swapchain;
+type GPUSwapchainPtr<B> = *const <B as GPUBackend>::Swapchain;
+type Backbuffer<B> = <<B as GPUBackend>::Swapchain as gpu::Swapchain<B>>::Backbuffer;
+
 enum StoredQueueSubmission<B: GPUBackend> {
     CommandBuffer {
         command_buffer: Box<super::CommandBuffer<B>>,
         return_sender: Sender<Box<super::CommandBuffer<B>>>,
-        signal_swapchain: Option<Arc<super::Swapchain<B>>>,
-        wait_swapchain: Option<Arc<super::Swapchain<B>>>,
+        signal_swapchain: Option<(Arc<Mutex<super::Swapchain<B>>>, Arc<Backbuffer<B>>)>,
+        wait_swapchain: Option<(Arc<Mutex<super::Swapchain<B>>>, Arc<Backbuffer<B>>)>,
         signal_fences: SmallVec<[SharedFenceValuePair<B>; 4]>,
         wait_fences: SmallVec<[SharedFenceValuePair<B>; 4]>,
     },
@@ -20,7 +27,7 @@ enum StoredQueueSubmission<B: GPUBackend> {
         return_sender: Sender<Box<TransferCommandBuffer<B>>>
     },
     Present {
-        swapchain: Arc<super::Swapchain<B>>
+        swapchain: (Arc<Mutex<super::Swapchain<B>>>, Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>),
     }
 }
 
@@ -28,8 +35,13 @@ pub struct QueueSubmission<'a, B: GPUBackend> {
     pub command_buffer: FinishedCommandBuffer<B>,
     pub wait_fences: &'a [SharedFenceValuePairRef<'a, B>],
     pub signal_fences: &'a [SharedFenceValuePairRef<'a, B>],
-    pub acquire_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
-    pub release_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
+    pub acquire_swapchain: Option<(&'a SharedSwapchain<B>, &'a Arc<Backbuffer<B>>)>,
+    pub release_swapchain: Option<(&'a SharedSwapchain<B>, &'a Arc<Backbuffer<B>>)>,
+}
+
+enum CommandBufferToRecycle<B: GPUBackend> {
+    CommandBuffer(Box<super::CommandBuffer<B>>),
+    Transfer(Box<super::TransferCommandBuffer<B>>)
 }
 
 struct QueueInner<B: GPUBackend> {
@@ -67,15 +79,15 @@ impl<B: GPUBackend> Queue<B> {
             return_sender: sender,
             signal_fences: signal_fences.iter().map(|fence_ref| SharedFenceValuePair::<B>::from(fence_ref)).collect(),
             wait_fences: wait_fences.iter().map(|fence_ref| SharedFenceValuePair::<B>::from(fence_ref)).collect(),
-            signal_swapchain: release_swapchain.cloned(),
-            wait_swapchain: acquire_swapchain.cloned()
+            signal_swapchain: release_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone())),
+            wait_swapchain: acquire_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone())),
         });
     }
 
-    pub(super) fn present(&self, swapchain: &Arc<super::Swapchain<B>>) {
-        let mut guard = self.inner.lock().unwrap();
+    pub(super) fn present(&self, swapchain: &Arc<Mutex<super::Swapchain<B>>>, backbuffer: Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>) {
+        let mut guard: std::sync::MutexGuard<'_, QueueInner<B>> = self.inner.lock().unwrap();
         guard.is_idle = false;
-        guard.virtual_queue.push_back(StoredQueueSubmission::Present { swapchain: swapchain.clone() });
+        guard.virtual_queue.push_back(StoredQueueSubmission::Present { swapchain: (swapchain.clone(), backbuffer) });
     }
 
     pub(super) fn flush(&self, queue: &B::Queue) {
@@ -85,12 +97,15 @@ impl<B: GPUBackend> Queue<B> {
         const SUBMISSION_CAPACITY: usize = 16;
         const FENCE_CAPACITY: usize = 16;
 
+        type SwapchainGuard<'a, B> = MutexGuard<'a, Swapchain<B>>;
+
         struct SubmissionHolder<'a, B: GPUBackend> {
             queue: &'a B::Queue,
             command_buffers: SmallVec<[&'a B::CommandBuffer; COMMAND_BUFFER_CAPACITY]>,
             cmd_buffer_range: Range<usize>,
             submissions: SmallVec<[gpu::Submission<'a, B>; SUBMISSION_CAPACITY]>,
             fences: SmallVec<[gpu::FenceValuePairRef<'a, B>; FENCE_CAPACITY]>,
+            swapchain_guards: SmallVec::<[(SharedSwapchainPtr<B>, SwapchainGuard<'a, B>); SUBMISSION_CAPACITY]>
         }
 
         fn flush_command_buffers<'a, B: GPUBackend>(holder: &mut SubmissionHolder<'a, B>) {
@@ -124,6 +139,7 @@ impl<B: GPUBackend> Queue<B> {
             holder.command_buffers.clear();
             holder.cmd_buffer_range.start = 0;
             holder.cmd_buffer_range.end = 0;
+            holder.swapchain_guards.clear();
         }
 
         fn push_command_buffer<'a, B: GPUBackend>(holder: &mut SubmissionHolder<'a, B>, command_buffer: &'a B::CommandBuffer) {
@@ -139,8 +155,8 @@ impl<B: GPUBackend> Queue<B> {
             command_buffer: &'a B::CommandBuffer,
             wait_fences: &'a [SharedFenceValuePair<B>],
             signal_fences: &'a [SharedFenceValuePair<B>],
-            acquire_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
-            release_swapchain: Option<&'a Arc<super::Swapchain<B>>>,
+            acquire_swapchain: Option<(&'a SharedSwapchain<B>, &'a Backbuffer<B>)>,
+            signal_swapchain: Option<(&'a SharedSwapchain<B>, &'a Backbuffer<B>)>,
         ) {
             if !holder.command_buffers.is_empty() {
                 flush_command_buffers(holder);
@@ -164,13 +180,46 @@ impl<B: GPUBackend> Queue<B> {
                     sync_before: fence.sync_before
                 });
             }
+
+            let mut acquire_swapchain_handle_ptr: Option<(GPUSwapchainPtr<B>, &'a Backbuffer<B>)> = None;
+            if let Some((swapchain, backbuffer)) = acquire_swapchain {
+                let ptr: SharedSwapchainPtr<B> = Arc::as_ptr(swapchain);
+                for (existing_ptr, existing_guard) in &holder.swapchain_guards {
+                    if *existing_ptr == ptr {
+                        acquire_swapchain_handle_ptr = Some((existing_guard.handle() as GPUSwapchainPtr<B>, backbuffer));
+                        break;
+                    }
+                }
+                if acquire_swapchain_handle_ptr.is_none() {
+                    let guard = swapchain.lock().unwrap();
+                    acquire_swapchain_handle_ptr = Some((guard.handle() as GPUSwapchainPtr<B>, backbuffer));
+                    holder.swapchain_guards.push((ptr, guard));
+                }
+            }
+
+            let mut signal_swapchain_handle_ptr: Option<(GPUSwapchainPtr<B>, &'a Backbuffer<B>)> = None;
+            if let Some((swapchain, backbuffer)) = signal_swapchain {
+                let ptr: SharedSwapchainPtr<B> = Arc::as_ptr(swapchain);
+                for (existing_ptr, existing_guard) in &holder.swapchain_guards {
+                    if *existing_ptr == ptr {
+                        signal_swapchain_handle_ptr = Some((existing_guard.handle() as GPUSwapchainPtr<B>, backbuffer));
+                        break;
+                    }
+                }
+                if signal_swapchain_handle_ptr.is_none() {
+                    let guard = swapchain.lock().unwrap();
+                    signal_swapchain_handle_ptr = Some((guard.handle() as GPUSwapchainPtr<B>, backbuffer));
+                    holder.swapchain_guards.push((ptr, guard));
+                }
+            }
+
             holder.command_buffers.push(command_buffer);
             holder.submissions.push(gpu::Submission::<'a, B> {
                 command_buffers: unsafe { std::slice::from_raw_parts(holder.command_buffers.as_ptr().add(holder.command_buffers.len() - 1), 1) },
                 wait_fences: unsafe { std::slice::from_raw_parts(holder.fences.as_ptr().add(wait_fences_start), wait_fences.len()) },
                 signal_fences: unsafe { std::slice::from_raw_parts(holder.fences.as_ptr().add(signal_fences_start), signal_fences.len()) },
-                acquire_swapchain: acquire_swapchain.map(|s|s.handle()),
-                release_swapchain: release_swapchain.map(|s|s.handle())
+                acquire_swapchain: acquire_swapchain_handle_ptr.map(|(ptr, backbuffer)| (unsafe { ptr.as_ref().unwrap() }, backbuffer)),
+                release_swapchain: signal_swapchain_handle_ptr.map(|(ptr, backbuffer)| (unsafe { ptr.as_ref().unwrap() }, backbuffer)),
             });
         }
 
@@ -180,6 +229,7 @@ impl<B: GPUBackend> Queue<B> {
             cmd_buffer_range: 0..0,
             submissions: SmallVec::new(),
             fences: SmallVec::new(),
+            swapchain_guards: SmallVec::new(),
         };
 
         for submission in guard.virtual_queue.iter() {
@@ -195,7 +245,7 @@ impl<B: GPUBackend> Queue<B> {
                     if wait_fences.is_empty() && signal_fences.is_empty() && wait_swapchain.is_none() && signal_swapchain.is_none() {
                         push_command_buffer(&mut holder, command_buffer.handle());
                     } else {
-                        push_submission(&mut holder, command_buffer.handle(), wait_fences, signal_fences, wait_swapchain.as_ref(), signal_swapchain.as_ref());
+                        push_submission(&mut holder, command_buffer.handle(), wait_fences, signal_fences, wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())), signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())));
                     }
                 },
                 StoredQueueSubmission::TransferCommandBuffer { command_buffer, return_sender: _ } => {
@@ -206,15 +256,17 @@ impl<B: GPUBackend> Queue<B> {
                         None, None
                     );
                 },
-                StoredQueueSubmission::Present { swapchain } => {
+                StoredQueueSubmission::Present { swapchain: (swapchain, key) } => {
                     if !holder.command_buffers.is_empty() {
                         flush_command_buffers(&mut holder);
                     }
                     if !holder.submissions.is_empty() {
                         flush_submissions(&mut holder);
                     }
+
+                    let mut swapchain_guard = swapchain.lock().unwrap();
                     unsafe {
-                        queue.present(swapchain.handle())
+                        queue.present(swapchain_guard.handle_mut(), &key);
                     }
                 }
             }

@@ -1,31 +1,26 @@
 use std::sync::Arc;
 
+use gltf::json::extensions::asset;
 use gltf::texture::{
     MagFilter,
     MinFilter,
 };
+use log::{debug, trace};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4, Platform, Quaternion, Vec2, Vec2I, Vec2UI, Vec3
 };
 
+use crate::asset::AssetManager;
+use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
 use crate::renderer::drawable::View;
-use crate::renderer::renderer_assets::{
-    RendererAssets,
-    RendererMaterial,
-    RendererMaterialValue,
-};
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
 use crate::renderer::renderer_scene::RendererScene;
-use crate::renderer::shader_manager::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    ShaderManager,
-};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo};
 
 use crate::graphics::*;
 
@@ -39,10 +34,10 @@ impl<P: Platform> GeometryPass<P> {
 
     pub(super) fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        asset_manager: &Arc<AssetManager<P>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
         _init_cmd_buffer: &mut crate::graphics::CommandBufferRecorder<P::GPUBackend>,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
     ) -> Self {
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
@@ -75,11 +70,7 @@ impl<P: Platform> GeometryPass<P> {
             false,
         );
 
-        let shader_file_extension = if cfg!(target_family = "wasm") {
-            "glsl"
-        } else {
-            "json"
-        };
+        let shader_file_extension = "json";
 
         let fs_name = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
@@ -161,9 +152,13 @@ impl<P: Platform> GeometryPass<P> {
             render_target_formats: &[swapchain.format()],
             depth_stencil_format: Format::D32
         };
-        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline, sampler: Arc::new(sampler) }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     pub(super) fn execute(
@@ -177,8 +172,7 @@ impl<P: Platform> GeometryPass<P> {
         backbuffer_handle: &<P::GPUBackend as GPUBackend>::Texture,
         width: u32,
         height: u32,
-        shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
+        assets: &RendererAssetsReadOnly<'_, P>
     ) {
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -220,7 +214,7 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::Commands,
         );
 
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline: &Arc<GraphicsPipeline<<P as Platform>::GPUBackend>> = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),

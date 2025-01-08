@@ -3,13 +3,14 @@ use std::{path::Path, sync::Arc};
 
 use bevy_math::Vec4Swizzles as _;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Matrix4, Platform, PlatformPhantomData, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
+use crate::asset::AssetManager;
 use crate::renderer::light::RendererDirectionalLight;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
 use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager,
+use crate::renderer::asset::{
+    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly,
 };
 use crate::renderer::{
     renderer_resources::{HistoryResourceEntry, RendererResources},
@@ -33,10 +34,8 @@ pub struct ShadowMapPass<P: Platform> {
     draw_prep_pipeline: ComputePipelineHandle,
     shadow_map_res: u32,
     cascades: SmallVec<[ShadowMapCascade; 5]>,
-    _marker: PhantomData<P>,
+    _marker: PlatformPhantomData<P>,
 }
-
-unsafe impl<P: Platform> Send for ShadowMapPass<P> {}
 
 #[derive(Debug, Default)]
 pub struct ShadowMapCascade {
@@ -54,7 +53,7 @@ impl<P: Platform> ShadowMapPass<P> {
         _device: &Arc<Device<P::GPUBackend>>,
         resources: &mut RendererResources<P::GPUBackend>,
         _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         let shadow_map_res = 4096;
         let cascades_count = 5;
@@ -99,7 +98,7 @@ impl<P: Platform> ShadowMapPass<P> {
         );
 
         let vs_path = Path::new("shaders").join(Path::new("shadow_map_bindless.vert.json"));
-        let pipeline = shader_manager.request_graphics_pipeline(
+        let pipeline = asset_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
                 vs: vs_path.to_str().unwrap(),
                 fs: None,
@@ -147,7 +146,7 @@ impl<P: Platform> ShadowMapPass<P> {
             }
         );
 
-        let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
+        let prep_pipeline = asset_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
 
         let mut cascades = SmallVec::<[ShadowMapCascade; 5]>::with_capacity(cascades_count as usize);
         cascades.resize_with(cascades_count as usize, || ShadowMapCascade::default());
@@ -157,7 +156,7 @@ impl<P: Platform> ShadowMapPass<P> {
             draw_prep_pipeline: prep_pipeline,
             shadow_map_res,
             cascades,
-            _marker: PhantomData,
+            _marker: Default::default(),
         }
     }
 
@@ -233,7 +232,7 @@ impl<P: Platform> ShadowMapPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.draw_prep_pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.draw_prep_pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
@@ -253,6 +252,10 @@ impl<P: Platform> ShadowMapPass<P> {
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((pass_params.scene.scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
         cmd_buffer.end_label();
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.draw_prep_pipeline).is_some()
     }
 
     pub fn execute(
@@ -309,7 +312,7 @@ impl<P: Platform> ShadowMapPass<P> {
             );
 
             let dsv_info = shadow_map.texture().unwrap().info();
-            let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
+            let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
             cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
             cmd_buffer.set_viewports(&[Viewport {
                 position: Vec2::new(0.0f32, 0.0f32),

@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::marker::PhantomData;
 
 use crate::{Vec2, Vec2I, Vec2UI, gpu::GPUBackend};
 use crate::input::Key;
@@ -36,12 +37,13 @@ pub trait Platform: 'static + Sized {
 
   fn thread_memory_management_pool<F, T>(callback: F) -> T
     where F: FnOnce() -> T;
-
-  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
-  where
-      F: FnOnce(),
-      F: Send + 'static;
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub struct PlatformPhantomData<P: Platform>(PhantomData<P>);
+unsafe impl<P: Platform> Send for PlatformPhantomData<P> {}
+unsafe impl<P: Platform> Sync for PlatformPhantomData<P> {}
+impl<P: Platform> Default for PlatformPhantomData<P> { fn default() -> Self { Self(PhantomData) } }
 
 #[derive(PartialEq)]
 pub enum Event<P: Platform> {

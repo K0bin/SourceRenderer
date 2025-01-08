@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicU64;
-use std::time::Duration;
+use web_time::Duration;
 
+use atomic_refcell::AtomicRefCell;
 use bevy_app::{
     App,
     Last,
@@ -27,10 +28,12 @@ use bevy_ecs::system::{
 };
 use bevy_ecs::world::{Ref, World};
 use bevy_log::trace;
+use bevy_tasks::ComputeTaskPool;
 use bevy_transform::components::GlobalTransform;
+use bevy_utils::synccell::SyncCell;
+use log::{debug, info};
 use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
+    Platform, PlatformPhantomData, Vec2UI
 };
 
 use super::renderer::RendererSender;
@@ -40,13 +43,12 @@ use super::{
     Renderer,
     StaticRenderableComponent,
 };
+use crate::asset::AssetManagerECSResource;
 use crate::engine::{
-    AssetManagerResource,
     ConsoleResource,
-    GPUDeviceResource,
-    GPUSwapchainResource,
     WindowState, TICK_RATE,
 };
+use crate::graphics::{GPUDeviceResource, GPUSwapchainResource};
 use crate::transform::InterpolatedTransform;
 use crate::{
     ActiveCamera,
@@ -62,22 +64,19 @@ struct WindowSizeChangedEvent {
 struct WindowMinimized {}
 
 pub struct RendererPlugin<P: Platform> {
-    _a: PhantomData<P>,
+    _a: PlatformPhantomData<P>,
 }
-
-unsafe impl<P: Platform> Send for RendererPlugin<P> {}
-unsafe impl<P: Platform> Sync for RendererPlugin<P> {}
 
 impl<P: Platform> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
-        let swapchain = app
+        let swapchain: crate::graphics::Swapchain<<P as Platform>::GPUBackend> = app
             .world_mut()
             .remove_resource::<GPUSwapchainResource<P::GPUBackend>>()
             .unwrap()
             .0;
         let gpu_resources = app.world().resource::<GPUDeviceResource<P::GPUBackend>>();
         let console_resource = app.world().resource::<ConsoleResource>();
-        let asset_manager_resource = app.world().resource::<AssetManagerResource<P>>();
+        let asset_manager_resource = app.world().resource::<AssetManagerECSResource<P>>();
 
         let (renderer, sender) = Renderer::new(
             &gpu_resources.0,
@@ -86,24 +85,57 @@ impl<P: Platform> Plugin for RendererPlugin<P> {
             &console_resource.0,
         );
 
-        install_renderer(app, renderer, sender);
+        let pre_init_wrapper = PreInitRendererResourceWrapper {
+            renderer: AtomicRefCell::new(SyncCell::new(renderer)),
+            sender
+        };
+        app.insert_resource(pre_init_wrapper);
+    }
+
+    fn ready(&self, app: &App) -> bool {
+        let pre_init_res = app.world().resource::<PreInitRendererResourceWrapper<P>>();
+        let mut renderer_borrow = pre_init_res.renderer.borrow_mut();
+        let renderer = renderer_borrow.get();
+
+        let ready = renderer.is_ready();
+        if ready {
+            info!("Renderer ready! Done compiling all mandatory shaders.")
+        }
+        ready
+    }
+
+    fn finish(&self, app: &mut App) {
+        let pre_init_wrapper = app.world_mut().remove_resource::<PreInitRendererResourceWrapper<P>>().unwrap();
+
+        let PreInitRendererResourceWrapper { renderer: renderer_cell, sender } = pre_init_wrapper;
+        let renderer = SyncCell::to_inner(AtomicRefCell::into_inner(renderer_cell));
+        insert_renderer_resource(app, renderer, sender);
+        install_renderer_systems::<P>(app);
     }
 }
 
 impl<P: Platform> RendererPlugin<P> {
     pub fn new() -> Self {
-        Self { _a: PhantomData }
+        Self { _a: Default::default() }
     }
 
-    pub fn stop(app: &App) {
-        let resource = app.world().resource::<RendererResourceWrapper<P>>();
-        resource.sender.stop();
+    pub fn stop(app: &mut App) {
+        let renderer_resource_opt = app.world_mut().remove_resource::<RendererResourceWrapper<P>>();
+        if let Some(resource) = renderer_resource_opt {
+            resource.sender.stop();
+        }
     }
 
     pub fn window_changed(app: &App, window_state: WindowState) {
         let resource = app.world().resource::<RendererResourceWrapper<P>>();
         resource.sender.window_changed(window_state);
     }
+}
+
+#[derive(Resource)]
+struct PreInitRendererResourceWrapper<P: Platform> {
+    renderer: AtomicRefCell<SyncCell<Renderer<P>>>,
+    sender: RendererSender<P::GPUBackend>,
 }
 
 #[derive(Resource)]
@@ -115,15 +147,9 @@ struct RendererResourceWrapper<P: Platform> {
 }
 
 #[cfg(not(feature = "threading"))]
-fn install_renderer<P: Platform>(
+fn install_renderer_systems<P: Platform>(
     app: &mut App,
-    renderer: Renderer<P>,
-    _sender: RendererSender<P::GPUBackend>,
 ) {
-    let wrapper = RendererResourceWrapper {
-        renderer: SyncCell::new(renderer),
-    };
-    app.insert_resource(wrapper);
     app.add_systems(
         Last,
         (
@@ -134,12 +160,20 @@ fn install_renderer<P: Platform>(
         )
             .in_set(ExtractSet),
     );
-    app.add_systems(Last, run_renderer::<P>.after(ExtractSet));
+    app.add_systems(Last, end_frame::<P>.after(ExtractSet));
 }
 
 #[cfg(not(feature = "threading"))]
-fn run_renderer<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
-    renderer.renderer.get().render();
+fn insert_renderer_resource<P: Platform>(
+    app: &mut App,
+    renderer: Renderer<P>,
+    sender: RendererSender<P::GPUBackend>
+) {
+    let wrapper = RendererResourceWrapper::<P> {
+        renderer: SyncCell::new(renderer),
+        sender
+    };
+    app.insert_resource(wrapper);
 }
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -149,15 +183,9 @@ struct SyncSet;
 struct ExtractSet;
 
 #[cfg(feature = "threading")]
-fn install_renderer<P: Platform>(
+fn install_renderer_systems<P: Platform>(
     app: &mut App,
-    renderer: Renderer<P>,
-    sender: RendererSender<P::GPUBackend>,
 ) {
-    start_render_thread(renderer);
-
-    let wrapper = RendererResourceWrapper::<P> { sender: sender };
-    app.insert_resource(wrapper);
     app.add_systems(
         Last,
         (begin_frame::<P>,).in_set(SyncSet)
@@ -174,6 +202,18 @@ fn install_renderer<P: Platform>(
             .after(SyncSet),
     );
     app.add_systems(Last, end_frame::<P>.after(ExtractSet));
+}
+
+#[cfg(feature = "threading")]
+fn insert_renderer_resource<P: Platform>(
+    app: &mut App,
+    renderer: Renderer<P>,
+    sender: RendererSender<P::GPUBackend>
+) {
+    let wrapper = RendererResourceWrapper::<P> { sender };
+    app.insert_resource(wrapper);
+
+    start_render_thread(renderer);
 }
 
 #[cfg(feature = "threading")]
@@ -227,6 +267,7 @@ fn extract_static_renderables<P: Platform>(
 ) {
     for (entity, renderable, transform) in static_renderables.iter() {
         if renderable.is_added() || transform.is_added() {
+            trace!("Registering static renderable.");
             renderer
                 .sender
                 .register_static_renderable(entity, transform.as_ref(), renderable.as_ref());
@@ -235,6 +276,9 @@ fn extract_static_renderables<P: Platform>(
         }
     }
 
+    if !removed_static_renderables.is_empty() {
+        debug!("Removing {} static renderables", removed_static_renderables.len());
+    }
     for entity in removed_static_renderables.read() {
         renderer.sender.unregister_static_renderable(entity);
     }
@@ -271,7 +315,7 @@ fn extract_directional_lights<P: Platform>(
                 .sender
                 .register_directional_light(entity, transform.as_ref(), light.as_ref());
         } else if !renderer.sender.is_saturated() {
-            //renderer.sender.update_transform(entity, transform.0);
+            renderer.sender.update_transform(entity, transform.0);
         }
     }
 
@@ -280,13 +324,15 @@ fn extract_directional_lights<P: Platform>(
     }
 }
 
-#[cfg(feature = "threading")]
-fn end_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
+fn end_frame<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
     if renderer.sender.is_saturated() {
         return;
     }
 
     renderer.sender.end_frame();
+
+    #[cfg(not(feature = "threading"))]
+    renderer.renderer.get().render();
 }
 
 fn begin_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {

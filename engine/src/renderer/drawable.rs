@@ -9,7 +9,7 @@ use sourcerenderer_core::{
     Matrix4, Quaternion, Vec3
 };
 
-use crate::renderer::renderer_assets::*;
+use crate::asset::ModelHandle;
 
 pub struct RendererStaticDrawable {
     pub entity: Entity,

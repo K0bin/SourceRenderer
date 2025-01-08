@@ -8,3 +8,5 @@ rsa = "0.9.6"
 crc = "3.0.1"
 md5 = "0.7.0"
 rand = "0.8.5"
+futures-io = "0.3.31"
+io_util = { path = "../../io_util" }

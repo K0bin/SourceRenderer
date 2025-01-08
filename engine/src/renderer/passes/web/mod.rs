@@ -2,17 +2,14 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Platform, Vec4, Matrix4};
 
+use crate::asset::AssetManager;
 use crate::graphics::GraphicsContext;
 use crate::input::Input;
+use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
-    ZeroTextures,
+    FrameInfo, RenderPath, RenderPathResult, SceneInfo
 };
-use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::RendererResources;
-use crate::renderer::shader_manager::ShaderManager;
 
 use crate::graphics::*;
 
@@ -47,16 +44,16 @@ impl<P: Platform> WebRenderer<P> {
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: &Swapchain<P::GPUBackend>,
         context: &mut GraphicsContext<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let mut resources = RendererResources::<P::GPUBackend>::new(device);
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let geometry_pass = GeometryPass::<P>::new(
             device,
+            asset_manager,
             swapchain,
             &mut init_cmd_buffer,
             &mut resources,
-            shader_manager,
         );
 
         init_cmd_buffer.flush_barriers();
@@ -71,7 +68,7 @@ impl<P: Platform> WebRenderer<P> {
         });
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
 
         Self {
             device: device.clone(),
@@ -96,20 +93,20 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
     ) {
     }
 
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+        let assets = asset_manager.read_renderer_assets();
+        self.geometry.is_ready(&assets)
+    }
+
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
-        let back_buffer_res = swapchain.next_backbuffer();
-        if let Err(e) = back_buffer_res{
-            return Err(e);
-        }
+        assets: &RendererAssetsReadOnly<'_, P>
+    ) -> Result<RenderPathResult<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
+        let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
@@ -131,21 +128,25 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
         let camera_buffer = cmd_buffer.upload_dynamic_data(&[main_view.proj_matrix * main_view.view_matrix], BufferUsage::CONSTANT).unwrap();
 
+        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
         self.geometry.execute(
             &mut cmd_buffer,
             scene.scene,
             main_view,
             &camera_buffer,
             &self.resources,
-            swapchain.backbuffer(),
-            swapchain.backbuffer_handle(),
+            backbuffer_view,
+            backbuffer_handle,
             swapchain.width(),
             swapchain.height(),
-            shader_manager,
             assets,
         );
 
-        return Ok(cmd_buffer.finish());
+        return Ok(RenderPathResult {
+            cmd_buffer: cmd_buffer.finish(),
+            backbuffer: Some(backbuffer)
+        });
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

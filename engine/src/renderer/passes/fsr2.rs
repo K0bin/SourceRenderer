@@ -27,6 +27,8 @@ use widestring::{
     WideCString,
 };
 
+use crate::asset::AssetManager;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::renderer::passes::taa::halton_point;
 use crate::renderer::render_path::{FrameInfo, RenderPassParameters};
 use crate::renderer::renderer_resources::{
@@ -38,7 +40,7 @@ use crate::graphics::*;
 pub struct Fsr2Pass<P: Platform> {
     device: Arc<Device<P::GPUBackend>>,
     context: FfxFsr2Context,
-    scratch_context: *mut AtomicRefCell<ScratchContext<P::GPUBackend>>
+    scratch_context: *mut AtomicRefCell<ScratchContext<P>>
 }
 
 unsafe impl<P: Platform> Send for Fsr2Pass<P> {}
@@ -51,8 +53,21 @@ impl<P: Platform> Fsr2Pass<P> {
         resources: &mut RendererResources<P::GPUBackend>,
         _resolution: Vec2UI,
         swapchain: &Swapchain<P::GPUBackend>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
-        let scratch_context = Box::new(AtomicRefCell::new(ScratchContext::<P::GPUBackend> {
+        // Shaders
+        let mut shaders = HashMap::<FfxFsr2Pass, ComputePipelineHandle>::new();
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_DEPTH_CLIP, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_depth_clip_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_RECONSTRUCT_PREVIOUS_DEPTH, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_reconstruct_previous_depth_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_LOCK, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_lock_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_ACCUMULATE, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_accumulate_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_ACCUMULATE_SHARPEN, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_accumulate_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_RCAS, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_rcas_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_COMPUTE_LUMINANCE_PYRAMID, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_compute_luminance_pyramid_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_GENERATE_REACTIVE, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_autogen_reactive_pass.json"));
+        shaders.insert(FfxFsr2Pass_FFX_FSR2_PASS_TCR_AUTOGENERATE, asset_manager.request_compute_pipeline("shaders/ffx_fsr2_autogen_reactive_pass.json"));
+
+        let scratch_context = Box::new(AtomicRefCell::new(ScratchContext::<P> {
             resources: HashMap::new(),
             next_resource_id: 1,
             dynamic_resources: Vec::new(),
@@ -61,23 +76,27 @@ impl<P: Platform> Fsr2Pass<P> {
             device: device.clone(),
             point_sampler: resources.nearest_sampler().clone(),
             linear_sampler: resources.linear_sampler().clone(),
+            asset_manager: asset_manager.clone(),
+            shaders
         }));
-        let context_size = std::mem::size_of::<ScratchContext<P::GPUBackend>>();
+        let context_size = std::mem::size_of::<ScratchContext<P>>();
         let context_ptr = Box::into_raw(scratch_context);
 
+        // TODO WTF did I do with the scratch buffer
+        // WTF
         let interface: FfxFsr2Interface = FfxFsr2Interface {
-            fpCreateBackendContext: Some(create_backend_context::<P::GPUBackend>),
-            fpDestroyBackendContext: Some(destroy_backend_context::<P::GPUBackend>),
-            fpGetDeviceCapabilities: Some(get_device_capabilities::<P::GPUBackend>),
-            fpCreateResource: Some(create_resource::<P::GPUBackend>),
-            fpRegisterResource: Some(register_resource::<P::GPUBackend>),
-            fpUnregisterResources: Some(unregister_resources::<P::GPUBackend>),
-            fpGetResourceDescription: Some(get_resource_description::<P::GPUBackend>),
-            fpDestroyResource: Some(destroy_resource::<P::GPUBackend>),
+            fpCreateBackendContext: Some(create_backend_context::<P>),
+            fpDestroyBackendContext: Some(destroy_backend_context::<P>),
+            fpGetDeviceCapabilities: Some(get_device_capabilities::<P>),
+            fpCreateResource: Some(create_resource::<P>),
+            fpRegisterResource: Some(register_resource::<P>),
+            fpUnregisterResources: Some(unregister_resources::<P>),
+            fpGetResourceDescription: Some(get_resource_description::<P>),
+            fpDestroyResource: Some(destroy_resource::<P>),
             fpCreatePipeline: Some(create_pipeline::<P>),
-            fpDestroyPipeline: Some(destroy_pipeline::<P::GPUBackend>),
-            fpScheduleGpuJob: Some(schedule_render_job::<P::GPUBackend>),
-            fpExecuteGpuJobs: Some(execute_render_jobs::<P::GPUBackend>),
+            fpDestroyPipeline: Some(destroy_pipeline::<P>),
+            fpScheduleGpuJob: Some(schedule_render_job::<P>),
+            fpExecuteGpuJobs: Some(execute_render_jobs::<P>),
             scratchBuffer: context_ptr as *mut c_void,
             scratchBufferSize: context_size as usize,
         };
@@ -131,8 +150,12 @@ impl<P: Platform> Fsr2Pass<P> {
         Self {
             device: device.clone(),
             context,
-            scratch_context: context_ptr
+            scratch_context: context_ptr,
         }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        false
     }
 
     pub fn execute(
@@ -236,14 +259,14 @@ impl<P: Platform> Fsr2Pass<P> {
 
         unsafe {
             let desc = FfxFsr2DispatchDescription {
-                commandList: command_buffer_into_ffx::<P::GPUBackend>(cmd_buffer),
-                color: texture_into_ffx::<P::GPUBackend>(&color_texture, false, &color_view),
-                depth: texture_into_ffx::<P::GPUBackend>(&depth_texture, false, &depth_view),
+                commandList: command_buffer_into_ffx::<P>(cmd_buffer),
+                color: texture_into_ffx::<P>(&color_texture, false, &color_view),
+                depth: texture_into_ffx::<P>(&depth_texture, false, &depth_view),
                 exposure: NULL_RESOURCE,
-                motionVectors: texture_into_ffx::<P::GPUBackend>(&motion_texture, false, &motion_view),
+                motionVectors: texture_into_ffx::<P>(&motion_texture, false, &motion_view),
                 reactive: NULL_RESOURCE,
                 transparencyAndComposition: NULL_RESOURCE,
-                output: texture_into_ffx::<P::GPUBackend>(&output_texture, true, &output_view),
+                output: texture_into_ffx::<P>(&output_texture, true, &output_view),
                 renderSize: FfxDimensions2D {
                     width: color_texture.info().width,
                     height: color_texture.info().height,
@@ -325,31 +348,31 @@ impl<P: Platform> Drop for Fsr2Pass<P> {
     }
 }
 
-unsafe fn device_from_ffx<B: GPUBackend>(device: FfxDevice) -> &'static Device<B> {
-    std::mem::transmute(&*((device as *mut Device<B>) as *const Device<B>))
+unsafe fn device_from_ffx<P: Platform>(device: FfxDevice) -> &'static Device<P::GPUBackend> {
+    std::mem::transmute(&*((device as *mut Device<P::GPUBackend>) as *const Device<P::GPUBackend>))
 }
 
-unsafe fn command_buffer_from_ffx<B: GPUBackend>(
+unsafe fn command_buffer_from_ffx<P: Platform>(
     command_list: FfxCommandList,
-) -> &'static mut CommandBufferRecorder<B> {
-    std::mem::transmute(&mut *(command_list as *mut CommandBufferRecorder<B>))
+) -> &'static mut CommandBufferRecorder<P::GPUBackend> {
+    std::mem::transmute(&mut *(command_list as *mut CommandBufferRecorder<P::GPUBackend>))
 }
 
-unsafe fn command_buffer_into_ffx<B: GPUBackend>(
-    command_buffer: &mut CommandBufferRecorder<B>,
+unsafe fn command_buffer_into_ffx<P: Platform>(
+    command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
 ) -> FfxCommandList {
-    (command_buffer as *mut CommandBufferRecorder<B>) as FfxCommandList
+    (command_buffer as *mut CommandBufferRecorder<P::GPUBackend>) as FfxCommandList
 }
 
-struct Fsr2TextureViews<B: GPUBackend> {
-    sampling_view: Arc<TextureView<B>>,
-    storage_view: Option<Arc<TextureView<B>>>,
+struct Fsr2TextureViews<P: Platform> {
+    sampling_view: Arc<TextureView<P::GPUBackend>>,
+    storage_view: Option<Arc<TextureView<P::GPUBackend>>>,
 }
 
-unsafe fn texture_into_ffx<B: GPUBackend>(
-    texture: &Arc<Texture<B>>,
+unsafe fn texture_into_ffx<P: Platform>(
+    texture: &Arc<Texture<P::GPUBackend>>,
     is_uav: bool,
-    view: &Arc<TextureView<B>>,
+    view: &Arc<TextureView<P::GPUBackend>>,
 ) -> FfxResource {
     let texture_ptr = Arc::into_raw(texture.clone());
     let info = texture.info();
@@ -428,18 +451,20 @@ enum Resource<B: GPUBackend> {
     },
 }
 
-struct ScratchContext<B: GPUBackend> {
-    resources: HashMap<u32, Resource<B>>,
+struct ScratchContext<P: Platform> {
+    resources: HashMap<u32, Resource<P::GPUBackend>>,
     dynamic_resources: Vec<u32>,
     next_resource_id: u32,
     free_ids: VecDeque<u32>,
     jobs: Vec<FfxGpuJobDescription>,
-    device: Arc<Device<B>>,
-    point_sampler: Arc<Sampler<B>>,
-    linear_sampler: Arc<Sampler<B>>,
+    device: Arc<Device<P::GPUBackend>>,
+    point_sampler: Arc<Sampler<P::GPUBackend>>,
+    linear_sampler: Arc<Sampler<P::GPUBackend>>,
+    asset_manager: Arc<AssetManager<P>>,
+    shaders: HashMap<FfxFsr2Pass, ComputePipelineHandle>
 }
 
-impl<B: GPUBackend> ScratchContext<B> {
+impl<P: Platform> ScratchContext<P> {
     unsafe fn from_interface(
         backend_interface: *mut FfxFsr2Interface,
     ) -> AtomicRefMut<'static, Self> {
@@ -457,7 +482,7 @@ impl<B: GPUBackend> ScratchContext<B> {
     }
 }
 
-extern "C" fn create_backend_context<B: GPUBackend>(
+extern "C" fn create_backend_context<P: Platform>(
     _backend_interface: *mut FfxFsr2Interface,
     _out_device: FfxDevice,
 ) -> FfxErrorCode {
@@ -466,12 +491,12 @@ extern "C" fn create_backend_context<B: GPUBackend>(
     return FFX_OK;
 }
 
-unsafe extern "C" fn create_resource<B: GPUBackend>(
+unsafe extern "C" fn create_resource<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
     desc: *const FfxCreateResourceDescription,
     out_resource: *mut FfxResourceInternal,
 ) -> FfxErrorCode {
-    let mut context = ScratchContext::<B>::from_interface(backend_interface);
+    let mut context = ScratchContext::<P>::from_interface(backend_interface);
     let desc = &*desc;
 
     let resource_id = context.get_new_resource_id();
@@ -602,7 +627,7 @@ unsafe extern "C" fn create_resource<B: GPUBackend>(
         );
 
         let mut storage_views =
-            SmallVec::<[Arc<TextureView<B>>; 8]>::with_capacity(mip_count as usize);
+            SmallVec::<[Arc<TextureView<P::GPUBackend>>; 8]>::with_capacity(mip_count as usize);
         let mut states =
             SmallVec::<[TextureSubresourceState; 8]>::with_capacity(mip_count as usize);
         for i in 0..mip_count {
@@ -644,12 +669,12 @@ unsafe extern "C" fn create_resource<B: GPUBackend>(
     return FFX_OK;
 }
 
-unsafe extern "C" fn register_resource<B: GPUBackend>(
+unsafe extern "C" fn register_resource<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
     in_resource: *const FfxResource,
     out_resource: *mut FfxResourceInternal,
 ) -> FfxErrorCode {
-    let mut context = ScratchContext::<B>::from_interface(backend_interface);
+    let mut context = ScratchContext::<P>::from_interface(backend_interface);
 
     let resource_id = context.get_new_resource_id();
     (*out_resource).internalIndex = resource_id as i32;
@@ -689,11 +714,11 @@ unsafe extern "C" fn register_resource<B: GPUBackend>(
 
     let type_ = resource_desc.type_;
     if type_ != FfxResourceType_FFX_RESOURCE_TYPE_BUFFER {
-        let texture = Arc::<Texture<B>>::from_raw((*in_resource).resource as *mut Texture<B>);
-        let ptr: *const TextureView<B> = std::mem::transmute((*in_resource).descriptorData);
+        let texture = Arc::<Texture<P::GPUBackend>>::from_raw((*in_resource).resource as *mut Texture<P::GPUBackend>);
+        let ptr: *const TextureView<P::GPUBackend> = std::mem::transmute((*in_resource).descriptorData);
         let view = Arc::from_raw(ptr);
 
-        let mut storage_views = SmallVec::<[Arc<TextureView<B>>; 8]>::new();
+        let mut storage_views = SmallVec::<[Arc<TextureView<P::GPUBackend>>; 8]>::new();
         let mut states = SmallVec::<[TextureSubresourceState; 8]>::new();
 
         let texture_info = view.texture().unwrap().info();
@@ -723,20 +748,20 @@ unsafe extern "C" fn register_resource<B: GPUBackend>(
     FFX_OK
 }
 
-unsafe extern "C" fn destroy_backend_context<B: GPUBackend>(
+unsafe extern "C" fn destroy_backend_context<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
 ) -> FfxErrorCode {
-    let ptr = (*backend_interface).scratchBuffer as *mut AtomicRefCell<ScratchContext<B>>;
+    let ptr = (*backend_interface).scratchBuffer as *mut AtomicRefCell<ScratchContext<P>>;
     let _ = Arc::from_raw(ptr);
 
     FFX_OK
 }
 
-unsafe extern "C" fn destroy_resource<B: GPUBackend>(
+unsafe extern "C" fn destroy_resource<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
     resource: FfxResourceInternal,
 ) -> FfxErrorCode {
-    let mut context = ScratchContext::<B>::from_interface(backend_interface);
+    let mut context = ScratchContext::<P>::from_interface(backend_interface);
     let id = resource.internalIndex as u32;
     context.free_ids.push_back(id);
     return if context.resources.remove(&id).is_some() {
@@ -750,10 +775,10 @@ unsafe extern "C" fn destroy_resource<B: GPUBackend>(
     };
 }
 
-unsafe extern "C" fn unregister_resources<B: GPUBackend>(
+unsafe extern "C" fn unregister_resources<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
 ) -> FfxErrorCode {
-    let mut context = ScratchContext::<B>::from_interface(backend_interface);
+    let mut context = ScratchContext::<P>::from_interface(backend_interface);
     let mut freed_resources = SmallVec::<[u32; 16]>::with_capacity(context.dynamic_resources.len());
 
     for resource_id in context.dynamic_resources.drain(..) {
@@ -768,11 +793,11 @@ unsafe extern "C" fn unregister_resources<B: GPUBackend>(
     FFX_OK
 }
 
-unsafe extern "C" fn get_resource_description<B: GPUBackend>(
+unsafe extern "C" fn get_resource_description<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
     resource: FfxResourceInternal,
 ) -> FfxResourceDescription {
-    let context = ScratchContext::<B>::from_interface(backend_interface);
+    let context = ScratchContext::<P>::from_interface(backend_interface);
     let internal_resource = context
         .resources
         .get(&(resource.internalIndex as u32))
@@ -807,12 +832,12 @@ unsafe extern "C" fn get_resource_description<B: GPUBackend>(
     }
 }
 
-unsafe extern "C" fn get_device_capabilities<B: GPUBackend>(
+unsafe extern "C" fn get_device_capabilities<P: Platform>(
     _backend_interface: *mut FfxFsr2Interface,
     capabilities: *mut FfxDeviceCapabilities,
     device: FfxDevice,
 ) -> FfxErrorCode {
-    let device = device_from_ffx::<B>(device);
+    let device = device_from_ffx::<P>(device);
     (*capabilities).raytracingSupported = device.supports_ray_tracing();
     (*capabilities).minimumSupportedShaderModel = FfxShaderModel_FFX_SHADER_MODEL_5_1;
     (*capabilities).waveLaneCountMin = 32;
@@ -821,21 +846,21 @@ unsafe extern "C" fn get_device_capabilities<B: GPUBackend>(
     FFX_OK
 }
 
-unsafe extern "C" fn schedule_render_job<B: GPUBackend>(
+unsafe extern "C" fn schedule_render_job<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
     job: *const FfxGpuJobDescription,
 ) -> FfxErrorCode {
-    let mut context = ScratchContext::<B>::from_interface(backend_interface);
+    let mut context = ScratchContext::<P>::from_interface(backend_interface);
     context.jobs.push((*job).clone());
     FFX_OK
 }
 
-unsafe extern "C" fn execute_render_jobs<B: GPUBackend>(
+unsafe extern "C" fn execute_render_jobs<P: Platform>(
     backend_interface: *mut FfxFsr2Interface,
     command_list: FfxCommandList,
 ) -> FfxErrorCode {
-    let mut context = ScratchContext::<B>::from_interface(backend_interface);
-    let cmd_buf = command_buffer_from_ffx::<B>(command_list);
+    let mut context = ScratchContext::<P>::from_interface(backend_interface);
+    let cmd_buf = command_buffer_from_ffx::<P>(command_list);
 
     let mut jobs = SmallVec::<[FfxGpuJobDescription; 2]>::new();
     for job in context.jobs.drain(..) {
@@ -858,10 +883,10 @@ unsafe extern "C" fn execute_render_jobs<B: GPUBackend>(
     FFX_OK
 }
 
-unsafe fn execute_clear_job<B: GPUBackend>(
+unsafe fn execute_clear_job<P: Platform>(
     job: &FfxClearFloatJobDescription,
-    context: &mut ScratchContext<B>,
-    cmd_buf: &mut CommandBufferRecorder<B>
+    context: &mut ScratchContext<P>,
+    cmd_buf: &mut CommandBufferRecorder<P::GPUBackend>
 ) {
     let resource = context
         .resources
@@ -871,7 +896,7 @@ unsafe fn execute_clear_job<B: GPUBackend>(
         Resource::Texture {
             texture, states, ..
         } => {
-            add_texture_barrier::<B>(
+            add_texture_barrier::<P>(
                 cmd_buf,
                 texture,
                 0,
@@ -888,12 +913,12 @@ unsafe fn execute_clear_job<B: GPUBackend>(
     }
 }
 
-unsafe fn execute_dispatch_job<B: GPUBackend>(
+unsafe fn execute_dispatch_job<P: Platform>(
     job: &FfxComputeJobDescription,
-    context: &mut ScratchContext<B>,
-    cmd_buf: &mut CommandBufferRecorder<B>
+    context: &mut ScratchContext<P>,
+    cmd_buf: &mut CommandBufferRecorder<P::GPUBackend>
 ) {
-    let p_pipeline = job.pipeline.pipeline as *const ComputePipeline<B>;
+    let p_pipeline = job.pipeline.pipeline as *const ComputePipeline<P::GPUBackend>;
     let pipeline = Arc::from_raw(p_pipeline);
     cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
     std::mem::forget(pipeline);
@@ -911,7 +936,7 @@ unsafe fn execute_dispatch_job<B: GPUBackend>(
                 storage_views,
                 ..
             } => {
-                add_texture_barrier::<B>(
+                add_texture_barrier::<P>(
                     cmd_buf,
                     texture,
                     job.uavMip[i],
@@ -944,7 +969,7 @@ unsafe fn execute_dispatch_job<B: GPUBackend>(
                 sampling_view,
                 ..
             } => {
-                add_texture_barrier::<B>(
+                add_texture_barrier::<P>(
                     cmd_buf,
                     texture,
                     0,
@@ -996,9 +1021,9 @@ unsafe fn execute_dispatch_job<B: GPUBackend>(
     cmd_buf.dispatch(job.dimensions[0], job.dimensions[1], job.dimensions[2]);
 }
 
-fn add_texture_barrier<B: GPUBackend>(
-    cmd_buffer: &mut CommandBufferRecorder<B>,
-    texture: &Arc<Texture<B>>,
+fn add_texture_barrier<P: Platform>(
+    cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
+    texture: &Arc<Texture<P::GPUBackend>>,
     mip: u32,
     mip_count: u32,
     states: &mut [TextureSubresourceState],
@@ -1036,53 +1061,10 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
     _pipeline_description: *const FfxPipelineDescription,
     out_pipeline: *mut FfxPipelineState,
 ) -> FfxErrorCode {
-    let context = ScratchContext::<P::GPUBackend>::from_interface(backend_interface);
-
-    let mut path: PathBuf = PathBuf::from("shaders");
-    let name: String;
-    if pass == FfxFsr2Pass_FFX_FSR2_PASS_DEPTH_CLIP {
-        path = path.join("ffx_fsr2_depth_clip_pass.json");
-        name = "ffx_fsr2_depth_clip_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_RECONSTRUCT_PREVIOUS_DEPTH {
-        path = path.join("ffx_fsr2_reconstruct_previous_depth_pass.json");
-        name = "ffx_fsr2_reconstruct_previous_depth_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_LOCK {
-        path = path.join("ffx_fsr2_lock_pass.json");
-        name = "ffx_fsr2_lock_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_ACCUMULATE {
-        path = path.join("ffx_fsr2_accumulate_pass.json");
-        name = "ffx_fsr2_accumulate_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_ACCUMULATE_SHARPEN {
-        path = path.join("ffx_fsr2_accumulate_pass.json");
-        name = "ffx_fsr2_accumulate_sharpen_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_RCAS {
-        path = path.join("ffx_fsr2_rcas_pass.json");
-        name = "ffx_fsr2_rcas_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_COMPUTE_LUMINANCE_PYRAMID {
-        path = path.join("ffx_fsr2_compute_luminance_pyramid_pass.json");
-        name = "ffx_fsr2_compute_luminance_pyramid_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_GENERATE_REACTIVE {
-        path = path.join("ffx_fsr2_autogen_reactive_pass.json");
-        name = "ffx_fsr2_autogen_reactive_pass".to_string();
-    } else if pass == FfxFsr2Pass_FFX_FSR2_PASS_TCR_AUTOGENERATE {
-        path = path.join("ffx_fsr2_autogen_reactive_pass.json");
-        name = "ffx_fsr2_tcr_autogenerate_pass".to_string();
-    } else {
-        panic!("Unsupported pass: {}", pass);
-    }
-
-    println!("shader: {:?}", path);
-
-    let shader = {
-        let mut file = <P::IO as IO>::open_asset(path).unwrap();
-        let mut bytes: Vec<u8> = Vec::new();
-        file.read_to_end(&mut bytes).unwrap();
-        let shader: PackedShader = serde_json::from_slice(&bytes).unwrap();
-        context
-            .device
-            .create_shader(shader, Some(&name))
-    };
-    let pipeline = context.device.create_compute_pipeline(&shader, Some(&name));
+    let context = ScratchContext::<P>::from_interface(backend_interface);
+    let handle = *(context.shaders.get(&pass).expect("FSR shader missing"));
+    let assets = context.asset_manager.read_renderer_assets();
+    let pipeline = assets.get_compute_pipeline(handle).cloned().expect("FSR shader not done compiling");
 
     core::ptr::write_bytes(out_pipeline, 0, 1);
     let ffx_pipeline = &mut (*out_pipeline);
@@ -1123,11 +1105,11 @@ unsafe extern "C" fn create_pipeline<P: Platform>(
     FFX_OK
 }
 
-unsafe extern "C" fn destroy_pipeline<B: GPUBackend>(
+unsafe extern "C" fn destroy_pipeline<P: Platform>(
     _backend_interface: *mut FfxFsr2Interface,
     pipeline: *mut FfxPipelineState,
 ) -> FfxErrorCode {
-    Arc::<ComputePipeline<B>>::from_raw((*pipeline).pipeline as *mut ComputePipeline<B>);
+    Arc::<ComputePipeline<P::GPUBackend>>::from_raw((*pipeline).pipeline as *mut ComputePipeline<P::GPUBackend>);
     FFX_OK
 }
 

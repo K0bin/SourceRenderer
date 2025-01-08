@@ -1,12 +1,15 @@
+use std::sync::Arc;
+
 use bevy_math::Vec4Swizzles;
 use sourcerenderer_core::{Platform, Vec4};
 
+use crate::asset::AssetManager;
 use crate::math::Frustum;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::renderer::shader_manager::{ComputePipelineHandle, ShaderManager};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 
 use crate::graphics::*;
 
@@ -21,10 +24,10 @@ impl DrawPrepPass {
 
     pub fn new<P: Platform>(
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
-        let culling_pipeline = shader_manager.request_compute_pipeline("shaders/culling.comp.json");
-        let prep_pipeline = shader_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
+        let culling_pipeline = asset_manager.request_compute_pipeline("shaders/culling.comp.json");
+        let prep_pipeline = asset_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
         resources.create_buffer(
             Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,
             &BufferInfo {
@@ -50,6 +53,10 @@ impl DrawPrepPass {
             culling_pipeline,
             prep_pipeline,
         }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.culling_pipeline).is_some() && assets.get_compute_pipeline(self.prep_pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(
@@ -137,7 +144,7 @@ impl DrawPrepPass {
                 &*hi_z,
                 pass_params.resources.nearest_sampler(),
             );
-            let culling_pipeline = pass_params.shader_manager.get_compute_pipeline(self.culling_pipeline);
+            let culling_pipeline = pass_params.assets.get_compute_pipeline(self.culling_pipeline).unwrap();
             cmd_buffer.set_pipeline(PipelineBinding::Compute(&culling_pipeline));
             cmd_buffer.flush_barriers();
             cmd_buffer.finish_binding();
@@ -200,7 +207,7 @@ impl DrawPrepPass {
             0,
             WHOLE_BUFFER,
         );
-        let prep_pipeline = pass_params.shader_manager.get_compute_pipeline(self.prep_pipeline);
+        let prep_pipeline = pass_params.assets.get_compute_pipeline(self.prep_pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&prep_pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();

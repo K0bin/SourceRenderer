@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::io::Result as IOResult;
+use std::io::{Read, Result as IOResult};
 use std::path::{
     Path,
     PathBuf,
 };
 
 use crossbeam_channel::Sender;
+use log::debug;
 use notify::{
     recommended_watcher,
     RecommendedWatcher,
@@ -106,7 +107,8 @@ impl SDLPlatform {
                             key_code: key,
                             logical_key: Key::Dead(None),
                             state: ButtonState::Released,
-                            window: Entity::from_raw(0u32)
+                            window: Entity::from_raw(0u32),
+                            repeat: false
                         });
                     }
                 }
@@ -120,7 +122,8 @@ impl SDLPlatform {
                             key_code: key,
                             logical_key: Key::Dead(None),
                             state: ButtonState::Pressed,
-                            window: Entity::from_raw(0u32)
+                            window: Entity::from_raw(0u32),
+                            repeat: false
                         });
                     }
                 }
@@ -207,19 +210,6 @@ impl Platform for SDLPlatform {
         sdl_gpu::create_instance(debug_layers, &self.window)
     }
 
-    fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
-    where
-        F: FnOnce(),
-        F: Send + 'static,
-    {
-        StdThreadHandle(
-            std::thread::Builder::new()
-                .name(name.to_string())
-                .spawn(callback)
-                .unwrap(),
-        )
-    }
-
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn thread_memory_management_pool<F, T>(callback: F) -> T
         where F: FnOnce() -> T {
@@ -261,22 +251,22 @@ impl Window<SDLPlatform> for SDLWindow {
 pub struct StdIO {}
 
 impl IO for StdIO {
-    type File = std::fs::File;
+    type File = async_fs::File; // TODO: Replace with an implementation that uses Bevys IOTaskPool as executor
     type FileWatcher = NotifyFileWatcher;
 
-    fn open_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
-        std::fs::File::open(path)
+    async fn open_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
+        async_fs::File::open(path).await
     }
 
-    fn asset_exists<P: AsRef<Path>>(path: P) -> bool {
+    async fn asset_exists<P: AsRef<Path> + Send>(path: P) -> bool {
         path.as_ref().exists()
     }
 
-    fn open_external_asset<P: AsRef<Path>>(path: P) -> IOResult<Self::File> {
-        std::fs::File::open(path)
+    async fn open_external_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
+        async_fs::File::open(path).await
     }
 
-    fn external_asset_exists<P: AsRef<Path>>(path: P) -> bool {
+    async fn external_asset_exists<P: AsRef<Path> + Send>(path: P) -> bool {
         path.as_ref().exists()
     }
 
@@ -293,7 +283,7 @@ pub struct NotifyFileWatcher {
 impl NotifyFileWatcher {
     fn new<P: AsRef<Path>>(sender: Sender<String>, base_path: &P) -> Self {
         let base_path = base_path.as_ref().to_str().unwrap().to_string();
-        println!("base path: {:?}", base_path);
+        debug!("Working directory: {:?}", base_path);
         let watcher =
             recommended_watcher(
                 move |event: Result<notify::Event, notify::Error>| match event {

@@ -1,14 +1,15 @@
 use bevy_tasks::ParallelSlice;
 use bitset_core::BitSet;
+use log::trace;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Platform, Vec3};
 
-use crate::{math::{BoundingBox, Frustum}, renderer::DrawablePart};
+use crate::{asset::AssetManager, math::{BoundingBox, Frustum}, renderer::DrawablePart};
 
-use super::{renderer_assets::RendererAssets, renderer_scene::RendererScene};
+use super::{renderer_scene::RendererScene};
 
 #[profiling::function]
-pub(crate) fn update_visibility<P: Platform>(scene: &mut RendererScene<P::GPUBackend>, assets: &RendererAssets<P>) {
+pub(crate) fn update_visibility<P: Platform>(scene: &mut RendererScene<P::GPUBackend>, asset_manager: &AssetManager<P>) {
     let (views, static_meshes, _, _) = scene.view_update_info();
 
     for (index, view_mut) in views.iter_mut().enumerate() {
@@ -44,6 +45,7 @@ pub(crate) fn update_visibility<P: Platform>(scene: &mut RendererScene<P::GPUBac
 
         let task_pool = bevy_tasks::ComputeTaskPool::get();
         const CHUNK_SIZE: usize = 64;
+        let assets = asset_manager.read_renderer_assets();
         static_meshes
             .par_chunk_map(task_pool, CHUNK_SIZE, |chunk_index, chunk| {
                 let mut chunk_visible_parts = SmallVec::<[DrawablePart; CHUNK_SIZE]>::new();

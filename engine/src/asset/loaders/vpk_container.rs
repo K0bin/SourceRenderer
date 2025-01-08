@@ -1,5 +1,4 @@
 use std::io::{
-    Cursor,
     Error as IOError,
     ErrorKind,
 };
@@ -17,7 +16,7 @@ use crate::asset::asset_manager::{
     AssetContainer,
     AssetFile,
     AssetLoadPriority,
-    AssetLoaderResult,
+    DirectlyLoadedAsset,
 };
 use crate::asset::{
     AssetLoader,
@@ -33,7 +32,7 @@ pub struct VPKContainer {
 }
 
 pub fn new_vpk_container<P: Platform>(
-    asset_manager: &AssetManager<P>,
+    asset_manager: &Arc<AssetManager<P>>,
     asset_file: AssetFile,
 ) -> Result<Box<dyn AssetContainer>, PackageError> {
     let path = asset_file.path.clone();
@@ -84,12 +83,12 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
     fn load(
         &self,
         file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<(), ()> {
         let container = new_vpk_container::<P>(manager, file).unwrap();
         manager.add_container_with_progress(container, Some(progress));
-        Ok(AssetLoaderResult::None)
+        Ok(())
     }
 }

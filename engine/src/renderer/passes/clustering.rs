@@ -4,14 +4,12 @@ use sourcerenderer_core::{
     Platform, Vec2UI, Vec3UI, Vec4
 };
 
+use crate::asset::AssetManager;
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
-};
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
 };
 use crate::graphics::*;
 
@@ -33,9 +31,9 @@ impl ClusteringPass {
 
     pub fn new<P: Platform>(
         barriers: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline("shaders/clustering.comp.json");
+        let pipeline = asset_manager.request_compute_pipeline("shaders/clustering.comp.json");
 
         barriers.create_buffer(
             Self::CLUSTERS_BUFFER_NAME,
@@ -49,6 +47,10 @@ impl ClusteringPass {
         );
 
         Self { pipeline }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(
@@ -93,7 +95,7 @@ impl ClusteringPass {
         debug_assert_eq!(cluster_count.x % 8, 0);
         debug_assert_eq!(cluster_count.y % 1, 0);
         debug_assert_eq!(cluster_count.z % 8, 0); // Ensure the cluster count fits with the work group size
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
         command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         command_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,

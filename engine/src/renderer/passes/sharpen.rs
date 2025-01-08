@@ -1,19 +1,19 @@
+use std::sync::Arc;
+
 use sourcerenderer_core::{
     Platform,
     Vec2UI,
 };
 
 use super::taa::TAAPass;
+use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
-    ComputePipelineHandle,
-    ShaderManager,
-};
 use crate::graphics::*;
+use crate::renderer::asset::*;
 
 const USE_CAS: bool = true;
 
@@ -27,9 +27,9 @@ impl SharpenPass {
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
-        let pipeline = shader_manager.request_compute_pipeline(if !USE_CAS {
+        let pipeline = asset_manager.request_compute_pipeline(if !USE_CAS {
             "shaders/sharpen.comp.json"
         } else {
             "shaders/cas.comp.json"
@@ -53,6 +53,10 @@ impl SharpenPass {
         );
 
         Self { pipeline }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(
@@ -84,7 +88,7 @@ impl SharpenPass {
 
         cmd_buffer.begin_label("Sharpening pass");
 
-        let pipeline = pass_params.shader_manager.get_compute_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT).unwrap();
         cmd_buffer.bind_uniform_buffer(

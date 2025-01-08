@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 
-use crate::{graphics::*, renderer::{render_path::RenderPassParameters, renderer_resources::RendererResources, shader_manager::{GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager}}};
+use crate::{asset::AssetManager, graphics::*, renderer::{asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly}, render_path::RenderPassParameters, renderer_resources::RendererResources}};
 
 pub struct BlitPass {
     pipeline_handle: GraphicsPipelineHandle
@@ -10,11 +10,11 @@ pub struct BlitPass {
 
 impl BlitPass {
     pub fn new<P: Platform>(
-        barriers: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        _barriers: &mut RendererResources<P::GPUBackend>,
+        asset_manager: &Arc<AssetManager<P>>,
         dst_format: Format
     ) -> Self {
-        let pipeline = shader_manager.request_graphics_pipeline(
+        let pipeline = asset_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
                 vs: "shaders/fullscreen_quad.vert.json",
                 fs: Some("shaders/blit.frag.json"),
@@ -46,12 +46,16 @@ impl BlitPass {
         }
     }
 
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline_handle).is_some()
+    }
+
     #[profiling::function]
     pub(super) fn execute<P: Platform>(
         &mut self,
         _graphics_context: &GraphicsContext<P::GPUBackend>,
         cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        shader_manager: &ShaderManager<P>,
+        assets: &RendererAssetsReadOnly<'_, P>,
         src_view: &TextureView<P::GPUBackend>,
         dst_view: &TextureView<P::GPUBackend>,
         sampler: &Sampler<P::GPUBackend>,
@@ -66,7 +70,7 @@ impl BlitPass {
             depth_stencil: None
         }, RenderpassRecordingMode::Commands);
 
-        let pipeline = shader_manager.get_graphics_pipeline(self.pipeline_handle);
+        let pipeline = assets.get_graphics_pipeline(self.pipeline_handle).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
 
         cmd_buffer.set_scissors(&[Scissor {

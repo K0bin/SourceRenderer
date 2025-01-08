@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
+use crate::asset::AssetManager;
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
+use crate::renderer::asset::RendererAssetsReadOnly;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -31,17 +33,12 @@ use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 use crate::renderer::passes::ssr::SsrPass;
 use crate::renderer::passes::ui::UIPass;
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
-    ZeroTextures, RenderPassParameters,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
 };
-use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
@@ -100,7 +97,7 @@ impl<P: Platform> ModernRenderer<P> {
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
         context: &mut GraphicsContext<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = if Self::USE_FSR2 {
@@ -113,37 +110,37 @@ impl<P: Platform> ModernRenderer<P> {
 
         let blue_noise = BlueNoise::new::<P>(device);
 
-        let clustering = ClusteringPass::new::<P>(&mut barriers, shader_manager);
-        let light_binning = LightBinningPass::new::<P>(&mut barriers, shader_manager);
-        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, shader_manager, true);
+        let clustering = ClusteringPass::new::<P>(&mut barriers, asset_manager);
+        let light_binning = LightBinningPass::new::<P>(&mut barriers, asset_manager);
+        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, asset_manager, true);
         let rt_passes = (device.supports_ray_tracing() && false).then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, shader_manager),
+            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, asset_manager),
         });
         let visibility_buffer =
-            VisibilityBufferPass::new::<P>(resolution, &mut barriers, shader_manager);
-        let draw_prep = DrawPrepPass::new::<P>(&mut barriers, shader_manager);
+            VisibilityBufferPass::new::<P>(resolution, &mut barriers, asset_manager);
+        let draw_prep = DrawPrepPass::new::<P>(&mut barriers, asset_manager);
         let hi_z_pass = HierarchicalZPass::<P>::new(
             device,
             &mut barriers,
-            shader_manager,
+            asset_manager,
             &mut init_cmd_buffer,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
         );
-        let ssr_pass = SsrPass::new::<P>(resolution, &mut barriers, shader_manager, true);
+        let ssr_pass = SsrPass::new::<P>(resolution, &mut barriers, asset_manager, true);
         let shading_pass = ShadingPass::<P>::new(
             device,
             resolution,
             &mut barriers,
-            shader_manager,
+            asset_manager,
             &mut init_cmd_buffer,
         );
-        let compositing_pass = CompositingPass::new::<P>(resolution, &mut barriers, shader_manager);
+        let compositing_pass = CompositingPass::new::<P>(resolution, &mut barriers, asset_manager);
         let motion_vector_pass =
-            MotionVectorPass::new::<P>(&mut barriers, resolution, shader_manager);
+            MotionVectorPass::new::<P>(&mut barriers, resolution, asset_manager);
 
         let anti_aliasing = if Self::USE_FSR2 {
             let fsr_pass = Fsr2Pass::<P>::new(
@@ -151,17 +148,18 @@ impl<P: Platform> ModernRenderer<P> {
                 &mut barriers,
                 resolution,
                 swapchain,
+                asset_manager
             );
             AntiAliasing::FSR2 { fsr: fsr_pass }
         } else {
-            let taa = TAAPass::new::<P>(resolution, &mut barriers, shader_manager, true);
-            let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, shader_manager);
+            let taa = TAAPass::new::<P>(resolution, &mut barriers, asset_manager, true);
+            let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, asset_manager);
             AntiAliasing::TAA { taa, sharpen }
         };
 
-        let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, shader_manager);
+        let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, asset_manager);
 
-        let ui_pass = UIPass::new(device);
+        let ui_pass = UIPass::new(device, asset_manager);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -175,7 +173,7 @@ impl<P: Platform> ModernRenderer<P> {
         });
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
 
         Self {
             device: device.clone(),
@@ -355,17 +353,36 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         // TODO: resize render targets
     }
 
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+        let assets = asset_manager.read_renderer_assets();
+        self.clustering_pass.is_ready(&assets)
+        && self.light_binning_pass.is_ready(&assets)
+        && self.geometry_draw_prep.is_ready(&assets)
+        && self.ssao.is_ready(&assets)
+        && self.rt_passes.as_ref().map(|passes| passes.shadows.is_ready(&assets)).unwrap_or(true)
+        && self.hi_z_pass.is_ready(&assets)
+        && self.ssr_pass.is_ready(&assets)
+        && self.visibility_buffer.is_ready(&assets)
+        && self.shading_pass.is_ready(&assets)
+        && self.compositing_pass.is_ready(&assets)
+        && self.motion_vector_pass.is_ready(&assets)
+        && match &self.anti_aliasing {
+            AntiAliasing::TAA { taa, sharpen } => taa.is_ready(&assets) && sharpen.is_ready(&assets),
+            AntiAliasing::FSR2 { fsr } => fsr.is_ready(&assets),
+        }
+        && self.shadow_map_pass.is_ready(&assets)
+        && self.ui_pass.is_ready(&assets)
+    }
+
     #[profiling::function]
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
+        assets: &RendererAssetsReadOnly<'_, P>,
+    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -386,7 +403,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         let camera_history_buffer = &camera_buffer;
 
-        let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
+        let scene_buffers = super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
 
         self.shadow_map_pass.calculate_cascades(scene);
 
@@ -411,9 +428,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
-            shader_manager,
             resources: &mut self.barriers,
-            zero_textures,
             assets
         };
 
@@ -528,7 +543,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
         self.ui_pass.execute(&mut cmd_buf, &params, output_texture_name, &self.ui_data);
 
-        let output_texture = self.barriers.access_texture(
+        let output_texture = params.resources.access_texture(
             &mut cmd_buf,
             output_texture_name,
             &BarrierTextureRange::default(),
@@ -539,9 +554,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             HistoryResourceEntry::Current,
         );
 
-        if swapchain.next_backbuffer().is_err() {
-            return Err(SwapchainError::Other);
-        }
+        let backbuffer = swapchain.next_backbuffer()?;
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -550,12 +564,12 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             new_access: BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::CopyDst,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        cmd_buf.blit_to_handle(&*output_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
+        cmd_buf.blit_to_handle(&*output_texture, 0, 0, backbuffer_handle, 0, 0);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
@@ -563,13 +577,16 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
         std::mem::drop(output_texture);
 
-        return Ok(cmd_buf.finish());
+        return Ok(RenderPathResult {
+            cmd_buffer: cmd_buf.finish(),
+            backbuffer: Some(backbuffer)
+        });
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

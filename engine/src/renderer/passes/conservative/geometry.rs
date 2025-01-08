@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use bevy_tasks::ParallelSlice;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::Submission;
 use sourcerenderer_core::{
     Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4
 };
@@ -14,18 +13,13 @@ use crate::renderer::passes::conservative::desktop_renderer::setup_frame;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::rt_shadows::RTShadowPass;
 use crate::renderer::passes::ssao::SsaoPass;
-use crate::renderer::render_path::{
-    RenderPassParameters,
-};
-use crate::renderer::renderer_assets::*;
+use crate::renderer::render_path::RenderPassParameters;
+use crate::renderer::asset::*;
+use crate::asset::*;
+use crate::renderer::asset::GraphicsPipelineInfo;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
-};
-use crate::renderer::shader_manager::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    ShaderManager,
 };
 
 use crate::graphics::*;
@@ -59,7 +53,7 @@ impl<P: Platform> GeometryPass<P> {
         device: &Arc<Device<P::GPUBackend>>,
         resolution: Vec2UI,
         barriers: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -171,9 +165,13 @@ impl<P: Platform> GeometryPass<P> {
             render_target_formats: &[texture_info.format],
             depth_stencil_format: Format::D24S8
         };
-        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { sampler, pipeline }
+    }
+
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
@@ -250,9 +248,9 @@ impl<P: Platform> GeometryPass<P> {
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
             );
-            &*rt_shadows
+            Some(&*rt_shadows)
         } else {
-            pass_params.zero_textures.zero_texture_view
+            None
         };
 
         let clusters = pass_params.resources.access_buffer(
@@ -281,15 +279,14 @@ impl<P: Platform> GeometryPass<P> {
             RenderpassRecordingMode::CommandBuffers,
         );
 
-        let assets = pass_params.assets;
-        let zero_textures = pass_params.zero_textures;
+        let assets = &pass_params.assets;
         let lightmap = pass_params.scene.lightmap;
 
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
         let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
         let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 P::thread_memory_management_pool(|| {
@@ -310,16 +307,18 @@ impl<P: Platform> GeometryPass<P> {
                     command_buffer.bind_sampling_view_and_sampler(
                         BindingFrequency::Frequent,
                         0,
-                        if let Some(lightmap) = lightmap { &lightmap.view } else { zero_textures.zero_texture_view },
+                        if let Some(lightmap) = lightmap { &lightmap.view } else { &assets.get_placeholder_texture_white().view },
                         &self.sampler,
                     );
                     command_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);
-                    command_buffer.bind_sampling_view_and_sampler(
-                        BindingFrequency::Frequent,
-                        2,
-                        &shadows,
-                        &self.sampler,
-                    );
+                    if let Some(shadows) = shadows {
+                        command_buffer.bind_sampling_view_and_sampler(
+                            BindingFrequency::Frequent,
+                            2,
+                            &shadows,
+                            &self.sampler,
+                        );
+                    }
                     command_buffer.bind_storage_buffer(
                         BindingFrequency::Frequent,
                         3,
@@ -400,19 +399,19 @@ impl<P: Platform> GeometryPass<P> {
                             command_buffer.bind_sampling_view_and_sampler(
                                 BindingFrequency::VeryFrequent,
                                 0,
-                                zero_textures.zero_texture_view,
+                                &assets.get_placeholder_texture_white().view,
                                 &self.sampler,
                             );
                             command_buffer.bind_sampling_view_and_sampler(
                                 BindingFrequency::VeryFrequent,
                                 1,
-                                zero_textures.zero_texture_view,
+                                &assets.get_placeholder_texture_white().view,
                                 &self.sampler,
                             );
                             command_buffer.bind_sampling_view_and_sampler(
                                 BindingFrequency::VeryFrequent,
                                 2,
-                                zero_textures.zero_texture_view,
+                                &assets.get_placeholder_texture_white().view,
                                 &self.sampler,
                             );
 
@@ -451,7 +450,7 @@ impl<P: Platform> GeometryPass<P> {
                             let metalness_value = material.get("metalness");
                             match metalness_value {
                                 Some(RendererMaterialValue::Texture(handle)) => {
-                                    let metalness_view = &assets.get_texture(*handle).view;
+                                    let metalness_view = &assets.get_texture_opt(*handle).unwrap_or(assets.get_placeholder_texture_black()).view;
                                     command_buffer.bind_sampling_view_and_sampler(
                                         BindingFrequency::VeryFrequent,
                                         2,

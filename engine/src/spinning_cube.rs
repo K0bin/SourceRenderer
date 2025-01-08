@@ -10,10 +10,7 @@ use bevy_transform::components::Transform;
 use log::trace;
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::{
-    Platform,
-    Quaternion,
-    Vec2,
-    Vec3,
+    Platform, PlatformPhantomData, Quaternion, Vec2, Vec3
 };
 
 use crate::asset::{
@@ -21,7 +18,7 @@ use crate::asset::{
     MeshRange,
 };
 use crate::camera::ActiveCamera;
-use crate::engine::AssetManagerResource;
+use crate::asset::AssetManagerECSResource;
 use crate::fps_camera::FPSCameraComponent;
 use crate::input::InputState;
 use crate::math::BoundingBox;
@@ -33,21 +30,18 @@ use crate::renderer::{
 use crate::Camera;
 
 struct SpinningCubePlugin<P: Platform> {
-    _p: PhantomData<P>
+    _p: PlatformPhantomData<P>
 }
 
 #[derive(Component)]
 struct SpinningCube {}
-
-unsafe impl<P: Platform> Send for SpinningCubePlugin<P> {}
-unsafe impl<P: Platform> Sync for SpinningCubePlugin<P> {}
 
 impl<P: Platform> Plugin for SpinningCubePlugin<P> {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlaceLightsState { was_space_down: false });
         app.add_systems(SpawnScene, (place_lights, spin::<P>,));
 
-        let asset_manager_res = app.world().resource::<AssetManagerResource<P>>();
+        let asset_manager_res = app.world().resource::<AssetManagerECSResource<P>>();
         let asset_manager = &asset_manager_res.0;
 
         let indices: [u32; 36] = [
@@ -299,7 +293,7 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
         .into_boxed_slice();
         let bounding_box =
             BoundingBox::new(Vec3::new(-1f32, -1f32, -1f32), Vec3::new(1f32, 1f32, 1f32));
-        asset_manager.add_mesh(
+        asset_manager.add_mesh_data(
             "cube_mesh",
             triangle_data,
             triangle.len() as u32,
@@ -312,8 +306,8 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
             Some(bounding_box),
         );
         //asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
-        asset_manager.add_material("cube_material", "cube_texture_albedo", 0f32, 0f32);
-        asset_manager.add_model("cube_model", "cube_mesh", &["cube_material"]);
+        asset_manager.add_material_data("cube_material", "cube_texture_albedo", 0f32, 0f32);
+        asset_manager.add_model_data("cube_model", "cube_mesh", &["cube_material"]);
 
         app.world_mut().spawn((
             StaticRenderableComponent {
@@ -364,7 +358,7 @@ fn spin<P: Platform>(mut query: Query<&mut Transform, With<SpinningCube>>, delta
     for mut transform in query.iter_mut() {
         transform.rotation *= Quaternion::from_axis_angle(
             Vec3::new(0.0f32, 1.0f32, 0.0f32),
-            1.0f32 * delta_time.delta_seconds(),
+            1.0f32 * delta_time.delta_secs(),
         );
     }
 }

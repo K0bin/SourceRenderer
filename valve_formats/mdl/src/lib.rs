@@ -2,10 +2,10 @@
 
 #[macro_use]
 extern crate bitflags;
+extern crate io_util;
 
 mod header;
 mod header2;
-mod read_util;
 mod texture;
 mod skin_replacement;
 mod bone;
@@ -18,7 +18,7 @@ mod body_part;
 mod model;
 mod mesh;
 
-pub use self::read_util::*;
+pub use self::io_util::*;
 pub use self::header::{Header, StudioHDRFlags};
 pub use self::header2::Header2;
 pub use self::texture::Texture;

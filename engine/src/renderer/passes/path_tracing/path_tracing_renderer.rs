@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{TextureUsage, TextureViewInfo};
+use crate::asset::AssetManager;
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
+use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
 use sourcerenderer_core::{
     gpu, Matrix4, Platform, Vec2, Vec2UI, Vec3, Vec3UI
@@ -13,17 +15,12 @@ use crate::graphics::{GraphicsContext, CommandBufferRecorder};
 use crate::input::Input;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
-    ZeroTextures, RenderPassParameters,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
 };
-use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::ShaderManager;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
@@ -46,7 +43,7 @@ impl<P: Platform> PathTracingRenderer<P> {
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
         context: &mut GraphicsContext<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width() * 2, swapchain.height() * 2);
@@ -62,8 +59,8 @@ impl<P: Platform> PathTracingRenderer<P> {
             device,
             &mut init_cmd_buffer,
         );
-        let blit_pass = BlitPass::new(&mut barriers, shader_manager, swapchain.format());
-        let path_tracer_pass = PathTracerPass::<P>::new(device, resolution, &mut barriers, shader_manager, &mut init_cmd_buffer);
+        let blit_pass = BlitPass::new(&mut barriers, asset_manager, swapchain.format());
+        let path_tracer_pass = PathTracerPass::<P>::new(device, resolution, &mut barriers, asset_manager, &mut init_cmd_buffer);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -77,7 +74,7 @@ impl<P: Platform> PathTracingRenderer<P> {
         });
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); });
+        task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
         Self {
             device: device.clone(),
             barriers,
@@ -237,17 +234,20 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         // TODO: resize render targets
     }
 
+    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+        let assets = asset_manager.read_renderer_assets();
+        self.path_tracer.is_ready(&assets)
+    }
+
     #[profiling::function]
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
-        zero_textures: &ZeroTextures<P::GPUBackend>,
         frame_info: &FrameInfo,
-        shader_manager: &ShaderManager<P>,
-        assets: &RendererAssets<P>,
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
+        assets: &RendererAssetsReadOnly<'_, P>,
+    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -255,7 +255,7 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
         let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
 
-        let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, assets);
+        let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
 
         self.setup_frame(
             &mut cmd_buf,
@@ -271,10 +271,8 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
-            shader_manager,
             resources: &mut self.barriers,
-            zero_textures,
-            assets
+            assets,
         };
 
         self
@@ -284,9 +282,9 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         let blue_noise_sampler = params.resources.linear_sampler();
         self.path_tracer.execute(&mut cmd_buf, &params, self.acceleration_structure_update.acceleration_structure(), self.blue_noise.frame(frame_info.frame), blue_noise_sampler);
 
-        if swapchain.next_backbuffer().is_err() {
-            return Err(SwapchainError::Other);
-        }
+        let backbuffer = swapchain.next_backbuffer()?;
+        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -295,12 +293,12 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
             new_access: BarrierAccess::RENDER_TARGET_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::RenderTarget,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        let rt_view = self.barriers.access_view(&mut cmd_buf, PathTracerPass::<P>::PATH_TRACING_TARGET,
+        let rt_view = params.resources.access_view(&mut cmd_buf, PathTracerPass::<P>::PATH_TRACING_TARGET,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -312,9 +310,9 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
                 array_layer_length: 1,
                 format: None
             }, HistoryResourceEntry::Current);
-        let sampler = self.barriers.linear_sampler();
+        let sampler = params.resources.linear_sampler();
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute(context, &mut cmd_buf, shader_manager, &rt_view, swapchain.backbuffer(), sampler, resolution);
+        self.blit_pass.execute(context, &mut cmd_buf, &params.assets, &rt_view, backbuffer_view, sampler, resolution);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET,
             new_sync: BarrierSync::empty(),
@@ -322,11 +320,14 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::RenderTarget,
             new_layout: TextureLayout::Present,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
-        return Ok(cmd_buf.finish());
+        return Ok(RenderPathResult {
+            cmd_buffer: cmd_buf.finish(),
+            backbuffer: Some(backbuffer)
+        });
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

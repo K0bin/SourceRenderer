@@ -9,18 +9,15 @@ use sourcerenderer_core::{
     Vec2I,
     Vec2UI,
 };
+use crate::asset::AssetManager;
 use crate::graphics::CommandBufferRecorder;
 
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly};
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
-};
-use crate::renderer::shader_manager::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    ShaderManager,
 };
 use crate::graphics::*;
 
@@ -54,7 +51,7 @@ impl Prepass {
 
     pub fn new<P: Platform>(
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>,
         resolution: Vec2UI,
     ) -> Self {
         let depth_info = TextureInfo {
@@ -131,9 +128,13 @@ impl Prepass {
             ],
             depth_stencil_format: Format::D24S8
         };
-        let pipeline = shader_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
+    }
+
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
@@ -175,8 +176,6 @@ impl Prepass {
             RenderpassRecordingMode::CommandBuffers,
         );
 
-        let assets = pass_params.assets;
-
         let info = depth_buffer.texture().unwrap().info();
         let per_frame = FrameData {
             swapchain_transform,
@@ -188,8 +187,9 @@ impl Prepass {
         let inheritance = cmd_buffer.inheritance();
         const CHUNK_SIZE: usize = 128;
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let assets = pass_params.assets;
         let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 let mut command_buffer = graphics_context.get_inner_command_buffer(inheritance);
 
@@ -242,7 +242,7 @@ impl Prepass {
                         ShaderType::VertexShader,
                     );
 
-                    let model = assets.get_model(drawable.model);
+                    let model: Option<&crate::renderer::asset::RendererModel> = assets.get_model(drawable.model);
                     if model.is_none() {
                         log::info!("Skipping draw because of missing model");
                         continue;

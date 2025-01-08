@@ -15,7 +15,7 @@ use crate::asset::asset_manager::{
     AssetFile,
     AssetLoadPriority,
     AssetLoaderProgress,
-    AssetLoaderResult,
+    DirectlyLoadedAsset,
 };
 use crate::asset::{
     Asset,
@@ -41,10 +41,10 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     fn load(
         &self,
         mut asset_file: AssetFile,
-        manager: &AssetManager<P>,
+        manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Result<AssetLoaderResult, ()> {
+    ) -> Result<(), ()> {
         let path = asset_file.path.clone();
         let mut vmt_material = {
             let current = asset_file.seek(SeekFrom::Current(0)).unwrap();
@@ -115,6 +115,6 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
             );
         }
 
-        Ok(AssetLoaderResult::None)
+        Ok(())
     }
 }

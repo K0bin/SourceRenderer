@@ -5,15 +5,15 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
+use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::shader_manager::{
+use crate::renderer::asset::{
     RayTracingPipelineHandle,
-    RayTracingPipelineInfo,
-    ShaderManager,
+    RayTracingPipelineInfo, RendererAssetsReadOnly
 };
 use crate::graphics::*;
 
@@ -27,7 +27,7 @@ impl RTShadowPass {
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
-        shader_manager: &mut ShaderManager<P>,
+        asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         resources.create_texture(
             Self::SHADOWS_TEXTURE_NAME,
@@ -46,13 +46,17 @@ impl RTShadowPass {
             false,
         );
 
-        let pipeline = shader_manager.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
+        let pipeline = asset_manager.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
             ray_gen_shader: "shaders/shadows.rgen.json",
             closest_hit_shaders: &["shaders/shadows.rchit.json"],
             miss_shaders: &["shaders/shadows.rmiss.json"],
         });
 
         Self { pipeline }
+    }
+
+    pub(crate) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        assets.get_ray_tracing_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute<P: Platform>(
@@ -86,7 +90,7 @@ impl RTShadowPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.shader_manager.get_ray_tracing_pipeline(self.pipeline);
+        let pipeline = pass_params.assets.get_ray_tracing_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&pipeline));
         cmd_buffer.bind_acceleration_structure(
             BindingFrequency::Frequent,

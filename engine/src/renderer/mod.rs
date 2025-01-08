@@ -1,4 +1,3 @@
-#[cfg(feature = "threading")]
 mod renderer;
 
 mod command;
@@ -11,11 +10,9 @@ mod renderer_scene;
 mod renderer_plugin;
 mod renderer_culling;
 
-mod asset_buffer;
 pub(crate) mod passes;
-mod renderer_assets;
-mod shader_manager;
 mod vertex;
+pub mod asset;
 
 pub use self::command::RendererCommand;
 pub use self::drawable::DrawablePart;
@@ -30,7 +27,6 @@ pub use self::ecs::{
     StaticRenderableComponent,
 };
 pub use self::light::PointLight;
-#[cfg(feature = "threading")]
 pub use self::renderer::Renderer;
 pub use self::vertex::Vertex;
 pub use self::renderer_plugin::RendererPlugin;
