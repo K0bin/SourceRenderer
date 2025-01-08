@@ -1,16 +1,24 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{gpu::{Format, SampleCount, Swapchain, SwapchainError, Texture, TextureDimension, TextureInfo, TextureUsage}, Matrix4};
+use sourcerenderer_core::{gpu::{Backbuffer, Format, SampleCount, Swapchain, SwapchainError, Texture, TextureDimension, TextureInfo, TextureUsage}, Matrix4};
 use web_sys::{GpuDevice, GpuTexture, GpuTextureFormat};
 
 use crate::{buffer, surface::WebGPUSurface, texture::WebGPUTexture, WebGPUBackend};
+
+pub struct WebGPUBackbuffer(u32);
+
+impl Backbuffer for WebGPUBackbuffer {
+    fn key(&self) -> u64 {
+        self.0 as u64
+    }
+}
 
 pub struct WebGPUSwapchain {
     device: GpuDevice,
     surface: WebGPUSurface,
     backbuffers: SmallVec::<[WebGPUTexture; 5]>,
-    index: AtomicU32
+    index: u32
 }
 
 unsafe impl Send for WebGPUSwapchain {}
@@ -23,7 +31,7 @@ impl WebGPUSwapchain {
             device: device.clone(),
             surface,
             backbuffers,
-            index: AtomicU32::new(0)
+            index: 0u32
         }
     }
 
@@ -41,52 +49,18 @@ impl WebGPUSwapchain {
 }
 
 impl Swapchain<WebGPUBackend> for WebGPUSwapchain {
-    unsafe fn recreate(old: Self, width: u32, height: u32) -> Result<Self, SwapchainError> {
-        let info = TextureInfo {
-            width, height, ..old.surface.texture_info().clone()
-        };
-        let backbuffers = Self::create_backbuffers(&old.device, &info, old.backbuffers.len() as u32);
-        Ok(Self {
-            device: old.device,
-            surface: old.surface,
-            backbuffers,
-            index: AtomicU32::new(0)
-        })
-    }
+    type Backbuffer = WebGPUBackbuffer;
 
-    unsafe fn recreate_on_surface(old: Self, surface: WebGPUSurface, width: u32, height: u32) -> Result<Self, SwapchainError> {
-        let info = TextureInfo {
-            width, height, ..surface.texture_info().clone()
-        };
-        let backbuffers = Self::create_backbuffers(&old.device, &info, old.backbuffers.len() as u32);
-        Ok(Self {
-            device: old.device,
-            surface: surface,
-            backbuffers,
-            index: AtomicU32::new(0)
-        })
-    }
+    unsafe fn recreate(&mut self) {}
 
-    unsafe fn next_backbuffer(&self) -> Result<(), SwapchainError> {
+    unsafe fn next_backbuffer(&mut self) -> Result<WebGPUBackbuffer, SwapchainError> {
         self.surface.canvas_context().get_current_texture();
-        self.index.fetch_update(Ordering::Release, Ordering::Acquire, |val| Some((val + 1) % (self.backbuffers.len() as u32)));
-        Ok(())
+        self.index = (self.index + 1) % (self.backbuffers.len() as u32);
+        Ok(WebGPUBackbuffer(self.index))
     }
 
-    fn backbuffer(&self, index: u32) -> &WebGPUTexture {
-        &self.backbuffers[index as usize]
-    }
-
-    fn backbuffer_index(&self) -> u32 {
-        self.index.load(Ordering::SeqCst)
-    }
-
-    fn backbuffer_count(&self) -> u32 {
-        self.backbuffers.len() as u32
-    }
-
-    fn sample_count(&self) -> SampleCount {
-        self.surface.texture_info().samples
+    unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a WebGPUBackbuffer) -> &'a WebGPUTexture {
+        &self.backbuffers[backbuffer.0 as usize]
     }
 
     fn format(&self) -> Format {

@@ -4,7 +4,7 @@ use js_sys::Array;
 use sourcerenderer_core::gpu;
 use web_sys::{GpuDevice, GpuQueue};
 
-use crate::{command::WebGPUCommandPool, swapchain::WebGPUSwapchain, WebGPUBackend};
+use crate::{command::WebGPUCommandPool, swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend};
 
 
 pub struct WebGPUQueue {
@@ -48,7 +48,7 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
         }
     }
 
-    unsafe fn present(&self, _swapchain: &WebGPUSwapchain) {}
+    unsafe fn present(&self, _swapchain: &mut WebGPUSwapchain, _backbuffer: &WebGPUBackbuffer) {}
 }
 
 pub struct WebGPUFence {
