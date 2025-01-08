@@ -187,7 +187,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         )
     }
 
-    unsafe fn create_shader(&self, shader: gpu::PackedShader, name: Option<&str>) -> MTLShader {
+    unsafe fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> MTLShader {
         MTLShader::new(&self.device, shader, name)
     }
 

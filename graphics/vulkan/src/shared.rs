@@ -56,7 +56,7 @@ impl VkShared {
         let packed: gpu::PackedShader = serde_json::from_slice(shader_bytes).unwrap();
         let shader = VkShader::new(
             device,
-            packed,
+            &packed,
             Some("ClearBufferMeta"),
         );
         let clear_buffer_meta_pipeline =

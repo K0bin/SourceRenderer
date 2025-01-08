@@ -49,7 +49,7 @@ impl VkShader {
     #[allow(clippy::size_of_in_element_count)]
     pub fn new(
         device: &Arc<RawVkDevice>,
-        shader: gpu::PackedShader,
+        shader: &gpu::PackedShader,
         name: Option<&str>,
     ) -> Self {
         assert_ne!(shader.shader_spirv.len(), 0);

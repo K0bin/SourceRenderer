@@ -78,7 +78,7 @@ impl<B: GPUBackend> Device<B> {
         super::Sampler::new(&self.device, &self.destroyer, info)
     }
 
-    pub fn create_shader(&self, shader: gpu::PackedShader, name: Option<&str>) -> B::Shader {
+    pub fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> B::Shader {
         unsafe { self.device.create_shader(shader, name) }
     }
 

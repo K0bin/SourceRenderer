@@ -25,7 +25,7 @@ pub const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
 pub trait Device<B: GPUBackend> {
   unsafe fn create_buffer(&self, info: &BufferInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Buffer, OutOfMemoryError>;
   unsafe fn create_texture(&self, info: &TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Texture, OutOfMemoryError>;
-  unsafe fn create_shader(&self, shader: PackedShader, name: Option<&str>) -> B::Shader;
+  unsafe fn create_shader(&self, shader: &PackedShader, name: Option<&str>) -> B::Shader;
   unsafe fn create_texture_view(&self, texture: &B::Texture, info: &TextureViewInfo, name: Option<&str>) -> B::TextureView;
   unsafe fn create_compute_pipeline(&self, shader: &B::Shader, name: Option<&str>) -> B::ComputePipeline;
   unsafe fn create_sampler(&self, info: &SamplerInfo) -> B::Sampler;
