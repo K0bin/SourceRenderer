@@ -1,10 +1,11 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::hash::Hash;
 
 use metal::{self, MetalDrawable};
 use metal::foreign_types::ForeignTypeRef;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Texture};
+use sourcerenderer_core::gpu::{self, Backbuffer, Format, Texture};
 use sourcerenderer_core::Matrix4;
 
 use super::*;
@@ -33,94 +34,87 @@ impl PartialEq<MTLSurface> for MTLSurface {
 
 impl Eq for MTLSurface {}
 
+pub struct MTLBackbuffer {
+    texture: MTLTexture,
+    drawable: MetalDrawable
+}
+
+impl Backbuffer for MTLBackbuffer {
+    fn key(&self) -> u64 {
+        self.drawable.drawable_id()
+    }
+}
+
 pub struct MTLSwapchain {
     surface: MTLSurface,
     device: metal::Device,
-    backbuffers: SmallVec<[MTLTexture; 5]>,
-    current_backbuffer_index: AtomicUsize,
+    width: u32,
+    height: u32,
+    format: Format
 }
 
 const IMAGE_COUNT: u32 = 3;
 
 impl MTLSwapchain {
-    pub fn new(surface: MTLSurface, device: &metal::DeviceRef, extends: Option<(u32, u32)>) -> Self {
+    pub fn new(surface: MTLSurface, device: &metal::DeviceRef, extents: Option<(u32, u32)>) -> Self {
         surface.layer.set_device(device);
         assert!(IMAGE_COUNT == 2 || IMAGE_COUNT == 3);
         surface.layer.set_maximum_drawable_count(IMAGE_COUNT as u64);
-        let mut backbuffers = SmallVec::<[MTLTexture; 5]>::with_capacity(IMAGE_COUNT as usize);
 
         let width: u32;
         let height: u32;
-        if let Some((param_width, param_height)) = extends {
+        if let Some((param_width, param_height)) = extents {
             width = param_width;
             height = param_height;
         } else {
             width = surface.handle().drawable_size().width as u32;
             height = surface.handle().drawable_size().height as u32;
         }
+        let format = format_from_metal(surface.layer.pixel_format());
 
-        for i in 0..IMAGE_COUNT {
-            let texture = MTLTexture::new(
-                ResourceMemory::Dedicated { device: device, options: metal::MTLResourceOptions::StorageModePrivate },
-                &gpu::TextureInfo {
-                    dimension: gpu::TextureDimension::Dim2D,
-                    format: gpu::Format::BGRA8UNorm,
-                    width,
-                    height,
-                    depth: 1,
-                    mip_levels: 1,
-                    array_length: 1,
-                    samples: gpu::SampleCount::Samples1,
-                    usage: gpu::TextureUsage::RENDER_TARGET | gpu::TextureUsage::SAMPLED,
-                    supports_srgb: false,
-                }, Some(&format!("Backbuffer {}", i))).unwrap();
-            backbuffers.push(texture);
-        }
         Self {
             surface,
-            backbuffers: backbuffers,
             device: device.to_owned(),
-            current_backbuffer_index: AtomicUsize::new(0usize),
+            width,
+            height,
+            format
         }
     }
 
     pub(crate) fn take_drawable(&self) -> MetalDrawable {
         self.surface.layer.next_drawable().unwrap().to_owned()
     }
+
+    pub(crate) fn present(&self, cmd_buffer: &metal::CommandBuffer, backbuffer: &MTLBackbuffer) {
+        cmd_buffer.present_drawable(&backbuffer.drawable);
+    }
 }
 
 impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
-    unsafe fn recreate(old: Self, width: u32, height: u32) -> Result<Self, gpu::SwapchainError> {
-        Ok(Self::new(old.surface, &old.device, Some((width, height))))
+    type Backbuffer = MTLBackbuffer;
+
+    unsafe fn next_backbuffer(&mut self) -> Result<MTLBackbuffer, gpu::SwapchainError> {
+        let drawable = self.surface.layer.next_drawable().unwrap().to_owned();
+        let texture = MTLTexture::from_mtl_texture(drawable.texture(), false);
+
+        self.width = texture.info().width;
+        self.height = texture.info().height;
+        self.format = texture.info().format;
+
+        return Ok(MTLBackbuffer {
+            texture,
+            drawable
+        });
     }
 
-    unsafe fn recreate_on_surface(old: Self, surface: MTLSurface, width: u32, height: u32) -> Result<Self, gpu::SwapchainError> {
-        Ok(Self::new(surface, &old.device, Some((width, height))))
+    unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a MTLBackbuffer) -> &'a MTLTexture {
+        &backbuffer.texture
     }
 
-    unsafe fn next_backbuffer(&self) -> Result<(), gpu::SwapchainError> {
-        self.current_backbuffer_index.fetch_add(1, Ordering::AcqRel);
-        return Ok(());
-    }
-
-    fn backbuffer(&self, index: u32) -> &MTLTexture {
-        &self.backbuffers[index as usize]
-    }
-
-    fn backbuffer_index(&self) -> u32 {
-        (self.current_backbuffer_index.load(Ordering::Acquire) % self.backbuffers.len()) as u32
-    }
-
-    fn backbuffer_count(&self) -> u32 {
-        self.backbuffers.len() as u32
-    }
-
-    fn sample_count(&self) -> gpu::SampleCount {
-        self.backbuffers.first().unwrap().info().samples
-    }
+    unsafe fn recreate(&mut self) {}
 
     fn format(&self) -> gpu::Format {
-        self.backbuffers.first().unwrap().info().format
+        self.format
     }
 
     fn surface(&self) -> &MTLSurface {
@@ -132,10 +126,10 @@ impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
     }
 
     fn width(&self) -> u32 {
-        self.backbuffers.first().unwrap().info().width
+        self.width
     }
 
     fn height(&self) -> u32 {
-        self.backbuffers.first().unwrap().info().height
+        self.height
     }
 }

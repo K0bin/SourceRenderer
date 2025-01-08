@@ -1,7 +1,7 @@
 use metal;
 use metal::foreign_types::ForeignType;
 
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, Format};
 
 use super::*;
 
@@ -54,6 +54,16 @@ fn compare_op_to_mtl(compare_op: gpu::CompareFunc) -> metal::MTLCompareFunction 
         gpu::CompareFunc::GreaterEqual => metal::MTLCompareFunction::GreaterEqual,
         gpu::CompareFunc::Greater => metal::MTLCompareFunction::Greater,
         gpu::CompareFunc::Always => metal::MTLCompareFunction::Always,
+    }
+}
+
+pub(crate) fn format_from_metal(format: metal::MTLPixelFormat) -> Format {
+    match format {
+        metal::MTLPixelFormat::RGBA8Unorm => gpu::Format::RGBA8UNorm,
+        metal::MTLPixelFormat::RGBA16Float => gpu::Format::RGBA16Float,
+        metal::MTLPixelFormat::BGRA8Unorm => gpu::Format::BGRA8UNorm,
+        metal::MTLPixelFormat::RGBA8Unorm_sRGB => gpu::Format::RGBA8Srgb,
+        _ => panic!("Unsupported texture format")
     }
 }
 
@@ -157,13 +167,7 @@ impl MTLTexture {
             }
         }
 
-        let format = match texture.pixel_format() {
-            metal::MTLPixelFormat::RGBA8Unorm => gpu::Format::RGBA8UNorm,
-            metal::MTLPixelFormat::RGBA16Float => gpu::Format::RGBA16Float,
-            metal::MTLPixelFormat::BGRA8Unorm => gpu::Format::BGRA8UNorm,
-            metal::MTLPixelFormat::RGBA8Unorm_sRGB => gpu::Format::RGBA8Srgb,
-            _ => panic!("Unsupported texture format")
-        };
+        let format = format_from_metal(texture.pixel_format());
 
         let mut usage = gpu::TextureUsage::empty();
         let mtl_usage = texture.usage();

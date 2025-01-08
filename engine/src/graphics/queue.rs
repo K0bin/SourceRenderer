@@ -97,7 +97,7 @@ impl<B: GPUBackend> Queue<B> {
         const SUBMISSION_CAPACITY: usize = 16;
         const FENCE_CAPACITY: usize = 16;
 
-        type SwapchainGuard<'a, B: GPUBackend> = MutexGuard<'a, Swapchain<B>>;
+        type SwapchainGuard<'a, B> = MutexGuard<'a, Swapchain<B>>;
 
         struct SubmissionHolder<'a, B: GPUBackend> {
             queue: &'a B::Queue,

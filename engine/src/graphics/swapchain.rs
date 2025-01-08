@@ -57,7 +57,7 @@ impl<B: GPUBackend> Swapchain<B> {
         });
     }
 
-    pub fn backbuffer_handle(&self, backbuffer: &<B::Swapchain as GPUSwapchain<B>>::Backbuffer) -> &B::Texture {
+    pub fn backbuffer_handle<'a>(&'a self, backbuffer: &'a <B::Swapchain as GPUSwapchain<B>>::Backbuffer) -> &'a B::Texture {
         unsafe { self.swapchain.texture_for_backbuffer(backbuffer) }
     }
 

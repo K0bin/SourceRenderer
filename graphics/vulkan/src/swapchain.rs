@@ -30,7 +30,7 @@ pub enum VkSwapchainState {
     OutOfDate = 2,
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(Debug)]
 pub struct VkBackbufferIndices {
     pub(crate) texture_index: u32,
     pub(crate) acquire_semaphore_index: u32,
@@ -456,7 +456,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.transform_matrix
     }
 
-    unsafe fn texture_for_backbuffer(&self, backbuffer: &VkBackbufferIndices) -> &VkTexture {
+    unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a VkBackbufferIndices) -> &'a VkTexture {
         &self.textures[backbuffer.texture_index as usize]
     }
 

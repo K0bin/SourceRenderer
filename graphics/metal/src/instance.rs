@@ -1,3 +1,4 @@
+use log::warn;
 use metal;
 
 use sourcerenderer_core::gpu;
@@ -11,7 +12,7 @@ pub struct MTLInstance {
 impl MTLInstance {
     pub fn new(debug_layer: bool) -> Self {
         if debug_layer && !std::env::var("MTL_DEBUG_LAYER").map(|var| var == "1").unwrap_or_default() {
-            println!("Metal debug layer cannot be enable programmatically, use env var MTL_DEBUG_LAYER=1. \"man MetalValidation\" for more info.");
+            warn!("Metal debug layer cannot be enable programmatically, use env var MTL_DEBUG_LAYER=1. \"man MetalValidation\" for more info.");
         }
 
         let devices = metal::Device::all();

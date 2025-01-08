@@ -14,11 +14,11 @@ pub trait Backbuffer {
 }
 
 pub trait Swapchain<B: GPUBackend> : Sized {
-  type Backbuffer : Backbuffer + PartialEq + Eq + Hash + Clone + Send + Sync;
+  type Backbuffer : Backbuffer + Send + Sync;
 
   unsafe fn next_backbuffer(&mut self) -> Result<Self::Backbuffer, SwapchainError>;
   unsafe fn recreate(&mut self);
-  unsafe fn texture_for_backbuffer(&self, backbuffer: &Self::Backbuffer) -> &B::Texture;
+  unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a Self::Backbuffer) -> &'a B::Texture;
   fn format(&self) -> Format;
   fn surface(&self) -> &B::Surface;
   fn transform(&self) -> Matrix4;
