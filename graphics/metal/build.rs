@@ -28,11 +28,15 @@ fn main() {
     mdi_shader_path.push("mdi.metal");
     let mut compiled_mdi_shader_path = meta_shader_dir.clone();
     compiled_mdi_shader_path.push("mdi.metallib");
-    compile_msl_shader(&mdi_shader_path, &compiled_mdi_shader_path).unwrap();
+    let _ = compile_msl_shader(&mdi_shader_path, &compiled_mdi_shader_path);
 }
 
 fn compile_msl_shader(shader_path: &Path, out_path: &Path) -> Result<(), ()> {
     // xcrun -sdk macosx metal -o Shadow.ir  -c Shadow.metal
+
+    if cfg!(not(any(target_os = "macos", target_os = "ios"))) {
+        return Err(());
+    }
 
     println!("cargo:rerun-if-changed={}", shader_path.to_str().unwrap());
 
