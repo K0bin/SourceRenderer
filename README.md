@@ -33,7 +33,8 @@ Toy game engine written in Rust
     * Vulkan renderer
   * Web
     * HTML + Typescript window
-    * engine running entirely in a worker
+    * Requires cutting edge browser features
+    * Engine running entirely in a worker
     * WebGPU renderer (WIP: needs work on shader translation, single threaded)
 * Async asset manager
   * Optionally multi-threaded asset loading
