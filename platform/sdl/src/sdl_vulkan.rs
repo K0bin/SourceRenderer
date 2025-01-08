@@ -30,7 +30,7 @@ pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_i
     VkSurface::new(
         graphics_instance.raw(),
         SurfaceKHR::from_raw(surface),
-        surface_loader
+        surface_loader,
     )
 }
 

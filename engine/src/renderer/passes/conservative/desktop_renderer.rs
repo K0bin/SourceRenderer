@@ -27,10 +27,7 @@ use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
-    RenderPassParameters,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
 };
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -278,11 +275,11 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
         frame_info: &FrameInfo,
         assets: &RendererAssetsReadOnly<'_, P>
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
+    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -426,10 +423,9 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             HistoryResourceEntry::Current,
         );
 
-        let back_buffer_res = swapchain.next_backbuffer();
-        if back_buffer_res.is_err() {
-            return Err(SwapchainError::Other);
-        }
+        let backbuffer = swapchain.next_backbuffer()?;
+        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -438,7 +434,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             new_access: BarrierAccess::RENDER_TARGET_WRITE, // BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::RenderTarget, // TextureLayout::CopyDst,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
@@ -461,7 +457,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         cmd_buf.flush_barriers();
 
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute::<P>(context, &mut cmd_buf, &params.assets, &sharpened_view, swapchain.backbuffer(), sampler, resolution);
+        self.blit_pass.execute::<P>(context, &mut cmd_buf, &params.assets, &sharpened_view, backbuffer_view, sampler, resolution);
         std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,
@@ -470,12 +466,15 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::RenderTarget, // TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
 
-        Ok(cmd_buf.finish())
+        Ok(RenderPathResult {
+            cmd_buffer: cmd_buf.finish(),
+            backbuffer: Some(backbuffer)
+        })
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

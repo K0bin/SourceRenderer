@@ -16,6 +16,7 @@ rayon = "1.9.0"
 crossbeam-utils = "0.8.19"
 parking_lot = "0.12.1"
 serde_json = "1.0"
+log = "0.4.22"
 
 [build-dependencies]
 build-util = { path = "../../build_util" }

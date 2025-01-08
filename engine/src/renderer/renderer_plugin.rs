@@ -122,12 +122,11 @@ impl<P: Platform> RendererPlugin<P> {
         Self { _a: Default::default() }
     }
 
-    pub fn stop(app: &App) {
-        if !app.world().contains_resource::<RendererResourceWrapper<P>>() {
-            return;
+    pub fn stop(app: &mut App) {
+        let renderer_resource_opt = app.world_mut().remove_resource::<RendererResourceWrapper<P>>();
+        if let Some(resource) = renderer_resource_opt {
+            resource.sender.stop();
         }
-        let resource = app.world().resource::<RendererResourceWrapper<P>>();
-        resource.sender.stop();
     }
 
     pub fn window_changed(app: &App, window_state: WindowState) {

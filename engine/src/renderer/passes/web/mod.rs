@@ -7,9 +7,7 @@ use crate::graphics::GraphicsContext;
 use crate::input::Input;
 use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
+    FrameInfo, RenderPath, RenderPathResult, SceneInfo
 };
 use crate::renderer::renderer_resources::RendererResources;
 
@@ -103,15 +101,12 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
         frame_info: &FrameInfo,
         assets: &RendererAssetsReadOnly<'_, P>
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
-        let back_buffer_res = swapchain.next_backbuffer();
-        if let Err(e) = back_buffer_res{
-            return Err(e);
-        }
+    ) -> Result<RenderPathResult<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
+        let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
@@ -133,20 +128,25 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
         let camera_buffer = cmd_buffer.upload_dynamic_data(&[main_view.proj_matrix * main_view.view_matrix], BufferUsage::CONSTANT).unwrap();
 
+        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
         self.geometry.execute(
             &mut cmd_buffer,
             scene.scene,
             main_view,
             &camera_buffer,
             &self.resources,
-            swapchain.backbuffer(),
-            swapchain.backbuffer_handle(),
+            backbuffer_view,
+            backbuffer_handle,
             swapchain.width(),
             swapchain.height(),
             assets,
         );
 
-        return Ok(cmd_buffer.finish());
+        return Ok(RenderPathResult {
+            cmd_buffer: cmd_buffer.finish(),
+            backbuffer: Some(backbuffer)
+        });
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

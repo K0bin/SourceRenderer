@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{gpu::{GPUBackend, SwapchainError, Swapchain as _, Format, SampleCount, TextureViewInfo}, Matrix4};
+use sourcerenderer_core::{gpu::{Backbuffer, Format, GPUBackend, SampleCount, Swapchain as GPUSwapchain, SwapchainError, TextureViewInfo}, Matrix4};
 
 use super::{DeferredDestroyer, Device};
 
@@ -9,70 +9,19 @@ pub struct Swapchain<B: GPUBackend> {
     device: Arc<B::Device>,
     destroyer: Arc<DeferredDestroyer<B>>,
     swapchain: B::Swapchain,
-    views: SmallVec<[Arc<super::TextureView<B>>; 5]>
+    views: HashMap<u64, Arc<super::TextureView<B>>>,
+    recreation_count: u32
 }
 
 impl<B: GPUBackend> Swapchain<B> {
     pub fn new(swapchain: B::Swapchain, device: &Device<B>) -> Self {
-        let views = Self::create_image_views(device.handle(), device.destroyer(), &swapchain);
         Self {
             swapchain,
             destroyer: device.destroyer().clone(),
             device: device.handle().clone(),
-            views
+            views: HashMap::new(),
+            recreation_count: 0u32
         }
-    }
-
-    fn create_image_views(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, swapchain: &B::Swapchain) -> SmallVec<[Arc<super::TextureView<B>>; 5]> {
-        let count = swapchain.backbuffer_count();
-        let mut views = SmallVec::<[Arc<super::TextureView<B>>; 5]>::with_capacity(count as usize);
-        for i in 0..count {
-            let name = format!("Backbuffer_{}", i);
-
-            unsafe {
-                views.push(
-                    Arc::new(
-                        super::TextureView::new_from_texture_handle(
-                            device, destroyer, swapchain.backbuffer(i),
-                            &TextureViewInfo::default(), Some(&name)
-                        )
-                    )
-                );
-            }
-        }
-        views
-    }
-
-    pub fn recreate(old: Self, width: u32, height: u32) -> Result<Self, SwapchainError> {
-        let new_sc = unsafe {
-            B::Swapchain::recreate(old.swapchain, width, height)
-        }?;
-        let views = Self::create_image_views(&old.device, &old.destroyer, &new_sc);
-
-        Ok(Self {
-            swapchain: new_sc,
-            views,
-            destroyer: old.destroyer.clone(),
-            device: old.device.clone()
-        })
-    }
-
-    pub fn recreate_on_surface(old: Self, surface: B::Surface, width: u32, height: u32) -> Result<Self, SwapchainError> {
-        let new_sc = unsafe {
-            B::Swapchain::recreate_on_surface(old.swapchain, surface, width, height)
-        }?;
-        let views = Self::create_image_views(&old.device, &old.destroyer, &new_sc);
-
-        Ok(Self {
-            swapchain: new_sc,
-            views,
-            destroyer: old.destroyer.clone(),
-            device: old.device.clone()
-        })
-    }
-
-    pub fn sample_count(&self) -> SampleCount {
-        self.swapchain.sample_count()
     }
 
     pub fn format(&self) -> Format {
@@ -83,22 +32,41 @@ impl<B: GPUBackend> Swapchain<B> {
         self.swapchain.surface()
     }
 
-    pub fn next_backbuffer(&self) -> Result<(), SwapchainError> {
-        unsafe { self.swapchain.next_backbuffer() }
+    pub fn recreate(&mut self) {
+        unsafe { self.swapchain.recreate(); }
+        self.views.clear();
+        self.recreation_count += 1;
     }
 
-    pub fn backbuffer_index(&self) -> u32 {
-        self.swapchain.backbuffer_index()
+    pub fn backbuffer_view(&self, backbuffer: &<B::Swapchain as GPUSwapchain<B>>::Backbuffer) -> &Arc<super::TextureView<B>>{
+        self.views.get(&backbuffer.key()).unwrap()
     }
 
-    pub fn backbuffer(&self) -> &Arc<super::TextureView<B>> {
-        let idx = self.swapchain.backbuffer_index();
-        &self.views[idx as usize]
+    pub fn ensure_backbuffer_view(&mut self, backbuffer: &<B::Swapchain as GPUSwapchain<B>>::Backbuffer) {
+        let key = backbuffer.key();
+        self.views.entry(key).or_insert_with(|| {
+            unsafe {
+                let texture = self.swapchain.texture_for_backbuffer(backbuffer);
+                Arc::new(
+                    super::TextureView::new_from_texture_handle(
+                        &self.device, &self.destroyer, texture,
+                        &TextureViewInfo::default(), None
+                    )
+                )
+            }
+        });
     }
 
-    pub fn backbuffer_handle(&self) -> &B::Texture {
-        let idx = self.swapchain.backbuffer_index();
-        self.swapchain.backbuffer(idx)
+    pub fn backbuffer_handle(&self, backbuffer: &<B::Swapchain as GPUSwapchain<B>>::Backbuffer) -> &B::Texture {
+        unsafe { self.swapchain.texture_for_backbuffer(backbuffer) }
+    }
+
+    pub fn next_backbuffer(&mut self) -> Result<Arc<<B::Swapchain as GPUSwapchain<B>>::Backbuffer>, SwapchainError> {
+        let result = unsafe { self.swapchain.next_backbuffer() };
+        if let Ok(backbuffer) = result.as_ref() {
+            self.ensure_backbuffer_view(backbuffer);
+        }
+        result.map(|bb| Arc::new(bb))
     }
 
     pub fn transform(&self) -> Matrix4 {
@@ -115,5 +83,9 @@ impl<B: GPUBackend> Swapchain<B> {
 
     pub fn handle(&self) -> &B::Swapchain {
         &self.swapchain
+    }
+
+    pub fn handle_mut(&mut self) -> &mut B::Swapchain {
+        &mut self.swapchain
     }
 }

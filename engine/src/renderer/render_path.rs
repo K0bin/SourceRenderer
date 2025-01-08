@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLockReadGuard};
 use std::time::Duration;
 
-use sourcerenderer_core::gpu::GPUBackend;
+use sourcerenderer_core::gpu::{self, GPUBackend};
 use sourcerenderer_core::Platform;
 
 use super::asset::{RendererAssetsReadOnly, RendererTexture};
@@ -32,6 +32,11 @@ pub struct RenderPassParameters<'a, P: Platform> {
     pub assets: &'a RendererAssetsReadOnly<'a, P>
 }
 
+pub struct RenderPathResult<B: GPUBackend> {
+    pub cmd_buffer: FinishedCommandBuffer<B>,
+    pub backbuffer: Option<Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>>
+}
+
 pub trait RenderPath<P: Platform> : Send {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
@@ -41,11 +46,11 @@ pub trait RenderPath<P: Platform> : Send {
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
         frame_info: &FrameInfo,
         assets: &RendererAssetsReadOnly<'_, P>,
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError>;
+    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError>;
 }
 
 pub struct NoOpRenderPath;
@@ -57,16 +62,16 @@ impl<P: Platform> RenderPath<P> for NoOpRenderPath {
     fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
     fn on_swapchain_changed(&mut self, _swapchain: &Swapchain<<P as Platform>::GPUBackend>) {}
     fn set_ui_data(&mut self, _data: UIDrawData<<P as Platform>::GPUBackend>) {}
-    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool { true }
+    fn is_ready(&self, _asset_manager: &Arc<AssetManager<P>>) -> bool { true }
     fn render(
         &mut self,
         context: &mut GraphicsContext<<P as Platform>::GPUBackend>,
-        swapchain: &Arc<Swapchain<<P as Platform>::GPUBackend>>,
+        swapchain: &mut Swapchain<<P as Platform>::GPUBackend>,
         _scene: &SceneInfo<<P as Platform>::GPUBackend>,
         _frame_info: &FrameInfo,
         _assets: &RendererAssetsReadOnly<'_, P>,
-    ) -> Result<FinishedCommandBuffer<<P as Platform>::GPUBackend>, SwapchainError> {
-        swapchain.next_backbuffer()?;
+    ) -> Result<RenderPathResult<<P as Platform>::GPUBackend>, SwapchainError> {
+        let backbuffer = swapchain.next_backbuffer()?;
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::all(),
@@ -75,10 +80,13 @@ impl<P: Platform> RenderPath<P> for NoOpRenderPath {
             new_layout: TextureLayout::Present,
             old_access: BarrierAccess::empty(),
             new_access: BarrierAccess::empty(),
-            texture: swapchain.backbuffer_handle(),
+            texture: swapchain.backbuffer_handle(&backbuffer),
             range: BarrierTextureRange::default(),
             queue_ownership: None,
         }]);
-        Ok(cmd_buffer.finish())
+        Ok(RenderPathResult {
+            cmd_buffer: cmd_buffer.finish(),
+            backbuffer: Some(backbuffer)
+        })
     }
 }

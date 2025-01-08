@@ -15,7 +15,7 @@ use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use bevy_hierarchy::HierarchyPlugin;
 
-use log::trace;
+use log::{trace, warn};
 use sourcerenderer_core::platform::{
     Event,
     Platform,
@@ -46,7 +46,10 @@ pub enum WindowState {
 
 pub const TICK_RATE: u32 = 5;
 
-pub struct Engine(App);
+pub struct Engine{
+    app: App,
+    is_running: bool
+}
 
 impl Engine {
     pub fn run<P: Platform, M>(platform: &P, game_plugins: impl Plugins<M>) -> Self {
@@ -77,11 +80,19 @@ impl Engine {
             app.cleanup();
         }
 
-        Self(app)
+        Self {
+            app,
+            is_running: true
+        }
     }
 
     pub fn frame<P: Platform>(&mut self) {
-        let app = &mut self.0;
+        if !self.is_running {
+            warn!("Frame called after engine was stopped.");
+            return;
+        }
+
+        let app = &mut self.app;
         let plugins_state = app.plugins_state();
         if plugins_state == PluginsState::Ready {
             app.finish();
@@ -107,34 +118,36 @@ impl Engine {
     }
 
     pub fn dispatch_keyboard_input(&mut self, input: KeyboardInput) {
-        self.0.world_mut().send_event(input);
+        self.app.world_mut().send_event(input);
     }
 
     pub fn dispatch_mouse_motion(&mut self, motion: MouseMotion) {
-        self.0.world_mut().send_event(motion);
+        self.app.world_mut().send_event(motion);
     }
 
     pub fn window_changed<P: Platform>(&mut self, window_state: WindowState) {
-        RendererPlugin::<P>::window_changed(&self.0, window_state);
+        RendererPlugin::<P>::window_changed(&self.app, window_state);
     }
 
     pub fn is_running(&self) -> bool {
-        !self.0.should_exit().is_some()
+        self.is_running
     }
 
-    pub fn stop<P: Platform>(&self) {
+    pub fn stop<P: Platform>(&mut self) {
+        if !self.is_running {
+            return;
+        }
         trace!("Stopping engine");
-
-        RendererPlugin::<P>::stop(&self.0);
+        RendererPlugin::<P>::stop(&mut self.app);
     }
 
     pub fn debug_world(&self) {
-        let entities = self.0.world().iter_entities();
+        let entities = self.app.world().iter_entities();
         println!("WORLD");
         for entity in entities {
             let components = entity.archetype().components();
             for component in components {
-                let component_name = self.0.world().components().get_name(component);
+                let component_name = self.app.world().components().get_name(component);
                 println!("ENTITY: {:?}, COMPONENT: {:?}", entity.id(), component_name);
             }
         }

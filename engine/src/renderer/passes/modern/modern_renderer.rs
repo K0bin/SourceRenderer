@@ -33,10 +33,7 @@ use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 use crate::renderer::passes::ssr::SsrPass;
 use crate::renderer::passes::ui::UIPass;
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
-    RenderPassParameters,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
 };
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -381,11 +378,11 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
     fn render(
         &mut self,
         context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
         frame_info: &FrameInfo,
         assets: &RendererAssetsReadOnly<'_, P>,
-    ) -> Result<FinishedCommandBuffer<P::GPUBackend>, SwapchainError> {
+    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -557,9 +554,8 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             HistoryResourceEntry::Current,
         );
 
-        if swapchain.next_backbuffer().is_err() {
-            return Err(SwapchainError::Other);
-        }
+        let backbuffer = swapchain.next_backbuffer()?;
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -568,12 +564,12 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             new_access: BarrierAccess::COPY_WRITE,
             old_layout: TextureLayout::Undefined,
             new_layout: TextureLayout::CopyDst,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        cmd_buf.blit_to_handle(&*output_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
+        cmd_buf.blit_to_handle(&*output_texture, 0, 0, backbuffer_handle, 0, 0);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::COPY,
             new_sync: BarrierSync::empty(),
@@ -581,13 +577,16 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
             new_access: BarrierAccess::empty(),
             old_layout: TextureLayout::CopyDst,
             new_layout: TextureLayout::Present,
-            texture: swapchain.backbuffer_handle(),
+            texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
             queue_ownership: None
         }]);
         std::mem::drop(output_texture);
 
-        return Ok(cmd_buf.finish());
+        return Ok(RenderPathResult {
+            cmd_buffer: cmd_buf.finish(),
+            backbuffer: Some(backbuffer)
+        });
     }
 
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {

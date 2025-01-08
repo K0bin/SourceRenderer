@@ -97,9 +97,9 @@ impl gpu::Queue<VkBackend> for VkQueue {
                 });
             }
 
-            if let Some(swapchain) = submission.acquire_swapchain {
+            if let Some((swapchain, indices)) = &submission.acquire_swapchain {
                 semaphores.push(vk::SemaphoreSubmitInfo {
-                    semaphore: swapchain.acquire_semaphore().handle(),
+                    semaphore: swapchain.acquire_semaphore(indices.acquire_semaphore_index).handle(),
                     value: 0u64,
                     stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
@@ -117,9 +117,9 @@ impl gpu::Queue<VkBackend> for VkQueue {
                 });
             }
 
-            if let Some(swapchain) = submission.release_swapchain {
+            if let Some((swapchain, indices)) = &submission.release_swapchain {
                 semaphores.push(vk::SemaphoreSubmitInfo {
-                    semaphore: swapchain.present_semaphore().handle(),
+                    semaphore: swapchain.present_semaphore(indices.present_semaphore_index).handle(),
                     value: 0u64,
                     stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
@@ -136,17 +136,17 @@ impl gpu::Queue<VkBackend> for VkQueue {
                 let submission_cmd_buffer_ptr = cmd_buffer_ptr;
                 cmd_buffer_ptr = cmd_buffer_ptr.add(submission.command_buffers.len());
                 let submission_wait_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(submission.wait_fences.len() + submission.acquire_swapchain.map_or(0, |_| 1));
+                semaphore_ptr = semaphore_ptr.add(submission.wait_fences.len() + submission.acquire_swapchain.as_ref().map_or(0, |_| 1));
                 let submission_signal_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(submission.signal_fences.len() + submission.release_swapchain.map_or(0, |_| 1));
+                semaphore_ptr = semaphore_ptr.add(submission.signal_fences.len() + submission.release_swapchain.as_ref().map_or(0, |_| 1));
 
                 vk::SubmitInfo2 {
                     flags: vk::SubmitFlags::empty(),
-                    wait_semaphore_info_count: submission.wait_fences.len() as u32 + submission.acquire_swapchain.map_or(0, |_| 1),
+                    wait_semaphore_info_count: submission.wait_fences.len() as u32 + submission.acquire_swapchain.as_ref().map_or(0, |_| 1),
                     p_wait_semaphore_infos: submission_wait_semaphores_ptr,
                     command_buffer_info_count: submission.command_buffers.len() as u32,
                     p_command_buffer_infos: submission_cmd_buffer_ptr,
-                    signal_semaphore_info_count: submission.signal_fences.len() as u32 + submission.release_swapchain.map_or(0, |_| 1),
+                    signal_semaphore_info_count: submission.signal_fences.len() as u32 + submission.release_swapchain.as_ref().map_or(0, |_| 1),
                     p_signal_semaphore_infos: submission_signal_semaphores_ptr,
                     ..Default::default()
                 }
@@ -158,39 +158,9 @@ impl gpu::Queue<VkBackend> for VkQueue {
             .unwrap();
     }
 
-    unsafe fn present(&self, swapchain: &VkSwapchain) {
-        let guard = self.lock_queue();
-        let sc_handle_guard = swapchain.handle();
-        let sc_handle = *sc_handle_guard;
-        let present_info = vk::PresentInfoKHR {
-            wait_semaphore_count: 1,
-            p_wait_semaphores: &swapchain.present_semaphore().handle() as *const vk::Semaphore,
-            swapchain_count: 1,
-            p_swapchains: &sc_handle as *const vk::SwapchainKHR,
-            p_image_indices: &swapchain.backbuffer_index() as *const u32,
-            p_results: std::ptr::null_mut(),
-            ..Default::default()
-        };
-        let result = swapchain.swapchain_device().queue_present(*guard, &present_info);
-        match result {
-            Ok(suboptimal) => {
-                if suboptimal {
-                    swapchain.set_state(VkSwapchainState::Suboptimal);
-                }
-            }
-            Err(err) => match err {
-                vk::Result::ERROR_OUT_OF_DATE_KHR => {
-                    swapchain.set_state(VkSwapchainState::OutOfDate);
-                }
-                vk::Result::ERROR_SURFACE_LOST_KHR => {
-                    swapchain.surface().mark_lost();
-                }
-                _ => {
-                    panic!("Present failed: {:?}", err);
-                }
-            }
-        }
-        swapchain.bump_present_counter();
+    unsafe fn present(&self, swapchain: &mut VkSwapchain, backbuffer_indices: &VkBackbufferIndices) {
+        let guard: parking_lot::lock_api::ReentrantMutexGuard<'_, parking_lot::RawMutex, parking_lot::RawThreadId, vk::Queue> = self.lock_queue();
+        swapchain.present(*guard, backbuffer_indices);
     }
 
     unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, flags: gpu::CommandPoolFlags) -> VkCommandPool {

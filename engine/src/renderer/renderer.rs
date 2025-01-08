@@ -47,8 +47,8 @@ use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
 use crate::graphics::*;
 
-#[cfg(not(target_arch = "wasm32"))]
-use super::passes::modern::ModernRenderer;
+//#[cfg(not(target_arch = "wasm32"))]
+//use super::passes::modern::ModernRenderer;
 
 struct RendererState {
     queued_frames_counter: Mutex<u32>, // we need the mutex for the condvar anyway
@@ -76,7 +76,7 @@ pub struct Renderer<P: Platform> {
     resources: RendererResources<P::GPUBackend>,
     scene: RendererScene<P::GPUBackend>,
     context: GraphicsContext<P::GPUBackend>,
-    swapchain: Arc<Swapchain<P::GPUBackend>>,
+    swapchain: Arc<Mutex<Swapchain<P::GPUBackend>>>,
     render_path: Box<dyn RenderPath<P>>,
 
     last_frame: Instant,
@@ -97,6 +97,7 @@ impl<P: Platform> Renderer<P> {
 
         trace!("Initializing render path");
         let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, asset_manager));
+        //let render_path: Box<dyn RenderPath<P>> = Box::new(NoOpRenderPath);
 
         let renderer = Self {
             device: device.clone(),
@@ -109,7 +110,7 @@ impl<P: Platform> Renderer<P> {
             asset_manager: asset_manager.clone(),
             resources: RendererResources::new(device),
             scene: RendererScene::new(),
-            swapchain: Arc::new(swapchain),
+            swapchain: Arc::new(Mutex::new(swapchain)),
             context,
             render_path,
             last_frame: Instant::now(),
@@ -134,6 +135,9 @@ impl<P: Platform> Renderer<P> {
     pub fn render(&mut self) {
         self.asset_manager
             .flush_renderer_assets();
+
+        // Flush all submissions from the last frame in case this hasn't happened yet.
+        self.device.flush_all();
 
         let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
         if cfg!(feature = "threading") {
@@ -173,36 +177,40 @@ impl<P: Platform> Renderer<P> {
             lightmap: None,
         };
 
+        let mut swapchain_guard = self.swapchain.lock().unwrap();
         self.context.begin_frame();
-        let result_cmd_buffer = self.render_path.render(
+        let render_path_result = self.render_path.render(
             &mut self.context,
-            &self.swapchain,
+            &mut swapchain_guard,
             &scene_info,
             &frame_info,
             &assets
         );
         let frame_end_signal = self.context.end_frame();
 
-        match result_cmd_buffer {
-            Ok(cmd_buffer) => {
+        match render_path_result {
+            Ok(result) => {
                 self.device.submit(QueueType::Graphics, QueueSubmission {
-                    command_buffer: cmd_buffer,
+                    command_buffer: result.cmd_buffer,
                     wait_fences: &[],
                     signal_fences: &[frame_end_signal],
-                    acquire_swapchain: Some(&self.swapchain),
-                    release_swapchain: Some(&self.swapchain)
+                    acquire_swapchain: result.backbuffer.as_ref().map(|backbuffer| (&self.swapchain, backbuffer)),
+                    release_swapchain: result.backbuffer.as_ref().map(|backbuffer| (&self.swapchain, backbuffer))
                 });
-                self.device.present(QueueType::Graphics, &self.swapchain);
-
-                let c_device = self.device.clone();
-                bevy_tasks::ComputeTaskPool::get().spawn(async move {
-                    c_device.flush(QueueType::Graphics)
-                }).detach();
+                if let Some(backbuffer) = result.backbuffer {
+                    self.device.present(QueueType::Graphics, &self.swapchain, backbuffer);
+                }
             },
             Err(_swapchain_err) => {
                 todo!("Handle swapchain recreation");
             }
         }
+        std::mem::drop(swapchain_guard);
+
+        let c_device = self.device.clone();
+        bevy_tasks::ComputeTaskPool::get().spawn(async move {
+            c_device.flush(QueueType::Graphics)
+        }).detach();
 
 
         self.resources.swap_history_resources();

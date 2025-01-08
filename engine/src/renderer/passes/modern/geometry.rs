@@ -61,7 +61,7 @@ impl<P: Platform> GeometryPass<P> {
 
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
-        swapchain: &Arc<Swapchain<P::GPUBackend>>,
+        swapchain: &Swapchain<P::GPUBackend>,
         resources: &mut RendererResources<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
     ) -> Self {

@@ -1,4 +1,4 @@
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, mem::ManuallyDrop};
+use std::{mem::ManuallyDrop, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}};
 
 use log::trace;
 use sourcerenderer_core::gpu::{self, Device as GPUDevice};
@@ -244,15 +244,21 @@ impl<B: GPUBackend> Device<B> {
         virtual_queue.submit(submission);
     }
 
-    pub fn present(&self, queue_type: QueueType, swapchain: &Arc<Swapchain<B>>) {
-        let virtual_queue_opt = match queue_type {
+    pub fn present(&self, queue_type: QueueType, swapchain: &Arc<Mutex<Swapchain<B>>>, backbuffer: Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>) {
+        let virtual_queue_opt: Option<&Queue<B>> = match queue_type {
             QueueType::Graphics => Some(&self.graphics_queue),
             QueueType::Compute => self.compute_queue.as_ref(),
             QueueType::Transfer => self.transfer_queue.as_ref()
         };
 
         let virtual_queue = virtual_queue_opt.expect("Device does not support requested queue type.");
-        virtual_queue.present(swapchain);
+        virtual_queue.present(swapchain, backbuffer);
+    }
+
+    pub fn flush_all(&self) {
+        self.flush(QueueType::Graphics);
+        self.flush(QueueType::Compute);
+        self.flush(QueueType::Transfer);
     }
 
     pub fn flush(&self, queue_type: QueueType) {
@@ -264,8 +270,12 @@ impl<B: GPUBackend> Device<B> {
             QueueType::Transfer => (self.transfer_queue.as_ref(), self.device.transfer_queue())
         };
 
-        let virtual_queue = virtual_queue_opt.expect("Device does not support requested queue type.");
-        let queue = queue_opt.expect("Device does not support requested queue type.");
+        if virtual_queue_opt.is_none() || queue_opt.is_none() {
+            return;
+        }
+
+        let virtual_queue = virtual_queue_opt.unwrap();
+        let queue = queue_opt.unwrap();
 
         virtual_queue.flush(queue);
     }
