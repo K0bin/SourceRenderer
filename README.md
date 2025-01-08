@@ -1,5 +1,8 @@
 # SourceRenderer (needs a new name)
-Toy game engine written in Rust
+Toy game engine written in Rust.
+
+It uses large parts of Bevy. Some major exceptions are windowing, asset management and renderer.
+I had code for that before Bevy existed and I prefer my solutions.
 
 ## Features:
 * Low level unsafe graphics abstraction
@@ -48,7 +51,7 @@ Toy game engine written in Rust
     * Trivialized worker-thread pipeline compilation (runs on a worker thread if multi-threading is enabled)
     * Semi-automatic barrier handling
     * Automatic managing of texture views for GPU
-    * Geometry
+    * Geometry living in a single big buffer to allow better instancing
     * Two render paths are planned: (mostly broken or not yet implemented right now, existing code needs to be overhauled and cleaned up)
       * Modern
         * GPU-driven multi draw indirect
