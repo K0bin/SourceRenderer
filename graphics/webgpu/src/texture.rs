@@ -40,6 +40,13 @@ pub(crate) fn format_to_webgpu(format: Format) -> GpuTextureFormat {
     }
 }
 
+fn format_from_webgpu(format: GpuTextureFormat) -> Format {
+    match format {
+        GpuTextureFormat::Rgba8unorm => Format::RGBA8UNorm,
+        _ => todo!(),
+    }
+}
+
 pub(crate) fn texture_dimension_to_webgpu_view(texture_dimension: TextureDimension) -> GpuTextureViewDimension {
     match texture_dimension {
         TextureDimension::Dim1D => GpuTextureViewDimension::N1d,
@@ -147,10 +154,66 @@ impl WebGPUTexture {
         })
     }
 
-    pub fn from_texture(_device: &GpuDevice, texture: GpuTexture, info: &TextureInfo) -> Self {
+    pub fn from_texture(_device: &GpuDevice, texture: GpuTexture) -> Self {
+        let format = format_from_webgpu(texture.format());
+        let mut usage = TextureUsage::empty();
+        let web_usage = texture.usage();
+        if web_usage & web_sys::gpu_texture_usage::COPY_SRC != 0 {
+            usage |= TextureUsage::COPY_SRC;
+        }
+        if web_usage & web_sys::gpu_texture_usage::COPY_DST != 0 {
+            usage |= TextureUsage::COPY_DST;
+        }
+        if web_usage & web_sys::gpu_texture_usage::RENDER_ATTACHMENT != 0 {
+            if format.is_depth() || format.is_stencil() {
+                usage |= TextureUsage::DEPTH_STENCIL;
+            } else {
+                usage |= TextureUsage::RENDER_TARGET;
+            }
+
+        }
+        if web_usage & web_sys::gpu_texture_usage::STORAGE_BINDING != 0 {
+            usage |= TextureUsage::STORAGE;
+        }
+        if web_usage & web_sys::gpu_texture_usage::TEXTURE_BINDING != 0 {
+            usage |= TextureUsage::SAMPLED;
+        }
+
+        let info = TextureInfo {
+            width: texture.width(),
+            height: texture.height(),
+            dimension: match texture.dimension() {
+                web_sys::GpuTextureDimension::N1d => gpu::TextureDimension::Dim1D,
+                web_sys::GpuTextureDimension::N2d => gpu::TextureDimension::Dim2D,
+                web_sys::GpuTextureDimension::N3d => gpu::TextureDimension::Dim3D,
+                _ => todo!(),
+            },
+            depth: if texture.dimension() == web_sys::GpuTextureDimension::N3d {
+                texture.depth_or_array_layers() as u32
+            } else {
+                1
+            },
+            array_length: if texture.dimension() == web_sys::GpuTextureDimension::N3d {
+                1
+            } else {
+                texture.depth_or_array_layers() as u32
+            },
+            format: format_from_webgpu(texture.format()),
+            mip_levels: texture.mip_level_count() as u32,
+            samples: match texture.sample_count() {
+                1 => SampleCount::Samples1,
+                2 => SampleCount::Samples2,
+                4 => SampleCount::Samples4,
+                8 => SampleCount::Samples8,
+                _ => panic!("Unsupported sample count")
+            },
+            usage,
+            supports_srgb: false,
+        };
+
         Self {
             texture,
-            info: info.clone()
+            info
         }
     }
 

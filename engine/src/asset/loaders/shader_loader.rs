@@ -21,11 +21,7 @@ impl ShaderLoader {
 
 impl<P: Platform> AssetLoader<P> for ShaderLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        if cfg!(target_arch = "wasm32") {
-            file.path.ends_with(".glsl")
-        } else {
-            file.path.ends_with(".json")
-        }
+        file.path.ends_with(".json")
     }
 
     async fn load(

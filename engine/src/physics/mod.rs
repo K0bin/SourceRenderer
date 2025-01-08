@@ -4,7 +4,7 @@ use std::collections::{
 };
 
 use bevy_transform::components::Transform;
-use instant::Duration;
+use web_time::Duration;
 use legion::systems::Builder;
 use legion::world::SubWorld;
 use legion::{

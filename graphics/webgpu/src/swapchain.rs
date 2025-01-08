@@ -6,45 +6,48 @@ use web_sys::{GpuDevice, GpuTexture, GpuTextureFormat};
 
 use crate::{buffer, surface::WebGPUSurface, texture::WebGPUTexture, WebGPUBackend};
 
-pub struct WebGPUBackbuffer(u32);
+pub struct WebGPUBackbuffer{
+    texture: WebGPUTexture,
+    key: u32
+}
 
 impl Backbuffer for WebGPUBackbuffer {
     fn key(&self) -> u64 {
-        self.0 as u64
+        self.key as u64
     }
 }
 
 pub struct WebGPUSwapchain {
     device: GpuDevice,
     surface: WebGPUSurface,
-    backbuffers: SmallVec::<[WebGPUTexture; 5]>,
-    index: u32
+    backbuffer_counter: u32
 }
 
 unsafe impl Send for WebGPUSwapchain {}
 unsafe impl Sync for WebGPUSwapchain {}
 
 impl WebGPUSwapchain {
-    pub fn new(device: &GpuDevice, surface: WebGPUSurface, buffer_count: u32) -> Self {
-        let backbuffers = Self::create_backbuffers(device, surface.texture_info(), buffer_count);
+    pub fn new(device: &GpuDevice, surface: WebGPUSurface) -> Self {
         Self {
             device: device.clone(),
             surface,
-            backbuffers,
-            index: 0u32
+            backbuffer_counter: 0u32
         }
     }
 
-    fn create_backbuffers(device: &GpuDevice, info: &TextureInfo, buffer_count: u32) -> SmallVec<[WebGPUTexture; 5]> {
-        let mut buffers: SmallVec<[WebGPUTexture; 5]> = SmallVec::<[WebGPUTexture; 5]>::with_capacity(buffer_count as usize);
-        for i in 0..buffer_count {
-            buffers.push(WebGPUTexture::new(device, &info, Some(&format!("Backbuffer {}", i))).unwrap());
+    fn read_backbuffer_key(&mut self, texture: &GpuTexture) -> u32 {
+        // This is completely terrible.
+        let label = texture.label();
+        const PREFIX: &'static str = "Backbuffer ";
+        if label.is_empty() {
+            let key = self.backbuffer_counter;
+            texture.set_label(&format!("{}{:05}", PREFIX, key));
+            self.backbuffer_counter += 1;
+            return key;
         }
-        buffers
-    }
 
-    pub(crate) fn get_current_texture(&self) -> Result<GpuTexture, ()> {
-        self.surface.canvas_context().get_current_texture().map_err(|_| ())
+        let key_res = label[PREFIX.len()..].parse::<u32>();
+        key_res.expect("Texture is not a backbuffer or was named somewhere else.")
     }
 }
 
@@ -54,13 +57,18 @@ impl Swapchain<WebGPUBackend> for WebGPUSwapchain {
     unsafe fn recreate(&mut self) {}
 
     unsafe fn next_backbuffer(&mut self) -> Result<WebGPUBackbuffer, SwapchainError> {
-        self.surface.canvas_context().get_current_texture();
-        self.index = (self.index + 1) % (self.backbuffers.len() as u32);
-        Ok(WebGPUBackbuffer(self.index))
+        let web_texture = self.surface.canvas_context().get_current_texture()
+            .map_err(|_e| SwapchainError::Other)?;
+        let key = self.read_backbuffer_key(&web_texture);
+        let texture = WebGPUTexture::from_texture(&self.device, web_texture);
+        Ok(WebGPUBackbuffer {
+            texture,
+            key
+        })
     }
 
     unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a WebGPUBackbuffer) -> &'a WebGPUTexture {
-        &self.backbuffers[backbuffer.0 as usize]
+        &backbuffer.texture
     }
 
     fn format(&self) -> Format {

@@ -1,10 +1,6 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::hash::Hash;
-
 use metal::{self, MetalDrawable};
 use metal::foreign_types::ForeignTypeRef;
 
-use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Backbuffer, Format, Texture};
 use sourcerenderer_core::Matrix4;
 
@@ -81,10 +77,6 @@ impl MTLSwapchain {
         }
     }
 
-    pub(crate) fn take_drawable(&self) -> MetalDrawable {
-        self.surface.layer.next_drawable().unwrap().to_owned()
-    }
-
     pub(crate) fn present(&self, cmd_buffer: &metal::CommandBuffer, backbuffer: &MTLBackbuffer) {
         cmd_buffer.present_drawable(&backbuffer.drawable);
     }
@@ -95,7 +87,7 @@ impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
 
     unsafe fn next_backbuffer(&mut self) -> Result<MTLBackbuffer, gpu::SwapchainError> {
         let drawable = self.surface.layer.next_drawable().unwrap().to_owned();
-        let texture = MTLTexture::from_mtl_texture(drawable.texture(), false);
+        let texture = MTLTexture::from_mtl_texture(drawable.texture(), true);
 
         self.width = texture.info().width;
         self.height = texture.info().height;

@@ -18,7 +18,8 @@ const config = {
     },
     plugins: [
         wasm(),
-    ]
+    ],
+    appType: "mpa"
   }
 
 export default config

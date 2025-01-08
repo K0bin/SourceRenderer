@@ -23,7 +23,7 @@ impl Window<WebPlatform> for WebWindow {
     }
 
     fn create_swapchain(&self, _vsync: bool, device: &WebGPUDevice, surface: WebGPUSurface) -> WebGPUSwapchain {
-        WebGPUSwapchain::new(device.handle(), surface, 1)
+        WebGPUSwapchain::new(device.handle(), surface)
     }
 
     fn width(&self) -> u32 {

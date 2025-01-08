@@ -7,7 +7,7 @@ use std::sync::{
     Condvar,
     Mutex
 };
-use std::time::Instant;
+use web_time::Instant;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
@@ -15,7 +15,7 @@ use bevy_math::Affine3A;
 use crossbeam_channel::{
     unbounded, Receiver, Sender, TryRecvError
 };
-use instant::Duration;
+use web_time::Duration;
 use log::{info, trace, warn};
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::platform::{

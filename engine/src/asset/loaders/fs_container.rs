@@ -67,11 +67,16 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
             path
         };
         let final_path = self.path.join(path_without_metadata);
-        let mut file = if !self.external {
-            <P::IO as IO>::open_asset(final_path.clone()).await.ok()?
+        let mut file_res = if !self.external {
+            <P::IO as IO>::open_asset(final_path.clone()).await
         } else {
-            <P::IO as IO>::open_external_asset(final_path.clone()).await.ok()?
+            <P::IO as IO>::open_external_asset(final_path.clone()).await
         };
+        if let Err(e) = file_res {
+            log::error!("Failed to load file using platform API. Path: {}, Error: \n{:?}", path, e);
+            return None;
+        }
+        let mut file = file_res.unwrap();
         if let Some(watcher) = self.watcher.as_ref() {
             trace!("Registering file for watcher: {} in FSContainer", path);
             let mut watcher_locked = watcher.lock().unwrap();

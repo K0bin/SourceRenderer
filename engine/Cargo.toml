@@ -26,7 +26,7 @@ smallvec = { version = "1.13.1", features = [ "union", "const_generics", "const_
 gltf = { version = "1.4.0", features = ["KHR_lights_punctual"] }
 rand = "0.8.5"
 bitset-core = "0.1.1"
-instant = "0.1.12"
+web-time = "1.1.0"
 log = "0.4.21"
 rapier3d = { version = "0.21.0", features = [ "enhanced-determinism", "f32" ] }
 half = "2.4.0"
@@ -67,7 +67,7 @@ fsr2 = { path = "../vendor/fsr2" }
 [features]
 default = [ "threading" ]
 threading = [ "bevy_tasks/multi_threaded", "bevy_ecs/multi_threaded" ]
-web = ["instant/wasm-bindgen", "instant/inaccurate", "rapier3d/wasm-bindgen"]
+web = ["rapier3d/wasm-bindgen"]
 profile = [ "profiling/profile-with-optick" ]
 
 [profile.release]

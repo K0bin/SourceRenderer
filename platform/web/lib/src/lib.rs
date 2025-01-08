@@ -1,8 +1,9 @@
+use js_sys::{Promise, Uint8Array};
 use log::info;
 use platform::WebPlatform;
 use sourcerenderer_engine::Engine as ActualEngine;
 use sourcerenderer_game::GamePlugin;
-use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 use web_sys::{Navigator, OffscreenCanvas};
 
 mod platform;
@@ -39,4 +40,10 @@ pub async fn start_engine(navigator: Navigator, canvas: OffscreenCanvas) -> Engi
     engine
   };
   wrapper
+}
+
+#[wasm_bindgen(module = "/src/web_glue.ts")]
+extern "C" {
+  #[wasm_bindgen(js_name = "fetchAsset", catch)]
+  pub async fn fetch_asset(path: &str) -> Result<Uint8Array, JsValue>;
 }

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use instant::Duration;
+use web_time::Duration;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4,

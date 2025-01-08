@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicU64;
-use std::time::Duration;
+use web_time::Duration;
 
 use atomic_refcell::AtomicRefCell;
 use bevy_app::{
@@ -54,9 +54,6 @@ use crate::{
     ActiveCamera,
     Camera,
 };
-
-#[cfg(not(feature = "threading"))]
-use bevy_utils::synccell::SyncCell;
 
 #[derive(Event)]
 struct WindowSizeChangedEvent {

@@ -10,13 +10,14 @@ pub struct AssetPlaceholders<P: Platform> {
 
 impl<P: Platform> AssetPlaceholders<P> {
     pub fn new(device: &crate::graphics::Device<P::GPUBackend>) -> Self {
-        let zero_data = [255u8; 16];
+        let mut zero_data = Vec::<u8>::with_capacity(64 * 64 * 4);
+        zero_data.fill(255u8);
         let zero_texture = device.create_texture(
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
                 format: Format::RGBA8UNorm,
-                width: 2,
-                height: 2,
+                width: 64,
+                height: 64,
                 depth: 1,
                 mip_levels: 1,
                 array_length: 1,
@@ -42,15 +43,13 @@ impl<P: Platform> AssetPlaceholders<P> {
             bindless_index: zero_index,
         };
 
-        let zero_data_black = [
-            0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8, 0u8, 0u8, 0u8, 255u8,
-        ];
+        zero_data.fill(0u8);
         let zero_texture_black = device.create_texture(
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
                 format: Format::RGBA8UNorm,
-                width: 2,
-                height: 2,
+                width: 64,
+                height: 64,
                 depth: 1,
                 mip_levels: 1,
                 array_length: 1,
@@ -60,7 +59,7 @@ impl<P: Platform> AssetPlaceholders<P> {
             },
             Some("AssetManagerZeroTextureBlack"),
         ).unwrap();
-        device.init_texture(&zero_data_black, &zero_texture_black, 0, 0).unwrap();
+        device.init_texture(&zero_data, &zero_texture_black, 0, 0).unwrap();
         let zero_view_black = device.create_texture_view(
             &zero_texture_black,
             &TextureViewInfo::default(),

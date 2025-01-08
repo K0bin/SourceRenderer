@@ -133,14 +133,12 @@ impl Buffer for WebGPUBuffer {
         if !self.mappable {
             return None;
         }
-
-        let was_mapped = self.mapped.swap(true, std::sync::atomic::Ordering::Acquire);
         length = length.min(self.info.size - offset);
         assert_eq!(offset % 8, 0);
         assert_eq!(length % 4, 0);
 
         let mut memory_opt: std::cell::RefMut<'_, Option<Box<[u8]>>> = self.rust_memory.borrow_mut();
-        if memory_opt.is_none() {
+        if (&*memory_opt).is_none() {
             assert!(!self.keep_rust_memory);
             let mut memory_vec = Vec::with_capacity(self.info.size as usize);
             unsafe { memory_vec.set_len(self.info.size as usize); }
@@ -148,32 +146,8 @@ impl Buffer for WebGPUBuffer {
         }
         let memory = memory_opt.as_mut().unwrap();
 
-        if self.info.usage == BufferUsage::COPY_DST && invalidate && !was_mapped {
-            let buffer = self.buffer.borrow_mut();
-            let webgpu_mapped = buffer.map_state() != web_sys::GpuBufferMapState::Mapped;
-            if !webgpu_mapped {
-                buffer.map_async_with_u32_and_u32(if invalidate { web_sys::gpu_map_mode::READ } else { web_sys::gpu_map_mode::WRITE }, offset as u32, length as u32);
-            }
-            if buffer.map_state() != web_sys::GpuBufferMapState::Mapped {
-                error!("Failed to map buffer for reading: Buffer was still in use on the GPU.");
-                return None;
-            }
-            let mapped_range = buffer.get_mapped_range().ok()?;
-            let uint8_array = Uint8Array::new(&mapped_range);
-            uint8_array.copy_to(&mut memory[offset as usize .. offset as usize + length as usize]);
-            std::mem::drop(uint8_array);
-            std::mem::drop(mapped_range);
-            buffer.unmap();
-        } else if invalidate && was_mapped {
-            error!("Reading back buffer failed because buffer was already mapped.");
-        } else if invalidate {
-            error!("Reading back buffer with usage {:?} is not supported.", self.info.usage);
-        } else if self.info.usage == BufferUsage::COPY_SRC {
-            let buffer = self.buffer.borrow_mut();
-            let webgpu_mapped = buffer.map_state() != web_sys::GpuBufferMapState::Mapped;
-            if !webgpu_mapped {
-                buffer.map_async(if invalidate { web_sys::gpu_map_mode::READ } else { web_sys::gpu_map_mode::WRITE });
-            }
+        if invalidate && (self.info.usage.gpu_writable() || !self.keep_rust_memory) {
+            panic!("Reading back data from the GPU will require more workarounds");
         }
         unsafe { Some(std::mem::transmute(memory.as_mut_ptr().byte_offset(offset as isize))) }
     }
@@ -192,7 +166,9 @@ impl Buffer for WebGPUBuffer {
         assert_eq!(length % 4, 0);
 
         if flush {
-            let map_directly = self.info.usage == BufferUsage::COPY_SRC // the buffer can only be written on the CPU so the contents of the rust memory always mirror the buffer contents
+            let map_directly =
+                (&*buffer).map_state() == web_sys::GpuBufferMapState::Mapped
+                || self.info.usage == BufferUsage::COPY_SRC // the buffer can only be written on the CPU so the contents of the rust memory always mirror the buffer contents
                 || (
                     PREFER_DISCARD_OVER_QUEUE_WRITE
                     && (
@@ -202,10 +178,7 @@ impl Buffer for WebGPUBuffer {
                     ); // Replace the entire buffer with one that's mapped at creation. Map at creation can be set without USAGE_MAP_*.
             if map_directly {
                 if buffer.map_state() != web_sys::GpuBufferMapState::Mapped {
-                    if self.info.usage == BufferUsage::COPY_SRC {
-                        // The mapping should be done by now because it is done earlier in map().
-                        warn!("Discarding pure COPY_SRC buffer because it was not done mapping in time. This should not happen.");
-                    }
+                    // Create a new buffer that's mapped at creation
                     buffer.destroy();
                     *buffer = self.device.create_buffer(&self.descriptor).unwrap();
                 }
@@ -219,7 +192,7 @@ impl Buffer for WebGPUBuffer {
                     &buffer,
                     offset as u32,
                     &memory[offset as usize .. offset as usize + length as usize]
-                );
+                ).unwrap();
             }
         }
         if !self.keep_rust_memory {

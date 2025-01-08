@@ -29,7 +29,7 @@ pub(crate) use sdl_vulkan as sdl_gpu;
 use sourcerenderer_game::GamePlugin;
 
 pub fn main() {
-    //std::thread::sleep(std::time::Duration::from_secs(20));
+    //std::thread::sleep(instant::::Duration::from_secs(20));
 
     let mut platform = SDLPlatform::new();
     let mut engine = Box::new(Engine::run(platform.as_ref(), GamePlugin::<SDLPlatform>::default()));
@@ -45,7 +45,7 @@ pub fn main() {
 
         platform.update_mouse_lock(engine.is_mouse_locked());
 
-        engine.frame::<SDLPlatform>();
+        engine.frame();
     }
     engine.stop::<SDLPlatform>();
 }

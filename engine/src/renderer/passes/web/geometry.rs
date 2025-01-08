@@ -70,11 +70,7 @@ impl<P: Platform> GeometryPass<P> {
             false,
         );
 
-        let shader_file_extension = if cfg!(target_family = "wasm") {
-            "glsl"
-        } else {
-            "json"
-        };
+        let shader_file_extension = "json";
 
         let fs_name = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {

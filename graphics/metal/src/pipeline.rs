@@ -47,6 +47,7 @@ const METAL_DEBUGGER_WORKAROUND: bool = true;
 
 impl MTLShader {
     pub(crate) fn new(device: &metal::DeviceRef, shader: &gpu::PackedShader, name: Option<&str>) -> Self {
+        assert_ne!(shader.shader_air.len(), 0);
         let data = shader.shader_air.clone(); // Need to keep this alive because of a bug in metal-rs
 
         let library = if METAL_DEBUGGER_WORKAROUND {

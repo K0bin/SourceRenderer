@@ -1,126 +1,85 @@
+use std::future::Future;
 use std::io::{Read, Seek, SeekFrom, Result as IOResult, Error as IOError, ErrorKind};
+use std::pin::{pin, Pin};
+use std::process::Output;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::path::Path;
+use std::task::{Context, Poll};
 
+use futures_lite::io::Cursor;
+use futures_lite::{AsyncRead, AsyncSeek};
 use log::info;
+
 use sourcerenderer_core::platform::{IO, FileWatcher};
 
-use wasm_bindgen::JsCast;
-use web_sys::DedicatedWorkerGlobalScope;
-use web_sys::WorkerGlobalScope;
-use async_channel::Sender;
+struct ForceSendFuture<T, F: Future<Output = T>>(F);
 
-//use crate::async_io_worker::{AsyncIOTask, AsyncIOTaskError};
-//use crate::WorkerPool;
+impl<T, F> Future for ForceSendFuture<T, F>
+    where F: Future<Output = T> {
+    type Output = T;
 
-//static mut IO_SENDER: Option<Sender<Arc<AsyncIOTask>>> = None;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let field_pin = unsafe { self.map_unchecked_mut(|this| &mut this.0) };
+        field_pin.poll(cx)
+    }
+}
 
-/*pub(super) fn init_global_io(worker_pool: &WorkerPool) {
-  unsafe {
-    IO_SENDER = Some(crate::async_io_worker::start_worker(&worker_pool));
-  }
-}*/
+unsafe impl<T, F> Send for ForceSendFuture<T, F>
+    where F: Future<Output = T> {}
 
 pub struct WebIO {}
 
 impl IO for WebIO {
-  type File = WebFile;
-  type FileWatcher = NopWatcher;
+    type File = Cursor<Box<[u8]>>;
+    type FileWatcher = NopWatcher;
 
-  fn open_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
-    info!("Opening asset: {:?}", path.as_ref().to_str().unwrap());
-    /*let task = AsyncIOTask::new(path.as_ref().to_str().unwrap());
-    unsafe {
-      IO_SENDER.as_ref().unwrap().try_send(
-        task.clone()
-      ).unwrap();
-    }*/
+    async fn open_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
+        log::trace!("Loading web file: {:?}", path.as_ref());
+        let future = crate::fetch_asset(path.as_ref().to_str().unwrap());
+        let send_future = ForceSendFuture(future);
+        let buffer_res = send_future.await;
+        let buffer = buffer_res.map_err(|js_val| {
+            let response_code_opt = js_val.as_f64();
+            if response_code_opt.is_none() {
+                IOError::new(ErrorKind::Other, format!("Response code: {:?}", js_val))
+            } else {
+                let response_code = response_code_opt.unwrap() as u32;
+                match response_code {
+                    404 => IOError::new(ErrorKind::NotFound, format!("Response code: {}", response_code)),
+                    _ => IOError::new(ErrorKind::Other, format!("Response code: {}", response_code)),
+                }
+            }
+        })?;
+        let mut wasm_copy = Vec::<u8>::with_capacity(buffer.length() as usize);
+        unsafe { wasm_copy.set_len(buffer.length() as usize); }
+        buffer.copy_to(&mut wasm_copy[..]);
+        Ok(Cursor::new(wasm_copy.into_boxed_slice()))
+    }
 
-    Ok(WebFile {
-      //task,
-      cursor_position: 0
-    })
-  }
+    async fn asset_exists<P: AsRef<Path> + Send>(path: P) -> bool {
+        // There is no smarter solution for this as far as I'm aware. Hope the caching work at least...
+        let future = crate::fetch_asset(path.as_ref().to_str().unwrap());
+        let send_future = ForceSendFuture(future);
+        let result = send_future.await;
+        result.is_ok()
+    }
 
-  fn asset_exists<P: AsRef<Path> + Send>(_path: P) -> bool {
-    false
-  }
+    async fn open_external_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
+        Self::open_asset(path).await
+    }
 
-  fn open_external_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
-    Self::open_asset(path)
-  }
+    async fn external_asset_exists<P: AsRef<Path> + Send>(path: P) -> bool {
+        Self::asset_exists(path).await
+    }
 
-  fn external_asset_exists<P: AsRef<Path> + Send>(_path: P) -> bool {
-    false
-  }
-
-  fn new_file_watcher(_sender: crossbeam_channel::Sender<String>) -> Self::FileWatcher {
-    NopWatcher {}
-  }
+    fn new_file_watcher(_sender: crossbeam_channel::Sender<String>) -> Self::FileWatcher {
+        NopWatcher {}
+    }
 }
 
 pub struct NopWatcher {}
 impl FileWatcher for NopWatcher {
-  fn watch<P: AsRef<Path>>(&mut self, path: P) {}
+    fn watch<P: AsRef<Path>>(&mut self, path: P) {}
 
-  fn unwatch<P: AsRef<Path>>(&mut self, path: P) {}
-}
-
-pub struct WebFile {
-  //task: Arc<AsyncIOTask>,
-  cursor_position: u64
-}
-
-impl Read for WebFile {
-  fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
-    /*let data_guard = self.task.wait_for_result();
-    let data = data_guard.as_ref().map_err(|e| {
-      let msg = match e {
-        AsyncIOTaskError::InProgress => unreachable!(),
-        AsyncIOTaskError::Error(msg) => msg,
-      };
-      IOError::new(ErrorKind::NotFound, msg.as_str())
-    })?;
-
-    if self.cursor_position >= data.len() as u64 {
-      return IOResult::Ok(0);
-    }
-
-    let read_length = buf.len().min(data.len() - self.cursor_position as usize);
-    let read_start = self.cursor_position as usize;
-    let read_end = read_start + read_length;
-    buf[0 .. read_length].copy_from_slice(&data[read_start .. read_end]);
-    self.cursor_position += read_length as u64;
-    Ok(read_length)*/
-
-    Ok(0)
-  }
-}
-
-impl Seek for WebFile {
-  fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
-    /*let len = {
-      let data_guard = self.task.wait_for_result();
-      let data = data_guard.as_ref().map_err(|e| {
-        let msg = match e {
-          AsyncIOTaskError::InProgress => unreachable!(),
-          AsyncIOTaskError::Error(msg) => msg,
-        };
-        IOError::new(ErrorKind::NotFound, msg.as_str())
-      })?;
-      data.len()
-    };
-    let new_pos = match pos {
-      SeekFrom::Start(seek_pos) => seek_pos as i64,
-      SeekFrom::End(seek_pos) => (len as i64) - seek_pos,
-      SeekFrom::Current(seek_pos) => (self.cursor_position as i64 + seek_pos) as i64,
-    };
-    if new_pos > len as i64 || new_pos < 0 {
-      IOResult::Err(IOError::new(ErrorKind::UnexpectedEof, format!("Can not perform seek: {:?}, calculated pos: {:?} bytes, total file length is {:?} bytes.", pos, new_pos, len)))
-    } else {
-      self.cursor_position = new_pos as u64;
-      IOResult::Ok(self.cursor_position)
-    }*/
-    Ok(0)
-  }
+    fn unwatch<P: AsRef<Path>>(&mut self, path: P) {}
 }

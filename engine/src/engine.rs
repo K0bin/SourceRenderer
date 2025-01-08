@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use web_time::Duration;
 
 use bevy_input::keyboard::KeyboardInput;
 use bevy_app::*;
@@ -46,6 +46,10 @@ pub enum WindowState {
 
 pub const TICK_RATE: u32 = 5;
 
+
+#[cfg(all(feature = "threading", target_arch = "wasm32"))]
+compile_error!("Threads are not supported on WebAssembly.");
+
 pub struct Engine{
     app: App,
     is_running: bool
@@ -60,9 +64,12 @@ impl Engine {
         initialize_graphics(platform, &mut app);
 
         app
-            .add_plugins(PanicHandlerPlugin::default())
-            .add_plugins(LogPlugin::default())
-            .add_plugins(TaskPoolPlugin::default())
+            .add_plugins(PanicHandlerPlugin::default());
+
+            #[cfg(not(target_arch = "wasm32"))]
+            app.add_plugins(LogPlugin::default());
+
+            app.add_plugins(TaskPoolPlugin::default())
             .add_plugins(TimePlugin::default())
             .insert_resource(Time::<Fixed>::from_hz(TICK_RATE as f64))
             .add_plugins(FrameCountPlugin::default())
@@ -86,7 +93,7 @@ impl Engine {
         }
     }
 
-    pub fn frame<P: Platform>(&mut self) {
+    pub fn frame(&mut self) {
         if !self.is_running {
             warn!("Frame called after engine was stopped.");
             return;

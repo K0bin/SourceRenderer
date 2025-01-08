@@ -34,6 +34,7 @@ unsafe impl Sync for WebGPUShader {}
 
 impl WebGPUShader {
     pub fn new(device: &GpuDevice, shader: &gpu::PackedShader, name: Option<&str>) -> Self {
+        assert_ne!(shader.shader_wgsl.len(), 0);
         let descriptor = GpuShaderModuleDescriptor::new(&shader.shader_wgsl);
         if let Some(name) = name {
             descriptor.set_label(name);
