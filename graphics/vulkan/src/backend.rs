@@ -26,4 +26,8 @@ impl gpu::GPUBackend for VkBackend {
     type Heap = VkMemoryHeap;
     //type QueryRange = VkQueryRange;
     type AccelerationStructure = VkAccelerationStructure;
+
+    fn name() -> &'static str {
+        "Vulkan"
+    }
 }
