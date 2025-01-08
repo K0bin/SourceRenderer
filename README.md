@@ -17,6 +17,7 @@ Toy game engine written in Rust
 * Shared graphics abstraction on top of that:
     * Submission batching (runs on a worker thread if multi-threading is enabled)
     * Resource lifetimes are automatically handled by delaying destruction as soon as they are unused
+    * Automatic reuse of command buffers
     * Handles memory allocation (allocator is rather primitive right now)
     * Buffer allocator for long-lived buffers
     * Buffer allocator for per-frame buffers using a bump allocator
