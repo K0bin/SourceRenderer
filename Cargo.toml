@@ -10,6 +10,9 @@ members = [
     "game",
     "build_util",
     "platform/sdl",
+    "platform/web/lib",
+    "graphics/webgpu",
+    "io_util",
 ]
 resolver = "2"
 default-members = [
