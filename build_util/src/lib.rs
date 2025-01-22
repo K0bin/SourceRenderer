@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 mod shader_compiler;
+mod spirv_transformer;
 pub mod android;
 pub use shader_compiler::*;
 pub mod build_script_logger;

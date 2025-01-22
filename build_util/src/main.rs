@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
+use std::{collections::HashMap, fs::File};
 use std::env;
 use std::path::PathBuf;
 
@@ -7,6 +9,9 @@ use build_util::{
     compile_shaders,
     copy_directory_rec, CompiledShaderFileType, ShadingLanguage,
 };
+use spirv_transformer::Binding;
+
+mod spirv_transformer;
 
 fn main() {
     // Only used to test it. See the respective build.rs for the actual usage.

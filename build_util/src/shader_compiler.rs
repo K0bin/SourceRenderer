@@ -16,7 +16,7 @@ use spirv_cross_sys;
 
 use sourcerenderer_core::gpu;
 
-const BINDLESS_TEXTURE_SET_INDEX: u32 = 3;
+use super::spirv_transformer::*;
 
 fn make_spirv_cross_msl_version(major: u32, minor: u32, patch: u32) -> u32 {
     major * 10000 + minor * 100 + patch
@@ -51,7 +51,6 @@ pub fn compile_shaders<F>(
                     .map(|s| s.contains(".inc"))
                     .unwrap_or(false)
                 && file_filter(&file.path())
-                && file.file_name().to_str().map(|name| name.contains("web_geometry")).unwrap_or(false)
         })
         .for_each(|file| {
             let file_path = file.path();
@@ -376,7 +375,7 @@ fn read_metadata(
             .to_str()
             .unwrap()
             .to_string();
-            if set_index == BINDLESS_TEXTURE_SET_INDEX {
+            if set_index == gpu::BINDLESS_TEXTURE_SET_INDEX {
                 *uses_bindless_texture_set = true;
                 continue;
             }
@@ -746,7 +745,7 @@ fn compile_shader_spirv_cross(
                         resource.id,
                         spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
                     );
-                    if set_index == BINDLESS_TEXTURE_SET_INDEX {
+                    if set_index == gpu::BINDLESS_TEXTURE_SET_INDEX {
                         spirv_cross_sys::spvc_compiler_set_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet, buffer_count);
                         buffer_count += 1;
                         break;
@@ -837,7 +836,7 @@ fn compile_shader_spirv_cross(
                         gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
                         gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
                     },
-                    desc_set: BINDLESS_TEXTURE_SET_INDEX,
+                    desc_set: gpu::BINDLESS_TEXTURE_SET_INDEX,
                     binding: 0, // the binding sets the [[id(n)]] attribute inside the argument buffer which impacts the offset
                     msl_buffer: u32::MAX,
                     msl_texture: 0,
@@ -1063,6 +1062,13 @@ pub fn compile_shader(
     } else {
         gpu::ShaderType::ComputeShader
     };
+
+    if shader_type != gpu::ShaderType::VertexShader && shader_type != gpu::ShaderType::FragmentShader && shader_type != gpu::ShaderType::ComputeShader {
+        output_shading_languages.remove(ShadingLanguage::Air);
+        output_shading_languages.remove(ShadingLanguage::Msl);
+        output_shading_languages.remove(ShadingLanguage::Wgsl);
+    }
+
     let shader_name = &file_path.file_stem().unwrap().to_string_lossy();
 
     // Compile GLSL to SPIR-V
@@ -1119,21 +1125,21 @@ pub fn compile_shader(
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Wgsl) {
-        let non_debug_spirv = if include_debug_info {
-            // WORKAROUND: Naga stumbles over debug instructions. So compile the shader again without debug information.
-            let spirv_bytecode_res = compile_shader_glsl(file_path, output_dir, shader_type, false, arguments);
-            if spirv_bytecode_res.is_err() {
-                error!("Failed to compile GLSL for {:?}", file_path);
-                return;
-            }
-            let spirv_bytecode = spirv_bytecode_res.unwrap();
-            Some(spirv_bytecode.into_boxed_slice())
-        } else {
-            None
-        };
-        let non_debug_spirv_ref = non_debug_spirv.as_ref().unwrap_or(&spirv_bytecode_boxed);
+        println!("Doing shader: {:?}", &shader_name);
 
-        let wgsl = compile_shader_naga(shader_name, non_debug_spirv_ref);
+        let mut prepared_spirv = spirv_bytecode_boxed.clone().into_vec();
+        spirv_remove_debug_info(&mut prepared_spirv);
+        spirv_remap_bindings(&mut prepared_spirv, |binding| Binding {
+            descriptor_set: binding.descriptor_set,
+            binding: if binding.descriptor_set == gpu::BindingFrequency::VeryFrequent as u32 { binding.binding + 1 } else { binding.binding }
+        });
+        spirv_turn_push_const_into_ubo_pass(&mut prepared_spirv, gpu::BindingFrequency::VeryFrequent as u32, 0);
+        spirv_separate_combined_image_samplers(&mut prepared_spirv, Option::<fn(&Binding) -> Binding>::None);
+
+        // update metadata
+        metadata = read_metadata(&prepared_spirv, shader_name, shader_type);
+
+        let wgsl = compile_shader_naga(shader_name, &prepared_spirv);
         if let Ok(bytecode) = wgsl {
             if output_file_type == CompiledShaderFileType::Bytecode {
                 write_shader(file_path, output_dir, ShadingLanguage::Air, CompiledShaderType::Source(&bytecode));
