@@ -51,7 +51,6 @@ pub fn compile_shaders<F>(
                     .map(|s| s.contains(".inc"))
                     .unwrap_or(false)
                 && file_filter(&file.path())
-                && file.file_name().to_str().map(|name| name.contains("web_geometry")).unwrap_or(false)
         })
         .for_each(|file| {
             let file_path = file.path();
