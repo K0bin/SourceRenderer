@@ -36,7 +36,7 @@ fn main() {
     shader_dir.push("engine");
     shader_dir.push("shaders");
 
-    /*compile_shaders(
+    compile_shaders(
         &shader_dir,
         &shader_dest_dir,
         true,
@@ -44,7 +44,7 @@ fn main() {
         &HashMap::new(),
         ShadingLanguage::SpirV /*| ShadingLanguage::Dxil*/ | ShadingLanguage::Air | ShadingLanguage::Wgsl,
         |_| true,
-    );*/
+    );
 
     let mut buffer = Vec::<u8>::new();
     let mut vert_shader = shader_dir.clone();
@@ -76,13 +76,13 @@ fn main() {
 
     println!("DOING FS NOW");
 
-    let mut frag_shader = shader_dir.clone();
-    frag_shader.pop();
-    frag_shader.pop();
-    frag_shader.push("shaders");
-    frag_shader.push("web_geometry.web.frag.spv");
+    let mut shader_path = shader_dir.clone();
+    shader_path.pop();
+    shader_path.pop();
+    shader_path.push("shaders");
+    shader_path.push("web_geometry.web.frag.spv");
     {
-        let mut file = File::open(&frag_shader).unwrap();
+        let mut file = File::open(&shader_path).unwrap();
         buffer.clear();
         file.read_to_end(&mut buffer).unwrap();
     }
@@ -90,7 +90,7 @@ fn main() {
     spirv_transformer::spirv_turn_push_const_into_ubo_pass(&mut buffer, 0, 0);
     spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer, Option::<fn(&Binding) -> Binding>::None);
     {
-        let mut modified = frag_shader.parent().unwrap().to_path_buf();
+        let mut modified = shader_path.parent().unwrap().to_path_buf();
         modified.push("web_geometry_FIXUP.frag.spv");
 
         let mut file = OpenOptions::new()
@@ -105,13 +105,13 @@ fn main() {
 
     println!("DOING RGEN NOW");
 
-    let mut frag_shader = shader_dir.clone();
-    frag_shader.pop();
-    frag_shader.pop();
-    frag_shader.push("shaders");
-    frag_shader.push("shadows.rgen.spv");
+    shader_path = shader_dir.clone();
+    shader_path.pop();
+    shader_path.pop();
+    shader_path.push("shaders");
+    shader_path.push("shadows.rgen.spv");
     {
-        let mut file = File::open(&frag_shader).unwrap();
+        let mut file = File::open(&shader_path).unwrap();
         buffer.clear();
         file.read_to_end(&mut buffer).unwrap();
     }
@@ -119,7 +119,7 @@ fn main() {
     spirv_transformer::spirv_turn_push_const_into_ubo_pass(&mut buffer, 0, 0);
     spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer, Option::<fn(&Binding) -> Binding>::None);
     {
-        let mut modified = frag_shader.parent().unwrap().to_path_buf();
+        let mut modified = shader_path.parent().unwrap().to_path_buf();
         modified.push("shadows_FIXUP.rgen.spv");
 
         let mut file = OpenOptions::new()
@@ -130,5 +130,34 @@ fn main() {
             .open(&modified)
             .unwrap();
         file.write_all(&buffer[..]).unwrap();
+
+        println!("DOING TAA NOW");
+
+        shader_path = shader_dir.clone();
+        shader_path.pop();
+        shader_path.pop();
+        shader_path.push("shaders");
+        shader_path.push("taa.comp.spv");
+        {
+            let mut file = File::open(&shader_path).unwrap();
+            buffer.clear();
+            file.read_to_end(&mut buffer).unwrap();
+        }
+        spirv_transformer::spirv_remove_debug_info(&mut buffer);
+        spirv_transformer::spirv_turn_push_const_into_ubo_pass(&mut buffer, 0, 0);
+        spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer, Option::<fn(&Binding) -> Binding>::None);
+        {
+            let mut modified = shader_path.parent().unwrap().to_path_buf();
+            modified.push("taa_FIXUP.comp.spv");
+
+            let mut file = OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(true)
+                .open(&modified)
+                .unwrap();
+            file.write_all(&buffer[..]).unwrap();
+        }
     }
 }

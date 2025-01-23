@@ -53,6 +53,24 @@ struct OpLoad {
     pointer_id: u32
 }
 
+struct OpTypeFunction {
+    result_id: u32,
+    return_type_id: u32,
+    parameters: Vec<u32>
+}
+
+struct OpFunctionParameter {
+    result_type_id: u32,
+    result_id: u32,
+}
+
+struct OpFunctionCall {
+    result_type_id: u32,
+    result_id: u32,
+    function_id: u32,
+    arguments: Vec<u32>
+}
+
 fn parse_instruction_description(word: u32) -> Instruction {
     Instruction {
         word_count: (word >> 16) as u16,
@@ -70,6 +88,11 @@ const OP_CODE_OP_TYPE_VARIABLE: u16 = 59;
 const OP_CODE_OP_TYPE_IMAGE: u16 = 25;
 const OP_CODE_OP_TYPE_SAMPLER: u16 = 26;
 const OP_CODE_OP_TYPE_SAMPLED_IMAGE: u16 = 27;
+const OP_CODE_OP_TYPE_FUNCTION: u16 = 33;
+const OP_CODE_OP_FUNCTION: u16 = 54;
+const OP_CODE_OP_FUNCTION_PARAMETER: u16 = 55;
+const OP_CODE_OP_FUNCTION_CALL: u16 = 57;
+
 const OP_CODE_OP_ENTRY_POINT: u16 = 15;
 
 const OP_CODE_OP_LOAD: u16 = 61;
@@ -138,6 +161,35 @@ fn parse_op_type_image(words: &[u32]) -> OpTypeImage {
         ms: words[5],
         sampled: words[6],
         image_format: words[7],
+    }
+}
+fn parse_op_type_function(words: &[u32]) -> OpTypeFunction {
+    let mut parameters = Vec::<u32>::new();
+    for param in &words[2..] {
+        parameters.push(*param);
+    }
+    OpTypeFunction {
+        result_id: words[0],
+        return_type_id: words[1],
+        parameters
+    }
+}
+fn parse_op_function_parameter(words: &[u32]) -> OpFunctionParameter {
+    OpFunctionParameter {
+        result_type_id: words[0],
+        result_id: words[1]
+    }
+}
+fn parse_op_function_call(words: &[u32]) -> OpFunctionCall {
+    let mut arguments = Vec::<u32>::new();
+    for argument in &words[3..] {
+        arguments.push(*argument);
+    }
+    OpFunctionCall {
+        result_type_id: words[0],
+        result_id: words[1],
+        function_id: words[2],
+        arguments: arguments
     }
 }
 
@@ -353,11 +405,15 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
     let mut sampled_img_types = Vec::<(usize, Instruction, OpTypeSampledImage)>::new();
     let mut img_types = Vec::<(usize, Instruction, OpTypeImage)>::new();
     let mut ptr_types = Vec::<(usize, Instruction, OpTypePointer)>::new();
+    let mut function_types = Vec::<(usize, Instruction, OpTypeFunction)>::new();
+    let mut function_parameters = Vec::<(usize, Instruction, OpFunctionParameter)>::new();
+    let mut function_calls = Vec::<(usize, Instruction, OpFunctionCall)>::new();
     let mut vars = Vec::<(usize, Instruction, OpVariable)>::new();
-    let mut sampled_img_ptr_var_loads = Vec::<(usize, Instruction, OpLoad)>::new();
+    let mut loads = Vec::<(usize, Instruction, OpLoad)>::new();
     let mut sampling_ops_indices = Vec::<usize>::new();
     let mut entry_point_indices = Vec::<usize>::new();
     let mut bindings = HashMap::<u32, (usize, Binding)>::new();
+    let mut sampler_type = Option::<u32>::None;
 
     let mut mappings = Vec::<SampledImageTypeMappings>::new();
     let mut highest_bindings = [0u32; sourcerenderer_core::gpu::TOTAL_SET_COUNT as usize];
@@ -397,66 +453,35 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
         }
         if instruction.opcode == OP_CODE_OP_TYPE_IMAGE {
             let image = parse_op_type_image(operand_words);
-            img_types.push((word_index, instruction.clone(), image));
+            img_types.push((word_index, instruction, image));
+            return true;
         }
         if instruction.opcode == OP_CODE_OP_TYPE_SAMPLED_IMAGE {
             let sampled_image = parse_op_type_sampled_image(operand_words);
-            sampled_img_types.push((word_index, instruction.clone(), sampled_image));
+            sampled_img_types.push((word_index, instruction, sampled_image));
+            return true;
+        }
+        if instruction.opcode == OP_CODE_OP_TYPE_SAMPLER {
+            assert!(sampler_type.is_none());
+            sampler_type = Some(operand_words[0]);
         }
         if instruction.opcode == OP_CODE_OP_TYPE_POINTER {
             let ptr = parse_op_type_pointer(operand_words);
-            let sampled_img_type = sampled_img_types.iter()
-                .find(|(_, _, img_type)| img_type.result_id == ptr.type_id);
-            if sampled_img_type.is_some() {
-                ptr_types.push((word_index, instruction.clone(), ptr));
-            }
+            ptr_types.push((word_index, instruction, ptr));
+            return true;
         }
         if instruction.opcode == OP_CODE_OP_TYPE_VARIABLE {
             let var = parse_op_variable(operand_words);
             if var.storage_class == STORAGE_CLASS_FUNCTION {
                 return true;
             }
-            vars.push((word_index, instruction.clone(), var));
+            vars.push((word_index, instruction, var));
+            return true;
         }
         if instruction.opcode == OP_CODE_OP_LOAD {
             let load = parse_op_load(operand_words);
-
-            let ptr_opt = ptr_types.iter()
-                .find(|(_, _, type_id)| type_id.type_id == load.result_type_id);
-
-            let sampled_img_type_opt = ptr_opt.and_then(|(_, _, ptr)|
-                sampled_img_types.iter()
-                    .find(|(_, _, img)| img.result_id == ptr.type_id));
-
-            if sampled_img_type_opt.is_none() {
-                return true;
-            }
-
-            let (_, _, sampled_image_type) = sampled_img_type_opt.unwrap();
-            let (_, _, ptr) = ptr_opt.unwrap();
-            if mappings.iter().any(|mapping| mapping.sampled_image_type_ptr_var == load.pointer_id) {
-                return true;
-            }
-            let var_opt = vars.iter().find(|(_, _, v)| v.result_id == load.pointer_id);
-            if var_opt.is_none() {
-                println!("Couldn't find variable for load. This could be because it is either a local variable or a function parameter.");
-                return true;
-            }
-            let (_, _, var) = var_opt.unwrap();
-
-            mappings.push(SampledImageTypeMappings {
-                image_type: sampled_image_type.image_type_id,
-                image_type_ptr_type: 0,
-                image_type_ptr_var: 0,
-                sampled_image_type: sampled_image_type.result_id,
-                sampled_image_type_ptr_type: ptr.result_id,
-                sampled_image_type_ptr_var: var.result_id,
-                sampler_type: 0,
-                sampler_type_ptr_type: 0,
-                sampler_type_ptr_var: 0,
-            });
-
-            sampled_img_ptr_var_loads.push((word_index, instruction.clone(), load));
+            loads.push((word_index, instruction, load));
+            return true;
         }
         if false
             || (instruction.opcode >= 87
@@ -475,9 +500,110 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
         if instruction.opcode == OP_CODE_OP_ENTRY_POINT {
             entry_point_indices.push(word_index);
         }
+        if instruction.opcode == OP_CODE_OP_FUNCTION_PARAMETER {
+            let param = parse_op_function_parameter(operand_words);
+            function_parameters.push((word_index, instruction, param));
+            return true;
+        }
+        if instruction.opcode == OP_CODE_OP_TYPE_FUNCTION {
+            let function_type = parse_op_type_function(operand_words);
+            function_types.push((word_index, instruction, function_type));
+            return true;
+        }
+        if instruction.opcode == OP_CODE_OP_FUNCTION_CALL {
+            let function_call = parse_op_function_call(operand_words);
+            function_calls.push((word_index, instruction, function_call));
+            return true;
+        }
 
         true
     });
+
+    for (function_idx, _, function_type) in &function_types {
+        let ptr_opt = ptr_types.iter()
+            .find(|(_, _, p)| p.result_id == function_type.return_type_id);
+        if ptr_opt.is_none() {
+            continue;
+        }
+        let (_, _, ptr) = ptr_opt.unwrap();
+
+        let sampled_img_type_opt = ptr_opt.and_then(|(_, _, ptr)|
+            sampled_img_types.iter()
+                .find(|(_, _, img)| img.result_id == ptr.type_id));
+        if sampled_img_type_opt.is_none() {
+            continue;
+        }
+        let (_, _, sampled_image_type) = sampled_img_type_opt.unwrap();
+
+        if let Some(mapping) = mappings.iter().find(|mapping| mapping.sampled_image_type_ptr_var == load.pointer_id) {
+            assert_eq!(mapping.sampled_image_type, sampled_image_type.result_id);
+            assert_eq!(mapping.sampled_image_type_ptr_type, ptr.result_id);
+            assert_eq!(mapping.sampled_image_type_ptr_var, load.pointer_id);
+        } else {
+            mappings.push(SampledImageTypeMappings {
+                image_type: sampled_image_type.image_type_id,
+                image_type_ptr_type: 0,
+                image_type_ptr_var: 0,
+                sampled_image_type: sampled_image_type.result_id,
+                sampled_image_type_ptr_type: ptr.result_id,
+                sampled_image_type_ptr_var: load.pointer_id,
+                sampler_type: 0,
+                sampler_type_ptr_type: 0,
+                sampler_type_ptr_var: 0,
+            });
+        }
+
+    }
+
+    for (_, _, load) in &loads {
+        let mut ptr_opt = vars.iter()
+            .find(|(_, _, v)| v.result_id == load.pointer_id)
+            .and_then(|(_, _, v)|
+                ptr_types.iter()
+                    .find(|(_, _, type_id)| type_id.result_id == v.result_type_id)
+            );
+
+
+        if ptr_opt.is_none() {
+            ptr_opt = function_parameters.iter()
+                .find(|(_, _, p)| p.result_id == load.pointer_id)
+                .and_then(|(_, _, p)|
+                    ptr_types.iter()
+                        .find(|(_, _, type_id)| type_id.result_id == p.result_type_id)
+                );
+        }
+
+        if ptr_opt.is_none() {
+            continue;
+        }
+        let (_, _, ptr) = ptr_opt.unwrap();
+
+        let sampled_img_type_opt = ptr_opt.and_then(|(_, _, ptr)|
+            sampled_img_types.iter()
+                .find(|(_, _, img)| img.result_id == ptr.type_id));
+        if sampled_img_type_opt.is_none() {
+            continue;
+        }
+        let (_, _, sampled_image_type) = sampled_img_type_opt.unwrap();
+
+        if let Some(mapping) = mappings.iter().find(|mapping| mapping.sampled_image_type_ptr_var == load.pointer_id) {
+            assert_eq!(mapping.sampled_image_type, sampled_image_type.result_id);
+            assert_eq!(mapping.sampled_image_type_ptr_type, ptr.result_id);
+            assert_eq!(mapping.sampled_image_type_ptr_var, load.pointer_id);
+        } else {
+            mappings.push(SampledImageTypeMappings {
+                image_type: sampled_image_type.image_type_id,
+                image_type_ptr_type: 0,
+                image_type_ptr_var: 0,
+                sampled_image_type: sampled_image_type.result_id,
+                sampled_image_type_ptr_type: ptr.result_id,
+                sampled_image_type_ptr_var: load.pointer_id,
+                sampler_type: 0,
+                sampler_type_ptr_type: 0,
+                sampler_type_ptr_var: 0,
+            });
+        }
+    }
 
     // Sort by binding (important for picking sampler bind points later)
 
@@ -490,26 +616,88 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
 
     let mut insertions = Vec::<(usize, Vec<u32>)>::new();
     let mut word_count_increases = Vec::<usize>::new();
+
+    /*for (function_idx, _, function) in &mut function_types {
+        let words = cast_to_words(spirv);
+        for (param_idx_relative, param) in function.parameters.iter().enumerate() {
+            let ptr_opt = ptr_types.iter().find(|(_, _, s)| s.result_id == *param);
+            if ptr_opt.is_none() {
+                continue;
+            }
+            let (ptr_idx, _, ptr) = ptr_opt.unwrap();
+            let sampled_type_opt = sampled_img_types.iter().find(|(_, _, s)| ptr.type_id == *param);
+            if sampled_type_opt.is_none() {
+                continue;
+            }
+            let (_, _, sampled_type) = sampled_type_opt.unwrap();
+            if ptr.storage_class != STORAGE_CLASS_FUNCTION {
+                continue;
+            }
+            let new_ptr_id = next_id;
+            next_id += 1;
+            insertions.push((*ptr_idx, vec![
+                build_instruction_description(&Instruction {
+                    word_count: 3,
+                    opcode: OP_CODE_OP_TYPE_POINTER
+                }),
+                new_ptr_id,
+                STORAGE_CLASS_FUNCTION,
+                sampled_type.result_id
+            ]));
+            words[*function_idx + 3 + param_idx_relative] = new_ptr_id;
+        }
+    }
+    for (param_idx, _, param) in &mut function_parameters {
+        let words = cast_to_words(spirv);
+        let ptr_opt = ptr_types.iter().find(|(_, _, s)| s.result_id == param.result_type_id);
+        if ptr_opt.is_none() {
+            continue;
+        }
+        let (ptr_idx, _, ptr) = ptr_opt.unwrap();
+        let sampled_type_opt = sampled_img_types.iter().find(|(_, _, s)| ptr.type_id == param.result_type_id);
+        if sampled_type_opt.is_none() {
+            continue;
+        }
+        let (_, _, sampled_type) = sampled_type_opt.unwrap();
+        if ptr.storage_class != STORAGE_CLASS_FUNCTION {
+            continue;
+        }
+        let new_ptr_id = next_id;
+        next_id += 1;
+        insertions.push((*ptr_idx, vec![
+            build_instruction_description(&Instruction {
+                word_count: 3,
+                opcode: OP_CODE_OP_TYPE_POINTER
+            }),
+            new_ptr_id,
+            STORAGE_CLASS_FUNCTION,
+            sampled_type.result_id
+        ]));
+        words[*param_idx + 1] = new_ptr_id;
+    }*/
+
     for mapping in &mut mappings {
         let words = cast_to_words(spirv);
 
         // Change type of existing sampled image ptr, ptr var and load to image
 
-        for (ptr_, _, ptr) in &mut ptr_types {
-            if ptr.result_id == mapping.sampled_image_type_ptr_type {
-                assert_eq!(words[*ptr_ + 3], ptr.type_id);
-                assert_ne!(mapping.image_type, 0);
-                words[*ptr_ + 3] = mapping.image_type;
-                ptr.type_id = mapping.image_type;
+        for (ptr_idx, _, ptr) in &mut ptr_types {
+            if ptr.result_id != mapping.sampled_image_type_ptr_type {
+                continue;
             }
+            assert_eq!(words[*ptr_idx + 3], ptr.type_id);
+            assert_ne!(mapping.image_type, 0);
+            words[*ptr_idx + 3] = mapping.image_type;
+            ptr.type_id = mapping.image_type;
         }
 
-        for (load_, _, load) in &mut sampled_img_ptr_var_loads {
+        for (load_idx, _, load) in &mut loads {
             if load.pointer_id != mapping.sampled_image_type_ptr_var {
                 continue;
             }
-            assert_eq!(load.result_type_id, words[*load_ + 1]);
-            words[*load_ + 1] = mapping.image_type;
+            println!("Changing the type of load: {:?} to %{}", load, mapping.image_type);
+            assert_eq!(load.result_type_id, words[*load_idx + 1]);
+            words[*load_idx + 1] = mapping.image_type;
             load.result_type_id = mapping.image_type;
         }
 
@@ -517,18 +705,24 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
         mapping.image_type_ptr_var = std::mem::take(&mut mapping.sampled_image_type_ptr_var);
 
         // Insert sampler, sampler ptr, sampler ptr var
-        let (var_, _, _) = vars.iter().find(|(_, _, var)| var.result_id == mapping.image_type_ptr_var).unwrap();
+        let (var_idx, _, _) = vars.iter().find(|(_, _, var)| var.result_id == mapping.image_type_ptr_var).unwrap();
 
-        mapping.sampler_type = next_id;
-        next_id += 1;
         mapping.sampler_type_ptr_type = next_id;
         next_id += 1;
         mapping.sampler_type_ptr_var = next_id;
         next_id += 1;
 
-        insertions.push((*var_, vec![
-            build_instruction_description(&Instruction { word_count: 2, opcode: OP_CODE_OP_TYPE_SAMPLER }),
-            mapping.sampler_type,
+        let mut type_def_words = Vec::<u32>::new();
+        if let Some(sampler_type) = sampler_type {
+            mapping.sampler_type = sampler_type;
+        } else {
+            mapping.sampler_type = next_id;
+            sampler_type = Some(mapping.sampler_type);
+            next_id += 1;
+            type_def_words.push(build_instruction_description(&Instruction { word_count: 2, opcode: OP_CODE_OP_TYPE_SAMPLER }));
+            type_def_words.push(mapping.sampler_type);
+        }
+        for word in &[
             build_instruction_description(&Instruction { word_count: 4, opcode: OP_CODE_OP_TYPE_POINTER }),
             mapping.sampler_type_ptr_type,
             STORAGE_CLASS_UNIFORM_CONSTANT,
@@ -537,11 +731,15 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
             mapping.sampler_type_ptr_type,
             mapping.sampler_type_ptr_var,
             STORAGE_CLASS_UNIFORM_CONSTANT
-        ]));
+        ] {
+            type_def_words.push(*word);
+        }
+
+        insertions.push((*var_idx, type_def_words));
 
         // Load sampler and create sampled image
 
-        for (load_, instruction, load) in &sampled_img_ptr_var_loads {
+        for (load_, instruction, load) in &loads {
             if load.pointer_id != mapping.image_type_ptr_var {
                 continue;
             }
@@ -590,8 +788,8 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
 
         // Find highest binding for descriptor set of image and add decorations for the sampler 1 above that (the binding before is important for consistency)
 
-        let (binding_, binding) = bindings.get(&mapping.image_type_ptr_var).unwrap();
-        assert_eq!(words[binding_ + 1], mapping.image_type_ptr_var);
+        let (binding_idx, binding) = bindings.get(&mapping.image_type_ptr_var).unwrap();
+        assert_eq!(words[binding_idx + 1], mapping.image_type_ptr_var);
 
         let sampler_binding = if let Some(callback) = decide_binding.as_ref() {
             callback(binding)
@@ -602,8 +800,8 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
                 binding: highest_bindings[binding.descriptor_set as usize]
             }
         };
-        let previous_decoration_instruction = parse_instruction_description(words[*binding_]);
-        insertions.push((*binding_ + previous_decoration_instruction.word_count as usize, vec![
+        let previous_decoration_instruction = parse_instruction_description(words[*binding_idx]);
+        insertions.push((*binding_idx + previous_decoration_instruction.word_count as usize, vec![
             build_instruction_description(&Instruction {
                 word_count: 4,
                 opcode: OP_CODE_OP_DECORATE
