@@ -9,6 +9,7 @@ use build_util::{
     compile_shaders,
     copy_directory_rec, CompiledShaderFileType, ShadingLanguage,
 };
+use spirv_transformer::Binding;
 
 mod spirv_transformer;
 
@@ -57,8 +58,8 @@ fn main() {
         file.read_to_end(&mut buffer).unwrap();
     }
     spirv_transformer::spirv_remove_debug_info(&mut buffer);
-    spirv_transformer::spirv_push_const_pass(&mut buffer, 0, 0);
-    spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer);
+    spirv_transformer::spirv_turn_push_const_into_ubo_pass(&mut buffer, 0, 0);
+    spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer, Option::<fn(&Binding) -> Binding>::None);
     {
         let mut modified = vert_shader.parent().unwrap().to_path_buf();
         modified.push("web_geometry_FIXUP.vert.spv");
@@ -86,11 +87,40 @@ fn main() {
         file.read_to_end(&mut buffer).unwrap();
     }
     spirv_transformer::spirv_remove_debug_info(&mut buffer);
-    spirv_transformer::spirv_push_const_pass(&mut buffer, 0, 0);
-    spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer);
+    spirv_transformer::spirv_turn_push_const_into_ubo_pass(&mut buffer, 0, 0);
+    spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer, Option::<fn(&Binding) -> Binding>::None);
     {
         let mut modified = frag_shader.parent().unwrap().to_path_buf();
         modified.push("web_geometry_FIXUP.frag.spv");
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(true)
+            .open(&modified)
+            .unwrap();
+        file.write_all(&buffer[..]).unwrap();
+    }
+
+    println!("DOING RGEN NOW");
+
+    let mut frag_shader = shader_dir.clone();
+    frag_shader.pop();
+    frag_shader.pop();
+    frag_shader.push("shaders");
+    frag_shader.push("shadows.rgen.spv");
+    {
+        let mut file = File::open(&frag_shader).unwrap();
+        buffer.clear();
+        file.read_to_end(&mut buffer).unwrap();
+    }
+    spirv_transformer::spirv_remove_debug_info(&mut buffer);
+    spirv_transformer::spirv_turn_push_const_into_ubo_pass(&mut buffer, 0, 0);
+    spirv_transformer::spirv_separate_combined_image_samplers(&mut buffer, Option::<fn(&Binding) -> Binding>::None);
+    {
+        let mut modified = frag_shader.parent().unwrap().to_path_buf();
+        modified.push("shadows_FIXUP.rgen.spv");
 
         let mut file = OpenOptions::new()
             .create(true)

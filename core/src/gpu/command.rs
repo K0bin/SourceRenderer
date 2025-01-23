@@ -419,6 +419,7 @@ bitflags! {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]
+#[repr(u32)]
 pub enum BindingFrequency {
   VeryFrequent = 0,
   Frequent = 1,
