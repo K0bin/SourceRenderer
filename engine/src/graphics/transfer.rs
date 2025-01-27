@@ -662,7 +662,7 @@ impl<B: GPUBackend> TransferCommandBuffer<B> {
             self.cmd_buffer.reset(0u64);
         }
         self.is_used = false;
-        //self.used_buffers_slices.clear();
+        self.used_buffers_slices.clear();
         self.used_textures.clear();
     }
 
