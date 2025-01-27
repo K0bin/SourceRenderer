@@ -93,7 +93,8 @@ impl<B: GPUBackend> BufferAllocator<B> {
       memory_usage: MemoryUsage,
       name: Option<&str>,
     ) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
-        let mut alignment: u64 = 256; // TODO
+        let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
+        let alignment: u64 = heap_info.alignment;
 
         if info.size > UNIQUE_ALLOCATION_THRESHOLD {
             // Don't do one-off buffers for command lists

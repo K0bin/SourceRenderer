@@ -136,7 +136,8 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
       memory_usage: MemoryUsage,
       _name: Option<&str>,
     ) -> Result<TransientBufferSlice<B>, OutOfMemoryError> {
-        let alignment: u64 = 256; // TODO
+        let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
+        let alignment: u64 = heap_info.alignment;
 
         debug_assert!(UNIQUE_ALLOCATION_THRESHOLD <= BUFFER_SIZE);
 
