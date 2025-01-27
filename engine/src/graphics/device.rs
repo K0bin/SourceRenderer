@@ -99,7 +99,8 @@ impl<B: GPUBackend> Device<B> {
 
     pub fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
         let required_size = std::mem::size_of_val(data) as u64;
-        let size = align_up_64(required_size.max(64), 64);
+        assert_ne!(required_size, 0u64);
+        let size = align_up_64(required_size, 64);
 
         let slice = self.buffer_allocator.get_slice(&BufferInfo {
             size,
@@ -115,10 +116,9 @@ impl<B: GPUBackend> Device<B> {
                 std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
             }
 
-            if required_size != 0 {
-                let ptr = ptr_void as *mut T;
-                ptr.copy_from(data.as_ptr(), data.len());
-            }
+            let ptr = ptr_void as *mut T;
+            ptr.copy_from(data.as_ptr(), data.len());
+
             slice.unmap(true);
         }
         Ok(slice)

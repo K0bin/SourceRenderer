@@ -430,7 +430,8 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
     pub fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Result<TransientBufferSlice<B>, OutOfMemoryError>
     where T: 'static + Send + Sync + Sized + Clone {
         let required_size = std::mem::size_of_val(data) as u64;
-        let size = align_up_64(required_size.max(64), 64);
+        assert_ne!(required_size, 0u64);
+        let size = align_up_64(required_size, 64);
 
         let buffer = self.inner.transient_buffer_allocator.get_slice(&BufferInfo {
             size: size,
@@ -446,10 +447,9 @@ impl<B: GPUBackend> CommandBufferRecorder<B> {
                 std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
             }
 
-            if required_size != 0 {
-                let ptr = ptr_void as *mut T;
-                ptr.copy_from(data.as_ptr(), data.len());
-            }
+            let ptr = ptr_void as *mut T;
+            ptr.copy_from(data.as_ptr(), data.len());
+
             buffer.unmap(true);
         }
         Ok(buffer)
