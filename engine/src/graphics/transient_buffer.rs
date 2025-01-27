@@ -56,6 +56,7 @@ const UNIQUE_ALLOCATION_THRESHOLD: u64 = 4096;
 struct BufferKey {
     buffer_usage: BufferUsage,
     memory_usage: MemoryUsage,
+    sharing_mode: QueueSharingMode
 }
 
 struct TransientBuffer<B: GPUBackend> {
@@ -166,6 +167,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         let key = BufferKey {
             memory_usage,
             buffer_usage: info.usage,
+            sharing_mode: info.sharing_mode
         };
         let matching_buffers = buffers.entry(key).or_default();
 

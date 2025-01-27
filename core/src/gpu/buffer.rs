@@ -29,7 +29,7 @@ impl BufferUsage {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QueueSharingMode {
   Exclusive,
   Concurrent
