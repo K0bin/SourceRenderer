@@ -178,7 +178,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
             })
         } else {
             let allocation = allocator.allocate(memory_usage, &heap_info)?;
-            let buffer = unsafe { allocation.data().create_buffer(info, allocation.range.offset, name) }?;
+            let buffer = unsafe { allocation.as_ref().data().create_buffer(info, allocation.as_ref().range.offset, name) }?;
             Ok(BufferAndAllocation {
                 buffer,
                 allocation: Some(allocation)

@@ -1,4 +1,4 @@
-use std::{sync::{Mutex, Arc}, collections::HashMap};
+use std::{borrow::Borrow, collections::HashMap, sync::{Arc, Mutex}};
 
 use log::trace;
 use sourcerenderer_core::gpu::*;
@@ -28,7 +28,22 @@ pub(super) struct MemoryAllocatorInner<B: GPUBackend> {
 
 const CHUNK_SIZE: u64 = 256 << 20;
 
-pub(super) type MemoryAllocation<H> = Allocation<H>;
+pub(super) struct MemoryAllocation<H: Send + Sync> {
+    allocation: Allocation<H>,
+    memory_usage: MemoryUsage
+}
+
+impl<T: Send + Sync> AsRef<Allocation<T>> for MemoryAllocation<T> {
+    fn as_ref(&self) -> &Allocation<T> {
+        &self.allocation
+    }
+}
+
+impl<T: Send + Sync> Borrow<Allocation<T>> for MemoryAllocation<T> {
+    fn borrow(&self) -> &Allocation<T> {
+        &self.allocation
+    }
+}
 
 #[derive(Debug)]
 pub(super) enum MemoryTypeMatchingStrictness {
@@ -56,7 +71,10 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         let chunk_list = inner.chunks.entry(memory_type_index).or_insert(Vec::new());
         let allocation = chunk_list.iter().find_map(|chunk| chunk.allocate(size, alignment));
         if let Some(allocation) = allocation {
-            return Ok(allocation);
+            return Ok(MemoryAllocation {
+                allocation,
+                memory_usage: self.memory_usage(memory_type_index)
+            });
         }
 
         let heap = unsafe { self.device.create_heap(memory_type_index, CHUNK_SIZE) };
@@ -67,7 +85,10 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         let chunk = Chunk::new(heap, CHUNK_SIZE.max(size));
         let allocation = chunk.allocate(size, alignment).unwrap();
         chunk_list.push(chunk);
-        Ok(allocation)
+        Ok(MemoryAllocation {
+            allocation,
+            memory_usage: self.memory_usage(memory_type_index)
+        })
     }
 
     pub(super) fn allocate(&self, usage: MemoryUsage, requirements: &ResourceHeapInfo) -> Result<MemoryAllocation<B::Heap>, OutOfMemoryError> {
@@ -123,7 +144,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
 
             match strictness {
                 MemoryTypeMatchingStrictness::Strict => {
-                    if (cached && !memory_type.is_cached)
+                    if (cached != memory_type.is_cached)
                         || cpu_accessible != !memory_type.is_cpu_accessible
                         || memory_type.memory_kind != memory_kind
                         || (cpu_accessible && !memory_type.is_coherent) {
@@ -146,6 +167,26 @@ impl<B: GPUBackend> MemoryAllocator<B> {
             mask |= 1 << i as u32;
         }
         return mask;
+    }
+
+    pub(super) fn memory_type_info(&self, memory_type_index: u32) -> &MemoryTypeInfo {
+        let memory_types = unsafe { self.device.memory_type_infos() };
+        &memory_types[(memory_type_index as usize).min(memory_types.len() - 1)]
+    }
+
+    pub(super) fn memory_usage(&self, memory_type_index: u32) -> MemoryUsage {
+        let memory_type_info = self.memory_type_info(memory_type_index);
+        if memory_type_info.is_cpu_accessible {
+            if memory_type_info.is_cached {
+                MemoryUsage::MainMemoryCached
+            } else if memory_type_info.memory_kind == MemoryKind::VRAM {
+                MemoryUsage::MappableGPUMemory
+            } else {
+                MemoryUsage::MainMemoryWriteCombined
+            }
+        } else {
+            MemoryUsage::GPUMemory
+        }
     }
 
     pub(super) fn is_uma(&self) -> bool {

@@ -155,7 +155,7 @@ impl Buffer for WebGPUBuffer {
     unsafe fn unmap(&self, offset: u64, mut length: u64, flush: bool) {
         let mut memory_opt: std::cell::RefMut<'_, Option<Box<[u8]>>> = self.rust_memory.borrow_mut();
         if memory_opt.is_none() {
-            assert!(!self.keep_rust_memory);
+            // Buffer wasn't mapped
             return;
         }
         let memory = memory_opt.as_mut().unwrap();

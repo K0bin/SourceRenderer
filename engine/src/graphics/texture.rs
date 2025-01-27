@@ -53,7 +53,7 @@ impl<B: GPUBackend> Texture<B> {
             (texture?, None)
         } else {
             let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
-            let texture = unsafe { allocation.data().create_texture(info, allocation.range.offset, name) }?;
+            let texture = unsafe { allocation.as_ref().data().create_texture(info, allocation.as_ref().range.offset, name) }?;
             (texture, Some(allocation))
         };
         Ok(Arc::new(Self {

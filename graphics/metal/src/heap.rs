@@ -36,7 +36,7 @@ impl MTLHeap {
 
         options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
 
-        if device.has_unified_memory() {
+        if !device.has_unified_memory() {
             if memory_kind == gpu::MemoryKind::VRAM {
                 descriptor.set_storage_mode(metal::MTLStorageMode::Private);
             } else {

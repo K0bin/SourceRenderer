@@ -26,14 +26,15 @@ impl<B: GPUBackend> Device<B> {
         let device = Arc::new(device);
         let memory_allocator = ManuallyDrop::new(Arc::new(MemoryAllocator::new(&device)));
         let destroyer = ManuallyDrop::new(Arc::new(DeferredDestroyer::new()));
+        let buffer_allocator = Arc::new(BufferAllocator::new(&device, &memory_allocator));
         Self {
             device: device.clone(),
             instance: instance,
             allocator: memory_allocator.clone(),
             destroyer: destroyer.clone(),
-            buffer_allocator: ManuallyDrop::new(Arc::new(BufferAllocator::new(&device, &memory_allocator))),
             bindless_slot_allocator: BindlessSlotAllocator::new(gpu::BINDLESS_TEXTURE_COUNT),
-            transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer)),
+            transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer, &buffer_allocator)),
+            buffer_allocator: ManuallyDrop::new(buffer_allocator),
             prerendered_frames: 3,
             has_context: AtomicBool::new(false),
             graphics_queue: Queue::new(QueueType::Graphics),
@@ -100,7 +101,7 @@ impl<B: GPUBackend> Device<B> {
     pub fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
         let required_size = std::mem::size_of_val(data) as u64;
         assert_ne!(required_size, 0u64);
-        let size = align_up_64(required_size, 64);
+        let size = align_up_64(required_size, 256u64);
 
         let slice = self.buffer_allocator.get_slice(&BufferInfo {
             size,
@@ -125,8 +126,8 @@ impl<B: GPUBackend> Device<B> {
     }
 
     pub fn init_buffer<T>(&self, data: &[T], dst: &Arc<BufferSlice<B>>, dst_offset: u64) -> Result<(), OutOfMemoryError> {
-        let slice = self.upload_data(data, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
-        self.transfer.init_buffer(&slice, dst, 0, dst_offset, WHOLE_BUFFER);
+        let data_u8 = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * std::mem::size_of_val(data)) };
+        self.transfer.init_buffer(data_u8, dst, dst_offset);
         Ok(())
     }
 
@@ -137,7 +138,7 @@ impl<B: GPUBackend> Device<B> {
         mip_level: u32,
         array_layer: u32) -> Result<(), OutOfMemoryError> {
         let slice = self.upload_data(data, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
-        self.transfer.init_texture(dst, &slice, mip_level, array_layer, 0);
+        self.transfer.init_texture_from_buffer(dst, &slice, mip_level, array_layer, 0);
         Ok(())
     }
 
@@ -149,7 +150,7 @@ impl<B: GPUBackend> Device<B> {
         array_layer: u32,
         buffer_offset: u64
     ) {
-        self.transfer.init_texture(dst, src, mip_level, array_layer, buffer_offset);
+        self.transfer.init_texture_from_buffer(dst, src, mip_level, array_layer, buffer_offset);
     }
 
     pub fn init_texture_async<T>(
@@ -159,7 +160,7 @@ impl<B: GPUBackend> Device<B> {
         mip_level: u32,
         array_layer: u32) -> Result<Option<SharedFenceValuePair<B>>, OutOfMemoryError> {
         let slice = self.upload_data(data, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
-        Ok(self.transfer.init_texture_async(dst, &slice, mip_level, array_layer, 0))
+        Ok(self.transfer.init_texture_from_buffer_async(dst, &slice, mip_level, array_layer, 0))
     }
 
     pub fn init_texture_from_buffer_async<T>(
@@ -170,7 +171,7 @@ impl<B: GPUBackend> Device<B> {
         array_layer: u32,
         buffer_offset: u64
     ) -> Option<SharedFenceValuePair<B>> {
-        self.transfer.init_texture_async(dst, src, mip_level, array_layer, buffer_offset)
+        self.transfer.init_texture_from_buffer_async(dst, src, mip_level, array_layer, buffer_offset)
     }
 
     pub fn flush_transfers(&self) {

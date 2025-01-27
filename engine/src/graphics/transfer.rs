@@ -9,6 +9,7 @@ const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
 pub(crate) struct Transfer<B: GPUBackend> {
   device: Arc<B::Device>,
+  buffer_allocator: Arc<BufferAllocator<B>>,
   inner: Mutex<TransferInner<B>>,
 }
 
@@ -75,7 +76,7 @@ pub struct TransferCommandBuffer<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> Transfer<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>) -> Self {
+    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, buffer_allocator: &Arc<BufferAllocator<B>>) -> Self {
         let graphics_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
         let graphics_pool = unsafe { device.graphics_queue().create_command_pool(gpu::CommandPoolType::CommandBuffers, gpu::CommandPoolFlags::INDIVIDUAL_RESET) };
 
@@ -115,6 +116,7 @@ impl<B: GPUBackend> Transfer<B> {
 
         Self {
             device: device.clone(),
+            buffer_allocator: buffer_allocator.clone(),
             inner: Mutex::new(TransferInner::<B> {
                 graphics: graphics_commands,
                 transfer: transfer_commands,
@@ -122,7 +124,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
     }
 
-    pub fn init_texture(
+    pub fn init_texture_from_buffer(
       &self,
       texture: &Arc<Texture<B>>,
       src_buffer: &Arc<BufferSlice<B>>,
@@ -193,7 +195,7 @@ impl<B: GPUBackend> Transfer<B> {
       guard.graphics.used_textures.push(texture.clone());
     }
 
-    pub fn init_buffer(
+    pub fn init_buffer_from_buffer(
       &self,
       src_buffer: &Arc<BufferSlice<B>>,
       dst_buffer: &Arc<BufferSlice<B>>,
@@ -234,7 +236,60 @@ impl<B: GPUBackend> Transfer<B> {
       guard.graphics.used_buffers_slices.push(dst_buffer.clone());
     }
 
-    pub fn init_texture_async(
+    pub fn init_buffer(
+      &self,
+      data: &[u8],
+      dst_buffer: &Arc<BufferSlice<B>>,
+      dst_offset: u64,
+    ) {
+      debug_assert_ne!(data.len(), 0);
+
+      // Try to copy directly if possible
+      if self.copy_to_host_visible_buffer(data, dst_buffer, dst_offset) {
+        return;
+      }
+
+      let src_buffer = self.upload_data(data, dst_buffer.length() - dst_offset, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC).unwrap();
+      self.init_buffer_from_buffer(&src_buffer, dst_buffer, 0, dst_offset, data.len() as u64);
+    }
+
+    pub fn init_buffer_owned(
+      &self,
+      data: Box<[u8]>,
+      dst_buffer: &Arc<BufferSlice<B>>,
+      dst_offset: u64,
+    ) {
+      debug_assert_ne!(data.len(), 0);
+
+      // Try to copy directly if possible
+      if self.copy_to_host_visible_buffer(&data, dst_buffer, dst_offset) {
+        return;
+      }
+
+      let src_buffer = self.upload_data(&data, dst_buffer.length() - dst_offset, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC).unwrap();
+      self.init_buffer_from_buffer(&src_buffer, dst_buffer, 0, dst_offset, data.len() as u64);
+    }
+
+    fn copy_to_host_visible_buffer(
+      &self,
+      data: &[u8],
+      dst_buffer: &Arc<BufferSlice<B>>,
+      dst_offset: u64
+    ) -> bool {
+      unsafe {
+        let dst_ptr = dst_buffer.map(false);
+        if let Some(ptr_void) = dst_ptr {
+          let actual_len = data.len().min(dst_buffer.length() as usize - dst_offset as usize);
+          let ptr = ptr_void as *mut u8;
+          ptr.offset(dst_offset as isize).copy_from(data.as_ptr(), actual_len);
+          dst_buffer.unmap(true);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    pub fn init_texture_from_buffer_async(
       &self,
       texture: &Arc<super::Texture<B>>,
       src_buffer: &Arc<BufferSlice<B>>,
@@ -245,7 +300,7 @@ impl<B: GPUBackend> Transfer<B> {
       let mut guard = self.inner.lock().unwrap();
       if guard.transfer.is_none() || DEBUG_FORCE_FAT_BARRIER {
         std::mem::drop(guard);
-        self.init_texture(texture, src_buffer, mip_level, array_layer, buffer_offset);
+        self.init_texture_from_buffer(texture, src_buffer, mip_level, array_layer, buffer_offset);
         return None;
       }
 
@@ -576,6 +631,33 @@ impl<B: GPUBackend> Transfer<B> {
 
         Some(cmd_buffer)
     }
+
+    fn upload_data<T>(&self, data: &[T], length: u64, memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
+      let required_size = std::mem::size_of_val(data) as u64;
+      assert_ne!(required_size, 0u64);
+      let size = align_up_64(required_size.max(length), 256u64);
+
+      let slice = self.buffer_allocator.get_slice(&BufferInfo {
+          size,
+          usage,
+          sharing_mode: QueueSharingMode::Concurrent
+      }, memory_usage, None)?;
+
+      unsafe {
+          let ptr_void = slice.map(false).unwrap();
+
+          if required_size < size {
+              let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
+              std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
+          }
+
+          let ptr = ptr_void as *mut T;
+          ptr.copy_from(data.as_ptr(), data.len());
+
+          slice.unmap(true);
+      }
+      Ok(slice)
+  }
 
     pub fn flush(&self) {
         self.try_free_unused_buffers();
