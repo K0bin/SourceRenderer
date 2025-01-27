@@ -48,9 +48,9 @@ impl<B: GPUBackend> TransientBufferSlice<B> {
     }
 }
 
-const BUFFER_SIZE: u64 = 16384;
-const REORDER_THRESHOLD: u64 = 128;
-const UNIQUE_ALLOCATION_THRESHOLD: u64 = 4096;
+const BUFFER_SIZE: u64 = 65536;
+const BUFFER_FULL_GAP_THRESHOLD: u64 = 128;
+const UNIQUE_ALLOCATION_THRESHOLD: u64 = 8192;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 struct BufferKey {
@@ -188,7 +188,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
                 length: info.size
             });
 
-            let used_up = sliced_buffer.size - sliced_buffer.offset <= REORDER_THRESHOLD;
+            let used_up = sliced_buffer.size - sliced_buffer.offset <= BUFFER_FULL_GAP_THRESHOLD;
             if used_up && actual_index != matching_buffers.buffers.len() - 1 {
                 matching_buffers.first_free_index = actual_index + 1;
             }

@@ -63,8 +63,8 @@ impl<B: GPUBackend> BufferSlice<B> {
     }
 }
 
-const SLICED_BUFFER_SIZE: u64 = 16384;
-const UNIQUE_ALLOCATION_THRESHOLD: u64 = 4096;
+const SLICED_BUFFER_SIZE: u64 = 524288;
+const UNIQUE_ALLOCATION_THRESHOLD: u64 = 65536;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 struct BufferKey {
