@@ -70,6 +70,7 @@ const UNIQUE_ALLOCATION_THRESHOLD: u64 = 4096;
 struct BufferKey {
     memory_usage: MemoryUsage,
     buffer_usage: BufferUsage,
+    sharing_mode: QueueSharingMode
 }
 
 pub struct BufferAllocator<B: GPUBackend> {
@@ -107,6 +108,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
         let key = BufferKey {
             memory_usage,
             buffer_usage: info.usage,
+            sharing_mode: info.sharing_mode
         };
         let mut guard = self.buffers.lock().unwrap();
         let matching_chunks = guard.entry(key).or_insert(Vec::new());
