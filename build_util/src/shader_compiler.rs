@@ -1125,8 +1125,6 @@ pub fn compile_shader(
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Wgsl) {
-        println!("Doing shader: {:?}", &shader_name);
-
         let mut prepared_spirv = spirv_bytecode_boxed.clone().into_vec();
         spirv_remove_debug_info(&mut prepared_spirv);
         spirv_remap_bindings(&mut prepared_spirv, |binding| Binding {
@@ -1136,13 +1134,10 @@ pub fn compile_shader(
         spirv_turn_push_const_into_ubo_pass(&mut prepared_spirv, gpu::BindingFrequency::VeryFrequent as u32, 0);
         spirv_separate_combined_image_samplers(&mut prepared_spirv, Option::<fn(&Binding) -> Binding>::None);
 
-        // update metadata
-        metadata = read_metadata(&prepared_spirv, shader_name, shader_type);
-
         let wgsl = compile_shader_naga(shader_name, &prepared_spirv);
         if let Ok(bytecode) = wgsl {
             if output_file_type == CompiledShaderFileType::Bytecode {
-                write_shader(file_path, output_dir, ShadingLanguage::Air, CompiledShaderType::Source(&bytecode));
+                write_shader(file_path, output_dir, ShadingLanguage::Wgsl, CompiledShaderType::Source(&bytecode));
             } else if output_file_type == CompiledShaderFileType::Packed {
                 metadata.shader_wgsl = bytecode;
             }
