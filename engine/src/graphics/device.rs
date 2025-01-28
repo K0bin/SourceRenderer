@@ -98,36 +98,26 @@ impl<B: GPUBackend> Device<B> {
         Ok(Arc::new(pipeline))
     }
 
-    pub fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
-        let required_size = std::mem::size_of_val(data) as u64;
-        assert_ne!(required_size, 0u64);
-        let size = align_up_64(required_size, 256u64);
-
-        let slice = self.buffer_allocator.get_slice(&BufferInfo {
-            size,
-            usage,
-            sharing_mode: QueueSharingMode::Concurrent
-        }, memory_usage, None)?;
-
-        unsafe {
-            let ptr_void = slice.map(false).unwrap();
-
-            if required_size < size {
-                let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-                std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
-            }
-
-            let ptr = ptr_void as *mut T;
-            ptr.copy_from(data.as_ptr(), data.len());
-
-            slice.unmap(true);
-        }
-        Ok(slice)
+    pub fn init_buffer<T>(&self, data: &[T], dst: &Arc<BufferSlice<B>>, dst_offset: u64) -> Result<(), OutOfMemoryError> {
+        let data_u8 = into_bytes(data);
+        self.transfer.init_buffer(data_u8, dst, dst_offset)?;
+        Ok(())
     }
 
-    pub fn init_buffer<T>(&self, data: &[T], dst: &Arc<BufferSlice<B>>, dst_offset: u64) -> Result<(), OutOfMemoryError> {
-        let data_u8 = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * std::mem::size_of_val(data)) };
-        self.transfer.init_buffer(data_u8, dst, dst_offset);
+    pub fn init_buffer_box<T>(&self, data: Box<[T]>, dst: &Arc<BufferSlice<B>>, dst_offset: u64) -> Result<(), OutOfMemoryError> {
+        let data_u8 = into_bytes_box(data);
+        self.transfer.init_buffer_box(data_u8, dst, dst_offset)?;
+        Ok(())
+    }
+
+    pub fn init_texture_box<T>(
+        &self,
+        data: Box<[T]>,
+        dst: &Arc<super::Texture<B>>,
+        mip_level: u32,
+        array_layer: u32) -> Result<(), OutOfMemoryError> {
+        let data_u8 = into_bytes_box(data);
+        let _ = self.transfer.init_texture_box(data_u8, dst, mip_level, array_layer, false)?;
         Ok(())
     }
 
@@ -137,8 +127,8 @@ impl<B: GPUBackend> Device<B> {
         dst: &Arc<super::Texture<B>>,
         mip_level: u32,
         array_layer: u32) -> Result<(), OutOfMemoryError> {
-        let slice = self.upload_data(data, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
-        self.transfer.init_texture_from_buffer(dst, &slice, mip_level, array_layer, 0);
+        let data_u8 = into_bytes(data);
+        let _ = self.transfer.init_texture(data_u8, dst, mip_level, array_layer, false)?;
         Ok(())
     }
 
@@ -159,8 +149,18 @@ impl<B: GPUBackend> Device<B> {
         dst: &Arc<super::Texture<B>>,
         mip_level: u32,
         array_layer: u32) -> Result<Option<SharedFenceValuePair<B>>, OutOfMemoryError> {
-        let slice = self.upload_data(data, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
-        Ok(self.transfer.init_texture_from_buffer_async(dst, &slice, mip_level, array_layer, 0))
+        let data_u8 = into_bytes(data);
+        self.transfer.init_texture(&data_u8, dst, mip_level, array_layer, true)
+    }
+
+    pub fn init_texture_box_async<T>(
+        &self,
+        data: Box<[T]>,
+        dst: &Arc<super::Texture<B>>,
+        mip_level: u32,
+        array_layer: u32) -> Result<Option<SharedFenceValuePair<B>>, OutOfMemoryError> {
+        let data_u8 = into_bytes_box(data);
+        self.transfer.init_texture_box(data_u8, dst, mip_level, array_layer, true)
     }
 
     pub fn init_texture_from_buffer_async<T>(
@@ -293,4 +293,18 @@ impl<B: GPUBackend> Drop for Device<B> {
             ManuallyDrop::drop(&mut self.allocator);
         }
     }
+}
+
+fn into_bytes<'a, T>(data: &'a [T]) -> &'a [u8] {
+    unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * std::mem::size_of::<T>()) }
+}
+
+fn into_bytes_box<T>(data: Box<[T]>) -> Box<[u8]> {
+    let data_vec = data.into_vec();
+    let len = data_vec.len();
+    let capacity = data_vec.capacity();
+    let ptr = data_vec.as_ptr();
+    std::mem::forget(data_vec);
+    let data_vec_u8 = unsafe { Vec::from_raw_parts(ptr as *mut u8, len * std::mem::size_of::<T>(), capacity * std::mem::size_of::<T>()) };
+    data_vec_u8.into_boxed_slice()
 }

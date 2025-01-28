@@ -241,33 +241,35 @@ impl<B: GPUBackend> Transfer<B> {
       data: &[u8],
       dst_buffer: &Arc<BufferSlice<B>>,
       dst_offset: u64,
-    ) {
+    ) -> Result<(), OutOfMemoryError> {
       debug_assert_ne!(data.len(), 0);
 
       // Try to copy directly if possible
       if self.copy_to_host_visible_buffer(data, dst_buffer, dst_offset) {
-        return;
+        return Ok(());
       }
 
-      let src_buffer = self.upload_data(data, dst_buffer.length() - dst_offset, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC).unwrap();
+      let src_buffer = self.upload_data(data, dst_buffer.length() - dst_offset, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
       self.init_buffer_from_buffer(&src_buffer, dst_buffer, 0, dst_offset, data.len() as u64);
+      Ok(())
     }
 
-    pub fn init_buffer_owned(
+    pub fn init_buffer_box(
       &self,
       data: Box<[u8]>,
       dst_buffer: &Arc<BufferSlice<B>>,
       dst_offset: u64,
-    ) {
+    ) -> Result<(), OutOfMemoryError> {
       debug_assert_ne!(data.len(), 0);
 
       // Try to copy directly if possible
       if self.copy_to_host_visible_buffer(&data, dst_buffer, dst_offset) {
-        return;
+        return Ok(());
       }
 
-      let src_buffer = self.upload_data(&data, dst_buffer.length() - dst_offset, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC).unwrap();
+      let src_buffer = self.upload_data(&data, dst_buffer.length() - dst_offset, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
       self.init_buffer_from_buffer(&src_buffer, dst_buffer, 0, dst_offset, data.len() as u64);
+      Ok(())
     }
 
     pub fn init_texture(
@@ -277,39 +279,77 @@ impl<B: GPUBackend> Transfer<B> {
       mip_level: u32,
       array_layer: u32,
       do_async: bool
-    ) -> Option<SharedFenceValuePair<B>> {
+    ) -> Result<Option<SharedFenceValuePair<B>>, OutOfMemoryError> {
       unsafe {
         if texture.handle().can_be_written_directly() {
-          self.device.transition_texture(texture.handle(), &gpu::CPUTextureTransition {
-            old_layout: TextureLayout::Undefined,
-            new_layout: TextureLayout::Sampled,
-            texture: texture.handle(),
-            range: BarrierTextureRange {
-                base_mip_level: 0,
-                mip_level_length: texture.info().mip_levels,
-                base_array_layer: 0,
-                array_layer_length: texture.info().array_length,
-            }
-          });
-          self.device.copy_to_texture(data.as_ptr() as *const c_void, texture.handle(), TextureLayout::Sampled, &MemoryTextureCopyRegion {
-            row_pitch: 0,
-            slice_pitch: 0,
-            texture_subresource: gpu::TextureSubresource {
-              array_layer, mip_level
-            },
-            texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
-            texture_extent: Vec3UI::new(texture.info().width, texture.info().height, texture.info().depth),
-          });
+          self.copy_to_host_visible_texture(data, texture, mip_level, array_layer);
+          return Ok(None);
         }
       }
 
-      let src_buffer = self.upload_data(data, WHOLE_BUFFER, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC).unwrap();
+      let src_buffer = self.upload_data(data, WHOLE_BUFFER, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
       if !do_async {
         self.init_texture_from_buffer(texture, &src_buffer, mip_level, array_layer, 0);
-        None
+        Ok(None)
       } else {
-        self.init_texture_from_buffer_async(texture, &src_buffer, mip_level, array_layer, 0)
+        let fence_pair_opt = self.init_texture_from_buffer_async(texture, &src_buffer, mip_level, array_layer, 0);
+        Ok(fence_pair_opt)
+      }
+    }
 
+    pub fn init_texture_box(
+      &self,
+      data: Box<[u8]>,
+      texture: &Arc<Texture<B>>,
+      mip_level: u32,
+      array_layer: u32,
+      do_async: bool
+    ) -> Result<Option<SharedFenceValuePair<B>>, OutOfMemoryError> {
+      unsafe {
+        if texture.handle().can_be_written_directly() {
+          self.copy_to_host_visible_texture(&data, texture, mip_level, array_layer);
+          return Ok(None);
+        }
+      }
+
+      let src_buffer = self.upload_data(&data, WHOLE_BUFFER, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
+      if !do_async {
+        self.init_texture_from_buffer(texture, &src_buffer, mip_level, array_layer, 0);
+        Ok(None)
+      } else {
+        let fence_pair_opt = self.init_texture_from_buffer_async(texture, &src_buffer, mip_level, array_layer, 0);
+        Ok(fence_pair_opt)
+      }
+    }
+
+    pub fn copy_to_host_visible_texture(
+      &self,
+      data: &[u8],
+      texture: &Arc<Texture<B>>,
+      mip_level: u32,
+      array_layer: u32
+    ) {
+      unsafe {
+        self.device.transition_texture(texture.handle(), &gpu::CPUTextureTransition {
+          old_layout: TextureLayout::Undefined,
+          new_layout: TextureLayout::Sampled,
+          texture: texture.handle(),
+          range: BarrierTextureRange {
+              base_mip_level: 0,
+              mip_level_length: texture.info().mip_levels,
+              base_array_layer: 0,
+              array_layer_length: texture.info().array_length,
+          }
+        });
+        self.device.copy_to_texture(data.as_ptr() as *const c_void, texture.handle(), TextureLayout::Sampled, &MemoryTextureCopyRegion {
+          row_pitch: 0,
+          slice_pitch: 0,
+          texture_subresource: gpu::TextureSubresource {
+            array_layer, mip_level
+          },
+          texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
+          texture_extent: Vec3UI::new(texture.info().width, texture.info().height, texture.info().depth),
+        });
       }
     }
 
