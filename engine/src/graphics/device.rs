@@ -98,6 +98,33 @@ impl<B: GPUBackend> Device<B> {
         Ok(Arc::new(pipeline))
     }
 
+    pub fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
+        let required_size = std::mem::size_of_val(data) as u64;
+        let size = align_up_64(required_size.max(64), 64);
+
+        let slice = self.buffer_allocator.get_slice(&BufferInfo {
+            size,
+            usage,
+            sharing_mode: QueueSharingMode::Concurrent
+        }, memory_usage, None)?;
+
+        unsafe {
+            let ptr_void = slice.map(false).unwrap();
+
+            if required_size < size {
+                let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
+                std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
+            }
+
+            if required_size != 0 {
+                let ptr = ptr_void as *mut T;
+                ptr.copy_from(data.as_ptr(), data.len());
+            }
+            slice.unmap(true);
+        }
+        Ok(slice)
+    }
+
     pub fn init_buffer<T>(&self, data: &[T], dst: &Arc<BufferSlice<B>>, dst_offset: u64) -> Result<(), OutOfMemoryError> {
         let data_u8 = into_bytes(data);
         self.transfer.init_buffer(data_u8, dst, dst_offset)?;
