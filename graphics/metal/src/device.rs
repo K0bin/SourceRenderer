@@ -296,6 +296,8 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         panic!("The Metal backend does not support RT pipelines.")
     }
 
+    unsafe fn transition_texture(&self, _dst: &MTLTexture, _transition: &gpu::CPUTextureTransition<'_, MTLBackend>) {}
+
     unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &MTLTexture, _texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let mtl_region = MTLRegion::new_3d(region.texture_offset.x as u64, region.texture_offset.y as u64, region.texture_offset.z as u64,
             region.texture_extent.x as u64, region.texture_extent.y as u64, region.texture_extent.z as u64);

@@ -361,6 +361,23 @@ impl gpu::Device<VkBackend> for VkDevice {
         (std::mem::size_of::<vk::AccelerationStructureInstanceKHR>() * instances.len()) as u64
     }
 
+    unsafe fn transition_texture(&self, dst: &VkTexture, transition: &gpu::CPUTextureTransition<'_, VkBackend>) {
+        let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
+        host_img_copy.transition_image_layout(&[vk::HostImageLayoutTransitionInfoEXT {
+            image: dst.handle(),
+            old_layout: texture_layout_to_image_layout(transition.old_layout),
+            new_layout: texture_layout_to_image_layout(transition.new_layout),
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: aspect_mask_from_format(dst.info().format),
+                base_mip_level: 0,
+                level_count: dst.info().mip_levels,
+                base_array_layer: 0,
+                layer_count: dst.info().array_length,
+            },
+            ..Default::default()
+        }]).unwrap();
+    }
+
     unsafe fn copy_to_texture(&self, src: *const c_void, dst: &VkTexture, texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
 

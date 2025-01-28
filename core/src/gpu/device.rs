@@ -35,6 +35,13 @@ pub struct MemoryTextureCopyRegion {
   pub texture_extent: Vec3UI,
 }
 
+pub struct CPUTextureTransition<'a, B: GPUBackend> {
+  pub old_layout: TextureLayout,
+  pub new_layout: TextureLayout,
+  pub texture: &'a B::Texture,
+  pub range: BarrierTextureRange,
+}
+
 pub trait Device<B: GPUBackend> {
   unsafe fn create_buffer(&self, info: &BufferInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Buffer, OutOfMemoryError>;
   unsafe fn create_texture(&self, info: &TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Texture, OutOfMemoryError>;
@@ -52,6 +59,7 @@ pub trait Device<B: GPUBackend> {
   unsafe fn get_texture_heap_info(&self, info: &TextureInfo) -> ResourceHeapInfo;
   unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &B::TextureView);
   unsafe fn copy_to_texture(&self, src: *const c_void, dst: &B::Texture, texture_layout: TextureLayout, region: &MemoryTextureCopyRegion);
+  unsafe fn transition_texture(&self, dst: &B::Texture, transition: &CPUTextureTransition<'_, B>);
   fn graphics_queue(&self) -> &B::Queue;
   fn compute_queue(&self) -> Option<&B::Queue>;
   fn transfer_queue(&self) -> Option<&B::Queue>;

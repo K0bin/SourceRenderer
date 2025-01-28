@@ -189,6 +189,8 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         panic!("WebGPU does not support bindless")
     }
 
+    unsafe fn transition_texture(&self, _dst: &WebGPUTexture, _transition: &gpu::CPUTextureTransition<'_, WebGPUBackend>) {}
+
     unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &WebGPUTexture, _texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let src_info = GpuTexelCopyBufferLayout::new();
 
