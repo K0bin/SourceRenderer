@@ -1,6 +1,6 @@
-use std::{collections::{HashSet, VecDeque}, sync::{Arc, Mutex}};
+use std::{collections::{HashSet, VecDeque}, ffi::c_void, sync::{Arc, Mutex}};
 
-use sourcerenderer_core::{gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _}, Vec3UI};
+use sourcerenderer_core::{gpu::{CommandBuffer as _, CommandPool as _, MemoryTextureCopyRegion, Queue as _, Texture as _}, Vec3UI};
 use sourcerenderer_core::gpu;
 
 use super::*;
@@ -166,7 +166,7 @@ impl<B: GPUBackend> Transfer<B> {
                   array_layer, mip_level
                 },
                 texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
-                texture_extent: Vec3UI::new(texture.handle().info().width, texture.handle().info().height, texture.handle().info().depth),
+                texture_extent: Vec3UI::new(texture.info().width, texture.info().height, texture.info().depth),
             }
           }
       );
@@ -270,6 +270,49 @@ impl<B: GPUBackend> Transfer<B> {
       self.init_buffer_from_buffer(&src_buffer, dst_buffer, 0, dst_offset, data.len() as u64);
     }
 
+    pub fn init_texture(
+      &self,
+      data: &[u8],
+      texture: &Arc<Texture<B>>,
+      mip_level: u32,
+      array_layer: u32,
+      do_async: bool
+    ) -> Option<SharedFenceValuePair<B>> {
+      unsafe {
+        if texture.handle().can_be_written_directly() {
+          self.device.transition_texture(texture.handle(), &gpu::CPUTextureTransition {
+            old_layout: TextureLayout::Undefined,
+            new_layout: TextureLayout::Sampled,
+            texture: texture.handle(),
+            range: BarrierTextureRange {
+                base_mip_level: 0,
+                mip_level_length: texture.info().mip_levels,
+                base_array_layer: 0,
+                array_layer_length: texture.info().array_length,
+            }
+          });
+          self.device.copy_to_texture(data.as_ptr() as *const c_void, texture.handle(), TextureLayout::Sampled, &MemoryTextureCopyRegion {
+            row_pitch: 0,
+            slice_pitch: 0,
+            texture_subresource: gpu::TextureSubresource {
+              array_layer, mip_level
+            },
+            texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
+            texture_extent: Vec3UI::new(texture.info().width, texture.info().height, texture.info().depth),
+          });
+        }
+      }
+
+      let src_buffer = self.upload_data(data, WHOLE_BUFFER, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC).unwrap();
+      if !do_async {
+        self.init_texture_from_buffer(texture, &src_buffer, mip_level, array_layer, 0);
+        None
+      } else {
+        self.init_texture_from_buffer_async(texture, &src_buffer, mip_level, array_layer, 0)
+
+      }
+    }
+
     fn copy_to_host_visible_buffer(
       &self,
       data: &[u8],
@@ -342,7 +385,7 @@ impl<B: GPUBackend> Transfer<B> {
                       array_layer, mip_level
                     },
                     texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
-                    texture_extent: Vec3UI::new(texture.handle().info().width, texture.handle().info().height, texture.handle().info().depth),
+                    texture_extent: Vec3UI::new(texture.info().width, texture.info().height, texture.info().depth),
                 }
               }
           );
