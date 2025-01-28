@@ -253,7 +253,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             let mut properties_12: vk::PhysicalDeviceVulkan12Properties = Default::default();
             let mut properties_13: vk::PhysicalDeviceVulkan13Properties = Default::default();
             let mut supported_host_image_copy_properties =
-                vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
+                vk::PhysicalDeviceHostImageCopyPropertiesEXT::default();
             let mut supported_acceleration_structure_features =
                 vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut supported_rt_pipeline_features =
@@ -369,7 +369,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 supported_host_image_copy_properties.p_next = std::mem::replace(
                     &mut properties.p_next,
                     &mut supported_host_image_copy_properties
-                        as *mut vk::PhysicalDeviceHostImageCopyFeaturesEXT
+                        as *mut vk::PhysicalDeviceHostImageCopyPropertiesEXT
                         as *mut c_void,
                 );
             }
@@ -566,6 +566,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             }
 
             if supported_host_image_copy_features.host_image_copy == vk::TRUE {
+                extension_names.push(HOST_IMAGE_COPY_EXT_NAME);
                 host_image_copy_features.host_image_copy = vk::TRUE;
                 host_image_copy_features.p_next = std::mem::replace(
                     &mut enabled_features.p_next,
