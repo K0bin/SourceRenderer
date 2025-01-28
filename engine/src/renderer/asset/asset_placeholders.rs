@@ -11,7 +11,7 @@ pub struct AssetPlaceholders<P: Platform> {
 impl<P: Platform> AssetPlaceholders<P> {
     pub fn new(device: &crate::graphics::Device<P::GPUBackend>) -> Self {
         let mut zero_data = Vec::<u8>::with_capacity(64 * 64 * 4);
-        zero_data.fill(255u8);
+        zero_data.resize(zero_data.capacity(), 255u8);
         let zero_texture = device.create_texture(
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,

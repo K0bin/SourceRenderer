@@ -287,7 +287,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
       }
 
-      let src_buffer = self.upload_data(data, WHOLE_BUFFER, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
+      let src_buffer = self.upload_data(data, 0, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
       if !do_async {
         self.init_texture_from_buffer(texture, &src_buffer, mip_level, array_layer, 0);
         Ok(None)
@@ -312,7 +312,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
       }
 
-      let src_buffer = self.upload_data(&data, WHOLE_BUFFER, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
+      let src_buffer = self.upload_data(&data, 0, MemoryUsage::MainMemoryWriteCombined, BufferUsage::COPY_SRC)?;
       if !do_async {
         self.init_texture_from_buffer(texture, &src_buffer, mip_level, array_layer, 0);
         Ok(None)
