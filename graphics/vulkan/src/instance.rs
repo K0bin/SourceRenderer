@@ -64,12 +64,6 @@ impl VkInstance {
             }
         }
 
-        if cfg!(target_os = "android") {
-            println!("Activating synchronization2 and timeline semaphore fallback layers");
-            layer_names_c.push(CString::new("VK_LAYER_KHRONOS_synchronization2").unwrap());
-            layer_names_c.push(CString::new("VK_LAYER_KHRONOS_timeline_semaphore").unwrap());
-        }
-
         let layer_names_ptr: Vec<*const c_char> = layer_names_c
             .iter()
             .map(|raw_name| raw_name.as_ptr())
