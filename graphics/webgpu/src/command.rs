@@ -590,7 +590,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     unsafe fn copy_buffer_to_texture(&mut self, src: &WebGPUBuffer, dst: &WebGPUTexture, region: &gpu::BufferTextureCopyRegion) {
         let recording = self.get_recording_mut();
         recording.ensure_no_active_pass();
-        let src_info =  GpuTexelCopyBufferInfo::new(&src.handle());
+        let src_info = GpuTexelCopyBufferInfo::new(&src.handle());
         src_info.set_offset(region.buffer_offset as f64);
 
         let format = dst.info().format;

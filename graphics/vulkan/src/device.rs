@@ -408,6 +408,10 @@ impl gpu::Device<VkBackend> for VkDevice {
     fn get_top_level_instances_buffer_size(&self, instances: &[gpu::AccelerationStructureInstance<VkBackend>]) -> u64 {
         (std::mem::size_of::<vk::AccelerationStructureInstanceKHR>() * instances.len()) as u64
     }
+
+    unsafe fn copy_to_texture(&self, src: *const c_void, dst: &VkTexture, region: &gpu::MemoryTextureCopyRegion) {
+        unimplemented!()
+    }
 }
 
 impl Drop for VkDevice {

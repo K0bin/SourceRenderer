@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use metal;
+use metal::{self, MTLRegion};
 use smallvec::{smallvec, SmallVec};
 
-use sourcerenderer_core::gpu::{self, DedicatedAllocationPreference};
+use sourcerenderer_core::{align_up_32, gpu::{self, DedicatedAllocationPreference, Texture as _}};
 
 use super::*;
 
@@ -294,5 +294,29 @@ impl gpu::Device<MTLBackend> for MTLDevice {
 
     unsafe fn create_raytracing_pipeline(&self, _info: &gpu::RayTracingPipelineInfo<MTLBackend>, _sbt_buffer: &MTLBuffer, _sbt_buffer_offset: u64, _name: Option<&str>) -> MTLRayTracingPipeline {
         panic!("The Metal backend does not support RT pipelines.")
+    }
+
+    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &MTLTexture, region: &gpu::MemoryTextureCopyRegion) {
+        let mtl_region = MTLRegion::new_3d(region.texture_offset.x as u64, region.texture_offset.y as u64, region.texture_offset.z as u64,
+            region.texture_extent.x as u64, region.texture_extent.y as u64, region.texture_extent.z as u64);
+
+        let format = dst.info().format;
+        let row_pitch = if region.row_pitch != 0 {
+            region.row_pitch
+        } else {
+            (align_up_32(region.texture_extent.x, format.block_size().x) / format.block_size().x * format.element_size()) as u64
+        };
+        let slice_pitch = if region.slice_pitch != 0 {
+            region.slice_pitch
+        } else {
+            (align_up_32(region.texture_extent.y, format.block_size().y) / format.block_size().y) as u64 * row_pitch
+        };
+
+        dst.handle().replace_region_in_slice(
+            mtl_region,
+            region.texture_subresource.mip_level as u64,
+            region.texture_subresource.array_layer as u64,
+            src, row_pitch, slice_pitch
+        );
     }
 }

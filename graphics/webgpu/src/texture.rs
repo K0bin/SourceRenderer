@@ -226,6 +226,10 @@ impl Texture for WebGPUTexture {
     fn info(&self) -> &TextureInfo {
         &self.info
     }
+
+    unsafe fn can_be_written_directly(&self) -> bool {
+        true
+    }
 }
 
 pub struct WebGPUTextureView {

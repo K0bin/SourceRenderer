@@ -20,6 +20,10 @@ impl WebGPUQueue {
             queue,
         }
     }
+
+    pub(crate) fn handle(&self) -> &GpuQueue {
+        &self.queue
+    }
 }
 
 unsafe impl Send for WebGPUQueue {}

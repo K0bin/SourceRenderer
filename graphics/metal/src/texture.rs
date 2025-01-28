@@ -250,6 +250,10 @@ impl gpu::Texture for MTLTexture {
     fn info(&self) -> &gpu::TextureInfo {
         &self.info
     }
+
+    unsafe fn can_be_written_directly(&self) -> bool {
+        self.texture.storage_mode() != metal::MTLStorageMode::Private
+    }
 }
 
 impl PartialEq<MTLTexture> for MTLTexture {

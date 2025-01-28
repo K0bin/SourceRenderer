@@ -1,6 +1,7 @@
+use js_sys::{wasm_bindgen::JsValue, Array};
 use smallvec::{SmallVec, smallvec};
-use sourcerenderer_core::gpu;
-use web_sys::{GpuAdapter, GpuDevice};
+use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
+use web_sys::{GpuAdapter, GpuDevice, GpuQueue, GpuTexelCopyTextureInfo, GpuTexelCopyBufferLayout, GpuExtent3dDict};
 
 use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFence, WebGPUGraphicsPipeline, WebGPUHeap, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView};
 
@@ -186,5 +187,48 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
 
     unsafe fn create_raytracing_pipeline(&self, _info: &gpu::RayTracingPipelineInfo<WebGPUBackend>, _sbt_buffer: &WebGPUBuffer, _sbt_buffer_offset: u64, _name: Option<&str>) -> () {
         panic!("WebGPU does not support bindless")
+    }
+
+    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &WebGPUTexture, region: &gpu::MemoryTextureCopyRegion) {
+        let src_info = GpuTexelCopyBufferLayout::new();
+
+        let format = dst.info().format;
+        let row_pitch = if region.row_pitch != 0 {
+            region.row_pitch
+        } else {
+            (align_up_32(region.texture_extent.x, format.block_size().x) / format.block_size().x * format.element_size()) as u64
+        };
+        let slice_pitch = if region.slice_pitch != 0 {
+            region.slice_pitch
+        } else {
+            (align_up_32(region.texture_extent.y, format.block_size().y) / format.block_size().y) as u64 * row_pitch
+        };
+        assert_eq!(slice_pitch % row_pitch, 0);
+
+        src_info.set_bytes_per_row(row_pitch as u32);
+        src_info.set_rows_per_image((slice_pitch / row_pitch) as u32);
+        let dst_info = (&GpuTexelCopyTextureInfo::new)(dst.handle());
+        dst_info.set_mip_level(region.texture_subresource.mip_level);
+        let origin = Array::new_with_length(3);
+        origin.set(0, JsValue::from(region.texture_offset.x as f64));
+        origin.set(1, JsValue::from(region.texture_offset.y as f64));
+        let copy_size = GpuExtent3dDict::new(region.texture_extent.x);
+        copy_size.set_height(region.texture_extent.y);
+        assert!(dst.info().array_length == 0 || dst.info().dimension != gpu::TextureDimension::Dim3D);
+        if dst.info().dimension == gpu::TextureDimension::Dim3D {
+            assert_eq!(region.texture_subresource.array_layer, 0);
+            copy_size.set_depth_or_array_layers(region.texture_extent.z);
+            origin.set(2, JsValue::from(region.texture_offset.z as f64));
+        } else {
+            assert_eq!(region.texture_extent.z, 1);
+            assert_eq!(region.texture_offset.z, 0);
+            copy_size.set_depth_or_array_layers(region.texture_subresource.array_layer);
+            origin.set(2, JsValue::from(region.texture_subresource.array_layer as f64));
+        }
+        dst_info.set_origin(&origin);
+
+        let queue = self.queue.handle();
+        let slice = unsafe { std::slice::from_raw_parts(src as *const u8, (slice_pitch * row_pitch * (region.texture_extent.y as u64) * (region.texture_extent.z as u64)) as usize) };
+        queue.write_texture_with_u8_slice_and_gpu_extent_3d_dict(&dst_info, slice, &src_info, &copy_size).unwrap();
     }
 }

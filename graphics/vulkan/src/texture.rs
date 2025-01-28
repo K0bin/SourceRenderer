@@ -307,6 +307,10 @@ impl gpu::Texture for VkTexture {
     fn info(&self) -> &gpu::TextureInfo {
         &self.info
     }
+
+    unsafe fn can_be_written_directly(&self) -> bool {
+        false
+    }
 }
 
 fn filter_to_vk(filter: gpu::Filter) -> vk::Filter {

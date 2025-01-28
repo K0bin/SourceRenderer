@@ -152,6 +152,7 @@ pub struct SamplerInfo {
 
 pub trait Texture : Send + Sync + PartialEq + Eq {
   fn info(&self) -> &TextureInfo;
+  unsafe fn can_be_written_directly(&self) -> bool;
 }
 
 pub trait TextureView : Send + Sync + PartialEq + Eq {

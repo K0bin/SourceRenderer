@@ -1,3 +1,7 @@
+use std::ffi::c_void;
+
+use crate::Vec3UI;
+
 use super::*;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -22,6 +26,15 @@ pub const TOTAL_SET_COUNT: u32 = NON_BINDLESS_SET_COUNT + 1;
 pub const BINDLESS_TEXTURE_SET_INDEX: u32 = NON_BINDLESS_SET_COUNT;
 pub const BINDLESS_TEXTURE_COUNT: u32 = 500_000;
 
+#[derive(Debug)]
+pub struct MemoryTextureCopyRegion {
+  pub row_pitch: u64,
+  pub slice_pitch: u64,
+  pub texture_subresource: TextureSubresource,
+  pub texture_offset: Vec3UI,
+  pub texture_extent: Vec3UI,
+}
+
 pub trait Device<B: GPUBackend> {
   unsafe fn create_buffer(&self, info: &BufferInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Buffer, OutOfMemoryError>;
   unsafe fn create_texture(&self, info: &TextureInfo, memory_type_index: u32, name: Option<&str>) -> Result<B::Texture, OutOfMemoryError>;
@@ -38,6 +51,7 @@ pub trait Device<B: GPUBackend> {
   unsafe fn get_buffer_heap_info(&self, info: &BufferInfo) -> ResourceHeapInfo;
   unsafe fn get_texture_heap_info(&self, info: &TextureInfo) -> ResourceHeapInfo;
   unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &B::TextureView);
+  unsafe fn copy_to_texture(&self, src: *const c_void, dst: &B::Texture, region: &MemoryTextureCopyRegion);
   fn graphics_queue(&self) -> &B::Queue;
   fn compute_queue(&self) -> Option<&B::Queue>;
   fn transfer_queue(&self) -> Option<&B::Queue>;
