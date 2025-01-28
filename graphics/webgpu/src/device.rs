@@ -1,6 +1,6 @@
 use js_sys::{wasm_bindgen::JsValue, Array};
 use smallvec::{SmallVec, smallvec};
-use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
+use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _, TextureLayout}};
 use web_sys::{GpuAdapter, GpuDevice, GpuQueue, GpuTexelCopyTextureInfo, GpuTexelCopyBufferLayout, GpuExtent3dDict};
 
 use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFence, WebGPUGraphicsPipeline, WebGPUHeap, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView};
@@ -189,7 +189,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         panic!("WebGPU does not support bindless")
     }
 
-    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &WebGPUTexture, region: &gpu::MemoryTextureCopyRegion) {
+    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &WebGPUTexture, _texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let src_info = GpuTexelCopyBufferLayout::new();
 
         let format = dst.info().format;

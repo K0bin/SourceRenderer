@@ -35,3 +35,5 @@ pub type EulerRot = bevy_math::EulerRot;
 
 mod align;
 pub use align::*;
+mod fixed_size_vec;
+pub use fixed_size_vec::*;

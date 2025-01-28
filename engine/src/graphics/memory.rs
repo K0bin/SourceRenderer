@@ -39,12 +39,6 @@ impl<T: Send + Sync> AsRef<Allocation<T>> for MemoryAllocation<T> {
     }
 }
 
-impl<T: Send + Sync> Borrow<Allocation<T>> for MemoryAllocation<T> {
-    fn borrow(&self) -> &Allocation<T> {
-        &self.allocation
-    }
-}
-
 #[derive(Debug)]
 pub(super) enum MemoryTypeMatchingStrictness {
     Strict,

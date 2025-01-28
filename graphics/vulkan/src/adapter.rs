@@ -24,6 +24,7 @@ const DEFERRED_HOST_OPERATIONS_EXT_NAME: &str = "VK_KHR_deferred_host_operations
 const RAY_TRACING_PIPELINE_EXT_NAME: &str = "VK_KHR_ray_tracing_pipeline";
 const RAY_QUERY_EXT_NAME: &str = "VK_KHR_ray_query";
 const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
+const HOST_IMAGE_COPY_EXT_NAME: &str = "VK_EXT_host_image_copy";
 const BARYCENTRICS_EXT_NAME: &str = "VK_NV_fragment_shader_barycentric"; // TODO: Use VK_KHR_fragment_shader_barycentric
 
 bitflags! {
@@ -37,6 +38,7 @@ bitflags! {
     const RAY_TRACING_PIPELINE       = 0b1000000000;
     const RAY_QUERY                  = 0b10000000000;
     const PIPELINE_LIBRARY           = 0b100000000000;
+    const HOST_IMAGE_COPY            = 0b1000000000000;
     const BARYCENTRICS               = 0b1000000000000000000;
   }
 }
@@ -100,6 +102,7 @@ impl VkAdapter {
                     VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS
                 }
                 BARYCENTRICS_EXT_NAME => VkAdapterExtensionSupport::BARYCENTRICS,
+                HOST_IMAGE_COPY_EXT_NAME => VkAdapterExtensionSupport::HOST_IMAGE_COPY,
                 _ => VkAdapterExtensionSupport::NONE,
             };
         }
@@ -249,6 +252,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             let mut properties_11: vk::PhysicalDeviceVulkan11Properties = Default::default();
             let mut properties_12: vk::PhysicalDeviceVulkan12Properties = Default::default();
             let mut properties_13: vk::PhysicalDeviceVulkan13Properties = Default::default();
+            let mut supported_host_image_copy_properties =
+                vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
             let mut supported_acceleration_structure_features =
                 vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut supported_rt_pipeline_features =
@@ -257,6 +262,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 vk::PhysicalDeviceRayQueryFeaturesKHR::default();
             let mut supported_barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
+            let mut supported_host_image_copy_features =
+                vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
 
             supported_features_11.p_next = std::mem::replace(
                 &mut supported_features.p_next,
@@ -352,6 +359,21 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 );
             }
 
+            if self.extensions.intersects(VkAdapterExtensionSupport::HOST_IMAGE_COPY) {
+                supported_host_image_copy_features.p_next = std::mem::replace(
+                    &mut supported_features.p_next,
+                    &mut supported_host_image_copy_features
+                        as *mut vk::PhysicalDeviceHostImageCopyFeaturesEXT
+                        as *mut c_void,
+                );
+                supported_host_image_copy_properties.p_next = std::mem::replace(
+                    &mut properties.p_next,
+                    &mut supported_host_image_copy_properties
+                        as *mut vk::PhysicalDeviceHostImageCopyFeaturesEXT
+                        as *mut c_void,
+                );
+            }
+
             self.instance
                 .get_physical_device_features2(self.physical_device, &mut supported_features);
             self.instance
@@ -370,6 +392,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 vk::PhysicalDeviceRayQueryFeaturesKHR::default();
             let mut barycentrics_features =
                 VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
+            let mut host_image_copy_features = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
             let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
             enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
@@ -540,6 +563,16 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             if supported_features_13.maintenance4 == vk::TRUE {
                 enabled_features_13.maintenance4 = vk::TRUE;
                 features |= VkFeatures::MAINTENANCE4;
+            }
+
+            if supported_host_image_copy_features.host_image_copy == vk::TRUE {
+                host_image_copy_features.host_image_copy = vk::TRUE;
+                host_image_copy_features.p_next = std::mem::replace(
+                    &mut enabled_features.p_next,
+                    &mut host_image_copy_features
+                        as *mut vk::PhysicalDeviceHostImageCopyFeaturesEXT
+                        as *mut c_void,
+                );
             }
 
             let extension_names_c: Vec<CString> = extension_names

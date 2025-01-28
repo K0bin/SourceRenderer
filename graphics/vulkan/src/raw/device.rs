@@ -25,6 +25,7 @@ bitflags! {
     const IMAGE_FORMAT_LIST          = 0b10000000;
     const MAINTENANCE4               = 0b100000000;
     const BDA                        = 0b1000000000;
+    const HOST_IMAGE_COPY            = 0b10000000000;
   }
 }
 
@@ -48,7 +49,8 @@ pub struct RawVkDevice {
     pub properties12: vk::PhysicalDeviceVulkan12Properties<'static>,
     pub properties13: vk::PhysicalDeviceVulkan13Properties<'static>,
     pub supported_pipeline_stages: vk::PipelineStageFlags2,
-    pub supported_access_flags: vk::AccessFlags2
+    pub supported_access_flags: vk::AccessFlags2,
+    pub host_image_copy: Option<ash::ext::host_image_copy::Device>,
 }
 
 unsafe impl Send for RawVkDevice {}
@@ -184,6 +186,12 @@ impl RawVkDevice {
                 | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR;
         }
 
+        let host_image_copy =  if features.contains(VkFeatures::HOST_IMAGE_COPY) {
+            Some(ash::ext::host_image_copy::Device::new(&instance, &device))
+        } else {
+            None
+        };
+
         Self {
             device,
             physical_device,
@@ -204,7 +212,8 @@ impl RawVkDevice {
             properties12: unsafe { std::mem::transmute(properties12) },
             properties13: unsafe { std::mem::transmute(properties13) },
             supported_pipeline_stages,
-            supported_access_flags
+            supported_access_flags,
+            host_image_copy
         }
     }
 

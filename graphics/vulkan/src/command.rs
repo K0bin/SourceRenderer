@@ -662,26 +662,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert!(!self.is_in_render_pass);
         let src_info = src_texture.info();
         let dst_info = dst_texture.info();
-        let mut src_aspect = vk::ImageAspectFlags::empty();
-        if src_info.format.is_stencil() {
-            src_aspect |= vk::ImageAspectFlags::STENCIL;
-        }
-        if src_info.format.is_depth() {
-            src_aspect |= vk::ImageAspectFlags::DEPTH;
-        }
-        if src_aspect.is_empty() {
-            src_aspect = vk::ImageAspectFlags::COLOR;
-        }
-        let mut dst_aspect = vk::ImageAspectFlags::empty();
-        if dst_info.format.is_stencil() {
-            dst_aspect |= vk::ImageAspectFlags::STENCIL;
-        }
-        if dst_info.format.is_depth() {
-            dst_aspect |= vk::ImageAspectFlags::DEPTH;
-        }
-        if dst_aspect.is_empty() {
-            dst_aspect = vk::ImageAspectFlags::COLOR;
-        }
 
         unsafe {
             self.device.cmd_blit_image(
@@ -692,7 +672,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[vk::ImageBlit {
                     src_subresource: vk::ImageSubresourceLayers {
-                        aspect_mask: src_aspect,
+                        aspect_mask: aspect_mask_from_format(src_info.format),
                         mip_level: src_mip_level,
                         base_array_layer: src_array_layer,
                         layer_count: 1,
@@ -706,7 +686,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                         },
                     ],
                     dst_subresource: vk::ImageSubresourceLayers {
-                        aspect_mask: dst_aspect,
+                        aspect_mask: aspect_mask_from_format(dst_info.format),
                         mip_level: dst_mip_level,
                         base_array_layer: dst_array_layer,
                         layer_count: 1,
@@ -1270,20 +1250,10 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(!self.is_in_render_pass);
 
-        let format = texture.info().format;
-        let mut aspect_mask = vk::ImageAspectFlags::empty();
-        if format.is_depth() {
-            aspect_mask |= vk::ImageAspectFlags::DEPTH;
-        }
-        if format.is_stencil() {
-            aspect_mask |= vk::ImageAspectFlags::STENCIL;
-        }
-        if aspect_mask.is_empty() {
-            aspect_mask = vk::ImageAspectFlags::COLOR;
-        }
+        let aspect_mask = aspect_mask_from_format(texture.info().format);
 
         let range = vk::ImageSubresourceRange {
-            aspect_mask: aspect_mask,
+            aspect_mask,
             base_mip_level: mip_level,
             level_count: 1,
             base_array_layer: array_layer,
@@ -1643,7 +1613,7 @@ fn barrier_access_to_access(access: gpu::BarrierAccess) -> vk::AccessFlags2 {
     vk_access
 }
 
-fn texture_layout_to_image_layout(layout: gpu::TextureLayout) -> vk::ImageLayout {
+pub(crate) fn texture_layout_to_image_layout(layout: gpu::TextureLayout) -> vk::ImageLayout {
     match layout {
         gpu::TextureLayout::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         gpu::TextureLayout::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -1658,6 +1628,20 @@ fn texture_layout_to_image_layout(layout: gpu::TextureLayout) -> vk::ImageLayout
         gpu::TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
         gpu::TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
     }
+}
+
+pub(crate) fn aspect_mask_from_format(format: gpu::Format) -> vk::ImageAspectFlags {
+    let mut aspects= vk::ImageAspectFlags::empty();
+    if format.is_stencil() {
+        aspects |= vk::ImageAspectFlags::STENCIL;
+    }
+    if format.is_depth() {
+        aspects |= vk::ImageAspectFlags::DEPTH;
+    }
+    if aspects.is_empty() {
+        aspects = vk::ImageAspectFlags::COLOR;
+    }
+    aspects
 }
 
 pub(crate) fn index_format_to_vk(format: gpu::IndexFormat) -> vk::IndexType {

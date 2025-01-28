@@ -1,11 +1,11 @@
-use std::{sync::{
+use std::{cmp::max, ffi::c_void, pin::Pin, sync::{
     atomic::AtomicU64,
     Arc,
-}, ffi::c_void};
+}};
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Device as _};
+use sourcerenderer_core::gpu::{self, Device as _, TextureLayout};
 
 use super::*;
 
@@ -314,63 +314,15 @@ impl gpu::Device<VkBackend> for VkDevice {
     }
 
     unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
-        let mut image_info = vk::ImageCreateInfo {
-            flags: vk::ImageCreateFlags::empty(),
-            tiling: vk::ImageTiling::OPTIMAL,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            usage: texture_usage_to_vk(info.usage),
-            image_type: match info.dimension {
-                gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
-                gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Dim2D
-                    | gpu::TextureDimension::Cube | gpu::TextureDimension::CubeArray => vk::ImageType::TYPE_2D,
-                gpu::TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
-            },
-            extent: vk::Extent3D {
-                width: info.width.max(1),
-                height: info.height.max(1),
-                depth: info.depth.max(1),
-            },
-            format: format_to_vk(info.format, self.device.supports_d24),
-            mip_levels: info.mip_levels,
-            array_layers: info.array_length,
-            samples: samples_to_vk(info.samples),
-            ..Default::default()
-        };
-
-        debug_assert!(
-            info.array_length == 1
-                || (info.dimension == gpu::TextureDimension::Dim1DArray
-                    || info.dimension == gpu::TextureDimension::Dim2DArray)
-        );
-        debug_assert!(info.depth == 1 || info.dimension == gpu::TextureDimension::Dim3D);
-        debug_assert!(
-            info.height == 1
-                || (info.dimension == gpu::TextureDimension::Dim2D
-                    || info.dimension == gpu::TextureDimension::Dim2DArray
-                    || info.dimension == gpu::TextureDimension::Dim3D)
-        );
-
-        let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
-        compatible_formats.push(image_info.format);
-        let mut format_list = vk::ImageFormatListCreateInfo {
-            view_format_count: compatible_formats.len() as u32,
-            p_view_formats: compatible_formats.as_ptr(),
-            ..Default::default()
-        };
-        if info.supports_srgb {
-            image_info.flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
-            format_list.p_next = std::mem::replace(
-                &mut image_info.p_next,
-                &format_list as *const vk::ImageFormatListCreateInfo as *const c_void,
-            );
-        }
+        let mut create_info_collection = VkImageCreateInfoCollection::default();
+        let pinned = Pin::new(&mut create_info_collection);
+        VkTexture::build_create_info(&self.device, pinned, info);
 
         let mut requirements = vk::MemoryRequirements2::default();
         let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
         requirements.p_next = &mut dedicated_requirements as *mut vk::MemoryDedicatedRequirements as *mut c_void;
         let image_requirements_info = vk::DeviceImageMemoryRequirements {
-            p_create_info: &image_info as *const vk::ImageCreateInfo,
+            p_create_info: &create_info_collection.create_info as *const vk::ImageCreateInfo,
             ..Default::default()
         };
         self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
@@ -409,8 +361,41 @@ impl gpu::Device<VkBackend> for VkDevice {
         (std::mem::size_of::<vk::AccelerationStructureInstanceKHR>() * instances.len()) as u64
     }
 
-    unsafe fn copy_to_texture(&self, src: *const c_void, dst: &VkTexture, region: &gpu::MemoryTextureCopyRegion) {
-        unimplemented!()
+    unsafe fn copy_to_texture(&self, src: *const c_void, dst: &VkTexture, texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
+        let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
+
+        assert_eq!(region.slice_pitch % region.row_pitch, 0);
+        let region = vk::MemoryToImageCopyEXT {
+            p_host_pointer: src,
+            memory_row_length: region.row_pitch as u32,
+            memory_image_height: (region.slice_pitch / region.row_pitch) as u32,
+            image_subresource: vk::ImageSubresourceLayers {
+                aspect_mask: aspect_mask_from_format(dst.info().format),
+                mip_level: region.texture_subresource.mip_level,
+                base_array_layer: region.texture_subresource.array_layer,
+                layer_count: 1,
+            },
+            image_offset: vk::Offset3D {
+                x: region.texture_offset.x as i32,
+                y: region.texture_offset.y as i32,
+                z: region.texture_offset.z as i32
+            },
+            image_extent: vk::Extent3D {
+                width: region.texture_extent.x,
+                height: region.texture_extent.y,
+                depth: region.texture_extent.z
+            },
+            ..Default::default()
+        };
+
+        host_img_copy.copy_memory_to_image(&vk::CopyMemoryToImageInfoEXT {
+            flags: vk::HostImageCopyFlagsEXT::empty(),
+            dst_image: dst.handle(),
+            dst_image_layout: texture_layout_to_image_layout(texture_layout),
+            p_regions: &region as *const vk::MemoryToImageCopyEXT,
+            region_count: 1,
+            ..Default::default()
+        }).unwrap();
     }
 }
 

@@ -1,24 +1,36 @@
 use std::{
-    cmp::max,
-    ffi::{
+    cmp::max, ffi::{
         c_void,
         CString,
-    },
-    hash::{
+    }, hash::{
         Hash,
         Hasher,
-    },
-    sync::Arc,
+    }, pin::Pin, sync::Arc
 };
 
 use ash::{
     vk,
     vk::Handle as _,
 };
-use smallvec::SmallVec;
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::{gpu, FixedSizeSmallVec};
 
 use super::*;
+
+pub(crate) struct VkImageCreateInfoCollection<'a> {
+    pub(crate) create_info: vk::ImageCreateInfo<'a>,
+    pub(crate) compatible_vk_formats: FixedSizeSmallVec<[vk::Format; 2]>,
+    pub(crate) format_list: vk::ImageFormatListCreateInfo<'a>
+}
+
+impl Default for VkImageCreateInfoCollection<'_> {
+    fn default() -> Self {
+        Self {
+            create_info: vk::ImageCreateInfo::default(),
+            compatible_vk_formats: FixedSizeSmallVec::new(),
+            format_list: vk::ImageFormatListCreateInfo::default()
+        }
+    }
+}
 
 pub struct VkTexture {
     image: vk::Image,
@@ -26,20 +38,22 @@ pub struct VkTexture {
     info: gpu::TextureInfo,
     memory: Option<vk::DeviceMemory>,
     is_image_owned: bool,
-    is_memory_owned: bool
+    is_memory_owned: bool,
+    supports_direct_copy: bool
 }
 
 unsafe impl Send for VkTexture {}
 unsafe impl Sync for VkTexture {}
 
 impl VkTexture {
-    pub(crate) unsafe fn new(device: &Arc<RawVkDevice>, info: &gpu::TextureInfo, memory: ResourceMemory, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
-        let mut create_info = vk::ImageCreateInfo {
+    pub(crate) fn build_create_info(device: &RawVkDevice, mut target: Pin<&mut VkImageCreateInfoCollection>, info: &gpu::TextureInfo) {
+        let mut supports_direct_copy = device.features.contains(VkFeatures::HOST_IMAGE_COPY);
+        target.create_info = vk::ImageCreateInfo {
             flags: vk::ImageCreateFlags::empty(),
             tiling: vk::ImageTiling::OPTIMAL,
             initial_layout: vk::ImageLayout::UNDEFINED,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
-            usage: texture_usage_to_vk(info.usage),
+            usage: texture_usage_to_vk(info.usage, false),
             image_type: match info.dimension {
                 gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
                 gpu::TextureDimension::Dim2DArray
@@ -73,48 +87,64 @@ impl VkTexture {
                     || info.dimension == gpu::TextureDimension::Dim3D)
         );
 
-        let mut compatible_formats = SmallVec::<[vk::Format; 2]>::with_capacity(2);
-        compatible_formats.push(create_info.format);
-        let srgb_format = info.format.srgb_format();
-        if let Some(srgb_format) = srgb_format {
-            compatible_formats.push(format_to_vk(srgb_format, false));
-        }
-        let mut format_list = vk::ImageFormatListCreateInfo {
-            view_format_count: compatible_formats.len() as u32,
-            p_view_formats: compatible_formats.as_ptr(),
-            ..Default::default()
-        };
+        let main_format = target.create_info.format;
+        target.compatible_vk_formats.push(main_format);
         if info.supports_srgb {
-            create_info.flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
-            if device.features.contains(VkFeatures::IMAGE_FORMAT_LIST) {
-                format_list.p_next = std::mem::replace(
-                    &mut create_info.p_next,
-                    &format_list as *const vk::ImageFormatListCreateInfo as *const c_void,
-                );
+            let srgb_format_opt = info.format.srgb_format();
+            if srgb_format_opt.is_none() {
+                panic!("Format {:?} does not have an equivalent srgb format", info.format);
             }
+            let srgb_format = srgb_format_opt.unwrap();
+            target.compatible_vk_formats.push(format_to_vk(srgb_format, false));
+            target.format_list = vk::ImageFormatListCreateInfo {
+                view_format_count: target.compatible_vk_formats.as_ref().len() as u32,
+                p_view_formats: target.compatible_vk_formats.as_ref().as_ptr(),
+                ..Default::default()
+            };
+
+            target.create_info.flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
+            let old_p_next = target.create_info.p_next;
+            target.create_info.p_next = &target.format_list as *const vk::ImageFormatListCreateInfo as *const c_void;
+            target.format_list.p_next = old_p_next;
         }
 
         let mut props: vk::ImageFormatProperties2 = Default::default();
+        let mut host_image_copy_format_info = vk::HostImageCopyDevicePerformanceQueryEXT::default();
+        let mut format_info = vk::PhysicalDeviceImageFormatInfo2 {
+            format: target.create_info.format,
+            ty: target.create_info.image_type,
+            tiling: target.create_info.tiling,
+            usage: target.create_info.usage,
+            flags: target.create_info.flags,
+            ..Default::default()
+        };
+        if supports_direct_copy {
+            format_info.p_next = &mut host_image_copy_format_info as *mut vk::HostImageCopyDevicePerformanceQueryEXT
+                as *mut c_void;
+        }
         unsafe {
             device
                 .instance
                 .get_physical_device_image_format_properties2(
                     device.physical_device,
-                    &vk::PhysicalDeviceImageFormatInfo2 {
-                        format: create_info.format,
-                        ty: create_info.image_type,
-                        tiling: create_info.tiling,
-                        usage: create_info.usage,
-                        flags: create_info.flags,
-                        ..Default::default()
-                    },
+                    &format_info,
                     &mut props,
                 )
                 .unwrap()
         };
 
+        if supports_direct_copy {
+            supports_direct_copy = supports_direct_copy && host_image_copy_format_info.identical_memory_layout == vk::TRUE;
+            target.create_info.usage = texture_usage_to_vk(info.usage, supports_direct_copy);
+        }
+    }
 
-        let image_res = device.create_image(&create_info, None);
+    pub(crate) unsafe fn new(device: &Arc<RawVkDevice>, info: &gpu::TextureInfo, memory: ResourceMemory, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+        let mut create_info_collection = VkImageCreateInfoCollection::default();
+        let pinned = Pin::new(&mut create_info_collection);
+        Self::build_create_info(device, pinned, info);
+
+        let image_res = device.create_image(&create_info_collection.create_info, None);
         if let Err(e) = image_res {
             if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
                 return Err(gpu::OutOfMemoryError {});
@@ -216,7 +246,8 @@ impl VkTexture {
             info: info.clone(),
             memory: Some(vk_memory),
             is_image_owned: true,
-            is_memory_owned
+            is_memory_owned,
+            supports_direct_copy: create_info_collection.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
         })
     }
 
@@ -227,7 +258,8 @@ impl VkTexture {
             info,
             is_image_owned: false,
             is_memory_owned: false,
-            memory: None
+            memory: None,
+            supports_direct_copy: false
         }
     }
 
@@ -240,7 +272,7 @@ impl VkTexture {
     }
 }
 
-pub(crate) fn texture_usage_to_vk(usage: gpu::TextureUsage) -> vk::ImageUsageFlags {
+pub(crate) fn texture_usage_to_vk(usage: gpu::TextureUsage, host_image_copy: bool) -> vk::ImageUsageFlags {
     let mut flags = vk::ImageUsageFlags::empty();
 
     if usage.contains(gpu::TextureUsage::STORAGE) {
@@ -258,9 +290,17 @@ pub(crate) fn texture_usage_to_vk(usage: gpu::TextureUsage) -> vk::ImageUsageFla
     }
 
     let transfer_dst_usages =
-        gpu::TextureUsage::BLIT_DST | gpu::TextureUsage::COPY_DST | gpu::TextureUsage::RESOLVE_DST | gpu::TextureUsage::INITIAL_COPY;
+        gpu::TextureUsage::BLIT_DST | gpu::TextureUsage::COPY_DST | gpu::TextureUsage::RESOLVE_DST;
     if usage.intersects(transfer_dst_usages) {
         flags |= vk::ImageUsageFlags::TRANSFER_DST;
+    }
+
+    if usage.intersects(gpu::TextureUsage::INITIAL_COPY) {
+        if host_image_copy {
+            flags |= vk::ImageUsageFlags::HOST_TRANSFER_EXT;
+        } else {
+            flags |= vk::ImageUsageFlags::TRANSFER_DST;
+        }
     }
 
     if usage.contains(gpu::TextureUsage::DEPTH_STENCIL) {
@@ -380,11 +420,7 @@ impl VkTextureView {
                 a: vk::ComponentSwizzle::IDENTITY,
             },
             subresource_range: vk::ImageSubresourceRange {
-                aspect_mask: if format.is_depth() {
-                    vk::ImageAspectFlags::DEPTH
-                } else {
-                    vk::ImageAspectFlags::COLOR
-                },
+                aspect_mask: aspect_mask_from_format(format),
                 base_mip_level: info.base_mip_level,
                 level_count: info.mip_level_length,
                 base_array_layer: info.base_array_layer,
@@ -555,11 +591,7 @@ pub(crate) fn texture_subresource_to_vk(subresource: &gpu::TextureSubresource, t
     vk::ImageSubresource {
         mip_level: subresource.mip_level,
         array_layer: subresource.array_layer,
-        aspect_mask: if texture_format.is_depth() {
-            vk::ImageAspectFlags::DEPTH
-        } else {
-            vk::ImageAspectFlags::COLOR
-        }
+        aspect_mask: aspect_mask_from_format(texture_format)
     }
 }
 
@@ -567,11 +599,7 @@ pub(crate) fn texture_subresource_to_vk_layers(subresource: &gpu::TextureSubreso
     vk::ImageSubresourceLayers {
         mip_level: subresource.mip_level,
         base_array_layer: subresource.array_layer,
-        aspect_mask: if texture_format.is_depth() {
-            vk::ImageAspectFlags::DEPTH
-        } else {
-            vk::ImageAspectFlags::COLOR
-        },
+        aspect_mask: aspect_mask_from_format(texture_format),
         layer_count: layers
     }
 }
