@@ -294,10 +294,3 @@ impl<P: Platform> AssetIntegrator<P> {
         self.index_buffer.buffer()
     }
 }
-
-impl<P: Platform> Drop for AssetIntegrator<P> {
-    fn drop(&mut self) {
-        // workaround for https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/3729
-        //self.device.wait_for_idle();
-    }
-}
