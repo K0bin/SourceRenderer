@@ -332,7 +332,11 @@ impl GltfLoader {
                     let _ = file.read_exact(&mut data).await.unwrap();
                 }
                 Source::Uri(uri) => {
-                    let url = gltf_path.to_string() + uri;
+                    let url = if let Some(last_slash_pos) = gltf_path.find('/') {
+                        format!("{}/{}", &gltf_path[..last_slash_pos], &uri)
+                    } else {
+                        uri.to_string()
+                    };
                     if let Some(cached_data) = buffer_cache.get_mut(&url) {
                         data.copy_from_slice(
                             &cached_data[view.offset()..(view.offset() + view.length())],
@@ -691,19 +695,26 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
         }
 
         let scene_prefix = "/scene/";
-        let scene_name_start = path.find(scene_prefix);
-        if let Some(scene_name_start) = scene_name_start {
-            let gltf_name = &path[0..scene_name_start];
-            let scene_name = &path[scene_name_start + scene_prefix.len()..];
-            for scene in gltf.scenes() {
-                if scene
-                    .name()
-                    .map_or_else(|| scene.index().to_string(), |name| name.to_string())
-                    == scene_name
-                {
-                    let world = GltfLoader::load_scene(&scene, manager, gltf_name).await;
-                    manager.add_asset_data_with_progress(&path, AssetData::Level(world), Some(progress), priority);
-                }
+        let scene_name_start_opt = path.find(scene_prefix);
+        if scene_name_start_opt.is_none() {
+            return Ok(());
+        }
+        let scene_name_start = scene_name_start_opt.unwrap();
+        let gltf_name = &path[0..scene_name_start];
+
+        for scene in gltf.scenes() {
+            let scene_name_or_fallback: String;
+            if let Some(scene_name) = scene.name() {
+                scene_name_or_fallback = format!("{}/scene/{}", gltf_name, scene_name);
+            } else if gltf.scenes().len() > 1 || scene_name_start + scene_prefix.len() < path.len() {
+                scene_name_or_fallback = format!("{}/scene/{}", gltf_name, scene.index());
+            } else {
+                scene_name_or_fallback = format!("{}/scene/", gltf_name);
+            }
+
+            if &path == &scene_name_or_fallback {
+                let world = GltfLoader::load_scene(&scene, manager, gltf_name).await;
+                manager.add_asset_data_with_progress(&scene_name_or_fallback, AssetData::Level(world), Some(progress), priority);
             }
         }
         Ok(())
