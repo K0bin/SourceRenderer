@@ -292,6 +292,7 @@ impl MTLGraphicsPipeline {
                 gpu::Format::RGBA8UNorm => metal::MTLVertexFormat::Char4Normalized,
                 gpu::Format::RG16UInt => metal::MTLVertexFormat::UShort2,
                 gpu::Format::RG16UNorm => metal::MTLVertexFormat::UShort2Normalized,
+                gpu::Format::R32UInt => metal::MTLVertexFormat::UInt,
                 _ => panic!("Unsupported format")
             });
             vertex_descriptor.attributes().set_object_at(idx as u64, Some(&adesc));
