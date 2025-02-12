@@ -119,6 +119,13 @@ impl<B: GPUBackend> RendererScene<B> {
             return;
         }
 
+        let index = self.directional_light_entity_map.get(entity);
+        if let Some(index) = index {
+            let point_light = &mut self.directional_lights[*index];
+            point_light.direction = transform.transform_vector3(Vec3::new(0f32, 0f32, 1f32));
+            return;
+        }
+
         warn!("Found no entity on the renderer for ecs entity: {:?}", entity);
 
         debug_assert!(false); // debug unreachable

@@ -270,7 +270,6 @@ fn extract_static_renderables<P: Platform>(
 ) {
     for (entity, renderable, transform) in static_renderables.iter() {
         if renderable.is_added() || transform.is_added() {
-            trace!("Registering static renderable.");
             renderer
                 .sender
                 .register_static_renderable(entity, transform.as_ref(), renderable.as_ref());
