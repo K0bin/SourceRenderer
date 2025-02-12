@@ -127,8 +127,11 @@ impl<P: Platform> RendererPlugin<P> {
     }
 
     pub fn window_changed(app: &App, window_state: WindowState) {
-        let resource = app.world().resource::<RendererResourceWrapper<P>>();
-        resource.sender.window_changed(window_state);
+        let resource = app.world().get_resource::<RendererResourceWrapper<P>>();
+        if let Some(resource) = resource {
+            // It might not be finished initializing yet.
+            resource.sender.window_changed(window_state);
+        }
     }
 }
 
