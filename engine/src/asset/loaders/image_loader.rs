@@ -7,8 +7,6 @@ use image::{
     ImageFormat,
 };
 
-use bevy_tasks::futures_lite::AsyncReadExt;
-
 use sourcerenderer_core::Platform;
 
 use crate::graphics::*;
@@ -33,7 +31,7 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
 
     async fn load(
         &self,
-        mut file: AssetFile,
+        file: AssetFile,
         manager: &Arc<AssetManager<P>>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
@@ -41,19 +39,16 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
         let is_png = file.path.ends_with(".png");
 
         let path = file.path.clone();
-        let mut data = Vec::<u8>::new();
-        let _bytes_read = file.read_to_end(&mut data).await.map_err(|_| ())?;
-
-        let buf_read = BufReader::new(file);
+        let buf_reader = BufReader::new(file);
         let image_reader = ImageReader::with_format(
-            buf_read,
+            buf_reader,
             if is_png {
                 ImageFormat::Png
             } else {
                 ImageFormat::Jpeg
             },
         );
-        let img = image_reader.decode().map_err(|_e| ())?;
+        let img = image_reader.decode().map_err(|e| log::error!("Image decoding error: {:?}", e))?;
         let (width, height) = img.dimensions();
 
         let (format, data) = match img {

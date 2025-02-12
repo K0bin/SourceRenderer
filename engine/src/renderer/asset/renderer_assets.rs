@@ -92,7 +92,8 @@ impl<P: Platform> RendererAssets<P> {
 
     pub(crate) fn contains(&self, path: &str, asset_type: AssetType) -> bool {
         let assets = self.assets.read();
-        assets.contains(path, asset_type)
+        assets.contains(path, asset_type) ||
+            assets.contains_just_path(path).is_some()
     }
 
     pub(crate) fn contains_just_path(&self, path: &str) -> Option<AssetType> {

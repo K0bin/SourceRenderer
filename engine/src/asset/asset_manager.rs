@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::future::{poll_fn, Future};
 use std::hash::Hash;
 use std::io::{
@@ -7,7 +7,6 @@ use std::io::{
     Seek,
     SeekFrom,
 };
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::{
     AtomicU32,
@@ -16,37 +15,26 @@ use std::sync::atomic::{
 use std::sync::{
     Arc,
     Mutex,
-    RwLock, RwLockReadGuard,
 };
 use std::task::Poll;
 
-use bevy_ecs::world::World;
+use atomic_waker::AtomicWaker;
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
-use bevy_tasks::{poll_once, AsyncComputeTaskPool, IoTaskPool};
-use crossbeam_channel::{
-    unbounded,
-    Receiver,
-    Sender,
-};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
 use futures_io::{AsyncRead, AsyncSeek};
-use gltf::json::extensions::asset;
 use log::{
     error,
-    trace,
-    warn,
+    trace
 };
-use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{GPUBackend, PackedShader};
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
-use crate::renderer::asset::{AssetIntegrator as RendererAssetIntegrator, AssetPlaceholders as RendererAssetPlaceholders, ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMesh, RendererModel, RendererShader, RendererTexture};
+use crate::renderer::asset::{ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly};
 
-use super::loaded_level::LevelData;
-use super::{Asset, AssetData, AssetHandle, AssetRef, AssetType, AssetWithHandle, HandleMap, IndexHandle, LevelHandle, MaterialData, MaterialHandle, MeshData, MeshHandle, MeshRange, ModelData, ModelHandle, ShaderData, ShaderHandle, SoundHandle, TextureData, TextureHandle};
+use super::{Asset, AssetData, AssetHandle, AssetType, AssetWithHandle, MaterialData, MeshData, MeshRange, ModelData, TextureData};
 
 pub struct AssetLoadRequest {
     pub path: String,
@@ -179,8 +167,10 @@ pub struct AssetManager<P: Platform> {
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
     containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     pending_containers_count: AtomicU32,
+    pending_file_loads_waker: AtomicWaker,
     loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
     pending_loaders_count: AtomicU32,
+    pending_asset_loads_waker: AtomicWaker,
     requested_assets: Mutex<HashMap<String, AssetType>>,
     unintegrated_assets: Mutex<HashMap<String, AssetData>>,
     renderer: RendererAssets<P>,
@@ -198,7 +188,9 @@ impl<P: Platform> AssetManager<P> {
             renderer: RendererAssets::<P>::new(device),
             requested_assets: Mutex::new(HashMap::new()),
             pending_containers_count: AtomicU32::new(0u32),
-            pending_loaders_count: AtomicU32::new(0u32)
+            pending_file_loads_waker: AtomicWaker::new(),
+            pending_loaders_count: AtomicU32::new(0u32),
+            pending_asset_loads_waker: AtomicWaker::new()
         });
 
         manager
@@ -273,27 +265,56 @@ impl<P: Platform> AssetManager<P> {
         self.renderer.request_ray_tracing_pipeline(self, info)
     }
 
-    pub fn add_container(self: &Arc<Self>, container: impl AssetContainer) {
-        self.add_container_with_progress(container, None);
+    pub fn add_container_async(
+        self: &Arc<Self>,
+        future: impl Future<Output = impl AssetContainer> + Send + 'static
+    ) {
+        self.add_container_with_progress_async(future, None);
+    }
+
+    pub fn add_container(
+        self: &Arc<Self>,
+        container: impl AssetContainer
+    ) {
+        self.add_container_with_progress_async(async move {
+            container
+        }, None);
     }
 
     pub fn add_container_with_progress(
         self: &Arc<Self>,
         container: impl AssetContainer,
-        progress: Option<&Arc<AssetLoaderProgress>>,
+        progress: Option<&Arc<AssetLoaderProgress>>
     ) {
-        self.pending_containers_count.fetch_add(1, Ordering::Acquire);
+        self.add_container_with_progress_async(async move {
+            container
+        }, progress);
+    }
+
+    pub fn add_container_with_progress_async(
+        self: &Arc<Self>,
+        future: impl Future<Output = impl AssetContainer> + Send + 'static,
+        progress: Option<&Arc<AssetLoaderProgress>>
+    ) {
+        self.pending_containers_count.fetch_add(1u32, Ordering::Acquire);
 
         let c_progress = progress.cloned();
         let c_self = self.clone();
         IoTaskPool::get().spawn(async move {
-            let mut containers = c_self.containers.write().await;
-            containers.push(Box::new(container));
+            {
+                let mut containers = c_self.containers.write().await;
+                containers.push(Box::new(future.await));
+            }
+            log::trace!("Done building container.");
             if let Some(progress) = c_progress {
                 progress.finished.fetch_add(1, Ordering::SeqCst);
             }
 
-            c_self.pending_containers_count.fetch_sub(1, Ordering::Release);
+            let count = c_self.pending_containers_count.fetch_sub(1, Ordering::Release) - 1;
+            if count == 0 {
+                c_self.pending_file_loads_waker.wake();
+            }
+            log::trace!("Reducing pending containers count to {}", count);
         }).detach();
     }
 
@@ -305,7 +326,10 @@ impl<P: Platform> AssetManager<P> {
             let mut loaders = c_self.loaders.write().await;
             loaders.push(Box::new(loader));
 
-            c_self.pending_loaders_count.fetch_sub(1, Ordering::Release);
+            let count = c_self.pending_loaders_count.fetch_sub(1, Ordering::Release) - 1;
+            if count == 0 {
+                c_self.pending_asset_loads_waker.wake();
+            }
         }).detach();
     }
 
@@ -501,10 +525,12 @@ impl<P: Platform> AssetManager<P> {
 
     pub async fn load_file(self: &Arc<Self>, path: &str) -> Option<AssetFile> {
         // Make sure there is no add_container task queued that hasn't been finished yet.
-        let no_pending = poll_fn(|_ctx| {
-            if self.pending_containers_count.load(Ordering::Acquire) == 0 {
+        let no_pending = poll_fn(|ctx| {
+            let pending_count = self.pending_containers_count.load(Ordering::Acquire);
+            if pending_count == 0 {
                 Poll::Ready(())
             } else {
+                self.pending_file_loads_waker.register(ctx.waker());
                 Poll::Pending
             }
         });
@@ -535,16 +561,18 @@ impl<P: Platform> AssetManager<P> {
     async fn find_loader<'a>(
         file: &mut AssetFile,
         loaders: &'a [Box<dyn ErasedAssetLoader<P>>],
+        waker: &'a AtomicWaker,
         pending_count: &AtomicU32
     ) -> Option<&'a dyn ErasedAssetLoader<P>> {
         let start = AsyncSeekExt::seek(file, SeekFrom::Current(0)).await
             .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
 
         // Make sure there is no add_loader task queued that hasn't been finished yet.
-        let no_pending = poll_fn(|_ctx| {
+        let no_pending = poll_fn(|ctx| {
             if pending_count.load(Ordering::Acquire) == 0 {
                 Poll::Ready(())
             } else {
+                waker.register(ctx.waker());
                 Poll::Pending
             }
         });
@@ -575,7 +603,12 @@ impl<P: Platform> AssetManager<P> {
         }
 
         let loaders = self.loaders.read().await;
-        let loader_opt: Option<&dyn ErasedAssetLoader<P>> = AssetManager::find_loader(&mut file, loaders.as_ref(), &self.pending_loaders_count).await;
+        let loader_opt: Option<&dyn ErasedAssetLoader<P>> = AssetManager::find_loader(
+            &mut file,
+            loaders.as_ref(),
+            &self.pending_asset_loads_waker,
+            &self.pending_loaders_count
+        ).await;
         if loader_opt.is_none() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
             error!("Could not find loader for file: {:?}", &file.path);
