@@ -170,13 +170,12 @@ impl AsyncCounter {
     fn new() -> Self { Self { counter: AtomicU32::new(0u32), wakers: Mutex::new(Vec::new()) } }
 
     fn increment(&self) -> u32 {
-        let count = self.counter.fetch_add(1, Ordering::Acquire);
-        count
+        self.counter.fetch_add(1, Ordering::Acquire) + 1
     }
 
     fn decrement(&self) -> u32 {
-        let mut count = self.counter.fetch_sub(1, Ordering::Release);
-        while count - 1 == 0 {
+        let mut count = self.counter.fetch_sub(1, Ordering::Release) - 1;
+        while count == 0 {
             let waker = {
                 let mut guard = self.wakers.lock().unwrap();
                 guard.pop()
@@ -193,11 +192,15 @@ impl AsyncCounter {
 
     fn wait_for_zero<'a>(&'a self) -> impl Future<Output = ()> + 'a {
         poll_fn(|ctx| {
-            let pending_count = self.counter.load(Ordering::Acquire);
+            let mut pending_count = self.counter.load(Ordering::Acquire);
             if pending_count == 0 {
                 Poll::Ready(())
             } else {
                 let mut guard = self.wakers.lock().unwrap();
+                pending_count = self.counter.load(Ordering::Relaxed);
+                if pending_count == 0 {
+                    return Poll::Ready(());
+                }
                 guard.push(ctx.waker().clone());
 
                 Poll::Pending
@@ -344,13 +347,11 @@ impl<P: Platform> AssetManager<P> {
                 let mut containers = c_self.containers.write().await;
                 containers.push(Box::new(future.await));
             }
-            log::trace!("Done building container.");
             if let Some(progress) = c_progress {
                 progress.finished.fetch_add(1, Ordering::SeqCst);
             }
 
-            let count = c_self.pending_containers.decrement() - 1;
-            log::trace!("Reducing pending containers count to {}", count);
+            let _count = c_self.pending_containers.decrement();
         }).detach();
     }
 
@@ -362,7 +363,7 @@ impl<P: Platform> AssetManager<P> {
             let mut loaders = c_self.loaders.write().await;
             loaders.push(Box::new(loader));
 
-            let _count = c_self.pending_loaders.decrement() - 1;
+            let _count = c_self.pending_loaders.decrement();
         }).detach();
     }
 
@@ -479,7 +480,6 @@ impl<P: Platform> AssetManager<P> {
         progress: Option<&Arc<AssetLoaderProgress>>,
         refresh: bool,
     ) -> Arc<AssetLoaderProgress> {
-        log::trace!("Requesting asset: {}", path);
         let progress = progress.map_or_else(
             || {
                 Arc::new(AssetLoaderProgress {
