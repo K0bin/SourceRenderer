@@ -645,7 +645,13 @@ impl GltfLoader {
                     gltf::image::Source::Uri {
                         uri,
                         mime_type: _mime_type,
-                    } => gltf_path.to_string() + uri,
+                    } => {
+                        if let Some(last_slash_pos) = gltf_path.find('/') {
+                            format!("{}/{}", &gltf_path[..last_slash_pos], &uri)
+                        } else {
+                            uri.to_string()
+                        }
+                    },
                 }
             });
 
