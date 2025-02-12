@@ -20,14 +20,13 @@ impl<P: Platform> Default for GamePlugin<P> {
 impl<P: Platform> Plugin for GamePlugin<P> {
     fn build(&self, app: &mut App) {
         {
+            log::info!("Initializing GamePlugin");
             let asset_manager: &Arc<AssetManager<P>> = Engine::get_asset_manager(app);
-
-            /*asset_manager.add_container(Box::new(
-                GltfContainer::<P>::load("bistro_sun.glb", true)
-                    .unwrap(),
-            ));
-
-            asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);*/
+            asset_manager.add_container_async(async move {
+                log::info!("Loading GLTF file as container");
+                GltfContainer::<P>::load("bistro_sun.glb", true).await.unwrap()
+            });
+            asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);
         }
 
         app

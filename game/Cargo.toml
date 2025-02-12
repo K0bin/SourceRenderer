@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 sourcerenderer_core = { path = "../core" }
 sourcerenderer_engine = { path = "../engine", default-features = false }
+log = "0.4.25"
 bevy_app = "0.15.1"
 bevy_math = "0.15.1"
 bevy_ecs = "0.15.1"
