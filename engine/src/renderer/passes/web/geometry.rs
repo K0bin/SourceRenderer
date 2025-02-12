@@ -80,7 +80,7 @@ impl<P: Platform> GeometryPass<P> {
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {
                     binding: 0,
-                    stride: 64,
+                    stride: std::mem::size_of::<crate::asset::Vertex>(),
                     input_rate: InputRate::PerVertex,
                 }],
                 shader_inputs: &[
@@ -97,32 +97,24 @@ impl<P: Platform> GeometryPass<P> {
                         location_vk_mtl: 1,
                         semantic_name_d3d: String::from(""),
                         semantic_index_d3d: 0,
-                        offset: 16,
-                        format: Format::RGB32Float,
+                        offset: 12,
+                        format: Format::RG32Float,
                     },
                     ShaderInputElement {
                         input_assembler_binding: 0,
                         location_vk_mtl: 2,
                         semantic_name_d3d: String::from(""),
                         semantic_index_d3d: 0,
-                        offset: 32,
-                        format: Format::RG32Float,
+                        offset: 20,
+                        format: Format::RGB32Float,
                     },
                     ShaderInputElement {
                         input_assembler_binding: 0,
                         location_vk_mtl: 3,
                         semantic_name_d3d: String::from(""),
                         semantic_index_d3d: 0,
-                        offset: 40,
-                        format: Format::RG32Float,
-                    },
-                    ShaderInputElement {
-                        input_assembler_binding: 0,
-                        location_vk_mtl: 4,
-                        semantic_name_d3d: String::from(""),
-                        semantic_index_d3d: 0,
-                        offset: 48,
-                        format: Format::R32Float,
+                        offset: 32,
+                        format: Format::R32UInt,
                     },
                 ],
             },
@@ -266,7 +258,8 @@ impl<P: Platform> GeometryPass<P> {
                         &self.sampler,
                     );
                 }
-                _ => unimplemented!(),
+                _ => {}
+                //_ => unimplemented!(),
             }
             cmd_buffer.finish_binding();
 

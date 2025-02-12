@@ -7,6 +7,7 @@ mod asset_data;
 mod asset_manager_plugin;
 
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct Vertex {
   pub position: Vec3,
   pub tex_coord: Vec2,

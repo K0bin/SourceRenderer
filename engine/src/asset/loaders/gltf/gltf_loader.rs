@@ -64,7 +64,7 @@ impl GltfLoader {
             gltf::scene::Transform::Matrix {
                 matrix: _columns_data,
             } => {
-                unimplemented!()
+                //unimplemented!()
 
                 /*let mut matrix = Matrix4::default();
                 for i in 0..matrix.len() {
@@ -72,6 +72,11 @@ impl GltfLoader {
                   matrix.column_mut(i).copy_from_slice(column_slice);
                 }
                 matrix*/
+                (
+                    Vec3::new(0.0f32, 0.0f32, 0.0f32),
+                    Vec4::new(0.0f32, 0.0f32, 0.0f32, 0.0f32),
+                    Vec3::new(1.0f32, 1.0f32, 1.0f32),
+                )
             }
             gltf::scene::Transform::Decomposed {
                 translation,
@@ -115,6 +120,7 @@ impl GltfLoader {
             for primitive in mesh.primitives() {
                 let part_start = indices.len();
                 GltfLoader::load_primitive(
+                    &model_name,
                     &primitive,
                     asset_mgr,
                     &mut vertices,
@@ -230,28 +236,27 @@ impl GltfLoader {
         };
 
         if node.skin().is_some() {
-            println!(
+            log::warn!(
                 "WARNING: skins are not supported. Node name: {:?}",
                 node.name()
             );
         }
         if node.camera().is_some() {
-            println!(
+            log::warn!(
                 "WARNING: cameras are not supported. Node name: {:?}",
                 node.name()
             );
         }
         if node.weights().is_some() {
-            println!(
+            log::warn!(
                 "WARNING: weights are not supported. Node name: {:?}",
                 node.name()
             );
         }
 
         if let Some(light) = node.light() {
-            println!("light is dir");
             {
-                let mut transform: &mut Transform = world.get_component_mut(entity).unwrap();
+                let transform: &mut Transform = world.get_component_mut(entity).unwrap();
                 let mut coords = Vec4::from(transform.rotation);
                 coords.z = -coords.z;
                 transform.rotation = Quat::from_vec4(coords).normalize();
@@ -305,6 +310,7 @@ impl GltfLoader {
     }
 
     async fn load_primitive<'a, P: Platform>(
+        model_name: &'a str,
         primitive: &'a Primitive<'a>,
         asset_mgr: &'a Arc<AssetManager<P>>,
         vertices: &'a mut Vec<Vertex>,
@@ -470,12 +476,13 @@ impl GltfLoader {
                     ))
                     .await
                     .unwrap();
-                let mut position_data = vec![0; positions.size()];
+                let mut position_data = [0u8; 16];
+                assert!(positions.size() <= position_data.len());
                 positions_buffer_cursor
-                    .read_exact(&mut position_data)
+                    .read_exact(&mut position_data[..positions.size()])
                     .await
                     .unwrap();
-                assert_eq!(position_data.len(), std::mem::size_of::<Vec3>());
+                assert_eq!(positions.size(), std::mem::size_of::<Vec3>());
 
                 normals_buffer_cursor
                     .seek(SeekFrom::Start(
@@ -483,11 +490,12 @@ impl GltfLoader {
                     ))
                     .await
                     .unwrap();
-                let mut normal_data = vec![0; normals.size()];
-                normals_buffer_cursor.read_exact(&mut normal_data)
+                let mut normal_data = [0u8; 16];
+                assert!(normals.size() <= normal_data.len());
+                normals_buffer_cursor.read_exact(&mut normal_data[..normals.size()])
                     .await
                     .unwrap();
-                assert_eq!(normal_data.len(), std::mem::size_of::<Vec3>());
+                assert_eq!(normals.size(), std::mem::size_of::<Vec3>());
 
                 texcoords_buffer_cursor
                     .seek(SeekFrom::Start(
@@ -495,28 +503,26 @@ impl GltfLoader {
                     ))
                     .await
                     .unwrap();
-                let mut texcoords_data = vec![0; texcoords.size()];
+                let mut texcoords_data = [0u8; 16];
+                assert!(texcoords.size() <= texcoords_data.len());
                 texcoords_buffer_cursor
-                    .read_exact(&mut texcoords_data)
+                    .read_exact(&mut texcoords_data[..texcoords.size()])
                     .await
                     .unwrap();
-                assert_eq!(texcoords_data.len(), std::mem::size_of::<Vec2>());
+                assert_eq!(texcoords.size(), std::mem::size_of::<Vec2>());
 
-                unsafe {
-                    let position_vec_ptr: *const Vec3 = std::mem::transmute(position_data.as_ptr());
-                    let normal_vec_ptr: *const Vec3 = std::mem::transmute(normal_data.as_ptr());
-                    let texcoord_vec_ptr: *const Vec2 =
-                        std::mem::transmute(texcoords_data.as_ptr());
-                    let position = fixup_vec(&*position_vec_ptr);
-                    let mut normal = fixup_vec(&*normal_vec_ptr);
-                    normal = normal.normalize();
-                    vertices.push(Vertex {
-                        position,
-                        normal,
-                        tex_coord: *texcoord_vec_ptr,
-                        color: [255, 255, 255, 255],
-                    });
-                }
+                let position_raw: Vec3 = unsafe { std::mem::transmute_copy(&position_data) };
+                let normal_raw: Vec3 = unsafe { std::mem::transmute_copy(&normal_data) };
+                let position = fixup_vec(&position_raw);
+                let normal = fixup_vec(&normal_raw).normalize();
+                let tex_coord: Vec2 = unsafe { std::mem::transmute_copy(&texcoords_data) };
+                assert_eq!(std::mem::size_of::<Vertex>(), 36);
+                vertices.push(Vertex {
+                    position,
+                    normal,
+                    tex_coord,
+                    color: [255, 255, 255, 255],
+                });
 
                 debug_assert!(
                     positions_buffer_cursor.seek(SeekFrom::Current(0)).await.unwrap()
@@ -547,21 +553,19 @@ impl GltfLoader {
             for _ in 0..indices_accessor.count() {
                 let start = buffer_cursor.seek(SeekFrom::Current(0)).await.unwrap();
 
-                let mut attr_data = vec![0; indices_accessor.size()];
-                buffer_cursor.read_exact(&mut attr_data).await.unwrap();
-
+                let mut attr_data = [0u8; 8];
+                assert!(indices_accessor.size() <= attr_data.len());
+                buffer_cursor.read_exact(&mut attr_data[..indices_accessor.size()]).await.unwrap();
                 assert!(indices_accessor.size() <= std::mem::size_of::<u32>());
 
-                unsafe {
-                    if indices_accessor.size() == 4 {
-                        let index_ptr: *const u32 = std::mem::transmute(attr_data.as_ptr());
-                        indices.push(*index_ptr + index_base);
-                    } else if indices_accessor.size() == 2 {
-                        let index_ptr: *const u16 = std::mem::transmute(attr_data.as_ptr());
-                        indices.push(*index_ptr as u32 + index_base);
-                    } else {
-                        unimplemented!();
-                    }
+                if indices_accessor.size() == 4 {
+                    let index: u32 = unsafe { std::mem::transmute_copy(&attr_data) };
+                    indices.push(index + index_base);
+                } else if indices_accessor.size() == 2 {
+                    let index: u16 = unsafe { std::mem::transmute_copy(&attr_data) };
+                    indices.push(index as u32 + index_base);
+                } else {
+                    unimplemented!();
                 }
 
                 if let Some(stride) = view.stride() {

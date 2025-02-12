@@ -104,7 +104,7 @@ impl<P: Platform> AssetIntegrator<P> {
 
         let vertex_buffer = self.vertex_buffer.get_slice(
             std::mem::size_of_val(&mesh.vertices[..]),
-            std::mem::size_of::<crate::renderer::Vertex>(),
+            std::mem::size_of::<crate::asset::Vertex>(),
         ); // FIXME: hardcoded vertex size
         self.device.init_buffer(
             &mesh.vertices[..],
