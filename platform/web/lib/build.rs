@@ -3,9 +3,8 @@ use std::env;
 use std::path::PathBuf;
 
 use build_util::{
-    compile_shader,
     compile_shaders,
-    copy_directory_rec, CompiledShaderFileType, ShadingLanguage,
+    copy_directory_rec, ShadingLanguage,
 };
 
 fn main() {
@@ -27,7 +26,7 @@ fn main() {
         std::fs::create_dir_all(&shader_dest_dir).expect("Failed to create shader target directory.");
     }
 
-    let output_shading_languages = ShadingLanguage::Wgsl;
+    let output_shading_languages = ShadingLanguage::Wgsl | ShadingLanguage::SpirVPreprocessedForWgsl | ShadingLanguage::SpirV;
 
     let mut shader_dir = manifest_dir.clone();
     shader_dir.pop();
@@ -40,7 +39,7 @@ fn main() {
         &shader_dir,
         &shader_dest_dir,
         true,
-        false,
+        true,
         &HashMap::new(),
         output_shading_languages,
         |_| true,
