@@ -8,6 +8,8 @@ use web_sys::{GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGr
 
 use crate::{sampler::WebGPUSampler, texture::{format_to_webgpu, texture_dimension_to_webgpu_view, WebGPUTextureView}};
 
+const WEBGPU_BIND_COUNT_PER_SET: u32 = gpu::PER_SET_BINDINGS;
+const DEFAULT_DESCRIPTOR_ARRAY_SIZE: usize = 4usize;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -56,7 +58,7 @@ pub(crate) struct WebGPUBindGroupEntryInfo {
 
 pub struct WebGPUBindGroupLayout {
     bind_group_layout: GpuBindGroupLayout,
-    binding_infos: [Option<WebGPUBindGroupEntryInfo>; gpu::PER_SET_BINDINGS as usize],
+    binding_infos: Vec<Option<WebGPUBindGroupEntryInfo>>,
     is_empty: bool,
 }
 
@@ -78,8 +80,9 @@ impl WebGPUBindGroupLayout {
         bindings: &[WebGPUBindGroupEntryInfo],
         device: &GpuDevice
     ) -> Result<Self, ()> {
-        let mut binding_infos: [Option<WebGPUBindGroupEntryInfo>; gpu::PER_SET_BINDINGS as usize] =
-        Default::default();
+        let mut binding_infos: Vec<Option<WebGPUBindGroupEntryInfo>> = Vec::new();
+        binding_infos.resize(WEBGPU_BIND_COUNT_PER_SET as usize, None);
+
         let entries = Array::new_with_length(bindings.len() as u32);
         for i in 0..bindings.len() {
             let binding = &bindings[i];
@@ -211,7 +214,7 @@ pub struct WebGPUBindGroup {
     bind_group: GpuBindGroup,
     layout: Arc<WebGPUBindGroupLayout>,
     is_transient: bool,
-    bindings: [WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize],
+    bindings: Vec<WebGPUBoundResource>,
 }
 
 impl WebGPUBindGroup {
@@ -219,13 +222,15 @@ impl WebGPUBindGroup {
         device: &GpuDevice,
         layout: &Arc<WebGPUBindGroupLayout>,
         is_transient: bool,
-        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &'a [T],
     ) -> Result<Self, ()>
     where
         WebGPUBoundResource: From<&'a T>,
     {
-        let entries = Array::new_with_length(gpu::PER_SET_BINDINGS);
-        let mut stored_bindings = <[WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize]>::default();
+        let entries = Array::new_with_length(WEBGPU_BIND_COUNT_PER_SET);
+        let mut stored_bindings = Vec::<WebGPUBoundResource>::new();
+        stored_bindings.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
+
         for (index, binding) in bindings.iter().enumerate() {
             stored_bindings[index] = binding.into();
         }
@@ -292,7 +297,7 @@ impl WebGPUBindGroup {
     pub(crate) fn is_compatible<T>(
         &self,
         layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &[T],
     ) -> bool
     where
         WebGPUBoundResource: BindingCompare<T>,
@@ -401,15 +406,15 @@ impl Deref for WebGPUHashableSampler {
 pub(crate) enum WebGPUBoundResource {
     None,
     UniformBuffer(WebGPUBufferBindingInfo),
-    UniformBufferArray(SmallVec<[WebGPUBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
+    UniformBufferArray(SmallVec<[WebGPUBufferBindingInfo; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     StorageBuffer(WebGPUBufferBindingInfo),
-    StorageBufferArray(SmallVec<[WebGPUBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
+    StorageBufferArray(SmallVec<[WebGPUBufferBindingInfo; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     StorageTexture(WebGPUHashableTextureView),
-    StorageTextureArray(SmallVec<[WebGPUHashableTextureView; gpu::PER_SET_BINDINGS as usize]>),
+    StorageTextureArray(SmallVec<[WebGPUHashableTextureView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     SampledTexture(WebGPUHashableTextureView),
-    SampledTextureArray(SmallVec<[WebGPUHashableTextureView; gpu::PER_SET_BINDINGS as usize]>),
+    SampledTextureArray(SmallVec<[WebGPUHashableTextureView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     SampledTextureAndSampler(WebGPUHashableTextureView, WebGPUHashableSampler),
-    SampledTextureAndSamplerArray(SmallVec<[(WebGPUHashableTextureView, WebGPUHashableSampler); gpu::PER_SET_BINDINGS as usize]>),
+    SampledTextureAndSamplerArray(SmallVec<[(WebGPUHashableTextureView, WebGPUHashableSampler); DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     Sampler(WebGPUHashableSampler),
 }
 
@@ -706,7 +711,7 @@ impl BindingCompare<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
 pub(crate) struct WebGPUBindGroupBinding {
     pub(crate) set: Arc<WebGPUBindGroup>,
     pub(crate) dynamic_offset_count: u32,
-    pub(crate) dynamic_offsets: [u64; gpu::PER_SET_BINDINGS as usize],
+    pub(crate) dynamic_offsets: Vec<u64>,
 }
 
 struct WebGPUBindGroupCacheEntry {
@@ -724,9 +729,9 @@ enum CacheMode {
 pub(crate) struct WebGPUBindingManager {
     cache_mode: CacheMode,
     device: GpuDevice,
-    current_sets: [Option<Arc<WebGPUBindGroup>>; 4],
+    current_sets: [Option<Arc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyBindGroups,
-    bindings: [[WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize]; 4],
+    bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -735,6 +740,11 @@ pub(crate) struct WebGPUBindingManager {
 impl WebGPUBindingManager {
     pub(crate) fn new(device: &GpuDevice) -> Self {
         let cache_mode = CacheMode::Everything;
+
+        let mut bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        for binding in &mut bindings {
+            binding.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
+        }
 
         Self {
             cache_mode,
@@ -780,7 +790,7 @@ impl WebGPUBindingManager {
         &self,
         frame: u64,
         layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &[T],
         use_permanent_cache: bool,
     ) -> Option<Arc<WebGPUBindGroup>>
     where
@@ -831,7 +841,7 @@ impl WebGPUBindingManager {
     pub fn get_descriptor_set_binding_info(
         &self,
         set: Arc<WebGPUBindGroup>,
-        bindings: &[WebGPUBoundResource; gpu::PER_SET_BINDINGS as usize],
+        bindings: &[WebGPUBoundResource],
     ) -> WebGPUBindGroupBinding {
         let mut set_binding = WebGPUBindGroupBinding {
             set: set.clone(),
@@ -897,7 +907,7 @@ impl WebGPUBindingManager {
         &self,
         frame: u64,
         layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &'a [T],
     ) -> Option<Arc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<T>,
@@ -953,12 +963,12 @@ impl WebGPUBindingManager {
         &mut self,
         frame: u64,
         pipeline_layout: &WebGPUPipelineLayout,
-    ) -> [Option<WebGPUBindGroupBinding>; 3] {
+    ) -> [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] {
         if self.dirty.is_empty() {
             return Default::default();
         }
 
-        let mut set_bindings: [Option<WebGPUBindGroupBinding>; 3] = Default::default();
+        let mut set_bindings: [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
             self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::VeryFrequent);
         set_bindings[gpu::BindingFrequency::Frame as usize] =

@@ -25,13 +25,14 @@ use super::*;
 
 // TODO: this shit is really slow. rewrite all of it.
 
+const DEFAULT_DESCRIPTOR_ARRAY_SIZE: usize = 4usize;
+
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct DirtyDescriptorSets: u32 {
         const VERY_FREQUENT = 0b0001;
         const FREQUENT = 0b0010;
         const FRAME = 0b0100;
-        const BINDLESS_TEXTURES = 0b10000;
     }
 }
 
@@ -310,7 +311,7 @@ impl VkDescriptorSet {
         device: &Arc<RawVkDevice>,
         layout: &Arc<VkDescriptorSetLayout>,
         is_transient: bool,
-        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &'a [T],
     ) -> ash::prelude::VkResult<Self>
     where
         VkBoundResource: From<&'a T>,
@@ -898,7 +899,7 @@ impl VkDescriptorSet {
     pub(crate) fn is_compatible<T>(
         &self,
         layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &[T],
     ) -> bool
     where
         VkBoundResource: BindingCompare<T>,
@@ -938,15 +939,15 @@ pub(crate) struct VkBufferBindingInfo {
 pub(crate) enum VkBoundResource {
     None,
     UniformBuffer(VkBufferBindingInfo),
-    UniformBufferArray(SmallVec<[VkBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
+    UniformBufferArray(SmallVec<[VkBufferBindingInfo; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     StorageBuffer(VkBufferBindingInfo),
-    StorageBufferArray(SmallVec<[VkBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
+    StorageBufferArray(SmallVec<[VkBufferBindingInfo; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     StorageTexture(vk::ImageView),
-    StorageTextureArray(SmallVec<[vk::ImageView; gpu::PER_SET_BINDINGS as usize]>),
+    StorageTextureArray(SmallVec<[vk::ImageView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     SampledTexture(vk::ImageView),
-    SampledTextureArray(SmallVec<[vk::ImageView; gpu::PER_SET_BINDINGS as usize]>),
+    SampledTextureArray(SmallVec<[vk::ImageView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     SampledTextureAndSampler(vk::ImageView, vk::Sampler),
-    SampledTextureAndSamplerArray(SmallVec<[(vk::ImageView, vk::Sampler); gpu::PER_SET_BINDINGS as usize]>),
+    SampledTextureAndSamplerArray(SmallVec<[(vk::ImageView, vk::Sampler); DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     Sampler(vk::Sampler),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -1281,9 +1282,9 @@ pub(crate) struct VkBindingManager {
     transient_pools: RefCell<DescriptorPools>,
     permanent_pools: RefCell<DescriptorPools>,
     device: Arc<RawVkDevice>,
-    current_sets: [Option<Arc<VkDescriptorSet>>; 4],
+    current_sets: [Option<Arc<VkDescriptorSet>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyDescriptorSets,
-    bindings: [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; 4],
+    bindings: [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -1355,7 +1356,7 @@ impl VkBindingManager {
         &self,
         frame: u64,
         layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &[T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &[T],
         use_permanent_cache: bool,
     ) -> Option<Arc<VkDescriptorSet>>
     where
@@ -1474,7 +1475,7 @@ impl VkBindingManager {
         &self,
         frame: u64,
         layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &'a [T; gpu::PER_SET_BINDINGS as usize],
+        bindings: &'a [T],
     ) -> Option<Arc<VkDescriptorSet>>
     where
         VkBoundResource: BindingCompare<T>,
@@ -1549,7 +1550,6 @@ impl VkBindingManager {
         self.dirty |= DirtyDescriptorSets::VERY_FREQUENT;
         self.dirty |= DirtyDescriptorSets::FREQUENT;
         self.dirty |= DirtyDescriptorSets::FRAME;
-        self.dirty |= DirtyDescriptorSets::BINDLESS_TEXTURES;
     }
 
     pub fn dirty_sets(&self) -> DirtyDescriptorSets {
@@ -1560,12 +1560,12 @@ impl VkBindingManager {
         &mut self,
         frame: u64,
         pipeline_layout: &VkPipelineLayout,
-    ) -> [Option<VkDescriptorSetBinding>; 3] {
+    ) -> [Option<VkDescriptorSetBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] {
         if self.dirty.is_empty() {
             return Default::default();
         }
 
-        let mut set_bindings: [Option<VkDescriptorSetBinding>; 3] = Default::default();
+        let mut set_bindings: [Option<VkDescriptorSetBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
             self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::VeryFrequent);
         set_bindings[gpu::BindingFrequency::Frame as usize] =
