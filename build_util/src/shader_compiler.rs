@@ -108,7 +108,8 @@ fn compile_shader_glsl(
     let mut command = Command::new("glslangValidator");
     command
         .arg("--target-env")
-        .arg("spirv1.6");
+        .arg("spirv1.6")
+        .arg("-V");
 
     let mut compiled_spv_file_name = file_path.file_stem().unwrap().to_str().unwrap().to_string();
     compiled_spv_file_name.push_str(".spv");
@@ -1133,6 +1134,7 @@ pub fn compile_shader(
 
         let mut prepared_spirv = spirv_bytecode_boxed.clone().into_vec();
         spirv_remove_debug_info(&mut prepared_spirv);
+        spirv_remove_decoration(&mut prepared_spirv, 2); // naga spams warnings about the Block decoration
         spirv_remap_bindings(&mut prepared_spirv, |binding| Binding {
             descriptor_set: binding.descriptor_set,
             binding: if binding.descriptor_set == gpu::BindingFrequency::VeryFrequent as u32 { binding.binding + 1 } else { binding.binding }
