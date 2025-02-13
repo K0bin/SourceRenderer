@@ -49,7 +49,7 @@ fn main() {
   lib_path.push(target_mapping.get(target.as_str()).expect("Failed to map LLVM target triple to Android jniLibs directory."));
   let mut libcpp_dst = lib_path.clone();
   if !lib_path.exists() {
-    std::fs::create_dir(&lib_path).expect("Failed to create shader target directory.");
+    std::fs::create_dir_all(&lib_path).expect("Failed to create shader target directory.");
   }
   libcpp_dst.push("libc++_shared.so");
 
@@ -67,7 +67,7 @@ fn main() {
   android_asset_dir.push("main");
   android_asset_dir.push("assets");
   if !android_asset_dir.exists() {
-    std::fs::create_dir(&android_asset_dir).expect("Failed to create shader target directory.");
+    std::fs::create_dir_all(&android_asset_dir).expect("Failed to create shader target directory.");
   }
 
   let mut engine_dir = manifest_dir.clone();
@@ -81,7 +81,7 @@ fn main() {
   let mut shader_dest_dir = android_asset_dir.clone();
   shader_dest_dir.push("shaders");
   if !shader_dest_dir.exists() {
-    std::fs::create_dir(&shader_dest_dir).expect("Failed to create shader target directory.");
+    std::fs::create_dir_all(&shader_dest_dir).expect("Failed to create shader target directory.");
   }
   compile_shaders(&shader_dir, &shader_dest_dir, false, false, true, &HashMap::new(), |_| true);
 
@@ -90,7 +90,7 @@ fn main() {
   let mut asset_dest_dir = android_asset_dir.clone();
   asset_dest_dir.push("assets");
   if !asset_dest_dir.exists() {
-    std::fs::create_dir(&asset_dest_dir).expect("Failed to create assets target directory.");
+    std::fs::create_dir_all(&asset_dest_dir).expect("Failed to create assets target directory.");
   }
   copy_directory_rec(&assets_dir, &asset_dest_dir, &(|_| true));
 }

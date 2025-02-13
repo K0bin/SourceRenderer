@@ -28,7 +28,7 @@ fn main() {
     shader_dest_dir.push("shaders");
 
     if !shader_dest_dir.exists() {
-        std::fs::create_dir(&shader_dest_dir).expect("Failed to create shader target directory.");
+        std::fs::create_dir_all(&shader_dest_dir).expect("Failed to create shader target directory.");
     }
 
     let mut shader_dir = manifest_dir.clone();

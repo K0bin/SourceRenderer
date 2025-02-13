@@ -17,13 +17,14 @@ fn main() {
     web_static_dir.pop();
     web_static_dir.push("www");
     web_static_dir.push("public");
+    web_static_dir.push("enginedata");
 
     // Copy shaders over
     let mut shader_dest_dir = web_static_dir.clone();
     shader_dest_dir.push("shaders");
 
     if !shader_dest_dir.exists() {
-        std::fs::create_dir(&shader_dest_dir).expect("Failed to create shader target directory.");
+        std::fs::create_dir_all(&shader_dest_dir).expect("Failed to create shader target directory.");
     }
 
     let output_shading_languages = ShadingLanguage::Wgsl;
@@ -49,7 +50,7 @@ fn main() {
     assets_dest_dir.push("assets");
 
     if !assets_dest_dir.exists() {
-        std::fs::create_dir(&assets_dest_dir).expect("Failed to create shader target directory.");
+        std::fs::create_dir_all(&assets_dest_dir).expect("Failed to create shader target directory.");
     }
 
     let mut assets_dir = manifest_dir.clone();

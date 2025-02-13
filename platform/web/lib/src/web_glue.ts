@@ -1,5 +1,5 @@
 export async function fetchAsset(path: string): Promise<Uint8Array> {
-    const url = new URL("./assets/" + path, location.origin)
+    const url = new URL("./enginedata/" + path, location.origin)
     console.trace("Fetching: " + url);
     const response = await fetch(url);
     if (response.status != 200) {

@@ -19,7 +19,7 @@ pub fn copy_directory_rec<F>(from: &Path, to: &Path, file_filter: &F)
       to_buf.push(to);
       to_buf.push(entry.file_name());
       if !to_buf.exists() {
-        std::fs::create_dir(&to_buf).unwrap_or_else(|_| panic!("Failed to create target directory {:?}.", to_buf));
+        std::fs::create_dir_all(&to_buf).unwrap_or_else(|_| panic!("Failed to create target directory {:?}.", to_buf));
       }
       copy_directory_rec(&from_buf, &to_buf, file_filter);
       continue;
