@@ -307,7 +307,7 @@ pub fn spirv_turn_push_const_into_ubo_pass(spirv: &mut Vec<u8>, descriptor_set: 
             word_count: 4, opcode: OP_CODE_OP_DECORATE
         }),
         target_id,
-        DECORATION_LOCATION,
+        DECORATION_BINDING,
         index,
     ]);
 
