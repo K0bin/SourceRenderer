@@ -314,6 +314,28 @@ pub fn spirv_turn_push_const_into_ubo_pass(spirv: &mut Vec<u8>, descriptor_set: 
     println!("Done replacing push constants");
 }
 
+pub fn spirv_remove_decoration(spirv: &mut Vec<u8>, decoration: u32) {
+    let mut ranges: Vec<Range<usize>> = Vec::new();
+    spirv_pass(spirv, |word_index, instruction, operand_words| {
+        if instruction.opcode != OP_CODE_OP_DECORATE {
+            return true;
+        }
+        let decoration_instruction = parse_op_decorate(operand_words);
+        if decoration_instruction.decoration_id == decoration {
+            ranges.push(Range {
+                start: word_index, end: word_index + (instruction.word_count as usize)
+            });
+        }
+        return true;
+    });
+    ranges.reverse();
+    for range in ranges {
+        remove_words(spirv, range);
+    }
+
+    println!("Done removing debug info");
+}
+
 pub fn spirv_remove_debug_info(spirv: &mut Vec<u8>) {
     let mut ranges: Vec<Range<usize>> = Vec::new();
     spirv_pass(spirv, |word_index, instruction, _operand_words| {
@@ -378,6 +400,27 @@ pub fn spirv_remap_bindings(spirv: &mut Vec<u8>, callback: impl Fn(&Binding) -> 
                 *entry = callback(entry);
             }
             return true;
+        }
+        return true;
+    });
+    spirv_pass(spirv, |_word_index, instruction, operand_words| {
+        if instruction.opcode != OP_CODE_OP_DECORATE {
+            return true;
+        }
+        let decorate = parse_op_decorate(operand_words);
+        let binding_opt = bindings.get(&decorate.target_id);
+        if binding_opt.is_none() {
+            return true;
+        }
+        let binding = binding_opt.unwrap();
+        match decorate.decoration_id {
+            DECORATION_DESCRIPTOR_SET => {
+                operand_words[2] = binding.descriptor_set;
+            }
+            DECORATION_BINDING => {
+                operand_words[2] = binding.binding;
+            }
+            _ => {}
         }
         return true;
     });
