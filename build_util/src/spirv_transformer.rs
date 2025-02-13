@@ -29,6 +29,14 @@ struct OpDecorate {
 }
 
 #[derive(Debug)]
+struct OpMemberDecorate {
+    structure_type: u32,
+    member: u32,
+    decoration_id: u32,
+    value: Option<u32>
+}
+
+#[derive(Debug)]
 struct OpTypeSampledImage {
     result_id: u32,
     image_type_id: u32
@@ -83,6 +91,7 @@ fn build_instruction_description(instruction: &Instruction) -> u32 {
 }
 
 const OP_CODE_OP_DECORATE: u16 = 71;
+const OP_CODE_OP_MEMBER_DECORATE: u16 = 72;
 const OP_CODE_OP_TYPE_POINTER: u16 = 32;
 const OP_CODE_OP_TYPE_VARIABLE: u16 = 59;
 const OP_CODE_OP_TYPE_IMAGE: u16 = 25;
@@ -136,6 +145,14 @@ fn parse_op_decorate(words: &[u32]) -> OpDecorate {
         target_id: words[0],
         decoration_id: words[1],
         value: if words.len() >= 3 { Some(words[2]) } else { None }
+    }
+}
+fn parse_op_member_decorate(words: &[u32]) -> OpMemberDecorate {
+    OpMemberDecorate {
+        structure_type: words[0],
+        member: words[1],
+        decoration_id: words[2],
+        value: if words.len() >= 4 { Some(words[3]) } else { None }
     }
 }
 fn parse_op_type_sampled_image(words: &[u32]) -> OpTypeSampledImage {
@@ -237,7 +254,7 @@ fn spirv_pass(spirv: &mut [u8], mut process_word: impl FnMut(usize, Instruction,
         let instruction = parse_instruction_description(word);
 
         if instruction.word_count == 0 {
-            println!("0 WORDS: index: {}, instruction: {:?}", index, &instruction);
+            log::info!("0 WORDS: index: {}, instruction: {:?}", index, &instruction);
         }
 
         assert_ne!(instruction.word_count, 0);
@@ -289,7 +306,7 @@ pub fn spirv_turn_push_const_into_ubo_pass(spirv: &mut Vec<u8>, descriptor_set: 
     });
 
     if target_id_opt.is_none() {
-        println!("Done replacing push constants");
+        log::info!("Done replacing push constants");
         return;
     }
 
@@ -311,20 +328,27 @@ pub fn spirv_turn_push_const_into_ubo_pass(spirv: &mut Vec<u8>, descriptor_set: 
         index,
     ]);
 
-    println!("Done replacing push constants");
+    log::info!("Done replacing push constants");
 }
 
 pub fn spirv_remove_decoration(spirv: &mut Vec<u8>, decoration: u32) {
     let mut ranges: Vec<Range<usize>> = Vec::new();
     spirv_pass(spirv, |word_index, instruction, operand_words| {
-        if instruction.opcode != OP_CODE_OP_DECORATE {
-            return true;
+        if instruction.opcode == OP_CODE_OP_DECORATE {
+            let decoration_instruction = parse_op_decorate(operand_words);
+            if decoration_instruction.decoration_id == decoration {
+                ranges.push(Range {
+                    start: word_index, end: word_index + (instruction.word_count as usize)
+                });
+            }
         }
-        let decoration_instruction = parse_op_decorate(operand_words);
-        if decoration_instruction.decoration_id == decoration {
-            ranges.push(Range {
-                start: word_index, end: word_index + (instruction.word_count as usize)
-            });
+        if instruction.opcode == OP_CODE_OP_MEMBER_DECORATE {
+            let decoration_instruction = parse_op_member_decorate(operand_words);
+            if decoration_instruction.decoration_id == decoration {
+                ranges.push(Range {
+                    start: word_index, end: word_index + (instruction.word_count as usize)
+                });
+            }
         }
         return true;
     });
@@ -333,7 +357,7 @@ pub fn spirv_remove_decoration(spirv: &mut Vec<u8>, decoration: u32) {
         remove_words(spirv, range);
     }
 
-    println!("Done removing debug info");
+    log::info!("Done removing decoration: {}", decoration);
 }
 
 pub fn spirv_remove_debug_info(spirv: &mut Vec<u8>) {
@@ -360,7 +384,7 @@ pub fn spirv_remove_debug_info(spirv: &mut Vec<u8>) {
         remove_words(spirv, range);
     }
 
-    println!("Done removing debug info");
+    log::info!("Done removing debug info");
 }
 
 #[derive(Clone, Debug)]
@@ -425,7 +449,7 @@ pub fn spirv_remap_bindings(spirv: &mut Vec<u8>, callback: impl Fn(&Binding) -> 
         return true;
     });
 
-    println!("Done remapping bindings");
+    log::info!("Done remapping bindings");
 }
 
 pub struct ImageSamplerPair {
@@ -799,7 +823,7 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
         words[3] = next_id;
     }
 
-    println!("Done separating combined image samplers");
+    log::info!("Done separating combined image samplers");
 
     result
 }

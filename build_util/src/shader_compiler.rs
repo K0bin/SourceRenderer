@@ -1135,6 +1135,7 @@ pub fn compile_shader(
         let mut prepared_spirv = spirv_bytecode_boxed.clone().into_vec();
         spirv_remove_debug_info(&mut prepared_spirv);
         spirv_remove_decoration(&mut prepared_spirv, 2); // naga spams warnings about the Block decoration
+        spirv_remove_decoration(&mut prepared_spirv, 25); // naga doesn't support NonReadable (writeonly in GLSL)
         spirv_remap_bindings(&mut prepared_spirv, |binding| Binding {
             descriptor_set: binding.descriptor_set,
             binding: if binding.descriptor_set == gpu::BindingFrequency::VeryFrequent as u32 { binding.binding + 1 } else { binding.binding }
