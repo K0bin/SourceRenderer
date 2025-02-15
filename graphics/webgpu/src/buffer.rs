@@ -85,6 +85,10 @@ impl WebGPUBuffer {
         if info.usage.gpu_writable() && !info.usage.gpu_readable() && !mappable {
             panic!("The buffer is useless because it can only be written on the GPU but the contents cannot be read anywhere.");
         }
+        if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0 && mappable && !PREFER_DISCARD_OVER_QUEUE_WRITE {
+            // GpuQueue::writeBuffer requires GpuUsage::COPY_DST
+            usage |= web_sys::gpu_buffer_usage::COPY_DST;
+        }
 
         let rust_memory = if keep_rust_memory {
             let mut rust_memory_vec = Vec::with_capacity(info.size as usize);
@@ -99,7 +103,7 @@ impl WebGPUBuffer {
             descriptor.set_label(name);
         }
         let buffer = device.create_buffer(&descriptor).map_err(|_| ())?;
-        descriptor.set_mapped_at_creation(true);
+        descriptor.set_mapped_at_creation(mappable);
         Ok(Self {
             device: device.clone(),
             buffer: RefCell::new(buffer),
