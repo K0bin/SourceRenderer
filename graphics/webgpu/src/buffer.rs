@@ -85,9 +85,11 @@ impl WebGPUBuffer {
         if info.usage.gpu_writable() && !info.usage.gpu_readable() && !mappable {
             panic!("The buffer is useless because it can only be written on the GPU but the contents cannot be read anywhere.");
         }
-        if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0 && mappable && !PREFER_DISCARD_OVER_QUEUE_WRITE {
+        if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0 && mappable && (info.usage.gpu_writable() || !keep_rust_memory || !PREFER_DISCARD_OVER_QUEUE_WRITE) {
             // GpuQueue::writeBuffer requires GpuUsage::COPY_DST
             usage |= web_sys::gpu_buffer_usage::COPY_DST;
+        } else if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) != 0 && mappable && !PREFER_DISCARD_OVER_QUEUE_WRITE {
+            assert!(keep_rust_memory);
         }
 
         let rust_memory = if keep_rust_memory {
@@ -159,6 +161,7 @@ impl Buffer for WebGPUBuffer {
     unsafe fn unmap(&self, offset: u64, mut length: u64, flush: bool) {
         let mut memory_opt: std::cell::RefMut<'_, Option<Box<[u8]>>> = self.rust_memory.borrow_mut();
         if memory_opt.is_none() {
+            assert!(self.mappable);
             // Buffer wasn't mapped
             return;
         }
@@ -185,6 +188,8 @@ impl Buffer for WebGPUBuffer {
                     // Create a new buffer that's mapped at creation
                     buffer.destroy();
                     *buffer = self.device.create_buffer(&self.descriptor).unwrap();
+                } else {
+                    log::info!("Using directly mapped buffer without discard!");
                 }
                 assert!(buffer.map_state() == web_sys::GpuBufferMapState::Mapped);
                 let mapped_range = buffer.get_mapped_range().unwrap();

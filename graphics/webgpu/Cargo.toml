@@ -145,7 +145,6 @@ web-sys = { version = "0.3.74", features = [
     "gpu_texture_usage",
     "std"
 ] }
-futures = "0.3.31"
 wasm-bindgen-futures = { version = "0.4.47", features = ["futures-core-03-stream"] }
 js-sys = "0.3.74"
 log = "0.4.14"
