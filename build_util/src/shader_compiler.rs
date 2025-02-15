@@ -1138,10 +1138,17 @@ pub fn compile_shader(
         spirv_remove_decoration(&mut prepared_spirv, 25); // naga doesn't support NonReadable (writeonly in GLSL)
         spirv_remap_bindings(&mut prepared_spirv, |binding| Binding {
             descriptor_set: binding.descriptor_set,
-            binding: if binding.descriptor_set == gpu::BindingFrequency::VeryFrequent as u32 { binding.binding + 1 } else { binding.binding }
+            binding: binding.binding * 2 + if binding.descriptor_set == gpu::BindingFrequency::VeryFrequent as u32 {
+                if shader_type == gpu::ShaderType::ComputeShader { 1 } else { 2 }
+            } else { 0 }
         });
         spirv_turn_push_const_into_ubo_pass(&mut prepared_spirv, gpu::BindingFrequency::VeryFrequent as u32, 0);
-        spirv_separate_combined_image_samplers(&mut prepared_spirv, Option::<fn(&Binding) -> Binding>::None);
+        spirv_separate_combined_image_samplers(&mut prepared_spirv, Some(|image_binding: &Binding| {
+            Binding {
+                descriptor_set: image_binding.descriptor_set,
+                binding: image_binding.binding + 1
+            }
+        }));
 
         if output_shading_languages.contains(ShadingLanguage::SpirVPreprocessedForWgsl) {
             write_shader(file_path, output_dir, ShadingLanguage::SpirVPreprocessedForWgsl, CompiledShaderType::Bytecode(&prepared_spirv));
