@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use crate::Mutex;
 
 use bevy_ecs::system::Resource;
 use sourcerenderer_core::input::Key;

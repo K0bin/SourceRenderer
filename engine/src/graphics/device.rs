@@ -1,4 +1,5 @@
-use std::{mem::ManuallyDrop, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}};
+use std::{mem::ManuallyDrop, sync::{atomic::{AtomicBool, Ordering}, Arc}};
+use crate::Mutex;
 
 use log::trace;
 use sourcerenderer_core::gpu::{self, Device as GPUDevice};

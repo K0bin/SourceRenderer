@@ -4,9 +4,9 @@ use std::path::{
 };
 use std::sync::{
     Arc,
-    Mutex,
     Weak,
 };
+use crate::Mutex;
 use std::thread;
 
 use bevy_tasks::futures_lite::io::Cursor;

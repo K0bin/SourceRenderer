@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use crate::Mutex;
 
 use bevy_tasks::futures_lite::io::Cursor;
 use sourcerenderer_bsp::PakFile;

@@ -4,11 +4,8 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::{
-    Arc,
-    Condvar,
-    Mutex,
-};
+use std::sync::Arc;
+use crate::{Mutex, Condvar};
 
 use log::trace;
 use smallvec::SmallVec;
@@ -734,7 +731,7 @@ impl<P: Platform> ShaderManager<P> {
                 // all remaining shaders of a pipeline and recompile it.
 
                 let assets_read = asset_manager.read_renderer_assets();
-                let mut remaining_compilations: std::sync::MutexGuard<'_, HashMap<THandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
+                let mut remaining_compilations: crate::MutexGuard<'_, HashMap<THandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
                 let compiled_pipeline_handles = assets_read.all_pipeline_handles(T::asset_type());
                 for handle in compiled_pipeline_handles {
                     let asset_ref = assets_read.get(handle).unwrap();

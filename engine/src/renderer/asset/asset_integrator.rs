@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use crate::Mutex;
 
 use log::trace;
 use smallvec::SmallVec;
@@ -71,7 +72,7 @@ impl<P: Platform> AssetIntegrator<P> {
             _ => panic!("Asset type is not a renderer asset")
         };
 
-        let mut queue: std::sync::MutexGuard<'_, Vec<DelayedAsset<P>>> = self.asset_queue.lock().unwrap();
+        let mut queue: crate::MutexGuard<'_, Vec<DelayedAsset<P>>> = self.asset_queue.lock().unwrap();
         queue.push(DelayedAsset {
             fence, asset: AssetWithHandle::combine(handle, asset)
         });

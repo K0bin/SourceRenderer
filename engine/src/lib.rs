@@ -42,3 +42,14 @@ mod input;
 pub mod renderer;
 mod ui;
 mod graphics;
+
+#[cfg(feature = "threading")]
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+#[cfg(feature = "threading")]
+use std::sync::{Mutex, MutexGuard, Condvar};
+
+mod rw_lock_wasm;
+
+#[cfg(not(feature = "threading"))]
+use rw_lock_wasm::*;

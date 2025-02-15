@@ -1,7 +1,6 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::HashMap, sync::Arc};
 
-use smallvec::SmallVec;
-use sourcerenderer_core::{gpu::{Backbuffer, Format, GPUBackend, SampleCount, Swapchain as GPUSwapchain, SwapchainError, TextureViewInfo}, Matrix4};
+use sourcerenderer_core::{gpu::{Backbuffer, Format, GPUBackend, Swapchain as GPUSwapchain, SwapchainError, TextureViewInfo}, Matrix4};
 
 use super::{DeferredDestroyer, Device};
 

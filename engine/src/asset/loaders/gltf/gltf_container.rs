@@ -1,6 +1,6 @@
 use std::io::{Error as IOError, ErrorKind, Result as IOResult, SeekFrom};
 use std::path::Path;
-use std::sync::Mutex;
+use crate::Mutex;
 use std::usize;
 
 use bevy_tasks::futures_lite::io::{BufReader, Cursor};

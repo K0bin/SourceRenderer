@@ -1,4 +1,5 @@
-use std::{collections::{HashSet, VecDeque}, ffi::c_void, sync::{Arc, Mutex}};
+use std::{collections::{HashSet, VecDeque}, ffi::c_void, sync::Arc};
+use crate::Mutex;
 
 use sourcerenderer_core::{gpu::{CommandBuffer as _, CommandPool as _, MemoryTextureCopyRegion, Queue as _, Texture as _}, Vec3UI};
 use sourcerenderer_core::gpu;

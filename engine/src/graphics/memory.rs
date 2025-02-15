@@ -1,4 +1,5 @@
-use std::{borrow::Borrow, collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::HashMap, sync::Arc};
+use crate::Mutex;
 
 use log::trace;
 use sourcerenderer_core::gpu::*;

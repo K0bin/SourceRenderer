@@ -3,10 +3,8 @@ use std::sync::atomic::{
     AtomicU32,
     Ordering,
 };
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::Arc;
+use crate::Mutex;
 
 use bitset_core::BitSet;
 use smallvec::SmallVec;

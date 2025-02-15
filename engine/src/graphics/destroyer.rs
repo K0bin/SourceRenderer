@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use crate::Mutex;
 
 use sourcerenderer_core::gpu::*;
 
@@ -66,7 +67,7 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
     }
 
     pub fn destroy_buffer(&self, buffer: B::Buffer) {
-        let mut guard: std::sync::MutexGuard<'_, DeferredDestroyerInner<B>> = self.inner.lock().unwrap();
+        let mut guard: crate::MutexGuard<'_, DeferredDestroyerInner<B>> = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.buffers.push((frame, buffer));
     }

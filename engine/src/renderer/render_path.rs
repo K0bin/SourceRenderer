@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLockReadGuard};
+use std::sync::Arc;
 use web_time::Duration;
 
 use sourcerenderer_core::gpu::{self, GPUBackend};

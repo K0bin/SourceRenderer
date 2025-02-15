@@ -41,7 +41,6 @@ smartstring = "1.0.1"
 bumpalo = { version = "3.16.0", features = [ "collections", "boxed" ] }
 futures-io = "0.3.31"
 waker-fn = "1.2.0"
-parking_lot = "0.12.3"
 async-mutex = "1.4.0"
 async-rwlock = "1.3.0"
 atomic-waker = "1.1.2"
@@ -65,9 +64,11 @@ slab = "=0.4.9"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 fsr2 = { path = "../vendor/fsr2" }
 
+parking_lot = { version = "0.12.3", optional = true, default-features = false }
+
 [features]
 default = [ "threading" ]
-threading = [ "bevy_tasks/multi_threaded", "bevy_ecs/multi_threaded" ]
+threading = [ "bevy_tasks/multi_threaded", "bevy_ecs/multi_threaded", "dep:parking_lot" ]
 web = ["rapier3d/wasm-bindgen"]
 profile = [ "profiling/profile-with-optick" ]
 

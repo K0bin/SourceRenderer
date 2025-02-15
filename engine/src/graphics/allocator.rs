@@ -1,4 +1,5 @@
-use std::sync::{atomic::AtomicU64, Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc};
+use crate::Mutex;
 
 use smallvec::SmallVec;
 

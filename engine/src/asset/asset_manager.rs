@@ -12,10 +12,8 @@ use std::sync::atomic::{
     AtomicU32,
     Ordering,
 };
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::Arc;
+use crate::Mutex;
 use std::task::{Poll, Waker};
 
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};

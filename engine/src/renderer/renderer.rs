@@ -2,11 +2,8 @@ use std::sync::atomic::{
     AtomicBool,
     Ordering,
 };
-use std::sync::{
-    Arc,
-    Condvar,
-    Mutex
-};
+use std::sync::Arc;
+use crate::{Mutex, Condvar};
 use web_time::Instant;
 
 use bevy_ecs::entity::Entity;
@@ -208,6 +205,7 @@ impl<P: Platform> Renderer<P> {
         std::mem::drop(swapchain_guard);
 
         let c_device = self.device.clone();
+        std::mem::drop(assets); // TODO: The asset manager needs a bit of an overhaul to avoid this dead lock scenario. (Spawning on a task pool in single thread mode while holding the RW lock)
         bevy_tasks::ComputeTaskPool::get().spawn(async move {
             c_device.flush(QueueType::Graphics)
         }).detach();
@@ -514,7 +512,7 @@ impl<B: GPUBackend> RendererSender<B> {
     }
 
     pub fn is_saturated(&self) -> bool {
-        let queued_guard: std::sync::MutexGuard<u32> = self.state.queued_frames_counter.lock().unwrap();
+        let queued_guard: crate::MutexGuard<u32> = self.state.queued_frames_counter.lock().unwrap();
         *queued_guard > 1
     }
 

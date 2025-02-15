@@ -1,6 +1,6 @@
 use std::{collections::{hash_map::Values, HashSet}, marker::PhantomData, sync::Arc};
 use log::trace;
-use parking_lot::{RwLock, RwLockReadGuard}; // The parking lot variant is fair (write-preferring) and consistent across platforms.
+use crate::{RwLock, RwLockReadGuard}; // The parking lot variant is fair (write-preferring) and consistent across platforms.
 
 use smallvec::SmallVec;
 use sourcerenderer_core::{Platform, PlatformPhantomData};

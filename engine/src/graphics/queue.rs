@@ -1,4 +1,5 @@
-use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::{Arc, Condvar, Mutex, MutexGuard}};
+use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::Arc};
+use crate::{Mutex, MutexGuard, Condvar};
 
 use crossbeam_channel::Sender;
 use log::trace;
@@ -85,7 +86,7 @@ impl<B: GPUBackend> Queue<B> {
     }
 
     pub(super) fn present(&self, swapchain: &Arc<Mutex<super::Swapchain<B>>>, backbuffer: Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>) {
-        let mut guard: std::sync::MutexGuard<'_, QueueInner<B>> = self.inner.lock().unwrap();
+        let mut guard: crate::MutexGuard<'_, QueueInner<B>> = self.inner.lock().unwrap();
         guard.is_idle = false;
         guard.virtual_queue.push_back(StoredQueueSubmission::Present { swapchain: (swapchain.clone(), backbuffer) });
     }
