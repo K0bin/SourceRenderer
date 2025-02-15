@@ -1404,7 +1404,7 @@ impl VkBindingManager {
         set.map(|set| self.get_descriptor_set_binding_info(set, bindings))
     }
 
-    pub fn get_descriptor_set_binding_info(
+    fn get_descriptor_set_binding_info(
         &self,
         set: Arc<VkDescriptorSet>,
         bindings: &[VkBoundResource; gpu::PER_SET_BINDINGS as usize],

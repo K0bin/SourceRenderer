@@ -26,7 +26,7 @@ pub struct VkShader {
     shader_type: gpu::ShaderType,
     shader_module: vk::ShaderModule,
     device: Arc<RawVkDevice>,
-    descriptor_set_bindings: [SmallVec<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    descriptor_set_bindings: [SmallVec<[VkDescriptorSetEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     push_constants_range: Option<vk::PushConstantRange>,
     uses_bindless_texture_set: bool,
 }
@@ -61,7 +61,7 @@ impl VkShader {
         };
         let vk_device = &device.device;
         let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
-        let mut sets: [SmallVec<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let mut sets: [SmallVec<[VkDescriptorSetEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         let vk_shader_stage = shader_type_to_vk(shader.shader_type);
 
         for (set_index, set_metadata) in shader.resources.iter().enumerate() {

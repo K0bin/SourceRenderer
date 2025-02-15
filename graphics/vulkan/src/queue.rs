@@ -159,7 +159,7 @@ impl gpu::Queue<VkBackend> for VkQueue {
     }
 
     unsafe fn present(&self, swapchain: &mut VkSwapchain, backbuffer_indices: &VkBackbufferIndices) {
-        let guard: parking_lot::lock_api::ReentrantMutexGuard<'_, parking_lot::RawMutex, parking_lot::RawThreadId, vk::Queue> = self.lock_queue();
+        let guard = self.lock_queue();
         swapchain.present(*guard, backbuffer_indices);
     }
 
