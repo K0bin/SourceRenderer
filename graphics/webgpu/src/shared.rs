@@ -58,7 +58,8 @@ impl WebGPUShared {
             }
         }
 
-        let mut bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; 5] = Default::default();
+        assert!(layout_key.len() <= gpu::NON_BINDLESS_SET_COUNT as usize);
+        let mut bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         for i in 0..layout_key.len() {
             let set_key = &layout_key[i];
             bind_group_layouts[i] = Some(self.get_bind_group_layout(set_key));

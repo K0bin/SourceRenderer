@@ -77,7 +77,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     }
 
     unsafe fn create_compute_pipeline(&self, shader: &WebGPUShader, name: Option<&str>) -> WebGPUComputePipeline {
-        WebGPUComputePipeline::new(&self.device, shader, name).unwrap()
+        WebGPUComputePipeline::new(&self.device, shader, &self.shared, name).unwrap()
     }
 
     unsafe fn create_sampler(&self, info: &gpu::SamplerInfo) -> WebGPUSampler {

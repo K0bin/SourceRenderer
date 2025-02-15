@@ -1,14 +1,14 @@
 use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
 
 use bitflags::bitflags;
-use js_sys::{wasm_bindgen::JsValue, Array};
+use js_sys::{wasm_bindgen::JsValue, Array, Uint8Array};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
-use web_sys::{GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout, GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding, GpuBufferBindingLayout, GpuBufferBindingType, GpuDevice, GpuPipelineLayout, GpuPipelineLayoutDescriptor, GpuSampler, GpuSamplerBindingLayout, GpuSamplerBindingType, GpuStorageTextureAccess, GpuStorageTextureBindingLayout, GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView, GpuTextureViewDimension};
+use web_sys::{GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout, GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding, GpuBufferBindingLayout, GpuBufferBindingType, GpuDevice, GpuPipelineLayout, GpuPipelineLayoutDescriptor, GpuSampler, GpuSamplerBindingLayout, GpuSamplerBindingType, GpuStorageTextureAccess, GpuStorageTextureBindingLayout, GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView, GpuBufferDescriptor};
 
 use crate::{sampler::WebGPUSampler, texture::{format_to_webgpu, texture_dimension_to_webgpu_view, WebGPUTextureView}};
 
-const WEBGPU_BIND_COUNT_PER_SET: u32 = gpu::PER_SET_BINDINGS;
+pub(crate) const WEBGPU_BIND_COUNT_PER_SET: u32 = gpu::PER_SET_BINDINGS * 2 + 2;
 const DEFAULT_DESCRIPTOR_ARRAY_SIZE: usize = 4usize;
 
 bitflags! {
@@ -17,7 +17,6 @@ bitflags! {
         const VERY_FREQUENT = 0b0001;
         const FREQUENT = 0b0010;
         const FRAME = 0b0100;
-        const BINDLESS_TEXTURES = 0b10000;
     }
 }
 
@@ -31,24 +30,13 @@ impl From<gpu::BindingFrequency> for DirtyBindGroups {
     }
 }
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug)]
-pub(crate) enum WebGPUResourceBindingType {
-    None,
-    UniformBuffer,
-    StorageBuffer,
-    StorageTexture,
-    SampledTexture,
-    SampledTextureAndSampler,
-    Sampler,
-}
-
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub(crate) struct WebGPUBindGroupEntryInfo {
     pub(crate) name: String,
     pub(crate) shader_stage: u32,
     pub(crate) index: u32,
     pub(crate) writable: bool,
-    pub(crate) descriptor_type: WebGPUResourceBindingType,
+    pub(crate) resource_type: gpu::ResourceType,
     pub(crate) has_dynamic_offset: bool,
     pub(crate) sampling_type: gpu::SamplingType,
     pub(crate) texture_dimension: gpu::TextureDimension,
@@ -78,24 +66,23 @@ fn sampling_type_to_webgpu(sampling_type: gpu::SamplingType) -> GpuTextureSample
 impl WebGPUBindGroupLayout {
     pub fn new(
         bindings: &[WebGPUBindGroupEntryInfo],
-        device: &GpuDevice
+        device: &GpuDevice,
     ) -> Result<Self, ()> {
         let mut binding_infos: Vec<Option<WebGPUBindGroupEntryInfo>> = Vec::new();
         binding_infos.resize(WEBGPU_BIND_COUNT_PER_SET as usize, None);
 
-        let entries = Array::new_with_length(bindings.len() as u32);
-        for i in 0..bindings.len() {
-            let binding = &bindings[i];
+        let entries = Array::new();
+
+        for binding in bindings {
             let entry = GpuBindGroupLayoutEntry::new(binding.index, binding.shader_stage);
-            match binding.descriptor_type {
-                WebGPUResourceBindingType::None => continue,
-                WebGPUResourceBindingType::UniformBuffer => {
+            match binding.resource_type {
+                gpu::ResourceType::UniformBuffer => {
                     let buffer_binding = GpuBufferBindingLayout::new();
                     buffer_binding.set_type(GpuBufferBindingType::Uniform);
                     buffer_binding.set_has_dynamic_offset(true);
                     entry.set_buffer(&buffer_binding);
                 },
-                WebGPUResourceBindingType::StorageBuffer => {
+                gpu::ResourceType::StorageBuffer => {
                     let buffer_binding = GpuBufferBindingLayout::new();
                     buffer_binding.set_type(if binding.writable {
                         GpuBufferBindingType::Storage
@@ -105,31 +92,34 @@ impl WebGPUBindGroupLayout {
                     buffer_binding.set_has_dynamic_offset(true);
                     entry.set_buffer(&buffer_binding);
                 }
-                WebGPUResourceBindingType::StorageTexture => {
+                gpu::ResourceType::StorageTexture => {
                     let texture_binding = GpuStorageTextureBindingLayout::new(format_to_webgpu(binding.storage_format));
                     texture_binding.set_access(if binding.writable { GpuStorageTextureAccess::ReadWrite } else { GpuStorageTextureAccess::ReadOnly });
                     texture_binding.set_view_dimension(texture_dimension_to_webgpu_view(binding.texture_dimension));
                     entry.set_storage_texture(&texture_binding);
                 },
-                WebGPUResourceBindingType::SampledTexture => {
+                gpu::ResourceType::SampledTexture => {
                     let texture_binding = GpuTextureBindingLayout::new();
                     texture_binding.set_multisampled(binding.is_multisampled);
                     texture_binding.set_sample_type(sampling_type_to_webgpu(binding.sampling_type));
                     texture_binding.set_view_dimension(texture_dimension_to_webgpu_view(binding.texture_dimension));
                     entry.set_texture(&texture_binding);
                 },
-                WebGPUResourceBindingType::SampledTextureAndSampler => panic!("WebGPU does not support combined image and sampler"),
-                WebGPUResourceBindingType::Sampler => {
+                gpu::ResourceType::CombinedTextureSampler => unreachable!(),
+                gpu::ResourceType::Sampler => {
                     let sampler = GpuSamplerBindingLayout::new();
                     sampler.set_type(GpuSamplerBindingType::Filtering);
                     entry.set_sampler(&sampler);
                 },
+                _ => panic!("Unsupported resource type")
             }
-            entries.set(i as u32, JsValue::from(&entry));
+            entries.push(&entry);
+
             binding_infos[binding.index as usize] = Some(binding.clone());
         }
         let descriptor = GpuBindGroupLayoutDescriptor::new(&entries);
-        let bind_group_layout = device.create_bind_group_layout(&descriptor).map_err(|_| ())?;
+        let bind_group_layout = device.create_bind_group_layout(&descriptor)
+            .map_err(|e| log::error!("CreateBindGroup failed: {:?}", e))?;
         Ok(Self {
             bind_group_layout,
             binding_infos,
@@ -184,7 +174,7 @@ unsafe impl Sync for WebGPUPipelineLayout {}
 impl WebGPUPipelineLayout {
     pub(crate) fn new(device: &GpuDevice, bind_group_layouts: &[Option<Arc<WebGPUBindGroupLayout>>]) -> Self {
         let mut owned_bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
-        let bind_group_layouts_js: Array = Array::new_with_length(gpu::NON_BINDLESS_SET_COUNT);
+        let bind_group_layouts_js: Array = Array::new();
         for (index, bind_group_layout_opt) in bind_group_layouts.iter().enumerate() {
             if let Some(bind_group_layout) = bind_group_layout_opt {
                 bind_group_layouts_js.push(bind_group_layout.handle());
@@ -227,16 +217,13 @@ impl WebGPUBindGroup {
     where
         WebGPUBoundResource: From<&'a T>,
     {
-        let entries = Array::new_with_length(WEBGPU_BIND_COUNT_PER_SET);
+        let entries = Array::new_with_length(bindings.len() as u32);
         let mut stored_bindings = Vec::<WebGPUBoundResource>::new();
-        stored_bindings.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
 
-        for (index, binding) in bindings.iter().enumerate() {
-            stored_bindings[index] = binding.into();
-        }
-        for (binding, resource) in stored_bindings.iter().enumerate() {
+        for (index, binding_ref) in bindings.iter().enumerate() {
+            let binding: WebGPUBoundResource = binding_ref.into();
             let resource_js_value: JsValue;
-            match resource {
+            match &binding {
                 WebGPUBoundResource::None => continue,
                 WebGPUBoundResource::SampledTexture(texture) => {
                     resource_js_value = JsValue::from(&*texture as &GpuTextureView);
@@ -247,7 +234,7 @@ impl WebGPUBindGroup {
                 WebGPUBoundResource::UniformBuffer(binding_info) => {
                     let buffer_info = GpuBufferBinding::new(&binding_info.buffer);
                     buffer_info.set_size(binding_info.length as f64);
-                    if !layout.is_dynamic_binding(binding as u32) {
+                    if !layout.is_dynamic_binding(index as u32) {
                         buffer_info.set_offset(binding_info.offset as f64);
                     }
                     resource_js_value = JsValue::from(&buffer_info);
@@ -255,7 +242,7 @@ impl WebGPUBindGroup {
                 WebGPUBoundResource::StorageBuffer(binding_info) => {
                     let buffer_info = GpuBufferBinding::new(&binding_info.buffer);
                     buffer_info.set_size(binding_info.length as f64);
-                    if !layout.is_dynamic_binding(binding as u32) {
+                    if !layout.is_dynamic_binding(index as u32) {
                         buffer_info.set_offset(binding_info.offset as f64);
                     }
                     resource_js_value = JsValue::from(&buffer_info);
@@ -267,11 +254,10 @@ impl WebGPUBindGroup {
                 WebGPUBoundResource::StorageBufferArray(_buffers) => panic!("Descriptor arrays are not supported on WebGPU"),
                 WebGPUBoundResource::StorageTextureArray(_textures) => panic!("Descriptor arrays are not supported on WebGPU"),
                 WebGPUBoundResource::SampledTextureArray(_textures) => panic!("Descriptor arrays are not supported on WebGPU"),
-                WebGPUBoundResource::SampledTextureAndSampler(_texture, _sampler) => panic!("Combined texture and sampler is not supported on WebGPU"),
-                WebGPUBoundResource::SampledTextureAndSamplerArray(_textures_and_samplers) => panic!("Descriptor arrays are not supported on WebGPU"),
             }
-            let entry = GpuBindGroupEntry::new(binding as u32, &resource_js_value);
-            entries.set(binding as u32, JsValue::from(&entry));
+            let entry = GpuBindGroupEntry::new(index as u32, &resource_js_value);
+            entries.set(index as u32, JsValue::from(&entry));
+            stored_bindings.push(binding);
         }
 
         let descriptor = GpuBindGroupDescriptor::new(&entries, layout.handle());
@@ -413,8 +399,6 @@ pub(crate) enum WebGPUBoundResource {
     StorageTextureArray(SmallVec<[WebGPUHashableTextureView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     SampledTexture(WebGPUHashableTextureView),
     SampledTextureArray(SmallVec<[WebGPUHashableTextureView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
-    SampledTextureAndSampler(WebGPUHashableTextureView, WebGPUHashableSampler),
-    SampledTextureAndSamplerArray(SmallVec<[(WebGPUHashableTextureView, WebGPUHashableSampler); DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     Sampler(WebGPUHashableSampler),
 }
 
@@ -423,6 +407,7 @@ impl Default for WebGPUBoundResource {
         Self::None
     }
 }
+
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 #[allow(unused)]
@@ -441,25 +426,37 @@ pub(crate) enum WebGPUBoundResourceRef<'a> {
     Sampler(WebGPUHashableSampler),
 }
 
-impl Default for WebGPUBoundResourceRef<'_> {
+#[derive(Hash, Eq, PartialEq, Clone)]
+#[allow(unused)]
+enum WebGPUBoundResourceRefInternal<'a> {
+    None,
+    UniformBuffer(WebGPUBufferBindingInfo),
+    UniformBufferArray(&'a [WebGPUBufferBindingInfo]),
+    StorageBuffer(WebGPUBufferBindingInfo),
+    StorageBufferArray(&'a [WebGPUBufferBindingInfo]),
+    StorageTexture(WebGPUHashableTextureView),
+    StorageTextureArray(&'a [WebGPUHashableTextureView]),
+    SampledTexture(WebGPUHashableTextureView),
+    SampledTextureArray(&'a [WebGPUHashableTextureView]),
+    Sampler(WebGPUHashableSampler),
+}
+
+impl Default for WebGPUBoundResourceRefInternal<'_> {
     fn default() -> Self {
         Self::None
     }
 }
 
-impl From<&WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
-    fn from(binding: &WebGPUBoundResourceRef<'_>) -> Self {
+impl From<&WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource {
+    fn from(binding: &WebGPUBoundResourceRefInternal<'_>) -> Self {
         match binding {
-            WebGPUBoundResourceRef::None => WebGPUBoundResource::None,
-            WebGPUBoundResourceRef::UniformBuffer(info) => WebGPUBoundResource::UniformBuffer(info.clone()),
-            WebGPUBoundResourceRef::StorageBuffer(info) => WebGPUBoundResource::StorageBuffer(info.clone()),
-            WebGPUBoundResourceRef::StorageTexture(view) => WebGPUBoundResource::StorageTexture(view.clone()),
-            WebGPUBoundResourceRef::SampledTexture(view) => WebGPUBoundResource::SampledTexture(view.clone()),
-            WebGPUBoundResourceRef::SampledTextureAndSampler(view, sampler) => {
-                WebGPUBoundResource::SampledTextureAndSampler(view.clone(), sampler.clone())
-            }
-            WebGPUBoundResourceRef::Sampler(sampler) => WebGPUBoundResource::Sampler(sampler.clone()),
-            WebGPUBoundResourceRef::UniformBufferArray(arr) => WebGPUBoundResource::UniformBufferArray(
+            WebGPUBoundResourceRefInternal::None => WebGPUBoundResource::None,
+            WebGPUBoundResourceRefInternal::UniformBuffer(info) => WebGPUBoundResource::UniformBuffer(info.clone()),
+            WebGPUBoundResourceRefInternal::StorageBuffer(info) => WebGPUBoundResource::StorageBuffer(info.clone()),
+            WebGPUBoundResourceRefInternal::StorageTexture(view) => WebGPUBoundResource::StorageTexture(view.clone()),
+            WebGPUBoundResourceRefInternal::SampledTexture(view) => WebGPUBoundResource::SampledTexture(view.clone()),
+            WebGPUBoundResourceRefInternal::Sampler(sampler) => WebGPUBoundResource::Sampler(sampler.clone()),
+            WebGPUBoundResourceRefInternal::UniformBufferArray(arr) => WebGPUBoundResource::UniformBufferArray(
                 arr.iter()
                     .map(|a| {
                         let info: WebGPUBufferBindingInfo = a.clone();
@@ -467,7 +464,7 @@ impl From<&WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
                     })
                     .collect(),
             ),
-            WebGPUBoundResourceRef::StorageBufferArray(arr) => WebGPUBoundResource::StorageBufferArray(
+            WebGPUBoundResourceRefInternal::StorageBufferArray(arr) => WebGPUBoundResource::StorageBufferArray(
                 arr.iter()
                     .map(|a| {
                         let info: WebGPUBufferBindingInfo = a.clone();
@@ -475,21 +472,11 @@ impl From<&WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
                     })
                     .collect(),
             ),
-            WebGPUBoundResourceRef::StorageTextureArray(arr) => {
+            WebGPUBoundResourceRefInternal::StorageTextureArray(arr) => {
                 WebGPUBoundResource::StorageTextureArray(arr.iter().map(|a| a.clone()).collect())
             }
-            WebGPUBoundResourceRef::SampledTextureArray(arr) => {
+            WebGPUBoundResourceRefInternal::SampledTextureArray(arr) => {
                 WebGPUBoundResource::SampledTextureArray(arr.iter().map(|a| a.clone()).collect())
-            }
-            WebGPUBoundResourceRef::SampledTextureAndSamplerArray(arr) => {
-                WebGPUBoundResource::SampledTextureAndSamplerArray(
-                    arr.iter()
-                        .map(|(t, s)| {
-                            let tuple: (WebGPUHashableTextureView, WebGPUHashableSampler) = (t.clone(), s.clone());
-                            tuple
-                        })
-                        .collect(),
-                )
             }
         }
     }
@@ -501,17 +488,17 @@ impl From<&Self> for WebGPUBoundResource {
     }
 }
 
-impl PartialEq<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
-    fn eq(&self, other: &WebGPUBoundResourceRef) -> bool {
+impl PartialEq<WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource {
+    fn eq(&self, other: &WebGPUBoundResourceRefInternal) -> bool {
         match (self, other) {
-            (WebGPUBoundResource::None, WebGPUBoundResourceRef::None) => true,
+            (WebGPUBoundResource::None, WebGPUBoundResourceRefInternal::None) => true,
             (
                 WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
                     buffer: old,
                     offset: old_offset,
                     length: old_length,
                 }),
-                WebGPUBoundResourceRef::UniformBuffer(WebGPUBufferBindingInfo {
+                WebGPUBoundResourceRefInternal::UniformBuffer(WebGPUBufferBindingInfo {
                     buffer: new,
                     offset: new_offset,
                     length: new_length,
@@ -523,55 +510,43 @@ impl PartialEq<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
                     offset: old_offset,
                     length: old_length,
                 }),
-                WebGPUBoundResourceRef::StorageBuffer(WebGPUBufferBindingInfo {
+                WebGPUBoundResourceRefInternal::StorageBuffer(WebGPUBufferBindingInfo {
                     buffer: new,
                     offset: new_offset,
                     length: new_length,
                 }),
             ) => old == new && old_offset == new_offset && old_length == new_length,
-            (WebGPUBoundResource::StorageTexture(old), WebGPUBoundResourceRef::StorageTexture(new)) => {
+            (WebGPUBoundResource::StorageTexture(old), WebGPUBoundResourceRefInternal::StorageTexture(new)) => {
                 old == new
             }
-            (WebGPUBoundResource::SampledTexture(old), WebGPUBoundResourceRef::SampledTexture(new)) => {
+            (WebGPUBoundResource::SampledTexture(old), WebGPUBoundResourceRefInternal::SampledTexture(new)) => {
                 old == new
             }
-            (
-                WebGPUBoundResource::SampledTextureAndSampler(old_tex, old_sampler),
-                WebGPUBoundResourceRef::SampledTextureAndSampler(new_tex, new_sampler),
-            ) => old_tex == new_tex && old_sampler == new_sampler,
-            (WebGPUBoundResource::Sampler(old_sampler), WebGPUBoundResourceRef::Sampler(new_sampler)) => {
+            (WebGPUBoundResource::Sampler(old_sampler), WebGPUBoundResourceRefInternal::Sampler(new_sampler)) => {
                 old_sampler == new_sampler
             }
             (
                 WebGPUBoundResource::StorageBufferArray(old),
-                WebGPUBoundResourceRef::StorageBufferArray(new),
+                WebGPUBoundResourceRefInternal::StorageBufferArray(new),
             ) => &old[..] == &new[..],
             (
                 WebGPUBoundResource::UniformBufferArray(old),
-                WebGPUBoundResourceRef::UniformBufferArray(new),
+                WebGPUBoundResourceRefInternal::UniformBufferArray(new),
             ) => &old[..] == &new[..],
             (
                 WebGPUBoundResource::SampledTextureArray(old),
-                WebGPUBoundResourceRef::SampledTextureArray(new),
+                WebGPUBoundResourceRefInternal::SampledTextureArray(new),
             ) => old.iter().zip(new.iter()).all(|(old, new)| old == new),
             (
                 WebGPUBoundResource::StorageTextureArray(old),
-                WebGPUBoundResourceRef::StorageTextureArray(new),
+                WebGPUBoundResourceRefInternal::StorageTextureArray(new),
             ) => old.iter().zip(new.iter()).all(|(old, new)| old == new),
-            (
-                WebGPUBoundResource::SampledTextureAndSamplerArray(old),
-                WebGPUBoundResourceRef::SampledTextureAndSamplerArray(new),
-            ) => old.iter().zip(new.iter()).all(
-                |((old_texture, old_sampler), (new_texture, new_sampler))| {
-                    old_texture == new_texture && old_sampler == new_sampler
-                },
-            ),
             _ => false,
         }
     }
 }
 
-impl PartialEq<WebGPUBoundResource> for WebGPUBoundResourceRef<'_> {
+impl PartialEq<WebGPUBoundResource> for WebGPUBoundResourceRefInternal<'_> {
     fn eq(&self, other: &WebGPUBoundResource) -> bool {
         other == self
     }
@@ -642,10 +617,10 @@ impl BindingCompare<Self> for WebGPUBoundResource {
     }
 }
 
-impl BindingCompare<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
+impl BindingCompare<WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource {
     fn binding_eq(
         &self,
-        other: &WebGPUBoundResourceRef<'_>,
+        other: &WebGPUBoundResourceRefInternal<'_>,
         binding_info: Option<&WebGPUBindGroupEntryInfo>,
     ) -> bool {
         if self == &WebGPUBoundResource::None && binding_info.is_none() {
@@ -662,7 +637,7 @@ impl BindingCompare<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
                     offset: _,
                     length: entry_length,
                 }),
-                WebGPUBoundResourceRef::UniformBuffer(WebGPUBufferBindingInfo {
+                WebGPUBoundResourceRefInternal::UniformBuffer(WebGPUBufferBindingInfo {
                     buffer,
                     offset: _,
                     length,
@@ -676,7 +651,7 @@ impl BindingCompare<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
                     offset: _,
                     length: entry_length,
                 }),
-                WebGPUBoundResourceRef::StorageBuffer(WebGPUBufferBindingInfo {
+                WebGPUBoundResourceRefInternal::StorageBuffer(WebGPUBufferBindingInfo {
                     buffer,
                     offset: _,
                     length,
@@ -686,7 +661,7 @@ impl BindingCompare<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
                 buffer == entry_buffer && *length == *entry_length
             } else if let (
                 WebGPUBoundResource::StorageBufferArray(arr),
-                WebGPUBoundResourceRef::StorageBufferArray(arr1),
+                WebGPUBoundResourceRefInternal::StorageBufferArray(arr1),
             ) = (self, other)
             {
                 arr.iter()
@@ -694,7 +669,7 @@ impl BindingCompare<WebGPUBoundResourceRef<'_>> for WebGPUBoundResource {
                     .all(|(b, b1)| b.buffer == b1.buffer && b.length == b1.length)
             } else if let (
                 WebGPUBoundResource::UniformBufferArray(arr),
-                WebGPUBoundResourceRef::UniformBufferArray(arr1),
+                WebGPUBoundResourceRefInternal::UniformBufferArray(arr1),
             ) = (self, other)
             {
                 arr.iter()
@@ -732,6 +707,7 @@ pub(crate) struct WebGPUBindingManager {
     current_sets: [Option<Arc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyBindGroups,
     bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    max_binding: [usize; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -742,8 +718,8 @@ impl WebGPUBindingManager {
         let cache_mode = CacheMode::Everything;
 
         let mut bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
-        for binding in &mut bindings {
-            binding.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
+        for set in &mut bindings {
+            set.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
         }
 
         Self {
@@ -752,6 +728,7 @@ impl WebGPUBindingManager {
             current_sets: Default::default(),
             dirty: DirtyBindGroups::empty(),
             bindings: Default::default(),
+            max_binding: Default::default(),
             transient_cache: RefCell::new(HashMap::new()),
             permanent_cache: RefCell::new(HashMap::new()),
             last_cleanup_frame: 0,
@@ -760,7 +737,11 @@ impl WebGPUBindingManager {
 
     pub(crate) fn reset(&mut self, frame: u64) {
         self.dirty = DirtyBindGroups::empty();
-        self.bindings = Default::default();
+        for set in &mut self.bindings {
+            set.clear();
+            set.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
+        }
+        self.max_binding = Default::default();
         self.current_sets = Default::default();
         self.clean_permanent_cache(frame);
         if self.cache_mode != CacheMode::None {
@@ -775,15 +756,59 @@ impl WebGPUBindingManager {
         slot: u32,
         binding: WebGPUBoundResourceRef,
     ) {
-        let bindings_table = &mut self.bindings[frequency as usize];
-        let existing_binding = &mut bindings_table[slot as usize];
+        let adjusted_slot = slot * 2 + if frequency == gpu::BindingFrequency::VeryFrequent { 2 } else { 0 };
 
-        let identical = existing_binding == &binding;
+        let mut internal_binding_2 = WebGPUBoundResourceRefInternal::None;
+        let internal_binding = match binding {
+            WebGPUBoundResourceRef::None => WebGPUBoundResourceRefInternal::None,
+            WebGPUBoundResourceRef::UniformBuffer(buffer) => WebGPUBoundResourceRefInternal::UniformBuffer(buffer),
+            WebGPUBoundResourceRef::UniformBufferArray(buffer_arr) => WebGPUBoundResourceRefInternal::UniformBufferArray(buffer_arr),
+            WebGPUBoundResourceRef::StorageBuffer(buffer) => WebGPUBoundResourceRefInternal::StorageBuffer(buffer),
+            WebGPUBoundResourceRef::StorageBufferArray(buffer_arr) => WebGPUBoundResourceRefInternal::StorageBufferArray(buffer_arr),
+            WebGPUBoundResourceRef::StorageTexture(texture) => WebGPUBoundResourceRefInternal::StorageTexture(texture),
+            WebGPUBoundResourceRef::StorageTextureArray(texture_arr) => WebGPUBoundResourceRefInternal::StorageTextureArray(texture_arr),
+            WebGPUBoundResourceRef::SampledTexture(texture) => WebGPUBoundResourceRefInternal::SampledTexture(texture),
+            WebGPUBoundResourceRef::SampledTextureArray(texture_arr) => WebGPUBoundResourceRefInternal::SampledTextureArray(texture_arr),
+            WebGPUBoundResourceRef::SampledTextureAndSampler(texture, sampler) => {
+                internal_binding_2 = WebGPUBoundResourceRefInternal::Sampler(sampler);
+                WebGPUBoundResourceRefInternal::SampledTexture(texture)
+            },
+            WebGPUBoundResourceRef::SampledTextureAndSamplerArray(_texture_and_sampler_arr) => {
+                unimplemented!()
+            },
+            WebGPUBoundResourceRef::Sampler(sampler) => WebGPUBoundResourceRefInternal::Sampler(sampler),
+        };
+
+        let bindings_table = &mut self.bindings[frequency as usize];
+        let (existing_binding_slice, existing_binding_slice_2) = bindings_table.split_at_mut(adjusted_slot as usize + 1);
+        let existing_binding = existing_binding_slice.last_mut().unwrap();
+        let existing_binding_2 = existing_binding_slice_2.first_mut().unwrap();
+
+        let identical = existing_binding == &internal_binding && existing_binding == &internal_binding_2;
 
         if !identical {
             self.dirty.insert(DirtyBindGroups::from(frequency));
-            *existing_binding = (&binding).into();
+            *existing_binding = (&internal_binding).into();
+            *existing_binding_2 = (&internal_binding_2).into();
+
+            self.max_binding[frequency as usize] = self.max_binding[frequency as usize].max(slot as usize);
         }
+    }
+
+    pub(crate) fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: gpu::ShaderType) {
+        let data_as_bytes = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * std::mem::size_of::<T>()) };
+        let descriptor = GpuBufferDescriptor::new(data_as_bytes.len() as f64, web_sys::gpu_buffer_usage::UNIFORM);
+        descriptor.set_mapped_at_creation(true);
+        let buffer = self.device.create_buffer(&descriptor).unwrap();
+        let mapped_range = buffer.get_mapped_range().unwrap();
+        let uint8_array = Uint8Array::new_with_byte_offset_and_length(&mapped_range, 0 as u32, data_as_bytes.len() as u32);
+        uint8_array.copy_from(&data_as_bytes);
+        buffer.unmap();
+        let binding_index = if visible_for_shader_stage == gpu::ShaderType::FragmentShader { 1 } else { 0 };
+        self.bindings[gpu::BindingFrequency::VeryFrequent as usize][binding_index] = WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
+            buffer, offset: 0, length: data_as_bytes.len() as u64
+        });
+        self.dirty.insert(DirtyBindGroups::from(gpu::BindingFrequency::VeryFrequent));
     }
 
     fn find_compatible_set<T>(
@@ -818,14 +843,19 @@ impl WebGPUBindingManager {
         pipeline_layout: &WebGPUPipelineLayout,
         frequency: gpu::BindingFrequency,
     ) -> Option<WebGPUBindGroupBinding> {
+        let mut max_binding = self.max_binding[frequency as usize];
+        if frequency == gpu::BindingFrequency::VeryFrequent {
+            max_binding += 1;
+        }
+
         let layout_option = pipeline_layout.bind_group_layout(frequency as u32);
-        if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() {
+        if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() || max_binding == 0 {
             return None;
         }
         let layout = layout_option.unwrap();
 
         let mut set: Option<Arc<WebGPUBindGroup>> = None;
-        let bindings = &self.bindings[frequency as usize];
+        let bindings = &self.bindings[frequency as usize][..max_binding];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
@@ -838,7 +868,7 @@ impl WebGPUBindingManager {
         set.map(|set| self.get_descriptor_set_binding_info(set, bindings))
     }
 
-    pub fn get_descriptor_set_binding_info(
+    fn get_descriptor_set_binding_info(
         &self,
         set: Arc<WebGPUBindGroup>,
         bindings: &[WebGPUBoundResource],
@@ -952,7 +982,6 @@ impl WebGPUBindingManager {
         self.dirty |= DirtyBindGroups::VERY_FREQUENT;
         self.dirty |= DirtyBindGroups::FREQUENT;
         self.dirty |= DirtyBindGroups::FRAME;
-        self.dirty |= DirtyBindGroups::BINDLESS_TEXTURES;
     }
 
     pub fn dirty_sets(&self) -> DirtyBindGroups {
