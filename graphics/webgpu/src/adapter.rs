@@ -5,14 +5,16 @@ use crate::{WebGPUBackend, WebGPUDevice};
 
 pub struct WebGPUAdapter {
     adapter: GpuAdapter,
-    device: GpuDevice
+    device: GpuDevice,
+    debug: bool
 }
 
 impl WebGPUAdapter {
-    pub fn new(adapter: GpuAdapter, device: GpuDevice) -> Self {
+    pub fn new(adapter: GpuAdapter, device: GpuDevice, debug: bool) -> Self {
         Self {
             adapter,
             device,
+            debug
         }
     }
 
@@ -30,6 +32,6 @@ impl Adapter<WebGPUBackend> for WebGPUAdapter {
     }
 
     fn create_device(&self, _surface: &<WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface) -> WebGPUDevice {
-        WebGPUDevice::new(self.device.clone())
+        WebGPUDevice::new(self.device.clone(), self.debug)
     }
 }

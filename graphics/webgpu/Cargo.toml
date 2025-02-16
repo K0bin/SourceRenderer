@@ -143,6 +143,7 @@ web-sys = { version = "0.3.74", features = [
     "gpu_map_mode",
     "gpu_shader_stage",
     "gpu_texture_usage",
+    "EventTarget",
     "std"
 ] }
 wasm-bindgen-futures = { version = "0.4.47", features = ["futures-core-03-stream"] }

@@ -30,10 +30,10 @@ impl Platform for WebPlatform {
         &self.window
     }
 
-    fn create_graphics(&self, _debug_layers: bool) -> Result<WebGPUInstance, Box<dyn std::error::Error>> {
+    fn create_graphics(&self, debug_layers: bool) -> Result<WebGPUInstance, Box<dyn std::error::Error>> {
         self.instance_init.as_ref()
             .map(|init| {
-            WebGPUInstance::new(init)
+            WebGPUInstance::new(init, debug_layers)
             })
             .map_err(|e| Box::new(e.clone()) as Box<dyn std::error::Error>)
     }

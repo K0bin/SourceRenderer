@@ -1,4 +1,4 @@
-use js_sys::{wasm_bindgen::JsValue, Array};
+use js_sys::{wasm_bindgen::{self, prelude::Closure, JsCast, JsValue}, Array};
 use smallvec::{SmallVec, smallvec};
 use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _, TextureLayout}};
 use web_sys::{GpuAdapter, GpuDevice, GpuQueue, GpuTexelCopyTextureInfo, GpuTexelCopyBufferLayout, GpuExtent3dDict};
@@ -16,7 +16,7 @@ unsafe impl Send for WebGPUDevice {}
 unsafe impl Sync for WebGPUDevice {}
 
 impl WebGPUDevice {
-    pub fn new(device: GpuDevice) -> Self {
+    pub fn new(device: GpuDevice, debug: bool) -> Self {
         let memory_infos: [gpu::MemoryTypeInfo; 3] = [
             gpu::MemoryTypeInfo {
                 is_cached: false,
@@ -44,6 +44,13 @@ impl WebGPUDevice {
         let shared = WebGPUShared::new(&device);
         let queue = WebGPUQueue::new(&device);
 
+        if debug {
+            log::info!("Initializing device with error callback.");
+            let callback_closure = Closure::wrap(Box::new(move |event: web_sys::Event| { Self::on_uncaptured_error(event); }) as Box<dyn FnMut(_)>);
+            device.add_event_listener_with_callback("uncapturederror", callback_closure.as_ref().unchecked_ref()).unwrap();
+            std::mem::forget(callback_closure);
+        }
+
         Self {
             device,
             shared,
@@ -54,6 +61,11 @@ impl WebGPUDevice {
 
     pub fn handle(&self) -> &GpuDevice {
         &self.device
+    }
+
+    fn on_uncaptured_error(event: web_sys::Event) {
+        let webgpu_error = event.dyn_into::<web_sys::GpuUncapturedErrorEvent>().unwrap();
+        log::error!("Uncaptured WebGPU error: {}", webgpu_error.error().message())
     }
 }
 

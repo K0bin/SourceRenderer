@@ -71,12 +71,13 @@ impl WebGPUInstance {
         })
     }
 
-    pub fn new(async_result: &WebGPUInstanceAsyncInitResult) -> Self {
+    pub fn new(async_result: &WebGPUInstanceAsyncInitResult, debug: bool) -> Self {
         Self {
             adapters: [
                 WebGPUAdapter::new(
                     async_result.adapter.clone(),
-                    async_result.device.clone()
+                    async_result.device.clone(),
+                    debug
                 )
             ]
         }
