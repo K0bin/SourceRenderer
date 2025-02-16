@@ -424,12 +424,11 @@ fn read_metadata(
             let mut storage_format = gpu::Format::Unknown;
             if is_image {
                 let spvc_is_array = spirv_cross_sys::spvc_type_get_image_arrayed(type_handle) != 0;
-                let _spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
+                let spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
                 let is_storage = spirv_cross_sys::spvc_type_get_image_is_storage(type_handle) != 0;
                 if is_storage {
                     storage_format = spvc_format_to_format(spirv_cross_sys::spvc_type_get_image_storage_format(type_handle));
                 }
-                let spv_dim = spirv_cross_sys::spvc_type_get_image_storage_format(type_handle);
                 dim = match spv_dim {
                     spirv_cross_sys::SpvDim__SpvDim1D => if !spvc_is_array { gpu::TextureDimension::Dim1D } else { gpu::TextureDimension::Dim1DArray },
                     spirv_cross_sys::SpvDim__SpvDim2D => if !spvc_is_array { gpu::TextureDimension::Dim2D } else { gpu::TextureDimension::Dim2DArray },
