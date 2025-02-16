@@ -247,7 +247,7 @@ impl MTLCommandBuffer {
         self.blit_encoder = None;
         self.compute_encoder = None;
         self.as_encoder = None;
-        self.binding.dirty_all();
+        self.binding.mark_all_dirty();
     }
 
     pub(crate) fn blit_rp(command_buffer: &metal::CommandBufferRef, shared: &Arc<MTLShared>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
@@ -333,7 +333,7 @@ impl MTLCommandBuffer {
 
 impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn set_pipeline(&mut self, pipeline: gpu::PipelineBinding<MTLBackend>) {
-        self.binding.dirty_all();
+        self.binding.mark_all_dirty();
         match pipeline {
             gpu::PipelineBinding::Graphics(pipeline) => {
                 self.primitive_type = pipeline.primitive_type();
@@ -565,6 +565,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn begin(&mut self, _frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
+        self.binding.mark_all_dirty();
         if let Some(handle) = self.command_buffer.as_ref() {
             handle.encode_wait_for_event(&self.pre_event, 1);
         }
@@ -691,6 +692,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         }
 
         self.render_pass = MTLRenderPassState::None;
+        self.binding.mark_all_dirty();
     }
 
     unsafe fn barrier(&mut self, _barriers: &[gpu::Barrier<MTLBackend>]) {

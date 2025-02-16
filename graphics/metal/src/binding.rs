@@ -244,7 +244,7 @@ impl MTLBindingManager {
         }
     }
 
-    pub(crate) fn dirty_all(&mut self) {
+    pub(crate) fn mark_all_dirty(&mut self) {
         for i in 0..=gpu::BindingFrequency::Frame as u32 {
             self.dirty[i as usize] = !0u64;
         }
