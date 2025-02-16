@@ -26,6 +26,7 @@ use super::*;
 // TODO: this shit is really slow. rewrite all of it.
 
 const DEFAULT_DESCRIPTOR_ARRAY_SIZE: usize = 4usize;
+const DEFAULT_PER_SET_PREALLOCATED_SIZE: usize = 8usize;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -67,7 +68,7 @@ pub(crate) struct VkConstantRange {
 pub(crate) struct VkDescriptorSetLayout {
     pub device: Arc<RawVkDevice>,
     layout: vk::DescriptorSetLayout,
-    binding_infos: [Option<VkDescriptorSetEntryInfo>; gpu::PER_SET_BINDINGS as usize],
+    binding_infos: SmallVec<[Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     is_empty: bool,
     template: Option<vk::DescriptorUpdateTemplate>,
 }
@@ -81,10 +82,13 @@ impl VkDescriptorSetLayout {
         let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
         let mut vk_binding_flags: Vec<vk::DescriptorBindingFlags> = Vec::new();
         let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
-        let mut binding_infos: [Option<VkDescriptorSetEntryInfo>; gpu::PER_SET_BINDINGS as usize] =
-            Default::default();
+        let mut binding_infos: SmallVec<[Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
+            SmallVec::with_capacity(bindings.len());
 
         for binding in bindings.iter() {
+            if binding.index as usize >= binding_infos.len() {
+                binding_infos.resize(binding.index as usize + 1, None);
+            }
             binding_infos[binding.index as usize] = Some(binding.clone());
 
             vk_bindings.push(vk::DescriptorSetLayoutBinding {
@@ -168,11 +172,17 @@ impl VkDescriptorSetLayout {
     }
 
     pub(crate) fn binding(&self, slot: u32) -> Option<&VkDescriptorSetEntryInfo> {
-        self.binding_infos[slot as usize].as_ref()
+        if slot >= self.binding_infos.len() as u32 {
+            None
+        } else {
+            self.binding_infos[slot as usize].as_ref()
+        }
     }
 
     pub(crate) fn is_dynamic_binding(&self, binding_index: u32) -> bool {
-        if let Some(binding_info) = self.binding_infos[binding_index as usize].as_ref() {
+        if binding_index >= self.binding_infos.len() as u32 {
+            false
+        } else if let Some(binding_info) = self.binding_infos[binding_index as usize].as_ref() {
             binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
                 || binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
         } else {
@@ -301,7 +311,7 @@ pub(crate) struct VkDescriptorSet {
     pool: Arc<VkDescriptorPool>,
     layout: Arc<VkDescriptorSetLayout>,
     is_transient: bool,
-    bindings: [VkBoundResource; gpu::PER_SET_BINDINGS as usize],
+    bindings: SmallVec<[VkBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     device: Arc<RawVkDevice>,
 }
 
@@ -327,19 +337,19 @@ impl VkDescriptorSet {
             .pop()
             .unwrap();
 
-        let mut stored_bindings = <[VkBoundResource; gpu::PER_SET_BINDINGS as usize]>::default();
-        for (index, binding) in bindings.iter().enumerate() {
-            stored_bindings[index] = binding.into();
+        let mut stored_bindings = SmallVec::<[VkBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>::default();
+        for binding in bindings {
+            stored_bindings.push(binding.into());
         }
 
         match Option::<vk::DescriptorUpdateTemplate>::None {
             None => {
-                let mut writes: SmallVec<[vk::WriteDescriptorSet; gpu::PER_SET_BINDINGS as usize]> =
-                    Default::default();
-                let mut image_writes: SmallVec<[vk::DescriptorImageInfo; gpu::PER_SET_BINDINGS as usize]> =
-                    Default::default();
-                let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; gpu::PER_SET_BINDINGS as usize]> =
-                    Default::default();
+                let mut writes: SmallVec<[vk::WriteDescriptorSet; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
+                    SmallVec::with_capacity(bindings.len());
+                let mut image_writes: SmallVec<[vk::DescriptorImageInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
+                    SmallVec::with_capacity(bindings.len());
+                let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
+                    SmallVec::with_capacity(bindings.len());
                 let mut acceleration_structures: SmallVec<[vk::AccelerationStructureKHR; 2]> =
                     Default::default();
                 let mut acceleration_structure_writes: SmallVec<
@@ -359,7 +369,7 @@ impl VkDescriptorSet {
                         acceleration_structure_writes.capacity()
                     );
 
-                    let binding_info = &layout.binding_infos[binding].as_ref();
+                    let binding_info = layout.binding(binding as u32);
                     if binding_info.is_none() {
                         continue;
                     }
@@ -660,11 +670,12 @@ impl VkDescriptorSet {
                 }
             }
             Some(template) => {
-                let mut entries: SmallVec<[VkDescriptorEntry; gpu::PER_SET_BINDINGS as usize]> =
-                    Default::default();
+                let mut entries: SmallVec<[VkDescriptorEntry; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
+                    SmallVec::with_capacity(bindings.len());
 
                 for (binding, resource) in stored_bindings.iter().enumerate() {
-                    let binding_info = &layout.binding_infos[binding].as_ref();
+                    assert_ne!(entries.len(), entries.capacity());
+                    let binding_info = layout.binding(binding as u32);
                     if binding_info.is_none() {
                         continue;
                     }
@@ -896,21 +907,21 @@ impl VkDescriptorSet {
         self.is_transient
     }
 
-    pub(crate) fn is_compatible<T>(
+    pub(crate) fn is_compatible<'a, T>(
         &self,
-        layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &[T],
+        layout: &'a Arc<VkDescriptorSetLayout>,
+        bindings: &'a [T],
     ) -> bool
     where
-        VkBoundResource: BindingCompare<T>,
+        VkBoundResource: BindingCompare<Option<&'a T>>,
     {
         if &self.layout != layout {
             return false;
         }
 
         self.bindings.iter().enumerate().all(|(index, binding)| {
-            let binding_info = self.layout.binding_infos[index].as_ref();
-            binding.binding_eq(&bindings[index], binding_info)
+            let binding_info = self.layout.binding(index as u32);
+            binding.binding_eq(&bindings.get(index), binding_info)
         })
     }
 }
@@ -1174,6 +1185,38 @@ impl BindingCompare<VkBoundResourceRef<'_>> for VkBoundResource {
     }
 }
 
+impl BindingCompare<Option<&VkBoundResource>> for VkBoundResource {
+    fn binding_eq(
+        &self,
+        other: &Option<&VkBoundResource>,
+        binding_info: Option<&VkDescriptorSetEntryInfo>,
+    ) -> bool {
+        if let Some(other) = other {
+            self.binding_eq(*other, binding_info)
+        } else if self == &VkBoundResource::None {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl BindingCompare<Option<&VkBoundResourceRef<'_>>> for VkBoundResource {
+    fn binding_eq(
+        &self,
+        other: &Option<&VkBoundResourceRef<'_>>,
+        binding_info: Option<&VkDescriptorSetEntryInfo>,
+    ) -> bool {
+        if let Some(other) = other {
+            self.binding_eq(*other, binding_info)
+        } else if self == &VkBoundResource::None {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 impl PartialEq<VkBoundResourceRef<'_>> for VkBoundResource {
     fn eq(&self, other: &VkBoundResourceRef) -> bool {
         match (self, other) {
@@ -1256,8 +1299,7 @@ impl PartialEq<VkBoundResource> for VkBoundResourceRef<'_> {
 
 pub(crate) struct VkDescriptorSetBinding {
     pub(crate) set: Arc<VkDescriptorSet>,
-    pub(crate) dynamic_offset_count: u32,
-    pub(crate) dynamic_offsets: [u64; gpu::PER_SET_BINDINGS as usize],
+    pub(crate) dynamic_offsets: SmallVec<[u32; 4]>,
 }
 
 struct VkDescriptorSetCacheEntry {
@@ -1285,6 +1327,7 @@ pub(crate) struct VkBindingManager {
     current_sets: [Option<Arc<VkDescriptorSet>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyDescriptorSets,
     bindings: [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; gpu::NON_BINDLESS_SET_COUNT as usize],
+    used_bindings: [usize; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -1311,6 +1354,7 @@ impl VkBindingManager {
             current_sets: Default::default(),
             dirty: DirtyDescriptorSets::empty(),
             bindings: Default::default(),
+            used_bindings: Default::default(),
             transient_cache: RefCell::new(HashMap::new()),
             permanent_cache: RefCell::new(HashMap::new()),
             last_cleanup_frame: 0,
@@ -1320,6 +1364,7 @@ impl VkBindingManager {
     pub(crate) fn reset(&mut self, frame: u64) {
         self.dirty = DirtyDescriptorSets::empty();
         self.bindings = Default::default();
+        self.used_bindings = Default::default();
         self.current_sets = Default::default();
         self.clean_permanent_cache(frame);
         if self.cache_mode != CacheMode::None {
@@ -1349,18 +1394,22 @@ impl VkBindingManager {
         if !identical {
             self.dirty.insert(DirtyDescriptorSets::from(frequency));
             *existing_binding = (&binding).into();
+
+            if VkBoundResourceRef::None != binding {
+                self.used_bindings[frequency as usize] = self.used_bindings[frequency as usize].max((slot + 1) as usize);
+            }
         }
     }
 
-    fn find_compatible_set<T>(
+    fn find_compatible_set<'a, T>(
         &self,
         frame: u64,
-        layout: &Arc<VkDescriptorSetLayout>,
-        bindings: &[T],
+        layout: &'a Arc<VkDescriptorSetLayout>,
+        bindings: &'a [T],
         use_permanent_cache: bool,
     ) -> Option<Arc<VkDescriptorSet>>
     where
-        VkBoundResource: BindingCompare<T>,
+        VkBoundResource: BindingCompare<Option<&'a T>>,
     {
         let mut cache = if use_permanent_cache {
             self.permanent_cache.borrow_mut()
@@ -1385,13 +1434,14 @@ impl VkBindingManager {
         frequency: gpu::BindingFrequency,
     ) -> Option<VkDescriptorSetBinding> {
         let layout_option = pipeline_layout.descriptor_set_layout(frequency as u32);
-        if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
+        let used_bindings = self.used_bindings[frequency as usize];
+        if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() || used_bindings == 0 {
             return None;
         }
         let layout = layout_option.unwrap();
 
         let mut set: Option<Arc<VkDescriptorSet>> = None;
-        let bindings = &self.bindings[frequency as usize];
+        let bindings = &self.bindings[frequency as usize][..used_bindings];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
@@ -1407,15 +1457,14 @@ impl VkBindingManager {
     fn get_descriptor_set_binding_info(
         &self,
         set: Arc<VkDescriptorSet>,
-        bindings: &[VkBoundResource; gpu::PER_SET_BINDINGS as usize],
+        bindings: &[VkBoundResource]
     ) -> VkDescriptorSetBinding {
         let mut set_binding = VkDescriptorSetBinding {
             set: set.clone(),
             dynamic_offsets: Default::default(),
-            dynamic_offset_count: 0,
         };
         bindings.iter().enumerate().for_each(|(index, binding)| {
-            if let Some(binding_info) = set.layout.binding_infos[index].as_ref() {
+            if let Some(binding_info) = set.layout.binding(index as u32) {
                 if binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
                     || binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
                 {
@@ -1425,18 +1474,14 @@ impl VkBindingManager {
                             offset,
                             length: _,
                         }) => {
-                            set_binding.dynamic_offsets
-                                [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                            set_binding.dynamic_offset_count += 1;
+                            set_binding.dynamic_offsets.push(*offset as u32);
                         }
                         VkBoundResource::StorageBuffer(VkBufferBindingInfo {
                             buffer: _,
                             offset,
                             length: _,
                         }) => {
-                            set_binding.dynamic_offsets
-                                [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                            set_binding.dynamic_offset_count += 1;
+                            set_binding.dynamic_offsets.push(*offset as u32);
                         }
                         VkBoundResource::StorageBufferArray(buffers) => {
                             for VkBufferBindingInfo {
@@ -1445,9 +1490,7 @@ impl VkBindingManager {
                                 length: _,
                             } in buffers
                             {
-                                set_binding.dynamic_offsets
-                                    [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                                set_binding.dynamic_offset_count += 1;
+                                set_binding.dynamic_offsets.push(*offset as u32);
                             }
                         }
                         VkBoundResource::UniformBufferArray(buffers) => {
@@ -1457,9 +1500,7 @@ impl VkBindingManager {
                                 length: _,
                             } in buffers
                             {
-                                set_binding.dynamic_offsets
-                                    [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                                set_binding.dynamic_offset_count += 1;
+                                set_binding.dynamic_offsets.push(*offset as u32);
                             }
                         }
                         _ => {}
@@ -1474,11 +1515,11 @@ impl VkBindingManager {
     pub fn get_or_create_set<'a, T>(
         &self,
         frame: u64,
-        layout: &Arc<VkDescriptorSetLayout>,
+        layout: &'a Arc<VkDescriptorSetLayout>,
         bindings: &'a [T],
     ) -> Option<Arc<VkDescriptorSet>>
     where
-        VkBoundResource: BindingCompare<T>,
+        VkBoundResource: BindingCompare<Option<&'a T>>,
         VkBoundResource: From<&'a T>,
     {
         if layout.is_empty() {

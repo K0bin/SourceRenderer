@@ -511,7 +511,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
 
-        let mut offsets = SmallVec::<[u32; gpu::PER_SET_BINDINGS as usize]>::new();
+        let mut offsets = SmallVec::<[u32; 16]>::new();
         let mut descriptor_sets =
             SmallVec::<[vk::DescriptorSet; gpu::TOTAL_SET_COUNT as usize]>::new();
         let mut base_index = 0;
@@ -545,8 +545,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 }
                 Some(set_binding) => {
                     descriptor_sets.push(set_binding.set.handle());
-                    for i in 0..set_binding.dynamic_offset_count as usize {
-                        offsets.push(set_binding.dynamic_offsets[i] as u32);
+                    for offset in &set_binding.dynamic_offsets {
+                        offsets.push(*offset as u32);
                     }
                 }
             }
@@ -1316,18 +1316,12 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         };
 
         let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline();
-        let mut bindings = <[VkBoundResourceRef; gpu::PER_SET_BINDINGS as usize]>::default();
         let binding_offsets = [offset as u32];
         let is_dynamic_binding = meta_pipeline
             .layout()
             .descriptor_set_layout(0)
             .unwrap()
             .is_dynamic_binding(0);
-        bindings[0] = VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
-            buffer: buffer.handle(),
-            offset,
-            length: length_in_bytes,
-        });
         let descriptor_set = self
             .descriptor_manager
             .get_or_create_set(
@@ -1337,7 +1331,11 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                     .descriptor_set_layout(0)
                     .as_ref()
                     .unwrap(),
-                &bindings,
+                &[VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
+                    buffer: buffer.handle(),
+                    offset,
+                    length: length_in_bytes,
+                })],
             )
             .unwrap();
         unsafe {
