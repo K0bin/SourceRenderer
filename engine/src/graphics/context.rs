@@ -51,8 +51,8 @@ impl<B: GPUBackend> GraphicsContext<B> {
       memory_allocator: memory_allocator.clone(),
       destroyer: ManuallyDrop::new(destroyer.clone()),
       fence: Arc::new(super::Fence::<B>::new(device, destroyer)),
-      current_frame: 0u64,
-      completed_frame: 0u64,
+      current_frame: 1u64, // Fences (Timeline semaphores) start at value 0, so waiting for 0 would be pointless.
+      completed_frame: 1u64,
       thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
       prerendered_frames,
       global_buffer_allocator: buffer_allocator.clone(),
@@ -64,7 +64,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     let new_frame = self.current_frame;
     self.destroyer.set_counter(new_frame);
 
-    if new_frame > self.prerendered_frames as u64 {
+    if new_frame >= self.prerendered_frames as u64 {
       let recycled_frame = new_frame - self.prerendered_frames as u64;
       self.fence.await_value(recycled_frame);
       self.destroyer.destroy_unused(recycled_frame);
