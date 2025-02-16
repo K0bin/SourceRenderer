@@ -10,6 +10,8 @@ use crate::{sampler::WebGPUSampler, texture::{format_to_webgpu, texture_dimensio
 
 pub(crate) const WEBGPU_BIND_COUNT_PER_SET: u32 = gpu::PER_SET_BINDINGS * 2 + 2;
 const DEFAULT_DESCRIPTOR_ARRAY_SIZE: usize = 4usize;
+const DEFAULT_PER_SET_PREALLOCATED_SIZE: usize = 8usize;
+
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -46,7 +48,7 @@ pub(crate) struct WebGPUBindGroupEntryInfo {
 
 pub struct WebGPUBindGroupLayout {
     bind_group_layout: GpuBindGroupLayout,
-    binding_infos: Vec<Option<WebGPUBindGroupEntryInfo>>,
+    binding_infos: SmallVec<[Option<WebGPUBindGroupEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     is_empty: bool,
 }
 
@@ -68,7 +70,7 @@ impl WebGPUBindGroupLayout {
         bindings: &[WebGPUBindGroupEntryInfo],
         device: &GpuDevice,
     ) -> Result<Self, ()> {
-        let mut binding_infos: Vec<Option<WebGPUBindGroupEntryInfo>> = Vec::new();
+        let mut binding_infos: SmallVec<[Option<WebGPUBindGroupEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]> = SmallVec::new();
         binding_infos.resize(WEBGPU_BIND_COUNT_PER_SET as usize, None);
 
         let entries = Array::new();
@@ -115,6 +117,9 @@ impl WebGPUBindGroupLayout {
             }
             entries.push(&entry);
 
+            if (binding_infos.len() <= binding.index as usize) {
+                binding_infos.resize((binding.index + 1) as usize, None);
+            }
             binding_infos[binding.index as usize] = Some(binding.clone());
         }
         let descriptor = GpuBindGroupLayoutDescriptor::new(&entries);
@@ -136,11 +141,17 @@ impl WebGPUBindGroupLayout {
     }
 
     pub(crate) fn binding(&self, slot: u32) -> Option<&WebGPUBindGroupEntryInfo> {
-        self.binding_infos[slot as usize].as_ref()
+        if slot >= self.binding_infos.len() as u32 {
+            None
+        } else {
+            self.binding_infos[slot as usize].as_ref()
+        }
     }
 
     pub(crate) fn is_dynamic_binding(&self, binding_index: u32) -> bool {
-        if let Some(binding_info) = self.binding_infos[binding_index as usize].as_ref() {
+        if binding_index >= self.binding_infos.len() as u32 {
+            false
+        } else if let Some(binding_info) = self.binding_infos[binding_index as usize].as_ref() {
             binding_info.has_dynamic_offset
         } else {
             false
@@ -204,7 +215,7 @@ pub struct WebGPUBindGroup {
     bind_group: GpuBindGroup,
     layout: Arc<WebGPUBindGroupLayout>,
     is_transient: bool,
-    bindings: Vec<WebGPUBoundResource>,
+    bindings: SmallVec<[WebGPUBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
 }
 
 impl WebGPUBindGroup {
@@ -217,8 +228,8 @@ impl WebGPUBindGroup {
     where
         WebGPUBoundResource: From<&'a T>,
     {
-        let entries = Array::new_with_length(bindings.len() as u32);
-        let mut stored_bindings = Vec::<WebGPUBoundResource>::new();
+        let entries = Array::new();
+        let mut stored_bindings = SmallVec::<[WebGPUBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>::new();
 
         for (index, binding_ref) in bindings.iter().enumerate() {
             let binding: WebGPUBoundResource = binding_ref.into();
@@ -256,7 +267,7 @@ impl WebGPUBindGroup {
                 WebGPUBoundResource::SampledTextureArray(_textures) => panic!("Descriptor arrays are not supported on WebGPU"),
             }
             let entry = GpuBindGroupEntry::new(index as u32, &resource_js_value);
-            entries.set(index as u32, JsValue::from(&entry));
+            entries.push(&entry);
             stored_bindings.push(binding);
         }
 
@@ -280,21 +291,21 @@ impl WebGPUBindGroup {
         self.is_transient
     }
 
-    pub(crate) fn is_compatible<T>(
+    pub(crate) fn is_compatible<'a, T>(
         &self,
-        layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &[T],
+        layout: &'a Arc<WebGPUBindGroupLayout>,
+        bindings: &'a [T],
     ) -> bool
     where
-        WebGPUBoundResource: BindingCompare<T>,
+        WebGPUBoundResource: BindingCompare<Option<&'a T>>,
     {
         if &self.layout != layout {
             return false;
         }
 
         self.bindings.iter().enumerate().all(|(index, binding)| {
-            let binding_info = self.layout.binding_infos[index].as_ref();
-            binding.binding_eq(&bindings[index], binding_info)
+            let binding_info = self.layout.binding(index as u32);
+            binding.binding_eq(&bindings.get(index), binding_info)
         })
     }
 }
@@ -682,11 +693,41 @@ impl BindingCompare<WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource 
     }
 }
 
+impl BindingCompare<Option<&WebGPUBoundResource>> for WebGPUBoundResource {
+    fn binding_eq(
+        &self,
+        other: &Option<&WebGPUBoundResource>,
+        binding_info: Option<&WebGPUBindGroupEntryInfo>,
+    ) -> bool {
+        if let Some(other) = other {
+            self.binding_eq(*other, binding_info)
+        } else if self == &WebGPUBoundResource::None {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl BindingCompare<Option<&WebGPUBoundResourceRefInternal<'_>>> for WebGPUBoundResource {
+    fn binding_eq(
+        &self,
+        other: &Option<&WebGPUBoundResourceRefInternal<'_>>,
+        binding_info: Option<&WebGPUBindGroupEntryInfo>,
+    ) -> bool {
+        if let Some(other) = other {
+            self.binding_eq(*other, binding_info)
+        } else if self == &WebGPUBoundResource::None {
+            true
+        } else {
+            false
+        }
+    }
+}
 
 pub(crate) struct WebGPUBindGroupBinding {
     pub(crate) set: Arc<WebGPUBindGroup>,
-    pub(crate) dynamic_offset_count: u32,
-    pub(crate) dynamic_offsets: Vec<u64>,
+    pub(crate) dynamic_offsets: SmallVec<[u64; 4]>,
 }
 
 struct WebGPUBindGroupCacheEntry {
@@ -707,7 +748,7 @@ pub(crate) struct WebGPUBindingManager {
     current_sets: [Option<Arc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyBindGroups,
     bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
-    max_binding: [usize; gpu::NON_BINDLESS_SET_COUNT as usize],
+    used_bindings: [usize; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -727,8 +768,8 @@ impl WebGPUBindingManager {
             device: device.clone(),
             current_sets: Default::default(),
             dirty: DirtyBindGroups::empty(),
-            bindings: Default::default(),
-            max_binding: Default::default(),
+            bindings,
+            used_bindings: Default::default(),
             transient_cache: RefCell::new(HashMap::new()),
             permanent_cache: RefCell::new(HashMap::new()),
             last_cleanup_frame: 0,
@@ -741,7 +782,7 @@ impl WebGPUBindingManager {
             set.clear();
             set.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
         }
-        self.max_binding = Default::default();
+        self.used_bindings = Default::default();
         self.current_sets = Default::default();
         self.clean_permanent_cache(frame);
         if self.cache_mode != CacheMode::None {
@@ -791,12 +832,16 @@ impl WebGPUBindingManager {
             *existing_binding = (&internal_binding).into();
             *existing_binding_2 = (&internal_binding_2).into();
 
-            self.max_binding[frequency as usize] = self.max_binding[frequency as usize].max(slot as usize);
+            if WebGPUBoundResourceRefInternal::None != internal_binding {
+                self.used_bindings[frequency as usize] = self.used_bindings[frequency as usize].max((slot + 2) as usize);
+            }
         }
     }
 
     pub(crate) fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: gpu::ShaderType) {
         let data_as_bytes = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * std::mem::size_of::<T>()) };
+
+        // TODO: Implement Bump allocator with a big uniform buffer and GpuDevice::copyToBuffer
         let descriptor = GpuBufferDescriptor::new(data_as_bytes.len() as f64, web_sys::gpu_buffer_usage::UNIFORM);
         descriptor.set_mapped_at_creation(true);
         let buffer = self.device.create_buffer(&descriptor).unwrap();
@@ -804,6 +849,7 @@ impl WebGPUBindingManager {
         let uint8_array = Uint8Array::new_with_byte_offset_and_length(&mapped_range, 0 as u32, data_as_bytes.len() as u32);
         uint8_array.copy_from(&data_as_bytes);
         buffer.unmap();
+
         let binding_index = if visible_for_shader_stage == gpu::ShaderType::FragmentShader { 1 } else { 0 };
         self.bindings[gpu::BindingFrequency::VeryFrequent as usize][binding_index] = WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
             buffer, offset: 0, length: data_as_bytes.len() as u64
@@ -811,15 +857,15 @@ impl WebGPUBindingManager {
         self.dirty.insert(DirtyBindGroups::from(gpu::BindingFrequency::VeryFrequent));
     }
 
-    fn find_compatible_set<T>(
+    fn find_compatible_set<'a, T>(
         &self,
         frame: u64,
-        layout: &Arc<WebGPUBindGroupLayout>,
-        bindings: &[T],
+        layout: &'a Arc<WebGPUBindGroupLayout>,
+        bindings: &'a [T],
         use_permanent_cache: bool,
     ) -> Option<Arc<WebGPUBindGroup>>
     where
-        WebGPUBoundResource: BindingCompare<T>,
+        WebGPUBoundResource: BindingCompare<Option<&'a T>>,
     {
         let mut cache = if use_permanent_cache {
             self.permanent_cache.borrow_mut()
@@ -843,19 +889,16 @@ impl WebGPUBindingManager {
         pipeline_layout: &WebGPUPipelineLayout,
         frequency: gpu::BindingFrequency,
     ) -> Option<WebGPUBindGroupBinding> {
-        let mut max_binding = self.max_binding[frequency as usize];
-        if frequency == gpu::BindingFrequency::VeryFrequent {
-            max_binding += 1;
-        }
+        let used_bindings = self.used_bindings[frequency as usize];
 
         let layout_option = pipeline_layout.bind_group_layout(frequency as u32);
-        if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() || max_binding == 0 {
+        if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() || used_bindings == 0 {
             return None;
         }
         let layout = layout_option.unwrap();
 
         let mut set: Option<Arc<WebGPUBindGroup>> = None;
-        let bindings = &self.bindings[frequency as usize][..max_binding];
+        let bindings = &self.bindings[frequency as usize][..used_bindings];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
@@ -876,7 +919,6 @@ impl WebGPUBindingManager {
         let mut set_binding = WebGPUBindGroupBinding {
             set: set.clone(),
             dynamic_offsets: Default::default(),
-            dynamic_offset_count: 0,
         };
         bindings.iter().enumerate().for_each(|(index, binding)| {
             if let Some(binding_info) = set.layout.binding_infos[index].as_ref() {
@@ -887,18 +929,14 @@ impl WebGPUBindingManager {
                             offset,
                             length: _,
                         }) => {
-                            set_binding.dynamic_offsets
-                                [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                            set_binding.dynamic_offset_count += 1;
+                            set_binding.dynamic_offsets.push(*offset as u64);
                         }
                         WebGPUBoundResource::StorageBuffer(WebGPUBufferBindingInfo {
                             buffer: _,
                             offset,
                             length: _,
                         }) => {
-                            set_binding.dynamic_offsets
-                                [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                            set_binding.dynamic_offset_count += 1;
+                            set_binding.dynamic_offsets.push(*offset as u64);
                         }
                         WebGPUBoundResource::StorageBufferArray(buffers) => {
                             for WebGPUBufferBindingInfo {
@@ -907,9 +945,7 @@ impl WebGPUBindingManager {
                                 length: _,
                             } in buffers
                             {
-                                set_binding.dynamic_offsets
-                                    [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                                set_binding.dynamic_offset_count += 1;
+                                set_binding.dynamic_offsets.push(*offset as u64);
                             }
                         }
                         WebGPUBoundResource::UniformBufferArray(buffers) => {
@@ -919,9 +955,7 @@ impl WebGPUBindingManager {
                                 length: _,
                             } in buffers
                             {
-                                set_binding.dynamic_offsets
-                                    [set_binding.dynamic_offset_count as usize] = *offset as u64;
-                                set_binding.dynamic_offset_count += 1;
+                                set_binding.dynamic_offsets.push(*offset as u64);
                             }
                         }
                         _ => {}
@@ -936,11 +970,11 @@ impl WebGPUBindingManager {
     pub fn get_or_create_set<'a, T>(
         &self,
         frame: u64,
-        layout: &Arc<WebGPUBindGroupLayout>,
+        layout: &'a Arc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
     ) -> Option<Arc<WebGPUBindGroup>>
     where
-        WebGPUBoundResource: BindingCompare<T>,
+        WebGPUBoundResource: BindingCompare<Option<&'a T>>,
         WebGPUBoundResource: From<&'a T>,
     {
         if layout.is_empty() {

@@ -3,9 +3,9 @@ use log::warn;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, SampleCount};
 use web_sys::{GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState, GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode, GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState, GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline, GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState, GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat, GpuVertexState, GpuVertexStepMode};
-use std::hash::Hash;
+use std::{hash::Hash, sync::Arc};
 
-use crate::{binding::WebGPUBindGroupEntryInfo, shared::{WebGPUBindGroupLayoutKey, WebGPUShared}, texture::format_to_webgpu, WebGPUBackend};
+use crate::{binding::WebGPUBindGroupEntryInfo, shared::{WebGPUBindGroupLayoutKey, WebGPUShared}, texture::format_to_webgpu, WebGPUBackend, WebGPUPipelineLayout};
 
 pub struct WebGPUShader {
     module: GpuShaderModule,
@@ -107,7 +107,8 @@ impl gpu::Shader for WebGPUShader {
 }
 
 pub struct WebGPUGraphicsPipeline {
-    pipeline: GpuRenderPipeline
+    pipeline: GpuRenderPipeline,
+    layout: Arc<WebGPUPipelineLayout>
 }
 
 unsafe impl Send for WebGPUGraphicsPipeline {}
@@ -430,18 +431,24 @@ impl WebGPUGraphicsPipeline {
         let pipeline = device.create_render_pipeline(&descriptor).map_err(|_| ())?;
 
         Ok(Self {
-            pipeline
+            pipeline,
+            layout
         })
     }
 
     pub fn handle(&self) -> &GpuRenderPipeline {
         &self.pipeline
     }
+
+    pub fn layout(&self) -> &Arc<WebGPUPipelineLayout> {
+        &self.layout
+    }
 }
 
 pub struct WebGPUComputePipeline {
     pipeline: GpuComputePipeline,
-    resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize]
+    resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    layout: Arc<WebGPUPipelineLayout>
 }
 
 unsafe impl Send for WebGPUComputePipeline {}
@@ -526,12 +533,17 @@ impl WebGPUComputePipeline {
 
         Ok(Self {
             pipeline,
-            resources: shader.resources().clone()
+            resources: shader.resources().clone(),
+            layout
         })
     }
 
     pub fn handle(&self) -> &GpuComputePipeline {
         &self.pipeline
+    }
+
+    pub fn layout(&self) -> &Arc<WebGPUPipelineLayout> {
+        &self.layout
     }
 }
 

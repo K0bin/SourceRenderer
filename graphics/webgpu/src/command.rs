@@ -194,9 +194,11 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         let cmd_buffer = self.get_recording_mut();
         match pipeline {
             gpu::PipelineBinding::Graphics(graphics_pipeline) => {
+                cmd_buffer.pipeline_layout = Some(graphics_pipeline.layout().clone());
                 cmd_buffer.get_render_encoder().set_pipeline(graphics_pipeline.handle());
             },
             gpu::PipelineBinding::Compute(compute_pipeline) =>  {
+                cmd_buffer.pipeline_layout = Some(compute_pipeline.layout().clone());
                 cmd_buffer.get_compute_encoder().set_pipeline(compute_pipeline.handle());
             },
             gpu::PipelineBinding::RayTracing(_) => panic!("WebGPU does not support ray tracing"),
@@ -261,9 +263,9 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         render_pass_encoder.set_scissor_rect(scissor.position.x as u32, scissor.position.y as u32, scissor.extent.x, scissor.extent.y);
     }
 
-    unsafe fn set_push_constant_data<T>(&mut self, _data: &[T], _visible_for_shader_stage: gpu::ShaderType)
+    unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: gpu::ShaderType)
         where T: 'static + Send + Sync + Sized + Clone {
-        todo!()
+        self.binding_manager.set_push_constant_data(data, visible_for_shader_stage);
     }
 
     unsafe fn draw(&mut self, vertices: u32, offset: u32) {
@@ -320,8 +322,8 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         self.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::SampledTexture(WebGPUHashableTextureView::from(texture)));
     }
 
-    unsafe fn bind_sampling_view_and_sampler(&mut self, _frequency: gpu::BindingFrequency, _binding: u32, _texture: &WebGPUTextureView, _sampler: &WebGPUSampler) {
-        todo!("WebGPU does not support combined textures and samplers");
+    unsafe fn bind_sampling_view_and_sampler(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &WebGPUTextureView, sampler: &WebGPUSampler) {
+        self.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::SampledTextureAndSampler(WebGPUHashableTextureView::from(texture), WebGPUHashableSampler::from(sampler)));
     }
 
     unsafe fn bind_sampling_view_and_sampler_array(&mut self, _frequency: gpu::BindingFrequency, _binding: u32, _textures_and_samplers: &[(&WebGPUTextureView, &WebGPUSampler)]) {
@@ -361,6 +363,14 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn finish_binding(&mut self) {
+        if !self.is_inner {
+            let cmd_buffer = self.get_recording();
+            match &cmd_buffer.pass_encoder {
+                WebGPUPassEncoder::None => return,
+                _ => {}
+            }
+        }
+
         let frame = self.frame;
         let pipeline_layout = if !self.is_inner {
             self.get_recording().pipeline_layout.clone()
@@ -375,7 +385,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 continue;
             }
             let binding = binding.as_ref().unwrap();
-            for offset in &binding.dynamic_offsets[0..binding.dynamic_offset_count as usize] {
+            for offset in &binding.dynamic_offsets {
                 dynamic_offsets_js.set_index((index as u32) * gpu::PER_SET_BINDINGS, *offset as u32);
             }
         }
@@ -403,7 +413,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                             Some(binding.set.handle()),
                             &dynamic_offsets_js,
                             (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
-                            binding.dynamic_offset_count
+                            binding.dynamic_offsets.len() as u32
                         ).unwrap();
                     }
                 },
@@ -425,7 +435,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                             Some(binding.set.handle()),
                             &dynamic_offsets_js,
                             (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
-                            binding.dynamic_offset_count
+                            binding.dynamic_offsets.len() as u32
                         ).unwrap();
                     }
                 },
@@ -449,7 +459,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     Some(binding.set.handle()),
                     &dynamic_offsets_js,
                     (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
-                    binding.dynamic_offset_count
+                    binding.dynamic_offsets.len() as u32
                 ).unwrap();
             }
         }
@@ -494,26 +504,26 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         let src_info = GpuTexelCopyTextureInfo::new(src_texture.handle());
         src_info.set_mip_level(src_mip_level);
         let src_origin = Array::new_with_length(3);
-        src_origin.push(&JsValue::from(0f64));
-        src_origin.push(&JsValue::from(0f64));
+        src_origin.set(0, JsValue::from(0f64));
+        src_origin.set(1, JsValue::from(0f64));
         if src_texture.info().dimension == gpu::TextureDimension::Dim3D {
-            src_origin.push(&JsValue::from(0f64));
+            src_origin.set(2, JsValue::from(0f64));
             assert_eq!(src_array_layer, 0);
         } else {
-            src_origin.push(&JsValue::from(src_array_layer as f64));
+            src_origin.set(2, JsValue::from(src_array_layer as f64));
         }
         src_info.set_origin(&src_origin);
 
         let dst_info = GpuTexelCopyTextureInfo::new(dst_texture.handle());
         dst_info.set_mip_level(dst_mip_level);
         let dst_origin = Array::new_with_length(3);
-        dst_origin.push(&JsValue::from(0f64));
-        dst_origin.push(&JsValue::from(0f64));
+        dst_origin.set(0, JsValue::from(0f64));
+        dst_origin.set(1, JsValue::from(0f64));
         if dst_texture.info().dimension == gpu::TextureDimension::Dim3D {
-            dst_origin.push(&JsValue::from(0f64));
+            dst_origin.set(2, JsValue::from(0f64));
             assert_eq!(dst_array_layer, 0);
         } else {
-            dst_origin.push(&JsValue::from(dst_array_layer as f64));
+            dst_origin.set(2, JsValue::from(dst_array_layer as f64));
         }
         dst_info.set_origin(&dst_origin);
 
@@ -680,16 +690,12 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             bundle_descriptor.set_sample_count(sample_count_to_webgpu(color_rt.view.texture_info().samples));
         }
         if let Some(depth_stencil) = renderpass_info.depth_stencil {
+            let dsv_format = depth_stencil.view.info().format.unwrap_or_else(|| depth_stencil.view.texture_info().format);
+
             let attachment = GpuRenderPassDepthStencilAttachment::new(depth_stencil.view.handle());
             let (load_op, clear_value) = load_op_ds_to_webgpu(&depth_stencil.load_op);
             let (store_op, resolve_attachment) = store_op_to_webgpu(&depth_stencil.store_op);
             assert!(resolve_attachment.is_none());
-            attachment.set_depth_load_op(load_op);
-            attachment.set_stencil_load_op(load_op);
-            attachment.set_depth_clear_value(clear_value.depth);
-            attachment.set_stencil_clear_value(clear_value.stencil);
-            attachment.set_depth_store_op(store_op);
-            attachment.set_stencil_store_op(store_op);
             descriptor.set_depth_stencil_attachment(&attachment);
             let mut read_only = true;
             match &depth_stencil.store_op {
@@ -702,9 +708,21 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 LoadOpDepthStencil::DontCare => read_only = false,
                 _ => {}
             }
-            attachment.set_depth_read_only(read_only);
-            bundle_descriptor.set_depth_stencil_format(format_to_webgpu(depth_stencil.view.info().format.unwrap_or(depth_stencil.view.texture_info().format)));
-            bundle_descriptor.set_depth_read_only(read_only);
+            if dsv_format.is_stencil() {
+                attachment.set_stencil_clear_value(clear_value.stencil);
+                attachment.set_stencil_load_op(load_op);
+                attachment.set_stencil_store_op(store_op);
+                attachment.set_stencil_read_only(read_only);
+                bundle_descriptor.set_stencil_read_only(read_only);
+            }
+            if dsv_format.is_depth() {
+                attachment.set_depth_clear_value(clear_value.depth);
+                attachment.set_depth_load_op(load_op);
+                attachment.set_depth_store_op(store_op);
+                attachment.set_depth_read_only(read_only);
+                bundle_descriptor.set_depth_read_only(read_only);
+            }
+            bundle_descriptor.set_depth_stencil_format(format_to_webgpu(dsv_format));
             bundle_descriptor.set_sample_count(sample_count_to_webgpu(depth_stencil.view.texture_info().samples));
         }
         let recording = self.get_recording_mut();
