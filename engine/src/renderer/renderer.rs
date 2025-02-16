@@ -206,10 +206,16 @@ impl<P: Platform> Renderer<P> {
 
         let c_device = self.device.clone();
         std::mem::drop(assets); // TODO: The asset manager needs a bit of an overhaul to avoid this dead lock scenario. (Spawning on a task pool in single thread mode while holding the RW lock)
+
         bevy_tasks::ComputeTaskPool::get().spawn(async move {
             c_device.flush(QueueType::Graphics)
         }).detach();
 
+        // The WASM task pool will only run it after the function returns.
+        // By this time the current context texture might be invalidated.
+        // So do it immediately.
+        #[cfg(target_arch = "wasm32")]
+        self.device.flush(QueueType::Graphics);
 
         self.resources.swap_history_resources();
         self.frame += 1;

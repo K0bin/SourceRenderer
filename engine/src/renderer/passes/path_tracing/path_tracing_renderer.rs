@@ -312,7 +312,7 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
             }, HistoryResourceEntry::Current);
         let sampler = params.resources.linear_sampler();
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute(context, &mut cmd_buf, &params.assets, &rt_view, backbuffer_view, sampler, resolution);
+        self.blit_pass.execute(context, &mut cmd_buf, &params.assets, &rt_view, &backbuffer_view, sampler, resolution);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET,
             new_sync: BarrierSync::empty(),

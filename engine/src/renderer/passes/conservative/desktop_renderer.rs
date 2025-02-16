@@ -457,7 +457,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         cmd_buf.flush_barriers();
 
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute::<P>(context, &mut cmd_buf, &params.assets, &sharpened_view, backbuffer_view, sampler, resolution);
+        self.blit_pass.execute::<P>(context, &mut cmd_buf, &params.assets, &sharpened_view, &backbuffer_view, sampler, resolution);
         std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,

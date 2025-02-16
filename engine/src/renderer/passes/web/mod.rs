@@ -136,7 +136,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
             main_view,
             &camera_buffer,
             &self.resources,
-            backbuffer_view,
+            &backbuffer_view,
             backbuffer_handle,
             swapchain.width(),
             swapchain.height(),

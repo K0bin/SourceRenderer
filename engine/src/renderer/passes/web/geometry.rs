@@ -194,7 +194,7 @@ impl<P: Platform> GeometryPass<P> {
             &RenderPassBeginInfo {
                 render_targets: &[RenderTarget {
                     view: &backbuffer,
-                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                    load_op: LoadOpColor::Clear(ClearColor::from_u32([255, 0, 255, 255])),
                     store_op: StoreOp::<P::GPUBackend>::Store,
                 }],
                 depth_stencil: Some(&DepthStencilAttachment {
