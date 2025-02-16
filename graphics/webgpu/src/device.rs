@@ -57,6 +57,12 @@ impl WebGPUDevice {
     }
 }
 
+impl Drop for WebGPUDevice {
+    fn drop(&mut self) {
+        self.device.destroy();
+    }
+}
+
 impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     unsafe fn create_buffer(&self, info: &gpu::BufferInfo, memory_type_index: u32, name: Option<&str>) -> Result<WebGPUBuffer, gpu::OutOfMemoryError> {
         let mem = &self.memory_infos[memory_type_index as usize];

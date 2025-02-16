@@ -50,6 +50,7 @@ pub struct WebGPUBindGroupLayout {
     bind_group_layout: GpuBindGroupLayout,
     binding_infos: SmallVec<[Option<WebGPUBindGroupEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     is_empty: bool,
+    max_used_binding: u32
 }
 
 unsafe impl Send for WebGPUBindGroupLayout {}
@@ -74,6 +75,8 @@ impl WebGPUBindGroupLayout {
         binding_infos.resize(WEBGPU_BIND_COUNT_PER_SET as usize, None);
 
         let entries = Array::new();
+
+        let mut max_used_binding = 0u32;
 
         for binding in bindings {
             let entry = GpuBindGroupLayoutEntry::new(binding.index, binding.shader_stage);
@@ -117,10 +120,11 @@ impl WebGPUBindGroupLayout {
             }
             entries.push(&entry);
 
-            if (binding_infos.len() <= binding.index as usize) {
+            if binding_infos.len() <= binding.index as usize {
                 binding_infos.resize((binding.index + 1) as usize, None);
             }
             binding_infos[binding.index as usize] = Some(binding.clone());
+            max_used_binding = max_used_binding.max(binding.index);
         }
         let descriptor = GpuBindGroupLayoutDescriptor::new(&entries);
         let bind_group_layout = device.create_bind_group_layout(&descriptor)
@@ -128,7 +132,8 @@ impl WebGPUBindGroupLayout {
         Ok(Self {
             bind_group_layout,
             binding_infos,
-            is_empty: bindings.is_empty()
+            is_empty: bindings.is_empty(),
+            max_used_binding
         })
     }
 
@@ -138,6 +143,10 @@ impl WebGPUBindGroupLayout {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.is_empty
+    }
+
+    pub(crate) fn max_used_binding(&self) -> u32 {
+        self.max_used_binding
     }
 
     pub(crate) fn binding(&self, slot: u32) -> Option<&WebGPUBindGroupEntryInfo> {
@@ -748,7 +757,6 @@ pub(crate) struct WebGPUBindingManager {
     current_sets: [Option<Arc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyBindGroups,
     bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
-    used_bindings: [usize; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -763,32 +771,38 @@ impl WebGPUBindingManager {
             set.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
         }
 
-        Self {
+        let mut result = Self {
             cache_mode,
             device: device.clone(),
             current_sets: Default::default(),
-            dirty: DirtyBindGroups::empty(),
+            dirty: DirtyBindGroups::all(),
             bindings,
-            used_bindings: Default::default(),
             transient_cache: RefCell::new(HashMap::new()),
             permanent_cache: RefCell::new(HashMap::new()),
             last_cleanup_frame: 0,
-        }
+        };
+
+        result.set_push_constant_data(&[0u64], gpu::ShaderType::VertexShader);
+        result.set_push_constant_data(&[0u64], gpu::ShaderType::FragmentShader);
+
+        result
     }
 
     pub(crate) fn reset(&mut self, frame: u64) {
-        self.dirty = DirtyBindGroups::empty();
+        self.dirty = DirtyBindGroups::all();
         for set in &mut self.bindings {
             set.clear();
             set.resize(WEBGPU_BIND_COUNT_PER_SET as usize, WebGPUBoundResource::None);
         }
-        self.used_bindings = Default::default();
+
         self.current_sets = Default::default();
         self.clean_permanent_cache(frame);
         if self.cache_mode != CacheMode::None {
             let mut transient_cache_mut = self.transient_cache.borrow_mut();
             transient_cache_mut.clear();
         }
+        self.set_push_constant_data(&[0u64], gpu::ShaderType::VertexShader);
+        self.set_push_constant_data(&[0u64], gpu::ShaderType::FragmentShader);
     }
 
     pub(crate) fn bind(
@@ -831,10 +845,6 @@ impl WebGPUBindingManager {
             self.dirty.insert(DirtyBindGroups::from(frequency));
             *existing_binding = (&internal_binding).into();
             *existing_binding_2 = (&internal_binding_2).into();
-
-            if WebGPUBoundResourceRefInternal::None != internal_binding {
-                self.used_bindings[frequency as usize] = self.used_bindings[frequency as usize].max((slot + 2) as usize);
-            }
         }
     }
 
@@ -889,16 +899,14 @@ impl WebGPUBindingManager {
         pipeline_layout: &WebGPUPipelineLayout,
         frequency: gpu::BindingFrequency,
     ) -> Option<WebGPUBindGroupBinding> {
-        let used_bindings = self.used_bindings[frequency as usize];
-
         let layout_option = pipeline_layout.bind_group_layout(frequency as u32);
-        if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() || used_bindings == 0 {
+        if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() {
             return None;
         }
         let layout = layout_option.unwrap();
 
         let mut set: Option<Arc<WebGPUBindGroup>> = None;
-        let bindings = &self.bindings[frequency as usize][..used_bindings];
+        let bindings = &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
@@ -978,6 +986,7 @@ impl WebGPUBindingManager {
         WebGPUBoundResource: From<&'a T>,
     {
         if layout.is_empty() {
+            log::warn!("Skipping bc empty layout");
             return None;
         }
 
